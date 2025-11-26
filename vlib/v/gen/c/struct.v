@@ -41,9 +41,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
 		if node.typ.has_flag(.generic) && unwrapped_typ.is_ptr() {
-			g.write('&(')
-			g.write(g.type_default_sumtype(unwrapped_typ.set_nr_muls(0), sym))
-			g.write(')')
+			// handle promotions to a sumtype for generic functions like this one: `fn (d Struct) a[T]() T { return d }`
+			// the value should be on the heap, since it is not known where it will be used:
+			sumtype_type := unwrapped_typ.set_nr_muls(0)
+			sumtype_name := g.styp(sumtype_type)
+			g.write('HEAP(${sumtype_name}, (')
+			g.write(g.type_default_sumtype(sumtype_type, sym))
+			g.write('))')
 		} else {
 			g.write(g.type_default_sumtype(unwrapped_typ, sym))
 		}
@@ -80,7 +84,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 	if !g.inside_cinit && !is_anon && !is_generic_default && !is_array && !const_msvc_init {
 		g.write('(')
-		defer {
+		defer(fn) {
 			g.write(')')
 		}
 	}
@@ -123,14 +127,14 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		base_styp := g.styp(node.typ.clear_option_and_result())
 		g.writeln('${styp} ${tmp_var} = {0};')
 
-		if node.init_fields.len > 0 {
+		if node.init_fields.len > 0 || node.typ.has_flag(.generic) {
 			g.write('builtin___option_ok(&(${base_styp}[]) { ')
 		} else {
 			g.write('builtin___option_none(&(${base_styp}[]) { ')
 		}
 		g.struct_init(ast.StructInit{
 			...node
-			typ: node.typ.clear_option_and_result()
+			typ: g.unwrap_generic(node.typ).clear_option_and_result()
 		})
 		g.writeln('}, (${option_name}*)&${tmp_var}, sizeof(${base_styp}));')
 		g.empty_line = false
@@ -372,7 +376,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		save_inside_array_fixed_struct := g.inside_array_fixed_struct
 		g.inside_array_fixed_struct = is_array_fixed_struct_init
-		defer {
+		defer(fn) {
 			g.inside_array_fixed_struct = save_inside_array_fixed_struct
 		}
 
@@ -710,7 +714,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 			}
 		}
 	} else {
-		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+		g.type_definitions.writeln('\tE_STRUCT_DECL;')
 	}
 	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'

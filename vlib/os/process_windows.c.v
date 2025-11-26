@@ -42,9 +42,10 @@ fn close_valid_handle(p voidptr) {
 
 pub struct WProcess {
 pub mut:
-	proc_info    ProcessInformation
-	command_line [65536]u8
-	child_stdin  &u32 = unsafe { nil }
+	proc_info         ProcessInformation
+	command_line      [65536]u8
+	child_stdin_read  &u32 = unsafe { nil }
+	child_stdin_write &u32 = unsafe { nil }
 
 	child_stdout_read  &u32 = unsafe { nil }
 	child_stdout_write &u32 = unsafe { nil }
@@ -64,7 +65,8 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin:        unsafe { nil }
+		child_stdin_read:   unsafe { nil }
+		child_stdin_write:  unsafe { nil }
 		child_stdout_read:  unsafe { nil }
 		child_stdout_write: unsafe { nil }
 		child_stderr_read:  unsafe { nil }
@@ -82,6 +84,13 @@ fn (mut p Process) win_spawn_process() int {
 		mut sa := SecurityAttributes{}
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
+
+		create_pipe_ok0 := C.CreatePipe(voidptr(&wdata.child_stdin_read), voidptr(&wdata.child_stdin_write),
+			voidptr(&sa), 65536)
+		failed_cfn_report_error(create_pipe_ok0, 'CreatePipe stdin')
+		set_handle_info_ok0 := C.SetHandleInformation(wdata.child_stdin_write, C.HANDLE_FLAG_INHERIT,
+			0)
+		failed_cfn_report_error(set_handle_info_ok0, 'SetHandleInformation')
 		create_pipe_ok1 := C.CreatePipe(voidptr(&wdata.child_stdout_read), voidptr(&wdata.child_stdout_write),
 			voidptr(&sa), 65536)
 		failed_cfn_report_error(create_pipe_ok1, 'CreatePipe stdout')
@@ -94,7 +103,7 @@ fn (mut p Process) win_spawn_process() int {
 		set_handle_info_ok2 := C.SetHandleInformation(wdata.child_stderr_read, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok2, 'SetHandleInformation stderr')
-		start_info.h_std_input = wdata.child_stdin
+		start_info.h_std_input = wdata.child_stdin_read
 		start_info.h_std_output = wdata.child_stdout_write
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
@@ -143,7 +152,7 @@ fn (mut p Process) win_spawn_process() int {
 		}
 		env_block << u16(0)
 		creation_flags |= C.CREATE_UNICODE_ENVIRONMENT
-		defer {
+		defer(fn) {
 			unsafe { env_block.free() }
 		}
 	}
@@ -153,6 +162,7 @@ fn (mut p Process) win_spawn_process() int {
 		voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
+		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
 	}
@@ -200,7 +210,7 @@ fn (mut p Process) win_wait() {
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
-		close_valid_handle(&wdata.child_stdin)
+		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
 		close_valid_handle(&wdata.proc_info.h_process)
@@ -223,7 +233,18 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, _s string) {
-	panic_n('Process.write_string is not implemented yet, idx:', idx)
+	mut wdata := unsafe { &WProcess(p.wdata) }
+	if unsafe { wdata == 0 } || idx != 0 {
+		return
+	}
+	mut rhandle := wdata.child_stdin_write
+	if rhandle == 0 {
+		return
+	}
+	mut bytes_write := int(0)
+	unsafe {
+		C.WriteFile(rhandle, _s.str, _s.len, voidptr(&bytes_write), 0)
+	}
 }
 
 fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {

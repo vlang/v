@@ -9,9 +9,10 @@ and inspired by Go version of the same library.
 ## Status
 This module already supports a 32-bit counter mode, and recently expanded 
 to support a 64-bit counter mode. 
-The implemented features at the time of writing (2025/03/27) are:
-- Support for standard IETF ChaCha20 with 32-bit counter, and 12 bytes nonce
-- Support for extended ChaCha20 (XChaCha20) constructions with 24 bytes nonce  
+The implemented features at the time of writing (2025/09/22) are:
+- Support for standard IETF ChaCha20 with 32-bit counter and 12 bytes nonce
+- Support for eXtended ChaCha20 (XChaCha20) constructions with 24 bytes nonce, 
+  with 32 or 64-bit counter. 
 - Support for original ChaCha20 with 8 bytes nonce and 64-bit counter.
 
 Example
@@ -22,11 +23,25 @@ import crypto.rand
 import x.crypto.chacha20
 
 fn main() {
-	// Simplified examples to create cipher's with 64-bit counter
-	key := rand.read(32)!
-	nonce := rand.read(8)!
-	// just pass 32-bytes key and 8-bytes nonce to build cipher with 64-bit counter
-	mut c := chacha20.new_cipher(key, nonce)!
+	// 1. Creates a standard IETF variant, supplied with 12-bytes nonce
+	key0 := rand.read(32)!
+	nonce0 := rand.read(12)!
+
+	mut c0 := chacha20.new_cipher(key0, nonce0)!
+	// and then, do work with the c0 that was just created
+
+	// 2. Creates an original (DJ Bernstein) variant, supplied with 8-bytes nonce
+	key1 := rand.read(32)!
+	nonce1 := rand.read(8)!
+
+	mut c1 := chacha20.new_cipher(key1, nonce1)!
+	// do with yours cipher
+
+	// 3. Creates an eXtended ChaCha20 construction with 64-bit counter
+	key2 := rand.read(32)!
+	nonce2 := rand.read(24)!
+
+	mut c2 := chacha20.new_cipher(key2, nonce2, use_64bit_counter: true)!
 	// do with yours cipher
 }
 ```

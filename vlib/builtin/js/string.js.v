@@ -287,6 +287,11 @@ pub fn (s string) i16() i16 {
 	return i16(JS.parseInt(s.str))
 }
 
+// i32 returns the value of the string as i32 `'1'.i32() == i32(1)`.
+pub fn (s string) i32() i32 {
+	return i32(JS.parseInt(s.str))
+}
+
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
 	// return C.atof(&char(s.str))

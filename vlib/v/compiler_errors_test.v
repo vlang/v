@@ -91,6 +91,7 @@ fn test_all() {
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
+	no_closures_dir := 'vlib/v/tests/no_closures'
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
@@ -100,6 +101,7 @@ fn test_all() {
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
 	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
+	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
@@ -118,6 +120,7 @@ fn test_all() {
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
+	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)
 	tasks.run()
 
 	if os.user_os() == 'linux' {
@@ -254,6 +257,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'
 		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
 	}
 	for i in 0 .. tasks.all.len {

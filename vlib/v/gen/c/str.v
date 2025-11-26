@@ -148,7 +148,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false
-				defer {
+				defer(fn) {
 					g.inside_interface_deref = inside_interface_deref_old
 				}
 				if temp_var_needed {
@@ -163,7 +163,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if str_method_expects_ptr && !is_ptr {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.styp(typ)}, ')
-				defer {
+				defer(fn) {
 					g.write(')')
 				}
 			} else {
@@ -232,7 +232,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
-				g.write('*')
+				g.write('*'.repeat(typ.nr_muls()))
 			} else {
 				if sym.is_c_struct() {
 					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))

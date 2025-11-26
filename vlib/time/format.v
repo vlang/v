@@ -502,13 +502,13 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.week_of_year()))
 			}
 			'Q' {
-				sb.write_string('${(t.month % 4) + 1}')
+				sb.write_string('${(t.month - 1) / 3 + 1}')
 			}
 			'QQ' {
-				sb.write_string('${(t.month % 4) + 1:02}')
+				sb.write_string('${(t.month - 1) / 3 + 1:02}')
 			}
 			'Qo' {
-				sb.write_string(ordinal_suffix((t.month % 4) + 1))
+				sb.write_string(ordinal_suffix((t.month - 1) / 3 + 1))
 			}
 			'c' {
 				sb.write_string('${t.day_of_week()}')

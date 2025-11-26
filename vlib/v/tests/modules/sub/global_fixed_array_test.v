@@ -20,3 +20,15 @@ fn test_main() {
 	assert dump(f) == [foo.num_elements]DummyStruct{}
 	assert dump(d) == [foo.num_elements]DummyStruct{}
 }
+
+struct DummyStruct2 {
+	dummy_item1 int
+	dummy_item2 i32
+	dummy_item3 u8
+}
+
+const m = [foo.num_elements]DummyStruct2{}
+
+fn test_many_dummy_fields_with_diff_types() {
+	assert dump(m) == [foo.num_elements]DummyStruct2{}
+}

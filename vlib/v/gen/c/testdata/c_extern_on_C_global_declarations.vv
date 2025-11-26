@@ -1,0 +1,49 @@
+@[has_globals]
+module main
+
+#include "@DIR/c_file_for_c_extern.c"
+
+// These could be macros, but without the @[c_extern] tag, they should still work.
+// V should treat their type as `&C.FILE`, and *NOT* as the default `int` type for C names.
+__global C.stdout &C.FILE
+__global C.stderr &C.FILE
+
+// This should generate: `i16 My_non_extern_C_global = -9876;` . Note the lack of `extern `.
+__global C.My_non_extern_C_global = i16(-9876)
+
+// These are defined in the included c_file_for_c_extern.c . Declaring them here,
+// should make V recognize their type.
+
+@[c_extern]
+__global C.My_C_u64_global u64
+// This should generate: `extern u64 My_C_u64_global;`
+
+@[c_extern]
+__global C.My_C_i32_global i32
+// This should generate: `extern i32 My_C_i32_global;`
+
+unbuffer_stdout()
+println('types:')
+println(typeof(C.stdout).name)
+println(typeof(C.stderr).name)
+println('values:')
+println(C.stdout)
+println(C.stderr)
+// println(voidptr(C.stdout))
+// println(voidptr(C.stderr))
+C.fflush(C.stderr)
+C.fflush(C.stdout)
+C.fprintf(C.stderr, c'This should be on stderr.\n')
+C.fflush(C.stderr)
+C.fprintf(C.stdout, c'Hello world on stdout.\n')
+C.fprintf(C.stdout, c'My_C_u64_global: %ld\n', C.My_C_u64_global)
+C.fprintf(C.stdout, c'My_C_i32_global: %d\n', C.My_C_i32_global)
+C.fprintf(C.stdout, c'C.My_non_extern_C_global: %d\n', C.My_non_extern_C_global)
+C.fflush(C.stdout)
+
+assert C.My_C_u64_global == 456
+assert C.My_C_i32_global == -123
+println(typeof(C.My_C_u64_global).name)
+println(typeof(C.My_C_i32_global).name)
+println(typeof(C.My_non_extern_C_global).name)
+println(C.My_non_extern_C_global)

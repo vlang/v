@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module ast
 
+pub const empty_scope = &Scope{
+	parent: unsafe { nil }
+}
+
 @[heap]
 pub struct Scope {
 pub mut:
@@ -46,7 +50,7 @@ fn (s &Scope) dont_lookup_parent() bool {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	if s == unsafe { nil } {
+	if _unlikely_(s == unsafe { nil }) {
 		return none
 	}
 	for sc := unsafe { s }; true; sc = sc.parent {
@@ -60,9 +64,25 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 	return none
 }
 
+pub fn (s &Scope) find_ptr(name string) &ScopeObject {
+	if _unlikely_(s == unsafe { nil }) {
+		return 0
+	}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		pobj := unsafe { &sc.objects[name] or { nil } }
+		if pobj != unsafe { nil } {
+			return pobj
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return 0
+}
+
 // selector_expr:  name.field_name
 pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) &ScopeStructField {
-	if s == unsafe { nil } {
+	if _unlikely_(s == unsafe { nil }) {
 		return unsafe { nil }
 	}
 	k := '${name}.${field_name}'
@@ -82,7 +102,8 @@ pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name st
 }
 
 pub fn (s &Scope) find_var(name string) ?&Var {
-	if obj := s.find(name) {
+	obj := s.find_ptr(name)
+	if _likely_(obj != unsafe { nil }) {
 		match obj {
 			Var { return &obj }
 			else {}
@@ -92,7 +113,8 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 }
 
 pub fn (s &Scope) find_global(name string) ?&GlobalField {
-	if obj := s.find(name) {
+	obj := s.find_ptr(name)
+	if _likely_(obj != unsafe { nil }) {
 		match obj {
 			GlobalField { return &obj }
 			else {}
@@ -102,7 +124,8 @@ pub fn (s &Scope) find_global(name string) ?&GlobalField {
 }
 
 pub fn (s &Scope) find_const(name string) ?&ConstField {
-	if obj := s.find(name) {
+	obj := s.find_ptr(name)
+	if _likely_(obj != unsafe { nil }) {
 		match obj {
 			ConstField { return &obj }
 			else {}
@@ -112,7 +135,7 @@ pub fn (s &Scope) find_const(name string) ?&ConstField {
 }
 
 pub fn (s &Scope) known_var(name string) bool {
-	if s == unsafe { nil } {
+	if _unlikely_(s == unsafe { nil }) {
 		return false
 	}
 	for sc := unsafe { s }; true; sc = sc.parent {
@@ -232,6 +255,11 @@ pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
+@[inline]
+pub fn (s &Scope) == (o &Scope) bool {
+	return s.start_pos == o.start_pos && s.end_pos == o.end_pos
+}
+
 pub fn (s &Scope) has_inherited_vars() bool {
 	for _, obj in s.objects {
 		if obj is Var {
@@ -280,7 +308,10 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 }
 
 pub fn (mut sc Scope) mark_var_as_used(varname string) bool {
-	mut obj := sc.find(varname) or { return false }
+	mut obj := sc.find_ptr(varname)
+	if obj == unsafe { nil } {
+		return false
+	}
 	if mut obj is Var {
 		obj.is_used = true
 		return true

@@ -20,6 +20,8 @@ struct Foo {
 ### Structs
 
 - `[table: 'name']` explicitly sets the name of the table for the struct
+- `[comment: 'table_comment']` explicitly sets the comment of the table for the struct
+- `[index: 'f1, f2, f3']` explicitly sets fields of the table (`f1`, `f2`, `f3`) as indexed
 
 ### Fields
 
@@ -32,10 +34,13 @@ struct Foo {
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
-  creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings, 
+  creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings,
   surround `raw_sql` with backticks (\`).
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
+- `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
+- `[comment: 'field_comment']` set comment
+- `[index]` creates index
 
 ## Usage
 > [!NOTE]
@@ -166,7 +171,7 @@ result := sql db {
 
 ```v ignore
 result := sql db {
-    select from Foo where id > 1 order by id
+    select from Foo where id > 1 order by id desc
 }!
 ```
 
@@ -198,8 +203,8 @@ sql db {
 ### time.Time Fields
 
 It's definitely useful to cast a field as `time.Time` so you can use V's built-in time functions;
-however, this is handled a bit differently than expected in the ORM. `time.Time` fields are 
-created as integer columns in the database. Because of this, the usual time functions 
+however, this is handled a bit differently than expected in the ORM. `time.Time` fields are
+created as integer columns in the database. Because of this, the usual time functions
 (`current_timestamp`, `NOW()`, etc) in SQL do not work as defaults.
 
 ## Example

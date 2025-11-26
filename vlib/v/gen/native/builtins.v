@@ -22,32 +22,34 @@ mut:
 pub const inline_builtins = ['print', 'eprint', 'println', 'eprintln', 'C.syscall'] // classic V builtin functions accessible to the user get inlined
 
 pub fn (mut g Gen) init_builtins() {
+	trace_gen(@LOCATION)
 	g.builtins = {
 		// longer algorithms and internal functions inaccessible to the user
 		// used to keep executable size small and the bytecode distraction-free
 		.int_to_string:  BuiltinFn{
 			// 32-bit signed integer to string conversion
 			body:     fn (builtin BuiltinFn, mut g Gen) {
-				g.code_gen.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
+				g.cg.cg_convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
-			arg_regs: [Amd64Register.rcx, Amd64Register.rdi] // rcx: int to convert, rdi: end of 32byte buffer (with 4 bytes at the beggining for len) see allocate_array
+			arg_regs: [.reg1, .reg3] // reg1: int to convert, reg3: end of 32byte buffer (with 4 bytes at the beggining for len) see allocate_array
 		}
 		.bool_to_string: BuiltinFn{
 			body:     fn (builtin BuiltinFn, mut g Gen) {
-				g.code_gen.convert_bool_to_string(builtin.arg_regs[0])
+				g.cg.cg_convert_bool_to_string(builtin.arg_regs[0])
 			}
-			arg_regs: [Amd64Register.rax]
+			arg_regs: [.reg0]
 		}
 		.reverse_string: BuiltinFn{
 			body:     fn (builtin BuiltinFn, mut g Gen) {
-				g.code_gen.reverse_string(builtin.arg_regs[0])
+				g.cg.cg_reverse_string(builtin.arg_regs[0])
 			}
-			arg_regs: [Amd64Register.rdi]
+			arg_regs: [.reg3]
 		}
 	}
 }
 
 pub fn (mut g Gen) generate_builtins() {
+	trace_gen(@LOCATION)
 	for name, builtin in g.builtins {
 		if builtin.calls.len == 0 { // if a builtin does not get called, do not emit it
 			continue
@@ -62,13 +64,13 @@ pub fn (mut g Gen) generate_builtins() {
 		g.defer_stmts.clear()
 		g.labels = &LabelTable{}
 
-		g.code_gen.builtin_decl(builtin)
+		g.cg.cg_builtin_decl(builtin)
 
 		g.patch_labels()
 
 		// patch all call addresses where this builtin gets called
 		for call in builtin.calls {
-			rel := g.code_gen.call_addr_at(i32(call_addr), call)
+			rel := g.cg.cg_call_addr_at(i32(call_addr), call)
 			g.write32_at(call + 1, i32(rel))
 		}
 	}
@@ -83,5 +85,5 @@ pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index i32) Register {
 }
 
 pub fn (mut g Gen) call_builtin(name Builtin) {
-	g.builtins[name].calls << g.code_gen.call_builtin(name)
+	g.builtins[name].calls << g.cg.cg_call_builtin(name)
 }

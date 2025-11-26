@@ -133,7 +133,7 @@ fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 			err = stmt.bind_i64(c, i64(data))
 		}
 		f32, f64 {
-			err = stmt.bind_f64(c, unsafe { *(&f64(&data)) })
+			err = stmt.bind_f64(c, f64(data))
 		}
 		string {
 			err = stmt.bind_text(c, data)
@@ -167,7 +167,9 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 		return stmt.get_int(idx) or { return orm.Null{} }
 	} else if typ in orm.num64 {
 		return stmt.get_i64(idx) or { return orm.Null{} }
-	} else if typ in orm.float {
+	} else if typ == typeof[f32]().idx {
+		return f32(stmt.get_f64(idx) or { return orm.Null{} })
+	} else if typ == typeof[f64]().idx {
 		return stmt.get_f64(idx) or { return orm.Null{} }
 	} else if typ == orm.type_string {
 		if v := stmt.get_text(idx) {

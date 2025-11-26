@@ -1,9 +1,9 @@
 fn main() {
-	// GRINNING FACE😀 => f0 09 98 80
-	grinning_face := rune(0xf09f9880)
+	// GRINNING FACE 😀
+	grinning_face := rune(0x1f600)
 	println(grinning_face)
 
 	// COMMERCIAL AT@ => 0x40
-	commercial_at := rune(0x40000000)
+	commercial_at := rune(0x40)
 	println(commercial_at)
 }

@@ -11,9 +11,9 @@ import v.pref
 import sync.stdatomic
 
 // V type names that cannot be used as global var name
-pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
-	'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread',
-	'array']
+pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64',
+	'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr',
+	'thread', 'array']
 
 pub const result_name = '_result'
 pub const option_name = '_option'
@@ -24,13 +24,7 @@ pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError',
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-// pub const int_type_name = $if amd64 || arm64 {
-pub const int_type_name = $if new_int ? {
-	//'int'
-	'i64'
-} $else {
-	'int'
-}
+pub const int_type_name = $if new_int ? && x64 { 'vint_t' } $else { 'int' }
 
 pub type Expr = NodeError
 	| AnonFn
@@ -169,6 +163,7 @@ pub enum ComptimeTypeKind {
 	alias
 	function
 	option
+	shared
 	string
 	pointer
 	voidptr
@@ -196,6 +191,7 @@ pub fn (cty ComptimeType) str() string {
 		.alias { '\$alias' }
 		.function { '\$function' }
 		.option { '\$option' }
+		.shared { '\$shared' }
 		.string { '\$string' }
 		.pointer { '\$pointer' }
 		.voidptr { '\$voidptr' }
@@ -225,6 +221,7 @@ pub struct Block {
 pub:
 	is_unsafe bool
 	pos       token.Pos
+	scope     &Scope
 pub mut:
 	stmts []Stmt
 }
@@ -404,6 +401,7 @@ pub:
 	name         string
 	is_pub       bool
 	is_markused  bool // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	is_exported  bool // an explicit `@[export]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos          token.Pos
 	attrs        []Attr // same value as `attrs` of the ConstDecl to which it belongs
 	is_virtual_c bool   // `const C.MY_CONST u8`
@@ -577,6 +575,7 @@ pub struct AnonFn {
 pub mut:
 	decl           FnDecl
 	inherited_vars []Param         // note: closures have inherited_vars.len > 0
+	has_ct_var     bool            // has $for var as inherited var
 	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }
@@ -605,6 +604,7 @@ pub:
 	is_unsafe             bool        // true, when @[unsafe] is used on a fn
 	is_must_use           bool        // true, when @[must_use] is used on a fn. Calls to such functions, that ignore the return value, will cause warnings.
 	is_markused           bool        // true, when an explicit `@[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_ignore_overflow    bool        // true, when an explicit `@[ignore_overflow]` tag was put on a fn. `-check-overflow` will not generate checks for arithmetic done in that fn.
 	is_file_translated    bool        // true, when the file it resides in is `@[translated]`
 	is_closure            bool        // true, for actual closures like `fn [inherited] () {}` . It is false for normal anonymous functions, and for named functions/methods too.
 	receiver              StructField // TODO: this is not a struct field
@@ -626,7 +626,7 @@ pub:
 	body_pos              token.Pos // function bodys position
 	file                  string
 	generic_names         []string
-	is_direct_arr         bool // direct array access
+	is_direct_arr         bool // @[direct_array_access] was used; a[i] inside such a fn, will *not* do array index bounds checks.
 	attrs                 []Attr
 	ctdefine_idx          int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
@@ -809,6 +809,7 @@ pub struct BranchStmt {
 pub:
 	kind  token.Kind
 	label string
+	scope &Scope
 	pos   token.Pos
 }
 
@@ -830,6 +831,7 @@ pub mut:
 	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	is_static_method       bool // it is a static method call
+	is_variadic            bool
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
@@ -887,6 +889,7 @@ pub mut:
 // function return statement
 pub struct Return {
 pub:
+	scope    &Scope
 	pos      token.Pos
 	comments []Comment
 pub mut:
@@ -971,6 +974,12 @@ pub:
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 	is_weak     bool
 	is_hidden   bool
+	// The following fields, are relevant for non V globals, for example `__global C.stdout &C.FILE`:
+	language  Language // for C.stdout, it will be .c .
+	is_extern bool     // true, if an explicit `@[c_extern]` tag was used. It is suitable for globals, that are not initialised by V,
+	// but come from the external linked objects/libs, like C.stdout etc, and that *are not* declared in included .h files .
+	// Without an explicit `@[c_extern]` tag, V will avoid emiting `extern CType CName;` lines.
+	// V will still know, that the type of C.stdout, is not the default `int`, but &C.FILE, and thus will do more checks on it.
 pub mut:
 	expr     Expr
 	typ      Type
@@ -1247,6 +1256,7 @@ pub mut:
 	cond  Expr
 	stmts []Stmt
 	scope &Scope = unsafe { nil }
+	id    int
 }
 
 pub struct UnsafeExpr {
@@ -1294,9 +1304,11 @@ pub:
 	post_comments []Comment // comments below ´... }´
 	branch_pos    token.Pos // for checker errors about invalid branches
 pub mut:
-	stmts []Stmt // right side
-	exprs []Expr // left side
-	scope &Scope = unsafe { nil }
+	stmts           []Stmt // right side
+	exprs           []Expr // left side
+	scope           &Scope = unsafe { nil }
+	id              int
+	is_comptime_err bool // $compile_warn(), $compile_error()
 }
 
 pub struct SelectExpr {
@@ -1317,6 +1329,7 @@ pub:
 	is_else       bool
 	is_timeout    bool
 	post_comments []Comment
+	scope         &Scope
 pub mut:
 	stmt  Stmt   // `a := <-ch` or `ch <- a`
 	stmts []Stmt // right side
@@ -1337,6 +1350,7 @@ pub:
 	kind    ComptimeForKind
 	pos     token.Pos
 	typ_pos token.Pos
+	scope   &Scope = unsafe { nil }
 pub mut:
 	stmts []Stmt
 	typ   Type
@@ -1533,13 +1547,20 @@ pub:
 	is_markused   bool
 }
 
+pub enum DeferMode {
+	scoped // default
+	function
+}
+
 // TODO: handle this differently
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
 @[minify]
 pub struct DeferStmt {
 pub:
-	pos token.Pos
+	pos   token.Pos
+	scope &Scope
+	mode  DeferMode
 pub mut:
 	stmts      []Stmt
 	defer_vars []Ident
@@ -2472,7 +2493,7 @@ pub fn (node Node) pos() token.Pos {
 						line_nr:   -1
 						pos:       -1
 						last_line: -1
-						col:       -1
+						col:       0
 					}
 				}
 			}
@@ -2815,7 +2836,7 @@ pub fn (expr Expr) is_literal() bool {
 		}
 		CastExpr {
 			!expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
-				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+				|| expr.typ in [i8_type, i16_type, i32_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
 			expr.is_type || expr.expr.is_literal()

@@ -1,3 +1,9 @@
+vlib/v/checker/tests/none_match_cond_err.vv:2:2: notice: match is always true
+    1 | match none {
+    2 |     none {}
+      |     ~~~~
+    3 |     else {}
+    4 | }
 vlib/v/checker/tests/none_match_cond_err.vv:1:1: error: `none` cannot be a match condition
     1 | match none {
       | ~~~~~~~~~~~~

@@ -455,9 +455,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// of the new string to do just one allocation.
 	mut new_len := s.len
 	mut idxs := []RepIndex{cap: 6}
-	defer {
-		unsafe { idxs.free() }
-	}
+	defer { unsafe { idxs.free() } }
 	mut idx := 0
 	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
@@ -531,7 +529,7 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
-// replace_char replaces all occurrences of the character `rep` multiple occurrences of the character passed in `with` with respect to `repeat`.
+// replace_char replaces all occurrences of the character `rep`, with `repeat` x the character passed in `with`.
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 @[direct_array_access]
 pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
@@ -545,10 +543,8 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 	// TODO: Allocating ints is expensive. Should be a stack array
 	// - string.replace()
-	mut idxs := []int{cap: s.len}
-	defer {
-		unsafe { idxs.free() }
-	}
+	mut idxs := []int{cap: s.len >> 2}
+	defer { unsafe { idxs.free() } }
 	// No need to do a contains(), it already traverses the entire string
 	for i, ch in s {
 		if ch == rep { // Found char? Mark its location
@@ -1001,7 +997,6 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
 	defer { unsafe { res.flags.clear(.noslices) } }
-
 	match delim.len {
 		0 {
 			for i, ch in s {
@@ -1062,7 +1057,6 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
 	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
 	defer { unsafe { res.flags.clear(.noslices) } }
-
 	match delim.len {
 		0 {
 			for i := s.len - 1; i >= 0; i-- {
@@ -1165,7 +1159,8 @@ pub fn (s string) split_by_space() []string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 @[direct_array_access]
 pub fn (s string) substr(start int, _end int) string {
-	end := if _end == max_int { s.len } else { _end } // max_int
+	// WARNNING: The is a temp solution for bootstrap!
+	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
@@ -1205,7 +1200,8 @@ pub fn (s string) substr_unsafe(start int, _end int) string {
 // return an error when the index is out of range
 @[direct_array_access]
 pub fn (s string) substr_with_check(start int, _end int) !string {
-	end := if _end == max_int { s.len } else { _end } // max_int
+	// WARNNING: The is a temp solution for bootstrap!
+	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		return error('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
 			') out of bounds (len=' + impl_i64_to_string(s.len) + ')')
@@ -1230,7 +1226,8 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 @[direct_array_access]
 pub fn (s string) substr_ni(_start int, _end int) string {
 	mut start := _start
-	mut end := if _end == max_int { s.len } else { _end } // max_int
+	// WARNNING: The is a temp solution for bootstrap!
+	mut end := if _end == max_i64 || _end == max_i32 { s.len } else { _end }
 
 	// borders math
 	if start < 0 {
@@ -2639,12 +2636,12 @@ pub fn (s string) strip_margin_custom(del u8) string {
 pub fn (s string) trim_indent() string {
 	mut lines := s.split_into_lines()
 
-	lines_indents := lines
-		.filter(!it.is_blank())
-		.map(it.indent_width())
-
 	mut min_common_indent := int(max_int) // max int
-	for line_indent in lines_indents {
+	for line in lines {
+		if line.is_blank() {
+			continue
+		}
+		line_indent := line.indent_width()
 		if line_indent < min_common_indent {
 			min_common_indent = line_indent
 		}
@@ -3035,7 +3032,7 @@ pub fn (s string) runes_iterator() RunesIterator {
 
 // next is the method that will be called for each iteration in `for r in s.runes_iterator() {` .
 pub fn (mut ri RunesIterator) next() ?rune {
-	for ri.i >= ri.s.len {
+	if ri.i >= ri.s.len {
 		return none
 	}
 	char_len := utf8_char_len(unsafe { ri.s.str[ri.i] })

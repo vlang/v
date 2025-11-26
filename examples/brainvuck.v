@@ -27,9 +27,7 @@ fn BFState.new(program string) &BFState {
 }
 
 // show the current state of an BF interpreter. Useful for debugging.
-fn (state &BFState) show() {
-	println('PC: ${state.pc}')
-	println('Address: ${state.address}')
+fn (state &BFState) show(suffix string) {
 	mut max_non_zero_address := -1
 	for i := state.memory.len - 1; i >= 0; i-- {
 		if state.memory[i] != 0 {
@@ -37,8 +35,9 @@ fn (state &BFState) show() {
 			break
 		}
 	}
-	println('Memory: ${state.memory#[0..max_non_zero_address + 1]}')
-	println('Memory[Address]: ${state.memory#[state.address..state.address + 1]}')
+	println('PC: ${state.pc:04} | Address: ${state.address:04} | Memory: ${state.memory#[0..
+		max_non_zero_address + 1]:-40s} | Memory[Address]: ${state.memory#[state.address..
+		state.address + 1]:-10s} | ${suffix}')
 }
 
 // find_matching_pairs fills in the `targets` mapping for all pairs of `[` and `]`,
@@ -81,10 +80,15 @@ fn (state &BFState) panic_for_bracket(b1 rune, b2 rune) {
 }
 
 fn (mut state BFState) run() ? {
+	mut i := 0
 	// the BF interpreter starts here:
 	for state.pc < state.program.len {
 		// get the current program character (corresponding to our program counter), and interpret it according to BF's rules:
-		match state.program[state.pc] {
+		instruction := state.program[state.pc]
+		$if trace_execution ? {
+			state.show('instruction ${i:08}: ${instruction:02x}, ${rune(instruction)}')
+		}
+		match instruction {
 			`>` {
 				state.address++ // increment the address
 			}
@@ -118,13 +122,14 @@ fn (mut state BFState) run() ? {
 				}
 			}
 			`#` {
-				state.show()
+				state.show('#')
 			}
 			else {
 				// The interpreter should ignore characters that are not part of the language.
 				// I.e. they are treated like programmer comments.
 			}
 		}
+		i++
 		// increment the program counter to go to the next instruction
 		state.pc++
 		// go back to the line `for state.pc < state.program.len {`
@@ -134,7 +139,7 @@ fn (mut state BFState) run() ? {
 @[noreturn]
 fn show_usage() {
 	eprintln('you need to supply a brainfuck program/expression as a string argument,')
-	eprintln('or filename.b, if it is located in a file (note the `.b` extension).')
+	eprintln('or filename.b, if it is located in a file (note the `.b` or `.bf` extension).')
 	exit(1) // exit with non-zero exit code if there is no program to run
 }
 
@@ -143,7 +148,7 @@ fn main() {
 		show_usage()
 	}
 	mut program := os.args[1] // our program is fed in as a string
-	if program.ends_with('.b') {
+	if program.ends_with('.b') || program.ends_with('.bf') {
 		program = os.read_file(program) or {
 			eprintln('error reading file ${program}: ${err}')
 			show_usage()
@@ -154,6 +159,6 @@ fn main() {
 	state.run()
 
 	if show_state {
-		state.show()
+		state.show('FINAL')
 	}
 }

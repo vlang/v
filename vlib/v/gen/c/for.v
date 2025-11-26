@@ -101,6 +101,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('${node.label}__continue: {}')
 		}
+		g.write_defer_stmts(node.scope, false, node.pos)
 		g.writeln('}')
 		if node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
@@ -129,6 +130,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__continue: {}')
 	}
+	g.write_defer_stmts(node.scope, false, node.pos)
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('${node.label}__break: {}')
@@ -162,7 +164,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.type_resolver.update_ct_type(node.val_var, node.val_type)
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-			defer {
+			defer(fn) {
 				g.type_resolver.type_map.delete(node.val_var)
 			}
 		}
@@ -179,7 +181,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.type_resolver.update_ct_type(node.key_var, node.key_type)
 				node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-				defer {
+				defer(fn) {
 					g.type_resolver.type_map.delete(node.key_var)
 				}
 			}
@@ -201,6 +203,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		node.val_type = g.table.value_type(unwrapped_typ)
 		node.scope.update_var_type(node.val_var, node.val_type)
+	} else if node.kind == .alias {
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
+		node.kind = unwrapped_sym.kind
+		node.cond_type = unwrapped_typ
+		if node.key_var.len > 0 {
+			key_type := match unwrapped_sym.kind {
+				.map { unwrapped_sym.map_info().key_type }
+				else { ast.int_type }
+			}
+			node.key_type = key_type
+			node.scope.update_var_type(node.key_var, key_type)
+		}
+		node.val_type = g.table.value_type(g.table.unaliased_type(unwrapped_typ))
+		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
 	if node.label.len > 0 {
@@ -209,12 +226,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
+		plus_plus_i := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
 		val_typ := ast.mktyp(node.val_type)
 		g.write('for (${g.styp(val_typ)} ${i} = ')
 		g.expr(node.cond)
 		g.write('; ${i} < ')
 		g.expr(node.high)
-		g.writeln('; ++${i}) {')
+		g.writeln('; ${plus_plus_i}) {')
 	} else if node.kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
@@ -239,6 +265,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		plus_plus_i := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
 		g.empty_line = true
 		opt_expr := '(*(${g.styp(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
 		cond_expr := if cond_is_option {
@@ -246,7 +281,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			'${cond_var}${op_field}len'
 		}
-		g.writeln('for (int ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
+		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			if mut val_sym.info is ast.FnType {
 				g.write('\t')
@@ -261,15 +296,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			} else {
 				needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
 					&& g.table.final_sym(node.val_type).kind == .array_fixed
-				// If val is mutable (pointer behind the scenes), we need to generate
-				// `int* val = ((int*)arr.data) + i;`
-				// instead of
-				// `int* val = ((int**)arr.data)[i];`
-				// right := if node.val_is_mut { styp } else { styp + '*' }
 				right := if cond_is_option {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
-					'((${styp})${cond_var}${op_field}data) + ${i}'
+					if g.table.value_type(node.cond_type).is_ptr() {
+						'((${styp}*)${cond_var}${op_field}data)[${i}]'
+					} else {
+						'((${styp})${cond_var}${op_field}data) + ${i}'
+					}
 				} else if val_sym.kind == .array_fixed {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
@@ -306,9 +340,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		plus_plus_idx := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${idx}=builtin__overflow__add_i64(${idx},1)'
+			} $else {
+				'${idx}=builtin__overflow__add_i32(${idx},1)'
+			}
+		} else {
+			'++${idx}'
+		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
-		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
@@ -355,14 +398,23 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		dot_or_ptr := g.dot_or_ptr(node.cond_type)
 		idx := g.new_tmp_var()
+		plus_plus_idx := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${idx}=builtin__overflow__add_i64(${idx},1)'
+			} $else {
+				'${idx}=builtin__overflow__add_i32(${idx},1)'
+			}
+		} else {
+			'++${idx}'
+		}
 		map_len := g.new_tmp_var()
 		g.empty_line = true
-		g.writeln('int ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
-		g.writeln('for (int ${idx} = 0; ${idx} < ${map_len}; ++${idx} ) {')
+		g.writeln('${ast.int_type_name} ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ${plus_plus_idx} ) {')
 		// TODO: don't have this check when the map has no deleted elements
 		g.indent++
 		diff := g.new_tmp_var()
-		g.writeln('int ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
+		g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
 		g.writeln('${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
 		// TODO: optimize this
 		g.writeln('if (${diff} < 0) {')
@@ -392,11 +444,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
 			} else {
 				val_styp := g.styp(node.val_type)
-				if node.val_type.is_ptr() {
-					if node.val_is_mut || node.val_is_ref {
-						g.write('${val_styp} ${c_name(node.val_var)} = &(*(${val_styp})')
-					} else {
+				if node.val_is_mut || node.val_is_ref {
+					if g.table.value_type(node.cond_type).is_ptr() {
 						g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
+					} else {
+						g.write('${val_styp} ${c_name(node.val_var)} = ((${val_styp})')
 					}
 				} else {
 					g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
@@ -413,9 +465,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		g.write('for (int ${i} = 0; ${i} < ')
+		plus_plus_i := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
+		g.write('for (${ast.int_type_name} ${i} = 0; ${i} < ')
 		g.expr(cond)
-		g.writeln('${field_accessor}len; ++${i}) {')
+		g.writeln('${field_accessor}len; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			g.write('\tu8 ${c_name(node.val_var)} = ')
 			g.expr(cond)
@@ -443,10 +504,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
 		g.expr(node.cond)
 		g.writeln(';')
-		if node.key_var in ['', '_'] {
+		i := node.key_var
+		plus_plus_i := if g.do_int_overflow_checks {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
+		if i in ['', '_'] {
 			g.writeln('while (1) {')
 		} else {
-			g.writeln('for (size_t ${node.key_var} = 0;; ++${node.key_var}) {')
+			g.writeln('for (size_t ${i} = 0;; ${plus_plus_i}) {')
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
@@ -477,14 +548,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.styp(ret_typ.clear_option_and_result())
-		ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 		if node.val_is_mut {
-			if ret_typ.has_flag(.option) {
-				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+			if ret_typ.is_any_kind_of_pointer() {
+				g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 			} else {
-				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
 			}
 		} else {
+			ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 			if ret_is_fixed_array {
 				g.writeln('\t${val_styp} ${val} = {0};')
 				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')
@@ -522,13 +593,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 	if node.kind == .map {
 		// diff := g.new_tmp_var()
-		// g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		// g.writeln('${ast.int_type_name} $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
 		// g.writeln('if ($diff < 0) {')
 		// g.writeln('\t$idx = -1;')
 		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
 		// g.writeln('}')
 	}
-
+	g.write_defer_stmts(node.scope, false, node.pos)
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')

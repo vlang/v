@@ -1,0 +1,7 @@
+vlib/v/tests/no_closures/simple_closure.vv:3:8: cgen error: a closure was generated for function
+    1 | fn main() {
+    2 |     my_var := 12
+    3 |     c1 := fn [my_var] () int {
+      |           ~~~~~~~~~~~~~~~~~~~~
+    4 |         return my_var
+    5 |     }

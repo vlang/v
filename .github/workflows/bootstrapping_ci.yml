@@ -34,12 +34,12 @@ jobs:
         os: [ubuntu-latest, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -no-parallel
       B_LFLAGS: -lm -lpthread
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Build V

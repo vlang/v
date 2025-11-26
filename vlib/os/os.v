@@ -24,17 +24,6 @@ pub:
 	// stderr string // TODO
 }
 
-pub struct Command {
-mut:
-	f voidptr
-pub mut:
-	eof       bool
-	exit_code int
-pub:
-	path            string
-	redirect_stdout bool
-}
-
 @[unsafe]
 pub fn (mut result Result) free() {
 	unsafe { result.output.free() }
@@ -55,7 +44,7 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		other_separator := if path_separator == '/' { '\\' } else { '/' }
+		other_separator := $if windows { '/' } $else { '\\' }
 		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(wd_at_startup, exepath)
@@ -226,19 +215,29 @@ pub fn sigint_to_signal_name(si int) string {
 
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ! {
-	mut ret_err := ''
+	mut err_msg := ''
+	mut err_code := -1
 	items := ls(path)!
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err.msg() }
+			rmdir_all(fullpath) or {
+				err_msg = err.msg()
+				err_code = err.code()
+			}
 		} else {
-			rm(fullpath) or { ret_err = err.msg() }
+			rm(fullpath) or {
+				err_msg = err.msg()
+				err_code = err.code()
+			}
 		}
 	}
-	rmdir(path) or { ret_err = err.msg() }
-	if ret_err.len > 0 {
-		return error(ret_err)
+	rmdir(path) or {
+		err_msg = err.msg()
+		err_code = err.code()
+	}
+	if err_msg != '' {
+		return error_with_code(err_msg, err_code)
 	}
 }
 
@@ -849,7 +848,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		}
 		return error('path `${opath}` already exists, and is not a folder')
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	other_separator := $if windows { '/' } $else { '\\' }
 	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)

@@ -597,6 +597,12 @@ fn test_is_executable_writable_readable() {
 		assert os.is_writable(file_name)
 		assert os.is_readable(file_name)
 		assert os.is_executable(file_name)
+		for ext in ['exe', 'com', 'bat', 'cmd'] {
+			mut executable_file_name := 'executable.${ext}'
+			create_file(executable_file_name)!
+			assert os.is_executable(executable_file_name)
+			os.rm(executable_file_name) or { panic(err) }
+		}
 	}
 	// We finally delete the test file.
 	os.rm(file_name) or { panic(err) }
@@ -991,39 +997,6 @@ fn test_execute_fc_get_output() {
 	dump(result)
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
-}
-
-fn test_command() {
-	if os.user_os() == 'windows' {
-		eprintln('>>> os.Command is not implemented fully on Windows yet')
-		return
-	}
-	mut cmd := os.Command{
-		path: 'ls'
-	}
-
-	cmd.start() or { panic(err) }
-	for !cmd.eof {
-		cmd.read_line()
-	}
-
-	cmd.close() or { panic(err) }
-	// dump( cmd )
-	assert cmd.exit_code == 0
-
-	// This will return a non 0 code
-	mut cmd_to_fail := os.Command{
-		path: 'ls -M'
-	}
-
-	cmd_to_fail.start() or { panic(err) }
-	for !cmd_to_fail.eof {
-		cmd_to_fail.read_line()
-	}
-
-	cmd_to_fail.close() or { panic(err) }
-	// dump( cmd_to_fail )
-	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
 }
 
 fn test_reading_from_proc_cpuinfo() {

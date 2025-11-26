@@ -19,6 +19,7 @@ pub mut:
 
 // encode_binary encode a T type data into u8 array.
 // for encoding struct, you can use `@[serialize: '-']` to skip field.
+// Note: `shared` fields in struct will be skipped.
 pub fn encode_binary[T](obj T, config EncodeConfig) ![]u8 {
 	mut s := EncodeState{
 		b:          []u8{cap: config.buffer_len}
@@ -56,17 +57,20 @@ fn encode_struct[T](mut s EncodeState, obj T) ! {
 			}
 		}
 		if !is_skip {
-			value := obj.$(field.name)
-			$if field.typ is $array {
-				encode_array(mut s, value)!
-			} $else $if field.typ is $string {
-				encode_string(mut s, value)!
-			} $else $if field.typ is $struct {
-				encode_struct(mut s, value)!
-			} $else $if field.typ is $map {
-				encode_map(mut s, value)!
-			} $else {
-				encode_primitive(mut s, value)!
+			// TODO: support shared field in struct, currently skip.
+			$if field.typ !is $shared {
+				value := obj.$(field.name)
+				$if field.typ is $array {
+					encode_array(mut s, value)!
+				} $else $if field.typ is $string {
+					encode_string(mut s, value)!
+				} $else $if field.typ is $struct {
+					encode_struct(mut s, value)!
+				} $else $if field.typ is $map {
+					encode_map(mut s, value)!
+				} $else {
+					encode_primitive(mut s, value)!
+				}
 			}
 		}
 	}
@@ -201,6 +205,7 @@ pub mut:
 
 // decode_binary decode a u8 array into T type data.
 // for decoding struct, you can use `@[serialize: '-']` to skip field.
+// Note: `shared` fields in struct will be skipped.
 pub fn decode_binary[T](b []u8, config DecodeConfig) !T {
 	mut s := DecodeState{
 		b:          b
@@ -239,16 +244,19 @@ fn decode_struct[T](mut s DecodeState, _ T) !T {
 			}
 		}
 		if !is_skip {
-			$if field.typ is $array {
-				obj.$(field.name) = decode_array(mut s, obj.$(field.name))!
-			} $else $if field.typ is $string {
-				obj.$(field.name) = decode_string(mut s)!
-			} $else $if field.typ is $struct {
-				obj.$(field.name) = decode_struct(mut s, obj.$(field.name))!
-			} $else $if field.typ is $map {
-				obj.$(field.name) = decode_map(mut s, obj.$(field.name))!
-			} $else {
-				obj.$(field.name) = decode_primitive(mut s, obj.$(field.name))!
+			// TODO: support shared field in struct, currently skip.
+			$if field.typ !is $shared {
+				$if field.typ is $array {
+					obj.$(field.name) = decode_array(mut s, obj.$(field.name))!
+				} $else $if field.typ is $string {
+					obj.$(field.name) = decode_string(mut s)!
+				} $else $if field.typ is $struct {
+					obj.$(field.name) = decode_struct(mut s, obj.$(field.name))!
+				} $else $if field.typ is $map {
+					obj.$(field.name) = decode_map(mut s, obj.$(field.name))!
+				} $else {
+					obj.$(field.name) = decode_primitive(mut s, obj.$(field.name))!
+				}
 			}
 		}
 	}

@@ -32,7 +32,7 @@ fn test_character_unescape() {
 	"quotes": "\"quotes\"",
 	"slash":"\/dev\/null"
 }'
-	mut obj := json.raw_decode(message) or {
+	mut obj := json.decode[json.Any](message) or {
 		println(err)
 		assert false
 		return

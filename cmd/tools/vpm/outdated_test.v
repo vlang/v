@@ -12,6 +12,7 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
+	unbuffer_stdout()
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.chdir(test_path)!
@@ -32,6 +33,9 @@ fn test_is_outdated_git_module() {
 }
 
 fn test_is_outdated_hg_module() {
+	$if !check_mercurial_works ? {
+		return
+	}
 	os.find_abs_path_of_executable('hg') or {
 		eprintln('skipping test, since `hg` is not executable.')
 		return

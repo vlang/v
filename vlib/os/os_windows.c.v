@@ -1,6 +1,7 @@
 module os
 
 import strings
+import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
@@ -387,7 +388,13 @@ pub fn raw_execute(cmd string) Result {
 			break
 		}
 	}
-	soutput := read_data.str()
+	// encoding: from ANSI to UTF-8
+	soutput_str := read_data.str()
+	soutput := if validate.utf8_string(soutput_str) {
+		soutput_str
+	} else {
+		string_from_wide(soutput_str.to_wide(from_ansi: true))
+	}
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
@@ -566,20 +573,6 @@ pub fn getegid() int {
 
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	// windows has no concept of a permission mask, so do nothing
-}
-
-//
-
-pub fn (mut c Command) start() ! {
-	panic('not implemented')
-}
-
-pub fn (mut c Command) read_line() string {
-	panic('not implemented')
-}
-
-pub fn (mut c Command) close() ! {
-	panic('not implemented')
 }
 
 fn C.GetLongPathName(short_path &u16, long_path &u16, long_path_bufsize u32) u32

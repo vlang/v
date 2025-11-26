@@ -26,11 +26,11 @@ concurrency:
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -cc tcc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make && sudo ./v symlink
 

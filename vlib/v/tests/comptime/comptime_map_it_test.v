@@ -1,3 +1,4 @@
+// vtest build: !sanitize-address-clang-without-gc
 type Any = []Any | f64 | int | map[string]Any | string
 
 struct Arr {

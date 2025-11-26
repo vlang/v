@@ -1,0 +1,18 @@
+struct Dummy {
+	v int
+}
+
+@[heap]
+struct Container {
+mut:
+	vals []&Dummy
+}
+
+fn main() {
+	mut c := &Container{}
+	d := Dummy{
+		v: 1
+	}
+	c.vals << d
+	c.vals.insert(0, d)
+}

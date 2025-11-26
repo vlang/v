@@ -1,5 +1,7 @@
 module c
 
+import v.ast
+
 // Note: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -17,7 +19,7 @@ struct __shared_map {
 	sync__RwMutex mtx;
 	map val;
 };
-static inline voidptr __dup_shared_map(voidptr src, int sz) {
+static inline voidptr __dup_shared_map(voidptr src, ${ast.int_type_name} sz) {
 	__shared_map* dest = builtin__memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
@@ -27,16 +29,16 @@ struct __shared_array {
 	sync__RwMutex mtx;
 	array val;
 };
-static inline voidptr __dup_shared_array(voidptr src, int sz) {
+static inline voidptr __dup_shared_array(voidptr src, ${ast.int_type_name} sz) {
 	__shared_array* dest = builtin__memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
-static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
-	for (int i=1; i<l; i++) {
+static inline void __sort_ptr(uintptr_t a[], bool b[], ${ast.int_type_name} l) {
+	for (${ast.int_type_name} i=1; i<l; i++) {
 		uintptr_t ins = a[i];
 		bool insb = b[i];
-		int j = i;
+		${ast.int_type_name} j = i;
 		while(j>0 && a[j-1] > ins) {
 			a[j] = a[j-1];
 			b[j] = b[j-1];
@@ -49,71 +51,56 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 '
 
 const c_common_macros = '
-#define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION
+#define E_STRUCT_DECL
 #define E_STRUCT
-// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
-
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
-
 #define __V_architecture 0
 #if defined(__x86_64__) || defined(_M_AMD64)
 	#define __V_amd64  1
 	#undef __V_architecture
 	#define __V_architecture 1
 #endif
-
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 	#define __V_arm64  1
 	#undef __V_architecture
 	#define __V_architecture 2
 #endif
-
 #if defined(__arm__) || defined(_M_ARM)
 	#define __V_arm32  1
 	#undef __V_architecture
 	#define __V_architecture 3
 #endif
-
 #if defined(__riscv) && __riscv_xlen == 64
 	#define __V_rv64  1
 	#undef __V_architecture
 	#define __V_architecture 4
 #endif
-
 #if defined(__riscv) && __riscv_xlen == 32
 	#define __V_rv32  1
 	#undef __V_architecture
 	#define __V_architecture 5
 #endif
-
 #if defined(__i386__) || defined(_M_IX86)
 	#define __V_x86    1
 	#undef __V_architecture
 	#define __V_architecture 6
 #endif
-
 #if defined(__s390x__)
 	#define __V_s390x  1
 	#undef __V_architecture
 	#define __V_architecture 7
 #endif
-
 #if defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
 	#define __V_ppc64le  1
 	#undef __V_architecture
 	#define __V_architecture 8
 #endif
-
 #if defined(__loongarch64)
 	#define __V_loongarch64  1
 	#undef __V_architecture
 	#define __V_architecture 9
 #endif
-
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
 	#define __V_GCC__
@@ -127,15 +114,13 @@ const c_common_macros = '
 #ifdef __clang__
 	#undef __V_GCC__
 #endif
-
 #ifdef _MSC_VER
 	#undef __V_GCC__
-	#undef EMPTY_STRUCT_DECLARATION
+	#undef E_STRUCT_DECL
 	#undef E_STRUCT
-	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
 #endif
-
 #ifndef _WIN32
 	#if defined __has_include
 		#if __has_include (<execinfo.h>)
@@ -146,31 +131,24 @@ const c_common_macros = '
 		#endif
 	#endif
 #endif
-
 #ifdef __TINYC__
 	#define _Atomic volatile
-	#undef EMPTY_STRUCT_DECLARATION
+	#undef E_STRUCT_DECL
 	#undef E_STRUCT
-	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
-	#undef EMPTY_ARRAY_OF_ELEMS
-	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
 	#undef __IRQHANDLER
 	// tcc does not support inlining at all
 	#define __NOINLINE
 	#define __IRQHANDLER
-	#undef TCCSKIP
-	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	int tcc_backtrace(const char *fmt, ...);
 #endif
-
 // Use __offsetof_ptr instead of __offset_of, when you *do* have a valid pointer, to avoid UB:
 #ifndef __offsetof_ptr
 	#define __offsetof_ptr(ptr,PTYPE,FIELDNAME) ((size_t)((byte *)&((PTYPE *)ptr)->FIELDNAME - (byte *)ptr))
 #endif
-
 // for __offset_of
 #ifndef __offsetof
 #if defined(__TINYC__) || defined(_MSC_VER)
@@ -179,7 +157,6 @@ const c_common_macros = '
 	#define __offsetof(st, m) __builtin_offsetof(st, m)
 #endif
 #endif
-
 #if defined(_WIN32) || defined(__CYGWIN__)
 	#define VV_EXP extern __declspec(dllexport)
 	#define VV_LOC static
@@ -205,19 +182,16 @@ const c_common_macros = '
 		#define VV_LOC static
 	#endif
 #endif
-
 #ifdef __cplusplus
 	#include <utility>
 	#define _MOV std::move
 #else
 	#define _MOV
 #endif
-
 // tcc does not support has_include properly yet, turn it off completely
 #if defined(__TINYC__) && defined(__has_include)
 #undef __has_include
 #endif
-
 //likely and unlikely macros
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
 	#define _likely_(x)  __builtin_expect(x,1)
@@ -317,29 +291,29 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 // optimized way to compare literal strings
 #define _SLIT_EQ(sptr, slen, lit) (slen == sizeof("" lit)-1 && !builtin__vmemcmp(sptr, "" lit, slen))
 #define _SLIT_NE(sptr, slen, lit) (slen != sizeof("" lit)-1 || builtin__vmemcmp(sptr, "" lit, slen))
-
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
-
 // copy something to the heap
 #define HEAP(type, expr) ((type*)builtin__memdup((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_noscan(type, expr) ((type*)builtin__memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_align(type, expr, align) ((type*)builtin__memdup_align((void*)&((type[]){expr}[0]), sizeof(type), align))
-
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many(arr, tmp.data, tmp.len);}
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
-const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +
+const c_headers = c_helper_macros + c_common_macros +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO: remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include <string.h>
-
 #include <stdarg.h> // for va_list
-
+#if defined(__TINYC__)
+// https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
+// gnu headers use to #define __attribute__ to empty for non-gcc compilers
+#undef __attribute__
+#endif
 #ifdef __TERMUX__
 #if defined __BIONIC_AVAILABILITY_GUARD && __BIONIC_AVAILABILITY_GUARD(28)
 #else
@@ -347,7 +321,6 @@ void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #endif
 #endif
 //================================== GLOBALS =================================*/
-int load_so(byteptr);
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
 #ifdef _WIN32
@@ -358,9 +331,6 @@ void _vcleanup(void);
 #endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
-
-void v_free(voidptr ptr);
-
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
 #elif INTPTR_MAX == INT64_MAX
@@ -368,7 +338,6 @@ void v_free(voidptr ptr);
 #else
 	#error "The environment is not 32 or 64-bit."
 #endif
-
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
 	#define TARGET_ORDER_IS_BIG 1
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || defined(_M_AMD64) || defined(_M_ARM64) || defined(_M_X64) || defined(_M_IX86)
@@ -376,7 +345,6 @@ void v_free(voidptr ptr);
 #else
 	#error "Unknown architecture endianness"
 #endif
-
 #ifndef _WIN32
 	#include <ctype.h>
 	#include <locale.h> // tolower
@@ -384,31 +352,25 @@ void v_free(voidptr ptr);
 	#include <unistd.h> // sleep
 	extern char **environ;
 #endif
-
 #if defined(__CYGWIN__) && !defined(_WIN32)
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
-
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
-
 #ifdef __OpenBSD__
 	#include <sys/types.h>
 	#include <sys/resource.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
-
 #ifdef __FreeBSD__
 	#include <signal.h>
 	#include <execinfo.h>
 #endif
-
 #ifdef __NetBSD__
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
-
 #ifdef _WIN32
 	#define WINVER 0x0600
 	#ifdef _WIN32_WINNT
@@ -425,23 +387,19 @@ void v_free(voidptr ptr);
 	#define UNICODE
 	#endif
 	#include <windows.h>
-
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
 	#ifdef V_USE_SIGNAL_H
 	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
 	#endif
-
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)
 		#define _Atomic volatile
-
 		// MSVC cannot parse some things properly
 		#undef __NOINLINE
 		#undef __IRQHANDLER
 		#define __NOINLINE __declspec(noinline)
 		#define __IRQHANDLER __declspec(naked)
-
 		#include <dbghelp.h>
 		#pragma comment(lib, "Dbghelp")
 	#endif
@@ -452,7 +410,6 @@ void v_free(voidptr ptr);
 		#define pthread_rwlockattr_setkind_np(a, b)
 	#endif
 #endif
-
 #if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
 	#undef PRId64
 	#undef PRIi64
@@ -467,7 +424,6 @@ void v_free(voidptr ptr);
 	#define PRIx64 "llx"
 	#define PRIX64 "llX"
 #endif
-
 #ifdef _VFREESTANDING
 #undef _VFREESTANDING
 #endif
@@ -509,9 +465,7 @@ typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
 typedef u8 array_fixed_byte_300 [300];
-
 typedef struct sync__Channel* chan;
-
 #ifndef CUSTOM_DEFINE_no_bool
 	#ifndef __cplusplus
 		#ifndef bool
@@ -534,12 +488,10 @@ typedef void (*MapCloneFn)(voidptr, voidptr);
 typedef void (*MapFreeFn)(voidptr);
 '
 
-const c_bare_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +
+const c_bare_headers = c_helper_macros + c_common_macros +
 	'
 #define _VFREESTANDING
-
 typedef long unsigned int size_t;
-
 // Memory allocation related headers
 void *malloc(size_t size);
 void *calloc(size_t nitems, size_t size);
@@ -547,51 +499,41 @@ void *realloc(void *ptr, size_t size);
 void *memcpy(void *dest, void *src, size_t n);
 void *memset(void *s, int c, size_t n);
 void *memmove(void *dest, void *src, size_t n);
-
 // varargs implementation, TODO: works on tcc and gcc, but is very unportable and hacky
 typedef __builtin_va_list va_list;
 #define va_start(a, b) __builtin_va_start(a, b)
 #define va_end(a)      __builtin_va_end(a)
 #define va_arg(a, b)   __builtin_va_arg(a, b)
 #define va_copy(a, b)  __builtin_va_copy(a, b)
-
 //================================== GLOBALS =================================*/
-int load_so(byteptr);
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
-
-void v_free(voidptr ptr);
 voidptr builtin__memdup(voidptr src, isize size);
-
 '
 
 const c_wyhash_headers = '
 // ============== wyhash ==============
 #ifndef wyhash_final_version_3
 #define wyhash_final_version_3
-
 #ifndef WYHASH_CONDOM
 // protections that produce different results:
 // 1: normal valid behavior
 // 2: extra protection against entropy loss (probability=2^-63), aka. "blind multiplication"
 #define WYHASH_CONDOM 1
 #endif
-
 #ifndef WYHASH_32BIT_MUM
 // 0: normal version, slow on 32 bit systems
 // 1: faster on 32 bit systems but produces different results, incompatible with wy2u0k function
 #define WYHASH_32BIT_MUM 0
 #endif
-
 // includes
 #include <stdint.h>
 #if defined(_MSC_VER) && defined(_M_X64)
 	#include <intrin.h>
 	#pragma intrinsic(_umul128)
 #endif
-
 // 128bit multiply function
 static inline uint64_t _wyrot(uint64_t x) { return (x>>32)|(x<<32); }
 static inline void _wymum(uint64_t *A, uint64_t *B){
@@ -628,10 +570,8 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	#endif
 #endif
 }
-
 // multiply and xor mix function, aka MUM
 static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }
-
 // endian macros
 #ifndef WYHASH_LITTLE_ENDIAN
 	#ifdef TARGET_ORDER_IS_LITTLE
@@ -640,7 +580,6 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 		#define WYHASH_LITTLE_ENDIAN 0
 	#endif
 #endif
-
 // read functions
 #if (WYHASH_LITTLE_ENDIAN)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
@@ -688,26 +627,20 @@ static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const 
 }
 // the default secret parameters
 static const uint64_t _wyp[4] = {0xa0761d6478bd642f, 0xe7037ed1a0b428db, 0x8ebc6af09c88c6e3, 0x589965cc75374cc3};
-
 // a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
 static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0xa0761d6478bd642f; B^=0xe7037ed1a0b428db; _wymum(&A,&B); return _wymix(A^0xa0761d6478bd642f,B^0xe7037ed1a0b428db);}
-
 // the wyrand PRNG that pass BigCrush and PractRand
 static inline uint64_t wyrand(uint64_t *seed){ *seed+=0xa0761d6478bd642f; return _wymix(*seed,*seed^0xe7037ed1a0b428db);}
-
 #ifndef __vinix__
 // convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}
-
 // convert any 64 bit pseudo random numbers to APPROXIMATE Gaussian distribution. It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2gau(uint64_t r){ const double _wynorm=1.0/(1ull<<20); return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;}
 #endif
-
 #if(!WYHASH_32BIT_MUM)
 // fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.
 static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; }
 #endif
 #endif
-
 #define _IN_MAP(val, m) builtin__map_exists(m, val)
 '

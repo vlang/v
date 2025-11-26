@@ -7,7 +7,7 @@ module native
 import v.ast
 
 fn (mut g Gen) allocate_raw_array(name string, size i32, items i32) i32 {
-	pos := g.code_gen.allocate_var(name, size, items)
+	pos := g.cg.cg_allocate_stack_var(name, size, items)
 	g.stack_var_pos += (size * items)
 	return pos
 }
@@ -82,7 +82,7 @@ fn (mut g Gen) array_init_with_fields(var Var, node ast.ArrayInit, elem_type ast
 		g.n_error('arrays of arrays and arrays of maps not implemented yet')
 	}
 
-	//	g.code_gen.call_with_args(function_addr, [len, cap, elem_size_expr, default_expr])
+	//	g.cg.call_with_args(function_addr, [len, cap, elem_size_expr, default_expr])
 }
 
 fn (mut g Gen) array_init_from_raw(var Var) {

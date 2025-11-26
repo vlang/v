@@ -1,0 +1,20 @@
+module main
+
+struct MyStruct {
+	a int
+	b int
+}
+
+fn x() {
+	k := MyStruct{}
+	_ := MyStruct{
+		...k // same line comment
+		// keep comment here
+	}
+
+	_ := MyStruct{
+		...k // same line comment
+		// keep comment here
+		b: 100
+	}
+}

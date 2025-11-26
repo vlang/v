@@ -6,7 +6,7 @@ module seed
 import time
 
 // nr_next returns a next value based on the previous value `prev`.
-@[inline]
+@[ignore_overflow; inline]
 fn nr_next(prev u32) u32 {
 	return prev * 1664525 + 1013904223
 }

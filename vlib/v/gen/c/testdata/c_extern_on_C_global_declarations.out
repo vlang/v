@@ -1,0 +1,15 @@
+types:
+&C.FILE
+&C.FILE
+values:
+&C.FILE{}
+&C.FILE{}
+This should be on stderr.
+Hello world on stdout.
+My_C_u64_global: 456
+My_C_i32_global: -123
+C.My_non_extern_C_global: -9876
+u64
+i32
+i16
+-9876

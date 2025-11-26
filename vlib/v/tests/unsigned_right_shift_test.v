@@ -18,7 +18,11 @@ fn test_unsigned_right_shift_expr_isize_usize() {
 fn test_unsigned_right_shift_expr() {
 	assert i64(-5) >>> 1 == answer_u64
 	assert -5 >>> 1 == answer_u32 // because int literal's size defaults to int's size, without an explicit cast
-	assert int(-5) >>> 1 == answer_u32
+	$if new_int ? && x64 {
+		assert int(-5) >>> 1 == answer_u64
+	} $else {
+		assert int(-5) >>> 1 == answer_u32
+	}
 	assert i16(-5) >>> 1 == answer_u16
 	assert i8(-5) >>> 1 == answer_u8
 }
@@ -29,6 +33,11 @@ fn test_unsigned_right_shift_assignment() {
 	y >>>= 1
 	z >>>= 1
 	assert x == answer_u64
-	assert y == answer_u32
-	assert z == answer_u32
+	$if new_int ? && x64 {
+		assert y == answer_u64
+		assert z == answer_u64
+	} $else {
+		assert y == answer_u32
+		assert z == answer_u32
+	}
 }

@@ -11,74 +11,108 @@ import v.token
 const maximum_inline_sum_type_variants = 3
 const generic_type_level_cutoff_limit = 10 // it is very rarely deeper than 4
 
-fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
-	p.check(expecting)
-	// fixed array
-	if p.tok.kind in [.number, .name, .dollar] {
-		mut fixed_size := 0
-		mut size_expr := p.expr(0)
-		mut size_unresolved := true
-		if p.pref.is_fmt {
-			fixed_size = 987654321
-		} else {
-			match mut size_expr {
+fn (mut p Parser) eval_array_fixed_sizes(mut size_expr ast.Expr) (int, bool) {
+	mut fixed_size := 0
+	mut size_unresolved := true
+	match mut size_expr {
+		ast.ParExpr {
+			return p.eval_array_fixed_sizes(mut size_expr.expr)
+		}
+		ast.IntegerLiteral {
+			fixed_size = size_expr.val.int()
+			size_unresolved = false
+		}
+		ast.ComptimeCall {
+			if size_expr.kind == .d {
+				size_expr.resolve_compile_value(p.pref.compile_values) or {
+					p.error_with_pos(err.msg(), size_expr.pos)
+				}
+				if size_expr.result_type != ast.i64_type {
+					p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
+						size_expr.pos)
+				}
+				fixed_size = size_expr.compile_value.int()
+				size_unresolved = false
+			} else {
+				p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
+					size_expr.pos)
+			}
+		}
+		ast.CastExpr {
+			if !size_expr.typ.is_pure_int() {
+				p.error_with_pos('only integer types are allowed', size_expr.pos)
+			}
+			match mut size_expr.expr {
 				ast.IntegerLiteral {
-					fixed_size = size_expr.val.int()
+					fixed_size = size_expr.expr.val.int()
 					size_unresolved = false
 				}
-				ast.ComptimeCall {
-					if size_expr.kind == .d {
-						size_expr.resolve_compile_value(p.pref.compile_values) or {
-							p.error_with_pos(err.msg(), size_expr.pos)
-						}
-						if size_expr.result_type != ast.i64_type {
-							p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
-								size_expr.pos)
-						}
-						fixed_size = size_expr.compile_value.int()
+				ast.FloatLiteral {
+					fixed_size = int(size_expr.expr.val.f64())
+					size_unresolved = false
+				}
+				ast.EnumVal {
+					if val := p.table.find_enum_field_val(size_expr.expr.enum_name, size_expr.expr.val) {
+						fixed_size = int(val)
 						size_unresolved = false
-					} else {
-						p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
-							size_expr.pos)
 					}
 				}
-				ast.Ident {
-					if mut const_field := p.table.global_scope.find_const(size_expr.full_name()) {
-						if mut const_field.expr is ast.IntegerLiteral {
-							fixed_size = const_field.expr.val.int()
-							size_unresolved = false
-						} else if mut const_field.expr is ast.InfixExpr {
-							mut t := transformer.new_transformer_with_table(p.table, p.pref)
-							folded_expr := t.infix_expr(mut const_field.expr)
-
-							if folded_expr is ast.IntegerLiteral {
-								fixed_size = folded_expr.val.int()
-								size_unresolved = false
-							}
-						}
-					} else {
-						if p.pref.is_fmt {
-							// for vfmt purposes, pretend the constant does exist
-							// it may have been defined in another .v file:
-							fixed_size = 1
-							size_unresolved = false
-						}
-					}
+				else {
+					size, unresolved := p.eval_array_fixed_sizes(mut size_expr.expr)
+					return int(size), unresolved
 				}
-				ast.InfixExpr {
+			}
+		}
+		ast.Ident {
+			if mut const_field := p.table.global_scope.find_const(size_expr.full_name().all_after('builtin.')) {
+				if mut const_field.expr is ast.IntegerLiteral {
+					fixed_size = const_field.expr.val.int()
+					size_unresolved = false
+				} else if mut const_field.expr is ast.InfixExpr {
 					mut t := transformer.new_transformer_with_table(p.table, p.pref)
-					folded_expr := t.infix_expr(mut size_expr)
+					folded_expr := t.infix_expr(mut const_field.expr)
 
 					if folded_expr is ast.IntegerLiteral {
 						fixed_size = folded_expr.val.int()
 						size_unresolved = false
 					}
 				}
-				else {
-					p.error_with_pos('fixed array size cannot use non-constant value',
-						size_expr.pos())
+			} else {
+				if p.pref.is_fmt {
+					// for vfmt purposes, pretend the constant does exist
+					// it may have been defined in another .v file:
+					fixed_size = 1
+					size_unresolved = false
 				}
 			}
+		}
+		ast.InfixExpr {
+			mut t := transformer.new_transformer_with_table(p.table, p.pref)
+			folded_expr := t.infix_expr(mut size_expr)
+
+			if folded_expr is ast.IntegerLiteral {
+				fixed_size = folded_expr.val.int()
+				size_unresolved = false
+			}
+		}
+		else {
+			p.error_with_pos('fixed array size cannot use non-constant value', size_expr.pos())
+		}
+	}
+	return fixed_size, size_unresolved
+}
+
+fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
+	p.check(expecting)
+	// fixed array
+	if p.tok.kind != .rsbr {
+		mut fixed_size := 0
+		mut size_expr := p.expr(0)
+		mut size_unresolved := true
+		if p.pref.is_fmt {
+			fixed_size = 987654321
+		} else {
+			fixed_size, size_unresolved = p.eval_array_fixed_sizes(mut size_expr)
 		}
 		p.check(.rsbr)
 		p.fixed_array_dim++
@@ -111,15 +145,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	if elem_type.idx() == ast.thread_type_idx {
 		p.register_auto_import('sync.threads')
 	}
-	mut nr_dims := 1
-	// detect attr
-	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
-	for p.tok.kind == expecting && not_attr {
-		p.next()
-		p.check(.rsbr)
-		nr_dims++
-	}
-	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
+	idx := p.table.find_or_register_array_with_dims(elem_type, 1)
 	if elem_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -591,6 +617,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 }
 
 fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
+	name_pos := p.tok.pos()
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.${name}'
@@ -702,6 +729,9 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 					'i16' {
 						ret = ast.i16_type
 					}
+					'i32' {
+						ret = ast.i32_type
+					}
 					'int' {
 						ret = ast.int_type
 					}
@@ -750,7 +780,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 							return p.parse_generic_type(name)
 						}
 						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
-							return p.parse_generic_inst_type(name)
+							return p.parse_generic_inst_type(name, name_pos)
 						}
 						return p.find_type_or_add_placeholder(name, language)
 					}
@@ -856,7 +886,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 		return typ
 	}
 	// not found - add placeholder
-	idx = p.table.add_placeholder_type(name, language)
+	idx = p.table.add_placeholder_type(name, name, language)
 	return ast.new_type(idx)
 }
 
@@ -875,7 +905,7 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	return ast.new_type(idx).set_flag(.generic)
 }
 
-fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
+fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.Type {
 	p.generic_type_level++
 	defer {
 		p.generic_type_level--
@@ -936,10 +966,10 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)
 		}
-		gt_idx = p.table.add_placeholder_type(bs_name, .v)
+		gt_idx = p.table.add_placeholder_type(bs_name, bs_cname, .v)
 		mut parent_idx := p.table.type_idxs[name]
 		if parent_idx == 0 {
-			parent_idx = p.table.add_placeholder_type(name, .v)
+			parent_idx = p.table.add_placeholder_type(name, name, .v)
 		}
 		parent_sym := p.table.sym(ast.new_type(parent_idx))
 		match parent_sym.info {
@@ -970,7 +1000,13 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 						concrete_types_pos)
 				}
 			}
-			else {}
+			else {
+				// Disallow generic function as type inside struct decl
+				if parent_sym.kind == .placeholder && p.inside_struct_field_decl
+					&& !parent_sym.name.all_after_last('.')[0].is_capital() {
+					p.error_with_pos('unknown type `${parent_sym.name}`', name_pos)
+				}
+			}
 		}
 
 		idx := p.table.register_sym(ast.TypeSymbol{

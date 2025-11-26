@@ -31,9 +31,9 @@ concurrency:
 jobs:
   build-module-docs:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Update packages, before running apt install
@@ -47,9 +47,9 @@ jobs:
       - name: Install markdown from vpm
         run: v retry -- v install markdown
       - name: Test v doc
-        run: ./v test cmd/tools/vdoc/
+        run: VJOBS=1 ./v test cmd/tools/vdoc/
       - name: Build module documentation and check the examples in the comments
-        run: ./v doc -m -f html -unsafe-run-examples -time vlib/
+        run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
       - name: Deploy docs to vercel
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true

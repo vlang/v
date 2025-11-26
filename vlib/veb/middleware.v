@@ -1,6 +1,7 @@
 module veb
 
 import compress.gzip
+import compress.zstd
 import net.http
 
 pub type MiddlewareHandler[T] = fn (mut T) bool
@@ -117,38 +118,126 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 	return true
 }
 
+// Compression encoding types for HTTP responses
+enum ContentEncoding {
+	gzip
+	zstd
+}
+
+// send_compressed_response compresses the response body and sends it to the client.
+// Returns true if compression should be skipped, false if compression was applied.
+fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
+	compressed, encoding_name := match encoding {
+		.zstd {
+			data := zstd.compress(ctx.res.body.bytes()) or {
+				eprintln('[veb] error while compressing with zstd: ${err.msg()}')
+				return true
+			}
+			data, 'zstd'
+		}
+		.gzip {
+			data := gzip.compress(ctx.res.body.bytes()) or {
+				eprintln('[veb] error while compressing with gzip: ${err.msg()}')
+				return true
+			}
+			data, 'gzip'
+		}
+	}
+
+	// Take over the connection to have full control over the response
+	ctx.takeover_conn()
+
+	// Set HTTP headers for compressed content
+	ctx.res.header.add(.content_encoding, encoding_name)
+	ctx.res.header.set(.vary, 'Accept-Encoding')
+	ctx.res.header.set(.content_length, compressed.len.str())
+
+	fast_send_resp_header(mut ctx.conn, ctx.res) or {}
+	ctx.conn.write_ptr(&u8(compressed.data), compressed.len) or {}
+	ctx.conn.close() or {}
+
+	return false
+}
+
+// should_skip_compression checks if compression should be skipped for this context.
+fn should_skip_compression(ctx Context) bool {
+	// Skip if already compressed (optimization for static files compressed in send_file)
+	if ctx.already_compressed {
+		return true
+	}
+	// Skip compression for files in streaming mode (takeover == false)
+	// Files in takeover mode (small files loaded in memory) are compressed
+	if ctx.return_type == .file && !ctx.takeover {
+		return true
+	}
+	return false
+}
+
 // encode_gzip adds gzip encoding to the HTTP Response body.
-// This middleware does not encode files, if you return `ctx.file()`.
+// This middleware compresses dynamic routes and static files loaded in memory (takeover mode).
+// Static files in streaming mode are compressed by send_file() when static compression is enabled,
+// and this middleware skips them to avoid double compression (via the already_compressed flag).
 // Register this middleware as last!
 // Usage example: app.use(veb.encode_gzip[Context]())
 pub fn encode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		after:   true
 		handler: fn [T](mut ctx T) bool {
-			// TODO: compress file in streaming manner, or precompress them?
-			if ctx.return_type == .file {
+			if should_skip_compression(ctx.Context) {
 				return true
 			}
-			// first try compressions, because if it fails we can still send a response
-			// before taking over the connection
-			compressed := gzip.compress(ctx.res.body.bytes()) or {
-				eprintln('[veb] error while compressing with gzip: ${err.msg()}')
+			return send_compressed_response(mut ctx.Context, .gzip)
+		}
+	}
+}
+
+// encode_zstd adds zstd encoding to the HTTP Response body.
+// This middleware compresses dynamic routes and static files loaded in memory (takeover mode).
+// Static files in streaming mode are compressed by send_file() when static compression is enabled,
+// and this middleware skips them to avoid double compression (via the already_compressed flag).
+// Register this middleware as last!
+// Usage example: app.route_use('/api', veb.encode_zstd[Context]())
+pub fn encode_zstd[T]() MiddlewareOptions[T] {
+	return MiddlewareOptions[T]{
+		after:   true
+		handler: fn [T](mut ctx T) bool {
+			if should_skip_compression(ctx.Context) {
 				return true
 			}
-			// enables us to have full control over what response is send over the connection
-			// and how.
-			ctx.takeover_conn()
+			return send_compressed_response(mut ctx.Context, .zstd)
+		}
+	}
+}
 
-			// set HTTP headers for gzip
-			ctx.res.header.add(.content_encoding, 'gzip')
-			ctx.res.header.set(.vary, 'Accept-Encoding')
-			ctx.res.header.set(.content_length, compressed.len.str())
+// encode_auto adds automatic content encoding (zstd or gzip) based on the client's Accept-Encoding header.
+// This middleware checks the Accept-Encoding header and compresses with zstd if supported, otherwise gzip.
+// Static files in streaming mode are compressed by send_file() when static compression is enabled,
+// and this middleware skips them to avoid double compression (via the already_compressed flag).
+// Register this middleware as last!
+// Usage example: app.use(veb.encode_auto[Context]())
+pub fn encode_auto[T]() MiddlewareOptions[T] {
+	return MiddlewareOptions[T]{
+		after:   true
+		handler: fn [T](mut ctx T) bool {
+			if should_skip_compression(ctx.Context) {
+				return true
+			}
 
-			fast_send_resp_header(mut ctx.Context.conn, ctx.res) or {}
-			ctx.Context.conn.write_ptr(&u8(compressed.data), compressed.len) or {}
-			ctx.Context.conn.close() or {}
+			// Check Accept-Encoding header to determine best compression
+			accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+			supports_zstd := accept_encoding.contains('zstd')
+			supports_gzip := accept_encoding.contains('gzip')
 
-			return false
+			// Try zstd first (better compression ratio), fallback to gzip
+			if supports_zstd {
+				return send_compressed_response(mut ctx.Context, .zstd)
+			}
+			if supports_gzip {
+				return send_compressed_response(mut ctx.Context, .gzip)
+			}
+
+			// No supported compression
+			return true
 		}
 	}
 }
@@ -159,15 +248,36 @@ pub fn encode_gzip[T]() MiddlewareOptions[T] {
 pub fn decode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		handler: fn [T](mut ctx T) bool {
-			if encoding := ctx.res.header.get(.content_encoding) {
+			if encoding := ctx.req.header.get(.content_encoding) {
 				if encoding == 'gzip' {
-					decompressed := gzip.decompress(ctx.req.body.bytes()) or {
+					decompressed := gzip.decompress(ctx.req.data.bytes()) or {
 						ctx.request_error('invalid gzip encoding')
 						return false
 					}
-					ctx.req.body = decompressed.bytestr()
+					ctx.req.data = decompressed.bytestr()
 				}
 			}
+			return true
+		}
+	}
+}
+
+// decode_zstd decodes the body of a zstd-compressed HTTP request.
+// Register this middleware before you do anything with the request body!
+// Usage example: app.use(veb.decode_zstd[Context]())
+pub fn decode_zstd[T]() MiddlewareOptions[T] {
+	return MiddlewareOptions[T]{
+		handler: fn [T](mut ctx T) bool {
+			if encoding := ctx.req.header.get(.content_encoding) {
+				if encoding == 'zstd' {
+					decompressed := zstd.decompress(ctx.req.data.bytes()) or {
+						ctx.request_error('invalid zstd encoding')
+						return false
+					}
+					ctx.req.data = decompressed.bytestr()
+				}
+			}
+			return true
 		}
 	}
 }

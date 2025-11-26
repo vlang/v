@@ -930,7 +930,11 @@ fn test_hash() {
 	s3 := 'Content-Type'
 	assert s3.hash() == 949037134
 	s4 := 'bad_key'
-	assert s4.hash() == -346636507
+	assert s4.hash() == $if new_int ? && x64 {
+		3948330789
+	} $else {
+		-346636507
+	}
 	s5 := '24640'
 	// From a map collision test
 	assert s5.hash() % ((1 << 20) - 1) == s.hash() % ((1 << 20) - 1)

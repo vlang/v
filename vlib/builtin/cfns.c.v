@@ -105,7 +105,16 @@ fn C.strchr(s &char, c int) &char
 
 // process execution, os.process:
 @[trusted]
+fn C.GetCurrentProcessId() u32
+@[trusted]
+fn C._getpid() int
+@[trusted]
 fn C.getpid() int
+
+@[trusted]
+fn C.GetCurrentThreadId() u32
+@[trusted]
+fn C.gettid() u32
 
 @[trusted]
 fn C.getuid() int
@@ -360,7 +369,7 @@ fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u
 
 fn C.WriteConsole() voidptr
 
-fn C.WriteFile() voidptr
+fn C.WriteFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten &u32, lpOverlapped voidptr) bool
 
 fn C._wchdir(dirname &u16) int
 
@@ -408,7 +417,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8) int
+fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
@@ -448,6 +457,7 @@ fn C.ReleaseSRWLockShared(voidptr)
 fn C.ReleaseSRWLockExclusive(voidptr)
 
 // pthread.h
+fn C.pthread_self() usize
 fn C.pthread_mutex_init(voidptr, voidptr) int
 
 fn C.pthread_mutex_lock(voidptr) int
@@ -542,8 +552,23 @@ fn C.sysconf(name int) int
 // C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
 @[typedef]
 pub struct C.SYSTEM_INFO {
-	dwNumberOfProcessors u32
-	dwPageSize           u32
+	// workaround: v doesn't support a truely C anon union/struct here
+	// union {
+	dwOemId u32
+	// struct {
+	wProcessorArchitecture u16
+	wReserved              u16
+	//	}
+	//}
+	dwPageSize                  u32
+	lpMinimumApplicationAddress voidptr
+	lpMaximumApplicationAddress voidptr
+	dwActiveProcessorMask       u32
+	dwNumberOfProcessors        u32
+	dwProcessorType             u32
+	dwAllocationGranularity     u32
+	wProcessorLevel             u16
+	wProcessorRevision          u16
 }
 
 fn C.GetSystemInfo(&C.SYSTEM_INFO)

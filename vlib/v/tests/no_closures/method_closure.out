@@ -1,0 +1,7 @@
+vlib/v/tests/no_closures/method_closure.vv:9:15: cgen error: a closure was generated for m.name: member
+    7 | 
+    8 | fn main() {
+    9 |     x := UInt(4).member // generate an implicit closure that captures the receiver 4
+      |                  ~~~~~~
+   10 |     res := x()
+   11 |     assert res == 40

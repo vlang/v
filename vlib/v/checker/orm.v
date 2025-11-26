@@ -71,6 +71,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlExpr{
+			inserted_var: field.name
 			pos:          node.pos
 			has_where:    true
 			where_expr:   ast.None{}
@@ -326,6 +327,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		}
 
 		field := updated_fields.first()
+		for attr in field.attrs {
+			if attr.name == 'fkey' {
+				c.orm_error("`${column}` is a foreign column of `${table_sym.name}`, it can't update here",
+					node.pos)
+				break
+			}
+		}
 		node.updated_columns[i] = c.fetch_field_name(field)
 	}
 

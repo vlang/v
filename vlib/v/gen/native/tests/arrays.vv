@@ -1,3 +1,66 @@
 fn main() {
 	assert [1, 2, 3] != []
+	array_with_len()
+	array_with_values()
+	fixed_array()
+}
+
+fn fixed_array() {
+	f := [1, 2, 3]!
+	assert f[0] == 1
+	assert f[1] == 2
+	assert f[2] == 3
+}
+
+fn array_with_len() {
+	len := 20
+	mut my_array := []int{len:20}
+	for i in 0 .. len {
+		assert my_array[i] == 0	
+		unsafe {
+			assert &int(my_array.data)[i] == 0
+		}
+	}
+	my_array[0] = 4
+	my_array[1] = 5
+	my_array[2] = 6
+	println(my_array[0])
+	println(my_array[1])
+	println(my_array[2])
+	assert my_array[0] == 4
+	assert my_array[1] == 5
+	assert my_array[2] == 6
+	unsafe {
+		assert &int(my_array.data)[0] == 4
+		assert &int(my_array.data)[1] == 5
+		assert &int(my_array.data)[2] == 6
+	}
+	assert my_array.len == len
+	assert my_array.cap == len
+}
+
+fn array_with_values() {
+	mut arr := [2, 4, 8, 16, 32, 64, 128]
+	assert arr[0] == 2
+	assert arr[1] == 4
+	assert arr[2] == 8
+	assert arr[3] == 16
+	assert arr[4] == 32
+	assert arr[5] == 64
+	assert arr[6] == 128
+	// below taken from builtin/array_test.v
+	arr[0] = 2
+	arr[1] &= 255
+	arr[2] |= 255
+	arr[3] <<= 4
+	arr[4] >>= 4
+	arr[5] %= 5
+	arr[6] ^= 3
+	assert arr[0] == 2
+	assert arr[1] == 4 & 255
+	assert arr[2] == 8 | 255
+	assert arr[3] == 16 << 4
+	assert arr[4] == 32 >> 4
+	assert arr[5] == 64 % 5
+	assert arr[6] == 128 ^ 3
 }

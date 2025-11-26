@@ -8,8 +8,6 @@
 // Last updated: August 2015
 module sha3
 
-import math
-
 // size_224 is the size, in bytes, of a sha3 sum224 checksum.
 pub const size_224 = 28
 // size_256 is the size, in bytes, of a sha3 sum256 checksum.
@@ -325,7 +323,7 @@ fn (mut d Digest) checksum_internal() ![]u8 {
 	mut remaining_ouput_len := d.output_len
 
 	for remaining_ouput_len > 0 {
-		mut byte_len_this_round := math.min[int](remaining_ouput_len, d.rate)
+		mut byte_len_this_round := int_min(remaining_ouput_len, d.rate)
 		output_bytes << d.s.to_bytes()[..byte_len_this_round]
 
 		remaining_ouput_len -= byte_len_this_round

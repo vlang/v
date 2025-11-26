@@ -136,6 +136,21 @@ fn test_delete() {
 	assert list.len() == 0
 }
 
+fn test_insert_delete() {
+	mut list := DoublyLinkedList[int]{}
+	elem := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	list.push_many(elem, Direction.front)
+	for i in 0 .. 12 {
+		list.insert(i, 777)!
+		assert list.array() != elem
+		r := list.index(777)!
+		assert r == i
+		list.delete(r)
+		assert list.index(777) or { -7 } == -7
+		assert list.array() == elem
+	}
+}
+
 fn test_iter() {
 	mut list := DoublyLinkedList[int]{}
 	for i := 0; i < 10; i++ {

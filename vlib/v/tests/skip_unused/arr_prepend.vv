@@ -1,0 +1,2 @@
+mut buffer := []int{}
+buffer.prepend(1)

@@ -192,8 +192,9 @@ pub fn sanitize_cookie_value(v string) string {
 	if v.len == 0 {
 		return v
 	}
-	// Check for the existence of a space or comma
-	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+	// Check for the existence of a space, comma or semicolon
+	if val.starts_with(' ') || v.contains(';') || val.ends_with(' ') || val.starts_with(',')
+		|| val.ends_with(',') {
 		return '"${v}"'
 	}
 	return v

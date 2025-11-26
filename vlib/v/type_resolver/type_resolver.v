@@ -207,8 +207,13 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 				}
 				.field_var {
 					// field var from $for loop
-					if node.obj.ct_type_unwrapped {
-						t.info.comptime_for_field_type.clear_flag(.option)
+					unwrapped_field_type := t.info.comptime_for_field_type.clear_flag(.option)
+					if t.info.comptime_for_field_type.has_flag(.option)
+						&& node.obj.typ != ast.void_type && !node.obj.typ.has_flag(.option)
+						&& node.obj.typ == unwrapped_field_type {
+						node.obj.typ
+					} else if node.obj.ct_type_unwrapped {
+						unwrapped_field_type
 					} else {
 						t.info.comptime_for_field_type
 					}

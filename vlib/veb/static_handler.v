@@ -4,9 +4,14 @@ import os
 
 pub interface StaticApp {
 mut:
-	static_files      map[string]string
-	static_mime_types map[string]string
-	static_hosts      map[string]string
+	static_files                map[string]string
+	static_mime_types           map[string]string
+	static_hosts                map[string]string
+	enable_static_gzip          bool
+	enable_static_zstd          bool
+	enable_static_compression   bool
+	static_compression_max_size int
+	enable_markdown_negotiation bool
 }
 
 // StaticHandler provides methods to handle static files in your veb App
@@ -15,6 +20,27 @@ pub mut:
 	static_files      map[string]string
 	static_mime_types map[string]string
 	static_hosts      map[string]string
+	// enable_static_gzip enables gzip compression for static files.
+	// Use this for gzip-only compression. For automatic zstd/gzip selection, use enable_static_compression.
+	// Default: false
+	enable_static_gzip bool
+	// enable_static_zstd enables zstd compression for static files.
+	// Use this for zstd-only compression. For automatic zstd/gzip selection, use enable_static_compression.
+	// Default: false
+	enable_static_zstd bool
+	// enable_static_compression enables automatic compression (zstd/gzip) for static files.
+	// When enabled, Veb will choose zstd over gzip when client supports both (better compression ratio).
+	// For gzip-only or zstd-only compression, use enable_static_gzip or enable_static_zstd instead.
+	// Default: false
+	enable_static_compression bool
+	// static_compression_max_size sets the maximum file size in bytes for auto-compression.
+	// Files larger than this threshold will not be auto-compressed (but manual .zst/.gz files are still served).
+	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely.
+	// Note: On readonly filesystems, if caching fails, compressed content is served from memory as fallback.
+	static_compression_max_size int = 1048576
+	// enable_markdown_negotiation allows the client sends Accept: text/markdown, then the server will serve .md files, if any.
+	// Default: false (for backward compatibility)
+	enable_markdown_negotiation bool
 }
 
 // scan_static_directory recursively scans `directory_path` and returns an error if

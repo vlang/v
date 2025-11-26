@@ -8,7 +8,24 @@ fn C.memset(ptr voidptr, c int, n u64) voidptr
 fn main() {
 	charutil()
 	memory()
+	index_expr_test()
 }
+
+fn index_expr_test() {
+	unsafe {
+		mut buf := &u8(C.malloc(2))
+		buf[0] = 1
+		buf[1] = 2
+		assert buf[0] == 1
+		assert buf[1] == 2
+		mut buf2 := malloc_noscan(2)
+		buf2[0] = 3
+		buf2[1] = 4
+		assert buf2[0] == 3
+		assert buf2[1] == 4
+	}
+}
+
 
 fn charutil() {
 	// only linux and windows support linking right now

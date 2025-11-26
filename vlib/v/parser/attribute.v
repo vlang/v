@@ -158,6 +158,8 @@ fn (mut p Parser) attributes() {
 	if p.attrs.len == 0 {
 		p.error_with_pos('attributes cannot be empty', start_pos.extend(p.tok.pos()))
 		return
+	} else {
+		p.check_deprecated_attributes()
 	}
 	// TODO: remove when old attr syntax is removed
 	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
@@ -168,5 +170,27 @@ fn (mut p Parser) attributes() {
 		p.error_with_pos('multiple attributes should be in the same @[], with ; separators',
 			p.prev_tok.pos().extend(p.tok.pos()))
 		return
+	}
+}
+
+fn (mut p Parser) check_deprecated_attributes() {
+	mut deprecated := false
+	mut deprecated_after := false
+	mut deprecated_after_pos := token.Pos{}
+	for attr in p.attrs {
+		match attr.name {
+			'deprecated' {
+				deprecated = true
+			}
+			'deprecated_after' {
+				deprecated_after = true
+				deprecated_after_pos = attr.pos
+			}
+			else {}
+		}
+	}
+	if deprecated_after && !deprecated {
+		p.warn_with_pos('@[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute',
+			deprecated_after_pos)
 	}
 }

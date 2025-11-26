@@ -64,16 +64,21 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	} $else {
 		// vfmt off
 		// Note: be carefull to not allocate here, avoid string interpolation
+		flush_stdout()
 		eprintln('================ V panic ================')
 		eprint('   module: '); eprintln(mod)
 		eprint(' function: '); eprint(fn_name); eprintln('()')
 		eprint('  message: '); eprintln(s)
 		eprint('     file: '); eprint(file); eprint(':');
-		C.fprintf(C.stderr, c'%d\n', line_no)
+	    C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(vcurrent_hash())
+		$if !vinix && !native {
+			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+		}
 		eprintln('=========================================')
-		// vfmt on
 		flush_stdout()
+		// vfmt on
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -129,11 +134,18 @@ pub fn panic(s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
+		// vfmt off
+		flush_stdout()
 		eprint('V panic: ')
 		eprintln(s)
-		eprint('v hash: ')
+		eprint(' v hash: ')
 		eprintln(vcurrent_hash())
+		$if !vinix && !native {
+			eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+			eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+		}
 		flush_stdout()
+		// vfmt on
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -197,7 +209,7 @@ pub fn panic_n2(s string, number1 i64, number2 i64) {
 @[noreturn]
 fn panic_n3(s string, number1 i64, number2 i64, number3 i64) {
 	panic(s + impl_i64_to_string(number1) + ', ' + impl_i64_to_string(number2) + ', ' +
-		impl_i64_to_string(number2))
+		impl_i64_to_string(number3))
 }
 
 // panic with a C-API error message matching `errnum`
@@ -486,7 +498,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if prealloc {
+	$if native {
+		res = unsafe { C.malloc(n) }
+	} $else $if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
 		$if gcboehm_opt ? {
@@ -680,6 +694,8 @@ pub fn vcalloc(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
+	} $else $if native {
+		return unsafe { C.calloc(1, n) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
@@ -945,15 +961,33 @@ pub fn arguments() []string {
 	return res
 }
 
-// ctovstring_impl is a temporary API, to enable clean CI runs for https://github.com/vlang/v/pull/25264 .
-// It will be deleted after the migration to the new `builtin` naming scheme is finished.
-@[export: 'builtin__ctovstring']
-pub fn ctovstring_impl(s &u8) string {
-	unsafe {
-		len := C.strlen(voidptr(s))
-		return string{
-			str: memdup(voidptr(s), isize(len))
-			len: len
-		}
+// v_getpid returns a process identifier. It is a number that is guaranteed to
+// remain the same while the current process is running. It may or may not be
+// equal to the value of v_gettid(). Note: it is *NOT equal on Windows*.
+pub fn v_getpid() u64 {
+	$if windows {
+		return u64(C.GetCurrentProcessId())
+	} $else {
+		return u64(C.getpid())
+	}
+}
+
+// v_gettid retuns a thread identifier. It is a number that is guaranteed to not
+// change, while the current thread is running. Different threads, running at
+// the same time in the same process, have different thread ids. There is no
+// such guarantee for threads running in different processes.
+// Important: this will be the same number returned by v_getpid(), but only on
+// non windows systems, when the current thread is the main one. It is best to
+// *avoid relying on this equivalence*, and use v_gettid and v_getpid only for
+// tracing and debugging multithreaded issues, but *NOT for logic decisions*.
+pub fn v_gettid() u64 {
+	$if windows {
+		return u64(C.GetCurrentThreadId())
+	} $else $if linux && !musl ? {
+		return u64(C.gettid())
+	} $else $if threads {
+		return u64(C.pthread_self())
+	} $else {
+		return v_getpid()
 	}
 }

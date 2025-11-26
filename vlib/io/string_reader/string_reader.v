@@ -76,13 +76,13 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 	}
 
 	for {
-		read := reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[end..]) or {
 			r.end_of_stream = true
 			break
 		}
 		end += read
 
-		if !read_till_end_of_stream && read == 0 {
+		if !read_till_end_of_stream || read == 0 {
 			break
 		} else if r.builder.len == end {
 			unsafe { r.builder.grow_len(io.read_all_grow_len) }
@@ -114,8 +114,12 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 	}
 
 	mut end := start
+	defer {
+		// shrink the length of the buffer to the total of bytes read
+		r.builder.go_back(r.builder.len - end)
+	}
 	for {
-		read := reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[end..]) or {
 			r.end_of_stream = true
 			break
 		}
@@ -124,10 +128,11 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 		if read == 0 || end - start == n {
 			break
 		} else if r.builder.len == end {
-			if n - end > io.read_all_grow_len {
+			remaining := n - (end - start)
+			if remaining > io.read_all_grow_len {
 				unsafe { r.builder.grow_len(io.read_all_grow_len) }
 			} else {
-				unsafe { r.builder.grow_len(n - end) }
+				unsafe { r.builder.grow_len(remaining) }
 			}
 		}
 	}
@@ -185,11 +190,11 @@ pub fn (mut r StringReader) read_string(n int) !string {
 pub fn (mut r StringReader) read(mut buf []u8) !int {
 	start := r.offset
 
-	read := r.fill_buffer_until(buf.len - start)!
+	read := r.fill_buffer_until(buf.len)!
 	r.offset += read
 
-	copy(mut buf, r.builder[start..read])
-	return r.builder.len - start
+	copy(mut buf, r.builder[start..start + read])
+	return read
 }
 
 // read_line attempts to read a line from the reader.
@@ -220,7 +225,7 @@ pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string 
 				// great, we hit something
 				// do some checking for whether we hit \r\n or just \n
 				mut x := i
-				if i != 0 && config.delim == `\n` && r.builder[i - 1] == `\r` {
+				if i > start && config.delim == `\n` && r.builder[i - 1] == `\r` {
 					x--
 				}
 				r.offset = i + 1

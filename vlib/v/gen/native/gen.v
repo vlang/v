@@ -19,13 +19,18 @@ const c_preprocessed = {
 	'C.EOF': -1
 }
 
+@[if trace_gen ?]
+fn trace_gen(msg string) {
+	eprintln('> native gen, ${msg}')
+}
+
 @[heap; minify]
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	code_gen                  CodeGen
+	cg                        CodeGen
 	table                     &ast.Table = unsafe { nil }
 	buf                       []u8
 	sect_header_name_pos      i32
@@ -85,84 +90,77 @@ mut:
 	is_builtin_mod   bool // true for .v files inside `builtin`
 }
 
-interface CodeGen {
+interface CodeGen { // TODO: clean up interface & move more code from amd's Codegen to Gen
+	// TODO: interface functions should translate the regs and call the true function
 mut:
 	g &Gen
-	add(r Register, val i32)
-	add_reg2(r Register, r2 Register)
-	address_size() i32
-	adr(r Arm64Register, delta i32) // Note: Temporary!
-	allocate_var(name string, size i32, initial_val Number) i32
-	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
-	builtin_decl(builtin BuiltinFn)
-	call_addr_at(addr i32, at i64) i64
-	call_builtin(name Builtin) i64
-	call_fn(node ast.CallExpr)
-	call(addr i32) i64
-	cjmp(op JumpOp) i32
-	cmp_to_stack_top(r Register)
-	cmp_var_reg(var Var, reg Register, config VarConfig)
-	cmp_var(var Var, val i32, config VarConfig)
-	cmp_reg2(reg Register, reg2 Register)
-	cmp_zero(reg Register)
-	convert_bool_to_string(r Register)
-	convert_int_to_string(a Register, b Register)
-	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
-	create_string_struct(typ ast.Type, name string, str string) i32
-	dec_var(var Var, config VarConfig)
-	fn_decl(node ast.FnDecl)
-	gen_asm_stmt(asm_node ast.AsmStmt)
-	gen_cast_expr(expr ast.CastExpr)
-	gen_exit(expr ast.Expr)
-	gen_match_expr(expr ast.MatchExpr)
-	gen_print_reg(r Register, n i32, fd i32)
-	gen_print(s string, fd i32)
-	gen_syscall(node ast.CallExpr)
-	inc_var(var Var, config VarConfig)
-	infix_expr(node ast.InfixExpr) // TODO: make platform-independent
-	infloop()
-	init_struct(var Var, init ast.StructInit)
-	init_array(var Var, init ast.ArrayInit)
-	jmp_back(start i64)
-	jmp(addr i32) i32
-	lea_var_to_reg(r Register, var_offset i32)
-	learel(reg Register, val i32)
-	leave()
-	load_fp_var(var Var, config VarConfig)
-	load_fp(val f64)
-	main_reg() Register
-	mov_deref(reg Register, regptr Register, typ ast.Type)
-	mov_int_to_var(var Var, integer i32, config VarConfig)
-	mov_reg_to_var(var Var, reg Register, config VarConfig)
-	mov_reg(r1 Register, r2 Register)
-	mov_var_to_reg(reg Register, var Var, config VarConfig)
-	mov(r Register, val i32)
-	mov64(r Register, val Number)
-	movabs(reg Register, val i64)
-	patch_relative_jmp(pos i32, addr i64)
-	pop2(r Register)
-	prefix_expr(node ast.PrefixExpr)
-	push(r Register)
-	ret()
-	return_stmt(node ast.Return)
-	reverse_string(r Register)
-	svc()
-	syscall() // unix syscalls
-	trap()
-	zero_fill(size i32, var LocalVar)
+	cg_add(r Register, val i32)
+	cg_add_reg(r Register, r2 Register)
+	cg_address_size() i32
+	cg_allocate_stack_var(name string, size i32, initial_val Number) i32
+	cg_assign_var(var IdentVar, raw_type ast.Type)
+	cg_assign_stmt(node ast.AssignStmt)
+	cg_builtin_decl(builtin BuiltinFn)
+	cg_call_addr_at(addr i32, at i64) i64
+	cg_call_builtin(name Builtin) i64
+	cg_call_fn(node ast.CallExpr)
+	cg_call(addr i32) i64
+	cg_cjmp(op JumpOp) i32
+	cg_cmp_var_reg(var Var, reg Register, config VarConfig)
+	cg_cmp_var(var Var, val i32, config VarConfig)
+	cg_cmp_reg(reg Register, reg2 Register)
+	cg_cmp_zero(reg Register)
+	cg_convert_bool_to_string(r Register)
+	cg_convert_int_to_string(a Register, b Register)
+	cg_convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
+	cg_create_string_struct(typ ast.Type, name string, str string) i32
+	cg_dec_var(var Var, config VarConfig)
+	cg_fn_decl(node ast.FnDecl)
+	cg_gen_asm_stmt(asm_node ast.AsmStmt)
+	cg_gen_cast_expr(expr ast.CastExpr)
+	cg_gen_exit(expr ast.Expr)
+	cg_gen_match_expr(expr ast.MatchExpr)
+	cg_gen_print_reg(r Register, n i32, fd i32)
+	cg_gen_print(s string, fd i32)
+	cg_gen_syscall(node ast.CallExpr)
+	cg_inc_var(var Var, config VarConfig)
+	cg_infix_expr(node ast.InfixExpr)
+	cg_infloop()
+	cg_init_struct(var Var, init ast.StructInit)
+	cg_jmp_back(start i64)
+	cg_jmp(addr i32) i32
+	cg_lea_var_to_reg(r Register, var_offset i32)
+	cg_learel(reg Register, val i32)
+	cg_leave()
+	cg_load_fp_var(var Var, config VarConfig)
+	cg_load_fp(val f64)
+	cg_mov_deref(reg Register, regptr Register, typ ast.Type)
+	cg_mov_int_to_var(var Var, integer i32, config VarConfig)
+	cg_mov_reg_to_var(var Var, reg Register, config VarConfig)
+	cg_mov_reg(r1 Register, r2 Register)
+	cg_mov_var_to_reg(reg Register, var Var, config VarConfig)
+	cg_mov(r Register, val i32)
+	cg_mov64(r Register, val Number)
+	cg_movabs(reg Register, val i64)
+	cg_mul_reg(a Register, b Register)
+	cg_patch_relative_jmp(pos i32, addr i64)
+	cg_pop(r Register)
+	cg_prefix_expr(node ast.PrefixExpr)
+	cg_push(r Register)
+	cg_ret()
+	cg_return_stmt(node ast.Return)
+	cg_reverse_string(r Register)
+	cg_sub_reg(a Register, b Register)
+	cg_syscall() // unix syscalls
+	cg_trap()
+	cg_zero_fill(size i32, var LocalVar)
 }
 
-type Register = Amd64Register | Arm64Register
-
-fn (r Register) str() string {
-	return match r {
-		Amd64Register {
-			'${r as Amd64Register}'
-		}
-		Arm64Register {
-			'${r as Arm64Register}'
-		}
-	}
+enum Register {
+	reg0
+	reg1
+	reg2
+	reg3
 }
 
 enum RelocType {
@@ -397,15 +395,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		pref:                 pref_
 		files:                files
 		// TODO: workaround, needs to support recursive init
-		code_gen: get_backend(pref_.arch, pref_.os) or {
+		cg:      get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		structs:  []Struct{len: table.type_symbols.len}
-		eval:     eval.new_eval(table, pref_)
+		structs: []Struct{len: table.type_symbols.len}
+		eval:    eval.new_eval(table, pref_)
 	}
 
-	g.code_gen.g = g
+	g.cg.g = g
 	g.generate_header()
 	g.init_builtins()
 	g.calculate_all_size_align()
@@ -418,6 +416,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		}
 		*/
 		g.current_file = file
+		trace_gen('${@LOCATION}, processing file: ${file.path}')
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
 		}
@@ -435,9 +434,9 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		pref:     p
 		out_name: out_name
 		table:    ast.new_table()
-		code_gen: Amd64{}
+		cg:       Amd64{}
 	}
-	g.code_gen.g = &mut g
+	g.cg.g = &mut g
 	return &mut g
 }
 
@@ -486,15 +485,15 @@ pub fn (mut g Gen) has_external_deps() bool {
 pub fn (mut g Gen) ast_fetch_external_deps() {
 	for file in g.files {
 		g.current_file = file
+		trace_gen('${@LOCATION}, file: ${file.path}')
 		walker.inspect(file, unsafe { &mut g }, node_fetch_external_deps)
 	}
-
 	g.requires_linking = g.has_external_deps()
 }
 
 pub fn (mut g Gen) generate_header() {
+	trace_gen(@LOCATION)
 	g.ast_fetch_external_deps()
-
 	match g.pref.os {
 		.macos {
 			g.generate_macho_header()
@@ -521,6 +520,7 @@ pub fn (mut g Gen) generate_header() {
 }
 
 pub fn (mut g Gen) create_executable() {
+	trace_gen(@LOCATION)
 	obj_name := match g.pref.os {
 		.linux {
 			if g.requires_linking {
@@ -547,6 +547,7 @@ pub fn (mut g Gen) create_executable() {
 }
 
 pub fn (mut g Gen) generate_footer() {
+	trace_gen(@LOCATION)
 	g.patch_calls()
 	match g.pref.os {
 		.macos {
@@ -569,6 +570,7 @@ pub fn (mut g Gen) generate_footer() {
 }
 
 pub fn (mut g Gen) link(obj_name string) {
+	trace_gen(@LOCATION)
 	match g.pref.os {
 		.linux {
 			g.link_elf_file(obj_name)
@@ -586,6 +588,7 @@ pub fn (mut g Gen) link(obj_name string) {
 }
 
 pub fn (mut g Gen) calculate_all_size_align() {
+	trace_gen(@LOCATION)
 	for mut ts in g.table.type_symbols {
 		if ts.idx == 0 {
 			continue
@@ -807,8 +810,12 @@ fn (mut g Gen) get_var_offset(var_name string) i32 {
 fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or {
-		g.n_error('${@LOCATION} Could not find field `${name}` on init')
+	field := if ts.kind == .array {
+		g.table.sym(ast.array_type).find_field(name) or {
+			g.n_error('${@LOCATION} Could not find field `${name}` on init ${g.table.sym(ast.array_type)}')
+		}
+	} else {
+		ts.find_field(name) or { g.n_error('${@LOCATION} Could not find field `${name}` on init') }
 	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
@@ -820,38 +827,81 @@ fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
 
 // get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
+	if raw_type == ast.no_type_idx {
+		g.n_error('${@LOCATION}: unknown type (0)')
+	}
 	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
-		return g.code_gen.address_size()
+		return g.cg.cg_address_size()
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
-			ast.i8_type_idx { 1 }
-			ast.u8_type_idx { 1 }
-			ast.i16_type_idx { 2 }
-			ast.u16_type_idx { 2 }
-			ast.int_type_idx { 4 } // TODO: change when V will have changed
-			ast.i32_type_idx { 4 }
-			ast.u32_type_idx { 4 }
-			ast.i64_type_idx { 8 }
-			ast.u64_type_idx { 8 }
-			ast.isize_type_idx { 8 }
-			ast.usize_type_idx { 8 }
-			ast.int_literal_type_idx { 8 }
-			ast.f32_type_idx { 4 }
-			ast.f64_type_idx { 8 }
-			ast.float_literal_type_idx { 8 }
-			ast.char_type_idx { 1 }
-			ast.rune_type_idx { 4 }
-			else { g.n_error('${@LOCATION} unknown type size ${typ}') }
+			ast.i8_type_idx {
+				1
+			}
+			ast.u8_type_idx {
+				1
+			}
+			ast.i16_type_idx {
+				2
+			}
+			ast.u16_type_idx {
+				2
+			}
+			ast.int_type_idx {
+				$if new_int ? && x64 {
+					8
+				} $else {
+					4
+				}
+			}
+			ast.i32_type_idx {
+				4
+			}
+			ast.u32_type_idx {
+				4
+			}
+			ast.i64_type_idx {
+				8
+			}
+			ast.u64_type_idx {
+				8
+			}
+			ast.isize_type_idx {
+				8
+			}
+			ast.usize_type_idx {
+				8
+			}
+			ast.int_literal_type_idx {
+				8
+			}
+			ast.f32_type_idx {
+				4
+			}
+			ast.f64_type_idx {
+				8
+			}
+			ast.float_literal_type_idx {
+				8
+			}
+			ast.char_type_idx {
+				1
+			}
+			ast.rune_type_idx {
+				4
+			}
+			else {
+				g.n_error('${@LOCATION} unknown type size ${typ}')
+			}
 		}
 	}
 	if typ.is_bool() {
 		return 1
 	}
 	ts := g.table.sym(typ)
-	if ts.size != -1 {
+	if ts.size != -1 && ts.size != 0 {
 		return i32(ts.size)
 	}
 	mut size := i32(0)
@@ -887,6 +937,22 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 					align = t_align
 				}
 			}
+			g.structs[typ.idx()] = strc
+		}
+		ast.Array {
+			// TODO: replace u32 by the enum ArrayFlags size
+			for f_typ in [ast.voidptr_type, ast.int_type, ast.int_type, ast.int_type, ast.u32_type,
+				ast.int_type] {
+				f_size := g.get_type_size(f_typ)
+				f_align := g.get_type_align(f_typ)
+				padding := (f_align - size % f_align) % f_align
+				strc.offsets << size + padding
+				size += f_size + padding
+				if f_align > align {
+					align = f_align
+				}
+			}
+			size = (size + align - 1) / align * align
 			g.structs[typ.idx()] = strc
 		}
 		else {}
@@ -980,11 +1046,20 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 }
 
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
-fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
+fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 { // TODO: remove when proper strings are implemented, should not be used
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.code_gen.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
+	pos := g.cg.cg_allocate_stack_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
+}
+
+fn (mut g Gen) allocate_fixed_array(typ ast.Type, nb_items i32) i32 {
+	g.println('; allocate fixed array type:${typ} nb_items:${nb_items}:')
+	size := g.get_type_size(typ)
+	align := g.get_type_align(typ)
+	padding := (align - g.stack_var_pos % align) % align
+	g.stack_var_pos += (size + padding) * nb_items // reserve space on the stack for the items
+	return g.stack_var_pos
 }
 
 fn (mut g Gen) eval_str_lit_escape_codes(str_lit ast.StringLiteral) string {
@@ -1074,24 +1149,24 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+		g.cg.cg_lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 
 		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
-			g.code_gen.mov_reg(arg0_reg, reg)
+			g.cg.cg_mov_reg(arg0_reg, reg)
 		}
 
 		g.call_builtin(.int_to_string)
-		g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), end_of_buffer) // the (int) string starts at the end of the buffer
+		g.cg.cg_lea_var_to_reg(.reg0, end_of_buffer) // the (int) string starts at the end of the buffer
 	} else if typ.is_bool() {
 		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
-			g.code_gen.mov_reg(arg_reg, reg)
+			g.cg.cg_mov_reg(arg_reg, reg)
 		}
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		if reg != g.code_gen.main_reg() {
-			g.code_gen.mov_reg(g.code_gen.main_reg(), reg)
+		if reg != .reg0 {
+			g.cg.cg_mov_reg(.reg0, reg)
 		}
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
@@ -1103,24 +1178,24 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.code_gen.allocate_var('rune-buffer', 8, i64(0))
-		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
+		buffer := g.cg.cg_allocate_stack_var('rune-buffer', 8, i64(0))
+		g.cg.cg_convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {
 			g.n_error('${@LOCATION} Unsigned integer print is not supported')
 		} else {
 			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-			g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
-			g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+			g.cg.cg_mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+			g.cg.cg_lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 			g.call_builtin(.int_to_string)
-			g.code_gen.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+			g.cg.cg_lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
 		}
 	} else if typ.is_bool() {
-		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
+		g.cg.cg_mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		g.code_gen.mov_var_to_reg(reg, var, config)
+		g.cg.cg_mov_var_to_reg(reg, var, config)
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
@@ -1144,7 +1219,7 @@ fn (mut g Gen) patch_calls() {
 			return
 		}
 		last := i32(g.buf.len)
-		g.code_gen.call(i32(i32(addr) + last - c.pos))
+		g.cg.cg_call(i32(i32(addr) + last - c.pos))
 		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
@@ -1163,7 +1238,7 @@ fn (mut g Gen) patch_labels() {
 			return
 		}
 
-		g.code_gen.patch_relative_jmp(label.pos, addr)
+		g.cg.cg_patch_relative_jmp(label.pos, addr)
 	}
 }
 
@@ -1200,7 +1275,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
-	g.code_gen.fn_decl(node)
+	g.cg.cg_fn_decl(node)
 	g.patch_labels()
 
 	if g.stack_depth != 0 {
@@ -1295,20 +1370,19 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 		typ:    typ
 	}
 
-	g.code_gen.zero_fill(size, var)
-	main_reg := g.code_gen.main_reg()
+	g.cg.cg_zero_fill(size, var)
 	// store exprs to the variable
 	for i, expr in node.vals {
 		offset := g.structs[typ.idx()].offsets[i]
 		g.expr(expr)
 		// TODO: expr not on rax
-		g.code_gen.mov_reg_to_var(var, main_reg,
+		g.cg.cg_mov_reg_to_var(var, .reg0,
 			offset: offset
 			typ:    ts.mr_info().types[i]
 		)
 	}
 	// store the multi return struct value
-	g.code_gen.lea_var_to_reg(main_reg, var.offset)
+	g.cg.cg_lea_var_to_reg(.reg0, var.offset)
 }
 
 fn (mut g Gen) sym_string_table() i32 {
@@ -1373,4 +1447,14 @@ pub fn escape_string(s string) string {
 		}
 	}
 	return out.bytestr()
+}
+
+fn (mut g Gen) cmp_to_stack_top(reg Register) {
+	second_reg := if reg == .reg3 {
+		Register.reg0
+	} else {
+		Register.reg3
+	}
+	g.cg.cg_pop(second_reg)
+	g.cg.cg_cmp_reg(second_reg, reg)
 }

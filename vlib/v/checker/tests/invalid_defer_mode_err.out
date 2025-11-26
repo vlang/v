@@ -1,0 +1,6 @@
+vlib/v/checker/tests/invalid_defer_mode_err.vv:4:8: error: unknown `defer` mode: `fn1`
+    2 |     defer {} // ok
+    3 |     defer(fn) {} // ok
+    4 |     defer(fn1) {} // fail
+      |           ~~~
+    5 | }

@@ -222,7 +222,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 								}
 							}
 						} else if arg_sym.kind == .any {
-							cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
+							cparam_type_sym := t.table.final_sym(t.resolver.unwrap_generic(ctyp))
 							if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 								comptime_args[k] = cparam_type_sym.info.elem_type
 							} else if param_typ_sym.info is ast.Map
@@ -306,6 +306,9 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			}
 			if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 				comptime_args[k] = comptime_args[k].set_nr_muls(0)
+			}
+			if !param_typ.has_flag(.option) {
+				comptime_args[k] = comptime_args[k].clear_flag(.option)
 			}
 		} else if mut call_arg.expr is ast.ComptimeCall {
 			if call_arg.expr.method_name == 'method' {

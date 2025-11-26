@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3? && !sanitize-memory-clang
 // vtest flaky: true
 // vtest retry: 3
 import db.sqlite

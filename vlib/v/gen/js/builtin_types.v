@@ -29,7 +29,8 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 		return g.to_js_typ_val(sym.info.variants[0])
 	}
 	match sym.kind {
-		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal {
+		.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal {
 			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
@@ -67,8 +68,15 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 		.i16 {
 			styp = 'i16'
 		}
-		.int {
+		.i32 {
 			styp = 'int'
+		}
+		.int {
+			$if new_int ? && x64 {
+				styp = 'i64'
+			} $else {
+				styp = 'int'
+			}
 		}
 		.i64 {
 			styp = 'i64'
@@ -352,7 +360,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'int_literal' {
+			'i8', 'i16', 'i32', 'int', 'int_literal' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
 					typ_name:      typ_name

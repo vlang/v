@@ -17,9 +17,9 @@ const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'conti
 	'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map',
 	'document', 'Promise']
 // used to generate type structs
-const v_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
-	'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
-const shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
+const v_types = ['i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+	'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+const shallow_equatables = [ast.Kind.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
 	.int_literal, .float_literal, .bool, .string]
 const option_name = '_option'
 
@@ -2722,10 +2722,6 @@ fn (mut g JsGen) need_tmp_var_in_if(node ast.IfExpr) bool {
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
-	if node.is_comptime {
-		g.comptime_if(node)
-		return
-	}
 	// For simpe if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
@@ -2734,6 +2730,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	mut is_true := false
+	mut comptime_has_true_branch := false
 
 	if needs_tmp_var {
 		if node.typ.has_flag(.option) {
@@ -2746,14 +2744,32 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		prev := g.inside_ternary
 		g.inside_ternary = true
 		for i, branch in node.branches {
-			if i > 0 {
-				g.write(' : ')
-			}
-			if i < node.branches.len - 1 || !node.has_else {
-				g.write('(')
-				g.expr(branch.cond)
-				g.write(').valueOf()')
-				g.write(' ? ')
+			if node.is_comptime {
+				$if debug_comptime_branch_context ? {
+					g.write('/* ${branch.cond} */')
+				}
+				// comptime $if, only generate the true branch
+				if i < node.branches.len - 1 || !node.has_else {
+					if !g.comptime_if_result(branch) {
+						continue
+					}
+					comptime_has_true_branch = true
+				} else {
+					// else branch
+					if comptime_has_true_branch {
+						continue
+					}
+				}
+			} else {
+				if i > 0 {
+					g.write(' : ')
+				}
+				if i < node.branches.len - 1 || !node.has_else {
+					g.write('(')
+					g.expr(branch.cond)
+					g.write(').valueOf()')
+					g.write(' ? ')
+				}
 			}
 			g.stmts(branch.stmts)
 		}
@@ -2784,6 +2800,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		}
 	}
 
+	is_true = false
+	comptime_has_true_branch = false
 	for i, branch in node.branches {
 		if i > 0 {
 			g.write('} else ')
@@ -2795,6 +2813,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
 				g.writeln('\tlet err = ${cvar_name}.err;')
+			}
+			if node.is_comptime && !comptime_has_true_branch {
+				is_true = true
 			}
 		} else {
 			match branch.cond {
@@ -2809,7 +2830,20 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						g.writeln('if (${var_name}.state == 0) {')
 					} else {
 						g.write('if (${var_name} = ')
-						g.expr(branch.cond.expr)
+						if node.is_comptime {
+							$if debug_comptime_branch_context ? {
+								g.write('/* ${branch.cond} */')
+							}
+							is_true = g.comptime_if_result(branch)
+							if is_true {
+								g.write('1')
+								comptime_has_true_branch = true
+							} else {
+								g.write('0')
+							}
+						} else {
+							g.expr(branch.cond.expr)
+						}
 						g.writeln(', ${var_name}.state == 0) {')
 					}
 					if short_opt || branch.cond.vars[0].name != '_' {
@@ -2820,7 +2854,17 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 								branch.cond.vars[0].name
 							}
 							g.write('\tlet ${cond_var_name} = ')
-							g.expr(branch.cond.expr)
+							if node.is_comptime {
+								is_true = g.comptime_if_result(branch)
+								if is_true {
+									g.write('1')
+									comptime_has_true_branch = true
+								} else {
+									g.write('0')
+								}
+							} else {
+								g.expr(branch.cond.expr)
+							}
 							g.writeln(';')
 						} else {
 							g.writeln('\tlet ${branch.cond.vars}[0].name = ${var_name}.data;')
@@ -2828,16 +2872,31 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					}
 				}
 				else {
-					g.write('if ((')
-					g.expr(branch.cond)
-					g.writeln(').valueOf()) {')
+					if node.is_comptime {
+						g.write('if (')
+						$if debug_comptime_branch_context ? {
+							g.write('/* ${branch.cond} */')
+						}
+						is_true = g.comptime_if_result(branch)
+						if is_true {
+							g.write('1')
+							comptime_has_true_branch = true
+						} else {
+							g.write('0')
+						}
+						g.writeln(') {')
+					} else {
+						g.write('if ((')
+						g.expr(branch.cond)
+						g.writeln(').valueOf()) {')
+					}
 				}
 			}
 		}
 		g.inc_indent()
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
-		} else {
+		} else if (node.is_comptime && is_true) || !node.is_comptime {
 			g.stmts(branch.stmts)
 		}
 		g.dec_indent()
@@ -2854,10 +2913,10 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
-	left_typ := g.table.sym(expr.left_type)
+	left_sym := g.table.sym(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .string {
+		if left_sym.kind == .string {
 			g.write('string_slice(')
 		} else {
 			g.write('array_slice(')
@@ -2884,7 +2943,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.len')
 		}
 		g.write(')')
-	} else if left_typ.kind == .map {
+	} else if left_sym.kind == .map {
 		g.expr(expr.left)
 
 		if expr.is_setter {
@@ -2897,9 +2956,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.write('.\$toJS()')
 		if expr.is_setter {
 			// g.write(', ${g.to_js_typ_val(left_typ.)')
-			match left_typ.info {
+			match left_sym.info {
 				ast.Map {
-					g.write(', ${g.to_js_typ_val(left_typ.info.value_type)}')
+					g.write(', ${g.to_js_typ_val(left_sym.info.value_type)}')
 				}
 				else {
 					verror('unreachable')
@@ -2907,7 +2966,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			}
 		}
 		g.write(')')
-	} else if left_typ.kind == .string {
+	} else if left_sym.kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
@@ -3186,8 +3245,15 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 		if ast.u32_type_idx in lr {
 			return ast.Type(ast.u32_type_idx)
 		}
+		if ast.i32_type_idx in lr {
+			return ast.Type(ast.i32_type_idx)
+		}
 		if ast.int_type_idx in lr {
-			return ast.Type(ast.int_type_idx)
+			$if new_int ? && x64 {
+				return ast.Type(ast.i64_type_idx)
+			} $else {
+				return ast.Type(ast.i32_type_idx)
+			}
 		}
 		if ast.u16_type_idx in lr {
 			return ast.Type(ast.u16_type_idx)
@@ -3703,10 +3769,11 @@ fn replace_op(s string) string {
 }
 
 fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
-	left_typ := g.table.sym(expr.left_type)
+	left_sym := g.table.sym(expr.left_type)
+	left_sym_kind := left_sym.kind
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .array {
+		if left_sym_kind == .array {
 			g.write('array_slice(')
 		} else {
 			g.write('string_slice(')
@@ -3733,7 +3800,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			g.write('.len')
 		}
 		g.write(')')
-	} else if left_typ.kind == .map {
+	} else if left_sym_kind == .map {
 		g.expr(expr.left)
 
 		if expr.is_setter {
@@ -3776,7 +3843,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			}
 			g.write(')')
 		}
-	} else if left_typ.kind == .string {
+	} else if left_sym_kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`

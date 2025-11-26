@@ -195,7 +195,7 @@ fn parse_entity(contents string) !(DTDEntity, string) {
 fn parse_element(contents string) !(DTDElement, string) {
 	// We find the nearest '>' to the start of the ELEMENT
 	element_end := contents.index('>') or { return error('Element declaration not closed.') }
-	element_contents := contents[element_len..element_end].trim_left(' \t\n')
+	element_contents := contents[element_len..element_end].trim_left(' \t\r\n')
 
 	mut name_span := TextSpan{}
 
@@ -559,7 +559,7 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 
 	tag_contents := contents.str().trim_space()
 
-	parts := tag_contents.split_any(' \t\n')
+	parts := tag_contents.split_any(' \t\r\n')
 	name := parts[0].trim_right('/')
 
 	// Check if it is a self-closing tag

@@ -384,7 +384,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${left_len}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${left_len}; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!builtin__string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
@@ -473,7 +473,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!builtin__string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
@@ -538,18 +538,20 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${key_values}.len; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_values}.len; ++i) {')
 	fn_builder.writeln('\t\tif (!builtin__DenseArray_has_index(&${key_values}, i)) continue;')
 	fn_builder.writeln('\t\tvoidptr k = builtin__DenseArray_key(&${key_values}, i);')
 	fn_builder.writeln('\t\tif (!builtin__map_exists(${b}, k)) return false;')
+	sym := g.table.sym(value.typ)
 	kind := g.table.type_kind(value.typ)
+	initializer := if !(sym.info is ast.Struct && sym.info.is_empty_struct()) { '0' } else { '' }
 	if kind == .function {
 		info := value.sym.info as ast.FnType
 		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
 			'v')
 		fn_builder.writeln('\t\t${sig} = *(voidptr*)builtin__map_get(${a}, k, &(voidptr[]){ 0 });')
 	} else {
-		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ 0 });')
+		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ ${initializer} });')
 	}
 	match kind {
 		.string {
@@ -561,7 +563,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 		}
 		.struct {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ ${initializer} }), v)) {')
 		}
 		.interface {
 			eq_fn := g.gen_interface_equality_fn(value.typ)
@@ -628,7 +630,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
-	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
+	fn_builder.writeln('\t\tu32 idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
 	if info is ast.Interface {
 		for typ in info.types {
 			sym := g.table.sym(typ.set_nr_muls(0))

@@ -653,6 +653,7 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add('has_ct_var', t.bool_node(node.has_ct_var))
 	mut symbol_obj := create_object()
 	for key, val in node.has_gen {
 		symbol_obj.add_terse(key.str(), t.bool_node(val))
@@ -1614,6 +1615,7 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add_terse('is_ctor_new', t.bool_node(node.is_ctor_new))
 	obj.add_terse('is_return_used', t.bool_node(node.is_return_used))
 	obj.add_terse('is_static_method', t.bool_node(node.is_static_method))
+	obj.add_terse('is_variadic', t.bool_node(node.is_variadic))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add_terse('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))

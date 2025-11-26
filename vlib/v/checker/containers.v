@@ -328,8 +328,14 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
 	sym := c.table.final_sym(c.unwrap_generic(c.expr(mut expr)))
-	if sym.kind !in [.int, .int_literal] {
-		c.error('array ${para} needs to be an int', pos)
+	$if new_int ? && x64 {
+		if sym.kind !in [.int, .int_literal, .i64, .i32, .i16, .i8] {
+			c.error('array ${para} needs to be an int/i64/i32/i16/i8', pos)
+		}
+	} $else {
+		if sym.kind !in [.int, .int_literal, .i32, .i16, .i8] {
+			c.error('array ${para} needs to be an int/i32/i16/i8', pos)
+		}
 	}
 	if expr is ast.IntegerLiteral {
 		lit := expr as ast.IntegerLiteral
@@ -381,6 +387,9 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 				match mut size_expr.expr {
 					ast.IntegerLiteral {
 						fixed_size = size_expr.expr.val.int()
+					}
+					ast.FloatLiteral {
+						fixed_size = int(size_expr.expr.val.f64())
 					}
 					ast.EnumVal {
 						if val := c.table.find_enum_field_val(size_expr.expr.enum_name,

@@ -24,7 +24,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 	len := node.exprs.len
 	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
-	if array_type.unaliased_sym.kind == .array_fixed {
+	if node.is_fixed || array_type.unaliased_sym.kind == .array_fixed {
 		g.fixed_array_init(node, array_type, var_name, is_amp)
 		if is_amp {
 			g.write(')')
@@ -96,7 +96,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	array_info := array_type.unaliased_sym.array_fixed_info()
 	if node.has_index {
 		past := g.past_tmp_var_from_var_name(var_name)
-		defer {
+		defer(fn) {
 			g.past_tmp_var_done(past)
 		}
 
@@ -117,11 +117,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln2(';', '{')
 		g.indent++
 		g.writeln('${elem_typ_str}* pelem = (${elem_typ_str}*)${past.tmp_var};')
-		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ_str});')
-		g.writeln('for (int index=0; index<_len; index++, pelem++) {')
+		g.writeln('${ast.int_type_name} _len = (${ast.int_type_name})sizeof(${past.tmp_var}) / sizeof(${elem_typ_str});')
+		g.writeln('for (${ast.int_type_name} index=0; index<_len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
-		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
+		g.writeln('${ast.int_type_name} it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
 		g.expr_with_init(node)
 		g.writeln(';')
@@ -134,8 +134,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	is_none := node.is_option && !node.has_init && !node.has_val
 
-	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res)
-		|| (node.is_option && !is_none) {
+	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res
+		&& !g.inside_sumtype_cast) || (node.is_option && !is_none) {
 		ret_typ_str := g.styp(node.typ)
 		g.write('(${ret_typ_str})')
 	}
@@ -150,7 +150,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	if node.has_val {
 		tmp_inside_array := g.inside_array_item
 		g.inside_array_item = true
-		defer {
+		defer(fn) {
 			g.inside_array_item = tmp_inside_array
 		}
 		nelen := node.exprs.len
@@ -295,7 +295,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	if node.has_index {
 		// []int{len: 6, init: index * index} when variable it is used in init expression
 		past := g.past_tmp_var_from_var_name(var_name)
-		defer {
+		defer(fn) {
 			g.past_tmp_var_done(past)
 		}
 
@@ -354,10 +354,10 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln2(';', '{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var}.data;')
-		g.writeln('for (int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
+		g.writeln('for (${ast.int_type_name} index=0; index<${past.tmp_var}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
-		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
+		g.writeln('${ast.int_type_name} it = index;') // FIXME: Remove this line when it is fully forbidden
 		if elem_type.unaliased_sym.kind != .array_fixed {
 			g.write('*pelem = ')
 			g.expr_with_init(node)
@@ -423,7 +423,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.expr(node.len_expr)
 		g.writeln(') * sizeof(${elem_styp}));')
 		ind := g.new_tmp_var()
-		g.write('for (int ${ind}=0; ${ind}<')
+		g.write('for (${ast.int_type_name} ${ind}=0; ${ind}<')
 		g.expr(node.len_expr)
 		g.writeln('; ${ind}++) {')
 		g.write('\t${tmp}[${ind}] = ')
@@ -565,7 +565,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	i := g.new_tmp_var()
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 	var_name := g.get_array_expr_param_name(mut expr)
 	is_auto_heap := expr is ast.CastExpr && (expr.expr is ast.Ident && expr.expr.is_auto_heap())
@@ -958,7 +958,7 @@ fn (mut g Gen) gen_fixed_array_reverse_in_place(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	left_var := g.expr_string(node.left)
 	g.empty_line = true
-	g.writeln('for (int ${i} = 0; ${i} < ${info.size}/2; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${info.size}/2; ++${i}) {')
 	g.writeln('\tmemcpy(&${tmp_var}, &${left_var}[${i}], sizeof(${elem_styp}));')
 	g.writeln('\tmemcpy(&${left_var}[${i}], &${left_var}[${info.size}-${i}-1], sizeof(${elem_styp}));')
 	g.writeln('\tmemcpy(&${left_var}[${info.size}-${i}-1], &${tmp_var}, sizeof(${elem_styp}));')
@@ -973,11 +973,12 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 
 	sym := g.table.final_sym(node.return_type)
-	if sym.kind != .array {
+	if sym.kind !in [.array_fixed, .array] {
 		verror('filter() requires an array')
 	}
 	info := sym.info as ast.Array
 	styp := g.styp(node.return_type)
+	left_sym := g.table.final_sym(node.left_type)
 	elem_type_str := g.styp(info.elem_type)
 	noscan := g.check_noscan(info.elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
@@ -995,9 +996,9 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 
 	i := g.new_tmp_var()
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, true,
+	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, left_sym.kind == .array,
 		false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -1133,10 +1134,6 @@ fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 
 fn (mut g Gen) gen_array_contains_methods() {
 	mut done := []ast.Type{}
-	mut got_int_str := false
-	$if new_int ? {
-		println(g.array_contains_types)
-	}
 	for t in g.array_contains_types {
 		left_final_sym := g.table.final_sym(t)
 		if left_final_sym.idx in done || g.table.sym(t).has_method('contains') {
@@ -1146,20 +1143,6 @@ fn (mut g Gen) gen_array_contains_methods() {
 		mut fn_builder := strings.new_builder(512)
 		mut left_type_str := g.styp(t)
 		fn_name := '${left_type_str}_contains'
-
-		$if new_int ? {
-			if fn_name == 'Array_i64_contains' {
-				if got_int_str {
-					continue
-				} else {
-					got_int_str = true
-				}
-			}
-
-			// if t == ast.int_type_idx || t == ast.i64_type_idx {
-			// continue
-			//}
-		}
 
 		if left_final_sym.kind == .array {
 			elem_type := (left_final_sym.info as ast.Array).elem_type
@@ -1172,7 +1155,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			}
 			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
-			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+			fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (builtin__fast_string_eq(((string*)a.data)[i], v)) {')
 			} else if elem_kind in [.array, .array_fixed] && elem_is_not_ptr {
@@ -1214,7 +1197,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			}
 			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
-			fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
+			fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (builtin__fast_string_eq(a[i], v)) {')
 			} else if elem_kind in [.array, .array_fixed] && elem_is_not_ptr {
@@ -1318,10 +1301,10 @@ fn (mut g Gen) gen_array_index_methods() {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
-			fn_builder.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			g.type_definitions.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
+			fn_builder.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
-			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
+			fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i, ++pelem) {')
 			if elem_sym.kind == .string {
 				fn_builder.writeln('\t\tif (builtin__fast_string_eq(*pelem, v)) {')
 			} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
@@ -1362,9 +1345,9 @@ fn (mut g Gen) gen_array_index_methods() {
 			if elem_sym.kind == .function {
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
-			fn_builder.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
-			fn_builder.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
+			g.type_definitions.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
+			fn_builder.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${info.size}; ++i) {')
 			if elem_sym.kind == .string {
 				fn_builder.writeln('\t\tif (builtin__fast_string_eq(a[i], v)) {')
 			} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
@@ -1449,8 +1432,8 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	eltyp := g.table.sym(thread_ret_type).cname
-	fn_name := g.register_thread_array_wait_call(eltyp)
+	elsymcname := g.table.sym(thread_ret_type).cname
+	fn_name := g.register_thread_array_wait_call(elsymcname)
 	g.write('${fn_name}(')
 	if node.left_type.is_ptr() {
 		g.write('*')
@@ -1464,8 +1447,8 @@ fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_fixed_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	eltyp := g.table.sym(thread_ret_type).cname
-	fn_name := g.register_thread_fixed_array_wait_call(node, eltyp)
+	elsymcname := g.table.sym(thread_ret_type).cname
+	fn_name := g.register_thread_fixed_array_wait_call(node, elsymcname)
 	g.write('${fn_name}(')
 	g.expr(node.left)
 	g.write(')')
@@ -1499,7 +1482,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		}
 	}
 	i := g.new_tmp_var()
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
@@ -1577,7 +1560,8 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		(sym.info as ast.ArrayFixed).elem_type
 	}
 	elem_type_str := g.styp(elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'int', '0')
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ast.int_type_name,
+		'0')
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
@@ -1590,7 +1574,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		}
 	}
 	i := g.new_tmp_var()
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
@@ -1684,7 +1668,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		}
 	}
 
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
 		false)
@@ -1774,7 +1758,7 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 			g.write('->val')
 		}
 		g.writeln(';')
-		g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
+		g.writeln('${ast.int_type_name} ${tmp}_len = ${tmp}_orig.len;')
 	} else if left_sym.kind == .array_fixed {
 		left_info := left_sym.info as ast.ArrayFixed
 		left_styp := g.styp(left_type)
@@ -1792,7 +1776,7 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 			}
 		}
 		g.writeln(', sizeof(${left_styp}));')
-		g.writeln('int ${tmp}_len = ${left_info.size};')
+		g.writeln('${ast.int_type_name} ${tmp}_len = ${left_info.size};')
 	}
 	return has_infix_left_var_name
 }
@@ -1857,7 +1841,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 	elem_sym := g.table.sym(elem_type)
 	if !g.inside_array_fixed_struct {
 		g.write('{')
-		defer {
+		defer(fn) {
 			g.write('}')
 		}
 	}
@@ -1898,7 +1882,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 	elem_sym := g.table.sym(elem_type)
 	if !g.inside_array_fixed_struct {
 		g.write('{')
-		defer {
+		defer(fn) {
 			g.write('}')
 		}
 	}

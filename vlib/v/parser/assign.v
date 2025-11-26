@@ -7,11 +7,11 @@ import v.ast
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
-	p.defer_vars = []ast.Ident{}
+	p.defer_vars = []
 
 	exprs := p.expr_list(true)
 
-	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+	if !(p.inside_defer && p.defer_mode == .function && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
 	}
 	p.defer_vars = defer_vars
@@ -49,6 +49,11 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 		}
 		ast.CallExpr {
 			p.check_undefined_variables(names, val.left)!
+			// arr.sort(a < b) , arr.sorted(a < b), it := [2,3,4].map(it*2), it := [2,3,4].filter(it % 2 == 0), etc.
+			if val.args.len == 1
+				&& val.name in ['sort', 'sorted', 'map', 'filter', 'any', 'all', 'count'] {
+				return
+			}
 			for arg in val.args {
 				p.check_undefined_variables(names, arg.expr)!
 			}

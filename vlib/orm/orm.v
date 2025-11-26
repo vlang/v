@@ -37,8 +37,7 @@ pub const type_idx = {
 pub const string_max_len = 2048
 pub const null_primitive = Primitive(Null{})
 
-pub type Primitive = InfixType
-	| Null
+pub type Primitive = Null
 	| bool
 	| f32
 	| f64
@@ -52,6 +51,7 @@ pub type Primitive = InfixType
 	| u32
 	| u64
 	| u8
+	| InfixType
 	| []Primitive
 
 pub struct Null {}
@@ -471,12 +471,26 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut primary_typ := 0
 	mut table_comment := ''
 	mut field_comments := map[string]string{}
+	mut index_fields := []string{}
 
 	for attr in table.attrs {
 		match attr.name {
 			'comment' {
 				if attr.arg != '' && attr.kind == .string {
 					table_comment = attr.arg.replace('"', '\\"')
+				}
+			}
+			'index' {
+				if attr.arg != '' && attr.kind == .string {
+					index_strings := attr.arg.split(',')
+					for i in index_strings {
+						x := i.trim_space()
+						if x.len > 0 && x !in index_fields {
+							index_fields << x
+						}
+					}
+				} else {
+					return error("index attribute needs to be in the format [index: 'f1, f2, f3']")
 				}
 			}
 			else {}
@@ -568,6 +582,11 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 						field_comments[field_name] = field_comment
 					}
 				}
+				'index' {
+					if field_name !in index_fields {
+						index_fields << field_name
+					}
+				}
 				else {}
 			}
 		}
@@ -622,6 +641,11 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 
 	fs << unique_fields
 	str += fs.join(', ')
+	if index_fields.len > 0 && sql_dialect == .mysql {
+		str += ', INDEX `idx_${table.name}` (`'
+		str += index_fields.join('`,`')
+		str += '`)'
+	}
 	str += ')'
 	if sql_dialect == .mysql && table_comment != '' {
 		str += " COMMENT = '${table_comment}'"
@@ -635,6 +659,11 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		for f, c in field_comments {
 			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
 		}
+	}
+	if (sql_dialect == .pg || sql_dialect == .sqlite) && index_fields.len > 0 {
+		str += '\nCREATE INDEX "idx_${table.name}" ON "${table.name}" ("'
+		str += index_fields.join('","')
+		str += '");'
 	}
 	$if trace_orm_create ? {
 		eprintln('> orm_create table: ${table.name} | query: ${str}')

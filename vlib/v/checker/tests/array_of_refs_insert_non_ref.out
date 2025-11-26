@@ -1,0 +1,13 @@
+vlib/v/checker/tests/array_of_refs_insert_non_ref.vv:16:12: error: cannot append `Dummy` to `[]&Dummy`
+   14 |         v: 1
+   15 |     }
+   16 |     c.vals << d
+      |               ^
+   17 |     c.vals.insert(0, d)
+   18 | }
+vlib/v/checker/tests/array_of_refs_insert_non_ref.vv:17:19: error: cannot insert `Dummy` to `[]&Dummy`
+   15 |     }
+   16 |     c.vals << d
+   17 |     c.vals.insert(0, d)
+      |                      ^
+   18 | }

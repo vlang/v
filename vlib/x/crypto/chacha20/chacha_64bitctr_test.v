@@ -97,13 +97,13 @@ fn test_chacha20_encrypt_with_64bit_counter() ! {
 
 		mut c := new_cipher(key, nonce)!
 		mut dst := []u8{len: plaintext.len}
-		c.encrypt(mut dst, plaintext)
+		c.encrypt(mut dst, plaintext)!
 		assert dst == ciphertext
 
 		// decrypts the ciphertext back
 		// we need rekey the ciphers, because internal states has changed from previous invocations.
 		c.rekey(key, nonce)!
-		c.encrypt(mut dst, ciphertext)
+		c.encrypt(mut dst, ciphertext)!
 		assert dst == plaintext
 	}
 }

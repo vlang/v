@@ -33,7 +33,7 @@ fn (mut d Digest) finish() {
 	d.State.e0 ^= load_bytes(d.buf[..d.length], d.length)
 
 	// Permutation step was done in squeezing-phase
-	// ascon_pnr(mut d.State, ascon_prnd_12)
+	// ascon_pnr(mut d.State, .ascon_prnd_12)
 
 	// zeroing Digest buffer
 	d.length = 0
@@ -70,7 +70,7 @@ fn (mut d Digest) absorb(msg_ []u8) int {
 				// If this d.buf length has reached block_size bytes, absorb it.
 				if d.length == block_size {
 					d.State.e0 ^= binary.little_endian_u64(d.buf)
-					ascon_pnr(mut d.State, ascon_prnd_12)
+					ascon_pnr(mut d.State, .ascon_prnd_12)
 					// reset the internal buffer
 					d.length = 0
 					d.buf.reset()
@@ -87,7 +87,7 @@ fn (mut d Digest) absorb(msg_ []u8) int {
 		for msg.len >= block_size {
 			d.State.e0 ^= binary.little_endian_u64(msg[0..block_size])
 			msg = msg[block_size..]
-			ascon_pnr(mut d.State, ascon_prnd_12)
+			ascon_pnr(mut d.State, .ascon_prnd_12)
 		}
 		// If there are partial block, just stored into buffer.
 		if msg.len > 0 {
@@ -113,14 +113,14 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 	}
 	// The squeezing phase begins after msg is absorbed with an
 	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
-	ascon_pnr(mut d.State, ascon_prnd_12)
+	ascon_pnr(mut d.State, .ascon_prnd_12)
 
 	mut pos := 0
 	mut clen := dst.len
 	// process for full block size
 	for clen >= block_size {
 		binary.little_endian_put_u64(mut dst[pos..pos + 8], d.State.e0)
-		ascon_pnr(mut d.State, ascon_prnd_12)
+		ascon_pnr(mut d.State, .ascon_prnd_12)
 		pos += block_size
 		clen -= block_size
 	}
@@ -135,32 +135,44 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 }
 
 @[direct_array_access; inline]
-fn ascon_generic_hash(mut s State, msg_ []u8, size int) []u8 {
+fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	// Assumed state was correctly initialized
 	// Absorbing the message
-	mut msg := msg_.clone()
-	for msg.len >= block_size {
-		s.e0 ^= binary.little_endian_u64(msg[0..block_size])
-		unsafe {
-			msg = msg[block_size..]
+	mut pos := 0
+	// Check if msg has non-null length, if yes, absorb it.
+	// Otherwise, just pad it
+	if _likely_(msg.len > 0) {
+		mut msg_len := msg.len
+		for msg_len >= block_size {
+			block := unsafe { msg[pos..pos + block_size] }
+			s.e0 ^= binary.little_endian_u64(block)
+			pos += block_size
+			msg_len -= block_size
+			ascon_pnr(mut s, .ascon_prnd_12)
 		}
-		ascon_pnr(mut s, ascon_prnd_12)
+		// Absorb the last partial message block
+		last_block := unsafe { msg[pos..] }
+		s.e0 ^= u64(0x01) << (8 * last_block.len) // pad(last_block.len)
+		if last_block.len > 0 {
+			s.e0 ^= load_bytes(last_block, last_block.len)
+		}
+	} else {
+		// Otherwise, just pad it
+		s.e0 ^= u64(0x01)
 	}
-	// Absorb the last partial message block
-	s.e0 ^= load_bytes(msg, msg.len)
-	s.e0 ^= pad(msg.len)
+	// reset pos
+	pos = 0
 
 	// Squeezing phase
 	//
 	// The squeezing phase begins after msg is absorbed with an
 	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
-	ascon_pnr(mut s, ascon_prnd_12)
+	ascon_pnr(mut s, .ascon_prnd_12)
 	mut out := []u8{len: size}
-	mut pos := 0
 	mut clen := out.len
 	for clen >= block_size {
 		binary.little_endian_put_u64(mut out[pos..pos + 8], s.e0)
-		ascon_pnr(mut s, ascon_prnd_12)
+		ascon_pnr(mut s, .ascon_prnd_12)
 		pos += block_size
 		clen -= block_size
 	}

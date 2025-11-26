@@ -130,6 +130,7 @@ pub mut:
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
 	is_coverage        bool     // turn on code coverage stats
 	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
+	is_check_overflow  bool     // -check-overflow, will panic on integer overflow
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -187,6 +188,7 @@ pub mut:
 	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
 	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	no_closures      bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
 	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
 	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
@@ -201,8 +203,9 @@ pub mut:
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
 
-	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
-	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
+	run_only  []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
+	exclude   []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
+	file_list []string // A list of .v files or directories. All .v files found recursively in directories will be included in the compilation.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string          // just ['vfmt']
@@ -252,14 +255,13 @@ pub mut:
 	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
 	// game prototyping flags:
 	div_by_zero_is_zero bool // -div-by-zero-is-zero makes so `x / 0 == 0`, i.e. eliminates the division by zero panics/segfaults
-	// temp
-	// use_64_int bool
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem   Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls      bool
-	json_errors bool // -json-errors, for VLS and other tools
+	subsystem     Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls        bool
+	json_errors   bool // -json-errors, for VLS and other tools
+	new_transform bool // temporary for the new transformer
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -331,12 +333,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if coverage_dir_from_env != '' {
 		res.coverage_dir = coverage_dir_from_env
 	}
-	/* $if macos || linux {
-		res.use_cache = true
-		res.skip_unused = true
-	} */
-	mut no_skip_unused := false
 
+	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -424,9 +422,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
-			//'-i64' {
-			// res.use_64_int = true
-			//}
 			'-Wimpure-v' {
 				res.warn_impure_v = true
 			}
@@ -742,6 +737,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.exclude << patterns
 				i++
 			}
+			'-file-list' {
+				res.file_list = cmdline.option(args[i..], arg, '').split_any(',')
+				i++
+			}
 			'-test-runner' {
 				res.test_runner = cmdline.option(args[i..], arg, res.test_runner)
 				i++
@@ -765,8 +764,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-experimental' {
 				res.experimental = true
 			}
+			'-new-transformer' {
+				res.new_transform = true
+			}
 			'-usecache' {
 				res.use_cache = true
+				res.parallel_cc = false
+				res.no_parallel = true
 			}
 			'-use-os-system-to-run' {
 				res.use_os_system_to_run = true
@@ -812,6 +816,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-n' {
 				res.skip_notes = true
 				res.notes_are_errors = false
+			}
+			'-no-closures' {
+				res.no_closures = true
 			}
 			'-no-rsp' {
 				res.no_rsp = true
@@ -975,6 +982,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-check-return' {
 				res.is_check_return = true
+			}
+			'-check-overflow' {
+				res.is_check_overflow = true
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
@@ -1154,6 +1164,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
+		res.no_parallel = true
+		res.parallel_cc = false
 		res.path = command_args[0] or { eprintln_exit('v build-module: no module specified') }
 	}
 	if res.ccompiler == 'musl-gcc' {

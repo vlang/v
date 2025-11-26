@@ -92,6 +92,7 @@ fn main() {
 		println('Note: you can use `VAUTOFIX=1 v check-md file.md`, or `v check-md -fix file.md`,')
 		println('      to fix the V formatting errors in the markdown code blocks, when possible.')
 		println('      Run the command 2 times, to verify that all formatting errors were fixed.')
+		println('Note: `v help check-md` shows a list of ```v fence keywords (for partial code).')
 	}
 	if res.errors > 0 {
 		exit(1)

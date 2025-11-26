@@ -35,9 +35,11 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
+	cur_fn                 string
 	level                  int
 	is_builtin_mod         bool
 	is_direct_array_access bool
+	inside_in_op           bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -52,7 +54,7 @@ mut:
 	uses_ct_variants           bool // $for .variants
 	uses_ct_attribute          bool // $for .attributes
 	uses_external_type         bool
-	uses_err                   bool // err var
+	uses_err_block             bool // or { err var }
 	uses_asserts               bool // assert
 	uses_map_update            bool // has {...expr}
 	uses_debugger              bool // has debugger;
@@ -77,6 +79,7 @@ mut:
 	uses_str_index             bool // string[k]
 	uses_str_index_check       bool // string[k] or { }
 	uses_str_range             bool // string[a..b]
+	uses_str_literal           bool
 	uses_fixed_arr_int         bool // fixed_arr[k]
 	uses_append                bool // var << item
 	uses_map_setter            bool
@@ -85,6 +88,7 @@ mut:
 	uses_arr_getter            bool
 	uses_arr_clone             bool
 	uses_arr_sorted            bool
+	uses_type_name             bool // sum_type.type_name()
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -203,7 +207,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 
 pub fn (mut w Walker) mark_markused_consts() {
 	for ckey, mut constfield in w.all_consts {
-		if constfield.is_markused {
+		if constfield.is_markused || constfield.is_exported {
 			$if trace_skip_unused_markused_consts ? {
 				println('>>>> walking markused const: ${ckey}')
 			}
@@ -426,13 +430,17 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if sym.info is ast.Thread {
 				w.mark_by_type(w.table.find_or_register_array(sym.info.return_type))
 			}
-			w.mark_by_type(node.typ)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
-			if !w.uses_array && !w.is_direct_array_access {
-				w.uses_array = true
+			if w.table.final_sym(node.typ).kind == .array {
+				if !w.inside_in_op {
+					w.uses_array = true
+					w.mark_by_type(node.typ)
+				}
+			} else {
+				w.mark_by_type(node.typ)
 			}
 			if node.elem_type.has_flag(.option) {
 				w.used_option++
@@ -546,7 +554,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
-			if node.or_expr.kind == .block {
+			if node.or_expr.kind != .absent {
 				w.uses_index_check = true
 			}
 			w.mark_by_type(node.typ)
@@ -579,7 +587,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if sym.info is ast.ArrayFixed {
 					w.mark_by_type(sym.info.elem_type)
 				}
-				if !w.uses_arr_range_index {
+				if !node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index {
 					w.uses_arr_range_index = true
 				}
 				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
@@ -588,7 +596,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
-				if !w.uses_arr_range_index_gated {
+				if node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index_gated {
 					w.uses_arr_range_index_gated = node.is_gated
 				}
 			} else if sym.kind == .string {
@@ -627,7 +635,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
+			tmp_inside_in_op := w.inside_in_op
+			w.inside_in_op = node.op in [.key_in, .not_in]
 			w.expr(node.right)
+			w.inside_in_op = tmp_inside_in_op
 			w.or_block(node.or_block)
 			if node.left_type != 0 {
 				sym := w.table.sym(node.left_type)
@@ -651,8 +662,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				node.right_type
 			}
 			if right_type != 0 {
-				w.mark_by_type(right_type)
 				right_sym := w.table.sym(right_type)
+				if !(w.is_direct_array_access && right_sym.kind == .array) {
+					w.mark_by_type(right_type)
+				}
 				if node.op in [.not_in, .key_in] {
 					if right_sym.kind == .map {
 						w.features.used_maps++
@@ -665,8 +678,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_by_sym(right_sym)
 				}
 			}
-			if !w.uses_eq && node.op in [.eq, .ne] {
-				w.uses_eq = true
+			if node.op in [.eq, .ne, .gt, .ge, .lt, .le] {
+				if !w.table.used_features.safe_int && node.left_type != 0 && node.right_type != 0 {
+					left := w.table.unaliased_type(node.left_type)
+					right := w.table.unaliased_type(node.right_type)
+					w.table.used_features.safe_int = (
+						(left.idx() in [ast.u32_type_idx, ast.u64_type_idx] && right.is_signed())
+						|| (right.idx() in [ast.u32_type_idx, ast.u64_type_idx] && left.is_signed()))
+				}
+				w.uses_eq = w.uses_eq || node.op in [.eq, .ne]
 			}
 		}
 		ast.IfGuardExpr {
@@ -708,15 +728,19 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
-						if !w.uses_err && node.name == 'err' {
-							w.uses_err = true
+						if (node.kind == .variable && node.obj is ast.Var && node.obj.is_used
+							&& node.obj.typ != 0 && w.table.type_kind(node.obj.typ) == .function)
+							|| (node.kind == .unresolved && node.name.contains('.')) {
+							w.fn_by_name(node.name)
 						}
-						w.fn_by_name(node.name)
 					}
 					if !w.uses_atomic && node.info is ast.IdentVar {
 						w.uses_atomic = node.info.typ.has_flag(.atomic_f)
 					}
 				}
+			}
+			if node.obj is ast.Var && node.obj.is_unwrapped {
+				w.used_option++
 			}
 			w.or_block(node.or_expr)
 		}
@@ -820,7 +844,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.sym(node.typ)
 			w.mark_by_sym(sym)
-			if !w.uses_memdup && sym.kind == .sum_type {
+			if !w.uses_memdup
+				&& (sym.kind == .sum_type || (sym.info is ast.Struct && sym.info.is_heap)) {
 				w.uses_memdup = true
 			}
 			if node.has_update_expr {
@@ -846,7 +871,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.FloatLiteral {}
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
-		ast.StringLiteral {}
+		ast.StringLiteral {
+			if !w.uses_str_literal && !node.is_raw {
+				w.mark_by_sym_name('string')
+				w.uses_str_literal = true
+			}
+		}
 		ast.CTempVar {
 			w.expr(node.orig)
 		}
@@ -892,7 +922,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.level == 0 {
 		last_is_builtin_mod := w.is_builtin_mod
 		w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv', 'builtin.closure']
-		defer {
+		defer(fn) {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
 	}
@@ -914,7 +944,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	defer { w.is_direct_array_access = last_is_direct_array_access }
 	if w.trace_enabled {
 		w.level++
-		defer { w.level-- }
+		defer(fn) { w.level-- }
 		receiver_name := if node.is_method && node.receiver.typ != 0 {
 			w.table.type_to_str(node.receiver.typ) + '.'
 		} else {
@@ -934,6 +964,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
+	w.cur_fn = fkey
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 }
@@ -944,6 +975,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	for arg in node.args {
 		w.expr(arg.expr)
+	}
+	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
+		w.used_option++
 	}
 	for concrete_type in node.concrete_types {
 		w.mark_by_type(concrete_type)
@@ -958,6 +992,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	if node.is_method && node.left_type != 0 {
 		w.mark_by_type(node.left_type)
 		left_sym := w.table.sym(node.left_type)
+		w.uses_type_name = w.uses_type_name
+			|| (left_sym.kind in [.sum_type, .interface] && node.name == 'type_name')
 		if left_sym.info is ast.Aggregate {
 			for receiver_type in left_sym.info.types {
 				receiver_sym := w.table.sym(receiver_type)
@@ -985,6 +1021,19 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			if embed_types.len != 0 {
 				fn_embed := '${int(embed_types.last())}.${node.name}'
 				w.fn_by_name(fn_embed)
+			}
+		} else if node.left_type.has_flag(.generic) {
+			if w.cur_fn != '' {
+				if concrete_types_list := w.table.fn_generic_types[w.cur_fn] {
+					for concrete_types in concrete_types_list {
+						for concrete_type in concrete_types {
+							method_name := '${int(concrete_type)}.${node.name}'
+							if !w.used_fns[method_name] {
+								w.fn_by_name(method_name)
+							}
+						}
+					}
+				}
 			}
 		} else {
 			match left_sym.info {
@@ -1056,6 +1105,27 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		} else if node.return_type.has_flag(.result) {
 			w.used_result++
 		}
+		if ((node.is_method && stmt.params.len > 1) || !node.is_method)
+			&& stmt.generic_names.len > 0 {
+			// mark concrete []T param as used
+			max_param_len := if node.is_method { stmt.params.len - 1 } else { stmt.params.len }
+			param_i := if node.is_method { 1 } else { 0 }
+			for concrete_type_list in w.table.fn_generic_types[fn_name] {
+				for k, concrete_type in concrete_type_list {
+					if k >= max_param_len {
+						break
+					}
+					param_typ := stmt.params[k + param_i].typ
+					if param_typ.has_flag(.generic) {
+						if w.table.type_kind(param_typ) == .array {
+							w.mark_by_type(w.table.find_or_register_array(concrete_type))
+						} else if param_typ.has_flag(.option) {
+							w.used_option++
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -1087,6 +1157,7 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 @[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
+		w.uses_err_block = true
 		w.stmts(node.stmts)
 	} else if node.kind == .propagate_option {
 		w.used_option++
@@ -1336,7 +1407,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_sym_name('FunctionData')
 	}
 	if w.uses_ct_params {
-		w.mark_by_sym_name('MethodParam')
+		w.mark_by_sym_name('FunctionParam')
 	}
 	if w.uses_ct_values {
 		w.mark_by_sym_name('EnumData')
@@ -1357,7 +1428,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_memdup {
+	if w.uses_memdup || w.used_none > 0 {
 		w.fn_by_name('memdup')
 	}
 	if w.uses_debugger {
@@ -1451,6 +1522,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
+	}
+	if w.uses_err_block {
+		w.fn_by_name('error')
 	}
 	if w.uses_guard || w.uses_index_check {
 		w.fn_by_name('error')
@@ -1612,7 +1686,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
-
+	if w.uses_type_name {
+		charptr_idx_str := ast.charptr_type_idx.str()
+		w.fn_by_name(charptr_idx_str + '.vstring_literal')
+	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 

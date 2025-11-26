@@ -42,14 +42,14 @@ pub const max_i16 = i16(32767)
 pub const min_i32 = i32(-2147483648)
 pub const max_i32 = i32(2147483647)
 
-pub const min_int = int(-2147483648)
-pub const max_int = int(2147483647)
-
 // -9223372036854775808 is wrong, because C compilers parse literal values
 // without sign first, and 9223372036854775808 overflows i64, hence the
 // consecutive subtraction by 1
 pub const min_i64 = i64(-9223372036854775807 - 1)
 pub const max_i64 = i64(9223372036854775807)
+
+pub const min_int = $if new_int ? && x64 { int(min_i64) } $else { int(min_i32) }
+pub const max_int = $if new_int ? && x64 { int(max_i64) } $else { int(max_i32) }
 
 pub const min_u8 = u8(0)
 pub const max_u8 = u8(255)
@@ -72,6 +72,17 @@ fn (nn int) str_l(max int) string {
 		mut d := 0
 		if n == 0 {
 			return '0'
+		}
+
+		// overflow protect
+		$if new_int ? && x64 {
+			if n == min_i64 {
+				return '-9223372036854775808'
+			}
+		} $else {
+			if n == min_i32 {
+				return '-2147483648'
+			}
 		}
 
 		mut is_neg := false
@@ -329,6 +340,22 @@ pub fn (nn u8) hex() string {
 	return u64_to_hex(nn, 2)
 }
 
+// hex returns a hexadecimal representation of `c` (as an 8 bit unsigned number).
+// The output is zero padded for values below 16.
+// Example: assert char(`A`).hex() == '41'
+// Example: assert char(`Z`).hex() == '5a'
+// Example: assert char(` `).hex() == '20'
+pub fn (c char) hex() string {
+	return u8(c).hex()
+}
+
+// hex returns a hexadecimal representation of the rune `r` (as a 32 bit unsigned number).
+// Example: assert `A`.hex() == '41'
+// Example: assert `💣`.hex() == '1f4a3'
+pub fn (r rune) hex() string {
+	return u32(r).hex()
+}
+
 // hex returns the value of the `i8` as a hexadecimal `string`.
 // Note that the output is zero padded for values below 16.
 // Example: assert i8(8).hex() == '08'
@@ -577,7 +604,7 @@ pub fn (b u8) repeat(count int) string {
 	mut bytes := unsafe { malloc_noscan(count + 1) }
 	unsafe {
 		vmemset(bytes, b, count)
-		bytes[count] = `0`
+		bytes[count] = 0
 	}
 	return unsafe { bytes.vstring_with_len(count) }
 }

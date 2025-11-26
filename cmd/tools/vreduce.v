@@ -19,7 +19,7 @@ fn main() {
 	fp.description('This tool will reduce the code file and try to make the smallest one it can that reproduces the error when the command is executed')
 	fp.version(version)
 
-	error_msg := fp.string('error_msg', `e`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
+	error_msg := fp.string('error_msg', `m`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
 	mut command := fp.string('command', `c`, default_command, 'the command used to try to reproduce the error, default: \'${default_command}\', will replace PATH with the path of the folder where it is run')
 	copy_project := fp.bool('cp', `p`, false, 'if used v reduce will copy the whole folder of the project')
 	timeout := fp.int('to', `t`, 0, 'sets a timeout for the command, default=0 : no timeout')

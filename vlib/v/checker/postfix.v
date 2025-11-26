@@ -33,12 +33,26 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 				return node.typ
 			}
 		}
-		typ_str := c.table.type_to_str(typ)
-		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
-			node.pos)
+		if node.op != .question {
+			typ_str := c.table.type_to_str(typ)
+			c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
+				node.pos)
+		} else {
+			node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
+			if node.op == .question {
+				node.typ = node.typ.clear_flag(.option)
+			}
+			return node.typ
+		}
 	} else {
 		if node.op != .question {
 			node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
+		} else {
+			node.typ = c.unwrap_generic(c.type_resolver.get_type(node.expr))
+			if node.op == .question {
+				node.typ = node.typ.clear_flag(.option)
+			}
+			return node.typ
 		}
 	}
 	node.typ = typ

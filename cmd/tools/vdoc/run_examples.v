@@ -62,10 +62,13 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		vsource_path := os.join_path(efolder, 'example_${rand.ulid()}.v')
 		// eprintln('>>> example dn.file_path: ${dn.file_path} | mod_name: ${mod_name} | vsource_path: ${vsource_path} | code: `${code}`')
 		import_clause := if mod_name in ['builtin', ''] { '' } else { 'import ${mod_name}\n' }
-		source := if import_clause != '' && !code.contains('import ') {
+		mut source := if import_clause != '' && !code.contains('import ') {
 			'${import_clause}fn main() {\n\t${code}\n}\n'
 		} else {
 			code
+		}
+		if !source.ends_with('\n') {
+			source += '\n'
 		}
 		os.write_file(vsource_path, source) or { continue }
 		vd.vprintln('>>> vd.example_oks: ${vd.example_oks:5} | vd.example_failures: ${vd.example_failures:5} | examples.len: ${examples.len} | source.len: ${source.len:5} | dn.name: ${dn.name}')

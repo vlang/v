@@ -87,12 +87,12 @@ ${dec_fn_dec} {
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL) {
-			const int error_pos = (int)cJSON_GetErrorPos();
-			int maxcontext_chars = 30;
+			const ${ast.int_type_name} error_pos = (${ast.int_type_name})cJSON_GetErrorPos();
+			${ast.int_type_name} maxcontext_chars = 30;
 			byte *buf = builtin__vcalloc_noscan(maxcontext_chars + 10);
 			if (error_pos > 0) {
-				int backlines = 1;
-				int backchars = error_pos < maxcontext_chars-7 ? (int)error_pos : maxcontext_chars-7 ;
+				${ast.int_type_name} backlines = 1;
+				${ast.int_type_name} backchars = error_pos < maxcontext_chars-7 ? (${ast.int_type_name})error_pos : maxcontext_chars-7 ;
 				char *prevline_ptr = (char*)error_ptr;
 				while(backchars--){
 					char prevc = *(prevline_ptr - 1);
@@ -107,7 +107,7 @@ ${dec_fn_dec} {
 						break; // stop at `{` too
 					}
 				}
-				int maxchars = builtin__vstrlen_char(prevline_ptr);
+				${ast.int_type_name} maxchars = builtin__vstrlen_char(prevline_ptr);
 				builtin__vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
 			string msg;
@@ -612,8 +612,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\t}')
 				}
 
-				if var_t in ['i64', 'int', 'i8', 'u64', 'u32', 'u16', 'byte', 'u8', 'rune', 'f64',
-					'f32'] {
+				if var_t in ['i8', 'i16', 'i32', 'i64', ast.int_type_name, 'int', 'u8', 'u16',
+					'u32', 'u64', 'byte', 'rune', 'f64', 'f32'] {
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
@@ -703,7 +703,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		if is_skip {
 			continue
 		}
-		field_type := g.styp(field.typ)
+		field_type := vint2int(g.styp(field.typ))
 		field_sym := g.table.sym(field.typ)
 		op := if utyp.is_ptr() { '->' } else { '.' }
 		embed_member := if embed_prefix.len > 0 { '.${embed_prefix}' } else { '' }
@@ -1031,6 +1031,7 @@ fn js_enc_name(typ string) string {
 	if typ == 'i32' {
 		suffix = typ.replace('i32', 'int')
 	}
+	suffix = vint2int(suffix)
 	name := 'json__encode_${suffix}'
 	return util.no_dots(name)
 }
@@ -1040,13 +1041,14 @@ fn js_dec_name(typ string) string {
 	if typ == 'i32' {
 		suffix = typ.replace('i32', 'int')
 	}
+	suffix = vint2int(suffix)
 	name := 'json__decode_${suffix}'
 	return util.no_dots(name)
 }
 
 fn is_js_prim(typ string) bool {
-	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'u8',
-		'u16', 'u32', 'u64', 'byte']
+	return typ in [ast.int_type_name, 'int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16',
+		'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size int, ret_styp string) string {
@@ -1062,7 +1064,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	is_array_fixed_val := g.table.final_sym(value_type).kind == .array_fixed
 	if utyp.has_flag(.option) {
 		if fixed_array_size > -1 {
-			fixed_array_idx += 'int fixed_array_idx = 0;'
+			fixed_array_idx += '${ast.int_type_name} fixed_array_idx = 0;'
 			array_element_assign += '((${styp}*)res.data)[fixed_array_idx] = val;'
 			fixed_array_idx_increment += 'fixed_array_idx++; res.state = 0;'
 		} else {
@@ -1072,11 +1074,11 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 		}
 	} else {
 		if is_array_fixed_val {
-			fixed_array_idx += 'int fixed_array_idx = 0;'
+			fixed_array_idx += '${ast.int_type_name} fixed_array_idx = 0;'
 			array_element_assign += 'memcpy(res[fixed_array_idx], val, sizeof(${styp}));'
 			fixed_array_idx_increment += 'fixed_array_idx++;'
 		} else if fixed_array_size > -1 {
-			fixed_array_idx += 'int fixed_array_idx = 0;'
+			fixed_array_idx += '${ast.int_type_name} fixed_array_idx = 0;'
 			array_element_assign += 'res[fixed_array_idx] = val;'
 			fixed_array_idx_increment += 'fixed_array_idx++;'
 		} else {
@@ -1150,7 +1152,7 @@ fn (mut g Gen) encode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 
 	return '
 	o = cJSON_CreateArray();
-	for (int i = 0; i < ${size_str}; i++){
+	for (${ast.int_type_name} i = 0; i < ${size_str}; i++){
 		cJSON_AddItemToArray(o, ${fn_name}( (${data_str})[i] ));
 	}
 '
@@ -1163,6 +1165,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	key_type_symbol := g.table.sym(key_type)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_type_symbol)
 	fn_name_v := js_dec_name(styp_v)
+	ref, ptr := if utyp.is_ptr() { '', '*' } else { '&', '' }
 	mut s := ''
 	if is_js_prim(styp_v) {
 		s = '${styp_v} val = ${fn_name_v} (js_get(root, jsval->string));'
@@ -1170,7 +1173,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 		s = '
 		${result_name}_${ret_styp} val2 = ${fn_name_v} (js_get(root, jsval->string));
 		if(val2.is_error) {
-			builtin__map_free(&res);
+			builtin__map_free(${ref}res);
 			return *(${result_name}_${ustyp}*)&val2;
 		}
 		${styp_v} val = *(${styp_v}*)val2.data;
@@ -1196,13 +1199,13 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 			return (${result_name}_${ustyp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
-		res = builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
+		${ptr}res = builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 		cJSON *jsval = NULL;
 		cJSON_ArrayForEach(jsval, root)
 		{
 			${s}
 			string key = builtin__tos2((byteptr)jsval->string);
-			builtin__map_set(&res, &key, &val);
+			builtin__map_set(${ref}res, &key, &val);
 		}
 '
 	}
@@ -1225,19 +1228,20 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 		return '
 		o = cJSON_CreateObject();
 		Array_${styp} ${keys_tmp} = builtin__map_keys((map*)val.data);
-		for (int i = 0; i < ${keys_tmp}.len; ++i) {
+		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
 			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get((map*)val.data, &key, &(${styp_v}[]) { ${zero} } ) ) );
 		}
 		builtin__array_free(&${keys_tmp});
 '
 	} else {
+		ref := if utyp.is_ptr() { '' } else { '&' }
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = builtin__map_keys(&val);
-		for (int i = 0; i < ${keys_tmp}.len; ++i) {
+		Array_${styp} ${keys_tmp} = builtin__map_keys(${ref}val);
+		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
-			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(&val, &key, &(${styp_v}[]) { ${zero} } ) ) );
+			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(${ref}val, &key, &(${styp_v}[]) { ${zero} } ) ) );
 		}
 		builtin__array_free(&${keys_tmp});
 '

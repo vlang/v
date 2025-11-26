@@ -263,7 +263,7 @@ pub fn loginname() !string {
 
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
-// Example: https://github.com/vlang/v/blob/master/examples/readdir.v
+// Example:
 // ```
 //   entries := os.ls(os.home_dir()) or { [] }
 //   for entry in entries {
@@ -282,10 +282,9 @@ pub fn ls(path string) ![]string {
 	mut res := []string{cap: 50}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
-		return error('ls() couldnt open dir "${path}"')
+		return error_posix(msg: 'ls() couldnt open dir "${path}"')
 	}
 	mut ent := &C.dirent(unsafe { nil })
-	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
 		if isnil(ent) {
@@ -361,51 +360,6 @@ pub fn execute(cmd string) Result {
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
 	return execute(cmd)
-}
-
-@[manualfree]
-pub fn (mut c Command) start() ! {
-	pcmd := c.path + ' 2>&1'
-	defer {
-		unsafe { pcmd.free() }
-	}
-	c.f = vpopen(pcmd)
-	if isnil(c.f) {
-		return error('exec("${c.path}") failed')
-	}
-}
-
-@[manualfree]
-pub fn (mut c Command) read_line() string {
-	buf := [4096]u8{}
-	mut res := strings.new_builder(1024)
-	defer {
-		unsafe { res.free() }
-	}
-	unsafe {
-		bufbp := &buf[0]
-		for C.fgets(&char(bufbp), 4096, c.f) != 0 {
-			len := vstrlen(bufbp)
-			for i in 0 .. len {
-				if bufbp[i] == `\n` {
-					res.write_ptr(bufbp, i)
-					final := res.str()
-					return final
-				}
-			}
-			res.write_ptr(bufbp, len)
-		}
-	}
-	c.eof = true
-	final := res.str()
-	return final
-}
-
-pub fn (mut c Command) close() ! {
-	c.exit_code = vpclose(c.f)
-	if c.exit_code == 127 {
-		return error_with_code('error', 127)
-	}
 }
 
 // symlink creates a symbolic link named target, which points to origin.

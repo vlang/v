@@ -24,37 +24,38 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-13, macos-14, windows-latest]
+        os:
+          [
+            ubuntu-22.04,
+            ubuntu-22.04-arm,
+            macos-15-intel,
+            macos-15,
+            windows-latest,
+          ]
         include:
           - os: ubuntu-22.04
             cc: gcc
-          - os: ubuntu-22.04
             target: linux
             artifact: v_linux.zip
           - os: ubuntu-22.04-arm
             cc: gcc
-          - os: ubuntu-22.04-arm
             target: linux_arm64
             artifact: v_linux_arm64.zip
-          - os: macos-13
+          - os: macos-15-intel
             cc: clang
-          - os: macos-13
             target: macos_x86_64
             artifact: v_macos_x86_64.zip
-          - os: macos-14
+          - os: macos-15
             cc: clang
-          - os: macos-14
             target: macos_arm64
             artifact: v_macos_arm64.zip
-          - os: macos-14
-            cflags: -cflags "-target arm64-apple-darwin"
           - os: windows-latest
             cc: msvc
             target: windows
             artifact: v_windows.zip
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Compile release binaries
         if: runner.os != 'Windows'
         run: |
@@ -101,7 +102,7 @@ jobs:
           mv ${{ matrix.artifact }} v/
           cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
@@ -111,7 +112,7 @@ jobs:
     needs: release-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
       - name: Create release
         uses: ncipollo/release-action@v1
         with:

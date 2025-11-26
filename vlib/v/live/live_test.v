@@ -1,7 +1,7 @@
-import os
-import time
-
 // vtest retry: 4
+import os
+import log
+import time
 
 /*
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
@@ -62,12 +62,8 @@ fn testsuite_begin() {
 	os.mkdir_all(vtmp_folder) or {}
 	os.mkdir_all(os.join_path(vtmp_folder, 'mymodule'))!
 	os.write_file(os.join_path(vtmp_folder, 'v.mod'), '')!
-	os.write_file(os.join_path(vtmp_folder, 'main.v'), '
-import mymodule
-fn main() {
-	mymodule.mymain()
-}
-')!
+	os.cp(os.join_path(os.dir(@FILE), 'live_test_template_main.vv'), os.join_path(vtmp_folder,
+		'main.v'))!
 	if os.user_os() !in ['linux', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
 		eprintln('is reliable only on Linux/macOS for now.')
@@ -93,15 +89,18 @@ fn watchdog() {
 	sw := time.new_stopwatch()
 	for {
 		elapsed_time_in_seconds := sw.elapsed().seconds()
-		dump(elapsed_time_in_seconds)
+		$if print_watchdog_time ? {
+			log.warn('> dt: ${elapsed_time_in_seconds:6.3f}s')
+		}
 		if elapsed_time_in_seconds > 5 * 60 {
+			log.warn('> watchdog triggered, elapsed time: ${elapsed_time_in_seconds:6.3f}s')
 			exit(3)
 		}
 		time.sleep(1 * time.second)
 	}
 }
 
-@[debuglivetest]
+@[if debuglivetest ?]
 fn vprintln(s string) {
 	eprintln(s)
 }
@@ -115,8 +114,9 @@ fn testsuite_end() {
 		panic('could not read ${output_file}, error: ${err}')
 	}
 	mut histogram := map[string]int{}
-	for line in output_lines {
-		histogram[line] = histogram[line] + 1
+	for oline in output_lines {
+		line := oline.all_after('|| ')
+		histogram[line]++
 	}
 	for k, v in histogram {
 		eprintln('> found ${v:5d} times: ${k}')
@@ -126,50 +126,49 @@ fn testsuite_end() {
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	// assert histogram['END'] > 0
-	os.rmdir_all(vtmp_folder) or {}
+	$if !keep_results ? {
+		os.rmdir_all(vtmp_folder) or {}
+		log.info('Removed ${vtmp_folder} . Use `-d keep_results` to override.')
+	}
 }
 
 fn change_source(new string) {
-	time.sleep(100 * time.millisecond)
-	vprintln('> change ORIGINAL to: ${new}')
+	log.info('> change ORIGINAL to: ${new} ...')
 	atomic_write_source(live_program_source.replace('ORIGINAL', new))
 	wait_for_file(new)
 }
 
 fn wait_for_file(new string) {
-	time.sleep(100 * time.millisecond)
 	expected_file := os.join_path(vtmp_folder, new + '.txt')
-	eprintln('waiting for ${expected_file} ...')
-	// os.system('tree $vtmp_folder')
 	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '1' }.int()
+	log.info('waiting max_wait_cycles: ${max_wait_cycles} for file: ${expected_file} ...')
+	mut sw := time.new_stopwatch()
 	for i := 0; i <= max_wait_cycles; i++ {
-		if i % 25 == 0 {
-			vprintln('   checking ${i:-10d} for ${expected_file} ...')
+		if i > 0 && i % 500 == 0 {
+			log.info('   checking ${i:3d}/${max_wait_cycles:-3d}, waited for: ${sw.elapsed().seconds():6.3f}s, for ${expected_file} ...')
 		}
 		if os.exists(expected_file) {
 			assert true
-			vprintln('> done.')
-			time.sleep(100 * time.millisecond)
+			log.info('> done waiting for ${expected_file}, iteration: ${i:3d}, waited for: ${sw.elapsed().seconds():6.3f}s')
+			time.sleep(80 * time.millisecond)
 			break
 		}
-		time.sleep(5 * time.millisecond)
+		time.sleep(1 * time.millisecond)
 	}
 }
 
 fn setup_cycles_environment() {
-	mut max_live_cycles := 1000
-	mut max_wait_cycles := 400
-	if os.user_os() == 'macos' {
-		//		max_live_cycles *= 5
-		//		max_wait_cycles *= 5
-	}
+	mut max_live_cycles := 1000 // read by live_test_template.vv
+	mut max_wait_cycles := 5000
 	os.setenv('LIVE_CYCLES', '${max_live_cycles}', true)
 	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
 fn run_in_background(cmd string) {
+	log.warn('running in background: ${cmd} ...')
 	spawn fn (cmd string) {
 		res := os.execute(cmd)
+		log.warn('Background cmd ended. res.exit_code: ${res.exit_code} | res.output.len: ${res.output.len}')
 		if res.exit_code != 0 {
 			eprintln('----------------------- background command failed: --------------------------')
 			eprintln('----- exit_code: ${res.exit_code}, cmd: ${cmd}, output:')
@@ -178,17 +177,16 @@ fn run_in_background(cmd string) {
 		}
 		assert res.exit_code == 0
 	}(cmd)
-	time.sleep(1000 * time.millisecond)
-	eprintln('... run_in_background, cmd: ${cmd}')
+	log.warn('the live program should be running in the background now')
 }
 
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
-	eprintln('Compiling...')
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
-	eprintln('> compile_cmd: ${compile_cmd}')
-	time.sleep(1000 * time.millisecond) // improve chances of working on windows
+	log.info('Compiling with compile_cmd:')
+	eprintln('> ${compile_cmd}')
 	compile_res := os.system(compile_cmd)
+	log.info('> DONE')
 	assert compile_res == 0
 	run_in_background('${os.quoted_path(genexe_file)}')
 	wait_for_file('ORIGINAL')
@@ -196,16 +194,20 @@ fn test_live_program_can_be_compiled() {
 
 fn test_live_program_can_be_changed_1() {
 	change_source('CHANGED')
+	time.sleep(250 * time.millisecond)
 	assert true
 }
 
 fn test_live_program_can_be_changed_2() {
 	change_source('ANOTHER')
+	time.sleep(250 * time.millisecond)
 	assert true
 }
 
 fn test_live_program_can_be_changed_3() {
+	time.sleep(500 * time.millisecond)
 	change_source('STOP')
+	time.sleep(250 * time.millisecond)
 	change_source('STOP')
 	change_source('STOP')
 	assert true

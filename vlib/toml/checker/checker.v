@@ -22,6 +22,10 @@ fn toml_parse_time(s string) !time.Time {
 		// complete the partial time, with an arbitrary date:
 		return time.parse_rfc3339('0001-01-01T' + s)
 	}
+	if s.len == 10 {
+		// complete the partial date, with zero time and zero timezone
+		return time.parse_rfc3339(s + 'T00:00:00Z')
+	}
 	return time.parse_rfc3339(s)!
 }
 

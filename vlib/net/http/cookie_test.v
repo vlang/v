@@ -224,6 +224,13 @@ const write_set_cookie_tests = [
 		}
 		raw:    ''
 	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:  'complex-value'
+			value: 'a b,c;d'
+		}
+		raw:    'complex-value="a b,c;d"'
+	},
 ]
 const add_cookies_tests = [
 	AddCookieTestCase{

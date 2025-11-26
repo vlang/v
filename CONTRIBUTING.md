@@ -322,14 +322,17 @@ a copy of the compiler rather than replacing it with `v self`.
 | `time_checking`                   | Prints the time spent checking files and other related information                                                  |
 | `time_parsing`                    | Prints the time spent parsing files and other related information                                                   |
 |                                   |                                                                                                                     |
-| `trace_scanner`                   | Prints details about the recognized tokens. *Very* verbose. Use `./vnew -no-builtin -check-syntax file.v` later.    |
+| `trace_scanner`                   | Prints details about the recognized tokens. *Very* verbose. Use with `./vnew -no-builtin -check-syntax file.v` .    |
+| `trace_parse`                     | Prints details about the parsed files (number of tokens, lines, bytes). Use it for parsing order issues.            |
 | `trace_parser`                    | Prints details about parsed statements and expressions. Very verbose. Use it for panics in the parser.              |
+| `trace_check`                     | Prints the .v file which is checked. Use it to diagnose checker order issues.                                       |
 | `trace_checker`                   | Prints details about the statements being checked. Very verbose. Use it for panics in the checker.                  |
 | `trace_transformer`               | Prints details about the statements being transformed. Very verbose. Use it for panics in the transformer stage.    |
 |                                   |                                                                                                                     |
 | `trace_gen`                       | Prints all the strings written to the generated C file. Very verbose.                                               |
 | `trace_gen_wanted_value`          | Prints a backtrace, when a specific *wanted* value, is part of what is printed in the generated C file.             |
 |                                   |        Use: `v -g -o vgen -d trace_gen_wanted -d trace_gen_wanted_value="message = _SLIT0" cmd/v && ./vgen bug.v`   |
+| `trace_cgen`                      | Prints the .v file for which C code generation runs. Use it to diagnose cgen order issues.                          |
 | `trace_cgen_stmt`                 | Prints details about the statements that are being processed by cgen.                                               |
 |                                   |        Use it for panics in cgen, to see the closest input V source line, that caused the panic.                    |
 |                                   |        Note: you need `v -no-parallel -d trace_cgen_stmt -o w cmd/v` to make sense of the output of that,           |

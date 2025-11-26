@@ -107,10 +107,6 @@ pub mut:
 @[unsafe]
 fn (mut f FlagParser) free() {
 	unsafe {
-		for a in f.args {
-			a.free()
-		}
-		f.args.free()
 		//
 		for flag in f.flags {
 			flag.free()
@@ -130,6 +126,7 @@ pub const underline = '-----------------------------------------------'
 pub const max_args_number = 4048
 
 // new_flag_parser - create a new flag parser for the given args.
+@[manualfree]
 pub fn new_flag_parser(args []string) &FlagParser {
 	original_args := args.clone()
 	idx_dashdash := args.index('--')

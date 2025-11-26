@@ -5,13 +5,13 @@ import encoding.hex
 // Test Vector for the HChaCha20 Block Function
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.2.1
 
-fn test_xchacha20_function() ! {
+fn test_hchacha20_function() ! {
 	key := '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
 	key_bytes := hex.decode(key)!
 	nonce := '000000090000004a0000000031415927'
 	nonce_bytes := hex.decode(nonce)!
 
-	subkey := xchacha20(key_bytes, nonce_bytes)!
+	subkey := hchacha20(key_bytes, nonce_bytes)!
 
 	assert subkey[0..4].hex() == '82413b42'
 	assert subkey[4..8].hex() == '27b27bfe'
@@ -38,7 +38,7 @@ fn test_xchacha20_encrypt_vector_test_a321() ! {
 	nonce_bytes := hex.decode(nonce)!
 	ciphertext_bytes := hex.decode(ciphertext)!
 
-	encrypted_message := encrypt(key_bytes, nonce_bytes, plaintext_bytes) or { return }
+	encrypted_message := encrypt(key_bytes, nonce_bytes, plaintext_bytes)!
 
 	assert encrypted_message == ciphertext_bytes
 }
@@ -63,7 +63,7 @@ fn test_xchach20_encrypt_vector_test_a322() ! {
 	c.set_counter(counter)
 
 	mut encrypted_message := []u8{len: plaintext_bytes.len}
-	c.encrypt(mut encrypted_message, plaintext_bytes)
+	c.encrypt(mut encrypted_message, plaintext_bytes)!
 
 	assert encrypted_message == ciphertext_bytes
 }

@@ -82,6 +82,7 @@ pub fn new_uuid_v7_session() UUIDSession {
 }
 
 // next get a new uuid_v7 from current session.
+@[ignore_overflow]
 pub fn (mut u UUIDSession) next() string {
 	timestamp := u64(time.now().unix_nano())
 	// make place for holding 4 bits `version`

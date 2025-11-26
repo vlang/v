@@ -77,7 +77,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	former_expected_type := c.expected_type
 	if node_is_expr {
 		c.expected_expr_type = c.expected_type
-		defer {
+		defer(fn) {
 			c.expected_expr_type = ast.void_type
 		}
 	}
@@ -107,9 +107,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if node.is_comptime {
 				// `idx_str` is composed of two parts:
 				// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
-				// The second part indicates the branch's location in the source file.
+				// The second part is the branch's id.
 				// This format must match what is in `cgen`.
-				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.cond.pos()}|'
+				if branch.id == 0 {
+					// this is a new branch, alloc a new id for it
+					c.cur_ct_id++
+					branch.id = c.cur_ct_id
+				}
+				mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+				if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != '' {
+					idx_str += '|field_type=${c.comptime.comptime_for_field_type}|'
+				}
 				c.comptime.inside_comptime_if = true
 				mut sb := strings.new_builder(256)
 				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
@@ -132,7 +140,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				if old_val := c.table.comptime_is_true[idx_str] {
 					if old_val.val != comptime_if_result {
-						c.error('checker erro1r : branch eval wrong', branch.cond.pos())
+						c.error('checker error : branch eval wrong', branch.cond.pos())
 					}
 				}
 
@@ -151,6 +159,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}
+				if !c.pref.translated && !c.file.is_translated && !c.inside_unsafe {
+					mut check_expr := branch.cond
+					t_expr := c.checker_transformer.expr(mut check_expr)
+					if t_expr is ast.BoolLiteral {
+						if t_expr.val {
+							c.note('condition is always true', branch.cond.pos())
+						} else {
+							c.note('condition is always false', branch.cond.pos())
+						}
+					}
+				}
 			}
 		} else {
 			// else branch
@@ -165,7 +184,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					comptime_remove_curr_branch_stmts = true
 				}
 				// hack: as a `else` has no `cond`, so we use `branch.pos` here
-				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+				if branch.id == 0 {
+					// this is a new branch, alloc a new id for it
+					c.cur_ct_id++
+					branch.id = c.cur_ct_id
+				}
+				mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+				if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != '' {
+					idx_str += '|field_type=${c.comptime.comptime_for_field_type}|'
+				}
 				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
 					val:   comptime_if_result
 					c_str: ''
@@ -191,6 +218,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 				}
 			} else {
+				if branch.cond.vars.len != 1 {
+					c.error('if guard expects a single variable, but got ${branch.cond.vars.len}',
+						branch.pos)
+					continue
+				}
 				for _, var in branch.cond.vars {
 					if var.name == '_' {
 						continue
@@ -293,7 +325,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.is_expr = true
 							node.typ = c.unwrap_generic(c.expected_type)
 						}
-						continue
+						unsafe {
+							goto end_if
+						}
 					}
 					if c.expected_expr_type != ast.void_type {
 						c.expected_type = c.expected_expr_type
@@ -312,7 +346,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						// (e.g. argument expression, variable declaration / assignment)
 						c.error('the final expression in `if` or `match`, must have a value of a non-void type',
 							stmt.pos)
-						continue
+						unsafe {
+							goto end_if
+						}
 					}
 					if !c.check_types(stmt.typ, node.typ) {
 						if node.typ == ast.void_type {
@@ -324,37 +360,51 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								node.typ = stmt.typ
 							}
 							c.expected_expr_type = node.typ
-							continue
+							unsafe {
+								goto end_if
+							}
 						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if node.typ == ast.int_literal_type {
 								if stmt.typ.is_int() || stmt.typ.is_float() {
 									node.typ = stmt.typ
-									continue
+									unsafe {
+										goto end_if
+									}
 								}
 							} else { // node.typ == float_literal
 								if stmt.typ.is_float() {
 									node.typ = stmt.typ
-									continue
+									unsafe {
+										goto end_if
+									}
 								}
 							}
 						}
 						if stmt.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if stmt.typ == ast.int_literal_type {
 								if node.typ.is_int() || node.typ.is_float() {
-									continue
+									unsafe {
+										goto end_if
+									}
 								}
 							} else { // expr_type == float_literal
 								if node.typ.is_float() {
-									continue
+									unsafe {
+										goto end_if
+									}
 								}
 							}
 						}
 						if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
 							node.typ = former_expected_type
-							continue
+							unsafe {
+								goto end_if
+							}
 						}
 						if is_noreturn_callexpr(stmt.expr) {
-							continue
+							unsafe {
+								goto end_if
+							}
 						}
 						if (node.typ.has_option_or_result())
 							&& c.table.sym(stmt.typ).kind == .struct
@@ -367,7 +417,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								pos:       node.pos
 							}
 							stmt.typ = ast.error_type
-							continue
+							unsafe {
+								goto end_if
+							}
 						}
 						if (node.typ == ast.none_type && stmt.typ != ast.none_type)
 							|| (stmt.typ == ast.none_type && node.typ != ast.none_type) {
@@ -376,11 +428,19 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							} else {
 								node.typ.set_flag(.option)
 							}
-							continue
+							unsafe {
+								goto end_if
+							}
 						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
+						if !node.typ.has_option_or_result() && !node.typ.has_flag(.shared_f)
+							&& stmt.typ != ast.voidptr_type
+							&& stmt.typ.nr_muls() != node.typ.nr_muls() {
+							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+								node.pos)
+						}
 						if node.is_expr == false && c.type_resolver.is_generic_param_var(stmt.expr) {
 							// generic variable no yet type bounded
 							node.is_expr = true
@@ -419,7 +479,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				nbranches_without_return++
 			}
 		}
-
+		end_if:
 		if comptime_remove_curr_branch_stmts && !c.pref.output_cross_c {
 			// remove the branch statements since they may contain OS-specific code.
 			branch.stmts = []
@@ -463,13 +523,35 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				|| (node.left is ast.SelectorExpr && node.left.is_mut) {
 				c.fail_if_immutable(mut node.left)
 			}
-			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
-				node.left_type = c.type_resolver.get_type(node.left)
-				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-					scope, true, true)
+			if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != ''
+				&& node.left is ast.Ident {
+				if mut node.left is ast.Ident {
+					if mut node.left.obj is ast.Var {
+						if node.left.obj.ct_type_var == .field_var {
+							scope.register(ast.Var{
+								name:              node.left.name
+								typ:               node.left_type
+								pos:               node.left.pos
+								is_used:           true
+								is_mut:            node.left.is_mut
+								is_inherited:      node.left.obj.is_inherited
+								is_unwrapped:      true
+								orig_type:         node.left_type
+								ct_type_var:       .field_var
+								ct_type_unwrapped: true
+							})
+						}
+					}
+				}
 			} else {
-				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-					scope, false, true)
+				if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
+					node.left_type = c.type_resolver.get_type(node.left)
+					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+						scope, true, true)
+				} else {
+					c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+						scope, false, true)
+				}
 			}
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && node.left.ct_expr {
@@ -539,9 +621,15 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 									node.left.pos)
 							}
 						}
-						if left_final_sym.kind in [.interface, .sum_type] {
+						is_option_unwrap := node.left_type.has_flag(.option)
+							&& !right_type.has_flag(.option)
+						skip_smartcast := c.comptime.inside_comptime_for
+							&& c.comptime.comptime_for_field_var != '' && node.left is ast.Ident
+							&& (node.left as ast.Ident).name == c.comptime.comptime_for_field_var
+						if !skip_smartcast
+							&& (left_final_sym.kind in [.interface, .sum_type] || is_option_unwrap) {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
-								scope, is_comptime, false)
+								scope, is_comptime, is_option_unwrap)
 						}
 					}
 				}

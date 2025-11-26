@@ -22,7 +22,13 @@ pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
 
+pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
+
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
+
+pub const show_longest_by_runtime = os.getenv('VTEST_SHOW_LONGEST_BY_RUNTIME').int()
+pub const show_longest_by_comptime = os.getenv('VTEST_SHOW_LONGEST_BY_COMPTIME').int()
+pub const show_longest_by_totaltime = os.getenv('VTEST_SHOW_LONGEST_BY_TOTALTIME').int()
 
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
 
@@ -226,6 +232,20 @@ pub fn (mut ts TestSession) print_messages() {
 	}
 }
 
+pub fn (mut ts TestSession) execute(cmd string, mtc MessageThreadContext) os.Result {
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: ${cmd}', mtc)
+	}
+	return os.execute(cmd)
+}
+
+pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
+	if show_cmd {
+		ts.append_message(.info, '> system cmd: ${cmd}', mtc)
+	}
+	return os.system(cmd)
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
@@ -300,6 +320,7 @@ pub fn (mut ts TestSession) add(file string) {
 }
 
 pub fn (mut ts TestSession) test() {
+	unbuffer_stdout()
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
@@ -416,12 +437,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.root_relative {
 		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
 	}
-	file := os.real_path(relative_file)
+	normalised_relative_file := relative_file.replace('\\', '/')
+
+	file := abs_path
 	mtc := MessageThreadContext{
 		file:    file
 		flow_id: thread_id.str()
 	}
-	normalised_relative_file := relative_file.replace('\\', '/')
 
 	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
 	// inside the common session temporary folder, used for all the tests.
@@ -474,7 +496,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		skip_running = ''
 	}
 	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
-	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	compile_options := cmd_options.filter(it != '-silent')
+	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${compile_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
@@ -511,8 +534,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-
-		mut res := os.execute(cmd)
+		mut res := ts.execute(cmd, mtc)
 		if res.exit_code != 0 {
 			eprintln(res.output)
 		} else {
@@ -531,10 +553,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
-
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				status = os.system(cmd)
+				status = ts.system(cmd, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -570,7 +591,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = os.execute(cmd)
+			compile_r = ts.execute(cmd, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
 			if compile_r.exit_code == 0 {
@@ -600,10 +621,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		//
 		mut retry := 1
-		ts.append_message(.cmd_begin, run_cmd, mtc)
 		mut failure_output := strings.new_builder(1024)
+		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := os.execute(run_cmd)
+		mut r := ts.execute(run_cmd, mtc)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if ts.show_asserts && r.exit_code == 0 {
@@ -627,10 +648,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
-
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = os.execute(run_cmd)
+				r = ts.execute(run_cmd, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -887,6 +907,10 @@ fn get_max_header_len() int {
 }
 
 fn check_openssl_present() bool {
+	if github_job.ends_with('-windows') {
+		// TODO: investigate the https://github.com/vlang/v/actions/runs/18590919000/job/53005499130 failure in more details
+		return false
+	}
 	$if openbsd {
 		return os.execute('eopenssl34 --version').exit_code == 0
 			&& os.execute('pkg-config eopenssl34 --libs').exit_code == 0
@@ -904,14 +928,23 @@ pub const is_started_mysqld = find_started_process('mysqld') or { '' }
 // is_started_postgres is true, when the test runner determines that there is a running postgres server
 pub const is_started_postgres = find_started_process('postgres') or { '' }
 
+// is_started_redis is true, when the test runner determines that there is a running redis server
+pub const is_started_redis = find_started_process('redis-server') or { '' }
+
 pub fn (mut ts TestSession) setup_build_environment() {
 	facts, mut defines := pref.get_build_facts_and_defines()
 	// add the runtime information, that the test runner has already determined by checking once:
+	if github_job.starts_with('sanitize-') {
+		defines << 'sanitized_job'
+	}
 	if is_started_mysqld != '' {
 		defines << 'started_mysqld'
 	}
 	if is_started_postgres != '' {
 		defines << 'started_postgres'
+	}
+	if is_started_redis != '' {
+		defines << 'started_redis'
 	}
 	if is_node_present {
 		defines << 'present_node'

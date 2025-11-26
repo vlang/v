@@ -24,9 +24,7 @@ pub type Any = []Any
 	| Null
 
 // Null is a simple representation of the `null` value in JSON.
-pub struct Null {
-	is_null bool = true
-}
+pub struct Null {}
 
 // null is an instance of the Null type, to ease comparisons with it.
 pub const null = Null{}
@@ -41,7 +39,6 @@ pub fn (n Null) to_json() string {
 
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
 enum ValueKind {
-	unknown
 	array
 	object
 	string

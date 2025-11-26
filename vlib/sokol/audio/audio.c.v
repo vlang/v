@@ -83,7 +83,7 @@ pub mut:
 // | buffer_frames | 2048     | buffer size in frames, larger is more latency, smaller means higher CPU |
 // | packet_frames | 128      | push model only, number of frames that will be pushed in each packet |
 // | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
-@[typedef]
+@[params; typedef]
 pub struct C.saudio_desc {
 pub:
 	sample_rate        int
@@ -205,7 +205,7 @@ pub fn fclamp(x f32, flo f32, fhi f32) f32 {
 // min - helper function to return the smaller of two numbers
 //
 // NOTE: math.min returns `f32` values, this returns `int` values
-// Example: smaller := audio.min(1, 5) // smaller == 1
+// Example: println(audio.min(1, 5))
 pub fn min(x int, y int) int {
 	if x < y {
 		return x
@@ -216,7 +216,7 @@ pub fn min(x int, y int) int {
 // max - helper function to return the larger of two numbers
 //
 // NOTE: math.max returns `f32` values, this returns `int` values
-// Example: larger := audio.max(1, 5) // larger == 5
+// Example: println(audio.max(1, 5))
 pub fn max(x int, y int) int {
 	if x < y {
 		return y

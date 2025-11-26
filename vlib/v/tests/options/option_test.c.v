@@ -245,11 +245,6 @@ fn opt_ptr(a &int) ?&int {
 }
 
 fn test_opt_ptr() {
-	if true {
-	}
-	//
-	else {
-	}
 	a := 3
 	mut r := opt_ptr(&a) or { unsafe { &int(0) } }
 	assert r == &a

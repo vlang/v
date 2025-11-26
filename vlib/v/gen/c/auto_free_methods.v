@@ -62,7 +62,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 
 	match mut sym.info {
 		ast.Struct {
-			g.gen_free_for_struct(objtyp, sym.info, styp, fn_name)
+			g.gen_free_for_struct(objtyp, sym.info, styp, fn_name, sym.is_builtin())
 		}
 		ast.Array {
 			g.gen_free_for_array(sym.info, styp, fn_name)
@@ -105,7 +105,11 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 	fn_builder.writeln('}')
 }
 
-fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, ofn_name string, sym_is_builtin bool) {
+	mut fn_name := ofn_name
+	if sym_is_builtin {
+		fn_name = 'builtin__${fn_name}'
+	}
 	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
@@ -188,7 +192,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct] {
-		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')
+		fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < it->len; i++) {')
 
 		mut elem_styp := g.styp(info.elem_type).replace('*', '')
 		mut elem_styp_fn_name := if sym.has_method('free') {

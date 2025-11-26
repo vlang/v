@@ -1,9 +1,12 @@
-// vtest build: present_redis?
-import db.redis
+// vtest build: started_redis?
+import os
 import time
+import db.redis
+
+const redis_password = os.getenv('VREDIS_PASSWORD')
 
 fn test_redis() {
-	mut db := redis.connect() or { panic(err) }
+	mut db := redis.connect(password: redis_password)!
 	assert db.ping()! == 'PONG'
 
 	// delete all keys first
@@ -57,7 +60,7 @@ fn test_redis() {
 }
 
 fn test_redis_pipeline() {
-	mut db := redis.connect() or { panic(err) }
+	mut db := redis.connect(password: redis_password)!
 	assert db.ping()! == 'PONG'
 
 	// start pipleline mode

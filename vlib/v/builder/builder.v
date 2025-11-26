@@ -334,10 +334,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			if b.pref.backend == .c {
 				// TODO: JavaScript backend doesn't handle os for now
 				// os import libraries so we exclude anything which could cause a loop
-				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
-				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time
-				if b.pref.is_vsh
-					&& p.mod.name !in ['os', 'dl', 'strings.textscanner', 'term.termios'] {
+				if p.path.ends_with('.vsh') {
 					deps << 'os'
 				}
 			}
@@ -489,7 +486,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 			// the intended command may have been `v .` instead, so just suggest that:
 			old_cmd := util.bold('v ${b.pref.path}')
 			new_cmd := util.bold('v ${os.dir(b.pref.path)}')
-			eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
+			eprintln(util.color('notice', 'If the code of your project is in a folder with multiple .v files, try `${new_cmd}` instead of `${old_cmd}`'))
 		}
 	}
 }
@@ -538,7 +535,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				if b.pref.json_errors {
 					json_errors << util.JsonError{
 						message: err.message
-						path:    err.file_path
+						path:    os.to_slash(err.file_path)
 						line_nr: err.pos.line_nr + 1
 						col:     err.pos.col + 1
 					}
@@ -549,10 +546,11 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			}
 		}
 		if b.pref.json_errors {
-			util.print_json_errors(json_errors)
+			if !b.pref.is_vls || b.pref.linfo.method !in [.definition, .completion, .signature_help] {
+				util.print_json_errors(json_errors)
+			}
 			// eprintln(json2.encode_pretty(json_errors))
 		}
-
 		if !b.pref.skip_warnings {
 			for file in b.parsed_files {
 				for err in file.warnings {

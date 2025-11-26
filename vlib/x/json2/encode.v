@@ -323,7 +323,7 @@ struct EncoderFieldInfo {
 	is_required  bool
 }
 
-fn check_not_empty[T](val T) bool {
+fn check_not_empty[T](val T) ?bool {
 	$if val is string {
 		if val == '' {
 			return false
@@ -332,25 +332,27 @@ fn check_not_empty[T](val T) bool {
 		if val == 0 {
 			return false
 		}
+	} $else $if val is ?string {
+		return val ? != ''
+	} $else $if val is ?int {
+		return val ? != 0
+	} $else $if val is ?f64 || val is ?f32 {
+		return val ? != 0.0
 	}
 	return true
 }
 
-@[unsafe]
-fn (mut encoder Encoder) encode_struct[T](val T) {
-	encoder.output << `{`
-
+// TODO: fix compilation with -autofree, and remove the tag @[manualfree] here:
+@[manualfree; unsafe]
+fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 	static field_infos := &[]EncoderFieldInfo(nil)
-
 	if field_infos == nil {
 		field_infos = &[]EncoderFieldInfo{}
-
 		$for field in T.fields {
 			mut is_skip := false
 			mut key_name := ''
 			mut is_omitempty := false
 			mut is_required := false
-
 			for attr in field.attrs {
 				match attr {
 					'skip' {
@@ -365,13 +367,11 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 					}
 					else {}
 				}
-
 				if attr.starts_with('json:') {
 					if attr == 'json: -' {
 						is_skip = true
 						break
 					}
-
 					key_name = attr[6..]
 				}
 			}
@@ -383,86 +383,116 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 			}
 		}
 	}
+	return *field_infos
+}
 
-	mut i := 0
-	mut is_first := true
-	$for field in T.fields {
-		field_info := field_infos[i]
-		i++
+@[unsafe]
+fn (mut encoder Encoder) encode_struct[T](val T) {
+	encoder.output << `{`
 
-		mut write_field := true
+	is_first := encoder.encode_struct_fields(val, true, [], '')
 
-		if field_info.is_skip {
-			write_field = false
-		} else {
-			value := val.$(field.name)
-
-			if field_info.is_omitempty {
-				$if value is $option {
-					write_field = check_not_empty(value)
-				} $else {
-					write_field = check_not_empty(value)
-				}
-			}
-
-			if !field_info.is_required {
-				$if value is $option {
-					if value == none {
-						write_field = false
-					}
-				}
-			}
-		}
-
-		$if field.indirections != 0 {
-			if val.$(field.name) == unsafe { nil } {
-				write_field = false
-			}
-		}
-
-		if write_field {
-			if is_first {
-				if encoder.prettify {
-					encoder.increment_level()
-				}
-				is_first = false
-			} else {
-				encoder.output << `,`
-			}
-			if encoder.prettify {
-				encoder.add_indent()
-			}
-
-			encoder.encode_string(field_info.key_name)
-
-			encoder.output << `:`
-			if encoder.prettify {
-				encoder.output << ` `
-			}
-
-			$if field is $option {
-				if val.$(field.name) == none {
-					unsafe { encoder.output.push_many(null_string.str, null_string.len) }
-				} else {
-					encoder.encode_value(val.$(field.name))
-				}
-			} $else $if field.indirections == 1 {
-				encoder.encode_value(*val.$(field.name))
-			} $else $if field.indirections == 2 {
-				encoder.encode_value(**val.$(field.name))
-			} $else $if field.indirections == 3 {
-				encoder.encode_value(***val.$(field.name))
-			} $else {
-				encoder.encode_value(val.$(field.name))
-			}
-		}
-	}
 	if encoder.prettify && !is_first {
 		encoder.decrement_level()
 		encoder.add_indent()
 	}
 
 	encoder.output << `}`
+}
+
+@[unsafe]
+fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used_keys []string, prefix string) bool {
+	field_infos := encoder.cached_field_infos[T]()
+	mut i := 0
+	mut is_first := was_first
+	mut used_keys := old_used_keys
+
+	$for field in T.fields {
+		$if !field.is_embed {
+			field_info := field_infos[i]
+
+			mut write_field := true
+
+			if field_info.is_skip {
+				write_field = false
+			} else {
+				value := val.$(field.name)
+
+				if field_info.is_omitempty {
+					$if value is $option {
+						write_field = check_not_empty(value) or { false }
+					} $else {
+						write_field = check_not_empty(value) or { false }
+					}
+				}
+
+				if !field_info.is_required {
+					$if value is $option {
+						if value == none {
+							write_field = false
+						}
+					}
+				}
+			}
+
+			$if field.indirections != 0 {
+				if val.$(field.name) == unsafe { nil } {
+					write_field = false
+				}
+			}
+
+			if write_field {
+				if is_first {
+					if encoder.prettify {
+						encoder.increment_level()
+					}
+					is_first = false
+				} else {
+					encoder.output << `,`
+				}
+				if encoder.prettify {
+					encoder.add_indent()
+				}
+
+				if field_info.key_name in old_used_keys {
+					encoder.encode_string(prefix + field_info.key_name)
+				} else {
+					encoder.encode_string(field_info.key_name)
+					used_keys << field_info.key_name
+				}
+
+				encoder.output << `:`
+				if encoder.prettify {
+					encoder.output << ` `
+				}
+
+				$if field is $option {
+					if val.$(field.name) == none {
+						unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+					} else {
+						encoder.encode_value(val.$(field.name))
+					}
+				} $else $if field.indirections == 1 {
+					encoder.encode_value(*val.$(field.name))
+				} $else $if field.indirections == 2 {
+					encoder.encode_value(**val.$(field.name))
+				} $else $if field.indirections == 3 {
+					encoder.encode_value(***val.$(field.name))
+				} $else {
+					encoder.encode_value(val.$(field.name))
+				}
+			}
+		}
+		i++
+	}
+	$for field in T.fields {
+		$if field.is_embed {
+			new_prefix := prefix + field.name + '.'
+			is_first = encoder.encode_struct_fields(val.$(field.name), is_first, used_keys,
+				new_prefix)
+		}
+	}
+	return is_first
 }
 
 fn (mut encoder Encoder) encode_custom[T](val T) {

@@ -6,6 +6,7 @@ pub const func_char_table = get_func_char_table()
 
 pub const non_whitespace_table = get_non_white_space_table()
 
+@[direct_array_access]
 fn get_non_white_space_table() [256]bool {
 	mut bytes := [256]bool{}
 	for c in 0 .. 256 {
@@ -14,6 +15,7 @@ fn get_non_white_space_table() [256]bool {
 	return bytes
 }
 
+@[direct_array_access]
 fn get_name_char_table() [256]bool {
 	mut res := [256]bool{}
 	for c in 0 .. 256 {
@@ -22,6 +24,7 @@ fn get_name_char_table() [256]bool {
 	return res
 }
 
+@[direct_array_access]
 fn get_func_char_table() [256]bool {
 	mut res := [256]bool{}
 	for c in 0 .. 256 {

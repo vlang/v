@@ -117,7 +117,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name, .key_struct, .key_enum, .key_interface {
+				.name, .key_struct, .key_enum, .key_interface, .key_shared {
 					if p.peek_tok.lit in comptime_types {
 						node = p.parse_comptime_type()
 					} else {
@@ -552,9 +552,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_infix
-		&& !p.inside_map_init && !(p.peek_tok.kind == .mul
-		&& p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
+	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_map_init
+		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
@@ -746,13 +745,15 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
 		return ast.OrExpr{
-			kind: if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
-			pos:  or_pos
+			kind:  if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
+			scope: p.scope
+			pos:   or_pos
 		}
 	} else {
 		return ast.OrExpr{
-			kind: ast.OrKind.absent
-			pos:  p.tok.pos()
+			kind:  ast.OrKind.absent
+			scope: ast.empty_scope
+			pos:   p.tok.pos()
 		}
 	}
 }
@@ -824,9 +825,20 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
+		if mut right is ast.SelectorExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			right.or_block = ast.OrExpr{}
+		}
+		if mut right is ast.CallExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			or_scope = right.or_block.scope
+			right.or_block = ast.OrExpr{}
+		}
 		if p.tok.kind == .key_orelse {
 			or_kind = .block
 			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
@@ -834,6 +846,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}
@@ -917,7 +930,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if mut right is ast.SelectorExpr {
@@ -930,6 +943,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}
@@ -1003,6 +1017,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	// a) `f(||expr)` for a callback lambda expression with 0 arguments
 	// b) `f(|a_1,...,a_n| expr_with_a_1_etc_till_a_n)` for a callback with several arguments
 	if !(p.tok.kind == .logical_or
+		|| (p.peek_token(1).kind == .key_mut && p.peek_token(2).kind == .name)
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .pipe)
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .comma)) {
 		return none

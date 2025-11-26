@@ -531,3 +531,29 @@ fn test_encode_decode_complex() {
 	assert b_complex != b_complex_big_endian
 	assert a_complex == c_complex_big_endian
 }
+
+struct SharedFieldStruct {
+pub mut:
+	a int
+	b shared map[string]string
+	c int
+}
+
+fn test_skip_shared_field() {
+	x := SharedFieldStruct{
+		a: 100
+		b: {
+			'a': 'a'
+			'b': 'b'
+		}
+		c: 200
+	}
+	x_u8 := encode_binary(x)!
+	assert x_u8 == [u8(100), 0, 0, 0, 0, 0, 0, 0, 200, 0, 0, 0, 0, 0, 0, 0]
+	y := decode_binary[SharedFieldStruct](x_u8)!
+	assert '${y}' == 'binary.SharedFieldStruct{
+    a: 100
+    b: {}
+    c: 200
+}'
+}

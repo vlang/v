@@ -277,8 +277,10 @@ pub fn (mut v Builder) cc_msvc() {
 	// `-w` no warnings
 	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
 	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
-	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
-	a << ['-w', '/we4013', '/volatile:ms', '/F 16777216']
+	// `/F33554432` changes the stack size to 32MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
+	// Note: passing `/FNUMBER` is preferable to `/F NUMBER` for unix shells like bash or in cygwin, that otherwise may treat the `/F` as a folder,
+	// if there is an F: drive in the system (they map c: as /c/, d: as /d/ etc)
+	a << ['-w', '/we4013', '/volatile:ms', '/F33554432']
 	if v.pref.is_prod && !v.pref.no_prod_options {
 		a << '/O2'
 	}
@@ -387,7 +389,7 @@ pub fn (mut v Builder) cc_msvc() {
 		a << v.pref.ldflags.trim_space()
 	}
 	v.dump_c_options(a)
-	args := '\xEF\xBB\xBF' + a.join(' ')
+	args := '\xEF\xBB\xBF' + a.join(' ') // write a BOM to indicate the utf8 encoding of the file
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
@@ -434,8 +436,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 		// println('$obj_path already built.')
 		return
 	}
-	println('${obj_path} not found, building it (with msvc)...')
-	flush_stdout()
+	$if trace_thirdparty_obj_files ? {
+		println('${obj_path} not found, building it (with msvc)...')
+	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
 		'${path_without_o_postfix}.c'
 	} else {
@@ -481,7 +484,6 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
-		flush_stdout()
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
 	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
@@ -507,8 +509,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if res.exit_code != 0 {
 		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
-	println(res.output)
-	flush_stdout()
+	$if trace_thirdparty_obj_files ? {
+		println(res.output)
+	}
 }
 
 const thirdparty_obj_build_max_retries = 5

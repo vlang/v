@@ -4,12 +4,13 @@ import db.sqlite
 import time
 
 @[table: 'sys_users']
+@[index: 'name, age']
 struct User {
-	id            int @[primary; serial]
-	name          string
+	id            int    @[primary; serial]
+	name          string @[index]
 	age           int
-	role          string
-	status        int
+	role          string @[index]
+	status        int    @[index]
 	salary        int
 	title         string
 	score         int
@@ -546,4 +547,29 @@ fn test_orm_func_stmts() {
 	// a `null` value in database, will map to default value of the require field in struct
 	assert part_user.filter(it.name == 'Silly')[0].created_at == time.Time{}
 	assert part_user.len == 5
+}
+
+struct Person {
+	age_f32 f32
+	age_f64 f64
+}
+
+fn test_orm_func_f32_f64() {
+	p := Person{
+		age_f32: 10.33
+		age_f64: 10.343
+	}
+
+	db := sqlite.connect(':memory:')!
+
+	mut qb := orm.new_query[Person](db)
+
+	data := qb
+		.create()!
+		.insert(p)!
+		.query()!
+		.first()
+
+	assert data.age_f32 == p.age_f32
+	assert data.age_f64 == p.age_f64
 }

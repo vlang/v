@@ -22,6 +22,7 @@ fn get_report_running_period_ms() time.Duration {
 // It was extracted by the original non customiseable output implementation directly in cmd/tools/modules/testing/common.v
 pub struct NormalReporter {
 mut:
+	vroot    string
 	runtime  time.Duration
 	comptime time.Duration
 	nfiles   int
@@ -29,9 +30,12 @@ mut:
 	//
 	running   shared map[string]LogMessage
 	compiling shared map[string]LogMessage
+	rtimes    shared []TaskDuration
+	ctimes    shared []TaskDuration
 }
 
 pub fn (mut r NormalReporter) session_start(message string, mut ts TestSession) {
+	r.vroot = ts.vroot.replace('\\', '/') + '/'
 	header(message)
 	r.nfiles = ts.files.len
 	r.njobs = runtime.nr_jobs()
@@ -74,7 +78,56 @@ fn (r &NormalReporter) report_current_running_and_compiling_status_periodically(
 	}
 }
 
+fn (r &NormalReporter) show_longest(label string, limit int, kind TaskKind) {
+	if limit <= 0 {
+		return
+	}
+	println('> Longest ${limit} by ${label}:')
+	mut tasks := []TaskDuration{cap: r.nfiles}
+	match kind {
+		.comptime {
+			rlock r.ctimes {
+				tasks << r.ctimes
+			}
+		}
+		.runtime {
+			rlock r.rtimes {
+				tasks << r.rtimes
+			}
+		}
+		.totaltime {
+			mut tall := []TaskDuration{}
+			rlock r.rtimes {
+				tall << r.rtimes
+			}
+			rlock r.ctimes {
+				tall << r.ctimes
+			}
+			mut mall := map[string]TaskDuration{}
+			for task in tall {
+				if current := mall[task.path] {
+					mall[task.path].duration = current.duration + task.duration
+					continue
+				}
+				mall[task.path] = task
+			}
+			tasks = mall.values()
+		}
+	}
+	tasks.sort(a.duration > b.duration)
+	for tidx, task in tasks {
+		npath := task.path.replace('\\', '/').replace(r.vroot, '')
+		println('  ${tidx + 1:3} | ${task.duration:10s} | ${npath}')
+		if tidx + 1 >= limit {
+			break
+		}
+	}
+}
+
 pub fn (r &NormalReporter) session_stop(message string, mut ts TestSession) {
+	r.show_longest('compilation time', show_longest_by_comptime, .comptime)
+	r.show_longest('run time', show_longest_by_runtime, .runtime)
+	r.show_longest('total time', show_longest_by_totaltime, .totaltime)
 	println('${ts.benchmark.total_message(message)} Comptime: ${r.comptime.microseconds() / 1000} ms. Runtime: ${r.runtime.microseconds() / 1000} ms.')
 }
 
@@ -89,11 +142,17 @@ pub fn (mut r NormalReporter) report(index int, message LogMessage) {
 	}
 	if message.kind == .compile_end {
 		r.comptime += message.took
+		lock r.ctimes {
+			r.ctimes << TaskDuration{message.file, message.took}
+		}
 		lock r.compiling {
 			r.compiling.delete(message.file)
 		}
 	}
 	if message.kind == .cmd_end {
+		lock r.rtimes {
+			r.rtimes << TaskDuration{message.file, message.took}
+		}
 		r.runtime += message.took
 	}
 	if message.kind == .cmd_begin {
@@ -154,4 +213,22 @@ pub fn (r NormalReporter) list_of_failed_commands(failed_cmds []string) {
 	for i, cmd in failed_cmds {
 		eprintln(term.failed('To reproduce just failure ${i + 1} run:') + '    ${cmd}')
 	}
+	if failed_cmds.len > 0 {
+		vflags := os.getenv('VFLAGS')
+		if vflags != '' {
+			eprintln(term.failed('VFLAGS was: "${vflags}"'))
+		}
+	}
+}
+
+enum TaskKind {
+	comptime
+	runtime
+	totaltime
+}
+
+struct TaskDuration {
+mut:
+	path     string
+	duration time.Duration
 }

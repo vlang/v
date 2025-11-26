@@ -1,0 +1,24 @@
+VV_LOC void main__main(void) {
+	Array_int list = builtin__new_array_from_c_array_noscan(3, 3, sizeof(int), _MOV((int[3]){1, 2, 3}));
+	int index = 3;
+	if (index < list.len && (*(int*)builtin__array_get(list, index)) == 3) {
+		builtin__println(_S("Index is within bounds and value is 3"));
+	} else {
+		builtin__println(_S("Index is out of bounds or value is not 3"));
+	}
+	if (index < list.len && main__print_true((*(int*)builtin__array_get(list, index)))) {
+		builtin__println(_S("Index is within bounds"));
+	} else {
+		builtin__println(_S("Index is out of bounds"));
+	}
+	if (index < list.len && Array_int_contains(_const_main__other_list, (*(int*)builtin__array_get(list, index)))) {
+		builtin__println(_S("Index is within bounds and value is in other_list"));
+	} else {
+		builtin__println(_S("Index is out of bounds or value is not in other_list"));
+	}
+	if (index < list.len && (Array_int_contains(_const_main__other_list, (*(int*)builtin__array_get(list, index))) || Array_int_contains(_const_main__other_list, (*(int*)builtin__array_get(list, index))))) {
+		builtin__println(_S("Index is within bounds and value is in other_list"));
+	} else {
+		builtin__println(_S("Index is out of bounds or value is not in other_list"));
+	}
+}

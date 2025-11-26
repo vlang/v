@@ -10,7 +10,8 @@ import v.token
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
-	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string', 'pointer', 'voidptr']
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'shared', 'string', 'pointer',
+	'voidptr']
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -59,6 +60,9 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'option' {
 			.option
+		}
+		'shared' {
+			.shared
 		}
 		'string' {
 			.string
@@ -423,7 +427,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		'params' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ:  p.table.find_type('MethodParam')
+				typ:  p.table.find_type('FunctionParam')
 				pos:  var_pos
 			})
 			kind = .params
@@ -482,6 +486,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		typ:     typ
 		expr:    expr
 		typ_pos: typ_pos
+		scope:   p.scope
 		pos:     spos.extend(p.tok.pos())
 	}
 }
@@ -540,7 +545,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.pos()
 		mut or_stmts := []ast.Stmt{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 		if p.tok.kind == .key_orelse {
 			// `$method() or {}``
 			or_kind = .block
@@ -582,6 +587,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		or_block:   ast.OrExpr{
 			stmts: []ast.Stmt{}
 			kind:  if p.tok.kind == .question { .propagate_option } else { .absent }
+			scope: p.scope
 			pos:   p.tok.pos()
 		}
 	}

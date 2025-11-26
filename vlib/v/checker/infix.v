@@ -71,6 +71,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
+		} else if mut node.right is ast.ArrayInit {
+			if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
+				// handle arr << [] where [] is empty
+				info := c.table.sym(left_type).array_info()
+				node.right.elem_type = info.elem_type
+				c.expected_type = info.elem_type
+			}
 		}
 	}
 	mut right_type := c.expr(mut node.right)
@@ -88,7 +95,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.right_type = left_type
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
-			defer {
+			defer(fn) {
 				node.right = ast.CastExpr{
 					expr:      node.right
 					typ:       left_type
@@ -103,7 +110,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.left_type = right_type
 		if right_type in [ast.f32_type_idx, ast.f64_type_idx] && left_type == ast.float_literal_type {
-			defer {
+			defer(fn) {
 				node.left = ast.CastExpr{
 					expr:      node.left
 					typ:       right_type
@@ -651,22 +658,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if left_type.is_unsigned() {
 				left_type
 			} else {
-				// signed types' idx adds with 5 will get correct relative unsigned type
-				// i8 	=> byte
-				// i16 	=> u16
-				// int  	=> u32
-				// i64  	=> u64
-				// isize	=> usize
-				// i128 	=> u128 NOT IMPLEMENTED YET
-				ast.idx_to_type(match left_type.idx() {
-					ast.i8_type_idx { ast.u8_type_idx }
-					ast.i16_type_idx { ast.u16_type_idx }
-					ast.i32_type_idx { ast.u32_type_idx }
-					ast.int_type_idx { ast.u32_type_idx }
-					ast.i64_type_idx { ast.u64_type_idx }
-					ast.isize_type_idx { ast.usize_type_idx }
-					else { 0 }
-				})
+				unsigned_type := left_type.flip_signedness()
+				if unsigned_type == ast.void_type {
+					// signed type can't convert to an unsigned type
+					0
+				}
+				unsigned_type
 			}
 
 			if modified_left_type == 0 {

@@ -68,8 +68,9 @@ fn (mut p Parser) note(s string) {
 fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
 	mut kind := 'error:'
+	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
 	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, pos: pos, file_path: p.file_path, message: s)
+		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
 		exit(1)
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls {
@@ -77,11 +78,11 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		util.show_compiler_message(kind, pos: pos, file_path: p.file_path, message: s)
+		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
 		exit(1)
 	} else {
 		p.errors << errors.Error{
-			file_path: p.file_path
+			file_path: file_path
 			pos:       pos
 			reporter:  .parser
 			message:   s
@@ -145,15 +146,16 @@ fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 	if p.pref.skip_warnings {
 		return
 	}
+	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('warning:', pos: pos, file_path: p.file_path, message: s)
+		util.show_compiler_message('warning:', pos: pos, file_path: file_path, message: s)
 	} else {
 		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
 			p.should_abort = true
 			return
 		}
 		p.warnings << errors.Warning{
-			file_path: p.file_path
+			file_path: file_path
 			pos:       pos
 			reporter:  .parser
 			message:   s
@@ -175,11 +177,12 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 		p.error_with_pos(s, pos)
 		return
 	}
+	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('notice:', pos: pos, file_path: p.file_path, message: s)
+		util.show_compiler_message('notice:', pos: pos, file_path: file_path, message: s)
 	} else {
 		p.notices << errors.Notice{
-			file_path: p.file_path
+			file_path: file_path
 			pos:       pos
 			reporter:  .parser
 			message:   s

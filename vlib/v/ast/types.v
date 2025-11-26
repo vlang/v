@@ -115,6 +115,7 @@ pub mut:
 	name          string // the internal & source name of the type, i.e. `[5]int`.
 	cname         string // the name with no dots for use in the generated C code
 	rname         string // the raw name
+	ngname        string // the name without generic parameters
 	methods       []Fn
 	generic_types []Type
 	mod           string
@@ -188,6 +189,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 // instantiation of a generic struct
@@ -212,6 +214,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 pub struct Enum {
@@ -222,6 +225,7 @@ pub:
 	uses_exprs       bool
 	typ              Type
 	attrs            map[string][]Attr
+	name_pos         token.Pos
 }
 
 @[minify]
@@ -231,6 +235,7 @@ pub mut:
 pub:
 	language  Language
 	is_import bool
+	name_pos  token.Pos
 }
 
 pub struct Aggregate {
@@ -273,6 +278,7 @@ pub struct Map {
 pub mut:
 	key_type   Type
 	value_type Type
+	name_pos   token.Pos
 }
 
 @[minify]
@@ -287,6 +293,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 // <atomic.h> defines special typenames
@@ -625,18 +632,46 @@ pub fn (typ Type) is_unsigned() bool {
 
 pub fn (typ Type) flip_signedness() Type {
 	return match typ {
-		i8_type { u8_type }
-		i16_type { u16_type }
-		int_type { u32_type }
-		i32_type { u32_type }
-		isize_type { usize_type }
-		i64_type { u64_type }
-		u8_type { i8_type }
-		u16_type { i16_type }
-		u32_type { int_type }
-		usize_type { isize_type }
-		u64_type { i64_type }
-		else { typ }
+		i8_type {
+			u8_type
+		}
+		i16_type {
+			u16_type
+		}
+		i32_type {
+			u32_type
+		}
+		i64_type {
+			u64_type
+		}
+		int_type {
+			$if new_int ? && x64 {
+				u64_type
+			} $else {
+				u32_type
+			}
+		}
+		isize_type {
+			usize_type
+		}
+		u8_type {
+			i8_type
+		}
+		u16_type {
+			i16_type
+		}
+		u32_type {
+			i32_type
+		}
+		u64_type {
+			i64_type
+		}
+		usize_type {
+			isize_type
+		}
+		else {
+			void_type
+		}
 	}
 }
 
@@ -699,18 +734,18 @@ pub const error_type_idx = 30
 pub const nil_type_idx = 31
 
 // Note: builtin_type_names must be in the same order as the idx consts above
-pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
-	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil',
-	'i32']
+pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'i32', 'int',
+	'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none',
+	'string', 'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread',
+	'Error', 'nil']
 
 pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
-pub const integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
-	u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx, int_literal_type_idx,
-	rune_type_idx, i32_type_idx]
-pub const signed_integer_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
-	i64_type_idx, i32_type_idx, isize_type_idx]
+pub const integer_type_idxs = [i8_type_idx, i16_type_idx, i32_type_idx, int_type_idx, i64_type_idx,
+	u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+	int_literal_type_idx, rune_type_idx]
+pub const signed_integer_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, i32_type_idx,
+	int_type_idx, i64_type_idx, isize_type_idx]
 pub const unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
 	usize_type_idx]
 // C will promote any type smaller than int to int in an expression
@@ -762,6 +797,12 @@ pub const byteptr_types = new_byteptr_types()
 pub const voidptr_types = new_voidptr_types()
 pub const cptr_types = merge_types(voidptr_types, byteptr_types, charptr_types)
 pub const nil_type = new_type(nil_type_idx)
+
+pub const builtin_array_generic_methods = ['all', 'any', 'count', 'filter', 'map', 'sort', 'sorted']
+pub const builtin_array_generic_methods_matcher = token.new_keywords_matcher_from_array_trie(builtin_array_generic_methods)
+
+pub const builtin_array_generic_methods_no_sort = ['all', 'any', 'count', 'filter', 'map']
+pub const builtin_array_generic_methods_no_sort_matcher = token.new_keywords_matcher_from_array_trie(builtin_array_generic_methods_no_sort)
 
 fn new_charptr_types() []Type {
 	return [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
@@ -1050,7 +1091,8 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 
 pub fn (t &TypeSymbol) is_c_struct() bool {
 	if t.info is Struct {
-		return t.language == .c
+		// `C___VAnonStruct` need special handle, it need to create a new struct
+		return t.language == .c && !t.info.is_anon
 	} else if t.info is Alias {
 		return global_table.final_sym(t.info.parent_type).is_c_struct()
 	}
@@ -1161,7 +1203,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 @[inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
+	res := t.kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize,
 		.int_literal, .rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_int()
@@ -1232,14 +1274,9 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = 4
 		}
 		.int {
-			$if new_int ? {
-				$if arm64 || amd64 {
-					size = 8
-					align = 8
-				} $else {
-					size = 4
-					align = 4
-				}
+			$if new_int ? && x64 {
+				size = 8
+				align = 8
 			} $else {
 				size = 4
 				align = 4
@@ -1297,11 +1334,19 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		}
 		// TODO: hardcoded:
 		.map {
-			size = if t.pointer_size == 8 { 120 } else { 80 }
+			size = if t.pointer_size == 8 {
+				$if new_int ? && x64 { 144 } $else { 120 }
+			} else {
+				80
+			}
 			align = t.pointer_size
 		}
 		.array {
-			size = if t.pointer_size == 8 { 32 } else { 24 }
+			size = if t.pointer_size == 8 {
+				$if new_int ? && x64 { 48 } $else { 32 }
+			} else {
+				24
+			}
 			align = t.pointer_size
 		}
 	}
@@ -1425,6 +1470,15 @@ fn strip_extra_struct_types(name string) string {
 		return name.replace_each(strips)
 	} else {
 		return name
+	}
+}
+
+// delete_cached_type_to_str remove a `type_to_str` from the cache
+pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
+	cache_key := (u64(import_aliases_len) << 32) | u64(typ)
+	mut mt := unsafe { &Table(t) }
+	lock mt.cached_type_to_str {
+		mt.cached_type_to_str.delete(cache_key)
 	}
 }
 
@@ -1617,7 +1671,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if typ.has_flag(.option) {
+	if typ.has_flag(.option) && res[0] != `?` {
 		res = '?${res}'
 	}
 	if typ.has_flag(.result) {

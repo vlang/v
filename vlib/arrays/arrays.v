@@ -633,7 +633,7 @@ fn memswap(x voidptr, y voidptr, len usize) {
 		unsafe {
 			vmemcpy(t, voidptr(xi), block_size)
 			vmemcpy(voidptr(xi), voidptr(yi), block_size)
-			vmemcpy(t, voidptr(yi), block_size)
+			vmemcpy(voidptr(yi), t, block_size)
 		}
 		i += usize(block_size)
 	}

@@ -24,9 +24,12 @@ enum Category {
 	examples
 	vfmt
 	os_support
+	interpreter
 }
 
 const category_titles = '#### Improvements in the language
+
+#### V interpreter
 
 #### Breaking changes
 
@@ -99,8 +102,7 @@ fn main() {
 	}
 	mut lines := os.read_lines(log_txt)!
 	// Trim everything before current version, commit "(tag: 0.4.4) V 0.4.4"
-	mut prev_version := (version.replace('.', '').int() - 1).str()
-	prev_version = '0.${prev_version[0].ascii_str()}.${prev_version[1].ascii_str()}'
+	mut prev_version := get_prev_version(version)
 	println('prev version=${prev_version}')
 	for i, line in lines {
 		if line == ('V ${prev_version}') {
@@ -109,9 +111,6 @@ fn main() {
 		}
 	}
 	os.write_file(log_txt, lines.join('\n'))!
-	if true {
-		// return
-	}
 	mut app := &App{
 		total_lines: lines.len
 	}
@@ -120,10 +119,6 @@ fn main() {
 		category_titles)
 	os.write_file('CHANGELOG.md', app.result)!
 	changelog_txt := os.read_file('CHANGELOG.md')!.to_lower()
-	if true {
-		// println(changelog_txt)
-		// return
-	}
 	// mut counter := 0 // to display how many commits are left
 	for line in lines {
 		s := line.trim_space()
@@ -163,6 +158,8 @@ fn (mut app App) process_line(text string) ! {
 	mut category := Category.examples
 	if text.contains('checker:') {
 		category = .checker
+	} else if is_interpreter(text) {
+		category = .interpreter
 	} else if is_examples(text) {
 		category = .examples
 		// println("Skipping line (example) $text")
@@ -222,7 +219,7 @@ fn (mut app App) process_line(text string) ! {
 	// exit(0)
 	//}
 	if (semicolon_pos < 15
-		&& prefix in ['checker', 'cgen', 'orm', 'parser', 'v.parser', 'native', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples'])
+		&& prefix in ['checker', 'cgen', 'orm', 'parser', 'v.parser', 'native', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples', 'eval'])
 		|| (semicolon_pos < 30 && prefix.contains(', ')) {
 		s = '- ' + text[semicolon_pos + 2..].capitalize()
 	}
@@ -293,6 +290,7 @@ const category_map = {
 	Category.checker:    '#### Checker improvements'
 	.breaking:           '#### Breaking changes'
 	.improvements:       '#### Improvements in the'
+	.interpreter:        '#### V interpreter'
 	.parser:             '#### Parser improvements'
 	.stdlib:             '#### Standard library'
 	.web:                '#### Web'
@@ -327,7 +325,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	// Trim "prefix:" for some categories
 	// mut capitalized := false
 	mut has_prefix := true
-	if l.category in [.cgen, .checker, .improvements, .native, .orm] {
+	if l.category in [.cgen, .checker, .improvements, .native, .orm, .interpreter] {
 		has_prefix = false
 		if semicolon_pos := line_text.index(': ') {
 			prefix := line_text[..semicolon_pos]
@@ -566,6 +564,10 @@ fn is_comptime(text string) bool {
 	return text.contains('comptime:')
 }
 
+fn is_interpreter(text string) bool {
+	return text.starts_with('eval:')
+}
+
 fn is_xxx(text string, words []string) bool {
 	for s in words {
 		if text.contains(s) {
@@ -579,4 +581,16 @@ fn print_category_hint() {
 	$for val in Category.values {
 		println('${int(val.value) + 1} - ${val.name}; ')
 	}
+}
+
+// For 0.4.12 returns 0.4.11 etc
+fn get_prev_version(version string) string {
+	parts := version.split('.')
+	if parts.len != 3 {
+		return ''
+	}
+	major := parts[0]
+	minor := parts[1]
+	patch := parts[2].int()
+	return '${major}.${minor}.${patch - 1}'
 }

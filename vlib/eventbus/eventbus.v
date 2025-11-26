@@ -66,27 +66,29 @@ pub fn (eb &EventBus[T]) has_subscriber(name T) bool {
 
 const dedup_buffer_len = 20
 
-// publish publish an event with provided Params & name.
+// publish an event with provided Params & name.
 fn (mut pb Publisher[T]) publish(name T, sender voidptr, args voidptr) {
 	// println('Publisher.publish(name=${name} sender=${sender} args=${args})')
-	mut handled_receivers := unsafe { [dedup_buffer_len]voidptr{} } // handle duplicate bugs TODO fix properly + perf
-	// is_key_down := name == 'on_key_down'
+	invalid := 0
+	mut handled_receivers := unsafe { [dedup_buffer_len]voidptr{init: &invalid} } // handle duplicate bugs TODO fix properly + perf
 	mut j := 0
+	mut found_onces := 0
 	for event in pb.registry.events {
 		if event.name == name {
-			// if is_key_down {
+			if event.once {
+				found_onces++
+			}
 			if event.receiver in handled_receivers {
 				continue
 			}
-			//}
-			// println('got ${i + 1} name=${name} event.receiver=${event.receiver}')
 			event.handler(event.receiver, args, sender)
-			// handled_receivers << event.receiver
 			handled_receivers[j] = event.receiver
 			j = (j + 1) % dedup_buffer_len
 		}
 	}
-	pb.registry.events = pb.registry.events.filter(!(it.name == name && it.once))
+	if found_onces > 0 {
+		pb.registry.events = pb.registry.events.filter(!(it.name == name && it.once))
+	}
 }
 
 // clear_all clear all subscribers.

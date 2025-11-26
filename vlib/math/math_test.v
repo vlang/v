@@ -1118,7 +1118,11 @@ fn test_min_max_int_str() {
 fn test_maxof_minof() {
 	assert maxof[i8]() == 127
 	assert maxof[i16]() == 32767
-	assert maxof[int]() == 2147483647
+	assert maxof[int]() == $if new_int ? && x64 {
+		9223372036854775807
+	} $else {
+		2147483647
+	}
 	assert maxof[i32]() == 2147483647
 	assert maxof[i64]() == 9223372036854775807
 	assert maxof[u8]() == 255
@@ -1130,7 +1134,11 @@ fn test_maxof_minof() {
 
 	assert minof[i8]() == -128
 	assert minof[i16]() == -32768
-	assert minof[int]() == -2147483648
+	assert minof[int]() == $if new_int ? && x64 {
+		-9223372036854775807 - 1
+	} $else {
+		-2147483648
+	}
 	assert minof[i32]() == -2147483648
 	assert minof[i64]() == -9223372036854775807 - 1
 	assert minof[u8]() == 0

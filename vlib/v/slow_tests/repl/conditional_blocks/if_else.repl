@@ -1,4 +1,6 @@
-if false {
+a := 6
+b := 5
+if a == b {
   println('foo')
 } else {
   println('bar')

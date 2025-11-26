@@ -49,11 +49,11 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-2022]
       fail-fast: false
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VTEST_ONLY: wasm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4

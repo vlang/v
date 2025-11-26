@@ -150,7 +150,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
 			mut val_type := next_fn.return_type.clear_option_and_result()
-			if node.val_is_mut {
+			if node.val_is_mut && !val_type.is_any_kind_of_pointer() {
 				val_type = val_type.ref()
 			}
 			node.cond_type = typ
@@ -169,7 +169,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, val_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}
@@ -194,14 +194,14 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-					defer {
+					defer(fn) {
 						c.type_resolver.type_map.delete(node.key_var)
 					}
 				}
 			}
 
 			mut value_type := c.table.value_type(unwrapped_typ)
-			if node.val_is_mut {
+			if node.val_is_mut && !value_type.is_any_kind_of_pointer() {
 				value_type = value_type.ref()
 			}
 			node.scope.update_var_type(node.val_var, value_type)
@@ -211,7 +211,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}
@@ -236,7 +236,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-					defer {
+					defer(fn) {
 						c.type_resolver.type_map.delete(node.key_var)
 					}
 				}
@@ -253,7 +253,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				value_type = value_type.ref()
+				if !value_type.is_any_kind_of_pointer() {
+					value_type = value_type.ref()
+				}
 				if value_type.has_flag(.option) {
 					value_type = value_type.set_flag(.option_mut_param_t)
 				}
@@ -287,7 +289,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					else {}
 				}
-			} else if node.val_is_ref {
+			} else if node.val_is_ref && !value_type.is_any_kind_of_pointer() {
 				value_type = value_type.ref()
 			}
 			node.cond_type = typ
@@ -298,7 +300,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}

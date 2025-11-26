@@ -921,16 +921,16 @@ f2 := 456e+2 // 45600
 
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
-accessed using an *index* expression. Indexes start from `0`:
+accessed using an *index* expression. Indexing starts from `0`.
 
 ```v
-mut nums := [1, 2, 3]
-println(nums) // `[1, 2, 3]`
-println(nums[0]) // `1`
-println(nums[1]) // `2`
+mut nums := [10, 20, 30]
+println(nums) // `[10, 20, 30]`
+println(nums[0]) // `10`
+println(nums[1]) // `20`
 
 nums[1] = 5
-println(nums) // `[1, 5, 3]`
+println(nums) // `[10, 5, 30]`
 ```
 
 <a id='array-operations'></a>
@@ -2100,6 +2100,27 @@ for mut num in numbers {
 println(numbers) // [1, 2, 3]
 ```
 
+By default, array elements are taken by value, if you need elements to be taken by
+reference, use `&` on the array you want to iterate over:
+
+```v
+struct User {
+	name string
+}
+
+users := [User{
+	name: 'someuserwow99'
+}, User{
+	name: 'visgod'
+}]
+// note `&users`, this is how a reference to the elements of the array is received
+for user in &users {
+	// some operations with `user`
+}
+```
+
+The same applies to maps.
+
 When an identifier is just a single underscore, it is ignored.
 
 ##### Custom iterators
@@ -2280,25 +2301,27 @@ The above code prints:
 
 ### Defer
 
-A defer statement defers the execution of a block of statements
-until the surrounding function returns.
+A `defer {}` statement, defers the execution of the block of statements
+until the surrounding scope of the defer ends. It is a convenient feature
+that allows you to group related actions (getting access to a resource
+and cleaning/freeing it after you are done) closely together, instead
+of spreading them across multiple potentially very remote lines of code.
 
 ```v
 import os
 
-fn read_log() {
+fn read_log() ! {
 	mut ok := false
-	mut f := os.open('log.txt') or { panic(err) }
-	defer {
-		f.close()
-	}
+	mut f := os.open('log.txt')!
+	defer { f.close() }
 	// ...
 	if !ok {
+		// ...
 		// defer statement will be called here, the file will be closed
 		return
 	}
 	// ...
-	// defer statement will be called here, the file will be closed
+	// defer statement will be called here too, the file will be closed
 }
 ```
 
@@ -2380,6 +2403,52 @@ fn (mut app App) auth_with_user_middleware() (bool, string) {
 	return true, 'TestUser'
 }
 ```
+
+#### defer in loop scopes:
+Defer can be used inside loops too, and the deferred statement will be executed once for each
+iteration. You can also have multiple defer statements in the same scope, in which case, they
+will be executed in reverse order of their appearance in the source code:
+```v
+fn main() {
+	defer { println('Program finish.') }
+	println('Loop start.')
+	for i in 1 .. 4 {
+		defer { println('Deferred execution for ${i}. Defer 1.') }
+		defer { println('Deferred execution for ${i}. Defer 2.') }
+		defer { println('Deferred execution for ${i}. Defer 3.') }
+		println('Loop iteration: ${i}')
+	}
+	println('Loop done.')
+}
+```
+
+The example will print this:
+```txt
+Loop start.
+Loop iteration: 1
+Deferred execution for 1. Defer 3.
+Deferred execution for 1. Defer 2.
+Deferred execution for 1. Defer 1.
+Loop iteration: 2
+Deferred execution for 2. Defer 3.
+Deferred execution for 2. Defer 2.
+Deferred execution for 2. Defer 1.
+Loop iteration: 3
+Deferred execution for 3. Defer 3.
+Deferred execution for 3. Defer 2.
+Deferred execution for 3. Defer 1.
+Loop done.
+Program finish.
+```
+
+#### defer(fn) {}
+
+Note, that in most of the examples above, the `defer{}` statement was directly inside
+a function scope, so it was executed when the function itself returned. Sometimes, you
+need to defer a statement to execute right at the function end (like the above), even
+if you are inside an inner scope (deep inside an `if` or `for`).
+
+For these more rare cases, you can use: `defer(fn) {}` instead of just `defer {}`.
 
 ### Goto
 
@@ -4145,8 +4214,8 @@ fn pass_time(w World) {
 
 ### Option/Result types and error handling
 
-Option types are for types which may represent `none`. Result types may
-represent an error returned from a function.
+Option types can represent a value or `none`. Result types may
+represent a value, or an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
 `Result` types use `!`: `!Type`.
@@ -4398,9 +4467,9 @@ post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
 
 Currently generic function definitions must declare their type parameters, but in
-future V will infer generic type parameters from single-letter type names in
-runtime parameter types. This is why `find_by_id` can omit `[T]`, because the
-receiver argument `r` uses a generic type `T`.
+future versions, V will infer generic type parameters from single-letter type names in
+runtime parameter types. This is why the `find_by_id(1)` calls above can omit `[T]`,
+because the receiver argument `r` in the method declaration, uses a generic type `T`.
 
 Another example:
 
@@ -5066,10 +5135,11 @@ Remaining small percentage of objects is freed via GC. The developer doesn't nee
 anything in their code. "It just works", like in Python, Go, or Java, except there's no
 heavy GC tracing everything or expensive RC for each object.
 
-For developers willing to have more low level control, memory can be managed manually with
+For developers willing to have more low-level control, memory can be managed manually with
 `-gc none`.
 
-Arena allocation is available via v `-prealloc`.
+Arena allocation is available via a `-prealloc` flag. Note: currently this mode is only
+suitable to speed up short lived, single-threaded, batch-like programs (like compilers).
 
 ### Control
 
@@ -5090,7 +5160,7 @@ Just as the compiler frees C data types with C's `free()`, it will statically in
 
 Autofree can be enabled with an `-autofree` flag.
 
-For developers willing to have more low level control, autofree can be disabled with
+For developers willing to have more low-level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants to manage its
 memory manually. (See [attributes](#attributes)).
 
@@ -5163,7 +5233,7 @@ be stored:
 
 #### V's default approach
 
-Due to performance considerations V tries to put objects on the stack if possible
+Due to performance considerations V tries to put objects on the stack if possible,
 but allocates them on the heap when obviously necessary. Example:
 
 ```v
@@ -5475,7 +5545,7 @@ println('number of all customers: ${nr_customers}')
 
 // V's syntax can be used to build queries:
 uk_customers := sql db {
-	select from Customer where country == 'uk' && nr_orders > 0
+	select from Customer where country == 'uk' && nr_orders > 0 order by id desc limit 10
 }!
 println('We found a total of ${uk_customers.len} customers matching the query.')
 for c in uk_customers {
@@ -6161,20 +6231,14 @@ Another example, is if you want to embed the version/name from v.mod *inside* yo
 
 ```v ignore
 import v.vmod
-vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
-eprintln('${vm.name} ${vm.version}\n ${vm.description}')
+
+vm := vmod.decode( @VMOD_FILE )!
+eprintln('${vm.name} ${vm.version}\n${vm.description}')
 ```
 
 A program that prints its own source code (a quine):
 ```v
 print($embed_file(@FILE).to_string())
-```
-
-A program that prints the time when it was built:
-```v
-import time
-
-println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
 ```
 
 > [!NOTE]
@@ -6183,6 +6247,12 @@ println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).forma
 > is done with `print` and not `println`, to not add another new line, missing in the
 > source code.
 
+A program that prints the time when it was built:
+```v
+import time
+
+println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
+```
 
 ### Compile time reflection
 
@@ -6625,9 +6695,12 @@ V supports the following compile time types:
 - `$interface` => matches [Interfaces](#interfaces).
 - `$map` => matches [Maps](#maps).
 - `$option` => matches [Option Types](#optionresult-types-and-error-handling).
+- `$shared` => matches [Shared Types](#shared-objects).
 - `$struct` => matches [Structs](#structs).
 - `$sumtype` => matches [Sum Types](#sum-types).
 - `$string` => matches [Strings](#strings).
+- `$pointer` => matches [Reference Types](#references).
+- `$voidptr` => matches C's `void*`.
 
 ### Environment specific files
 
@@ -7338,7 +7411,7 @@ rm pgo_gen
 
 ## Atomics
 
-V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
+V has no special support for atomics yet, nevertheless it's possible to treat variables as atomics
 by [calling C](#v-and-c) functions from V. The standard C11 atomic functions like `atomic_store()`
 are usually defined with the help of macros and C compiler magic to provide a kind of
 *overloaded C functions*.
@@ -7427,7 +7500,7 @@ will hang &ndash; dependent on the compiler optimization used.)
 
 ## Global Variables
 
-By default V does not allow global variables. However, in low level applications they have their
+By default V does not allow global variables. However, in low-level applications they have their
 place so their usage can be enabled with the compiler flag `-enable-globals`.
 Declarations of global variables must be surrounded with a `__global ( ... )`
 specification &ndash; as in the example [above](#atomics).
@@ -7478,7 +7551,7 @@ namespaced globals).
 
 Note: their use is discouraged too, for reasons similar to why globals
 are discouraged. The feature is supported to enable translating existing
-low level C code into V code, using `v translate`.
+low-level C code into V code, using `v translate`.
 
 Note: the function in which you use a static variable, has to be marked
 with @[unsafe]. Also unlike using globals, using static variables, do not
@@ -7531,7 +7604,7 @@ v -os freebsd .
 > Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed.
 
-For Ubuntu/Debian based distributions:
+For Ubuntu/Debian-based distributions:
 
 ```shell
 sudo apt install gcc-mingw-w64-x86-64
@@ -7560,7 +7633,7 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
 - `-g` - produces a less optimized executable with more debug information in it.
   V will enforce line numbers from the .v files in the stacktraces, that the
   executable will produce on panic. It is usually better to pass -g, unless
-  you are writing low level code, in which case use the next option `-cg`.
+  you are writing low-level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
   The executable will use C source line numbers in this case. It is frequently
   used in combination with `-keepc`, so that you can inspect the generated
@@ -7573,7 +7646,7 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
 
-For best debugging experience if you are writing a low level wrapper for an existing
+For best debugging experience if you are writing a low-level wrapper for an existing
 C library, you can pass several of these flags at the same time:
 `v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
 on the produced executable `yourprogram`.

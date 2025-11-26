@@ -24,6 +24,7 @@ pub struct Scanner {
 pub mut:
 	file_path                   string // '/path/to/file.v'
 	file_base                   string // 'file.v'
+	file_idx                    i16 = -1 // file idx in the global table `filelist`
 	text                        string // the whole text of the file
 	pos                         int = -1 // current position in the file, first character is s.text[0]
 	line_nr                     int // current line number
@@ -107,7 +108,7 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pref.Preferences) !&Scanner {
+pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMode, pref_ &pref.Preferences) !&Scanner {
 	if !os.is_file(file_path) {
 		return error('${file_path} is not a .v file')
 	}
@@ -123,6 +124,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 		comments_mode:               comments_mode
 		file_path:                   file_path
 		file_base:                   os.base(file_path)
+		file_idx:                    file_idx
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -186,26 +188,28 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		max_column = 1
 	}
 	return token.Token{
-		kind:    tok_kind
-		lit:     lit
-		line_nr: s.line_nr + line_offset
-		col:     max_column
-		pos:     s.pos - len + 1
-		len:     len
-		tidx:    cidx
+		kind:     tok_kind
+		lit:      lit
+		line_nr:  s.line_nr + line_offset
+		col:      u16(max_column)
+		pos:      s.pos - len + 1
+		len:      len
+		tidx:     cidx
+		file_idx: s.file_idx
 	}
 }
 
 @[inline]
 fn (s &Scanner) new_eof_token() token.Token {
 	return token.Token{
-		kind:    .eof
-		lit:     ''
-		line_nr: s.line_nr + 1
-		col:     s.current_column()
-		pos:     s.pos
-		len:     1
-		tidx:    s.tidx
+		kind:     .eof
+		lit:      ''
+		line_nr:  s.line_nr + 1
+		col:      u16(s.current_column())
+		pos:      s.pos
+		len:      1
+		tidx:     s.tidx
+		file_idx: s.file_idx
 	}
 }
 
@@ -218,13 +222,14 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		max_column = 1
 	}
 	return token.Token{
-		kind:    tok_kind
-		lit:     lit
-		line_nr: start_line + 1
-		col:     max_column
-		pos:     s.pos - len + 1
-		len:     len
-		tidx:    cidx
+		kind:     tok_kind
+		lit:      lit
+		line_nr:  start_line + 1
+		col:      u16(max_column)
+		pos:      s.pos - len + 1
+		len:      len
+		tidx:     cidx
+		file_idx: s.file_idx
 	}
 }
 
@@ -812,7 +817,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				// Skip { in `${` in strings
-				if _ := s.str_quote() {
+				if 255 != s.str_quote() {
 					s.str_helper_tokens << 0
 				} else {
 					s.str_helper_tokens << c
@@ -835,7 +840,8 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				if s.str_helper_tokens.len > 0 {
 					s.str_helper_tokens.delete_last()
 				}
-				if quote := s.str_quote() {
+				quote := s.str_quote()
+				if 255 != quote {
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
@@ -944,10 +950,11 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					comment := s.text[start - 1..s.pos].trim_space()
 					if s.line_nr != 1 {
 						comment_pos := token.Pos{
-							line_nr: s.line_nr - 1
-							len:     comment.len
-							pos:     start
-							col:     s.current_column() - comment.len
+							line_nr:  s.line_nr - 1
+							len:      comment.len
+							pos:      start
+							col:      u16_col(s.current_column() - comment.len)
+							file_idx: s.file_idx
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
 							comment_pos)
@@ -1121,13 +1128,16 @@ pub fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
 							comment_pos := token.Pos{
-								line_nr: start_line
-								len:     comment.len + 4
-								pos:     start
-								col:     s.current_column() - comment.len - 4
+								line_nr:  start_line
+								len:      comment.len + 4
+								pos:      start
+								col:      u16_col(s.current_column() - comment.len - 4)
+								file_idx: s.file_idx
 							}
-							s.error_with_pos('inline comment is deprecated, please use line comment',
-								comment_pos)
+							if !s.pref.is_fmt {
+								s.error_with_pos('inline comment is deprecated, please use line comment',
+									comment_pos)
+							}
 							comment = '\x01' + comment.trim(' ')
 						}
 						return s.new_multiline_token(.comment, comment, comment.len + 4,
@@ -1180,7 +1190,10 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 // escapes in them (except in the r'strings' where the content is returned verbatim)
 @[direct_array_access]
 pub fn (mut s Scanner) ident_string() string {
-	quote := s.str_quote() or { return '' }
+	quote := s.str_quote()
+	if 255 == quote {
+		return ''
+	}
 	s.quote = quote
 	// determines if it is a nested string
 	if s.is_inside_string {
@@ -1189,9 +1202,10 @@ pub fn (mut s Scanner) ident_string() string {
 		s.is_nested_string = false
 	}
 	lspos := token.Pos{
-		line_nr: s.line_nr
-		pos:     s.pos
-		col:     s.pos - s.last_nl_pos - 1
+		line_nr:  s.line_nr
+		pos:      s.pos
+		col:      u16(s.pos - s.last_nl_pos - 1)
+		file_idx: s.file_idx
 	}
 	q := s.text[s.pos]
 	is_quote := q in [single_quote, double_quote]
@@ -1343,7 +1357,7 @@ pub fn (mut s Scanner) ident_string() string {
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
-		if string_so_far.contains('\\\n') {
+		if !is_raw && string_so_far.contains('\\\n') {
 			lit = trim_slash_line_break(string_so_far)
 		} else {
 			lit = string_so_far
@@ -1507,9 +1521,10 @@ fn trim_slash_line_break(s string) string {
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
 pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
-		line_nr: s.line_nr
-		pos:     s.pos
-		col:     s.pos - s.last_nl_pos - 1
+		line_nr:  s.line_nr
+		pos:      s.pos
+		col:      u16(s.pos - s.last_nl_pos - 1)
+		file_idx: s.file_idx
 	}
 
 	start := s.pos // the string position of the first backtick char
@@ -1665,9 +1680,10 @@ fn (mut s Scanner) inc_line_number() {
 
 pub fn (mut s Scanner) current_pos() token.Pos {
 	return token.Pos{
-		line_nr: s.line_nr
-		pos:     s.pos
-		col:     s.current_column() - 1
+		line_nr:  s.line_nr
+		pos:      s.pos
+		col:      u16_col(s.current_column() - 1)
+		file_idx: s.file_idx
 	}
 }
 
@@ -1677,8 +1693,9 @@ pub fn (mut s Scanner) note(msg string) {
 		return
 	}
 	pos := token.Pos{
-		line_nr: s.line_nr
-		pos:     s.pos
+		line_nr:  s.line_nr
+		pos:      s.pos
+		file_idx: s.file_idx
 	}
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('notice:', pos: pos, file_path: s.file_path, message: msg)
@@ -1791,15 +1808,31 @@ fn (mut s Scanner) trace[T](fbase string, x &T) {
 // using a subsequent s.scan_text() call, to get the token corresponding to the text.
 pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.text = text
-	s.pos = 0
+	s.pos = -1
+	s.tidx = 0
+	s.all_tokens.clear()
+	s.errors.clear()
+	s.error_details.clear()
+	s.warnings.clear()
+	s.notices.clear()
+	s.str_helper_tokens.clear()
+	s.str_segments.clear()
+	s.all_pos.clear()
+	s.u16_escapes_pos.clear()
+	s.u32_escapes_pos.clear()
+	s.h_escapes_pos.clear()
+	s.should_abort = false
+	s.eofs = 0
+	s.nr_lines = 0
 	s.line_nr = 0
-	s.last_nl_pos = 0
+	s.last_nl_pos = -1
 	s.is_crlf = false
+	s.is_inside_toplvl_statement = false
 	s.is_inside_string = false
 	s.is_nested_string = false
 	s.is_inter_start = false
 	s.is_inter_end = false
-	s.last_lt = 0
+	s.last_lt = -1
 	s.quote = 0
 }
 
@@ -1814,13 +1847,19 @@ pub fn new_silent_scanner() &Scanner {
 	}
 }
 
-pub fn (s Scanner) str_quote() ?u8 {
+@[direct_array_access]
+fn (s Scanner) str_quote() u8 {
 	if s.str_helper_tokens.len == 0 {
-		return none
+		return 255
 	}
-	c := s.str_helper_tokens.last()
+	c := s.str_helper_tokens[s.str_helper_tokens.len - 1]
 	if c in [`'`, `"`] {
 		return c
 	}
-	return none
+	return 255
+}
+
+@[inline]
+fn u16_col(col int) u16 {
+	return if col < 0 { u16(0) } else { u16(col) }
 }

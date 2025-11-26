@@ -11,8 +11,11 @@ module ascon
 const max_nr_perm = 16
 
 // The number how many round(s) for the Ascon permutation routine called.
-const ascon_prnd_8 = 8
-const ascon_prnd_12 = 12
+enum PrndEnum {
+	ascon_prnd_6  = 6
+	ascon_prnd_8  = 8
+	ascon_prnd_12 = 12
+}
 
 // The constants to derive round constants of the Ascon permutations
 // See Table 5. of NIST SP 800-232 docs
@@ -36,13 +39,12 @@ const rnc = [u8(0x3c), 0x2d, 0x1e, 0x0f, 0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x9
 // 2. the substitution layer (see Sec.3.3), and,
 // 3. the linear diffusion layer (Sec 3.4)
 @[direct_array_access]
-fn ascon_pnr(mut s State, nr int) {
-	// We dont allow nr == 0
-	if nr < 1 || nr > 16 {
-		panic('Invalid round number')
-	}
+fn ascon_pnr(mut s State, nr PrndEnum) {
+	// Allocate temporary vars to reduce allocation within loop
+	mut x0 := u64(0)
+	mut y0 := u64(0)
 	// Ascon permutation routine
-	for i := max_nr_perm - nr; i < max_nr_perm; i++ {
+	for i := max_nr_perm - int(nr); i < max_nr_perm; i++ {
 		// 3.2 Constant-Addition Layer step
 		//
 		// The constant-addition layer adds a 64-bit round constant 𝑐𝑖
@@ -57,17 +59,15 @@ fn ascon_pnr(mut s State, nr int) {
 		s.e4 ^= s.e3
 		s.e2 ^= s.e1
 
-		t0 := s.e4 ^ (~s.e0 & s.e1)
-		t1 := s.e0 ^ (~s.e1 & s.e2)
-		t2 := s.e1 ^ (~s.e2 & s.e3)
-		t3 := s.e2 ^ (~s.e3 & s.e4)
-		t4 := s.e3 ^ (~s.e4 & s.e0)
+		// Set temp vars to values
+		x0 = s.e0
+		y0 = s.e4 ^ (~s.e0 & s.e1)
 
-		s.e0 = t1
-		s.e1 = t2
-		s.e2 = t3
-		s.e3 = t4
-		s.e4 = t0
+		s.e0 = s.e0 ^ (~s.e1 & s.e2) // t1
+		s.e1 = s.e1 ^ (~s.e2 & s.e3) // t2
+		s.e2 = s.e2 ^ (~s.e3 & s.e4) // t3
+		s.e3 = s.e3 ^ (~s.e4 & x0) // t4, change s.e0 to x0
+		s.e4 = y0
 
 		s.e1 ^= s.e0
 		s.e0 ^= s.e4
@@ -90,11 +90,11 @@ fn ascon_pnr(mut s State, nr int) {
 		// Bits right rotation, basically can be defined as:
 		// 		ror = (x >> n) | x << (64 - n) for some u64 x
 		//
-		s.e0 ^= (s.e0 >> 19 | (s.e0 << (64 - 19))) ^ (s.e0 >> 28 | (s.e0 << (64 - 28)))
-		s.e1 ^= (s.e1 >> 61 | (s.e1 << (64 - 61))) ^ (s.e1 >> 39 | (s.e1 << (64 - 39)))
-		s.e2 ^= (s.e2 >> 1 | (s.e2 << (64 - 1))) ^ (s.e2 >> 6 | (s.e2 << (64 - 6))) // 	
-		s.e3 ^= (s.e3 >> 10 | (s.e3 << (64 - 10))) ^ (s.e3 >> 17 | (s.e3 << (64 - 17)))
-		s.e4 ^= (s.e4 >> 7 | (s.e4 << (64 - 7))) ^ (s.e4 >> 41 | (s.e4 << (64 - 41)))
+		s.e0 ^= (s.e0 >> 19 | s.e0 << 45) ^ (s.e0 >> 28 | s.e0 << 36)
+		s.e1 ^= (s.e1 >> 61 | s.e1 << 3) ^ (s.e1 >> 39 | s.e1 << 25)
+		s.e2 ^= (s.e2 >> 1 | s.e2 << 63) ^ (s.e2 >> 6 | s.e2 << 58)
+		s.e3 ^= (s.e3 >> 10 | s.e3 << 54) ^ (s.e3 >> 17 | s.e3 << 47)
+		s.e4 ^= (s.e4 >> 7 | s.e4 << 57) ^ (s.e4 >> 41 | s.e4 << 23)
 	}
 }
 

@@ -314,3 +314,165 @@ fn test_parse_with_stdout() {
 	println(@LOCATION)
 	parse(.stdout)!
 }
+
+fn test_parse_vls_info() {
+	println(@LOCATION)
+	source_text := '
+// not_my_const comment line1
+// my_const comment line2
+const my_const = 123	// my_const end_comment
+
+// not_MyS comment line1
+// MyS comment line2
+struct MyS {
+	// a comment line1
+	// a comment line2
+	a int	// a end_comment
+	// b comment line1
+	// b comment line2
+	b int	// b end_comment
+}
+
+// not_MyInterface comment line1
+// MyInterface comment line2
+interface MyInterface {
+	// method comment line1
+	// method comment line2
+	method() string	// method end_comment
+	// data comment line1
+	// data comment line2
+	data int // data end_comment
+}
+
+// not_my_global comment line1
+// my_global comment line2
+__global my_global = 456	// my_global end_comment
+
+// not_MyAlias comment line1
+// MyAlias comment line2
+type MyAlias = u8	// MyAlias end_comment
+
+// not_MySum comment line1
+// MySum comment line2
+type MySum = u8 | u16	// MySum end_comment
+
+// not_MyFnType comment line1
+// MyFnType comment line2
+type MyFnType = fn (msg &char, arg usize)	// MyFnType end_comment
+
+
+// not_MyEnum comment line1
+// MyEnum comment line2
+enum MyEnum {
+	// x comment line1
+	// x comment line2
+	x	// x end_comment
+	// y comment line1
+	// y comment line2
+	y	// y end_comment
+}
+
+// not_add comment line1
+// add comment line2
+fn (mut k MyS) add(val int) {
+	k.a += val
+}
+
+
+// not_foo comment line1
+// foo comment line2
+fn foo() int {
+	f := 23
+	return 10+4+f
+}
+
+// not_ff comment line1
+// ff comment line2
+fn ff(x int) {}	// ff end_comment
+
+// not_main comment line1
+// main comment line2
+fn main() {
+  ff(12 + 3)
+  x := 10
+  bar(5+7)
+  ff(8+x)
+}
+'
+	mut table := ast.new_table()
+	vpref := &pref.Preferences{
+		enable_globals: true
+		is_vls:         true
+	}
+	mut prog := parse_text(source_text, '', mut table, .parse_comments, vpref)
+	mut checker_ := checker.new_checker(table, vpref)
+	checker_.check(mut prog)
+
+	assert 'const_main.my_const' in table.vls_info
+	assert 'struct_main.MyS' in table.vls_info
+	assert 'struct_main.MyS.a' in table.vls_info
+	assert 'struct_main.MyS.b' in table.vls_info
+	assert 'interface_main.MyInterface' in table.vls_info
+	assert 'fn_main[MyInterface]method' in table.vls_info // MyInterface method
+	assert 'interface_main.MyInterface.data' in table.vls_info
+	assert 'fn_main[MyS]add' in table.vls_info // MyS method
+	assert 'fn_main[]foo' in table.vls_info
+	assert 'global_main.my_global' in table.vls_info // module specific global
+	assert 'global_my_global' in table.vls_info
+	assert 'aliastype_main.MyAlias' in table.vls_info
+	assert 'sumtype_main.MySum' in table.vls_info
+	assert 'fntype_main.MyFnType' in table.vls_info
+	assert 'enum_main.MyEnum' in table.vls_info
+	assert 'enum_main.MyEnum.x' in table.vls_info
+	assert 'enum_main.MyEnum.y' in table.vls_info
+	dump(table.vls_info['const_main.my_const'])
+	dump(table.vls_info['struct_main.MyS'])
+	dump(table.vls_info['struct_main.MyS.a'])
+	dump(table.vls_info['struct_main.MyS.b'])
+	dump(table.vls_info['interface_main.MyInterface'])
+	dump(table.vls_info['fn_main[MyInterface]method'])
+	dump(table.vls_info['interface_main.MyInterface.data'])
+	dump(table.vls_info['fn_main[MyS]add'])
+	dump(table.vls_info['fn_main[]foo'])
+	dump(table.vls_info['global_main.my_global'])
+	dump(table.vls_info['global_my_global'])
+	dump(table.vls_info['aliastype_main.MyAlias'])
+	dump(table.vls_info['sumtype_main.MySum'])
+	dump(table.vls_info['fntype_main.MyFnType'])
+	dump(table.vls_info['enum_main.MyEnum'])
+	dump(table.vls_info['enum_main.MyEnum.x'])
+	dump(table.vls_info['enum_main.MyEnum.y'])
+	assert table.vls_info['const_main.my_const'].doc.trim_space() == 'my_const comment line2
+my_const end_comment'
+	assert table.vls_info['struct_main.MyS'].doc.trim_space() == 'MyS comment line2'
+	assert table.vls_info['struct_main.MyS.a'].doc.trim_space() == 'a comment line1
+a comment line2
+a end_comment'
+	assert table.vls_info['struct_main.MyS.b'].doc.trim_space() == 'b comment line1
+b comment line2
+b end_comment'
+	assert table.vls_info['interface_main.MyInterface'].doc.trim_space() == 'MyInterface comment line2'
+	assert table.vls_info['fn_main[MyInterface]method'].doc.trim_space() == 'method comment line1
+method comment line2
+method end_comment'
+	assert table.vls_info['interface_main.MyInterface.data'].doc.trim_space() == 'data comment line1
+data comment line2
+data end_comment'
+	assert table.vls_info['fn_main[MyS]add'].doc.trim_space() == 'add comment line2'
+	assert table.vls_info['fn_main[]foo'].doc.trim_space() == 'foo comment line2'
+	assert table.vls_info['global_main.my_global'].doc.trim_space() == 'my_global comment line2'
+	assert table.vls_info['global_my_global'].doc.trim_space() == 'my_global comment line2'
+	assert table.vls_info['aliastype_main.MyAlias'].doc.trim_space() == 'MyAlias comment line2
+MyAlias end_comment'
+	assert table.vls_info['sumtype_main.MySum'].doc.trim_space() == 'MySum comment line2
+MySum end_comment'
+	assert table.vls_info['fntype_main.MyFnType'].doc.trim_space() == 'MyFnType comment line2
+MyFnType end_comment'
+	assert table.vls_info['enum_main.MyEnum'].doc.trim_space() == 'MyEnum comment line2'
+	assert table.vls_info['enum_main.MyEnum.x'].doc.trim_space() == 'x comment line1
+x comment line2
+x end_comment'
+	assert table.vls_info['enum_main.MyEnum.y'].doc.trim_space() == 'y comment line1
+y comment line2
+y end_comment'
+}

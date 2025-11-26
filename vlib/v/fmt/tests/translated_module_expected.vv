@@ -1,0 +1,9 @@
+@[translated]
+module aa
+
+fn C.abc(a int, b int)
+
+fn abc(x int, y int) {
+	s := int(123)
+	dump(s)
+}

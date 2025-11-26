@@ -32,7 +32,7 @@ fn check_and_extract_time(s string) !(int, int, int, int) {
 	// Check if the string start in the format "HH:MM:SS"
 	for i := 0; i < time_format_buffer.len; i++ {
 		if time_format_buffer[i] == u8(`0`) {
-			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
 				return error('`HH:MM:SS` match error: expected digit, not `${s[i]}` in position ${i}')
 			} else {
 				if i < 2 {
@@ -102,7 +102,7 @@ fn check_and_extract_date(s string) !(int, int, int) {
 	// Check if the string start in the format "YYYY-MM-DD"
 	for i := 0; i < date_format_buffer.len; i++ {
 		if date_format_buffer[i] == u8(`0`) {
-			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
 				return error('`YYYY-MM-DD` match error: expected digit, not `${s[i]}` in position ${i}')
 			} else {
 				if i < 4 {
@@ -158,18 +158,16 @@ pub fn parse_rfc3339(s string) !Time {
 
 	if is_date {
 		year, month, day = check_and_extract_date(s)!
-		if s.len == date_format_buffer.len {
-			return new(Time{
-				year:     year
-				month:    month
-				day:      day
-				is_local: false
-			})
-		}
+	}
+	if s.len <= date_format_buffer.len {
+		return error('date-time too short to parse')
+	}
+	if s[10] !in [u8(`T`), `t`, ` `] {
+		return error('invalid date-time separator:${s[10].ascii_str()}')
 	}
 
 	is_datetime := if s.len >= date_format_buffer.len + 1 + time_format_buffer.len + 1 {
-		is_date && s[10] == u8(`T`)
+		is_date
 	} else {
 		false
 	}
@@ -189,7 +187,7 @@ pub fn parse_rfc3339(s string) !Time {
 				timezone_start_position++
 				if timezone_start_position == s.len {
 					return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${timezone_start_position}, not "${[
-						s[timezone_start_position],
+						s[s.len - 1],
 					].bytestr()}"')
 				}
 			}
@@ -250,7 +248,7 @@ pub fn parse_rfc3339(s string) !Time {
 			mut offset_in_hours := 0
 			// offset hours
 			for i := 0; i < 2; i++ {
-				offset_in_hours = offset_in_minutes * 10 + (s[s.len - 5 + i] - u8(`0`))
+				offset_in_hours = offset_in_hours * 10 + (s[s.len - 5 + i] - u8(`0`))
 			}
 
 			// offset minutes

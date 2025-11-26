@@ -164,7 +164,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.styp(left.unaliased.set_nr_muls(0))
 		}
 		mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
-		if !is_builtin_or_alias_to_builtin && left.sym.info is ast.Alias {
+		if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
+			&& left.sym.info is ast.Alias {
 			alias_info := left.sym.info as ast.Alias
 			parent_sym := g.table.sym(alias_info.parent_type)
 			is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
@@ -344,6 +345,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				if node.op == .ne {
 					g.write('!')
 				}
+				tmp_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.write('${ptr_typ}_sumtype_eq(')
 				if left.typ.is_ptr() {
 					g.write('*'.repeat(left.typ.nr_muls()))
@@ -355,6 +358,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				g.write(')')
+				g.left_is_opt = tmp_left_is_opt
 			}
 			.interface {
 				ptr_typ := g.equality_fn(left.unaliased)
@@ -400,13 +404,25 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		if node.op == .eq {
-			g.write('!')
+			g.write('(')
+		} else {
+			g.write('!(')
 		}
-		g.write('memcmp(')
+		g.write('(')
 		g.expr(node.left)
-		g.write('.data, ')
+		g.write('.state == 2 && ')
 		g.expr(node.right)
-		g.write('.data, sizeof(${g.base_type(left_type)}))')
+		g.write('.state == 2) || (')
+		g.expr(node.left)
+		g.write('.state == ')
+		g.expr(node.right)
+		g.write('.state && ')
+		g.expr(node.left)
+		g.write('.state != 2 && !memcmp(&')
+		g.expr(node.left)
+		g.write('.data, &')
+		g.expr(node.right)
+		g.write('.data, sizeof(${g.base_type(left_type)}))))')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.gen_plain_infix_expr(node)
@@ -1018,8 +1034,18 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 // infix_expr_left_shift_op generates code for the `<<` operator
 // This can either be a value pushed into an array or a bit shift
 fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	left_type := if node.left is ast.ComptimeSelector {
+		g.type_resolver.get_type(node.left)
+	} else {
+		node.left_type
+	}
+	right_type := if node.right is ast.ComptimeSelector {
+		g.type_resolver.get_type(node.right)
+	} else {
+		node.right_type
+	}
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 	if left.unaliased_sym.kind == .array {
 		// arr << val
 		tmp_var := g.new_tmp_var()
@@ -1251,6 +1277,12 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
+	// do not use promoted_type for overflow detect
+	left_type := g.unwrap_generic(node.left_type)
+	checkoverflow_op := g.do_int_overflow_checks && left_type.is_int()
+	is_safe_add := checkoverflow_op && node.op == .plus
+	is_safe_sub := checkoverflow_op && node.op == .minus
+	is_safe_mul := checkoverflow_op && node.op == .mul
 	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
 	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
@@ -1259,7 +1291,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& g.table.is_interface_var(node.left.obj) {
 		inside_interface_deref_old := g.inside_interface_deref
 		g.inside_interface_deref = true
-		defer {
+		defer(fn) {
 			g.inside_interface_deref = inside_interface_deref_old
 		}
 	}
@@ -1272,13 +1304,23 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('memcmp(')
 	}
 	mut opstr := node.op.str()
-	if is_safe_div || is_safe_mod {
-		vsafe_fn_name := if is_safe_div { 'VSAFE_DIV_${typ_str}' } else { 'VSAFE_MOD_${typ_str}' }
+	if is_safe_add || is_safe_sub || is_safe_mul || is_safe_div || is_safe_mod {
+		overflow_styp := g.styp(get_overflow_fn_type(left_type))
+		vsafe_fn_name := match true {
+			is_safe_add { 'builtin__overflow__add_${overflow_styp}' }
+			is_safe_sub { 'builtin__overflow__sub_${overflow_styp}' }
+			is_safe_mul { 'builtin__overflow__mul_${overflow_styp}' }
+			is_safe_div { 'VSAFE_DIV_${typ_str}' }
+			is_safe_mod { 'VSAFE_MOD_${typ_str}' }
+			else { '' }
+		}
 		g.write(vsafe_fn_name)
 		g.write('(')
-		g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
-			typ: typ
-			op:  node.op
+		if is_safe_div || is_safe_mod {
+			g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+				typ: typ
+				op:  node.op
+			}
 		}
 		opstr = ','
 	}
@@ -1303,7 +1345,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
 	}
-	if is_safe_div || is_safe_mod {
+	if is_safe_add || is_safe_sub || is_safe_mul || is_safe_div || is_safe_mod {
 		g.write(')')
 	}
 	if needs_cast {

@@ -150,10 +150,6 @@ pub fn (mut v Vec3[T]) subtract_scalar[U](scalar U) {
 	v.z -= T(scalar)
 }
 
-//
-// Multiplication
-//
-
 // * returns the resulting vector of the multiplication of `v` and `u`.
 @[inline]
 pub fn (v Vec3[T]) * (u Vec3[T]) Vec3[T] {
@@ -161,11 +157,13 @@ pub fn (v Vec3[T]) * (u Vec3[T]) Vec3[T] {
 }
 
 // mul returns the resulting vector of the multiplication of `v` * `u`.
+@[inline]
 pub fn (v Vec3[T]) mul(u Vec3[T]) Vec3[T] {
 	return v * u
 }
 
 // mul_scalar returns the resulting vector of the multiplication of the `scalar` value.
+@[inline]
 pub fn (v Vec3[T]) mul_scalar[U](scalar U) Vec3[T] {
 	return Vec3[T]{v.x * T(scalar), v.y * T(scalar), v.z * T(scalar)}
 }
@@ -223,6 +221,7 @@ pub fn (mut v Vec3[T]) divide_scalar[U](scalar U) {
 //
 
 // magnitude returns the magnitude, also known as the length, of the vector.
+@[inline]
 pub fn (v Vec3[T]) magnitude() T {
 	if v.x == 0 && v.y == 0 && v.z == 0 {
 		return T(0)
@@ -231,11 +230,13 @@ pub fn (v Vec3[T]) magnitude() T {
 }
 
 // dot returns the dot product of `v` and `u`.
+@[inline]
 pub fn (v Vec3[T]) dot(u Vec3[T]) T {
 	return T((v.x * u.x) + (v.y * u.y) + (v.z * u.z))
 }
 
 // cross returns the cross product of `v` and `u`.
+@[inline]
 pub fn (v Vec3[T]) cross(u Vec3[T]) Vec3[T] {
 	return Vec3[T]{
 		x: (v.y * u.z) - (v.z * u.y)
@@ -244,14 +245,16 @@ pub fn (v Vec3[T]) cross(u Vec3[T]) Vec3[T] {
 	}
 }
 
-// unit returns the unit vector.
-// unit vectors always have a magnitude, or length, of exactly 1.
+// unit returns the unit vector. unit vectors always have a magnitude, or length, of exactly 1.
+@[inline]
 pub fn (v Vec3[T]) unit() Vec3[T] {
 	m := v.magnitude()
-	return Vec3[T]{v.x / m, v.y / m, v.z / m}
+	invm := 1 / m
+	return Vec3[T]{v.x * invm, v.y * invm, v.z * invm}
 }
 
 // perpendicular returns the `u` projected perpendicular vector to this vector.
+@[inline]
 pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
 	return v - v.project(u)
 }
@@ -300,17 +303,20 @@ pub fn (v Vec3[T]) is_approx_zero(tolerance f64) bool {
 }
 
 // eq_scalar returns a bool indicating if the `x`,`y` and `z` fields all equals `scalar`.
+@[inline]
 pub fn (v Vec3[T]) eq_scalar[U](scalar U) bool {
 	return v.x == T(scalar) && v.y == T(scalar) && v.z == T(scalar)
 }
 
 // distance returns the distance to the vector `u`.
+@[inline]
 pub fn (v Vec3[T]) distance(u Vec3[T]) f64 {
 	return math.sqrt((v.x - u.x) * (v.x - u.x) + (v.y - u.y) * (v.y - u.y) +
 		(v.z - u.z) * (v.z - u.z))
 }
 
 // manhattan_distance returns the Manhattan distance to the vector `u`.
+@[inline]
 pub fn (v Vec3[T]) manhattan_distance(u Vec3[T]) f64 {
 	return math.abs(v.x - u.x) + math.abs(v.y - u.y) + math.abs(v.z - u.z)
 }
@@ -378,19 +384,21 @@ pub fn (v Vec3[T]) inv() Vec3[T] {
 }
 
 // normalize normalizes the vector.
+@[inline]
 pub fn (v Vec3[T]) normalize() Vec3[T] {
 	m := v.magnitude()
 	if m == 0 {
 		return vec3[T](0, 0, 0)
 	}
 	return Vec3[T]{
-		x: v.x * (1 / m)
-		y: v.y * (1 / m)
-		z: v.z * (1 / m)
+		x: v.x / m
+		y: v.y / m
+		z: v.z / m
 	}
 }
 
 // sum returns a sum of all the fields.
+@[inline]
 pub fn (v Vec3[T]) sum() T {
 	return v.x + v.y + v.z
 }

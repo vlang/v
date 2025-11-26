@@ -433,7 +433,12 @@ pub fn is_executable(path string) bool {
 		// 04 Read-only
 		// 06 Read and write
 		p := real_path(path)
-		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat') || p.ends_with('.cmd'))
+		if !exists(p) {
+			return false
+		}
+		ext := p.to_lower().all_after_last('.')
+		// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
+		return ext in ['exe', 'com', 'bat', 'cmd']
 	}
 	$if solaris {
 		attr := stat(path) or { return false }
@@ -700,7 +705,7 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
 					max_path_buffer_size, 0)
-				if final_len < u32(max_path_buffer_size) {
+				if final_len < u32(max_path_buffer_size) && final_len != 0 {
 					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
 					defer {
 						unsafe { sret.free() }
@@ -709,7 +714,7 @@ pub fn executable() string {
 					sret_slice := sret[4..]
 					res := sret_slice.clone()
 					return res
-				} else {
+				} else if final_len != 0 {
 					eprintln('os.executable() saw that the executable file path was too long')
 				}
 			}
@@ -748,7 +753,7 @@ pub fn executable() string {
 		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
-				defer {
+				defer(fn) {
 					unsafe { free(pbuf) }
 				}
 			}
@@ -851,19 +856,19 @@ pub fn real_path(fpath string) string {
 		}
 		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
 		if file != voidptr(-1) {
-			defer {
-				C.CloseHandle(file)
-			}
+			defer { C.CloseHandle(file) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
 				0)
-			if final_len < u32(max_path_buffer_size) {
+			if final_len < u32(max_path_buffer_size) && final_len != 0 {
 				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
 				srt := rt[4..]
 				unsafe { res.free() }
 				res = srt.clone()
 			} else {
-				eprintln('os.real_path() saw that the file path was too long')
+				if final_len != 0 {
+					eprintln('os.real_path() saw that the file path was too long')
+				}
 				unsafe { res.free() }
 				return fpath.clone()
 			}

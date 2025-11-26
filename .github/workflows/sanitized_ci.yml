@@ -42,7 +42,6 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
       - 'vlib/x/json2/**.v'
-      - 'vlib/x/json2/decoder2/**.v'
       - '**/sanitized_ci.yml'
   pull_request:
     paths:
@@ -71,7 +70,6 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
       - 'vlib/x/json2/**.v'
-      - 'vlib/x/json2/decoder2/**.v'
       - '**/sanitized_ci.yml'
 
 concurrency:
@@ -87,15 +85,18 @@ jobs:
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -117,15 +118,18 @@ jobs:
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -138,7 +142,7 @@ jobs:
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 -silent build-examples
 
-  tests-sanitize-address-clang:
+  sanitize-address-clang:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
@@ -147,15 +151,18 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -178,8 +185,11 @@ jobs:
       VFLAGS: -cc msvc
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           echo %VFLAGS%
@@ -204,15 +214,18 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -235,15 +248,18 @@ jobs:
       VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -258,3 +274,32 @@ jobs:
           ./v -cc tcc -silent test-self -msan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v -silent build-examples
+
+  sanitize-address-clang-without-gc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      LSAN_OPTIONS: detect_leaks=0
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ./v -cflags -fsanitize=address -silent test-self vlib

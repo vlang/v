@@ -399,8 +399,11 @@ pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 // `iv` is a 16 bytes Initialization Vector.
 // `input` must be padded to multiple of 16 bytes.
 // `output` must be exactly the same length as `input`.
+// returns:
+//   Updated IV ([]u8): The last ciphertext block for subsequent operations
+//   Error: If input length is invalid, IV length incorrect, or buffer mismatch
 @[direct_array_access]
-pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
+pub fn (c &SM4Cipher) crypt_cbc(iv []u8, input []u8, mut output []u8) ![]u8 {
 	mut idx := 0
 	mut length := input.len
 	if length & 0x0f != 0 || length == 0 {
@@ -416,17 +419,19 @@ pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 	// fixed size array, avoid alloc on heap
 	mut input_16 := [16]u8{}
 	mut output_16 := [16]u8{}
+	mut iv_buf := [16]u8{}
+	unsafe { vmemcpy(&iv_buf[0], &iv[0], 16) }
 
 	match c.mode {
 		.sm4_encrypt {
 			for length > 0 {
 				// processing a 128bit block
 				for i in 0 .. 16 {
-					input_16[i] = input[idx + i] ^ iv[i] // convert to fixed size array
+					input_16[i] = input[idx + i] ^ iv_buf[i] // convert to fixed size array
 				}
 				// use round keys encrypt the input_16
 				one_round(c.rk, input_16, mut output_16)
-				unsafe { vmemcpy(&iv[0], &output_16, 16) } // update iv with output
+				unsafe { vmemcpy(&iv_buf[0], &output_16, 16) } // update iv_buf with output
 				unsafe { vmemcpy(&output[idx], &output_16, 16) } // convert from fixed size array
 				idx += 16
 				length -= 16
@@ -439,12 +444,13 @@ pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 				// use round keys decrypt the input_16
 				one_round(c.rk, input_16, mut output_16)
 				for i in 0 .. 16 {
-					output[idx + i] = output_16[i] ^ iv[i] // update output with iv
-					iv[i] = input_16[i] // update iv with input
+					output[idx + i] = output_16[i] ^ iv_buf[i] // update output with iv_buf
+					iv_buf[i] = input_16[i] // update iv_buf with input
 				}
 				idx += 16
 				length -= 16
 			}
 		}
 	}
+	return iv_buf[..]
 }

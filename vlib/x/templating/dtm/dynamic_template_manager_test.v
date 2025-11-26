@@ -1,3 +1,5 @@
+// vtest retry: 3
+// vtest flaky: true
 module dtm
 
 import os

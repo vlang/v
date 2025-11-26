@@ -1,5 +1,5 @@
 // vtest retry: 3
-// vtest build: !windows
+// vtest build: present_sqlite3? && !windows
 // import db.mysql
 // import db.pg
 import time
@@ -7,11 +7,12 @@ import db.sqlite
 
 const offset_const = 2
 
+@[index: 'name, nr_downloads']
 struct Module {
-	id           int @[primary; sql: serial]
-	name         string
+	id           int    @[primary; sql: serial]
+	name         string @[index]
 	nr_downloads int
-	test_id      u64
+	test_id      u64 @[index]
 	user         ?User
 	created      time.Time
 }

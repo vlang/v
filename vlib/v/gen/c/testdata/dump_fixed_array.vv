@@ -1,0 +1,9 @@
+fn main() {
+	a := &[2]u8{}
+	dump(a)
+	println(a)
+	assert a.len == 2
+
+	_ := &[2]u8{}
+	assert true
+}

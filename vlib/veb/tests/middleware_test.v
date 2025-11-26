@@ -2,6 +2,8 @@ import veb
 import net.http
 import os
 import time
+import compress.gzip
+import compress.zstd
 
 const port = 13001
 
@@ -48,6 +50,31 @@ pub fn (app &App) after(mut ctx Context) veb.Result {
 	return ctx.text('from after, ${ctx.counter}')
 }
 
+@['/gzip']
+pub fn (app &App) gzip_test(mut ctx Context) veb.Result {
+	return ctx.text('gzip response, ${ctx.counter}')
+}
+
+@['/decode_gzip'; post]
+pub fn (app &App) decode_gzip_test(mut ctx Context) veb.Result {
+	return ctx.text('received: ${ctx.req.data}')
+}
+
+@['/zstd']
+pub fn (app &App) zstd_test(mut ctx Context) veb.Result {
+	return ctx.text('zstd response, ${ctx.counter}')
+}
+
+@['/decode_zstd'; post]
+pub fn (app &App) decode_zstd_test(mut ctx Context) veb.Result {
+	return ctx.text('received: ${ctx.req.data}')
+}
+
+@['/content']
+pub fn (app &App) content_test(mut ctx Context) veb.Result {
+	return ctx.text('content response, ${ctx.counter}')
+}
+
 pub fn (app &App) app_middleware(mut ctx Context) bool {
 	ctx.counter++
 	return true
@@ -86,6 +113,17 @@ fn testsuite_begin() {
 	app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
 
 	app.Middleware.route_use('/after', handler: after_middleware, after: true)
+
+	// Gzip middleware tests
+	app.Middleware.use(veb.decode_gzip[Context]())
+	app.Middleware.route_use('/gzip', veb.encode_gzip[Context]())
+
+	// Zstd middleware tests
+	app.Middleware.use(veb.decode_zstd[Context]())
+	app.Middleware.route_use('/zstd', veb.encode_zstd[Context]())
+
+	// Auto content encoding middleware (zstd/gzip based on Accept-Encoding)
+	app.Middleware.route_use('/content', veb.encode_auto[Context]())
 
 	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
@@ -126,4 +164,85 @@ fn test_after_middleware() {
 	assert custom_header == '3'
 }
 
-// TODO: add test for encode and decode gzip
+// Verifies that encode_gzip compresses responses
+fn test_encode_gzip_middleware() {
+	x := http.get('${localserver}/gzip')!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'gzip', 'Expected gzip encoding, got: ${encoding}'
+
+	decompressed := gzip.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'gzip response, 2'
+}
+
+// Verifies that decode_gzip middleware decompresses request bodies
+fn test_decode_gzip_middleware() {
+	original_text := 'Hello from gzip compressed body!'
+	compressed := gzip.compress(original_text.bytes())!
+
+	mut req := http.new_request(.post, '${localserver}/decode_gzip', compressed.bytestr())
+	req.header.add(.content_encoding, 'gzip')
+	x := req.do()!
+
+	assert x.body == 'received: ${original_text}'
+}
+
+// Verifies that encode_zstd compresses responses
+fn test_encode_zstd_middleware() {
+	x := http.get('${localserver}/zstd')!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'zstd', 'Expected zstd encoding, got: ${encoding}'
+
+	decompressed := zstd.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'zstd response, 2'
+}
+
+// Verifies that decode_zstd middleware decompresses request bodies
+fn test_decode_zstd_middleware() {
+	original_text := 'Hello from zstd compressed body!'
+	compressed := zstd.compress(original_text.bytes())!
+
+	mut req := http.new_request(.post, '${localserver}/decode_zstd', compressed.bytestr())
+	req.header.add(.content_encoding, 'zstd')
+	x := req.do()!
+
+	assert x.body == 'received: ${original_text}'
+}
+
+// Verifies that encode_auto uses zstd when client supports it
+fn test_encode_auto_zstd() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'gzip, zstd, br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'zstd', 'Expected zstd encoding when zstd is in Accept-Encoding, got: ${encoding}'
+
+	decompressed := zstd.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'content response, 2'
+}
+
+// Verifies that encode_auto falls back to gzip when client doesn't support zstd
+fn test_encode_auto_gzip_fallback() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'gzip, br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'gzip', 'Expected gzip encoding when zstd is not in Accept-Encoding, got: ${encoding}'
+
+	decompressed := gzip.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'content response, 2'
+}
+
+// Verifies that encode_auto sends uncompressed when no encoding is supported
+fn test_encode_auto_no_compression() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == '', 'Expected no encoding when neither gzip nor zstd is in Accept-Encoding, got: ${encoding}'
+	assert x.body == 'content response, 2'
+}

@@ -676,6 +676,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.alias { f.write('\$alias') }
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
+				.shared { f.write('\$shared') }
 				.string { f.write('\$string') }
 				.pointer { f.write('\$pointer') }
 				.voidptr { f.write('\$voidptr') }
@@ -1421,7 +1422,7 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
-			defer {
+			defer(fn) {
 				f.in_lambda_depth--
 			}
 		}
