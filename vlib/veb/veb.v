@@ -144,7 +144,6 @@ mut:
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
-	// println('\n\nhandle_route() url=${url} routes=${routes}')
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
@@ -220,11 +219,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		}
 	}
 
-	// defer {
-	// println('USER CONTEXT at end of handle_route')
-	// println(user_context)
-	//}
-
 	// Route matching and match route specific middleware as last step
 	$for method in A.methods {
 		$if method.return_type is Result {
@@ -253,7 +247,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								return
 							}
 						}
-
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
@@ -262,21 +255,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							} else {
 								user_context.Context.form
 							}
-
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-
-							// println('m1')
 							app.$method(mut user_context, args)
 						} else {
-							// println('m2')
 							app.$method(mut user_context)
 						}
 						return
 					}
 
-					// println('route_words=${route_words} method=${method}')
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
@@ -288,21 +276,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
-
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
 							} else {
 								user_context.Context.form
 							}
-
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-
-							// println('m3')
 							app.$method(mut user_context, args)
 						} else {
-							// println('m4')
 							app.$method(mut user_context)
 						}
 						return
@@ -315,12 +298,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								return
 							}
 						}
-
 						method_args := params.clone()
 						if method_args.len + 1 != method.args.len {
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
-						// println('m5')
 						app.$method(mut user_context, method_args)
 						return
 					}
@@ -335,7 +316,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
-	// println('route_matches(url_words:${url_words} route_words:${route_words}')
 	// URL path should be at least as long as the route path
 	// except for the catchall route (`/:path...`)
 	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
@@ -344,7 +324,6 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	if url_words.len < route_words.len {
 		return none
 	}
-
 	mut params := []string{cap: url_words.len}
 	if url_words.len == route_words.len {
 		for i in 0 .. url_words.len {
@@ -474,9 +453,6 @@ fn send_string_ptr(mut conn net.TcpConn, ptr &u8, len int) !int {
 	$if trace_send_string_conn ? {
 		eprintln('> send_string: conn: ${ptr_str(conn)}')
 	}
-	// $if trace_response ? {
-	// 	eprintln('> send_string:\n${s}\n')
-	// }
 	if voidptr(conn) == unsafe { nil } {
 		return error('connection was closed before send_string')
 	}

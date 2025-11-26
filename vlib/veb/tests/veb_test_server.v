@@ -93,7 +93,6 @@ pub fn (mut app ServerApp) user_repo_settings(mut ctx ServerContext, username st
 
 @['/json_echo'; post]
 pub fn (mut app ServerApp) json_echo(mut ctx ServerContext) veb.Result {
-	// eprintln('>>>>> received http request at /json_echo is: $app.req')
 	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
 	return ctx.ok(ctx.req.data)
 }
@@ -127,7 +126,6 @@ pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) ve
 // Make sure [post] works without the path
 @[post]
 pub fn (mut app ServerApp) json(mut ctx ServerContext) veb.Result {
-	// eprintln('>>>>> received http request at /json is: $app.req')
 	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
 	return ctx.ok(ctx.req.data)
 }

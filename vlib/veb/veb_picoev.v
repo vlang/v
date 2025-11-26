@@ -19,35 +19,26 @@ $if !new_veb ? {
 		if params.port <= 0 || params.port > 65535 {
 			return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 		}
-
 		routes := generate_routes[A, X](global_app)!
 		controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
-
 		if params.show_startup_message {
 			host := if params.host == '' { 'localhost' } else { params.host }
 			println('[veb] Running app on http://${host}:${params.port}/')
 		}
 		flush_stdout()
-
 		mut pico_context := &RequestParams{
 			global_app:         unsafe { global_app }
 			controllers:        controllers_sorted
 			routes:             &routes
 			timeout_in_seconds: params.timeout_in_seconds
 		}
-
 		pico_context.idx = []int{len: picoev.max_fds}
 		// reserve space for read and write buffers
 		pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * max_read + 1) }
-		defer {
-			unsafe {
-				free(pico_context.buf)
-			}
-		}
+		defer { unsafe { free(pico_context.buf) } }
 		pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 		pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 		pico_context.string_responses = []StringResponse{len: picoev.max_fds}
-
 		mut pico := picoev.new(
 			port:         params.port
 			raw_cb:       ev_callback[A, X]
@@ -56,11 +47,9 @@ $if !new_veb ? {
 			family:       params.family
 			host:         params.host
 		)!
-
 		$if A is BeforeAcceptApp {
 			global_app.before_accept_loop()
 		}
-
 		// Forever accept every connection that comes
 		pico.serve()
 	}
@@ -68,18 +57,15 @@ $if !new_veb ? {
 	@[direct_array_access]
 	fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		mut params := unsafe { &RequestParams(pv.user_data) }
-
 		if events == picoev.picoev_timeout {
 			$if trace_picoev_callback ? {
 				eprintln('> request timeout on file descriptor ${fd}')
 			}
-
 			handle_timeout(mut pv, mut params, fd)
 		} else if events == picoev.picoev_write {
 			$if trace_picoev_callback ? {
 				eprintln('> write event on file descriptor ${fd}')
 			}
-
 			if params.file_responses[fd].open {
 				handle_write_file(mut pv, mut params, fd)
 			} else if params.string_responses[fd].open {
@@ -97,7 +83,6 @@ $if !new_veb ? {
 			$if trace_picoev_callback ? {
 				eprintln('> read event on file descriptor ${fd}')
 			}
-			// println('ev_callback fd=${fd} params.routes=${params.routes.len}')
 			handle_read[A, X](mut pv, mut params, fd)
 		} else {
 			// should never happen
@@ -111,7 +96,6 @@ $if !new_veb ? {
 			handle:      fd
 			is_blocking: false
 		}
-
 		fast_send_resp(mut conn, http_408) or {}
 		pv.close_conn(fd)
 		params.request_done(fd)
@@ -143,7 +127,6 @@ $if !new_veb ? {
 				is_blocking:   false
 				write_timeout: params.timeout_in_seconds * time.second
 			}
-
 			params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
 				params.file_responses[fd].done()
 				pv.close_conn(fd)
@@ -156,7 +139,6 @@ $if !new_veb ? {
 			}
 			params.file_responses[fd].pos += actual_written
 		}
-
 		if params.file_responses[fd].pos == params.file_responses[fd].total {
 			// file is done writing
 			params.file_responses[fd].done()
@@ -203,20 +185,14 @@ $if !new_veb ? {
 	// and the connection stays open until it is ready to read again
 	@[direct_array_access; manualfree]
 	fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
-		// println('handle_read() fd=${fd} params.routes=${params.routes}')
 		mut conn := &net.TcpConn{
 			sock:        net.tcp_socket_from_handle_raw(fd)
 			handle:      fd
 			is_blocking: false
 		}
-
 		// cap the max_read to 8KB
 		mut reader := io.new_buffered_reader(reader: conn, cap: max_read)
-		defer {
-			unsafe {
-				reader.free()
-			}
-		}
+		defer { unsafe { reader.free() } }
 		// take the previous incomplete request
 		mut req := params.incomplete_requests[fd]
 		// check if there is an incomplete request for this file descriptor
@@ -338,9 +314,7 @@ $if !new_veb ? {
 				}
 			}
 		}
-		defer {
-			params.request_done(fd)
-		}
+		defer { params.request_done(fd) }
 		if completed_context := handle_request[A, X](mut conn, req, params) {
 			if completed_context.takeover {
 				// the connection should be kept open, but removed from the picoev loop.
@@ -426,20 +400,16 @@ $if !new_veb ? {
 	}
 
 	fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
-		// println('handle_request() params.routes=${params.routes}')
 		mut global_app := unsafe { &A(params.global_app) }
-
 		// TODO: change this variable to include the total wait time over each network cycle
 		// maybe store it in Request.user_ptr ?
 		page_gen_start := time.ticks()
-
 		$if trace_request ? {
 			dump(req)
 		}
 		$if trace_request_url ? {
 			dump(req.url)
 		}
-
 		// parse the URL, query and form data
 		mut url := urllib.parse(req.url) or {
 			eprintln('[veb] error parsing path "${req.url}": ${err}')
@@ -452,11 +422,9 @@ $if !new_veb ? {
 			conn.write(http_400.bytes()) or {}
 			return none
 		}
-
 		// remove the port from the HTTP Host header
 		host_with_port := req.header.get(.host) or { '' }
 		host, _ := urllib.split_host_port(host_with_port)
-
 		// Create Context with request data
 		mut ctx := &Context{
 			req:            req
@@ -466,7 +434,6 @@ $if !new_veb ? {
 			form:           form
 			files:          files
 		}
-
 		if connection_header := req.header.get(.connection) {
 			// A client that does not support persistent connections MUST send the
 			// "close" connection option in every request message.
@@ -474,11 +441,9 @@ $if !new_veb ? {
 				ctx.client_wants_to_close = true
 			}
 		}
-
 		$if A is StaticApp {
 			ctx.custom_mime_types = global_app.static_mime_types.clone()
 		}
-
 		// match controller paths
 		$if A is ControllerInterface {
 			if completed_context := handle_controllers[X](params.controllers, ctx, mut
@@ -487,11 +452,9 @@ $if !new_veb ? {
 				return completed_context
 			}
 		}
-
 		// create a new user context and pass the veb's context
 		mut user_context := X{}
 		user_context.Context = ctx
-
 		handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 		// we need to explicitly tell the V compiler to return a reference
 		return &user_context.Context

@@ -93,12 +93,6 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
-	// println('send_response_to_client')
-	// print_backtrace()
-	// println('ctx=')
-	// println(ctx)
-	// println('sending resp=')
-	// println(response)
 	if ctx.done && !ctx.takeover {
 		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
@@ -112,7 +106,6 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
-
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
 	if custom_mimetype != '' {
@@ -133,7 +126,6 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if ctx.res.status_code == 0 {
 		ctx.res.set_status(.ok)
 	}
-
 	if ctx.takeover {
 		println('calling fast send resp')
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
@@ -171,9 +163,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		eprintln('[veb] file "${file_path}" does not exist')
 		return ctx.not_found()
 	}
-
 	ext := os.file_ext(file_path)
-
 	mut content_type := ctx.content_type
 	if content_type.len == 0 {
 		if ct := ctx.custom_mime_types[ext] {
@@ -182,12 +172,10 @@ pub fn (mut ctx Context) file(file_path string) Result {
 			content_type = mime_types[ext]
 		}
 	}
-
 	if content_type.len == 0 {
 		eprintln('[veb] no MIME type found for extension "${ext}"')
 		return ctx.server_error('')
 	}
-
 	return ctx.send_file(content_type, file_path)
 }
 
@@ -197,7 +185,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		ctx.res.set_status(.not_found)
 		return ctx.text('resource does not exist')
 	}
-
 	// seek from file end to get the file size
 	file.seek(0, .end) or {
 		eprintln('[veb] error while trying to read file: ${err.msg()}')
@@ -208,24 +195,19 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		return ctx.server_error('could not read resource')
 	}
 	file.close()
-
 	// Check which encodings the client accepts
 	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
 	client_accepts_zstd := accept_encoding.contains('zstd')
 	client_accepts_gzip := accept_encoding.contains('gzip')
-
 	max_size_bytes := ctx.static_compression_max_size
-
 	// Determine which compression modes are enabled
 	use_zstd := (ctx.enable_static_zstd && client_accepts_zstd)
 		|| (ctx.enable_static_compression && client_accepts_zstd)
 	use_gzip := (ctx.enable_static_gzip && client_accepts_gzip)
 		|| (ctx.enable_static_compression && client_accepts_gzip)
-
 	// Try to serve pre-compressed files if any compression is enabled
 	if use_zstd || use_gzip {
 		orig_mtime := os.file_last_mod_unix(file_path)
-
 		// Try zstd first if enabled (better compression), then gzip
 		if use_zstd {
 			if ctx.serve_precompressed_file(content_type, file_path, '.zst', 'zstd', orig_mtime) {
@@ -237,7 +219,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 				return Result{}
 			}
 		}
-
 		// No pre-compressed file available: create one if file is small enough
 		if file_size < max_size_bytes {
 			// Load, compress, save, and serve
@@ -245,7 +226,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 				eprintln('[veb] error while trying to read file: ${err.msg()}')
 				return ctx.server_error('could not read resource')
 			}
-
 			// Try zstd first if enabled, then gzip
 			if use_zstd {
 				if result := ctx.serve_compressed_static(content_type, file_path, data,
@@ -261,7 +241,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 					return result
 				}
 			}
-
 			// Compression failed: serve uncompressed in streaming mode
 			ctx.return_type = .file
 			ctx.return_file = file_path
@@ -269,7 +248,6 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			return ctx.send_response_to_client(content_type, '')
 		}
 	}
-
 	// Takeover mode: load file in memory (backward compatibility)
 	if ctx.takeover {
 		data := os.read_file(file_path) or {
@@ -278,13 +256,11 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 		}
 		return ctx.send_response_to_client(content_type, data)
 	}
-
 	// Default: serve uncompressed file in streaming mode (zero-copy sendfile)
 	ctx.return_type = .file
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
-	ctx.send_response_to_client(content_type, '')
-	return Result{}
+	return ctx.send_response_to_client(content_type, '')
 }
 
 // serve_precompressed_file serves an existing pre-compressed file (.zst or .gz) if it exists and is fresh.
@@ -305,8 +281,8 @@ fn (mut ctx Context) serve_precompressed_file(content_type string, file_path str
 	ctx.res.header.set(.vary, 'Accept-Encoding')
 	compressed_size := os.file_size(compressed_path)
 	ctx.res.header.set(.content_length, compressed_size.str())
-	ctx.send_response_to_client(content_type, '')
 	ctx.already_compressed = true
+	ctx.send_response_to_client(content_type, '')
 	return true
 }
 
@@ -323,16 +299,14 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c, '.gz', 'gzip'
 		}
 	}
-
 	compressed_path := '${file_path}${ext}'
-
 	// Try to save compressed version for future requests
 	mut write_success := true
 	os.write_file(compressed_path, compressed.bytestr()) or {
 		eprintln('[veb] warning: could not save ${ext} file (readonly filesystem?): ${err.msg()}')
 		write_success = false
 	}
-
+	ctx.already_compressed = true
 	if write_success {
 		// Serve the newly cached file in streaming mode (zero-copy)
 		ctx.return_type = .file
@@ -340,16 +314,13 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
 		ctx.res.header.set(.content_length, compressed.len.str())
-		ctx.send_response_to_client(content_type, '')
-		ctx.already_compressed = true
+		return ctx.send_response_to_client(content_type, '')
 	} else {
 		// Fallback: serve compressed content from memory (no caching)
 		ctx.res.header.set(.content_encoding, encoding_name)
 		ctx.res.header.set(.vary, 'Accept-Encoding')
-		ctx.send_response_to_client(content_type, compressed.bytestr())
-		ctx.already_compressed = true
+		return ctx.send_response_to_client(content_type, compressed.bytestr())
 	}
-	return Result{}
 }
 
 // Response HTTP_OK with s as payload
@@ -392,7 +363,6 @@ pub:
 pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	status := http.Status(params.typ)
 	ctx.res.set_status(status)
-
 	ctx.res.header.add(.location, url)
 	return ctx.send_response_to_client('text/plain', status.str())
 }
