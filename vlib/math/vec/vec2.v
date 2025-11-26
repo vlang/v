@@ -378,10 +378,10 @@ pub fn (p1 Vec2[T]) angle_towards(p2 Vec2[T]) T {
 // example:
 // ```v
 // v := vec2[f32](3.0, 4.0)
-// a := v.angle() 
+// a := v.angle()
 // assert a == 0.64 (approximate value in radians)
 // w := vec2[f32](0.0, 1.0)
-// b := w.angle() 
+// b := w.angle()
 // assert b == 1.57 (approximate value in radians)
 // ```
 pub fn (v Vec2[T]) angle() T {
