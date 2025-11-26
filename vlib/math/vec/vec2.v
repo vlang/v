@@ -226,7 +226,7 @@ pub fn (v Vec2[T]) magnitude_y() T {
 // It is calculated by multiplying the corresponding components of the vectors
 // and summing the results.
 // example:
-// ```
+// ```v
 // v := vec2[f32](3, 4) //magnitude = 5
 // u := vec2[f32](5, 6) //magnitude = 7.81
 // dot := v.dot(u) // 3*5 + 4*6 = 15 + 24 = 39
@@ -271,7 +271,7 @@ pub fn (v Vec2[T]) perpendicular(u Vec2[T]) Vec2[T] {
 // where "·" denotes the dot product and |v| is the magnitude of vector `v`.
 // If `u` is a zero vector, the result will also be a zero vector.
 // example:
-// ```
+// ```v
 // v := vec2[f32](3, 4)
 // u := vec2[f32](5, 6)
 // proj := v.project(u)
@@ -378,9 +378,11 @@ pub fn (p1 Vec2[T]) angle_towards(p2 Vec2[T]) T {
 // example:
 // ```v
 // v := vec2[f32](3.0, 4.0)
-// a := v.angle() // a == 0.64 (approximate value in radians)
+// a := v.angle() 
+// assert a == 0.64 (approximate value in radians)
 // w := vec2[f32](0.0, 1.0)
-// b := w.angle() // b == 1.57 (approximate value in radians)
+// b := w.angle() 
+// assert b == 1.57 (approximate value in radians)
 // ```
 pub fn (v Vec2[T]) angle() T {
 	$if T is f64 {
@@ -423,7 +425,7 @@ pub fn (mut v Vec2[T]) clean_tolerance[U](tolerance U) {
 // the direction the vector points is generally not preserved, but
 // the magnitude of each field is inverted.
 // example:
-// ```
+// ```v
 // v := vec2[f32](2.0, 4.0)
 // inv_v := v.inv() // inv_v == vec2[f32](0.5, 0.25)
 // ```
@@ -455,9 +457,10 @@ pub fn (v Vec2[T]) normalize() Vec2[T] {
 
 // sum returns a sum of all the fields.
 // example:
-// ```
+// ```v
 // v := vec2[f32](3.0, 4.0)
-// s := v.sum() // s == 7.0
+// s := v.sum()
+// assert s == 7.0
 // ```
 pub fn (v Vec2[T]) sum() T {
 	return v.x + v.y
