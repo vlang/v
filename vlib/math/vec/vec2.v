@@ -438,7 +438,7 @@ pub fn (v Vec2[T]) inv() Vec2[T] {
 // A normalized vector has the same direction as the original vector but a magnitude of 1.
 // If the vector has a magnitude of 0, a zero vector is returned since we cannot find the direction of a zero-length vector.
 // example:
-// ```
+// ```v
 // v := vec2[f32](3.0, 4.0)//magnitude = 5.0
 // n := v.normalize() // n == vec2[f32](0.6, 0.8) // magnitude = 1.0
 // ```
