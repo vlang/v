@@ -376,7 +376,7 @@ pub fn (p1 Vec2[T]) angle_towards(p2 Vec2[T]) T {
 
 // angle returns the angle in radians of the vector.
 // example:
-// ```
+// ```v
 // v := vec2[f32](3.0, 4.0)
 // a := v.angle() // a == 0.64 (approximate value in radians)
 // w := vec2[f32](0.0, 1.0)
