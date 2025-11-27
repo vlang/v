@@ -299,3 +299,24 @@ fn test_vec2_project_negative_components() {
 	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
 	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
 }
+
+// Test for perpendicularity
+// 'u' and 'v' are already perpendicular so it must return v
+fn test_vec2_perpendicularity_angle() {
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(0.0, 3.0)
+	
+	per := u.perpendicular(v)
+	assert tolerance(per.x, v.x, vec.vec_epsilon)
+	assert tolerance(per.y, v.y, vec.vec_epsilon)
+}
+
+// 'u' and 'v' are orthogonal so it must return the null vector
+fn test_vec2_orthogonal_angle() {
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(3.0, 0.0)
+	
+	per := u.perpendicular(v)
+	assert tolerance(per.x, 0.0, vec.vec_epsilon)
+	assert tolerance(per.y, 0.0, vec.vec_epsilon)
+}

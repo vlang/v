@@ -131,3 +131,26 @@ fn test_vec3_project_onto_angle() {
 	assert veryclose(proj.y, 0.0)
 	assert veryclose(proj.z, 0.0)
 }
+
+// Test for perpendicularity
+// 'u' and 'v' are already perpendicular so it must return v
+fn test_vec3_perpendicularity_angle() {
+	u := vec.vec3(1.0, 0.0, 0.0)
+	v := vec.vec3(0.0, 3.0, 2.0)
+	
+	per := u.perpendicular(v)
+	assert tolerance(per.x, v.x, vec.vec_epsilon)
+	assert tolerance(per.y, v.y, vec.vec_epsilon)
+	assert tolerance(per.z, v.z, vec.vec_epsilon)
+}
+
+// 'u' and 'v' are orthogonal so it must return the null vector
+fn test_vec3_orthogonal_angle() {
+	u := vec.vec3(1.0, 0.0, 0.0)
+	v := vec.vec3(0.0, 3.0, 2.0)
+	
+	per := u.perpendicular(v)
+	assert tolerance(per.x, 0.0, vec.vec_epsilon)
+	assert tolerance(per.y, 0.0, vec.vec_epsilon)
+	assert tolerance(per.z, 0.0, vec.vec_epsilon)
+}
