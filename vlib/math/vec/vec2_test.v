@@ -1,4 +1,4 @@
-import math { close, radians, veryclose }
+import math { close, is_nan, radians, tolerance, veryclose }
 import math.vec
 
 fn test_vec2_int() {
@@ -227,4 +227,75 @@ fn test_vec2_rotate_around_ccw_2() {
 	v = v.rotate_around_ccw(origin, radians(90))
 	assert close(v.x, -1.0)
 	assert close(v.y, -1.0)
+}
+
+// Test for Vec2 projection
+//
+fn test_vec2_project_onto_basic() {
+	u := vec.vec2(3.0, 4.0) // magnitude 5 vector
+	v := vec.vec2(5.0, 6.0) // magnitude ~7.81 vector
+	// hand-computed:
+	// u·v = 5*3 + 6*4 = 39
+	// |v|^2 = 3^2 + 4^2 = 25
+	// scale = 39/25 = 1.56
+	// proj = scale * v = (1.56*3, 1.56*4) = (4.68, 6.24)
+	proj := u.project(v)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, 6.24, vec.vec_epsilon)
+}
+
+// Test for Vec2 projection onto zero vector
+// project v into the null vector
+fn test_vec2_project_onto_zero() {
+	u := vec.vec2(0.0, 0.0)
+	v := vec.vec2(5.0, 6.0)
+	proj := u.project(v)
+	// must be nan
+	assert is_nan(proj.x)
+	assert is_nan(proj.y)
+}
+
+// Test for Vec2 projection of zero vector
+// project a null vector
+fn test_vec2_project_zero_vector() {
+	u := vec.vec2(3.0, 4.0)
+	v := vec.vec2(0.0, 0.0)
+	proj := u.project(v)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+}
+
+// Test for Vec2 projection onto itself
+//
+fn test_vec2_project_onto_self() {
+	u := vec.vec2(3.0, 4.0)
+	proj := u.project(u)
+	assert veryclose(proj.x, u.x)
+	assert veryclose(proj.y, u.y)
+}
+
+// Test for Vec2 projection onto orthogonal vector
+//
+fn test_vec2_project_onto_orthogonal() {
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(0.0, 1.0)
+	proj := u.project(v)
+	// more sensitive to floating point errors so i think close is better here
+	assert close(proj.x, 0.0)
+	assert close(proj.y, 0.0)
+}
+
+// Test for Vec2 projection with negative components
+//
+fn test_vec2_project_negative_components() {
+	u := vec.vec2(-3.0, 4.0)
+	v := vec.vec2(5.0, -6.0)
+	// hand-computed:
+	// u·v = 5*-3 + -6*4 = -15 - 24 = -39
+	// |v|^2 = -3^2 + 4^2 = 9 + 16 = 25
+	// scale = -39/25 = -1.56
+	// proj = scale * v = (-1.56*-3, -1.56*4) = (4.68, -6.24)
+	proj := u.project(v)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
 }
