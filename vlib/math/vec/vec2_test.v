@@ -305,7 +305,7 @@ fn test_vec2_project_negative_components() {
 fn test_vec2_perpendicularity_angle() {
 	u := vec.vec2(1.0, 0.0)
 	v := vec.vec2(0.0, 3.0)
-	
+
 	per := u.perpendicular(v)
 	assert tolerance(per.x, v.x, vec.vec_epsilon)
 	assert tolerance(per.y, v.y, vec.vec_epsilon)
@@ -315,7 +315,7 @@ fn test_vec2_perpendicularity_angle() {
 fn test_vec2_orthogonal_angle() {
 	u := vec.vec2(1.0, 0.0)
 	v := vec.vec2(3.0, 0.0)
-	
+
 	per := u.perpendicular(v)
 	assert tolerance(per.x, 0.0, vec.vec_epsilon)
 	assert tolerance(per.y, 0.0, vec.vec_epsilon)
