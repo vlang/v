@@ -232,14 +232,14 @@ fn test_vec2_rotate_around_ccw_2() {
 // Test for Vec2 projection
 //
 fn test_vec2_project_onto_basic() {
-	u := vec.vec2(3.0, 4.0) // magnitude 5 vector
 	v := vec.vec2(5.0, 6.0) // magnitude ~7.81 vector
+	u := vec.vec2(3.0, 4.0) // magnitude 5 vector
 	// hand-computed:
-	// u·v = 5*3 + 6*4 = 39
-	// |v|^2 = 3^2 + 4^2 = 25
+	// v·u = 5*3 + 6*4 = 39
+	// |u|^2 = 3^2 + 4^2 = 25
 	// scale = 39/25 = 1.56
-	// proj = scale * v = (1.56*3, 1.56*4) = (4.68, 6.24)
-	proj := u.project(v)
+	// proj = scale * u = (1.56*3, 1.56*4) = (4.68, 6.24)
+	proj := v.project(u)
 	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
 	assert tolerance(proj.y, 6.24, vec.vec_epsilon)
 }
@@ -247,9 +247,9 @@ fn test_vec2_project_onto_basic() {
 // Test for Vec2 projection onto zero vector
 // project v into the null vector
 fn test_vec2_project_onto_zero() {
-	u := vec.vec2(0.0, 0.0)
 	v := vec.vec2(5.0, 6.0)
-	proj := u.project(v)
+	u := vec.vec2(0.0, 0.0)
+	proj := v.project(u)
 	// must be nan
 	assert is_nan(proj.x)
 	assert is_nan(proj.y)
@@ -258,9 +258,9 @@ fn test_vec2_project_onto_zero() {
 // Test for Vec2 projection of zero vector
 // project a null vector
 fn test_vec2_project_zero_vector() {
-	u := vec.vec2(3.0, 4.0)
 	v := vec.vec2(0.0, 0.0)
-	proj := u.project(v)
+	u := vec.vec2(3.0, 4.0)
+	proj := v.project(u)
 	assert proj.x == 0.0
 	assert proj.y == 0.0
 }
@@ -277,8 +277,8 @@ fn test_vec2_project_onto_self() {
 // Test for Vec2 projection onto orthogonal vector
 //
 fn test_vec2_project_onto_orthogonal() {
-	u := vec.vec2(1.0, 0.0)
 	v := vec.vec2(0.0, 1.0)
+	u := vec.vec2(1.0, 0.0)
 	proj := u.project(v)
 	// more sensitive to floating point errors so i think close is better here
 	assert close(proj.x, 0.0)
@@ -288,14 +288,14 @@ fn test_vec2_project_onto_orthogonal() {
 // Test for Vec2 projection with negative components
 //
 fn test_vec2_project_negative_components() {
-	u := vec.vec2(-3.0, 4.0)
 	v := vec.vec2(5.0, -6.0)
+	u := vec.vec2(-3.0, 4.0)
 	// hand-computed:
-	// u·v = 5*-3 + -6*4 = -15 - 24 = -39
-	// |v|^2 = -3^2 + 4^2 = 9 + 16 = 25
+	// v·u = 5*-3 + -6*4 = -15 - 24 = -39
+	// |u|^2 = -3^2 + 4^2 = 9 + 16 = 25
 	// scale = -39/25 = -1.56
-	// proj = scale * v = (-1.56*-3, -1.56*4) = (4.68, -6.24)
-	proj := u.project(v)
+	// proj = scale * u = (-1.56*-3, -1.56*4) = (4.68, -6.24)
+	proj := v.project(u)
 	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
 	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
 }

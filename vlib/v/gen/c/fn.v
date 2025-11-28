@@ -2483,15 +2483,47 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else if arg.expr is ast.ArrayDecompose {
 			mut d_count := 0
-			for d_i in i .. expected_types.len {
-				g.write('*(${g.styp(expected_types[d_i])}*)builtin__array_get(')
-				g.expr(arg.expr)
-				g.write(', ${d_count})')
-
-				if d_i < expected_types.len - 1 {
-					g.write(', ')
+			remaining_params := expected_types.len - i
+			if !arg.expr.expr_type.has_flag(.variadic) && remaining_params > 0 {
+				tmp_array := g.new_tmp_var()
+				line := g.go_before_last_stmt()
+				array_typ := g.styp(arg.expr.expr_type)
+				g.write('\t${array_typ} ${tmp_array} = ')
+				g.expr(arg.expr.expr)
+				g.writeln(';')
+				g.writeln('if (${tmp_array}.len < ${remaining_params}) {')
+				elem_word := if remaining_params == 1 { 'element is' } else { 'elements are' }
+				tmp_err_msg := g.new_tmp_var()
+				g.writeln('\tstring ${tmp_err_msg};')
+				g.writeln('\tif (${tmp_array}.len == 1) {')
+				g.writeln('\t\t${tmp_err_msg} = builtin__str_intp(2, _MOV((StrIntpData[]){')
+				g.writeln('\t\t\t{_S("array decompose: array has "), 0xfe07, {.d_i32 = ${tmp_array}.len}},')
+				g.writeln('\t\t\t{_S(" element but ${remaining_params} ${elem_word} needed"), 0, {.d_c = 0 }}}));')
+				g.writeln('\t} else {')
+				g.writeln('\t\t${tmp_err_msg} = builtin__str_intp(2, _MOV((StrIntpData[]){')
+				g.writeln('\t\t\t{_S("array decompose: array has "), 0xfe07, {.d_i32 = ${tmp_array}.len}},')
+				g.writeln('\t\t\t{_S(" elements but ${remaining_params} ${elem_word} needed"), 0, {.d_c = 0 }}}));')
+				g.writeln('\t}')
+				g.writeln('\tbuiltin___v_panic(${tmp_err_msg});')
+				g.writeln('}')
+				g.write(line.trim_left('\t'))
+				for d_i in i .. expected_types.len {
+					g.write('*(${g.styp(expected_types[d_i])}*)builtin__array_get(${tmp_array}, ${d_count})')
+					if d_i < expected_types.len - 1 {
+						g.write(', ')
+					}
+					d_count++
 				}
-				d_count++
+			} else {
+				for d_i in i .. expected_types.len {
+					g.write('*(${g.styp(expected_types[d_i])}*)builtin__array_get(')
+					g.expr(arg.expr)
+					g.write(', ${d_count})')
+					if d_i < expected_types.len - 1 {
+						g.write(', ')
+					}
+					d_count++
+				}
 			}
 			already_decomposed = true
 			continue

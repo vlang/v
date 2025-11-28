@@ -1,0 +1,8 @@
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:2] s: a
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:2] s: a
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:6] '$s $t': a b
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:10] '$s $t $u': a b c
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:2] s: b
+[vlib/v/slow_tests/inout/panic_array_decompose_extra_args.vv:6] '$s $t': b c
+================ V panic ================
+V panic: array decompose: array has 3 elements but 4 elements are needed
