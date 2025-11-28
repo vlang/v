@@ -1524,6 +1524,20 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
+		if !func.is_variadic && call_arg.expr is ast.ArrayDecompose {
+			if mut call_arg.expr is ast.ArrayDecompose {
+				if call_arg.expr.expr is ast.ArrayInit {
+					extra_params := func.params.len - i
+					array_init := call_arg.expr.expr as ast.ArrayInit
+					if array_init.exprs.len < extra_params {
+						elem_word := if array_init.exprs.len == 1 { 'element' } else { 'elements' }
+						verb_word := if extra_params == 1 { 'is' } else { 'are' }
+						c.error('array decompose has ${array_init.exprs.len} ${elem_word} but ${extra_params} ${verb_word} needed for `${func.name}`',
+							call_arg.pos)
+					}
+				}
+			}
+		}
 		already_checked := node.language != .js && call_arg.expr is ast.CallExpr
 		if func.is_variadic && param_i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
