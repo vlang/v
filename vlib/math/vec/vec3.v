@@ -256,7 +256,7 @@ pub fn (v Vec3[T]) unit() Vec3[T] {
 // perpendicular returns the `u` projected perpendicular vector to the 'v' vector.
 @[inline]
 pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
-	return u - v.project(u)
+	return v - v.project(u)
 }
 
 // project returns the projected vector.
