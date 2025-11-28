@@ -11,9 +11,7 @@ import v.vcache
 import term
 
 const c_std = 'c99'
-const c_std_gnu = 'gnu99'
 const cpp_std = 'c++17'
-const cpp_std_gnu = 'gnu++17'
 
 const c_verror_message_marker = 'VERROR_MESSAGE '
 
@@ -465,12 +463,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	if !v.pref.no_std {
-		if v.pref.os == .linux {
-			ccoptions.source_args << '-std=${c_std_gnu}'
-		} else {
-			ccoptions.source_args << '-std=${c_std}'
-		}
-		ccoptions.source_args << '-D_DEFAULT_SOURCE'
+		ccoptions.source_args << ['-std=${c_std}', '-D_DEFAULT_SOURCE']
 	}
 	$if trace_ccoptions ? {
 		println('>>> setup_ccompiler_options ccompiler: ${ccompiler}')
@@ -545,18 +538,10 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 	mut all := []string{}
 
 	if !v.pref.no_std {
-		if v.pref.os == .linux {
-			if cpp_file {
-				all << '-std=${cpp_std_gnu}'
-			} else {
-				all << '-std=${c_std_gnu}'
-			}
+		if cpp_file {
+			all << '-std=${cpp_std}'
 		} else {
-			if cpp_file {
-				all << '-std=${cpp_std}'
-			} else {
-				all << '-std=${c_std}'
-			}
+			all << '-std=${c_std}'
 		}
 		all << '-D_DEFAULT_SOURCE'
 	}
