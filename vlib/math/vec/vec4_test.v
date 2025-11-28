@@ -139,7 +139,7 @@ fn test_vec4_perpendicularity_angle() {
 }
 
 // 'u' and 'v' are orthogonal so it must return the null vector
-fn test_vec4_orthogonal_angle() {
+fn test_vec4_collinear  () {
 	u := vec.vec4(1.0, 0.0, 0.0, 0.0)
 	v := vec.vec4(3.0, 0.0, 0.0, 0.0)
 
