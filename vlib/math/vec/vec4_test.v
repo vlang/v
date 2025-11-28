@@ -142,7 +142,7 @@ fn test_vec4_perpendicularity_angle() {
 fn test_vec4_orthogonal_angle() {
 	u := vec.vec4(1.0, 0.0, 0.0, 0.0)
 	v := vec.vec4(3.0, 0.0, 0.0, 0.0)
-	
+
 	per := v.perpendicular(u)
 	assert tolerance(per.x, 0.0, vec.vec_epsilon)
 	assert tolerance(per.y, 0.0, vec.vec_epsilon)
