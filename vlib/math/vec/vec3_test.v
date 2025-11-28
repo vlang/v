@@ -144,7 +144,7 @@ fn test_vec3_perpendicularity_angle() {
 	assert tolerance(per.z, v.z, vec.vec_epsilon)
 }
 
-// 'u' and 'v' are orthogonal so it must return the null vector
+// 'u' and 'v' are collinear so the result must be the null vector
 fn test_vec3_collinear() {
 	u := vec.vec3(1.0, 0.0, 0.0)
 	v := vec.vec3(3.0, 0.0, 0.0)
