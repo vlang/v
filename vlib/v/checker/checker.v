@@ -338,6 +338,8 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.file = unsafe { file }
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
+	c.is_just_builtin_mod = c.mod in ['builtin', 'builtin.closure']
+	c.is_builtin_mod = c.is_just_builtin_mod || c.mod in ['os', 'strconv']
 	c.is_generated = file.is_generated
 	c.short_module_names = ['builtin']
 	for import_sym in c.file.imports {
@@ -2407,9 +2409,6 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.interface_decl(mut node)
 		}
 		ast.Module {
-			c.mod = node.name
-			c.is_just_builtin_mod = node.name in ['builtin', 'builtin.closure']
-			c.is_builtin_mod = c.is_just_builtin_mod || node.name in ['os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {
