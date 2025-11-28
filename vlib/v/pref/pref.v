@@ -996,10 +996,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
-						os.execute_opt('wget -O "${so_path}" "${so_url}"') or {
-							os.execute_opt('curl -o "${so_path}" "${so_url}"') or {
-								panic('coroutines .so could not be downloaded with wget or curl. Download ${so_url}, place it in ${so_path} then try again.')
-							}
+						os.execute_opt('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"') or {
+							panic('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
 						}
 						println('done!')
 					}
