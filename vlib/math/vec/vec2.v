@@ -264,22 +264,22 @@ pub fn (v Vec2[T]) perpendicular(u Vec2[T]) Vec2[T] {
 }
 
 // project returns the projected vector.
-// The projection of vector `u` onto vector `v` is the orthogonal projection
-// of `u` onto a straight line parallel to `v` that passes through the origin.
-// This is equivalent to the vector projection of `u` onto the unit vector in the direction of `v`.
-// and is given by the formula: proj_v(u) = (u · v / |v|^2) * v
-// where "·" denotes the dot product and |v| is the magnitude of vector `v`.
-// If `u` is a zero vector, the result will also be a zero vector.
+// The projection of vector `v` onto vector `u` is the orthogonal projection
+// of `v` onto a straight line parallel to `u` that passes through the origin.
+// This is equivalent to the vector projection of `v` onto the unit vector in the direction of `u`.
+// and is given by the formula: proj_v(u) = (v · u / |u|^2) * u
+// where "·" denotes the dot product and |u| is the magnitude of vector `u`.
+// If `v` is a zero vector, the result will also be a zero vector.
 // example:
 // ```v
 // v := vec2[f32](3, 4)
 // u := vec2[f32](5, 6)
 // proj := v.project(u)
-// println(proj) // Output: vec2[f32](3.61, 4.81)
+// println(proj) // Output: vec2[f32](3.1967213, 3.8360658)
 // ```
 pub fn (v Vec2[T]) project(u Vec2[T]) Vec2[T] {
-	scale := u.dot(v) / v.dot(v)
-	return v.mul_scalar(scale)
+	scale := T(v.dot(u) / u.dot(u))
+	return u.mul_scalar(scale)
 }
 
 // rotate_around_cw returns the vector `v` rotated *clockwise* `radians` around an origin vector `o` in Cartesian space.

@@ -100,14 +100,14 @@ fn test_vec4_f64_utils_2() {
 
 // sample tests for vec4 projection
 fn test_vec4_project_onto_basic() {
-	u := vec.vec4(3.0, 4.0, 0.0, 0.0) // magnitude 5 vector
 	v := vec.vec4(5.0, 6.0, 0.0, 0.0) // magnitude ~7.81 vector
+	u := vec.vec4(3.0, 4.0, 0.0, 0.0) // magnitude 5 vector
 	// hand-computed:
-	// u·v = 5*3 + 6*4 + 0*0 + 0*0 = 39
-	// |v|^2 = 3^2 + 4^2 +0^2 +0^2 = 25
-	proj := u.project(v)
-	assert proj.x == 3.0
-	assert proj.y == 4.0
+	// v·u = 5*3 + 6*4 + 0*0 + 0*0 = 39
+	// |u|^2 = 3^2 + 4^2 +0^2 +0^2 = 25
+	proj := v.project(u)
+	assert proj.x == 4.68
+	assert proj.y == 6.24
 	assert proj.z == 0.0
 	assert proj.w == 0.0
 }
@@ -115,9 +115,9 @@ fn test_vec4_project_onto_basic() {
 // Test for Vec4 projection onto zero vector
 //
 fn test_vec4_project_onto_zero() {
-	u := vec.vec4(3.0, 4.0, 0.0, 0.0)
 	v := vec.vec4(0.0, 0.0, 0.0, 0.0)
-	proj := u.project(v)
+	u := vec.vec4(3.0, 4.0, 0.0, 0.0)
+	proj := v.project(u)
 	assert proj.x == 0.0
 	assert proj.y == 0.0
 	assert proj.z == 0.0
