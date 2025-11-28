@@ -5568,6 +5568,31 @@ sql db {
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
 
+### Troubleshooting compilation problems with SQLite on Windows
+On Windows, if you get a compilation error, about a missing sqlite3.h file, you have to run:
+`v vlib/db/sqlite/install_thirdparty_sqlite.vsh` once, then retry your compilation.
+
+### Using the self contained SQLite module
+V also maintains a separate `sqlite` module, that wraps an SQLite amalgamation, but otherwise
+has the same API as the `db.sqlite` module. Its benefit, is that with it, you do not need to
+install a separate system level sqlite package/library on your system (which can be hard on
+some systems like windows, or systems with musl for example).
+Its negative is that it can make your compilations a bit slower (since it compiles SQLite
+from C, in addition to your own code).
+
+To use it, do:
+```sh
+v install sqlite
+```
+and later, in your code, use this:
+```v ignore
+import sqlite
+```
+instead of:
+```v ignore
+import db.sqlite
+```
+
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
