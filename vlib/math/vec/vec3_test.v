@@ -145,7 +145,7 @@ fn test_vec3_perpendicularity_angle() {
 }
 
 // 'u' and 'v' are orthogonal so it must return the null vector
-fn test_vec3_collinear  () {
+fn test_vec3_collinear() {
 	u := vec.vec3(1.0, 0.0, 0.0)
 	v := vec.vec3(3.0, 0.0, 0.0)
 
