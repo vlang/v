@@ -141,8 +141,8 @@ fn test_vec4_perpendicularity_angle() {
 // 'u' and 'v' are orthogonal so it must return the null vector
 fn test_vec4_orthogonal_angle() {
 	u := vec.vec4(1.0, 0.0, 0.0, 0.0)
-	v := vec.vec4(0.0, 3.0, 2.0, 0.0)
-
+	v := vec.vec4(3.0, 0.0, 0.0, 0.0)
+	
 	per := u.perpendicular(v)
 	assert tolerance(per.x, 0.0, vec.vec_epsilon)
 	assert tolerance(per.y, 0.0, vec.vec_epsilon)
