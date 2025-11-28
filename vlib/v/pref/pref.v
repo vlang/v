@@ -227,7 +227,7 @@ pub mut:
 	fatal_errors     bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	no_std           bool // when true, do not pass -std=c99 to the C backend
 
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
