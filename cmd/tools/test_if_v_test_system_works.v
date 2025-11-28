@@ -4,6 +4,7 @@ module main
 // and that it exits with code 1, when at least 1 FAIL happen.
 import os
 import rand
+import time
 
 const vexe = os.quoted_path(get_vexe_path())
 const vroot = os.dir(vexe)
@@ -110,6 +111,12 @@ fn main() {
 	defer {
 		os.chdir(os.wd_at_startup) or {}
 	}
+	unbuffer_stdout()
+	spawn fn () {
+		time.sleep(30 * time.second)
+		eprintln('>>> exiting due to an expired watchdog timer <<<')
+		exit(1)
+	}()
 	println('> vroot: ${vroot} | vexe: ${vexe} | tdir: ${tdir}')
 	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')!
 	if check_ok('${vexe} ${ok_fpath}') != '' {
