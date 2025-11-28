@@ -131,6 +131,10 @@ accordingly in the steps below.)
    cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
    chmod 755 .git/hooks/pre-commit
    ```
+   It has to be done in a shell where you have done cd /root/of/your/V_repo once.
+   Step 3 above does it with `cd nv`.
+   I.e. you have to be in the top level folder, that contains the .git folder for the V repository.
+   
 4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
 
    Note: The remote named `pullrequest` should point to YOUR own forked repo, not the
