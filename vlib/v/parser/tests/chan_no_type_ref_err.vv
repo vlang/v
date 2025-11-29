@@ -1,0 +1,1 @@
+fn takes_ref(c &chan) {}
