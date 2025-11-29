@@ -37,7 +37,8 @@ fn (mut b Builder) gen_auto_str_fn() {
 				}
 			}
 			v_file := sb.str()
-			mut the_file := parser.parse_text(v_file, '__v_auto_generated_auto_fn(${full_mod_name}).v', mut
+			v_file_name := b.get_mod_full_path(full_mod_name)
+			mut the_file := parser.parse_text(v_file, '${v_file_name}/__v_auto_generated_auto_fn(${full_mod_name}).v', mut
 				b.table, .skip_comments, b.pref)
 			b.parsed_files << the_file
 			// need to call `checker` for this generated v_file
@@ -47,14 +48,43 @@ fn (mut b Builder) gen_auto_str_fn() {
 }
 
 fn gen_auto_str_fn_struct(mut sb strings.Builder, struct_name string, info ast.Struct) {
-	sb.writeln("
+	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { struct_name }
+	// find `[str: skip]` fields
+	mut field_skips := []int{}
+	for i, field in info.fields {
+		if attr := field.attrs.find_first('str') {
+			if attr.arg == 'skip' {
+				field_skips << i
+			}
+		}
+	}
+	sb.write_string("
 @[markused]
 pub fn (it ${struct_name})str() string {
-	return 'struct ${struct_name} { ")
-	for f in info.fields {
-		sb.writeln('\t\t${f.name}: \${it.${f.name}}')
+		return '${clean_struct_v_type_name}{")
+	if info.fields.len > 0 {
+		for i, f in info.fields {
+			// Skip `str:skip` fields
+			if i in field_skips {
+				continue
+			}
+			if f.typ == ast.string_type {
+				sb.writeln('    ${f.name}: \\\'\${it.${f.name}}\\\'')
+			} else {
+				sb.writeln('\n    ${f.name}: \${it.${f.name}}')
+			}
+		}
 	}
-	sb.writeln("\t}'
+	sb.writeln("}'
 }
 ")
+}
+
+fn (b Builder) get_mod_full_path(full_mod_name string) string {
+	for f in b.parsed_files {
+		if f.mod.name == full_mod_name {
+			return f.path.all_before_last('/')
+		}
+	}
+	return ''
 }
