@@ -124,6 +124,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			// error is handled by parse_type
 			return 0
 		}
+		if elem_type == ast.chan_type {
+			p.chan_type_error()
+			return 0
+		}
 		// has been explicitly resolved, but size is 0
 		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
@@ -140,6 +144,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	elem_type := p.parse_type()
 	if elem_type.idx() == 0 {
 		// error is set in parse_type
+		return 0
+	}
+	if elem_type == ast.chan_type {
+		p.chan_type_error()
 		return 0
 	}
 	if elem_type.idx() == ast.thread_type_idx {
@@ -199,6 +207,10 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	value_type := p.parse_type()
 	if value_type.idx() == 0 {
 		// error is reported in parse_type
+		return 0
+	}
+	if value_type == ast.chan_type {
+		p.chan_type_error()
 		return 0
 	}
 	if value_type.idx() == ast.void_type_idx {
@@ -291,6 +303,10 @@ fn (mut p Parser) parse_multi_return_type() ast.Type {
 	for p.tok.kind !in [.eof, .rpar] {
 		mr_type := p.parse_type()
 		if mr_type.idx() == 0 {
+			break
+		}
+		if mr_type == ast.chan_type {
+			p.chan_type_error()
 			break
 		}
 		if mr_type.has_flag(.generic) {
@@ -566,6 +582,11 @@ fn (mut p Parser) parse_type() ast.Type {
 		typ = p.parse_any_type(language, nr_muls > 0, true, is_option)
 		if typ.idx() == 0 {
 			// error is set in parse_type
+			return 0
+		}
+		// !p.inside_receiver_param check can be removed once (ch chan) functions are removed
+		if typ == ast.chan_type && !p.inside_receiver_param {
+			p.chan_type_error()
 			return 0
 		}
 		if typ == ast.void_type {

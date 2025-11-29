@@ -1047,6 +1047,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				// error is added in parse_type
 				return []ast.Param{}, false, false, false
 			}
+			if param_type == ast.chan_type {
+				p.chan_type_error()
+				return []ast.Param{}, false, false, false
+			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
 					if is_variadic {
@@ -1175,6 +1179,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
+				return []ast.Param{}, false, false, false
+			}
+			if typ == ast.chan_type {
+				p.chan_type_error()
 				return []ast.Param{}, false, false, false
 			}
 			if is_mut {
