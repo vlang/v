@@ -22,9 +22,11 @@ fn testsuite_begin() {
 	os.write_file('main.v', unformatted_content) or { panic(err) }
 	assert !os.is_dir('.git')
 	os.execute_or_exit('git init .')
+	os.execute_or_exit('git config user.email "me@example.com"')
+	os.execute_or_exit('git config user.name "Myself"')
 	assert os.is_dir('.git')
 	os.execute_or_exit('git add .')
-	os.execute_or_exit('git commit -m "start"')
+	os.execute_or_exit('git commit -m "start testing, initially unformatted"')
 	os.execute_or_exit('git checkout -b start') // use a known name, instead of master or main or who knows what else ...
 	assert read_file('main.v') == unformatted_content
 	// show_git_status()	
@@ -35,6 +37,7 @@ fn testsuite_end() {
 	show_git_status()
 	os.chdir(os.wd_at_startup)!
 	os.rmdir_all(tfolder) or { panic('> could not delete ${tfolder}, err: ${err}') }
+	eprintln('> deleted ${tfolder}')
 	assert true
 }
 
@@ -149,18 +152,18 @@ fn test_run_git_fmt_hook_install_and_remove_on_foreign_hook_should_be_a_nop() {
 	assert os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook').exit_code == 0
 	assert read_file(hook_file) == foreign_script
 	append('main.v', '\n') or { panic(err) }
+	append('main.v', '\n') or { panic(err) }
 	assert read_file('main.v').starts_with(unformatted_content)
 	os.execute_or_exit('git add -u')
-	fcommiting := os.execute_or_exit('git commit -m "this should NOT be formatted again"')
+	fcommiting := os.execute_or_exit('git commit -m "this should NOT be formatted 2"')
 	assert fcommiting.exit_code == 0
 	assert fcommiting.output.contains('hello hello')
 	assert read_file('main.v').starts_with(unformatted_content)
 }
 
 fn show_git_status() {
-	os.system('git status -s')
-	os.system('git log')
-	os.system('git branch -lv')
+	os.system('git log --graph --all --decorate')
+	os.system('git status')
 }
 
 fn append(path string, content string) ! {
