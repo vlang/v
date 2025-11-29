@@ -2,10 +2,10 @@ import os
 
 const vexe = @VEXE
 const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
-const unformatted_content = '   println(   "hi" )\n'
-const formatted_content = "println('hi')\n"
+const unformatted_content = '   fn main() {\nprintln(   "hi" )\n println ( 123 )\n   }'
+const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}"
 const hook_file = '.git/hooks/pre-commit'
-const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")\n'
+const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")'
 
 const git = os.to_slash(os.find_abs_path_of_executable('git') or {
 	eprintln('git is needed for this test, skipping...')
@@ -114,8 +114,10 @@ fn test_run_git_fmt_hook_install() {
 	os.execute_or_exit('git commit -m "this should be formatted"')
 	assert read_file('main.v') == formatted_content
 	dres := os.execute_or_exit('git diff start')
+	// dump(dres)
 	assert dres.exit_code == 0
-	assert dres.output.contains("+println('hi')")
+	assert dres.output.contains('+fn main() {')
+	assert dres.output.contains("+\tprintln('hi')")
 	second := os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook install')
 	assert second.exit_code == 0
 	assert second.output.contains('> Done.'), 'second:\n${second}'
@@ -177,8 +179,9 @@ fn append(path string, content string) ! {
 }
 
 fn read_file(path string) string {
-	content := os.read_file(path) or { panic(err) }
-	return content
+	lines := os.read_lines(path) or { panic(err) }.filter(it != '')
+	// eprintln('>> read_file: ${path} | lines: ${lines}')
+	return lines.join('\n')
 }
 
 fn reset_to_start_state() {
