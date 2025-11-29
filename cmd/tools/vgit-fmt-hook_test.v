@@ -3,7 +3,7 @@ import os
 const vexe = @VEXE
 const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
 const unformatted_content = '   fn main() {\nprintln(   "hi" )\n println ( 123 )\n   }'
-const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}"
+const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}\n"
 const hook_file = '.git/hooks/pre-commit'
 const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")'
 
@@ -26,6 +26,8 @@ fn testsuite_begin() {
 	os.write_file('main.v', unformatted_content) or { panic(err) }
 	assert !os.is_dir('.git')
 	os.execute_or_exit('git init .')
+	os.execute_or_exit('git config core.eol lf')
+	os.execute_or_exit('git config core.autocrlf input')
 	os.execute_or_exit('git config user.email "me@example.com"')
 	os.execute_or_exit('git config user.name "Myself"')
 	assert os.is_dir('.git')
@@ -179,9 +181,7 @@ fn append(path string, content string) ! {
 }
 
 fn read_file(path string) string {
-	lines := os.read_lines(path) or { panic(err) }.filter(it != '')
-	// eprintln('>> read_file: ${path} | lines: ${lines}')
-	return lines.join('\n')
+	return os.read_file(path) or { panic(err) }
 }
 
 fn reset_to_start_state() {
