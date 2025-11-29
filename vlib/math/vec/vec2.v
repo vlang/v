@@ -258,7 +258,7 @@ pub fn (v Vec2[T]) perp_ccw() Vec2[T] {
 	return Vec2[T]{-v.y, v.x}
 }
 
-// perpendicular returns the `u` projected perpendicular vector to 'v' vector.
+// perpendicular returns the `v` projected perpendicular vector to the 'u' vector.
 pub fn (v Vec2[T]) perpendicular(u Vec2[T]) Vec2[T] {
 	return v - v.project(u)
 }
