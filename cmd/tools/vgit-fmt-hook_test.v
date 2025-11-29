@@ -1,24 +1,28 @@
 import os
 
 const vexe = @VEXE
-const tfolder = os.join_path(os.vtmp_dir(), 'fmt_hook_test')
+const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
 const unformatted_content = '   println(   "hi" )\n'
 const formatted_content = "println('hi')\n"
 const hook_file = '.git/hooks/pre-commit'
 const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")\n'
 
-const git = os.find_abs_path_of_executable('git') or {
+const git = os.to_slash(os.find_abs_path_of_executable('git') or {
 	eprintln('git is needed for this test, skipping...')
 	exit(0)
-}
+})
+
+const v = os.to_slash(os.find_abs_path_of_executable('v') or {
+	eprintln('v needs to be installed and available on the path for this test, skipping...')
+	exit(0)
+})
 
 fn testsuite_begin() {
 	unbuffer_stdout()
-	os.rmdir_all(tfolder) or {}
+	eprintln('>>>>>> preparing tfolder: ${tfolder}')
+	full_remove(tfolder) or {}
 	os.mkdir_all(tfolder) or { panic('> could not create ${tfolder}, err: ${err}') }
 	os.chdir(tfolder)!
-	eprintln('>>>>>>> tfolder: ${tfolder}')
-
 	os.write_file('main.v', unformatted_content) or { panic(err) }
 	assert !os.is_dir('.git')
 	os.execute_or_exit('git init .')
@@ -36,8 +40,8 @@ fn testsuite_end() {
 	reset_to_start_state()
 	show_git_status()
 	os.chdir(os.wd_at_startup)!
-	os.rmdir_all(tfolder) or { panic('> could not delete ${tfolder}, err: ${err}') }
-	eprintln('> deleted ${tfolder}')
+	full_remove(tfolder)!
+	eprintln('>>>>>> deleted ${tfolder}')
 	assert true
 }
 
@@ -105,7 +109,7 @@ fn test_run_git_fmt_hook_install() {
 	assert res.output.contains('> Both files are exactly the same.')
 	assert !res.output.contains('> Use `v git-fmt-hook install`')
 	assert res.output.contains('> Use `v git-fmt-hook remove`')
-	assert !res.output.ends_with('> Done.\n')
+	assert !res.output.contains('> Done.'), 'res:\n${res}'
 	os.execute_or_exit('git add -u')
 	os.execute_or_exit('git commit -m "this should be formatted"')
 	assert read_file('main.v') == formatted_content
@@ -114,7 +118,7 @@ fn test_run_git_fmt_hook_install() {
 	assert dres.output.contains("+println('hi')")
 	second := os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook install')
 	assert second.exit_code == 0
-	assert second.output.ends_with('> Done.\n')
+	assert second.output.contains('> Done.'), 'second:\n${second}'
 }
 
 fn test_run_git_fmt_hook_remove() {
@@ -181,4 +185,13 @@ fn reset_to_start_state() {
 	os.execute('git checkout start')
 	os.rm('.git/hooks/pre-commit') or {}
 	assert read_file('main.v') == unformatted_content
+}
+
+fn full_remove(path string) ! {
+	// TODO: fix this on windows; the files inside .git/ are with read only permissions, and os.rmdir_all() can not delete them, until they are chmoded to writable
+	files := os.walk_ext(path + '/.git', '')
+	for f in files {
+		os.chmod(f, 0o777) or {}
+	}
+	os.rmdir_all(path)!
 }
