@@ -125,6 +125,7 @@ pub mut:
 	idx           int
 	size          int = -1
 	align         int = -1
+	need_str_fn   bool // need `type.str()`, set by checker
 }
 
 // max of 8
@@ -1881,6 +1882,19 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		else {}
 	}
 	return none
+}
+
+pub fn (t &TypeSymbol) has_method_with_sumtype_parent(name string) bool {
+	if t.has_method(name) {
+		return true
+	}
+	for s in global_table.type_symbols {
+		if s.kind == .sum_type && s.has_method(name) {
+			info := s.info as SumType
+			return t.idx in info.variants
+		}
+	}
+	return false
 }
 
 // is_js_compatible returns true if type can be converted to JS type and from JS type back to V type
