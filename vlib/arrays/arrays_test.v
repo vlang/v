@@ -605,9 +605,9 @@ fn test_each_indexed() {
 	assert control_sum == sum
 }
 
-fn test_substract() {
-	assert substract([1, 2, 3, 4, 5, 6, 7], [3, 5, 6]) == [1, 2, 4, 7]
-	assert substract([1, 2, 3], [1, 2, 3]) == []
-	assert substract([]int{}, [1, 2, 3]) == []
-	assert substract([]int{}, []int{}) == []
+fn test_subtract() {
+	assert subtract([1, 2, 3, 4, 5, 6, 7], [3, 5, 6]) == [1, 2, 4, 7]
+	assert subtract([1, 2, 3], [1, 2, 3]) == []
+	assert subtract([]int{}, [1, 2, 3]) == []
+	assert subtract([]int{}, []int{}) == []
 }
