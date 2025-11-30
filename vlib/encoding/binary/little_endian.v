@@ -81,13 +81,15 @@ pub fn little_endian_put_u16_end(mut b []u8, v u16) {
 
 // little_endian_get_u16 creates u8 array from the unsigned 16-bit integer v in little endian order.
 pub fn little_endian_get_u16(v u16) []u8 {
-	mut u := U16{
-		u: v
+	unsafe {
+		mut u := U16{
+			u: v
+		}
+		$if big_endian {
+			u.b[0], u.b[1] = u.b[1], u.b[0]
+		}
+		return u.b[..]
 	}
-	$if big_endian {
-		u.b[0], u.b[1] = u.b[1], u.b[0]
-	}
-	return u.b[..]
 }
 
 // little_endian_u32 creates a u32 from the first four bytes in the array b in little endian order.
