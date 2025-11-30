@@ -264,7 +264,7 @@ pub fn little_endian_f32_at(b []u8, o int) f32 {
 	_ = b[o] // bounds check
 	_ = b[o + 3] // bounds check
 	unsafe {
-		mut u := U32{}
+		mut u := F32{}
 		$if little_endian {
 			u.b[0], u.b[1], u.b[2], u.b[3] = b[o], b[o + 1], b[o + 2], b[o + 3]
 		} $else {
