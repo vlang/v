@@ -295,8 +295,8 @@ fn test_complex_log() {
 	a := cmplx.complex(11.22, 33.44)
 	b := cmplx.complex(55.66, 77.88)
 	c := a.log(b)
-	assert c.re == 0.8032210844549097
-	assert c.im == 0.10605953671930149
+	assert c.re.eq_epsilon(0.8032210844549097)
+	assert c.im.eq_epsilon(0.10605953671930149)
 }
 
 fn test_complex_cpow() {
