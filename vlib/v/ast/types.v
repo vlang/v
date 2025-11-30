@@ -125,7 +125,6 @@ pub mut:
 	idx           int
 	size          int = -1
 	align         int = -1
-	need_str_fn   bool // need `type.str()`, set by checker
 }
 
 // max of 8

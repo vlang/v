@@ -28,8 +28,6 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 		return
 	}
 	unwrapped_type := c.unwrap_generic(node.expr_type)
-	mut type_sym := c.table.sym(unwrapped_type)
-	type_sym.need_str_fn = true
 	if node.expr_type.has_flag(.generic) {
 		c.table.used_features.comptime_syms[unwrapped_type] = true
 	}
@@ -118,8 +116,6 @@ fn (mut c Checker) markused_call_expr(left_type ast.Type, mut node ast.CallExpr)
 fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 	if !c.is_builtin_mod && c.mod != 'math.bits' && node.args[0].expr !is ast.StringLiteral {
 		arg_typ := c.unwrap_generic(node.args[0].typ)
-		mut arg_sym := c.table.sym(arg_typ)
-		arg_sym.need_str_fn = true
 		if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
 			&& node.args[0].expr.name == 'str')
 			|| !c.table.sym(arg_typ).has_method('str') {
@@ -176,8 +172,6 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	if c.is_builtin_mod {
 		return
 	}
-	mut sym := c.table.sym(ftyp)
-	sym.need_str_fn = true
 	if !c.table.sym(ftyp).has_method('str') {
 		c.table.used_features.auto_str = true
 	} else {

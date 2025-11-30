@@ -11,10 +11,14 @@ pub fn (mut b Builder) gen_auto_fn() {
 fn (mut b Builder) gen_auto_str_fn() {
 	// construct a `type_map`, to generate only one file for a module
 	mut need_auto_str_fn_type_map := map[string][]&ast.TypeSymbol{}
-	for s in b.table.type_symbols {
+	for t, _ in b.table.used_features.used_str {
+		if t == ast.no_type || t == ast.void_type {
+			continue
+		}
+		s := b.table.sym(t)
 		has_str_method := s.has_method_with_sumtype_parent('str')
 			|| s.has_method_with_generic_parent('str')
-		if !s.need_str_fn || has_str_method || s.kind == .function || s.mod == '' {
+		if has_str_method || s.kind == .function || s.mod == '' || s.mod == 'builtin' {
 			continue
 		} else {
 			unsafe { need_auto_str_fn_type_map[s.mod] << s }
@@ -31,7 +35,7 @@ fn (mut b Builder) gen_auto_str_fn() {
 				match t.kind {
 					.struct {
 						info := t.info as ast.Struct
-						gen_auto_str_fn_struct(mut sb, type_name, info)
+						b.gen_auto_str_fn_struct(mut sb, type_name, info)
 					}
 					else {}
 				}
@@ -49,8 +53,9 @@ fn (mut b Builder) gen_auto_str_fn() {
 	}
 }
 
-fn gen_auto_str_fn_struct(mut sb strings.Builder, struct_name string, info ast.Struct) {
+fn (b Builder) gen_auto_str_fn_struct(mut sb strings.Builder, struct_name string, info ast.Struct) {
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { struct_name }
+	sb.write_string('@[markused] pub fn (it ${struct_name}) str() string { return it.indent_str(0) }')
 	// find `[str: skip]` fields
 	mut field_skips := []int{}
 	for i, field in info.fields {
@@ -60,20 +65,29 @@ fn gen_auto_str_fn_struct(mut sb strings.Builder, struct_name string, info ast.S
 			}
 		}
 	}
-	sb.write_string("
+	sb.writeln("
 @[markused]
-pub fn (it ${struct_name})str() string {
-		return '${clean_struct_v_type_name}{")
-	if info.fields.len > 0 {
+pub fn (it ${struct_name}) indent_str(indent_count int) string {
+	indents := '    '.repeat(indent_count)
+	return '\${indents}${clean_struct_v_type_name}{")
+	if info.fields.len == 0 {
+		sb.go_back(1)
+		sb.writeln('}}')
+	} else {
 		for i, f in info.fields {
 			// Skip `str:skip` fields
 			if i in field_skips {
 				continue
 			}
 			if f.typ == ast.string_type {
-				sb.writeln('    ${f.name}: \\\'\${it.${f.name}}\\\'')
+				sb.writeln('\${indents}    ${f.name}: \\\'\${it.${f.name}}\\\'')
 			} else {
-				sb.writeln('\n    ${f.name}: \${it.${f.name}}')
+				sym := b.table.sym(f.typ)
+				if sym.kind == .struct {
+					sb.writeln('\${indents}    ${f.name}: \${it.${f.name}.indent_str(indent_count)}')
+				} else {
+					sb.writeln('\${indents}    ${f.name}: \${it.${f.name}}')
+				}
 			}
 		}
 	}

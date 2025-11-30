@@ -464,8 +464,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else if !node.is_method && node.args.len == 1 && node.args[0].typ != ast.string_type
 				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
 				w.uses_str[node.args[0].typ] = true
+				w.mark_use_str_by_type(node.args[0].typ)
 			} else if node.is_method && node.name == 'str' {
 				w.uses_str[node.left_type] = true
+				w.mark_use_str_by_type(node.left_type)
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
 			} else if node.is_method && node.name == 'clone' && !w.uses_arr_clone
@@ -1713,5 +1715,87 @@ pub fn (mut w Walker) mark_generic_types() {
 		for method in sym.get_methods() {
 			w.fn_by_name('${k}.${method.name}')
 		}
+	}
+}
+
+pub fn (mut w Walker) mark_use_str_by_type(typ_ ast.Type) {
+	if typ_ == ast.void_type || typ_ == ast.no_type {
+		return
+	}
+	if typ_ in w.uses_str {
+		return
+	}
+	isym := w.table.sym(typ_)
+	w.uses_str[typ_] = true
+	match isym.info {
+		ast.Struct {
+			for ifield in isym.info.fields {
+				w.mark_use_str_by_type(ifield.typ)
+			}
+			for embed in isym.info.embeds {
+				w.mark_use_str_by_type(embed)
+			}
+		}
+		ast.ArrayFixed, ast.Array {
+			w.mark_use_str_by_type(isym.info.elem_type)
+		}
+		ast.SumType {
+			for typ in isym.info.variants {
+				w.mark_use_str_by_type(typ)
+			}
+		}
+		ast.Map {
+			w.mark_use_str_by_type(isym.info.key_type)
+			w.mark_use_str_by_type(isym.info.value_type)
+		}
+		ast.Alias {
+			w.mark_use_str_by_type(isym.info.parent_type)
+		}
+		ast.FnType {
+			for param in isym.info.func.params {
+				w.mark_use_str_by_type(param.typ)
+			}
+			if isym.info.func.return_type != 0 {
+				w.mark_use_str_by_type(isym.info.func.return_type.clear_option_and_result())
+			}
+		}
+		ast.MultiReturn {
+			for typ in isym.info.types {
+				w.mark_use_str_by_type(typ)
+			}
+		}
+		ast.Chan {
+			w.mark_use_str_by_type(isym.info.elem_type)
+		}
+		ast.Aggregate {
+			for typ in isym.info.types {
+				w.mark_use_str_by_type(typ)
+			}
+		}
+		ast.Enum {
+			w.mark_use_str_by_type(isym.info.typ)
+		}
+		ast.Interface {
+			for typ in isym.info.types {
+				w.mark_use_str_by_type(typ)
+			}
+			for embed in isym.info.embeds {
+				w.mark_use_str_by_type(embed)
+			}
+			for generic_type in isym.info.generic_types {
+				w.mark_use_str_by_type(generic_type)
+			}
+			w.mark_use_str_by_type(isym.info.parent_type)
+			for field in isym.info.fields {
+				w.mark_use_str_by_type(field.typ)
+			}
+			for method in isym.methods {
+				w.mark_use_str_by_type(method.receiver_type)
+			}
+		}
+		ast.Thread {
+			w.mark_use_str_by_type(isym.info.return_type)
+		}
+		else {}
 	}
 }
