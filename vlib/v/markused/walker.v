@@ -862,6 +862,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		///
 		ast.AsCast {
 			w.expr(node.expr)
+			if node.expr_type.has_flag(.option) {
+				w.used_option++
+			}
 			w.fn_by_name('__as_cast')
 			w.fn_by_name('new_array_from_c_array')
 			w.mark_by_sym_name('VCastTypeIndexName')

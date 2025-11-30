@@ -3085,7 +3085,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 						node.expr.obj.typ
 					}
 					if !node.typ.has_flag(.option) && ident_typ.has_flag(.option)
-						&& node.expr.or_expr.kind == .absent {
+						&& node.expr.or_expr.kind == .absent
+						&& node.typ != ident_typ.clear_flag(.option) {
 						c.error('variable `${node.expr.name}` is an Option, it must be unwrapped first',
 							node.expr.pos)
 					}
