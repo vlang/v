@@ -37,10 +37,12 @@ fn (mut b Builder) gen_auto_str_fn() {
 				}
 			}
 			v_file := sb.str()
-			v_file_name := b.get_mod_full_path(full_mod_name)
-			mut the_file := parser.parse_text(v_file, '${v_file_name}/__v_auto_generated_auto_fn(${full_mod_name}).v', mut
-				b.table, .skip_comments, b.pref)
+			v_file_name := b.get_mod_full_path(full_mod_name) +
+				'/__v_auto_generated_auto_fn(${full_mod_name}).v'
+			mut the_file := parser.parse_text(v_file, v_file_name, mut b.table, .skip_comments,
+				b.pref)
 			b.parsed_files << the_file
+			b.table.filelist << v_file_name
 			// need to call `checker` for this generated v_file
 			b.checker.check(mut the_file)
 		}
