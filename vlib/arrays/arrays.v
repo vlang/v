@@ -781,3 +781,24 @@ pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
 		cb(idx, item)
 	}
 }
+
+// substract returns a new array consisting of the elements of array `a` that are not
+// among the elements of array `b`. Performance of this implementation tends to O(n+m),
+// where n and m are the lengths of input arrays.
+//
+// Note: The array element type must be valid type for V `map` keys.
+//
+// Example: arrays.substract([1, 2, 3, 4, 5, 6, 7], [3, 5, 6]) // -> [1, 2, 4, 7]
+pub fn substract[T](a []T, b []T) []T {
+	mut result := []T{cap: a.len}
+	mut bset := map[T]u8{}
+	for elem in b {
+		bset[elem] = 0
+	}
+	for elem in a {
+		if elem !in bset {
+			result << elem
+		}
+	}
+	return result
+}
