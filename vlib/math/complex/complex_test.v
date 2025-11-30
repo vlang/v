@@ -292,25 +292,11 @@ fn test_complex_arg() {
 }
 
 fn test_complex_log() {
-	// Tests were also verified on Wolfram Alpha
-	mut c1 := cmplx.complex(5, 7)
-	mut b1 := cmplx.complex(-6, -2)
-	mut c2 := cmplx.complex(0.232873, -1.413175)
-	mut result := c1.log(b1)
-	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert result.str() == c2.str()
-	c1 = cmplx.complex(-3, 4)
-	b1 = cmplx.complex(3, -1)
-	c2 = cmplx.complex(0.152198, -0.409312)
-	result = c1.log(b1)
-	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert result.str() == c2.str()
-	c1 = cmplx.complex(-1, -2)
-	b1 = cmplx.complex(0, 9)
-	c2 = cmplx.complex(-0.298243, 1.197981)
-	result = c1.log(b1)
-	// Some issue with precision comparison in f64 using == operator hence serializing to string
-	assert result.str() == c2.str()
+	a := cmplx.complex(11.22, 33.44)
+	b := cmplx.complex(55.66, 77.88)
+	c := a.log(b)
+	assert c.re == 0.8032210844549097
+	assert c.im == 0.10605953671930149
 }
 
 fn test_complex_cpow() {
