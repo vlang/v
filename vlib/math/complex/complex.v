@@ -138,7 +138,7 @@ pub fn (c Complex) ln() Complex {
 // Based on
 // http://www.milefoot.com/math/complex/summaryops.htm
 pub fn (c Complex) log(base Complex) Complex {
-	return base.ln().divide(c.ln())
+	return c.ln().divide(base.ln())
 }
 
 // Complex Argument
