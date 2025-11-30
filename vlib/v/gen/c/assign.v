@@ -37,16 +37,23 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			or_expr := (expr as ast.Ident).or_expr
 			stmts := or_expr.stmts
 			scope := or_expr.scope
+			last_stmt := stmts.last()
 			// handles stmt block which returns something
 			// e.g. { return none }
-			if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-				g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false,
-					scope, expr.pos())
+			if stmts.len > 0 && last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
+				if last_stmt.expr is ast.Ident && last_stmt.expr.or_expr.kind != .absent {
+					g.write('${c_name(var_expr.str())} = ')
+					g.expr_with_opt_or_block(last_stmt.expr, last_stmt.typ, var_expr,
+						ret_typ, in_heap)
+				} else {
+					g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false,
+						scope, expr.pos())
+				}
 			} else {
 				// handles stmt block which doesn't returns value
 				// e.g. { return }
 				g.stmts(stmts)
-				if stmts.len > 0 && stmts.last() is ast.ExprStmt {
+				if stmts.len > 0 && last_stmt is ast.ExprStmt {
 					g.writeln(';')
 				}
 				g.write_defer_stmts(scope, false, expr.pos())
