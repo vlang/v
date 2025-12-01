@@ -7992,7 +7992,12 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		} else if node.expr is ast.SelectorExpr {
 			if node.expr.expr is ast.Ident && node.expr.typ.has_flag(.option)
 				&& !unwrapped_node_typ.has_flag(.option) {
-				g.unwrap_option_type(node.expr.typ, '${node.expr.expr.name}.${node.expr.field_name}',
+				dot_or_ptr := if node.expr.expr.is_mut() {
+					'->'
+				} else {
+					g.dot_or_ptr(node.expr.typ)
+				}
+				g.unwrap_option_type(node.expr.typ, '${node.expr.expr.name}${dot_or_ptr}${node.expr.field_name}',
 					node.expr.expr.is_auto_heap())
 				is_optional_ident_var = true
 			} else if node.expr.expr is ast.SelectorExpr && node.expr.typ.has_flag(.option) {
