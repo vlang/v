@@ -2632,48 +2632,36 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if variadic_count > 0 {
-				if g.pref.translated || g.file.is_translated {
-					// Handle passing e.g. C string literals to `...` C varargs:
-					// void DEH_snprintf(char *buffer, size_t len, const char *fmt, ...)
-					// deh_snprintf(buffer, 9, c'STCFN%.3d', j++)
+				// passing variadic arg to another call which expects same array type
+				if variadic_count == 1
+					&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
+					|| (varg_type.has_flag(.variadic)
+					&& args[arg_nr].typ == varg_type.clear_flag(.variadic))) {
+					g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
+						false)
+				} else {
+					noscan := g.check_noscan(arr_info.elem_type)
+					is_option := arr_info.elem_type.has_flag(.option)
+					tmp_var := if is_option { g.new_tmp_var() } else { '' }
+					base_type := g.base_type(varg_type)
+					tmp := if is_option { g.go_before_last_stmt() } else { '' }
+					if is_option {
+						g.writeln('${g.styp(varg_type)} ${tmp_var};')
+						g.write('builtin___option_ok((${base_type}[]) {')
+					}
+					g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 					for j in arg_nr .. args.len {
-						g.expr(args[j].expr)
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+							false)
 						if j < args.len - 1 {
 							g.write(', ')
 						}
 					}
-				} else {
-					// passing variadic arg to another call which expects same array type
-					if variadic_count == 1
-						&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
-						|| (varg_type.has_flag(.variadic)
-						&& args[arg_nr].typ == varg_type.clear_flag(.variadic))) {
-						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
-							false)
-					} else {
-						noscan := g.check_noscan(arr_info.elem_type)
-						is_option := arr_info.elem_type.has_flag(.option)
-						tmp_var := if is_option { g.new_tmp_var() } else { '' }
-						base_type := g.base_type(varg_type)
-						tmp := if is_option { g.go_before_last_stmt() } else { '' }
-						if is_option {
-							g.writeln('${g.styp(varg_type)} ${tmp_var};')
-							g.write('builtin___option_ok((${base_type}[]) {')
-						}
-						g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
-						for j in arg_nr .. args.len {
-							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
-								false)
-							if j < args.len - 1 {
-								g.write(', ')
-							}
-						}
-						g.write('}))')
-						if is_option {
-							g.writeln(' }, (${option_name}*)&${tmp_var}, sizeof(${base_type}));')
-							g.write(tmp)
-							g.write(tmp_var)
-						}
+					g.write('}))')
+					if is_option {
+						g.writeln(' }, (${option_name}*)&${tmp_var}, sizeof(${base_type}));')
+						g.write(tmp)
+						g.write(tmp_var)
 					}
 				}
 			} else {
