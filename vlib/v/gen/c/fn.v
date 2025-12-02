@@ -2632,7 +2632,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if variadic_count > 0 {
-				if g.pref.translated || g.file.is_translated {
+				if node.is_c_variadic {
 					// Handle passing e.g. C string literals to `...` C varargs:
 					// void DEH_snprintf(char *buffer, size_t len, const char *fmt, ...)
 					// deh_snprintf(buffer, 9, c'STCFN%.3d', j++)
