@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_unused_warning.vv:2:8: warning: module 'time' is imported but never used
+vlib/v/checker/tests/import_unused_warning.vv:2:8: warning: module 'time' is imported but never used. Use `import time as _`, to silence this warning, or just remove the unused import line
     1 | import os as _
     2 | import time
       |        ~~~~
