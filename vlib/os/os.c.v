@@ -231,11 +231,21 @@ pub fn rename(src string, dst string) ! {
 	}
 }
 
-// cp copies files or folders from `src` to `dst`.
-pub fn cp(src string, dst string) ! {
+@[params]
+pub struct FailIfExists {
+	fail_if_exists bool
+}
+
+// cp Copies the file src to the file or directory dst. If dst specifies a directory, the file will be copied into dst
+//    using the base filename from src. If dst specifies a file that already exists, it will be replaced by
+//    default. Can be overridden to fail by setting fail_if_exists: true
+pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
 	$if windows {
 		w_src := src.replace('/', '\\')
-		w_dst := dst.replace('/', '\\')
+		mut w_dst := dst.replace('/', '\\')
+		if is_dir(w_dst) {
+			w_dst = join_path_single(w_dst, file_name(w_src))
+		}
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
 			// we must save error immediately, or it will be overwritten by other API function calls.
 			code := int(C.GetLastError())

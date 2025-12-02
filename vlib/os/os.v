@@ -82,7 +82,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 				return error('Destination file path already exist')
 			}
 		}
-		cp(source_path, adjusted_path)!
+		cp(source_path, adjusted_path, fail_if_exists: false)!
 		return
 	}
 	if !exists(dest_path) {
