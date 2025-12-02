@@ -109,7 +109,12 @@ pub fn rm(path string) ! {
 	}
 }
 
-pub fn cp(src string, dst string) ! {
+@[params]
+pub struct FailIfExists {
+	fail_if_exists bool
+}
+
+pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
 	$if js_node {
 		err := ''
 		#try {
