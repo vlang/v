@@ -246,7 +246,7 @@ pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
 		if is_dir(w_dst) {
 			w_dst = join_path_single(w_dst, file_name(w_src))
 		}
-		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
+		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), fail_if_exists.fail_if_exists) == 0 {
 			// we must save error immediately, or it will be overwritten by other API function calls.
 			code := int(C.GetLastError())
 			return error_win32(
@@ -255,14 +255,23 @@ pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
 			)
 		}
 	} $else {
+		mut w_dst := dst
+		if is_dir(dst) {
+			w_dst = join_path_single(w_dst, file_name(src))
+		}
 		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open ${src}', int(fp_from))
 		}
-		fp_to := C.open(&char(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		mut fp_to := 0
+		if fail_if_exists.fail_if_exists {
+			fp_to = C.open(&char(w_dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR | C.O_EXCL)
+		} else {
+			fp_to = C.open(&char(w_dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		}
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp (permission): failed to write to ${dst} (fp_to: ${fp_to})',
+			return error_with_code('cp (permission): failed to write to ${w_dst} (fp_to: ${fp_to})',
 				int(fp_to))
 		}
 		// TODO: use defer{} to close files in case of error or return.
@@ -277,14 +286,14 @@ pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
-				return error_with_code('cp: failed to write to ${dst}', int(-1))
+				return error_with_code('cp: failed to write to ${w_dst}', int(-1))
 			}
 		}
 		from_attr := stat(src)!
-		if C.chmod(&char(dst.str), from_attr.mode) < 0 {
+		if C.chmod(&char(w_dst.str), from_attr.mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
-			return error_with_code('failed to set permissions for ${dst}', int(-1))
+			return error_with_code('failed to set permissions for ${w_dst}', int(-1))
 		}
 		C.close(fp_to)
 		C.close(fp_from)
