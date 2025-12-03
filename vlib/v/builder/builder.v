@@ -39,12 +39,13 @@ pub mut:
 	table     &ast.Table = unsafe { nil }
 	ccoptions CcompilerOptions
 	// Note: changes in mod `builtin` force invalidation of every other .v file
-	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
-	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
-	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
-	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
-	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
-	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
+	mod_invalidates_paths       map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
+	mod_invalidates_mods        map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
+	path_invalidates_mods       map[string][]string // changes in a .v file from `os`, invalidates `os`
+	crun_cache_keys             []string            // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists           bool                // if the executable already exists, don't remove new executable after `v run`
+	str_args                    string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
+	auto_str_has_import_strings bool
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {

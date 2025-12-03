@@ -463,10 +463,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			} else if !node.is_method && node.args.len == 1 && node.args[0].typ != ast.string_type
 				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
-				w.uses_str[node.args[0].typ] = true
 				w.mark_use_str_by_type(node.args[0].typ)
 			} else if node.is_method && node.name == 'str' {
-				w.uses_str[node.left_type] = true
 				w.mark_use_str_by_type(node.left_type)
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
@@ -529,6 +527,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.features.dump = true
 			w.mark_by_type(node.expr_type)
+			w.mark_use_str_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
 			if node.is_expr {
