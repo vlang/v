@@ -1,4 +1,4 @@
-vlib/v/checker/tests/os_prefix.vv:1:8: warning: module 'os' is imported but never used
+vlib/v/checker/tests/os_prefix.vv:1:8: warning: module 'os' is imported but never used. Use `import os as _`, to silence this warning, or just remove the unused import line
     1 | import os
       |        ~~
     2 | 

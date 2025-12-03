@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_symbol_fn_err.vv:1:8: warning: module 'crypto' is imported but never used
+vlib/v/checker/tests/import_symbol_fn_err.vv:1:8: warning: module 'crypto' is imported but never used. Use `import crypto as _`, to silence this warning, or just remove the unused import line
     1 | import crypto { userper }
       |        ~~~~~~
     2 | fn main() {

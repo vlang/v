@@ -35,6 +35,16 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		name := c_name(field.name)
 		const_name := g.c_const_name(field.name)
 		field_expr := field.expr
+		if field.attrs.contains('cinit') || node.attrs.contains('cinit') {
+			styp := g.styp(field.typ)
+			val := g.expr_string(field.expr)
+			g.global_const_defs[name] = GlobalConstDef{
+				mod:       field.mod
+				def:       '${g.static_non_parallel}${styp} ${const_name} = ${val};'
+				dep_names: g.table.dependent_names_in_expr(field.expr)
+			}
+			continue
+		}
 		match field.expr {
 			ast.ArrayInit {
 				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))

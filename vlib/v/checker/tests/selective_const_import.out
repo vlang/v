@@ -1,4 +1,4 @@
-vlib/v/checker/tests/selective_const_import.vv:1:8: warning: module 'time' is imported but never used
+vlib/v/checker/tests/selective_const_import.vv:1:8: warning: module 'time' is imported but never used. Use `import time as _`, to silence this warning, or just remove the unused import line
     1 | import time { second }
       |        ~~~~
 vlib/v/checker/tests/selective_const_import.vv:1:15: error: cannot selectively import constant `second` from `time`, import `time` and use `time.second` instead
