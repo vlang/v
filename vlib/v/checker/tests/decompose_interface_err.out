@@ -1,4 +1,4 @@
-vlib/v/checker/tests/decompose_interface_err.vv:3:8: warning: module 'arrays' is imported but never used
+vlib/v/checker/tests/decompose_interface_err.vv:3:8: warning: module 'arrays' is imported but never used. Use `import arrays as _`, to silence this warning, or just remove the unused import line
     1 | module main
     2 | 
     3 | import arrays
