@@ -1,1 +1,1 @@
-static main__Config _const_main__conf = ((main__Config){.id = 123,.name = "test_config",.valid = true,});
+main__Config _const_main__conf = ((main__Config){.id = 123,.name = "test_config",.valid = true,});
