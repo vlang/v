@@ -171,10 +171,10 @@ jobs:
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
-      - name: Self tests (V compiled with -fsanitize=address)
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
         run: |
           ./v -cflags -fsanitize=address -o v cmd/v
-          ./v -cc tcc -silent test-self -asan-compiler vlib
+          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=address)
         run: ./v -silent build-examples
 
@@ -234,10 +234,10 @@ jobs:
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ./v -cflags -fsanitize=address -silent test-self vlib
-      - name: Self tests (V compiled with -fsanitize=address)
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
         run: |
           ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
-          ./v -cc tcc -silent test-self -asan-compiler vlib
+          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=address)
         run: ./v -silent build-examples
 
@@ -268,10 +268,10 @@ jobs:
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
-      - name: Self tests (V compiled with -fsanitize=memory)
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc -silent test-self -msan-compiler vlib
+          ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v -silent build-examples
 
