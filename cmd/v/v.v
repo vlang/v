@@ -30,6 +30,7 @@ const external_tools = [
 	'doctor',
 	'download',
 	'fmt',
+	'git-fmt-hook',
 	'gret',
 	'ls',
 	'missdoc',

@@ -266,6 +266,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			}
 		}
 	}
+	c.reorder_fns_at_the_end(mut ast_file)
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt in [ast.ConstDecl, ast.ExprStmt] {
@@ -301,6 +302,31 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 
 	c.check_scope_vars(c.file.scope)
 	c.check_unused_labels()
+}
+
+pub fn (mut c Checker) reorder_fns_at_the_end(mut ast_file ast.File) {
+	mut fdeclarations := 0
+	for mut stmt in ast_file.stmts {
+		if stmt is ast.FnDecl {
+			fdeclarations++
+		}
+	}
+	if fdeclarations == 0 {
+		return
+	}
+	// eprintln('>>> ast_file: ${ast_file.path:-60s} | fdeclarations: ${fdeclarations}')
+	mut stmts := []ast.Stmt{cap: ast_file.stmts.len}
+	for stmt in ast_file.stmts {
+		if stmt !is ast.FnDecl {
+			stmts << stmt
+		}
+	}
+	for stmt in ast_file.stmts {
+		if stmt is ast.FnDecl {
+			stmts << stmt
+		}
+	}
+	ast_file.stmts = stmts
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {

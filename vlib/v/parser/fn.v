@@ -485,6 +485,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	params_t, are_params_type_only, mut is_variadic, mut is_c_variadic := p.fn_params()
 	if is_c2v_variadic {
 		is_variadic = true
+		is_c_variadic = true
 	}
 	params << params_t
 	// Return type

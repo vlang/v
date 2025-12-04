@@ -832,6 +832,7 @@ pub mut:
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	is_static_method       bool // it is a static method call
 	is_variadic            bool
+	is_c_variadic          bool // it is a C variadic
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
