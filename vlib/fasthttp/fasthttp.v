@@ -86,6 +86,11 @@ pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
 		port:            port
 		request_handler: handler
 	}
+	unsafe {
+		s.listen_fds.flags.set(.noslices | .noshrink)
+		s.epoll_fds.flags.set(.noslices | .noshrink)
+		s.threads.flags.set(.noslices | .noshrink)
+	}
 	return s
 }
 
