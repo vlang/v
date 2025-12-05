@@ -74,7 +74,7 @@ $if linux {
 		port            int
 		socket_fd       int
 		poll_fd         int // kqueue fd
-		request_handler fn (req HttpRequest) ![]u8 = unsafe { nil }
+		request_handler fn (HttpRequest) ![]u8 @[required]
 	}
 }
 
