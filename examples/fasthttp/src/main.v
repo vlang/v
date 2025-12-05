@@ -30,5 +30,5 @@ fn main() {
 
 	println('Starting fasthttp server on port http://localhost:3000...')
 
-	server.run()
+	server.run() or { eprintln('error: ${err}') }
 }

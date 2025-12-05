@@ -43,7 +43,7 @@ fn main() {
 	}
 
 	println('Server listening on http://localhost:3000')
-	server.run()
+	server.run() or { eprintln('error: ${err}') }
 }
 ```
 
