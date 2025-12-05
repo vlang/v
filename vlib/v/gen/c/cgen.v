@@ -7746,7 +7746,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
 								&& field_sym.info.is_empty_struct() {
 								'{E_STRUCT}'
-							} else if field_sym.kind == .sum_type {
+							} else if field_sym.kind == .sum_type && !field.typ.is_ptr() {
 								if decode_sumtype {
 									g.type_default_sumtype(field.typ, field_sym)
 								} else {
