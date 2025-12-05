@@ -1268,6 +1268,11 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		return false
 	}
 	original := nexpr.args[0].expr as ast.StringInterLiteral
+	if original.exprs.len != original.expr_types.len {
+		// This should be a generic type, e.g., `${it}` where `it` is type of T
+		// first time, `T` maybe `int`, but second time, `T` maybe `string`
+		return false
+	}
 	// only very simple string interpolations, without any formatting, like the following examples
 	// can be optimised to a list of simpler string builder calls, instead of using str_intp:
 	// >> sb.write_string('abc ${num}')
