@@ -45,17 +45,7 @@ v run examples/vanilla_http_server/src
 Production build:
 
 ```sh
-v -prod examples/vanilla_http_server/src
-```
-
-### Run
-
-```sh
-# Default port 3001
-./vanilla_http_server
-
-# Custom port
-./vanilla_http_server --port 8080
+v -prod crun examples/vanilla_http_server/src
 ```
 
 ### Benchmark
