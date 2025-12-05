@@ -43,7 +43,7 @@ fn main() {
 	}
 
 	println('Server listening on http://localhost:3000')
-	server.run() or { eprintln('Server error: ${err}') }
+	server.run()
 }
 ```
 
@@ -72,7 +72,7 @@ Represents a slice of the request buffer.
 
 **Usage:**
 
-```v
+```v ignore
 method := req.buffer[req.method.start..req.method.start + req.method.len].bytestr()
 path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 ```
@@ -88,7 +88,7 @@ The handler should extract method and path information from the request and rout
 
 **Example:**
 
-```v
+```v ignore
 fn my_handler(req fasthttp.HttpRequest) ![]u8 {
 	method := req.buffer[req.method.start..req.method.start + req.method.len].bytestr()
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
@@ -113,9 +113,10 @@ fn my_handler(req fasthttp.HttpRequest) ![]u8 {
 
 ## Response Format
 
-Responses should be returned as byte arrays. The server will send them directly to the client as HTTP response bodies.
+Responses should be returned as byte arrays.
+The server will send them directly to the client as HTTP response bodies.
 
-```v
+```v ignore
 // Simple text response
 return 'Hello, World!'.bytes()
 
@@ -128,7 +129,8 @@ return '{"message": "success"}'.bytes()
 
 ## Example
 
-See the complete example in `examples/fasthttp/` for a more detailed server implementation with multiple routes and controllers.
+See the complete example in `examples/fasthttp/` for a more
+detailed server implementation with multiple routes and controllers.
 
 ```sh
 ./v examples/fasthttp
@@ -145,7 +147,8 @@ See the complete example in `examples/fasthttp/` for a more detailed server impl
 
 - The `fasthttp` module is designed for high throughput and low latency
 - Handler functions should be efficient; blocking operations will affect other connections
-- Use goroutines within handlers if you need to perform long-running operations without blocking the I/O loop
+- Use goroutines within handlers if you need to perform long-running operations without
+  blocking the I/O loop
 
 ## Notes
 
