@@ -232,7 +232,7 @@ pub fn rename(src string, dst string) ! {
 }
 
 @[params]
-pub struct FailIfExists {
+pub struct CopyParams {
 pub:
 	fail_if_exists bool
 }
