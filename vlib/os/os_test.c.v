@@ -362,7 +362,7 @@ fn test_cp_fail_if_exists() {
 	if _ := os.cp(file_name, folder, fail_if_exists: true) {
 		assert false
 	} else {
-		assert err.str().starts_with('cp (permission): failed to write to'), 'cp err: ${err}'
+		assert err.str().starts_with('cp: failed to '), 'cp err: ${err}'
 	}
 	os.rm(file_name)!
 	os.rm(new_file_path)!
