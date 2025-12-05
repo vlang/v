@@ -91,28 +91,6 @@ const max_connection_size = 4096
 
 const max_thread_pool_size = 16
 
-// Shared data for worker threads (macOS specific, but defined here for compatibility)
-struct WorkerData {
-mut:
-	task_head &Task = unsafe { nil }
-	task_tail &Task = unsafe { nil }
-	done_head &Done = unsafe { nil }
-	done_tail &Done = unsafe { nil }
-	quit      bool
-}
-
-// Task for the worker thread pool
-struct Task {
-mut:
-	next &Task = unsafe { nil }
-}
-
-// Completed task data
-struct Done {
-mut:
-	next &Done = unsafe { nil }
-}
-
 @[direct_array_access]
 fn parse_request_line(buffer []u8) !HttpRequest {
 	mut req := HttpRequest{
