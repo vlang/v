@@ -237,10 +237,10 @@ pub:
 	fail_if_exists bool
 }
 
-// cp Copies the file src to the file or directory dst. If dst specifies a directory, the file will be copied into dst
-//    using the base filename from src. If dst specifies a file that already exists, it will be replaced by
-//    default. Can be overridden to fail by setting fail_if_exists: true
-pub fn cp(src string, dst string, config FailIfExists) ! {
+// cp copies the file src to the file or directory dst. If dst specifies a directory, the file will be copied into dst
+// using the base filename from src. If dst specifies a file that already exists, it will be replaced by
+// default. Can be overridden to fail by setting fail_if_exists: true
+pub fn cp(src string, dst string, config CopyParams) ! {
 	$if windows {
 		w_src := src.replace('/', '\\')
 		mut w_dst := dst.replace('/', '\\')

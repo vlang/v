@@ -359,7 +359,7 @@ fn test_cp_fail_if_exists() {
 	os.write_file(file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
 	os.cp(file_name, folder) or { panic(err) }
 	new_file_path := os.join_path_single(folder, file_name)
-	param := os.FailIfExists{
+	param := os.CopyParams{
 		fail_if_exists: true
 	}
 	os.cp(file_name, folder, param) or {
