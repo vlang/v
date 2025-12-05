@@ -114,7 +114,7 @@ pub struct CopyParams {
 	fail_if_exists bool
 }
 
-pub fn cp(src string, dst string, fail_if_exists FailIfExists) ! {
+pub fn cp(src string, dst string, config CopyParams) ! {
 	$if js_node {
 		err := ''
 		#try {

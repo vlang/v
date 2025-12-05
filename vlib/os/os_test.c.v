@@ -328,51 +328,45 @@ fn test_walk() {
 fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
-	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic(err) }
-	old_file := os.read_file(old_file_name) or { panic(err) }
-	new_file := os.read_file(new_file_name) or { panic(err) }
+	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')!
+	os.cp(old_file_name, new_file_name)!
+	old_file := os.read_file(old_file_name)!
+	new_file := os.read_file(new_file_name)!
 	assert old_file == new_file
-	os.rm(old_file_name) or { panic(err) }
-	os.rm(new_file_name) or { panic(err) }
+	os.rm(old_file_name)!
+	os.rm(new_file_name)!
 }
 
-fn test_cp_tofolder() {
-	file_name := 'cp_example.txt'
-	folder := 'test_cp'
-	os.mkdir(folder) or { panic(err) }
-	os.write_file(file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(file_name, folder) or { panic(err) }
+fn test_cp_to_folder() {
+	file_name := 'cp_to_folder_example.txt'
+	folder := 'test_cp_to_folder'
+	os.mkdir(folder)!
+	os.write_file(file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')!
+	os.cp(file_name, folder)!
 	new_file_path := os.join_path_single(folder, file_name)
-	old_file := os.read_file(file_name) or { panic(err) }
-	new_file := os.read_file(new_file_path) or { panic(err) }
+	old_file := os.read_file(file_name)!
+	new_file := os.read_file(new_file_path)!
 	assert old_file == new_file
-	os.rm(file_name) or { panic(err) }
-	os.rm(new_file_path) or { panic(err) }
-	os.rmdir(folder) or { panic(err) }
+	os.rm(file_name)!
+	os.rm(new_file_path)!
+	os.rmdir(folder)!
 }
 
 fn test_cp_fail_if_exists() {
-	file_name := 'cp_example.txt'
-	folder := 'test_cp'
-	os.mkdir(folder) or { panic(err) }
-	os.write_file(file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(file_name, folder) or { panic(err) }
+	file_name := 'cp_fail_if_exists_example.txt'
+	folder := 'test_cp_fail_if_exists'
+	os.mkdir(folder)!
+	os.write_file(file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐')!
+	os.cp(file_name, folder)!
 	new_file_path := os.join_path_single(folder, file_name)
-	param := os.CopyParams{
-		fail_if_exists: true
+	if _ := os.cp(file_name, folder, fail_if_exists: true) {
+		assert false
+	} else {
+		assert err.str().starts_with('cp (permission): failed to write to'), 'cp err: ${err}'
 	}
-	os.cp(file_name, folder, param) or {
-		if err.code() == 80 {
-			eprintln('Cannot copy ${file_name} to ${folder} the file already exists.')
-		} else {
-			panic(err)
-		}
-	}
-
-	os.rm(file_name) or { panic(err) }
-	os.rm(new_file_path) or { panic(err) }
-	os.rmdir(folder) or { panic(err) }
+	os.rm(file_name)!
+	os.rm(new_file_path)!
+	os.rmdir(folder)!
 }
 
 fn test_mv() {
