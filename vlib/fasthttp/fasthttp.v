@@ -65,9 +65,9 @@ $if linux {
 	pub:
 		port int = 3000
 	mut:
-		listen_fds      [max_thread_pool_size]int
-		epoll_fds       [max_thread_pool_size]int
-		threads         [max_thread_pool_size]thread
+		listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+		epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+		threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 		request_handler fn (HttpRequest) ![]u8 @[required]
 	}
 } $else $if macos {
