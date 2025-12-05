@@ -1,19 +1,19 @@
 module fasthttp
 
 #include <sys/epoll.h>
+#include <netinet/tcp.h>
 
-// Epoll constants
-const epoll_ctl_add = 1
-const epoll_ctl_del = 2
-const epoll_ctl_mod = 3
-const epoll_in = 1
-const epoll_out = 4
-const epoll_err = 8
-const epoll_hup = 16
-const epoll_rdhup = 8192
+fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
+
+fn C.accept4(sockfd int, address &C.sockaddr_in, addrlen &u32, flags int) int
+
+fn C.epoll_create1(__flags int) int
+
+fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
+
+fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
 
 union C.epoll_data {
-mut:
 	ptr voidptr
 	fd  int
 	u32 u32
@@ -21,268 +21,238 @@ mut:
 }
 
 struct C.epoll_event {
-mut:
 	events u32
 	data   C.epoll_data
 }
 
-fn C.epoll_create1(flags int) int
-fn C.epoll_ctl(epfd int, op int, fd int, event &C.epoll_event) int
-fn C.epoll_wait(epfd int, events &C.epoll_event, maxevents int, timeout int) int
+fn set_blocking(fd int, blocking bool) {
+	flags := C.fcntl(fd, C.F_GETFL, 0)
+	if flags == -1 {
+		// TODO: better error handling
+		eprintln(@LOCATION)
+		return
+	}
+	if blocking {
+		// This removes the O_NONBLOCK flag from flags and set it.
+		C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+	} else {
+		// This adds the O_NONBLOCK flag from flags and set it.
+		C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
+	}
+}
 
-// Helper to wrap epoll_ctl for cleaner code
-fn control_epoll(epfd int, op int, fd int, events u32, data voidptr) {
+fn close_socket(fd int) bool {
+	ret := C.close(fd)
+	if ret == -1 {
+		if C.errno == C.EINTR {
+			// Interrupted by signal, retry is safe
+			return close_socket(fd)
+		}
+		eprintln('ERROR: close(fd=${fd}) failed with errno=${C.errno}')
+		return false
+	}
+	return true
+}
+
+fn create_server_socket(port int) int {
+	// Create a socket with non-blocking mode
+	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM, 0)
+	if server_fd < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'Socket creation failed')
+		return -1
+	}
+
+	set_blocking(server_fd, false)
+
+	// Enable SO_REUSEADDR and SO_REUSEPORT
+	opt := 1
+	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(opt)) < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'setsockopt SO_REUSEADDR failed')
+		close_socket(server_fd)
+		return -1
+	}
+	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'setsockopt SO_REUSEPORT failed')
+		close_socket(server_fd)
+		return -1
+	}
+
+	server_addr := C.sockaddr_in{
+		sin_family: u16(C.AF_INET)
+		sin_port:   C.htons(port)
+		sin_addr:   C.in_addr{u32(C.INADDR_ANY)}
+		sin_zero:   [8]u8{}
+	}
+
+	if C.bind(server_fd, &server_addr, sizeof(server_addr)) < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'Bind failed')
+		close_socket(server_fd)
+		return -1
+	}
+	if C.listen(server_fd, max_connection_size) < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'Listen failed')
+		close_socket(server_fd)
+		return -1
+	}
+	return server_fd
+}
+
+// Function to add a file descriptor to the epoll instance
+fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 	mut ev := C.epoll_event{
 		events: events
 	}
-	ev.data.ptr = data
-	C.epoll_ctl(epfd, op, fd, &ev)
+	ev.data.fd = fd
+	if C.epoll_ctl(epoll_fd, C.EPOLL_CTL_ADD, fd, &ev) == -1 {
+		eprintln(@LOCATION)
+		C.perror(c'epoll_ctl')
+		return -1
+	}
+	return 0
 }
 
-// process_dones handles connections that have been processed by a worker thread.
-fn (mut s Server) process_dones() {
-	C.pthread_mutex_lock(&s.worker_data.done_mutex)
-	mut local_head := s.worker_data.done_head
-	s.worker_data.done_head = unsafe { nil }
-	s.worker_data.done_tail = unsafe { nil }
-	C.pthread_mutex_unlock(&s.worker_data.done_mutex)
-
-	for local_head != unsafe { nil } {
-		d := local_head
-		local_head = d.next
-		mut c := d.c
-		c.write_buf = d.resp
-		c.write_len = d.len
-		c.write_pos = 0
-
-		// Try to write immediately
-		write_ptr := unsafe { &u8(c.write_buf) + c.write_pos }
-		written := C.write(c.fd, write_ptr, c.write_len - c.write_pos)
-		if written > 0 {
-			c.write_pos += int(written)
-		} else if written < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-			s.close_conn(c)
-			unsafe { C.free(d) }
-			continue
-		}
-
-		if c.write_pos < c.write_len {
-			// Not all data sent, add WRITE event
-			// Note: The connection was removed from epoll before sending to worker, so we ADD here.
-			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_out | epoll_rdhup),
-				c)
-		} else {
-			// Response sent, re-enable reading for keep-alive
-			C.free(c.write_buf)
-			c.write_buf = unsafe { nil }
-
-			// Note: The connection was removed from epoll before sending to worker, so we ADD here.
-			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_in | epoll_rdhup),
-				c)
-			c.read_len = 0
-		}
-		unsafe { C.free(d) }
+// Function to remove a file descriptor from the epoll instance
+fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
+	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
+	if ret == -1 {
+		eprintln('ERROR: epoll_ctl(DEL, fd=${fd}) failed with errno=${C.errno}')
+		return false
 	}
+	return true
 }
 
-// run starts the server and enters the main event loop (Epoll version).
-pub fn (mut s Server) run() ! {
-	// Create server socket
-	s.socket_fd = C.socket(.ip, .tcp, 0)
-	if s.socket_fd < 0 {
-		C.perror(c'socket')
-		return error('socket creation failed')
-	}
-
-	opt := 1
-	C.setsockopt(s.socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int))
-
-	mut addr := C.sockaddr_in{}
-	C.memset(&addr, 0, sizeof(addr))
-	addr.sin_family = u16(C.AF_INET)
-	addr.sin_port = u16(C.htons(u16(s.port)))
-
-	if C.bind(s.socket_fd, voidptr(&addr), sizeof(addr)) < 0 {
-		C.perror(c'bind')
-		return error('socket bind failed')
-	}
-	if C.listen(s.socket_fd, backlog) < 0 {
-		C.perror(c'listen')
-		return error('socket listen failed')
-	}
-	C.fcntl(s.socket_fd, C.F_SETFL, C.O_NONBLOCK)
-
-	// Create epoll instance
-	s.poll_fd = C.epoll_create1(0)
-	if s.poll_fd < 0 {
-		C.perror(c'epoll_create1')
-		return error('epoll creation failed')
-	}
-
-	// Add listener socket to epoll
-	// We pass the fd as the pointer value to identify it later.
-	control_epoll(s.poll_fd, epoll_ctl_add, s.socket_fd, u32(epoll_in), voidptr(isize(s.socket_fd)))
-
-	// Initialize worker data
-	C.pthread_mutex_init(&s.worker_data.task_mutex, unsafe { nil })
-	C.pthread_cond_init(&s.worker_data.task_cond, unsafe { nil })
-	C.pthread_mutex_init(&s.worker_data.done_mutex, unsafe { nil })
-
-	// Create wake pipe
-	if C.pipe(&s.worker_data.wake_pipe[0]) < 0 {
-		C.perror(c'pipe')
-		return error('pipe creation failed')
-	}
-	C.fcntl(s.worker_data.wake_pipe[0], C.F_SETFL, C.O_NONBLOCK)
-	C.fcntl(s.worker_data.wake_pipe[1], C.F_SETFL, C.O_NONBLOCK)
-
-	// Add wake pipe to epoll
-	control_epoll(s.poll_fd, epoll_ctl_add, s.worker_data.wake_pipe[0], u32(epoll_in),
-		voidptr(isize(s.worker_data.wake_pipe[0])))
-
-	// Create worker threads
-	for i := 0; i < num_threads; i++ {
-		C.pthread_create(&s.threads[i], unsafe { nil }, worker_func, s)
-	}
-
-	println('Server listening on port ${s.port}')
-
-	// Event loop
-	events := [64]C.epoll_event{}
+fn handle_accept_loop(epoll_fd int, listen_fd int) {
 	for {
-		nev := C.epoll_wait(s.poll_fd, &events[0], 64, -1)
-		if nev < 0 {
-			C.perror(c'epoll_wait')
+		client_fd := C.accept4(listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
+		if client_fd < 0 {
+			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+				break // No more incoming connections; exit loop.
+			}
+			eprintln(@LOCATION)
+			C.perror(c'Accept failed')
 			break
 		}
+		// Enable TCP_NODELAY for lower latency
+		opt := 1
+		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, &opt, sizeof(opt))
+		// Register client socket with epoll
+		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+			close_socket(client_fd)
+		}
+	}
+}
 
-		for i := 0; i < nev; i++ {
-			event := events[i]
-			ptr_val := isize(event.data.ptr)
+fn handle_client_closure(epoll_fd int, client_fd int) {
+	// Never close the listening socket here
+	if client_fd == 0 {
+		return
+	}
+	if client_fd <= 0 {
+		eprintln('ERROR: Invalid FD=${client_fd} for closure')
+		return
+	}
+	remove_fd_from_epoll(epoll_fd, client_fd)
+	close_socket(client_fd)
+}
 
-			// 1. Check for Listener Socket
-			if ptr_val == s.socket_fd {
-				client_fd := C.accept(s.socket_fd, unsafe { nil }, unsafe { nil })
-				if client_fd < 0 {
-					continue
-				}
-				mut new_c := unsafe { &Conn(C.malloc(sizeof(Conn))) }
-				C.memset(new_c, 0, sizeof(Conn))
-				new_c.fd = client_fd
-				C.fcntl(new_c.fd, C.F_SETFL, C.O_NONBLOCK)
+const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-				control_epoll(s.poll_fd, epoll_ctl_add, new_c.fd, u32(epoll_in | epoll_rdhup),
-					new_c)
+fn process_events(mut server Server, epoll_fd int, listen_fd int) {
+	mut events := [max_connection_size]C.epoll_event{}
+	mut request_buffer := [140]u8{} // Reuse buffer across all events
+	for {
+		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
+		for i := 0; i < num_events; i++ {
+			// Accept new connections when the listening socket is readable
+			if unsafe { events[i].data.fd } == listen_fd {
+				handle_accept_loop(epoll_fd, listen_fd)
 				continue
 			}
 
-			// 2. Check for Wake Pipe (Worker finished a task)
-			if ptr_val == s.worker_data.wake_pipe[0] {
-				buf := [1024]u8{}
-				for C.read(s.worker_data.wake_pipe[0], &buf[0], sizeof(buf)) > 0 {}
-				s.process_dones()
-				continue
-			}
-
-			// 3. Client Connection
-			mut c := unsafe { &Conn(event.data.ptr) }
-
-			// Handle Errors or HUP
-			if (event.events & u32(epoll_err | epoll_hup | epoll_rdhup)) != 0 {
-				s.close_conn(c)
-				continue
-			}
-
-			// Handle Read
-			if (event.events & u32(epoll_in)) != 0 {
-				n := C.read(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len)
-				if n <= 0 {
-					if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-						s.close_conn(c)
-					} else if n == 0 {
-						s.close_conn(c)
-					}
+			if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
+				client_fd := unsafe { events[i].data.fd }
+				if client_fd == listen_fd {
+					eprintln('ERROR: listen fd had HUP/ERR')
 					continue
 				}
-				c.read_len += int(n)
-
-				header_end := C.memmem(&c.read_buf[0], c.read_len, c'\r\n\r\n', 4)
-				if header_end == unsafe { nil } {
-					if c.read_len >= buf_size {
-						s.close_conn(c)
-					}
-					continue
-				}
-
-				if C.memcmp(&c.read_buf[0], c'GET ', 4) != 0 {
-					s.close_conn(c)
-					continue
-				}
-				path_start := &c.read_buf[4]
-				path_end := C.strchr(path_start, ` `)
-				if path_end == unsafe { nil } {
-					s.close_conn(c)
-					continue
-				}
-				path_len := unsafe { path_end - path_start }
-
-				req := HttpRequest{
-					buffer:         c.read_buf[..c.read_len]
-					method:         Slice{
-						buf: &c.read_buf[0]
-						len: 3
-					}
-					path:           Slice{
-						buf: path_start
-						len: path_len
-					}
-					client_conn_fd: c.fd
-				}
-
-				c.read_len = 0
-
-				// Offload to worker thread
-				// Remove from epoll so we don't trigger while worker is busy
-				control_epoll(s.poll_fd, epoll_ctl_del, c.fd, 0, unsafe { nil })
-
-				mut t := unsafe { &Task(C.malloc(sizeof(Task))) }
-				t.c = c
-				t.req = req
-				t.next = unsafe { nil }
-
-				C.pthread_mutex_lock(&s.worker_data.task_mutex)
-				if s.worker_data.task_tail != unsafe { nil } {
-					s.worker_data.task_tail.next = t
+				if client_fd > 0 {
+					handle_client_closure(epoll_fd, client_fd)
 				} else {
-					s.worker_data.task_head = t
+					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
 				}
-				s.worker_data.task_tail = t
-				C.pthread_cond_signal(&s.worker_data.task_cond)
-				C.pthread_mutex_unlock(&s.worker_data.task_mutex)
-			} else if (event.events & u32(epoll_out)) != 0 { // Handle Write
-				write_ptr := unsafe { &u8(c.write_buf) + c.write_pos }
-				written := C.write(c.fd, write_ptr, c.write_len - c.write_pos)
-				if written > 0 {
-					c.write_pos += int(written)
-				} else if written < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-					s.close_conn(c)
-					continue
-				}
-
-				if c.write_pos >= c.write_len {
-					C.free(c.write_buf)
-					c.write_buf = unsafe { nil }
-					// Done writing, modify epoll to stop listening for OUT and start listening for IN
-					control_epoll(s.poll_fd, epoll_ctl_mod, c.fd, u32(epoll_in | epoll_rdhup),
-						c)
-					c.read_len = 0
+				continue
+			}
+			if events[i].events & u32(C.EPOLLIN) != 0 {
+				client_fd := unsafe { events[i].data.fd }
+				bytes_read := C.recv(client_fd, &request_buffer[0], 140 - 1, 0)
+				if bytes_read > 0 {
+					mut readed_request_buffer := []u8{cap: bytes_read}
+					unsafe {
+						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
+					}
+					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
+						eprintln('Error decoding request ${err}')
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+							C.MSG_NOSIGNAL)
+						handle_client_closure(epoll_fd, client_fd)
+						continue
+					}
+					decoded_http_request.client_conn_fd = client_fd
+					response_buffer := server.request_handler(decoded_http_request) or {
+						eprintln('Error handling request ${err}')
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+							C.MSG_NOSIGNAL)
+						handle_client_closure(epoll_fd, client_fd)
+						continue
+					}
+					// Send response
+					C.send(client_fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
+					// Leave the connection open; closure is driven by client FIN or errors
+				} else if bytes_read == 0
+					|| (bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
+					handle_client_closure(epoll_fd, client_fd)
 				}
 			}
 		}
 	}
+}
 
-	C.close(s.socket_fd)
-	C.close(s.poll_fd)
-	C.close(s.worker_data.wake_pipe[0])
-	C.close(s.worker_data.wake_pipe[1])
+pub fn (mut server Server) run() {
+	$if windows {
+		eprintln('Windows is not supported yet')
+		return
+	}
+	for i := 0; i < max_thread_pool_size; i++ {
+		server.listen_fds[i] = create_server_socket(server.port)
+		if server.listen_fds[i] < 0 {
+			return
+		}
+
+		server.epoll_fds[i] = C.epoll_create1(0)
+		if server.epoll_fds[i] < 0 {
+			C.perror(c'epoll_create1 failed')
+			close_socket(server.listen_fds[i])
+			return
+		}
+
+		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered + exclusive)
+		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET | C.EPOLLEXCLUSIVE)) == -1 {
+			close_socket(server.listen_fds[i])
+			close_socket(server.epoll_fds[i])
+			return
+		}
+
+		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
+	}
+
+	println('listening on http://localhost:${server.port}/')
+	// Main thread waits for workers; accepts are handled in worker epoll loops
+	for i in 0 .. max_thread_pool_size {
+		server.threads[i].wait()
+	}
 }
