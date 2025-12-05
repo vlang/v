@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module fasthttp
 
+import runtime
+
 #include <fcntl.h>
 #include <errno.h>
 
@@ -89,7 +91,7 @@ pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
 
 const max_connection_size = 4096
 
-const max_thread_pool_size = 16
+const max_thread_pool_size = runtime.nr_cpus()
 
 @[direct_array_access]
 fn parse_request_line(buffer []u8) !HttpRequest {
