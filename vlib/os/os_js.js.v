@@ -110,7 +110,7 @@ pub fn rm(path string) ! {
 }
 
 @[params]
-pub struct FailIfExists {
+pub struct CopyParams {
 	fail_if_exists bool
 }
 
