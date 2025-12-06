@@ -2154,8 +2154,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	for i, stmt in stmts {
 		if i == stmts.len - 1 {
 			g.expected_cast_type = expected_cast_type
-		}
-		if i == stmts.len - 1 {
 			if stmt is ast.Return {
 				last_stmt_was_return = true
 			}
