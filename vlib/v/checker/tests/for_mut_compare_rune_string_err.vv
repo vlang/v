@@ -1,0 +1,8 @@
+fn main() {
+	s := 'Hello, World!'
+	for mut c in s.runes() {
+		if c == ' ' {
+			c = `x`
+		}
+	}
+}
