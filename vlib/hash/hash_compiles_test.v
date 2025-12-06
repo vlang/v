@@ -1,6 +1,9 @@
 import hash
 
 fn test_hash_compiles() {
+	assert hash.sum64_string('abc', 5).hex_full() == '4b4b66779c7a16f1'
+
+	// official wyhash test vectors
 	assert hash.sum64_string('', 0).hex_full() == '93228a4de0eec5a2'
 	assert hash.sum64_string('a', 1).hex_full() == 'c5bac3db178713c4'
 	assert hash.sum64_string('abc', 2).hex_full() == 'a97f2f7b1d9b3314'
