@@ -799,32 +799,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					ret_styp := g.styp(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
-					ret_styp := g.styp(right_sym.info.func.return_type)
-					mut call_conv := ''
-					mut msvc_call_conv := ''
-					for attr in right_sym.info.func.attrs {
-						match attr.name {
-							'callconv' {
-								if g.is_cc_msvc {
-									msvc_call_conv = '__${attr.arg} '
-								} else {
-									call_conv = '${attr.arg}'
-								}
-							}
-							else {}
-						}
-					}
-					call_conv_attribute_suffix := if call_conv.len != 0 {
-						'__attribute__((${call_conv}))'
-					} else {
-						''
-					}
-					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
-					def_pos := g.definitions.len
-					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false,
-						false)
-					g.definitions.go_back(g.definitions.len - def_pos)
-					g.write(')${call_conv_attribute_suffix}')
+					g.write_fntype_decl(fn_name, right_sym.info)
 				}
 			} else {
 				if is_decl {
@@ -872,7 +847,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									}
 								}
 							} else {
-								g.write('${styp} ')
+								g.write('${styp}/**/ ')
 							}
 						}
 						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
