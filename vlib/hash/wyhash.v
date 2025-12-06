@@ -15,16 +15,10 @@
 // try running with and without the `-prod` flag
 module hash
 
-const wyp0 = u64(0xa0761d6478bd642f)
-const wyp1 = u64(0xe7037ed1a0b428db)
-const wyp2 = u64(0x8ebc6af09c88c6e3)
-const wyp3 = u64(0x589965cc75374cc3)
-const wyp4 = u64(0x1d8e4e27c47d124f)
-
-@[ignore_overflow; inline]
-fn wyrotr(v u64, k u32) u64 {
-	return (v >> k) | (v << (64 - k))
-}
+const wyp0 = u64(0x2d358dccaa6c78a5)
+const wyp1 = u64(0x8bb84b93962eacc9)
+const wyp2 = u64(0x4b33a62ed433d4a3)
+const wyp3 = u64(0x4d5a2da51de1aa47)
 
 // wymum returns a hash by performing multiply and mix on `a` and `b`.
 @[ignore_overflow; inline]
@@ -47,25 +41,4 @@ pub fn wymum(a u64, b u64) u64 {
 	hi := x1 * y1 + w2 + (w1 >> 32)
 	lo := a * b
 	return hi ^ lo
-}
-
-@[inline]
-fn wyr3(p &u8, k u64) u64 {
-	unsafe {
-		return (u64(p[0]) << 16) | (u64(p[k >> 1]) << 8) | u64(p[k - 1])
-	}
-}
-
-@[inline]
-fn wyr4(p &u8) u64 {
-	unsafe {
-		return u32(p[0]) | (u32(p[1]) << u32(8)) | (u32(p[2]) << u32(16)) | (u32(p[3]) << u32(24))
-	}
-}
-
-@[inline]
-fn wyr8(p &u8) u64 {
-	unsafe {
-		return u64(p[0]) | (u64(p[1]) << 8) | (u64(p[2]) << 16) | (u64(p[3]) << 24) | (u64(p[4]) << 32) | (u64(p[5]) << 40) | (u64(p[6]) << 48) | (u64(p[7]) << 56)
-	}
 }
