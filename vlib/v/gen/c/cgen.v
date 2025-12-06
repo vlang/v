@@ -5122,6 +5122,9 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 				g.expr_with_cast(expr, node.val_types[i], unwrap_val_typ)
 			} else if node.val_types[i].has_flag(.option) || node.val_types[i] == ast.none_type {
 				g.expr_with_opt(expr, node.val_types[i], unwrap_val_typ)
+			} else if expr !is ast.ArrayInit && value_sym.info is ast.ArrayFixed {
+				tmpvar := g.expr_with_var(expr, node.val_types[i], false)
+				g.fixed_array_var_init(tmpvar, false, value_sym.info.elem_type, value_sym.info.size)
 			} else {
 				g.expr(expr)
 			}
@@ -7689,8 +7692,15 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 						if field.has_default_expr {
 							mut expr_str := ''
 							if field_sym.kind in [.sum_type, .interface] {
+								default_expr_typ := if field.default_expr_typ == 0
+									&& field.default_expr.is_nil()
+									&& field.typ.is_any_kind_of_pointer() {
+									field.typ
+								} else {
+									field.default_expr_typ
+								}
 								expr_str = g.expr_string_with_cast(field.default_expr,
-									field.default_expr_typ, field.typ)
+									default_expr_typ, field.typ)
 							} else if field_sym.is_array_fixed() && g.inside_global_decl {
 								array_info := field_sym.array_fixed_info()
 								match field.default_expr {
@@ -7739,7 +7749,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
 								&& field_sym.info.is_empty_struct() {
 								'{E_STRUCT}'
-							} else if field_sym.kind == .sum_type {
+							} else if field_sym.kind == .sum_type && !field.typ.is_ptr() {
 								if decode_sumtype {
 									g.type_default_sumtype(field.typ, field_sym)
 								} else {

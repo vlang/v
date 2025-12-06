@@ -454,7 +454,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.CallExpr {
 			w.call_expr(mut node)
-			if node.name == 'json.decode' {
+			if node.is_fn_a_const {
+				w.mark_const_as_used(node.name)
+			} else if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
 			} else if node.name == 'json.encode' && node.args[0].typ != 0 {
 				sym := w.table.final_sym(node.args[0].typ)

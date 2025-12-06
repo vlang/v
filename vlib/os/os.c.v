@@ -231,29 +231,48 @@ pub fn rename(src string, dst string) ! {
 	}
 }
 
-// cp copies files or folders from `src` to `dst`.
-pub fn cp(src string, dst string) ! {
+@[params]
+pub struct CopyParams {
+pub:
+	fail_if_exists bool
+}
+
+// cp copies the file src to the file or directory dst. If dst specifies a directory, the file will be copied into dst
+// using the base filename from src. If dst specifies a file that already exists, it will be replaced by
+// default. Can be overridden to fail by setting fail_if_exists: true
+pub fn cp(src string, dst string, config CopyParams) ! {
 	$if windows {
 		w_src := src.replace('/', '\\')
-		w_dst := dst.replace('/', '\\')
-		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
+		mut w_dst := dst.replace('/', '\\')
+		if is_dir(w_dst) {
+			w_dst = join_path_single(w_dst, file_name(w_src))
+		}
+		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), config.fail_if_exists) == 0 {
 			// we must save error immediately, or it will be overwritten by other API function calls.
 			code := int(C.GetLastError())
 			return error_win32(
-				msg:  'failed to copy ${src} to ${dst}'
+				msg:  'cp: failed to copy ${src} to ${dst}'
 				code: code
 			)
 		}
 	} $else {
+		mut w_dst := dst
+		if is_dir(dst) {
+			w_dst = join_path_single(w_dst, file_name(src))
+		}
 		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
 		if fp_from < 0 { // Check if file opened
-			return error_with_code('cp: failed to open ${src}', int(fp_from))
+			return error_with_code('cp: failed to open ${src} for reading', int(fp_from))
 		}
-		fp_to := C.open(&char(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		mode_flags := C.S_IWUSR | C.S_IRUSR
+		mut open_flags := C.O_WRONLY | C.O_CREAT | C.O_TRUNC
+		if config.fail_if_exists {
+			open_flags |= C.O_EXCL
+		}
+		fp_to := C.open(&char(w_dst.str), open_flags, mode_flags)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp (permission): failed to write to ${dst} (fp_to: ${fp_to})',
-				int(fp_to))
+			return error_with_code('cp: failed to open ${w_dst} for writing', int(fp_to))
 		}
 		// TODO: use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
@@ -267,14 +286,14 @@ pub fn cp(src string, dst string) ! {
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
-				return error_with_code('cp: failed to write to ${dst}', int(-1))
+				return error_with_code('cp: failed to write to ${w_dst}', int(-1))
 			}
 		}
 		from_attr := stat(src)!
-		if C.chmod(&char(dst.str), from_attr.mode) < 0 {
+		if C.chmod(&char(w_dst.str), from_attr.mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
-			return error_with_code('failed to set permissions for ${dst}', int(-1))
+			return error_with_code('failed to set permissions for ${w_dst}', int(-1))
 		}
 		C.close(fp_to)
 		C.close(fp_from)
