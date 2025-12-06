@@ -20,6 +20,7 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 $if !windows {
 	#include <sys/epoll.h>
 	#include <netinet/in.h>
+	#include <netinet/tcp.h>
 }
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
@@ -39,6 +40,8 @@ fn C.perror(s &u8)
 fn C.close(fd int) int
 
 fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
+
+fn C.accept4(sockfd int, address &C.sockaddr_in, addrlen &u32, flags int) int
 
 fn C.htons(__hostshort u16) u16
 
@@ -77,15 +80,15 @@ struct Server {
 pub:
 	port int = 3000
 mut:
-	socket_fd       int
+	listen_fds      [max_thread_pool_size]int
 	epoll_fds       [max_thread_pool_size]int
 	threads         [max_thread_pool_size]thread
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
 
-const max_connection_size = 1024
+const max_connection_size = 4096
 
-const max_thread_pool_size = 8
+const max_thread_pool_size = 16
 
 fn set_blocking(fd int, blocking bool) {
 	flags := C.fcntl(fd, C.F_GETFL, 0)
@@ -103,8 +106,17 @@ fn set_blocking(fd int, blocking bool) {
 	}
 }
 
-fn close_socket(fd int) {
-	C.close(fd)
+fn close_socket(fd int) bool {
+	ret := C.close(fd)
+	if ret == -1 {
+		if C.errno == C.EINTR {
+			// Interrupted by signal, retry is safe
+			return close_socket(fd)
+		}
+		eprintln('ERROR: close(fd=${fd}) failed with errno=${C.errno}')
+		return false
+	}
+	return true
 }
 
 fn create_server_socket(port int) int {
@@ -116,10 +128,16 @@ fn create_server_socket(port int) int {
 		return -1
 	}
 
-	// set_blocking(server_fd, false)
+	set_blocking(server_fd, false)
 
-	// Enable SO_REUSEPORT
+	// Enable SO_REUSEADDR and SO_REUSEPORT
 	opt := 1
+	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(opt)) < 0 {
+		eprintln(@LOCATION)
+		C.perror(c'setsockopt SO_REUSEADDR failed')
+		close_socket(server_fd)
+		return -1
+	}
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEPORT failed')
@@ -164,86 +182,102 @@ fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 }
 
 // Function to remove a file descriptor from the epoll instance
-fn remove_fd_from_epoll(epoll_fd int, fd int) {
-	C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
+fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
+	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
+	if ret == -1 {
+		eprintln('ERROR: epoll_ctl(DEL, fd=${fd}) failed with errno=${C.errno}')
+		return false
+	}
+	return true
 }
 
-fn handle_accept_loop(mut server Server) {
+fn handle_accept_loop(epoll_fd int, listen_fd int) {
 	for {
-		client_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
+		client_fd := C.accept4(listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
 		if client_fd < 0 {
-			// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 				break // No more incoming connections; exit loop.
 			}
-
 			eprintln(@LOCATION)
 			C.perror(c'Accept failed')
-			return
+			break
 		}
-
-		unsafe {
-			// Distribute client connections among epoll_fds
-			epoll_fd := server.epoll_fds[client_fd % max_thread_pool_size]
-			if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-				close_socket(client_fd)
-			}
+		// Enable TCP_NODELAY for lower latency
+		opt := 1
+		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, &opt, sizeof(opt))
+		// Register client socket with epoll
+		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+			close_socket(client_fd)
 		}
 	}
 }
 
-fn handle_client_closure(server &Server, client_fd int) {
-	unsafe {
-		remove_fd_from_epoll(client_fd, client_fd)
+fn handle_client_closure(epoll_fd int, client_fd int) {
+	// Never close the listening socket here
+	if client_fd == 0 {
+		return
 	}
+	if client_fd <= 0 {
+		eprintln('ERROR: Invalid FD=${client_fd} for closure')
+		return
+	}
+	remove_fd_from_epoll(epoll_fd, client_fd)
+	close_socket(client_fd)
 }
 
-fn process_events(mut server Server, epoll_fd int) {
+fn process_events(mut server Server, epoll_fd int, listen_fd int) {
+	mut events := [max_connection_size]C.epoll_event{}
+	mut request_buffer := [140]u8{} // Reuse buffer across all events
 	for {
-		events := [max_connection_size]C.epoll_event{}
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
 		for i := 0; i < num_events; i++ {
+			// Accept new connections when the listening socket is readable
+			if unsafe { events[i].data.fd } == listen_fd {
+				handle_accept_loop(epoll_fd, listen_fd)
+				continue
+			}
+
 			if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
-				handle_client_closure(server, unsafe { events[i].data.fd })
+				client_fd := unsafe { events[i].data.fd }
+				if client_fd == listen_fd {
+					eprintln('ERROR: listen fd had HUP/ERR')
+					continue
+				}
+				if client_fd > 0 {
+					handle_client_closure(epoll_fd, client_fd)
+				} else {
+					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
+				}
 				continue
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
-				request_buffer := [140]u8{}
-				bytes_read := C.recv(unsafe { events[i].data.fd }, &request_buffer[0],
-					140 - 1, 0)
+				client_fd := unsafe { events[i].data.fd }
+				bytes_read := C.recv(client_fd, &request_buffer[0], 140 - 1, 0)
 				if bytes_read > 0 {
 					mut readed_request_buffer := []u8{cap: bytes_read}
-
 					unsafe {
 						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
 					}
-
 					decoded_http_request := decode_http_request(readed_request_buffer) or {
 						eprintln('Error decoding request ${err}')
-						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
-							tiny_bad_request_response.len, 0)
-						handle_client_closure(server, unsafe { events[i].data.fd })
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+							C.MSG_NOSIGNAL)
+						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
-
-					// This lock is a workaround for avoiding race condition in router.params
-					// This slows down the server, but it's a temporary solution
-
 					response_buffer := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
-						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
-							tiny_bad_request_response.len, 0)
-						handle_client_closure(server, unsafe { events[i].data.fd })
-
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+							C.MSG_NOSIGNAL)
+						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
-
-					C.send(unsafe { events[i].data.fd }, response_buffer.data, response_buffer.len,
-						0)
-					handle_client_closure(server, unsafe { events[i].data.fd })
+					// Send response
+					C.send(client_fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
+					// Leave the connection open; closure is driven by client FIN or errors
 				} else if bytes_read == 0
 					|| (bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
-					handle_client_closure(server, unsafe { events[i].data.fd })
+					handle_client_closure(epoll_fd, client_fd)
 				}
 			}
 		}
@@ -255,28 +289,32 @@ fn (mut server Server) run() {
 		eprintln('Windows is not supported yet')
 		return
 	}
-	server.socket_fd = create_server_socket(server.port)
-	if server.socket_fd < 0 {
-		return
-	}
-
 	for i := 0; i < max_thread_pool_size; i++ {
+		server.listen_fds[i] = create_server_socket(server.port)
+		if server.listen_fds[i] < 0 {
+			return
+		}
+
 		server.epoll_fds[i] = C.epoll_create1(0)
 		if server.epoll_fds[i] < 0 {
 			C.perror(c'epoll_create1 failed')
-			close_socket(server.socket_fd)
+			close_socket(server.listen_fds[i])
 			return
 		}
 
-		if add_fd_to_epoll(server.epoll_fds[i], server.socket_fd, u32(C.EPOLLIN)) == -1 {
-			close_socket(server.socket_fd)
+		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered + exclusive)
+		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET | C.EPOLLEXCLUSIVE)) == -1 {
+			close_socket(server.listen_fds[i])
 			close_socket(server.epoll_fds[i])
-
 			return
 		}
-		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i])
+
+		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
 	println('listening on http://localhost:${server.port}/')
-	handle_accept_loop(mut server)
+	// Main thread waits for workers; accepts are handled in worker epoll loops
+	for i in 0 .. max_thread_pool_size {
+		server.threads[i].wait()
+	}
 }
