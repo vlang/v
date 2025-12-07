@@ -12,13 +12,14 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
-	unbuffer_stdout()
-	os.setenv('VMODULES', test_path, true)
-	os.setenv('VPM_DEBUG', '', true)
-	os.setenv('VPM_NO_INCREMENT', '1', true)
+	dump(test_path)
+	test_utils.set_test_env(test_path)
+	os.mkdir_all(test_path) or {}
+	os.chdir(test_path)!
 }
 
 fn testsuite_end() {
+	dump(os.system('find ${test_path}'))
 	os.rmdir_all(test_path) or {}
 }
 
@@ -32,7 +33,6 @@ fn get_mod_name(path string) string {
 
 // Case: running `v install` without specifying modules in a V project directory.
 fn test_install_dependencies_in_module_dir() {
-	os.mkdir_all(test_path) or {}
 	mod := 'my_module'
 	mod_path := os.join_path(test_path, mod)
 	os.mkdir(mod_path)!

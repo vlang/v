@@ -14,6 +14,7 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
+	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
 
