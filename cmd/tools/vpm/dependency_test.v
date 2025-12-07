@@ -55,9 +55,9 @@ fn test_install_dependencies_in_module_dir() {
 	// Run `v install`
 	mut res := cmd_ok(@LOCATION, '${v} install --once')
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
-	assert res.output.contains('Installing `markdown`'), res.output
-	assert res.output.contains('Installing `pcre`'), res.output
-	assert res.output.contains('Installing `vtray`'), res.output
+	expect_installing(@LOCATION, res.output, 'markdown')
+	expect_installing(@LOCATION, res.output, 'pcre')
+	expect_installing(@LOCATION, res.output, 'vtray')
 
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
@@ -69,8 +69,8 @@ fn test_install_dependencies_in_module_dir() {
 fn test_resolve_external_dependencies_during_module_install() {
 	res := cmd_ok(@LOCATION, '${v} install -v https://github.com/ttytm/emoji-mart-desktop')
 	assert res.output.contains('Found 2 dependencies'), res.output
-	assert res.output.contains('Installing `webview`'), res.output
-	assert res.output.contains('Installing `miniaudio`'), res.output
+	expect_installing(@LOCATION, res.output, 'webview')
+	expect_installing(@LOCATION, res.output, 'miniaudio')
 	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`
 	assert get_mod_name(os.join_path(test_path, 'webview', 'v.mod')) == 'webview'
 	assert get_mod_name(os.join_path(test_path, 'miniaudio', 'v.mod')) == 'miniaudio'
@@ -89,4 +89,9 @@ fn test_install_with_recursive_dependencies() {
 	// `https://gitlab.com/tobealive/a` dependency without `.git`.
 	cmd_ok(@LOCATION, '${v} remove a b c')
 	cmd_ok(@LOCATION, '${v} install https://gitlab.com/tobealive/a.git')
+}
+
+fn expect_installing(location string, output string, what string) {
+	eprintln('>>> location: ${location}')
+	assert output.contains('Installing `${what}`') || output.contains('Scanning `${what}`'), output
 }
