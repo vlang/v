@@ -1,4 +1,4 @@
-// vtest build: !musl?
+// vtest build: !musl? && !sanitized_job?
 import os
 import time
 

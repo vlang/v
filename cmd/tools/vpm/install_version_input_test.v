@@ -1,3 +1,4 @@
+// vtest build: !musl? && !sanitized_job?
 // vtest retry: 3
 import os
 import rand

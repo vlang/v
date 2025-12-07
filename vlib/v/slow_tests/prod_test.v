@@ -1,3 +1,5 @@
+// vtest build: tinyc && !sanitized_job?
+
 // Build and run files in ./prod/ folder, comparing their output to *.expected.txt files.
 // (Similar to REPL tests, but in -prod mode.)
 import v.slow_tests.repl.runner

@@ -1,4 +1,3 @@
-// vtest retry: 3
 import os
 import time
 import rand
