@@ -1,3 +1,4 @@
+// vtest build: tinyc
 module parser
 
 // import v.eval
