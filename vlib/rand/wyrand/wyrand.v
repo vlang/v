@@ -8,8 +8,8 @@ import rand.buffer
 import rand.seed
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
-const wyp0 = u64(0xa0761d6478bd642f)
-const wyp1 = u64(0xe7037ed1a0b428db)
+const wyp0 = u64(0x2d358dccaa6c78a5)
+const wyp1 = u64(0x8bb84b93962eacc9)
 
 pub const seed_len = 2
 
