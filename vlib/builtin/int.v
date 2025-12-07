@@ -125,23 +125,23 @@ fn (nn int) str_l(max int) string {
 // str returns the value of the `i8` as a `string`.
 // Example: assert i8(-2).str() == '-2'
 pub fn (n i8) str() string {
-	return int(n).str_l(5)
+	return int(n).str_l(4)
 }
 
 // str returns the value of the `i16` as a `string`.
 // Example: assert i16(-20).str() == '-20'
 pub fn (n i16) str() string {
-	return int(n).str_l(7)
+	return int(n).str_l(6)
 }
 
 // str returns the value of the `u16` as a `string`.
 // Example: assert u16(20).str() == '20'
 pub fn (n u16) str() string {
-	return int(n).str_l(7)
+	return int(n).str_l(6)
 }
 
 pub fn (n i32) str() string {
-	return int(n).str_l(12)
+	return int(n).str_l(11)
 }
 
 pub fn (nn int) hex_full() string {
@@ -151,7 +151,11 @@ pub fn (nn int) hex_full() string {
 // str returns the value of the `int` as a `string`.
 // Example: assert int(-2020).str() == '-2020'
 pub fn (n int) str() string {
-	return n.str_l(12)
+	$if new_int ? {
+		return impl_i64_to_string(n)
+	} $else {
+		return n.str_l(11)
+	}
 }
 
 // str returns the value of the `u32` as a `string`.
@@ -164,7 +168,7 @@ pub fn (nn u32) str() string {
 		if n == 0 {
 			return '0'
 		}
-		max := 12
+		max := 10
 		mut buf := malloc_noscan(max + 1)
 		mut index := max
 		buf[index] = 0
@@ -501,7 +505,7 @@ pub fn (nn u64) hex_full() string {
 // See also: [`byte.ascii_str`](#byte.ascii_str)
 // Example: assert u8(111).str() == '111'
 pub fn (b u8) str() string {
-	return int(b).str_l(7)
+	return int(b).str_l(4)
 }
 
 // ascii_str returns the contents of `byte` as a zero terminated ASCII `string` character.
