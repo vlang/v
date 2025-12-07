@@ -29,7 +29,6 @@ pub mut:
 	pos                         int = -1 // current position in the file, first character is s.text[0]
 	line_nr                     int // current line number
 	last_nl_pos                 int = -1 // for calculating column
-	is_crlf                     bool // special check when computing columns
 	is_inside_string            bool // set to true in a string, *at the start* of an $var or ${expr}
 	is_nested_string            bool // '${'abc':-12s}'
 	is_inter_start              bool // for hacky string interpolation TODO simplify
@@ -42,7 +41,6 @@ pub mut:
 	is_print_rel_paths_on_error bool
 	quote                       u8   // which quote is used to denote current string: ' or "
 	nr_lines                    int  // total number of lines in the source file that were scanned
-	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
@@ -532,24 +530,18 @@ fn (mut s Scanner) ident_number() string {
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == 9 {
-			// tabs are most common
+		if c == 9 || c == 32 {
+			// tabs and spaces are most common
+			s.pos++
+			continue
+		}
+		if c == b_lf {
+			s.inc_line_number()
 			s.pos++
 			continue
 		}
 		if util.non_whitespace_table[c] {
 			return
-		}
-		c_is_nl := c == b_cr || c == b_lf
-		if c_is_nl && s.is_vh {
-			return
-		}
-		if s.pos + 1 < s.text.len && c == b_cr && s.text[s.pos + 1] == b_lf {
-			s.is_crlf = true
-		}
-		// Count \r\n as one line
-		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == b_cr && c == b_lf) {
-			s.inc_line_number()
 		}
 		s.pos++
 	}
@@ -1663,15 +1655,9 @@ fn (mut s Scanner) eat_to_end_of_line() {
 	}
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = s.text.len - 1
-	if s.last_nl_pos > s.pos {
-		s.last_nl_pos = s.pos
-	}
-	if s.is_crlf {
-		s.last_nl_pos++
-	}
+	s.last_nl_pos = if s.text.len - 1 > s.pos { s.pos } else { s.text.len - 1 }
 	s.line_nr++
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
@@ -1826,7 +1812,6 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.nr_lines = 0
 	s.line_nr = 0
 	s.last_nl_pos = -1
-	s.is_crlf = false
 	s.is_inside_toplvl_statement = false
 	s.is_inside_string = false
 	s.is_nested_string = false
