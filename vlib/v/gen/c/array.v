@@ -153,7 +153,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	if node.is_option && !is_none {
 		g.write('.state=0, .err=_const_none__, .data={')
 	}
-	if node.has_val && node.exprs.len > 0 {
+	if node.has_val {
 		tmp_inside_array := g.inside_array_item
 		g.inside_array_item = true
 		defer(fn) {
