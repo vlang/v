@@ -8,7 +8,7 @@ import v.ast
 pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	// For JS and Go generate array init using their syntax
 	// if t.pref.backend !in [.c, .native] {
-	if !t.pref.new_transform || node.is_fixed {
+	if !t.pref.new_transform || node.is_fixed || t.inside_in {
 		for mut expr in node.exprs {
 			expr = t.expr(mut expr)
 		}

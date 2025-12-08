@@ -16,6 +16,7 @@ pub mut:
 mut:
 	is_assert   bool
 	inside_dump bool
+	inside_in   bool
 	//
 	strings_builder_type ast.Type = ast.no_type
 }
@@ -739,6 +740,13 @@ fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 }
 
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
+	if node.op == .not_in || node.op == .key_in {
+		tmp_inside_in := t.inside_in
+		t.inside_in = true
+		defer(fn) {
+			t.inside_in = tmp_inside_in
+		}
+	}
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
 	if !t.pref.translated {

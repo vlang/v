@@ -674,10 +674,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 						&& right_sym.kind in [.array, .array_fixed] {
 						w.uses_arr_void = true
 					}
-					if w.pref.new_transform && right_sym.kind == .array {
-						w.uses_array = true
-						w.mark_by_sym(right_sym)
-					}
 				} else if node.op in [.key_is, .not_is] {
 					w.mark_by_sym(right_sym)
 				}
