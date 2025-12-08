@@ -20,6 +20,14 @@ fn (mut b Builder) gen_auto_str_fn() {
 		s := b.table.sym(t)
 		has_str_method := s.has_method_with_sumtype_parent('str')
 			|| s.has_method_with_generic_parent('str')
+		// if s.name.contains('v.ast.ForCStmt') {
+		//	dump(has_str_method)
+		//	dump(s.name)
+		//	dump(s.idx)
+		//	x := b.table.type_symbols.filter(it.name.contains('Stmt')).map(it.name).join('\n')
+		//	dump(x)
+		//	panic('error')
+		//}
 		if has_str_method || s.kind == .function || s.mod == '' {
 			continue
 		} else {
@@ -40,7 +48,9 @@ fn (mut b Builder) gen_auto_str_fn() {
 			b.auto_str_has_import_strings = false
 			for t in types {
 				mut type_name := b.auto_fn_get_type_name(t, false) // main.MyS[int] => MyS[T]
-				if full_mod_name != 'builtin' {
+				if t.name.starts_with('C.') {
+					type_name = 'C.' + type_name
+				} else if full_mod_name != 'builtin' {
 					type_name = full_mod_name + '.' + type_name
 				}
 				type_name2 := b.auto_fn_get_type_name(t, true) // main.MyS[int] => MyS[${T.name}]
@@ -51,7 +61,7 @@ fn (mut b Builder) gen_auto_str_fn() {
 							// for `post_process_generic_fns`
 							generic_to_concrete_map[info.parent_type] << info.concrete_types
 						}
-						hint := 'type=${t.idx}'
+						hint := 'type=${t.idx}\nt.name=${t.name}'
 						b.gen_str_for_struct(mut sb, type_name, type_name2, info, hint)
 					}
 					else {}
@@ -90,28 +100,28 @@ fn (mut b Builder) gen_str_for_struct(mut sb strings.Builder, struct_name string
 		''
 	}
 	if info.fields.len == 0 {
-		sb.writeln("@[markused]\npub fn (it ${struct_name}) str${generic_types}() string { return '${clean_struct_v_type_name}{}' }")
-		sb.writeln("@[markused]\npub fn (it ${struct_name}) indent_str${generic_types}(_ int) string { return '${clean_struct_v_type_name}{}' }")
+		sb.writeln("@[markused]\npub fn (it &${struct_name}) str${generic_types}() string { return '${clean_struct_v_type_name}{}' }")
+		sb.writeln("@[markused]\npub fn (it &${struct_name}) indent_str${generic_types}(_ int) string { return '${clean_struct_v_type_name}{}' }")
 		return
 	}
 	// -hide-auto-str hides potential sensitive struct data from resulting binary files
 	if b.pref.hide_auto_str {
-		sb.writeln("@[markused]\npub fn (it ${struct_name}) str${generic_types}() string { return 'str() used with -hide-auto-str' }")
-		sb.writeln("@[markused]\npub fn (it ${struct_name}) indent_str${generic_types}(_ int) string { return 'str() used with -hide-auto-str' }")
+		sb.writeln("@[markused]\npub fn (it &${struct_name}) str${generic_types}() string { return 'str() used with -hide-auto-str' }")
+		sb.writeln("@[markused]\npub fn (it &${struct_name}) indent_str${generic_types}(_ int) string { return 'str() used with -hide-auto-str' }")
 		return
 	}
 	if !b.auto_str_has_import_strings {
 		b.auto_str_has_import_strings = true
 		sb.writeln('import strings\n')
 	}
-	sb.writeln('@[markused]\npub fn (it ${struct_name}) str${generic_types}() string { return it.indent_str(0) }')
-	sb.writeln('@[markused]\npub fn (it ${struct_name}) indent_str${generic_types}(indent_count int) string {')
+	sb.writeln('@[markused]\npub fn (it &${struct_name}) str${generic_types}() string { return it.indent_str(0) }')
+	sb.writeln('@[markused]\npub fn (it &${struct_name}) indent_str${generic_types}(indent_count int) string {')
 	// is_c_struct := struct_name.starts_with('C.')
 	if b.pref.hide_auto_str {
 		sb.write_string("\treturn 'str() used with -hide-auto-str'\n}")
 		return
 	}
-	sb.writeln('\tmut res := strings.new_builder(128)')
+	sb.writeln('\tmut res := strings.new_builder(222)')
 	sb.writeln("\tindents := '    '.repeat(indent_count)")
 	sb.writeln('\tres.write_string(\'${clean_struct_v_type_name}{\')')
 	// find `[str: skip]` fields
@@ -198,7 +208,7 @@ fn (mut b Builder) auto_fn_fix_generics(mut file ast.File, generic_to_concrete_m
 		return
 	}
 	for node in file.generic_fns {
-		if concrete_types := generic_to_concrete_map[node.receiver.typ] {
+		if concrete_types := generic_to_concrete_map[node.receiver.typ.deref()] {
 			fkey := node.fkey()
 			b.table.fn_generic_types[fkey] << concrete_types
 		}

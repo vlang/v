@@ -1888,9 +1888,11 @@ pub fn (t &TypeSymbol) has_method_with_sumtype_parent(name string) bool {
 		return true
 	}
 	for s in global_table.type_symbols {
-		if s.kind == .sum_type && s.has_method(name) {
+		if s.kind == .sum_type {
 			info := s.info as SumType
-			return t.idx in info.variants
+			if t.idx in info.variants {
+				return s.has_method(name)
+			}
 		}
 	}
 	return false
