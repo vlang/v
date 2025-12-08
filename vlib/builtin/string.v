@@ -3077,11 +3077,7 @@ enum IndentState {
 // 4. Handles empty blocks (e.g., {}) by keeping them on the same line
 // 5. Adds newlines after `block_start` and before `block_end` (except for empty blocks)
 // 6. Maintains line breaks in the original input
-// Example: assert 'User{name:"John" settings:{theme:"dark" language:"en"}}'.indent() == 'User{
-//    name:"John" settings:{
-//        theme:"dark" language:"en"
-//    }
-//}'
+// Example: assert 'User{name:"John" settings:{theme:"dark" language:"en"}}'.indent() == 'User{\n    name:"John" settings:{\n        theme:"dark" language:"en"\n    }\n}'
 @[direct_array_access]
 pub fn (s string) indent(param IndentParam) string {
 	if s.len == 0 {
