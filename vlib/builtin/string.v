@@ -3050,20 +3050,38 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	return rune(impl_utf8_to_utf32(start, len))
 }
 
+// IndentParam holds configuration parameters for the indent() function
 @[params]
 pub struct IndentParam {
 pub mut:
-	open_char    rune = `{` // Character that triggers increased indentation
-	close_char   rune = `}` // Character that triggers decreased indentation
+	block_start  rune = `{` // Character that starts a new block (+ indent)
+	block_end    rune = `}` // Character that ends a new block (- indent)
 	indent_char  rune = ` ` // Character used for indentation (space or tab)
 	indent_count int  = 4   // Number of indent_char per indentation level
 }
 
+// IndentState represents the current parsing state of the indent() function
 enum IndentState {
-	normal
-	in_string
+	normal    // Normal state, processing regular characters
+	in_string // Inside a string literal, ignoring formatting characters
 }
 
+// indent formats a string by adding proper indentation based on block delimiters
+// It takes a string containing blocks defined by `block_start` and `block_end` characters
+// and formats it with configurable indentation. String literals are preserved as-is.
+//
+// The function:
+// 1. Removes existing indentation at the beginning of lines
+// 2. Adds new indentation based on block nesting levels
+// 3. Preserves content inside string literals (both single and double quotes)
+// 4. Handles empty blocks (e.g., {}) by keeping them on the same line
+// 5. Adds newlines after `block_start` and before `block_end` (except for empty blocks)
+// 6. Maintains line breaks in the original input
+// Example: assert 'User{name:"John" settings:{theme:"dark" language:"en"}}'.indent() == 'User{
+//    name:"John" settings:{
+//        theme:"dark" language:"en"
+//    }
+//}'
 @[direct_array_access]
 pub fn (s string) indent(param IndentParam) string {
 	if s.len == 0 {
@@ -3081,44 +3099,58 @@ pub fn (s string) indent(param IndentParam) string {
 		c := s[i]
 
 		match state {
+			// Normal state: process characters outside of string literals
 			.normal {
 				match c {
 					`"`, `'` { // make it display correctly in editor "
 						state = .in_string
 						string_char = c
+						// Add indentation if at the start of a line
 						if at_line_start {
 							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
 							at_line_start = false
 						}
+						// Write the opening quote
 						sb.write_rune(c)
 						i++
 					}
-					param.open_char {
+					param.block_start {
+						// Start of a new block
+						// Add indentation if at the start of a line
 						if at_line_start {
 							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
 							at_line_start = false
 						}
+
+						// Write the block start character
 						sb.write_rune(c)
 
-						// empty `{}` at same line
-						if i + 1 < s.len && s[i + 1] == param.close_char {
-							sb.write_rune(param.close_char)
+						// Check for empty block (e.g., {})
+						// Empty blocks stay on the same line
+						if i + 1 < s.len && s[i + 1] == param.block_end {
+							sb.write_rune(param.block_end)
 							i += 2
 						} else {
+							// Non-empty block: increase indentation and add newline
 							indent_level++
 							sb.write_rune(`\n`)
 							at_line_start = true
 							i++
 						}
 					}
-					param.close_char {
+					param.block_end {
+						// End of a block
+						// Decrease indentation level (but not below 0)
 						if indent_level > 0 {
 							indent_level--
 						}
 
+						// If not at the start of a line, add a newline
 						if !at_line_start {
 							sb.write_rune(`\n`)
 						}
+
+						// Add indentation for the block end
 						sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
 						at_line_start = false
 
@@ -3126,15 +3158,21 @@ pub fn (s string) indent(param IndentParam) string {
 						i++
 					}
 					` `, `\t`, `\r`, `\n` {
+						// Whitespace characters
+						// Only write whitespace if not at the start of a line
 						if !at_line_start {
 							sb.write_rune(c)
 						}
+
+						// Newline resets the line start flag
 						if c == `\n` {
 							at_line_start = true
 						}
 						i++
 					}
 					else {
+						// Any other character
+						// Add indentation if at the start of a line
 						if at_line_start {
 							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
 							at_line_start = false
@@ -3145,7 +3183,11 @@ pub fn (s string) indent(param IndentParam) string {
 				}
 			}
 			.in_string {
+				// Inside a string literal: preserve all characters as-is
 				sb.write_rune(c)
+
+				// Check for string termination
+				// The character must match the opening quote and not be escaped
 				if c == string_char {
 					if i == 0 || s[i - 1] != `\\` {
 						state = .normal
