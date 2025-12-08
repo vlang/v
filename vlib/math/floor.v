@@ -144,8 +144,7 @@ pub fn round_to_even(x f64) f64 {
 		half_minus_ulp := u64(u64(1) << (shift - 1)) - 1
 		e_ -= u64(bias)
 		bits += (half_minus_ulp + (bits >> (shift - e_)) & 1) >> e_
-		bits &= frac_mask >> e_
-		bits ^= frac_mask >> e_
+		bits &= ~(frac_mask >> e_)
 	} else if e_ == bias - 1 && bits & frac_mask != 0 {
 		// round 0.5 < abs(x) < 1.
 		bits = bits & sign_mask | uvone // +-1
