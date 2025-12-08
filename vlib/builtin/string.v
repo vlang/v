@@ -3049,3 +3049,112 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	}
 	return rune(impl_utf8_to_utf32(start, len))
 }
+
+@[params]
+pub struct IndentParam {
+pub mut:
+	open_char    rune = `{` // Character that triggers increased indentation
+	close_char   rune = `}` // Character that triggers decreased indentation
+	indent_char  rune = ` ` // Character used for indentation (space or tab)
+	indent_count int  = 4   // Number of indent_char per indentation level
+}
+
+enum IndentState {
+	normal
+	in_string
+}
+
+@[direct_array_access]
+pub fn (s string) indent(param IndentParam) string {
+	if s.len == 0 {
+		return ''
+	}
+
+	mut sb := strings.new_builder(s.len * 2)
+	mut state := IndentState.normal
+	mut indent_level := 0
+	mut string_char := `\0`
+	mut at_line_start := true
+	mut i := 0
+
+	for i < s.len {
+		c := s[i]
+
+		match state {
+			.normal {
+				match c {
+					`"`, `'` { // make it display correctly in editor "
+						state = .in_string
+						string_char = c
+						if at_line_start {
+							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							at_line_start = false
+						}
+						sb.write_rune(c)
+						i++
+					}
+					param.open_char {
+						if at_line_start {
+							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							at_line_start = false
+						}
+						sb.write_rune(c)
+
+						// empty `{}` at same line
+						if i + 1 < s.len && s[i + 1] == param.close_char {
+							sb.write_rune(param.close_char)
+							i += 2
+						} else {
+							indent_level++
+							sb.write_rune(`\n`)
+							at_line_start = true
+							i++
+						}
+					}
+					param.close_char {
+						if indent_level > 0 {
+							indent_level--
+						}
+
+						if !at_line_start {
+							sb.write_rune(`\n`)
+						}
+						sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+						at_line_start = false
+
+						sb.write_rune(c)
+						i++
+					}
+					` `, `\t`, `\r`, `\n` {
+						if !at_line_start {
+							sb.write_rune(c)
+						}
+						if c == `\n` {
+							at_line_start = true
+						}
+						i++
+					}
+					else {
+						if at_line_start {
+							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							at_line_start = false
+						}
+						sb.write_rune(c)
+						i++
+					}
+				}
+			}
+			.in_string {
+				sb.write_rune(c)
+				if c == string_char {
+					if i == 0 || s[i - 1] != `\\` {
+						state = .normal
+						string_char = `\0`
+					}
+				}
+				i++
+			}
+		}
+	}
+	return sb.str()
+}
