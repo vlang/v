@@ -28,7 +28,6 @@ fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data is
 const buf_size = max_connection_size
 const kqueue_max_events = 128
 const backlog = max_connection_size
-const tiny_bad_request_d = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 struct Conn {
 	fd int
@@ -106,7 +105,7 @@ fn send_pending(c_ptr voidptr) bool {
 }
 
 fn send_bad_request(fd int) {
-	C.send(fd, tiny_bad_request_d.data, tiny_bad_request_d.len, 0)
+	C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len, 0)
 }
 
 fn handle_write(kq int, c_ptr voidptr) {
