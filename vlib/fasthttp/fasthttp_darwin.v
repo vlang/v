@@ -47,6 +47,7 @@ pub mut:
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
 
+// new_server creates and initializes a new Server instance.
 pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
 	mut server := &Server{
 		port:            port

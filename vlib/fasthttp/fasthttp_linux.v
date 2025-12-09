@@ -242,6 +242,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 	}
 }
 
+// run starts the server and begins listening for incoming connections.
 pub fn (mut server Server) run() ! {
 	$if windows {
 		eprintln('Windows is not supported yet')
