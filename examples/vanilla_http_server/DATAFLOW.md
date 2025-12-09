@@ -1,6 +1,7 @@
 # Vanilla HTTP Server - Data Flow
 
-This document describes the complete data flow through the high-performance HTTP server, from connection establishment to response delivery.
+This document describes the complete data flow through the high-performance HTTP server, from
+connection establishment to response delivery.
 
 ## System Architecture Overview
 
@@ -347,11 +348,15 @@ Results:
 **Future Optimizations:**
 
 - **io_uring**: Zero-copy I/O with submission/completion queues, eliminating syscall overhead
-- **Batched sends**: Use `writev()` or `sendmsg()` with scatter-gather to send response in one syscall
-- **Response caching**: Pre-serialize common responses at startup, bypass routing/handler for cache hits
+- **Batched sends**: Use `writev()` or `sendmsg()` with scatter-gather to send response in one
+  syscall
+- **Response caching**: Pre-serialize common responses at startup, bypass routing/handler for
+  cache hits
 - **CPU affinity**: Pin worker threads to specific cores to improve cache locality
 - **DPDK bypass**: Bypass kernel network stack entirely for maximum throughput (userspace TCP/IP)
-- **HTTP/2 multiplexing**: Share single connection for multiple requests, reduce connection overhead
+- **HTTP/2 multiplexing**: Share single connection for multiple requests, reduce connection
+  overhead
 - **JIT compilation**: V's `-prod` with PGO (profile-guided optimization) for hot paths
 - **Memory pool**: Pre-allocate buffers in arena to eliminate allocation overhead
-- **Lock-free queues**: If cross-worker communication needed, use MPSC queues instead of shared epoll
+- **Lock-free queues**: If cross-worker communication needed, use MPSC queues instead of shared
+  epoll

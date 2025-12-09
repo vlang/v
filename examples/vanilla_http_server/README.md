@@ -20,8 +20,10 @@ Running 10s test @ http://localhost:3001
 
 ### Core Design
 
-- **Per-worker listen sockets**: Each thread has its own listening socket using SO_REUSEPORT to avoid contention
-- **Distributed accept**: Accepts are handled in worker threads via EPOLLEXCLUSIVE to prevent thundering herd
+- **Per-worker listen sockets**: Each thread has its own listening socket using SO_REUSEPORT to
+  avoid contention
+- **Distributed accept**: Accepts are handled in worker threads via EPOLLEXCLUSIVE to prevent
+  thundering herd
 - **Edge-triggered epoll**: EPOLLET mode for efficient event processing
 - **Keep-alive connections**: Reuse connections across multiple requests
 - **Non-blocking I/O**: All sockets are non-blocking with accept4(SOCK_NONBLOCK)
