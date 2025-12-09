@@ -8,13 +8,13 @@ import v.ast
 pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	// For JS and Go generate array init using their syntax
 	// if t.pref.backend !in [.c, .native] {
+	for mut expr in node.exprs {
+		expr = t.expr(mut expr)
+	}
+	node.len_expr = t.expr(mut node.len_expr)
+	node.cap_expr = t.expr(mut node.cap_expr)
+	node.init_expr = t.expr(mut node.init_expr)
 	if !t.pref.new_transform || node.is_fixed || t.inside_in {
-		for mut expr in node.exprs {
-			expr = t.expr(mut expr)
-		}
-		node.len_expr = t.expr(mut node.len_expr)
-		node.cap_expr = t.expr(mut node.cap_expr)
-		node.init_expr = t.expr(mut node.init_expr)
 		return node
 	}
 	// For C and native transform into a function call `builtin__new_array_from_c_array_noscan(...)` etc
@@ -55,12 +55,13 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	}
 	fixed_array_arg := ast.CallArg{
 		expr: ast.ArrayInit{
-			is_fixed:  true
-			has_val:   true
-			typ:       t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
+			is_fixed:   true
+			has_val:    true
+			typ:        t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
 				false)
-			elem_type: node.elem_type
-			exprs:     node.exprs
+			elem_type:  node.elem_type
+			exprs:      node.exprs
+			expr_types: node.exprs.map(expr_type(it))
 		}
 		typ:  ast.voidptr_type_idx
 	}

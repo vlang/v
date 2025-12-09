@@ -1355,3 +1355,52 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 	}
 	return true
 }
+
+fn expr_type(e ast.Expr) ast.Type {
+	return match e {
+		ast.AnonFn { e.typ }
+		ast.ArrayDecompose { e.expr_type }
+		ast.ArrayInit { e.typ }
+		ast.AsCast { e.typ }
+		ast.AtExpr { ast.string_type }
+		ast.BoolLiteral { ast.bool_type }
+		ast.CTempVar { e.typ }
+		ast.CallExpr { e.return_type }
+		ast.CastExpr { e.typ }
+		ast.ChanInit { e.typ }
+		ast.CharLiteral { ast.char_type }
+		ast.ComptimeCall { e.result_type }
+		ast.ComptimeSelector { e.typ }
+		ast.ConcatExpr { e.return_type }
+		ast.DumpExpr { e.expr_type }
+		ast.EnumVal { e.typ }
+		ast.FloatLiteral { ast.float_literal_type }
+		ast.Ident { e.info.typ }
+		ast.IfExpr { e.typ }
+		ast.IfGuardExpr { e.expr_type }
+		ast.IndexExpr { e.typ }
+		ast.InfixExpr { e.promoted_type }
+		ast.IntegerLiteral { ast.int_literal_type }
+		ast.IsRefType { e.typ }
+		ast.LambdaExpr { e.typ }
+		ast.Likely { expr_type(e.expr) }
+		ast.LockExpr { e.typ }
+		ast.MapInit { e.typ }
+		ast.MatchExpr { e.return_type }
+		ast.Nil { ast.voidptr_type }
+		ast.ParExpr { expr_type(e.expr) }
+		ast.PostfixExpr { e.typ }
+		ast.PrefixExpr { e.right_type }
+		ast.RangeExpr { e.typ }
+		ast.SelectorExpr { e.typ }
+		ast.SizeOf { e.typ }
+		ast.SqlExpr { e.typ }
+		ast.StringInterLiteral { ast.string_type }
+		ast.StringLiteral { ast.string_type }
+		ast.StructInit { e.typ }
+		ast.TypeNode { e.typ }
+		ast.TypeOf { e.typ }
+		ast.UnsafeExpr { expr_type(e.expr) }
+		else { ast.void_type }
+	}
+}

@@ -439,7 +439,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.uses_array = true
 					w.mark_by_type(node.typ)
 				}
-			} else {
+			} else { // fixed arrays
 				w.mark_by_type(node.typ)
 			}
 			if node.elem_type.has_flag(.option) {
@@ -485,6 +485,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_method && node.left_type != 0
 				&& w.table.final_sym(node.left_type).kind in [.array_fixed, .array] {
 				w.mark_by_type(node.return_type)
+			}
+			if node.name.contains('new_array_from_c_array') {
+				if !w.inside_in_op {
+					w.uses_array = true
+					w.mark_by_type(node.return_type) // the transformer fills this with the correct type
+				}
 			}
 		}
 		ast.CastExpr {

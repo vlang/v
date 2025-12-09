@@ -171,10 +171,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
+				expr_type := if node.expr_types.len > i {
+					node.expr_types[i]
+				} else {
+					node.elem_type
 				}
-				g.expr(expr)
+				g.expr_with_cast(expr, expr_type, node.elem_type)
 			}
 			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
