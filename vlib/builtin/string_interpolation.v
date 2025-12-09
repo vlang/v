@@ -3,17 +3,13 @@ module builtin
 import strconv
 import strings
 
-/*=============================================================================
-Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
-Use of this source code is governed by an MIT license
-that can be found in the LICENSE file.
+// Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 
-This file contains string interpolation V functions
-=============================================================================*/
+// This file contains V functions for string interpolation
 
-/*============================================================================
-Enum format types max 0x1F => 32 types
-=============================================================================*/
+// StrIntpType is an enumeration of all the supported format types (max 32 types)
 pub enum StrIntpType {
 	si_no_str = 0 // no parameter to print only fix string
 	si_c
@@ -62,7 +58,7 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
-// Union data used by StrIntpData
+// StrIntpMem is a union of data used by StrIntpData
 pub union StrIntpMem {
 pub mut:
 	d_c   u32
@@ -391,7 +387,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			// floating point
 			.si_f32 {
 				$if !nofloat ? {
-					// println("HERE: f32")
 					if use_default_str {
 						mut f := data.d.d_f32.str()
 						if upper_case {
@@ -402,8 +397,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						sb.write_string(f)
 						f.free()
 					} else {
-						// println("HERE: f32 format")
-						// println(data.d.d_f32)
 						if data.d.d_f32 < 0 {
 							bf.positive = false
 						}
@@ -420,7 +413,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			}
 			.si_f64 {
 				$if !nofloat ? {
-					// println("HERE: f64")
 					if use_default_str {
 						mut f := data.d.d_f64.str()
 						if upper_case {
@@ -453,7 +445,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				}
 			}
 			.si_g32 {
-				// println("HERE: g32")
 				if use_default_str {
 					$if !nofloat ? {
 						mut f := data.d.d_f32.strg()
@@ -526,7 +517,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				}
 			}
 			.si_g64 {
-				// println("HERE: g64")
 				if use_default_str {
 					$if !nofloat ? {
 						mut f := data.d.d_f64.strg()
@@ -600,7 +590,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			}
 			.si_e32 {
 				$if !nofloat ? {
-					// println("HERE: e32")
 					if use_default_str {
 						mut f := data.d.d_f32.str()
 						if upper_case {
@@ -627,7 +616,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			}
 			.si_e64 {
 				$if !nofloat ? {
-					// println("HERE: e64")
 					if use_default_str {
 						mut f := data.d.d_f64.str()
 						if upper_case {
@@ -671,9 +659,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 }
 
-//--------------------------------------------------
-
-// storing struct used by cgen
+// StrIntpCgenData is a storing struct used by cgen
 pub struct StrIntpCgenData {
 pub:
 	str string
@@ -681,8 +667,7 @@ pub:
 	d   string
 }
 
-// NOTE: LOW LEVEL struct
-// storing struct passed to V in the C code
+// StrIntpData is a LOW LEVEL struct, passed to V in the C code
 pub struct StrIntpData {
 pub:
 	str string
@@ -691,7 +676,7 @@ pub:
 	d   StrIntpMem
 }
 
-// interpolation function
+// str_intp is the main entry point for string interpolation
 @[direct_array_access; manualfree]
 pub fn str_intp(data_len int, input_base &StrIntpData) string {
 	mut res := strings.new_builder(64)
@@ -739,7 +724,7 @@ pub fn str_intp_g64(in_str string) string {
 	return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }}}))'
 }
 
-// replace %% with the in_str
+// str_intp_sub replace %% with the in_str
 @[manualfree]
 pub fn str_intp_sub(base_str string, in_str string) string {
 	index := base_str.index('%%') or {
@@ -747,7 +732,6 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 		exit(1)
 	}
 	// return base_str[..index] + in_str + base_str[index+2..]
-
 	unsafe {
 		st_str := base_str[..index]
 		if index + 2 < base_str.len {

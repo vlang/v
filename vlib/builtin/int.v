@@ -519,7 +519,6 @@ pub fn (b u8) ascii_str() string {
 		str.str[0] = b
 		str.str[1] = 0
 	}
-	// println(str)
 	return str
 }
 
