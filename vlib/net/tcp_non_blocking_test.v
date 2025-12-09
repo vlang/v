@@ -1,3 +1,4 @@
+// vtest build: tinyc
 import net
 import time
 

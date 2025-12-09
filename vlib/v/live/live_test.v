@@ -1,3 +1,4 @@
+// vtest build: !sanitized_job?
 // vtest retry: 4
 import os
 import log

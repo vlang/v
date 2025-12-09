@@ -6,7 +6,7 @@ const count = 2000
 // Accepted error is within 5% of the actual values.
 const error = 0.05
 // The seeds used (for reproducible testing)
-const seeds = [[u32(0xffff24), 0xabcd], [u32(0x141024), 0x42851],
+const seeds = [[u32(0x24ffff), 0xabcd], [u32(0x141024), 0x42851],
 	[u32(0x1452), 0x90cd]]
 
 fn test_bernoulli() {

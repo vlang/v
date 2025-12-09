@@ -1,4 +1,4 @@
-// import v.ast
+// vtest build: tinyc && !musl? && !sanitized_job?
 import document as doc
 
 // fn test_generate_with_pos() {}

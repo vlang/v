@@ -5,7 +5,6 @@ import testing
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
-	run_slow_sanitize      bool   = os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW') != ''
 	is_musl_ci             bool   = os.getenv('V_CI_MUSL') != ''
 	is_ubuntu_musl_ci      bool   = os.getenv('V_CI_UBUNTU_MUSL') != ''
 	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
@@ -96,28 +95,6 @@ const essential_list = [
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/x/json2/tests/json2_test.v',
-]
-// These tests are too slow to be run in the CI on each PR/commit in the sanitized modes:
-const skip_fsanitize_too_slow = [
-	'do_not_remove',
-	'vlib/v/compiler_errors_test.v',
-	'vlib/v/fmt/fmt_test.v',
-	'vlib/v/fmt/fmt_keep_test.v',
-	'vlib/v/fmt/fmt_vlib_test.v',
-	'vlib/v/live/live_test.v',
-	'vlib/v/parser/v_parser_test.v',
-	'vlib/v/scanner/scanner_test.v',
-	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/v/slow_tests/prod_test.v',
-	'vlib/v/slow_tests/profile/profile_test.v',
-	'vlib/v/slow_tests/repl/repl_test.v',
-	'vlib/v/slow_tests/valgrind/valgrind_test.v',
-	'cmd/tools/vpm/dependency_test.v',
-	'cmd/tools/vpm/install_test.v',
-	'cmd/tools/vpm/install_version_input_test.v',
-	'cmd/tools/vpm/install_version_test.v',
-	'cmd/tools/vpm/update_test.v',
-	'cmd/tools/vdoc/document/doc_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
@@ -360,12 +337,6 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	if !cfg.run_slow_sanitize
-		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
-		|| (cfg.is_msan_compiler || cfg.is_asan_compiler || cfg.is_ubsan_compiler)) {
-		tsession.skip_files << skip_fsanitize_too_slow
-		tsession.custom_defines << 'self_sanitize_too_slow'
-	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}
