@@ -14,7 +14,7 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	node.len_expr = t.expr(mut node.len_expr)
 	node.cap_expr = t.expr(mut node.cap_expr)
 	node.init_expr = t.expr(mut node.init_expr)
-	if !t.pref.new_transform || node.is_fixed || t.inside_in {
+	if !t.pref.new_transform || node.is_fixed || t.inside_in || node.has_len || node.has_cap {
 		return node
 	}
 	// For C and native transform into a function call `builtin__new_array_from_c_array_noscan(...)` etc
