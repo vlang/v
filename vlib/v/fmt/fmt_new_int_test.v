@@ -1,8 +1,7 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2025 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
-import term
 import benchmark
 import v.ast
 import v.fmt
@@ -11,20 +10,18 @@ import v.pref
 import v.util.diff
 import v.util.vtest
 
-const vroot = @VEXEROOT
-const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt')
+const tmpfolder = os.temp_dir()
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
 
-fn run_fmt(mut input_files []string) {
-	fmt_message := 'vfmt new_int tests'
-	eprintln(term.header(fmt_message, '-'))
-	tmpfolder := os.temp_dir()
-	assert input_files.len > 0
+fn test_new_int_fmt() {
+	suffix_for_expected := '_expected_new_int.vv'
+	suffix_for_input := '_input.vv'
+	mut input_files := os.walk_ext(os.join_path(@VEXEROOT, 'vlib/v/fmt/tests'), suffix_for_expected)
+	input_files = input_files.map(it.replace(suffix_for_expected, suffix_for_input))
 	input_files = vtest.filter_vtest_only(input_files)
 	if input_files.len == 0 {
-		// No need to produce a failing test here.
 		eprintln('no tests found with VTEST_ONLY filter set to: ' + os.getenv('VTEST_ONLY'))
 		exit(0)
 	}
@@ -34,10 +31,6 @@ fn run_fmt(mut input_files []string) {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
 		opath := ipath.replace('_input.vv', '_expected_new_int.vv')
-		if !os.exists(opath) {
-			// skip not exist files
-			continue
-		}
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
@@ -49,7 +42,7 @@ fn run_fmt(mut input_files []string) {
 		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected ${opath}.'))
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			println(diff.compare_files(opath, vfmt_result_file) or { err.msg() })
@@ -59,12 +52,6 @@ fn run_fmt(mut input_files []string) {
 		eprintln(fmt_bench.step_message_ok(ipath))
 	}
 	fmt_bench.stop()
-	eprintln(term.h_divider('-'))
-	eprintln(fmt_bench.total_message(fmt_message))
+	println(fmt_bench.total_message('vfmt new_int tests'))
 	assert fmt_bench.nfail == 0
-}
-
-fn test_new_int_fmt() {
-	mut input_files := os.walk_ext(os.join_path(tdir, 'tests'), '_input.vv')
-	run_fmt(mut input_files)
 }

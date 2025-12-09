@@ -117,4 +117,6 @@ fn test_smootherstep() {
 	assert math.close(math.smootherstep(0.0, 1, 0.9), 0.99144)
 	assert math.close(math.smootherstep(0.0, 1, 0.95), 0.998841875)
 	assert math.smootherstep(0.0, 1, 1) == 1
+	assert math.close(math.smootherstep(0.0, 1, 0.12345), 0.01550187121622219)
+	assert math.close(math.smootherstep(0.0, 1, 12345.12345), 1.0)
 }

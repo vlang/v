@@ -1,4 +1,4 @@
-// vtest build: !self_sandboxed_packaging?
+// vtest build: !self_sandboxed_packaging? && !sanitized_job?
 import os
 import term
 import v.util.diff

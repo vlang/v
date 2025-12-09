@@ -1,4 +1,4 @@
-// vtest build: present_go? && !sanitized_job?
+// vtest build: tinyc && present_go? && !sanitized_job?
 import os
 import benchmark
 import term

@@ -12,23 +12,6 @@ import strings
 // str converts a rune to string.
 pub fn (c rune) str() string {
 	return utf32_to_str(u32(c))
-	/*
-	unsafe {
-		fst_byte := int(c)>>8 * 3 & 0xff
-		len := utf8_char_len(u8(fst_byte))
-		println('len=$len')
-		mut str := string{
-			len: len
-			str: malloc_noscan(len + 1)
-		}
-		for i in 0..len {
-			str.str[i] = u8(int(c)>>8 * (3 - i) & 0xff)
-		}
-		str.str[len] = `\0`
-		println(str)
-		return str
-	}
-	*/
 }
 
 // string converts a rune array to a string.

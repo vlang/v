@@ -868,9 +868,26 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_type = c.unwrap_generic(right_type)
 			right_sym = c.table.sym(right_type)
 		}
-		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-			&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
-			&& !node.right.is_auto_deref_var() {
+		types_match := c.symmetric_check(left_type, right_type)
+			&& c.symmetric_check(right_type, left_type)
+		mut types_match_after_deref := false
+		mut deref_left_type := left_type
+		mut deref_right_type := right_type
+		if !types_match && (node.left.is_auto_deref_var() || node.right.is_auto_deref_var()) {
+			deref_left_type = if node.left.is_auto_deref_var() {
+				left_type.deref()
+			} else {
+				left_type
+			}
+			deref_right_type = if node.right.is_auto_deref_var() {
+				right_type.deref()
+			} else {
+				right_type
+			}
+			types_match_after_deref = c.symmetric_check(deref_left_type, deref_right_type)
+				&& c.symmetric_check(deref_right_type, deref_left_type)
+		}
+		if !types_match && !types_match_after_deref && !c.pref.translated && !c.file.is_translated {
 			// for type-unresolved consts
 			if left_type == ast.void_type || right_type == ast.void_type {
 				return ast.void_type
@@ -883,7 +900,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if node.right is ast.None && left_is_option {
 				return ast.bool_type
 			}
-			c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}`',
+			error_left_sym := if node.left.is_auto_deref_var() {
+				c.table.sym(deref_left_type)
+			} else {
+				left_sym
+			}
+			error_right_sym := if node.right.is_auto_deref_var() {
+				c.table.sym(deref_right_type)
+			} else {
+				right_sym
+			}
+			c.error('infix expr: cannot use `${error_right_sym.name}` (right expression) as `${error_left_sym.name}`',
 				left_right_pos)
 		} else if left_type.is_ptr() {
 			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)

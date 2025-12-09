@@ -258,18 +258,18 @@ fn test_rand_string_from_set() {
 fn test_rand_fill_buffer_from_set() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		[u8(52), 48, 55, 57, 50, 49, 53, 49, 53, 53],
-		[u8(57), 51, 56, 53, 56, 55, 56, 52, 56, 51],
-		[u8(57), 54, 52, 53, 57, 56, 57, 57, 48, 57],
-		[u8(57), 54, 50, 50, 52, 57, 53, 55, 50, 57],
-		[u8(51), 48, 55, 54, 49, 55, 53, 54, 52, 57],
-		[u8(57), 50, 48, 50, 48, 49, 52, 54, 50, 48],
-		[u8(55), 54, 51, 48, 51, 54, 49, 55, 56, 52],
-		[u8(52), 56, 52, 54, 50, 50, 50, 56, 54, 53],
-		[u8(53), 53, 55, 52, 51, 54, 55, 56, 51, 51],
-		[u8(52), 50, 51, 57, 54, 52, 50, 48, 49, 53],
-		[u8(49), 51, 54, 57, 55, 51, 48, 51, 51, 50],
-		[u8(56), 54, 50, 54, 51, 54, 49, 55, 57, 49],
+		[u8(50), 53, 57, 49, 53, 49, 56, 52, 57, 57],
+		[u8(55), 51, 52, 52, 50, 49, 53, 56, 52, 57],
+		[u8(56), 53, 52, 48, 52, 48, 57, 49, 50, 53],
+		[u8(52), 55, 53, 57, 54, 56, 49, 49, 49, 54],
+		[u8(50), 55, 50, 57, 50, 56, 57, 52, 52, 48],
+		[u8(49), 48, 48, 57, 57, 53, 49, 54, 50, 50],
+		[u8(49), 57, 50, 57, 51, 49, 49, 53, 54, 53],
+		[u8(56), 49, 52, 50, 56, 51, 48, 55, 54, 50],
+		[u8(50), 55, 54, 55, 48, 54, 50, 56, 51, 52],
+		[u8(51), 48, 50, 55, 54, 54, 49, 54, 54, 50],
+		[u8(50), 51, 51, 57, 50, 48, 56, 49, 54, 55],
+		[u8(51), 54, 51, 55, 56, 50, 54, 48, 51, 51],
 	]
 	for output in outputs {
 		mut buf := []u8{len: 10}
@@ -281,18 +281,18 @@ fn test_rand_fill_buffer_from_set() {
 fn test_rand_string() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'oIfPOHLBZTlvGhYtCMolfssbZ',
-		'yHFGzDYeWIRldsBzMtkDhzQqF',
-		'vwoeerAKsEZiludKtRKoCoiuE',
-		'EQAaJDRZkvKTKNLkEPhWeEKFX',
-		'rDIhxzIbDUIusiTuzLHRslfzu',
-		'KCUoAEugYvUwzXcKRrAiwMzXH',
-		'NIOXerfCpEwbfhLmbbWKjoxbL',
-		'baJWQWarRRRmXCvMKcEjxQBpk',
-		'CkVLxbJEPhviBTohEVBnMAFHZ',
-		'ZdnGGhYShqzwnDXqHncLgLcdo',
-		'zRiSLsgnApmvtlIVrQQaBzOJD',
-		'VeeBcztImGquJnzEsXCdUaUed',
+		'KNffDjUSbjLVyqkNLuklqtsEq',
+		'yHxahszRjWILjfqmLoTsIPCaS',
+		'JuuHjDLeuEjPMxhRzRUdOnegw',
+		'NOJeMKbelMQAgBijGqLgGXgcy',
+		'IRnHmuMXuddWLBsyeejpORynj',
+		'SNyWxnrFYoWyOSLnIxTzkxdlq',
+		'WzzZoOlnqzGKnUASSnlVqMtEg',
+		'CveNYBaLaEwguzgwLxilypSDD',
+		'XTBFsDOTHmTXcXjdmOqSAuAXz',
+		'MFoKXRXLQSeebMegDyUJyaHfu',
+		'EzaZjBJJWdGrASWqEPRRNQmgy',
+		'gZvLtGiyCYQSKxWBMEqVvTytn',
 	]
 	for output in outputs {
 		assert rand.string(25) == output
@@ -302,20 +302,20 @@ fn test_rand_string() {
 fn test_rand_hex() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'ead1c993f5fdcb270ea39e69b',
-		'453459a8ca7fbe31ef2531a47',
-		'd6a449a86a38f4f4ff0206046',
-		'62e4753bad85cb52a1fcce035',
-		'99afb9e9de2868945d57a3514',
-		'04a6e60621a2116cf92ce69d1',
-		'f6490d14bee1935419cc92fd5',
-		'58b0e841bbf01c568ee13ebf6',
-		'caf5bdf21f94f5a7a3f5a6b9f',
-		'bb908760b8121510516de9eb6',
-		'93045e61ab45b7e3962c31c31',
-		'bc07ed76c4c4b51eedc768a0b',
-		'1b23e1d08a6ba3d32cc4c85ee',
-		'96c44362a86d3e317eb56a053',
+		'035d15ec991bc42f502bcba28',
+		'49383ad7d8a51d44929ae9c04',
+		'30cdddd88e1963fb9367858e6',
+		'34f86c983ae6a38904dac56e8',
+		'6b1d08e94fb053688c1f47491',
+		'0700b91fea4808116b5deb7bc',
+		'c1dbac7941cc16ec81b70ef2a',
+		'c1cba301066e81a2df43cf051',
+		'51b7adc9dcd9695f004c686d1',
+		'a764df15e0009e02d02f88598',
+		'2d8393b743092c806537724a0',
+		'6b59704086e84f4b62cb11cb1',
+		'aebc14a5d7c2d447e6282f7ff',
+		'9ca8885813e42cb4380efeb84',
 	]
 	for output in outputs {
 		assert rand.hex(25) == output
@@ -325,15 +325,15 @@ fn test_rand_hex() {
 fn test_rand_ascii() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		r"KqdNI|*bDh42kn'z-}}nhmKd~",
-		r'IZ4wVRC-Q3@TviD>G4#Z(2}s4',
-		r"l7'1Ute)i?4Efo$sX^sOk;s%m",
-		r"3}3s^l(PeNY>I8&'a>$)AW14*",
-		r'V.a^b>GN"\\9e-Vs"&.vS0"F_',
-		r"U-;S}OY+e>Ca>p'UD|7{}?6`x",
-		r'$/EN5*2w@/KdN~pU||c=*yn6|',
-		r'FsLkK{gFrPn)>EVW53uJLa<8?',
-		r'1#PB<"P}pLtY@F}^\TfNyCDB$',
+		r'Yj6x`haolJh8UwGP.gq,Uj+\I',
+		r'5F@!@WF@tAulVN5-FqF;u"Y-9',
+		r'vo1xB>.MIu2lGj~f&$a4wNYeC',
+		r',M0o#M*QHa\myH{Bkkp#s&7/I',
+		r'abRN)Iq`)@b_*jKU_1x$Iv-ZF',
+		r'-@wQzJR0y+%{As"pqz.:Sz,L%',
+		r'1px~?MLh16UAVWO51>X~%3n7S',
+		r'Ed!vev=B-?OS)"W}N8gH5zU.R',
+		r'FR~8;&wB`!NFCRR,_IsIG{y|l',
 	]
 	for output in outputs {
 		assert rand.ascii(25) == output

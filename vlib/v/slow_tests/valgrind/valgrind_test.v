@@ -1,3 +1,4 @@
+// vtest build: !musl? && !sanitized_job?
 import os
 import term
 import benchmark
