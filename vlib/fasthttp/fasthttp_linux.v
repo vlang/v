@@ -3,8 +3,6 @@ module fasthttp
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 
-fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
-
 fn C.accept4(sockfd int, address &C.sockaddr_in, addrlen &u32, flags int) int
 
 fn C.epoll_create1(__flags int) int
