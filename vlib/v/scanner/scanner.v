@@ -1320,23 +1320,20 @@ pub fn (mut s Scanner) ident_string() string {
 				for pos in s.all_pos {
 					s.str_segments << string_so_far[segment_idx..(pos - start)]
 					segment_idx = pos - start
-
 					if pos in s.u16_escapes_pos {
-						end_idx, segment := s.decode_u16_escape_single(string_so_far,
-							segment_idx)
-						s.str_segments << segment
-						segment_idx = end_idx
+						decoded := s.decode_u16_escape_single(string_so_far, segment_idx)
+						s.str_segments << decoded.segment
+						segment_idx = decoded.idx
 					}
 					if pos in s.u32_escapes_pos {
-						end_idx, segment := s.decode_u32_escape_single(string_so_far,
-							segment_idx)
-						s.str_segments << segment
-						segment_idx = end_idx
+						decoded := s.decode_u32_escape_single(string_so_far, segment_idx)
+						s.str_segments << decoded.segment
+						segment_idx = decoded.idx
 					}
 					if pos in s.h_escapes_pos {
-						end_idx, segment := s.decode_h_escape_single(string_so_far, segment_idx)
-						s.str_segments << segment
-						segment_idx = end_idx
+						decoded := s.decode_h_escape_single(string_so_far, segment_idx)
+						s.str_segments << decoded.segment
+						segment_idx = decoded.idx
 					}
 				}
 			}
@@ -1361,14 +1358,22 @@ pub fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
-fn (mut s Scanner) decode_h_escape_single(str string, idx int) (int, string) {
+struct DecodedEscape {
+	idx     int
+	segment string
+}
+
+fn (mut s Scanner) decode_h_escape_single(str string, idx int) DecodedEscape {
 	end_idx := idx + 4 // "\xXX".len == 4
 	if idx + 2 > str.len || end_idx > str.len {
 		s.error_with_pos('unfinished single hex escape started at', s.current_pos())
-		return 0, ''
+		return DecodedEscape{0, ''}
 	}
 	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
-	return end_idx, [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+	return DecodedEscape{
+		idx:     end_idx
+		segment: [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+	}
 }
 
 // only handle single-byte inline escapes like '\xc0'
@@ -1380,16 +1385,16 @@ fn (mut s Scanner) decode_h_escapes(sinput string, start int, escapes_pos []int)
 	ss << sinput[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx, segment := s.decode_h_escape_single(sinput, idx)
-		if end_idx > sinput.len {
+		decoded := s.decode_h_escape_single(sinput, idx)
+		if decoded.idx > sinput.len {
 			s.error_with_pos('unfinished hex escape started at', s.current_pos())
 			return ''
 		}
-		ss << segment
+		ss << decoded.segment
 		if i + 1 < escapes_pos.len {
-			ss << sinput[end_idx..escapes_pos[i + 1] - start]
+			ss << sinput[decoded.idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << sinput[end_idx..]
+			ss << sinput[decoded.idx..]
 		}
 	}
 	return ss.join('')
@@ -1420,57 +1425,55 @@ fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int)
 	return ss.join('')
 }
 
-fn (mut s Scanner) decode_u16_escape_single(str string, idx int) (int, string) {
+fn (mut s Scanner) decode_u16_escape_single(str string, idx int) DecodedEscape {
 	end_idx := idx + 6 // "\uXXXX".len == 6
 	if idx + 2 > str.len || end_idx > str.len {
 		s.error_with_pos('unfinished u16 escape started at', s.current_pos())
-		return 0, ''
+		return DecodedEscape{0, ''}
 	}
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
 	if rune(escaped_code_point).length_in_bytes() == -1 {
 		s.error('invalid unicode point `${str}`')
 	}
-
-	return end_idx, utf32_to_str(u32(escaped_code_point))
+	return DecodedEscape{end_idx, utf32_to_str(u32(escaped_code_point))}
 }
 
 // decode a single 16 bit unicode escaped rune into its utf-8 bytes
 fn (mut s Scanner) decode_u16erune(str string) string {
-	end_idx, segment := s.decode_u16_escape_single(str, 0)
-	if str.len == end_idx {
-		return segment
+	decoded := s.decode_u16_escape_single(str, 0)
+	if str.len == decoded.idx {
+		return decoded.segment
 	}
 	mut ss := []string{cap: 2}
-	ss << segment
-	ss << str[end_idx..]
+	ss << decoded.segment
+	ss << str[decoded.idx..]
 	return ss.join('')
 }
 
-fn (mut s Scanner) decode_u32_escape_single(str string, idx int) (int, string) {
+fn (mut s Scanner) decode_u32_escape_single(str string, idx int) DecodedEscape {
 	end_idx := idx + 10 // "\uXXXXXXXX".len == 10
 	if idx + 2 > str.len || end_idx > str.len {
 		s.error_with_pos('unfinished u32 escape started at', s.current_pos())
-		return 0, ''
+		return DecodedEscape{0, ''}
 	}
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
 	if rune(escaped_code_point).length_in_bytes() == -1 {
 		s.error('invalid unicode point `${str}`')
 	}
-
-	return end_idx, utf32_to_str(u32(escaped_code_point))
+	return DecodedEscape{end_idx, utf32_to_str(u32(escaped_code_point))}
 }
 
 // decode a single 32 bit unicode escaped rune into its utf-8 bytes
 fn (mut s Scanner) decode_u32erune(str string) string {
-	end_idx, segment := s.decode_u32_escape_single(str, 0)
-	if str.len == end_idx {
-		return segment
+	decoded := s.decode_u32_escape_single(str, 0)
+	if str.len == decoded.idx {
+		return decoded.segment
 	}
 	mut ss := []string{cap: 2}
-	ss << segment
-	ss << str[end_idx..]
+	ss << decoded.segment
+	ss << str[decoded.idx..]
 	return ss.join('')
 }
 
