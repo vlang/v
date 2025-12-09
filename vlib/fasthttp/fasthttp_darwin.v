@@ -39,6 +39,22 @@ mut:
 	write_pos int
 }
 
+pub struct Server {
+pub mut:
+	port            int
+	socket_fd       int
+	poll_fd         int // kqueue fd
+	request_handler fn (HttpRequest) ![]u8 @[required]
+}
+
+pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
+	mut server := &Server{
+		port:            port
+		request_handler: handler
+	}
+	return server
+}
+
 fn set_nonblocking(fd int) {
 	flags := C.fcntl(fd, C.F_GETFL, 0)
 	if flags == -1 {

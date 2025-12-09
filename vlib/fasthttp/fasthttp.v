@@ -14,6 +14,11 @@ $if !windows {
 	#include <netinet/tcp.h>
 }
 
+const max_thread_pool_size = runtime.nr_cpus()
+const max_connection_size = 4096
+
+const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
 fn C.socket(socket_family int, socket_type int, protocol int) int
 
 fn C.bind(sockfd int, addr &C.sockaddr_in, addrlen u32) int
@@ -59,44 +64,6 @@ pub mut:
 	version        Slice
 	client_conn_fd int
 }
-
-$if linux {
-	struct Server {
-	pub:
-		port int = 3000
-	mut:
-		listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
-		epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
-		threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
-		request_handler fn (HttpRequest) ![]u8 @[required]
-	}
-} $else $if macos {
-	pub struct Server {
-	pub mut:
-		port            int
-		socket_fd       int
-		poll_fd         int // kqueue fd
-		request_handler fn (HttpRequest) ![]u8 @[required]
-	}
-}
-
-// new_server creates and initializes a new Server instance.
-pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
-	mut s := &Server{
-		port:            port
-		request_handler: handler
-	}
-	unsafe {
-		s.listen_fds.flags.set(.noslices | .noshrink)
-		s.epoll_fds.flags.set(.noslices | .noshrink)
-		s.threads.flags.set(.noslices | .noshrink)
-	}
-	return s
-}
-
-const max_connection_size = 4096
-
-const max_thread_pool_size = runtime.nr_cpus()
 
 @[direct_array_access]
 fn parse_request_line(buffer []u8) !HttpRequest {

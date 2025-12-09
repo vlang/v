@@ -25,6 +25,30 @@ struct C.epoll_event {
 	data   C.epoll_data
 }
 
+struct Server {
+pub:
+	port int = 3000
+mut:
+	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
+	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
+	request_handler fn (HttpRequest) ![]u8 @[required]
+}
+
+// new_server creates and initializes a new Server instance.
+pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
+	mut server := &Server{
+		port:            port
+		request_handler: handler
+	}
+	unsafe {
+		server.listen_fds.flags.set(.noslices | .noshrink | .nogrow)
+		server.epoll_fds.flags.set(.noslices | .noshrink | .nogrow)
+		server.threads.flags.set(.noslices | .noshrink | .nogrow)
+	}
+	return server
+}
+
 fn set_blocking(fd int, blocking bool) {
 	flags := C.fcntl(fd, C.F_GETFL, 0)
 	if flags == -1 {
@@ -159,8 +183,6 @@ fn handle_client_closure(epoll_fd int, client_fd int) {
 	remove_fd_from_epoll(epoll_fd, client_fd)
 	close_socket(client_fd)
 }
-
-const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
