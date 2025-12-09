@@ -4717,6 +4717,42 @@ m := <-ch or {
 y := <-ch2 ?
 ```
 
+Note: buffered channels can be closed while they have unread values in them.
+The buffered values can be retrieved, even after the closing:
+```v
+ich := chan int{cap: 5}
+for i in 0 .. 5 {
+	ich <- i
+}
+
+for _ in 0 .. 2 {
+	x := <-ich or { break }
+	eprintln('>>  loop 0..2 | x: ${x} | ich.closed: ${ich.closed}')
+}
+
+ich.close()
+
+for {
+	x := <-ich or { break }
+	eprintln('>> final loop | x: ${x} | ich.closed: ${ich.closed}')
+}
+```
+... will produce:
+```
+>>  loop 0..2 | x: 0 | ich.closed: false
+>>  loop 0..2 | x: 1 | ich.closed: false
+>> final loop | x: 2 | ich.closed: true
+>> final loop | x: 3 | ich.closed: true
+>> final loop | x: 4 | ich.closed: true
+```
+
+Note: reading from the .closed field of the channel in the example,
+is done just for clarity of illustration. The recommended way to pop values
+from the channel is with: `x := <-ich or { break }` in a `for` loop,
+which will cleanly break out of the loop, when the channel is closed and empty.
+Avoid manually checking, whether the channel was closed or not, because that
+can introduce data races, if you are not careful.
+
 #### Channel Select
 
 The `select` command allows monitoring several channels at the same time
