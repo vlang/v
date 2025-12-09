@@ -2,6 +2,10 @@ module fasthttp
 
 #include <sys/event.h>
 
+const buf_size = max_connection_size
+const kqueue_max_events = 128
+const backlog = max_connection_size
+
 fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
 fn C.kqueue() int
@@ -24,10 +28,6 @@ fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data is
 	ev.data = data
 	ev.udata = udata
 }
-
-const buf_size = max_connection_size
-const kqueue_max_events = 128
-const backlog = max_connection_size
 
 struct Conn {
 	fd int
