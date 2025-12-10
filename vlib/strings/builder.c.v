@@ -296,3 +296,41 @@ pub fn (mut b Builder) free() {
 		}
 	}
 }
+
+// write_repeated_rune appends multiple copies of the same rune to the accumulated buffer
+@[direct_array_access]
+pub fn (mut b Builder) write_repeated_rune(r rune, count int) {
+	if count <= 0 {
+		return
+	}
+
+	// Convert rune to UTF-8 bytes once
+	mut buffer := [5]u8{}
+	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
+	if res.len == 0 {
+		return
+	}
+
+	if res.len == 1 {
+		b.ensure_cap(b.len + count)
+		unsafe {
+			vmemset(&u8(b.data) + b.len, buffer[0], count)
+			b.len += count
+		}
+		return
+	} else {
+		total_needed := count * res.len
+		b.ensure_cap(b.len + total_needed)
+
+		mut dest := unsafe { &u8(b.data) + b.len }
+		for _ in 0 .. count {
+			unsafe {
+				vmemcpy(dest, res.str, res.len)
+				dest += res.len
+			}
+		}
+		unsafe {
+			b.len += total_needed
+		}
+	}
+}
