@@ -81,15 +81,15 @@ pub mut:
 
 pub struct Config {
 pub:
-	width         int     // desired start width of the window
-	height        int     // desired start height of the window
+	width         int = 800 // desired start width of the window
+	height        int = 600 // desired start height of the window
 	retina        bool    // TODO: implement or deprecate
 	resizable     bool    // TODO: implement or deprecate
-	user_data     voidptr // a custom pointer to the application data/instance
+	user_data     voidptr // a custom pointer to the application data/instance. When it is not set explicitly, it will default to a pointer to the current gg.Context instance.
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
 	// window_user_ptr voidptr
-	window_title      string // the desired title of the window
+	window_title      string = 'A GG Window. Set window_title: to change it.' // the desired title of the window
 	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
 	borderless_window bool  // TODO: implement or deprecate
