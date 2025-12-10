@@ -19,5 +19,5 @@ pub fn new_server(config ServerConfig) !&Server {
 
 // run starts the server and begins listening for incoming connections.
 pub fn (mut server Server) run() ! {
-	println('listening on http://localhost:${server.port}/')
+	println('TODO: implement fasthttp.Server.run on windows')
 }
