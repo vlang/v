@@ -56,7 +56,7 @@ jobs:
           .\v.exe symlink
           .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
       - name: Test v binaries
-        run: v -silent build-vbinaries
+        run: v build-vbinaries
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c
@@ -86,7 +86,7 @@ jobs:
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Build examples
-        run: v -silent build-examples
+        run: v build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
       - name: compile vdoctor.v with -prod
@@ -139,7 +139,7 @@ jobs:
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
-        run: v -silent build-examples
+        run: v build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
@@ -193,7 +193,7 @@ jobs:
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
-        run: v -silent build-examples
+        run: v build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
 
@@ -233,6 +233,6 @@ jobs:
         # - name: Test v binaries
         #   run: v -silent build-vbinaries
         # - name: Build examples
-        #   run: v -silent build-examples
+        #   run: v build-examples
         # - name: v2 self compilation
         #   run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
