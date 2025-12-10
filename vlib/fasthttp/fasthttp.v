@@ -42,17 +42,6 @@ fn C.htons(__hostshort u16) u16
 
 fn C.fcntl(fd int, cmd int, arg int) int
 
-struct C.in_addr {
-	s_addr u32
-}
-
-struct C.sockaddr_in {
-	sin_family u16
-	sin_port   u16
-	sin_addr   C.in_addr
-	sin_zero   [8]u8
-}
-
 pub struct Slice {
 pub:
 	start int
@@ -66,6 +55,7 @@ pub mut:
 	path           Slice
 	version        Slice
 	client_conn_fd int
+	user_data      voidptr // User-defined context data
 }
 
 // ServerConfig bundles the parameters needed to start a fasthttp server.
@@ -74,6 +64,7 @@ pub:
 	port                    int = 3000
 	max_request_buffer_size int = 8192
 	handler                 fn (HttpRequest) ![]u8 @[required]
+	user_data               voidptr
 }
 
 @[direct_array_access]

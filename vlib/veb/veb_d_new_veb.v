@@ -6,20 +6,12 @@ module veb
 import fasthttp
 import net.http
 import time
-import net
 import net.urllib
-import os
 
 struct RequestParams {
 	global_app         voidptr
 	controllers_sorted []&ControllerPath
 	routes             &map[string]Route
-}
-
-// TODO remove global hack
-//__global gparams RequestParams
-const gparams = RequestParams{
-	routes: unsafe { nil }
 }
 
 const http_ok_response = 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
@@ -38,18 +30,19 @@ pub fn run_new[A, X](mut global_app A, port int) ! {
 	// Generate routes and controllers just like the original run() function.
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
-	unsafe {
-		gparams = &RequestParams{
-			global_app:         global_app
-			controllers_sorted: controllers_sorted
-			routes:             &routes
-			// timeout_in_seconds:
-		}
+
+	// Allocate params on the heap to keep it valid for the server lifetime
+	params := &RequestParams{
+		global_app:         global_app
+		controllers_sorted: controllers_sorted
+		routes:             &routes
 	}
+
 	// Configure and run the fasthttp server
 	mut server := fasthttp.new_server(fasthttp.ServerConfig{
-		port:    port
-		handler: parallel_request_handler[A, X]
+		port:      port
+		handler:   parallel_request_handler[A, X]
+		user_data: voidptr(params)
 	}) or {
 		eprintln('Failed to create server: ${err}')
 		return
@@ -67,19 +60,19 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 		return test_text.bytes()
 	}
 	*/
-	// mut global_app := unsafe { &A(gapp) }
-	mut global_app := unsafe { &A(gparams.global_app) }
-	// println('parallel_request_handler() params.routes=${gparams.routes}')
+	// Get parameters from user_data - copy to avoid use-after-free
+	params := unsafe { *(&RequestParams(req.user_data)) }
+	mut global_app := unsafe { &A(params.global_app) }
+	// println('parallel_request_handler() params.routes=${params.routes}')
 	// println('global_app=$global_app')
-	// println('params=$gparams')
+	// println('params=$params')
 	// println('req=$req')
 	// println('buffer=${req.buffer.bytestr()}')
 	s := req.buffer.bytestr()
-	method := unsafe { tos(&req.buffer[req.method.start], req.method.len) }
-	println('method=${method}')
-	path := unsafe { tos(&req.buffer[req.path.start], req.path.len) }
-	println('path=${path}')
-	req_bytes := req.buffer
+	// method := unsafe { tos(&req.buffer[req.method.start], req.method.len) }
+	// println('method=${method}')
+	// path := unsafe { tos(&req.buffer[req.path.start], req.path.len) }
+	// println('path=${path}')
 	client_fd := req.client_conn_fd
 
 	// Parse the raw request bytes into a standard `http.Request`.
@@ -92,16 +85,15 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
-		gparams.routes, gparams.controllers_sorted)
+		params.routes, params.controllers_sorted)
 	// Serialize the final `http.Response` into a byte array.
 	if completed_context.takeover {
 		eprintln('[veb] WARNING: ctx.takeover_conn() was called, but this is not supported by this server backend. The connection will be closed after this response.')
 	}
 	// The fasthttp server expects a complete response buffer to be returned.
 	return completed_context.res.bytes()
-}
+} // handle_request_and_route is a unified function that creates the context,
 
-// handle_request_and_route is a unified function that creates the context,
 // runs middleware, and finds the correct route for a request.
 fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, routes &map[string]Route, controllers []&ControllerPath) &Context {
 	/*
@@ -158,7 +150,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	// Create a new user context and pass veb's context
 	mut user_context := X{}
 	user_context.Context = ctx
-	println('calling handle_route')
+	// println('calling handle_route')
 	handle_route[A, X](mut app, mut user_context, url, host, routes)
 	return &user_context.Context
 }

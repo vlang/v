@@ -5,7 +5,7 @@ import net
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 
-fn C.accept4(sockfd int, address &C.sockaddr_in, addrlen &u32, flags int) int
+fn C.accept4(sockfd int, addr &net.Addr, addrlen &u32, flags int) int
 
 fn C.epoll_create1(__flags int) int
 
@@ -29,6 +29,7 @@ struct Server {
 pub:
 	port                    int = 3000
 	max_request_buffer_size int = 8192
+	user_data               voidptr
 mut:
 	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
 	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
@@ -44,6 +45,7 @@ pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
+		user_data:               config.user_data
 		request_handler:         config.handler
 	}
 	unsafe {
@@ -109,14 +111,9 @@ fn create_server_socket(port int) int {
 		return -1
 	}
 
-	server_addr := C.sockaddr_in{
-		sin_family: u16(net.AddrFamily.ip)
-		sin_port:   C.htons(port)
-		sin_addr:   C.in_addr{u32(C.INADDR_ANY)}
-		sin_zero:   [8]u8{}
-	}
-
-	if C.bind(server_fd, &net.Addr(&server_addr), sizeof(server_addr)) < 0 {
+	addr := net.new_ip(u16(port), [u8(0), 0, 0, 0]!)
+	alen := addr.len()
+	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Bind failed')
 		close_socket(server_fd)
@@ -244,6 +241,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						continue
 					}
 					decoded_http_request.client_conn_fd = client_fd
+					decoded_http_request.user_data = server.user_data
 					response_buffer := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
 						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
