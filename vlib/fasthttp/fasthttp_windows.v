@@ -8,10 +8,10 @@ mut:
 }
 
 // new_server creates and initializes a new Server instance.
-pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
+pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
-		port:            port
-		request_handler: handler
+		port:            config.port
+		request_handler: config.handler
 	}
 
 	return server

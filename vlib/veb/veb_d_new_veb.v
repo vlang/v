@@ -47,7 +47,10 @@ pub fn run_new[A, X](mut global_app A, port int) ! {
 		}
 	}
 	// Configure and run the fasthttp server
-	mut server := fasthttp.new_server(port, parallel_request_handler[A, X]) or {
+	mut server := fasthttp.new_server(fasthttp.ServerConfig{
+		port:    port
+		handler: parallel_request_handler[A, X]
+	}) or {
 		eprintln('Failed to create server: ${err}')
 		return
 	}

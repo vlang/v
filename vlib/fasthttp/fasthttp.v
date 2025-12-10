@@ -15,9 +15,11 @@ $if !windows {
 }
 
 const max_thread_pool_size = runtime.nr_cpus()
-const max_connection_size = 4096
+const max_connection_size = 65536 // Max events per epoll_wait
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
 
@@ -63,6 +65,14 @@ pub mut:
 	path           Slice
 	version        Slice
 	client_conn_fd int
+}
+
+// ServerConfig bundles the parameters needed to start a fasthttp server.
+pub struct ServerConfig {
+pub:
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	handler                 fn (HttpRequest) ![]u8 @[required]
 }
 
 @[direct_array_access]

@@ -47,10 +47,10 @@ pub mut:
 }
 
 // new_server creates and initializes a new Server instance.
-pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
+pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
-		port:            port
-		request_handler: handler
+		port:            config.port
+		request_handler: config.handler
 	}
 	return server
 }
@@ -122,15 +122,25 @@ fn handle_read(mut s Server, kq int, c_ptr voidptr) {
 	n := C.recv(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len, 0)
 	if n <= 0 {
 		if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+			// Unexpected recv error - send 444 No Response
+			C.send(c.fd, status_444_response.data, status_444_response.len, 0)
 			close_conn(kq, c_ptr)
 			return
 		}
+		// Normal client closure (n == 0 or would block)
 		close_conn(kq, c_ptr)
 		return
 	}
 
 	c.read_len += int(n)
 	if c.read_len == 0 {
+		return
+	}
+
+	// Check if request exceeds buffer size
+	if c.read_len >= buf_size {
+		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
+		close_conn(kq, c_ptr)
 		return
 	}
 

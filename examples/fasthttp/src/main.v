@@ -23,7 +23,10 @@ fn handle_request(req fasthttp.HttpRequest) ![]u8 {
 }
 
 fn main() {
-	mut server := fasthttp.new_server(3000, handle_request) or {
+	mut server := fasthttp.new_server(fasthttp.ServerConfig{
+		port:    3000
+		handler: handle_request
+	}) or {
 		eprintln('Failed to create server: ${err}')
 		return
 	}

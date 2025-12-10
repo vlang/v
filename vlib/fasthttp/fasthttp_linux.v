@@ -25,7 +25,8 @@ struct C.epoll_event {
 
 struct Server {
 pub:
-	port int = 3000
+	port                    int = 3000
+	max_request_buffer_size int = 8192
 mut:
 	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
 	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
@@ -34,10 +35,14 @@ mut:
 }
 
 // new_server creates and initializes a new Server instance.
-pub fn new_server(port int, handler fn (req HttpRequest) ![]u8) !&Server {
+pub fn new_server(config ServerConfig) !&Server {
+	if config.max_request_buffer_size <= 0 {
+		return error('max_request_buffer_size must be greater than 0')
+	}
 	mut server := &Server{
-		port:            port
-		request_handler: handler
+		port:                    config.port
+		max_request_buffer_size: config.max_request_buffer_size
+		request_handler:         config.handler
 	}
 	unsafe {
 		server.listen_fds.flags.set(.noslices | .noshrink | .nogrow)
@@ -184,7 +189,10 @@ fn handle_client_closure(epoll_fd int, client_fd int) {
 
 fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
-	mut request_buffer := [140]u8{} // Reuse buffer across all events
+	mut request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
+	unsafe {
+		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
+	}
 	for {
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
 		for i := 0; i < num_events; i++ {
@@ -201,6 +209,9 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					continue
 				}
 				if client_fd > 0 {
+					// Try to send 444 No Response before closing abnormal connection
+					C.send(client_fd, status_444_response.data, status_444_response.len,
+						C.MSG_NOSIGNAL)
 					handle_client_closure(epoll_fd, client_fd)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
@@ -209,8 +220,16 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				client_fd := unsafe { events[i].data.fd }
-				bytes_read := C.recv(client_fd, &request_buffer[0], 140 - 1, 0)
+				bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
+					0)
 				if bytes_read > 0 {
+					// Check if request exceeds buffer size
+					if bytes_read >= server.max_request_buffer_size - 1 {
+						C.send(client_fd, status_413_response.data, status_413_response.len,
+							C.MSG_NOSIGNAL)
+						handle_client_closure(epoll_fd, client_fd)
+						continue
+					}
 					mut readed_request_buffer := []u8{cap: bytes_read}
 					unsafe {
 						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
@@ -231,10 +250,21 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						continue
 					}
 					// Send response
-					C.send(client_fd, response_buffer.data, response_buffer.len, C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
+					sent := C.send(client_fd, response_buffer.data, response_buffer.len,
+						C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
+					if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+						eprintln('ERROR: send() failed with errno=${C.errno}')
+						handle_client_closure(epoll_fd, client_fd)
+						continue
+					}
 					// Leave the connection open; closure is driven by client FIN or errors
-				} else if bytes_read == 0
-					|| (bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
+				} else if bytes_read == 0 {
+					// Normal client closure (FIN received)
+					handle_client_closure(epoll_fd, client_fd)
+				} else if bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+					// Unexpected recv error - send 444 No Response
+					C.send(client_fd, status_444_response.data, status_444_response.len,
+						C.MSG_NOSIGNAL)
 					handle_client_closure(epoll_fd, client_fd)
 				}
 			}
@@ -261,8 +291,8 @@ pub fn (mut server Server) run() ! {
 			return
 		}
 
-		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered + exclusive)
-		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET | C.EPOLLEXCLUSIVE)) == -1 {
+		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered)
+		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 			close_socket(server.listen_fds[i])
 			close_socket(server.epoll_fds[i])
 			return

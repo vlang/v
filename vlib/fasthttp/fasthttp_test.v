@@ -38,7 +38,10 @@ $if darwin {
 
 	fn test_lol() {
 		// Create a new server instance on port 8092, passing our handler function.
-		mut server := fasthttp.new_server(8092, request_handler) or {
+		mut server := fasthttp.new_server(fasthttp.ServerConfig{
+			port:    8092
+			handler: request_handler
+		}) or {
 			eprintln('Failed to create server: ${err}')
 			return
 		}
@@ -127,7 +130,10 @@ fn test_new_server() {
 		return 'HTTP/1.1 200 OK\r\n\r\nHello'.bytes()
 	}
 
-	server := new_server(8080, handler) or {
+	server := new_server(ServerConfig{
+		port:    8080
+		handler: handler
+	}) or {
 		assert false, 'Failed to create server: ${err}'
 		return
 	}
