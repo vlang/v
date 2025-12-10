@@ -32,6 +32,10 @@ pub type FNUnClick = fn (x f32, y f32, button MouseButton, data voidptr)
 // FNChar defines the type of a function that will be called once per character
 pub type FNChar = fn (c u32, data voidptr)
 
+// FNUpdate defines the type of a function, that will be called at the start of each frame
+// with an argument `dt`, that has the passed time in seconds, since the previous update.
+pub type FNUpdate = fn (dt f32, data voidptr)
+
 pub struct PenConfig {
 pub:
 	color     Color
