@@ -1,16 +1,15 @@
 module fasthttp
 
+import net
+
 #include <sys/event.h>
 
 const buf_size = max_connection_size
 const kqueue_max_events = 128
 const backlog = max_connection_size
 
-fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
 fn C.kqueue() int
-fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
-fn C.recv(__fd int, __buf voidptr, __n usize, __flags int) int
 
 struct C.kevent {
 	ident  u64
@@ -205,7 +204,7 @@ fn accept_clients(kq int, listen_fd int) {
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
-	s.socket_fd = C.socket(C.AF_INET, C.SOCK_STREAM, 0)
+	s.socket_fd = C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
@@ -214,14 +213,10 @@ pub fn (mut s Server) run() ! {
 	opt := 1
 	C.setsockopt(s.socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int))
 
-	mut addr := C.sockaddr_in{}
-	unsafe {
-		C.memset(&addr, 0, sizeof(addr))
-	}
-	addr.sin_family = u16(C.AF_INET)
-	addr.sin_port = u16(C.htons(u16(s.port)))
+	addr := net.new_ip(u16(s.port), [u8(0), 0, 0, 0]!)
+	alen := addr.len()
 
-	if C.bind(s.socket_fd, voidptr(&addr), sizeof(addr)) < 0 {
+	if C.bind(s.socket_fd, voidptr(&addr), alen) < 0 {
 		C.perror(c'bind')
 		return error('socket bind failed')
 	}
