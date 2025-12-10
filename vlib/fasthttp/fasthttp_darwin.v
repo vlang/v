@@ -9,6 +9,8 @@ const backlog = max_connection_size
 fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
 fn C.kqueue() int
+fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
+fn C.recv(__fd int, __buf voidptr, __n usize, __flags int) int
 
 struct C.kevent {
 	ident  u64
@@ -30,7 +32,8 @@ fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data is
 }
 
 struct Conn {
-	fd int
+	fd        int
+	user_data voidptr
 mut:
 	read_buf  [buf_size]u8
 	read_len  int
@@ -43,6 +46,7 @@ pub mut:
 	port            int
 	socket_fd       int
 	poll_fd         int // kqueue fd
+	user_data       voidptr
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
 
@@ -50,6 +54,7 @@ pub mut:
 pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
 		port:            config.port
+		user_data:       config.user_data
 		request_handler: config.handler
 	}
 	return server
@@ -80,7 +85,9 @@ fn close_conn(kq int, c_ptr voidptr) {
 	delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
 	C.close(c.fd)
-	c.write_buf.clear()
+	if c.write_buf.len > 0 {
+		c.write_buf.clear()
+	}
 	unsafe { free(c_ptr) }
 }
 
@@ -155,6 +162,7 @@ fn handle_read(mut s Server, kq int, c_ptr voidptr) {
 		return
 	}
 	decoded.client_conn_fd = c.fd
+	decoded.user_data = s.user_data
 
 	resp := s.request_handler(decoded) or {
 		send_bad_request(c.fd)
@@ -187,7 +195,8 @@ fn accept_clients(kq int, listen_fd int) {
 		}
 		set_nonblocking(client_fd)
 		mut c := &Conn{
-			fd: client_fd
+			fd:        client_fd
+			user_data: unsafe { nil }
 		}
 		add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
 			c)
@@ -199,7 +208,7 @@ pub fn (mut s Server) run() ! {
 	s.socket_fd = C.socket(C.AF_INET, C.SOCK_STREAM, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
-		return
+		return error('socket creation failed')
 	}
 
 	opt := 1
@@ -214,11 +223,11 @@ pub fn (mut s Server) run() ! {
 
 	if C.bind(s.socket_fd, voidptr(&addr), sizeof(addr)) < 0 {
 		C.perror(c'bind')
-		return
+		return error('socket bind failed')
 	}
 	if C.listen(s.socket_fd, backlog) < 0 {
 		C.perror(c'listen')
-		return
+		return error('socket listen failed')
 	}
 
 	set_nonblocking(s.socket_fd)
@@ -226,7 +235,7 @@ pub fn (mut s Server) run() ! {
 	s.poll_fd = C.kqueue()
 	if s.poll_fd < 0 {
 		C.perror(c'kqueue')
-		return
+		return error('kqueue creation failed')
 	}
 
 	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
