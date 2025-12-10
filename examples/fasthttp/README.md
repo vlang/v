@@ -50,7 +50,7 @@ curl http://localhost:3000/notfound
 
 ## File Structure
 
-- `main.c.v` - Entry point and request router
+- `main.v` - Entry point and request router
 - `controllers.v` - Request handlers for different routes
 - `v.mod` - Module metadata
 
