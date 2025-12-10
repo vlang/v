@@ -3054,10 +3054,11 @@ pub fn (mut ri RunesIterator) next() ?rune {
 @[params]
 pub struct IndentParam {
 pub mut:
-	block_start  rune = `{` // Character that starts a new block (+ indent)
-	block_end    rune = `}` // Character that ends a new block (- indent)
-	indent_char  rune = ` ` // Character used for indentation (space or tab)
-	indent_count int  = 4   // Number of indent_char per indentation level
+	block_start    rune = `{` // Character that starts a new block (+ indent)
+	block_end      rune = `}` // Character that ends a new block (- indent)
+	indent_char    rune = ` ` // Character used for indentation (space or tab)
+	indent_count   int  = 4   // Number of indent_char per indentation level
+	starting_level int // Initial indentation level (0 = no initial indent)
 }
 
 // IndentState represents the current parsing state of the indent() function
@@ -3084,9 +3085,14 @@ pub fn (s string) indent(param IndentParam) string {
 		return ''
 	}
 
-	mut sb := strings.new_builder(s.len * 2)
+	// Create a string builder with optimized initial capacity
+	// We use 1.5x the input length as a reasonable estimate that:
+	// 1. Prevents frequent reallocations for unformatted inputs
+	// 2. Avoids excessive memory waste for well-formatted inputs
+	// 3. Handles most real-world formatting scenarios efficiently
+	mut sb := strings.new_builder(int(s.len * 1.5))
 	mut state := IndentState.normal
-	mut indent_level := 0
+	mut indent_level := param.starting_level
 	mut string_char := `\0`
 	mut at_line_start := true
 	mut i := 0
@@ -3103,7 +3109,7 @@ pub fn (s string) indent(param IndentParam) string {
 						string_char = c
 						// Add indentation if at the start of a line
 						if at_line_start {
-							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							sb.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
 							at_line_start = false
 						}
 						// Write the opening quote
@@ -3114,7 +3120,7 @@ pub fn (s string) indent(param IndentParam) string {
 						// Start of a new block
 						// Add indentation if at the start of a line
 						if at_line_start {
-							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							sb.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
 							at_line_start = false
 						}
 
@@ -3147,7 +3153,7 @@ pub fn (s string) indent(param IndentParam) string {
 						}
 
 						// Add indentation for the block end
-						sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+						sb.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
 						at_line_start = false
 
 						sb.write_rune(c)
@@ -3170,7 +3176,7 @@ pub fn (s string) indent(param IndentParam) string {
 						// Any other character
 						// Add indentation if at the start of a line
 						if at_line_start {
-							sb.write_string(param.indent_char.repeat(indent_level * param.indent_count))
+							sb.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
 							at_line_start = false
 						}
 						sb.write_rune(c)
@@ -3185,7 +3191,7 @@ pub fn (s string) indent(param IndentParam) string {
 				// Check for string termination
 				// The character must match the opening quote and not be escaped
 				if c == string_char {
-					if i == 0 || s[i - 1] != `\\` {
+					if s[i - 1] != `\\` {
 						state = .normal
 						string_char = `\0`
 					}

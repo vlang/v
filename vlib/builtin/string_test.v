@@ -1704,11 +1704,11 @@ fn test_hex() {
 }
 
 struct IndentTest {
+	param  IndentParam
 	input  string
 	output string
 }
 
-// it seems vfmt has some bug
 // vfmt off
 const indent_test_data = [
 	IndentTest{
@@ -1847,12 +1847,66 @@ const indent_test_data = [
     str: "\\\\\\\\\\\\\\"Quadruple escaped\\\\\\\\\\\\\\""
 }'
 	},
+	IndentTest{
+		param: IndentParam {
+			block_start: `[`
+			block_end: `]`
+		}
+		input:  'message [text: "Hello {world}!" count: 5 nested: [data: "Test {inner}"]]'
+		output: 'message [
+    text: "Hello {world}!" count: 5 nested: [
+        data: "Test {inner}"
+    ]
+]'
+	},
+	IndentTest{
+		param: IndentParam {
+			block_start: `[`
+			block_end: `]`
+			indent_char: `#`
+		}
+		input:  'message [text: "Hello {world}!" count: 5 nested: [data: "Test {inner}"]]'
+		output: 'message [
+####text: "Hello {world}!" count: 5 nested: [
+########data: "Test {inner}"
+####]
+]'
+	},
+	IndentTest{
+		param: IndentParam {
+			block_start: `[`
+			block_end: `]`
+			indent_char: `\t`
+			indent_count: 2
+		}
+		input:  'message [text: "Hello {world}!" count: 5 nested: [data: "Test {inner}"]]'
+		output: 'message [
+\t\ttext: "Hello {world}!" count: 5 nested: [
+\t\t\t\tdata: "Test {inner}"
+\t\t]
+]'
+	},
+	IndentTest{
+		param: IndentParam {
+			block_start: `[`
+			block_end: `]`
+			indent_char: `#`
+			indent_count: 1
+			starting_level: 2
+		}
+		input:  'message [text: "Hello {world}!" count: 5 nested: [data: "Test {inner}"]]'
+		output: '##message [
+###text: "Hello {world}!" count: 5 nested: [
+####data: "Test {inner}"
+###]
+##]'
+	},
 ]
 
 // vfmt on
 
 fn test_indent() {
 	for t in indent_test_data {
-		assert t.input.indent() == t.output
+		assert t.input.indent(t.param) == t.output
 	}
 }
