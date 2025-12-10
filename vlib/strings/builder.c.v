@@ -382,11 +382,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 	mut indent_level := param.starting_level
 	mut string_char := `\0`
 	mut at_line_start := true
-	mut i := 0
-
-	for i < s.len {
+	for i := 0; i < s.len; i++ {
 		c := s[i]
-
 		match state {
 			// Normal state: process characters outside of string literals
 			.normal {
@@ -401,7 +398,6 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						}
 						// Write the opening quote
 						b.write_rune(c)
-						i++
 					}
 					param.block_start {
 						// Start of a new block
@@ -418,13 +414,12 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						// Empty blocks stay on the same line
 						if i + 1 < s.len && s[i + 1] == param.block_end {
 							b.write_rune(param.block_end)
-							i += 2
+							i++
 						} else {
 							// Non-empty block: increase indentation and add newline
 							indent_level++
 							b.write_rune(`\n`)
 							at_line_start = true
-							i++
 						}
 					}
 					param.block_end {
@@ -444,7 +439,6 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						at_line_start = false
 
 						b.write_rune(c)
-						i++
 					}
 					` `, `\t`, `\r`, `\n` {
 						// Whitespace characters
@@ -457,7 +451,6 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						if c == `\n` {
 							at_line_start = true
 						}
-						i++
 					}
 					else {
 						// Any other character
@@ -467,7 +460,6 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 							at_line_start = false
 						}
 						b.write_rune(c)
-						i++
 					}
 				}
 			}
@@ -483,7 +475,6 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						string_char = `\0`
 					}
 				}
-				i++
 			}
 		}
 	}
