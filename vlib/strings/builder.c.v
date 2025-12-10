@@ -366,12 +366,13 @@ enum IndentState {
 // 6. Maintains existing line breaks from the input.
 //
 // Example:
-//   import strings
-//   input := 'User{name:"John" settings:{theme:"dark"}}'
-//   mut b := strings.new_builder(64)
-//   b.indent(input, indent_count: 2)
-//   println(b.str()) // Formatted output: 'User{\n  name:"John" settings:{\n    theme:"dark"\n  }\n}'
-//
+// ```v
+// import strings
+// input := 'User{name:"John" settings:{theme:"dark"}}'
+// mut b := strings.new_builder(64)
+// b.indent(input, indent_count: 2)
+// println(b.str()) // Formatted output: 'User{\n  name:"John" settings:{\n    theme:"dark"\n  }\n}'
+// ```
 @[direct_array_access]
 pub fn (mut b Builder) indent(s string, param IndentParam) {
 	if s.len == 0 {
