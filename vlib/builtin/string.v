@@ -3090,7 +3090,7 @@ pub fn (s string) indent(param IndentParam) string {
 	// 1. Prevents frequent reallocations for unformatted inputs
 	// 2. Avoids excessive memory waste for well-formatted inputs
 	// 3. Handles most real-world formatting scenarios efficiently
-	mut sb := strings.new_builder(int(s.len * 1.5))
+	mut sb := strings.new_builder(int(f32(s.len) * 1.5))
 	mut state := IndentState.normal
 	mut indent_level := param.starting_level
 	mut string_char := `\0`
