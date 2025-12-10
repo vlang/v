@@ -1,5 +1,7 @@
 module fasthttp
 
+import net
+
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 
@@ -83,7 +85,7 @@ fn close_socket(fd int) bool {
 
 fn create_server_socket(port int) int {
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM, 0)
+	server_fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
@@ -108,13 +110,13 @@ fn create_server_socket(port int) int {
 	}
 
 	server_addr := C.sockaddr_in{
-		sin_family: u16(C.AF_INET)
+		sin_family: u16(net.AddrFamily.ip)
 		sin_port:   C.htons(port)
 		sin_addr:   C.in_addr{u32(C.INADDR_ANY)}
 		sin_zero:   [8]u8{}
 	}
 
-	if C.bind(server_fd, &server_addr, sizeof(server_addr)) < 0 {
+	if C.bind(server_fd, &net.Addr(&server_addr), sizeof(server_addr)) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Bind failed')
 		close_socket(server_fd)

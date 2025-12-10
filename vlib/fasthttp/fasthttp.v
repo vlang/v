@@ -4,6 +4,7 @@
 module fasthttp
 
 import runtime
+import net
 
 #include <fcntl.h>
 #include <errno.h>
@@ -21,9 +22,9 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-fn C.socket(socket_family int, socket_type int, protocol int) int
+fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol int) int
 
-fn C.bind(sockfd int, addr &C.sockaddr_in, addrlen u32) int
+fn C.bind(sockfd int, addr &net.Addr, addrlen u32) int
 
 fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
 
