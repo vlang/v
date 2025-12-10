@@ -11,7 +11,7 @@ const efolders = [
 	'examples/vweb_orm_jwt',
 	'examples/vweb_fullstack',
 	'examples/vanilla_http_server',
-	'examples/fasthttp/',
+	'examples/fasthttp',
 ]
 
 pub fn normalised_vroot_path(path string) string {
