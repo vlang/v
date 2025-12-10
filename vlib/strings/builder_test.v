@@ -192,3 +192,13 @@ fn test_grow_len() {
 	assert sb.len == 25
 	assert sb.cap == 35
 }
+
+fn test_write_repeated_rune() {
+	mut sb := strings.new_builder(20)
+	sb.write_repeated_rune(`h`, 5)
+	sb.write_repeated_rune(`w`, 5)
+	sb.write_repeated_rune(`√`, 5)
+	sb.write_rune(` `)
+	x := sb.str()
+	assert x == 'hhhhhwwwww√√√√√ '
+}
