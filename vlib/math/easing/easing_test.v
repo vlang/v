@@ -9,3 +9,8 @@ fn test_linear() {
 		assert easing.linear(x) == x
 	}
 }
+
+fn test_in_out_back() {
+       assert easing.in_out_back(0.333).eq_epsilon(-0.04451079425639395)
+       assert easing.in_out_back(3).eq_epsilon(136.79638)
+}

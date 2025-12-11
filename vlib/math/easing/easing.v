@@ -192,7 +192,7 @@ pub fn out_back(x f64) f64 {
 @[inline]
 pub fn in_out_back(x f64) f64 {
 	return if x < 0.5 {
-		(pow(2.0 * x, x) * ((c2 + 1) * 2.0 * x - c2)) / 2.0
+		(pow(2.0 * x, 2.0) * ((c2 + 1) * 2.0 * x - c2)) / 2.0
 	} else {
 		(pow(2.0 * x - 2.0, 2.0) * ((c2 + 1.0) * (x * 2.0 - 2.0) + c2) + 2.0) / 2.0
 	}
