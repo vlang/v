@@ -1442,6 +1442,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.features.auto_str || w.uses_dump {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
+		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
+		w.fn_by_name(builderptr_idx + '.write_string')
+		w.fn_by_name(builderptr_idx + '.writeln')
+		w.fn_by_name(builderptr_idx + '.indent')
 		w.fn_by_name('tos3')
 	}
 	if w.uses_index || w.pref.is_shared {
