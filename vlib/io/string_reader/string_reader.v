@@ -240,6 +240,7 @@ pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string 
 
 // write implements the Writer interface
 pub fn (mut r StringReader) write(buf []u8) !int {
+	r.offset += buf.len
 	return r.builder.write(buf)!
 }
 
