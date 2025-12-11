@@ -1,3 +1,4 @@
+// vtest build: tinyc
 import os
 import time
 import term

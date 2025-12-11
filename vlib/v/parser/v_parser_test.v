@@ -1,3 +1,4 @@
+// vtest build: tinyc && !sanitized_job?
 module parser
 
 // import v.eval

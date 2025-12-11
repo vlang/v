@@ -1,3 +1,4 @@
+// vtest build: tinyc
 import os
 
 const test_dir = os.join_path('vlib', 'v', 'gen', 'js', 'tests')

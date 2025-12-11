@@ -1,6 +1,4 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// vtest build: !sanitized_job?
 import os
 import term
 import benchmark
@@ -12,7 +10,7 @@ import v.util.diff
 import v.util.vtest
 
 const vroot = @VEXEROOT
-const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt')
+const tdir = os.join_path(vroot, 'vlib/v/fmt')
 const fpref = &pref.Preferences{
 	is_fmt: true
 }

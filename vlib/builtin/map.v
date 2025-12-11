@@ -262,7 +262,7 @@ fn map_free_nop(_ voidptr) {
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
+	has_string_keys := key_bytes > int(sizeof(voidptr))
 	return map{
 		key_bytes:       key_bytes
 		value_bytes:     value_bytes

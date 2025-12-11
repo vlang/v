@@ -12,11 +12,10 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
-	unbuffer_stdout()
+	dump(test_path)
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.chdir(test_path)!
-	println('test_path: ${test_path}')
 }
 
 fn testsuite_end() {

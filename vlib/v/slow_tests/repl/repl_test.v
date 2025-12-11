@@ -1,3 +1,4 @@
+// vtest build: !musl? && !sanitized_job?
 module main
 
 import os
