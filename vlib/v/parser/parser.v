@@ -3007,6 +3007,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		node := ast.SumTypeDecl{
 			name:          name
+			mod:           p.mod
 			typ:           typ
 			is_pub:        is_pub
 			variants:      sum_variants
@@ -3072,6 +3073,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.attrs = []
 	alias_type_decl := ast.AliasTypeDecl{
 		name:        name
+		mod:         p.mod
 		is_pub:      is_pub
 		typ:         idx
 		parent_type: parent_type

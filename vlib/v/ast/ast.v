@@ -1508,6 +1508,7 @@ pub mut:
 pub struct AliasTypeDecl {
 pub:
 	name     string
+	mod      string
 	is_pub   bool
 	typ      Type
 	pos      token.Pos
@@ -1523,6 +1524,7 @@ pub mut:
 pub struct SumTypeDecl {
 pub:
 	name          string
+	mod           string
 	is_pub        bool
 	pos           token.Pos
 	name_pos      token.Pos
