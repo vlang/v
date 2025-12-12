@@ -1447,6 +1447,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(builderptr_idx + '.writeln')
 		w.fn_by_name(builderptr_idx + '.indent')
 		w.fn_by_name('tos3')
+		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
+		w.fn_by_name(builderptr_idx + '.write_string')
+		w.fn_by_name(builderptr_idx + '.writeln')
+		w.fn_by_name(builderptr_idx + '.indent')
 	}
 	if w.uses_index || w.pref.is_shared {
 		w.fn_by_name(array_idx_str + '.slice')
