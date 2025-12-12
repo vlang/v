@@ -17,6 +17,19 @@ fn interface_var(a ITest) {
 	}
 }
 
+struct MyTest {
+	t ITest
+}
+
 fn main() {
 	interface_var(Test{ a: true })
+	t1 := Test{}
+	t2 := MyTest{
+		t: t1
+	}
+	mut t3 := Test{}
+	t4 := MyTest{
+		t: t3
+	}
+	$dbg;
 }
