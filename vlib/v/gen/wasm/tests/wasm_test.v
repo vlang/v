@@ -4,6 +4,9 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
+// Tests that should be skipped from c_compiling/wasm comparison
+const skip_comparison_tests = ['builtin.vv', 'comptime.vv', 'asm.vv', 'misc.vv']
+
 // TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_wasm() {
 	mut runtimes := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
@@ -49,54 +52,107 @@ fn test_wasm() {
 			tests = tests.filter(it !in ['arrays.vv', 'asm.vv', 'builtin.vv'])
 		}
 	}
-	bench.set_total_expected_steps(tests.len)
+	bench.set_total_expected_steps(tests.len * 2)
 	for test in tests {
-		bench.step()
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '${wrkdir}/${test_file_name}'
 		tmperrfile := '${dir}/${test}.tmperr'
 		outfile := '${dir}/${test}.out'
-		// force binaryen to print without colour
-		cmd := '${os.quoted_path(vexe)} -b wasm run ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
+
+		skip_comparison := test in skip_comparison_tests
+
+		// Test with -b wasm
+		bench.step()
+		cmd_wasm := '${os.quoted_path(vexe)} -b wasm run ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
-			println(cmd)
+			println(cmd_wasm)
 		}
-		res_wasm := os.execute(cmd)
+		res_wasm := os.execute(cmd_wasm)
 		if res_wasm.exit_code != 0 {
+			eprintln('failed wasm: ${full_test_path}')
 			bench.fail()
-			eprintln(bench.step_message_fail(cmd))
+			eprintln(bench.step_message_fail(cmd_wasm))
 
 			if os.exists(tmperrfile) {
 				err := os.read_file(tmperrfile)!
 				eprintln(err)
 			}
-
-			continue
-		}
-		os.rm(tmperrfile) or {}
-		if expected_ := os.read_file(outfile) {
-			mut expected := expected_
-			expected = expected.trim_right('\r\n').replace('\r\n', '\n')
-			mut found := res_wasm.output.trim_right('\r\n').replace('\r\n', '\n')
-			found = found.trim_space()
-			if expected != found {
-				println(term.red('FAIL'))
-				println('============')
-				println('expected: "${expected}" len=${expected.len}')
-				println('============')
-				println('found:"${found}" len=${found.len}')
-				println('============\n')
-				bench.fail()
-				continue
-			}
 		} else {
-			os.write_file(outfile, res_wasm.output.trim_right('\r\n').replace('\r\n',
-				'\n'))!
+			os.rm(tmperrfile) or {}
+			if expected_ := os.read_file(outfile) {
+				mut expected := expected_
+				expected = expected.trim_right('\r\n').replace('\r\n', '\n')
+				mut found := res_wasm.output.trim_right('\r\n').replace('\r\n', '\n')
+				found = found.trim_space()
+				if expected != found {
+					eprintln('failed wasm: ${full_test_path}')
+					println(term.red('FAIL (-b wasm)'))
+					println('============')
+					println('expected: "${expected}" len=${expected.len}')
+					println('============')
+					println('found:"${found}" len=${found.len}')
+					println('============\n')
+					bench.fail()
+				} else {
+					bench.ok()
+					eprintln(bench.step_message_ok('${relative_test_path} (-b wasm)'))
+				}
+			} else {
+				os.write_file(outfile, res_wasm.output.trim_right('\r\n').replace('\r\n',
+					'\n'))!
+				bench.ok()
+				eprintln(bench.step_message_ok('${relative_test_path} (-b wasm)'))
+			}
 		}
-		bench.ok()
-		eprintln(bench.step_message_ok(relative_test_path))
+
+		// Test without -b wasm (c_compiling compilation) - skip for tests in skip list
+		bench.step()
+		if skip_comparison {
+			eprintln(bench.step_message_ok('${relative_test_path} (c_compiling) - SKIPPED'))
+		} else {
+			cmd_c_compiling := '${os.quoted_path(vexe)} run ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
+			if is_verbose {
+				println(cmd_c_compiling)
+			}
+			res_c_compiling := os.execute(cmd_c_compiling)
+			if res_c_compiling.exit_code != 0 {
+				eprintln('failed c_compiling: ${full_test_path}')
+				bench.fail()
+				eprintln(bench.step_message_fail(cmd_c_compiling))
+
+				if os.exists(tmperrfile) {
+					err := os.read_file(tmperrfile)!
+					eprintln(err)
+				}
+			} else {
+				os.rm(tmperrfile) or {}
+				if expected_ := os.read_file(outfile) {
+					mut expected := expected_
+					expected = expected.trim_right('\r\n').replace('\r\n', '\n')
+					mut found := res_c_compiling.output.trim_right('\r\n').replace('\r\n',
+						'\n')
+					found = found.trim_space()
+					if expected != found {
+						println(term.red('FAIL (c_compiling)'))
+						println('============')
+						println('expected: "${expected}" len=${expected.len}')
+						println('============')
+						println('found:"${found}" len=${found.len}')
+						eprintln('failed c_compiling: ${full_test_path}')
+						println('============\n')
+						bench.fail()
+					} else {
+						bench.ok()
+						eprintln(bench.step_message_ok('${relative_test_path} (c_compiling)'))
+					}
+				} else {
+					bench.ok()
+					eprintln(bench.step_message_ok('${relative_test_path} (c_compiling)'))
+				}
+			}
+		}
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))

@@ -1,0 +1,31 @@
+// Test basic array operations: creation, indexing, initialization, and append
+fn main() {
+	// Test 1: Array indexing
+	println('=== Array indexing ===')
+	arr := [10, 20, 30]
+	println(arr[0])
+	println(arr[1])
+	println(arr[2])
+
+	// Test 2: Empty array creation
+	println('=== Empty array ===')
+	_ := []int{}
+	println('Empty array created')
+
+	// Test 3: Array with literals
+	println('=== Array literals ===')
+	a := [100, 200, 300]
+	println(a[0])
+	println(a[1])
+	println(a[2])
+
+	// Test 4: Array append
+	println('=== Array append ===')
+	mut nums := []int{}
+	nums << 5
+	nums << 10
+	nums << 15
+	println(nums[0])
+	println(nums[1])
+	println(nums[2])
+}

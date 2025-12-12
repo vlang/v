@@ -1,0 +1,36 @@
+// Test arrays with complex nested structures
+struct Inner {
+	value int
+}
+
+struct Outer {
+	inner Inner
+	data int
+}
+
+fn main() {
+	// Test array of structs containing structs
+	mut complex := []Outer{}
+	complex << Outer{Inner{10}, 100}
+	complex << Outer{Inner{20}, 200}
+	complex << Outer{Inner{30}, 300}
+	
+	println('Complex nested structures:')
+	println(complex[0].inner.value)
+	println(complex[0].data)
+	println(complex[1].inner.value)
+	println(complex[1].data)
+	println(complex[2].inner.value)
+	println(complex[2].data)
+	
+	// Test 3-level nesting with arrays
+	mut deep := [][][]int{}
+	mut level2 := [][]int{}
+	mut level1 := []int{}
+	level1 << 42
+	level2 << level1
+	deep << level2
+	
+	println('Deep nesting:')
+	println(deep[0][0][0])
+}

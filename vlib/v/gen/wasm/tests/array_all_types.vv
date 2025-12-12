@@ -1,0 +1,113 @@
+// Comprehensive test: arrays with all major V types
+fn main() {
+	// Test 1: Integer types
+	println('=== Integer types ===')
+	mut ints := []int{}
+	ints << 42
+	ints << -10
+	ints << 0
+	println(ints[0])
+	println(ints[1])
+	println(ints[2])
+
+	mut i64s := []i64{}
+	i64s << i64(1000)
+	i64s << i64(2000)
+	println(i64s[0])
+	println(i64s[1])
+
+	mut i32s := []i32{}
+	i32s << i32(100)
+	i32s << i32(200)
+	println(i32s[0])
+	println(i32s[1])
+
+	// Test 2: Floating point types
+	println('=== Float types ===')
+	mut floats := []f64{}
+	floats << 3.14
+	floats << 2.71
+	println(floats[0])
+	println(floats[1])
+
+	mut f32s := []f32{}
+	f32s << f32(1.5)
+	f32s << f32(2.5)
+	println(f32s[0])
+	println(f32s[1])
+
+	// Test 3: Boolean type
+	println('=== Boolean type ===')
+	mut bools := []bool{}
+	bools << true
+	bools << false
+	bools << true
+	println(bools[0])
+	println(bools[1])
+	println(bools[2])
+
+	// Test 4: String type
+	println('=== String type ===')
+	mut strings := []string{}
+	strings << 'hello'
+	strings << 'world'
+	println(strings[0])
+	println(strings[1])
+
+	// Test 5: Arrays (nested arrays)
+	println('=== Nested arrays ===')
+	mut nested := [][]int{}
+	nested << [1, 2, 3]
+	nested << [4, 5, 6]
+	println(nested[0][0])
+	println(nested[0][2])
+	println(nested[1][1])
+
+	// Test 6: Structs
+	println('=== Struct types ===')
+	mut points := []Point{}
+	points << Point{10, 20}
+	points << Point{30, 40}
+	println(points[0].x)
+	println(points[0].y)
+	println(points[1].x)
+
+	// Test 7: Pointers
+	println('=== Pointer arrays ===')
+	mut ptrs := []&int{}
+	a := 5
+	b := 10
+	ptrs << &a
+	ptrs << &b
+	// println(ptrs[0]) // should print &5
+	// println(ptrs[1]) // should print &10
+	// println(*ptrs[0]) // should print 5
+	// println(*ptrs[1]) // should print 10
+
+	// Test 8: Byte type (u8)
+	println('=== Byte arrays ===')
+	mut bytes := []u8{}
+	bytes << u8(65)
+	bytes << u8(66)
+	bytes << u8(67)
+	println(bytes[0])
+	println(bytes[1])
+	println(bytes[2])
+
+	// Test 9: Mixed capacity operations
+	println('=== Capacity growth ===')
+	mut dynamic := []int{}
+	for i in 0 .. 10 {
+		dynamic << i * 2
+	}
+	println(dynamic[0])
+	println(dynamic[5])
+	println(dynamic[9])
+
+	println('=== All tests passed ===')
+}
+
+struct Point {
+	x int
+	y int
+}

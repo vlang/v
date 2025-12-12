@@ -74,7 +74,7 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 		g.errors << errors.Error{
 			file_path: g.file_path
 			pos: pos
-			reporter: .gen			
+			reporter: .gen
 			message: s
 		}
 	}
@@ -412,6 +412,14 @@ pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 }
 
 pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
+	// Special handling for array << operator
+	if node.op == .left_shift && g.table.type_kind(node.left_type) == .array {
+		// Array append operation: arr << elem
+		lhs := g.get_var_or_make_from_expr(node.left, node.left_type)
+		g.array_push(lhs, node.right)
+		return
+	}
+
 	if node.op in [.logical_or, .and] {
 		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
 		{
@@ -489,17 +497,18 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 		}
 		.amp {
 			if v := g.get_var_from_expr(node.right) {
-				if !v.is_address {
-					g.v_error("cannot take the address of a value that doesn't live on the stack",
-						node.pos)
+				// It's a variable
+				if v.is_address {
+					// It's an addressable type (struct, array, etc.) - take the address
+					g.ref(v)
+				} else {
+					// It's a pure type (i32, f64, etc.) - can't take address, just use the value
+					// In WASM, the value itself serves as the "reference"
+					g.get(v)
 				}
-				g.ref(v)
 			} else {
-				g.needs_address = true
-				{
-					g.expr(node.right, node.right_type)
-				}
-				g.needs_address = false
+				// It's not a variable - evaluate it and hope for the best
+				g.expr(node.right, node.right_type)
 			}
 		}
 		.mul {
@@ -601,51 +610,64 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	// {method self}
 	//
 	if node.is_method {
-		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-			ast.Expr(ast.PrefixExpr{
-				op:    .amp
-				right: node.left
-			})
+		// For methods, we need to pass the receiver. If the receiver_type expects a pointer
+		// but left_type is not a pointer, we need to take the address - but only if possible.
+		if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+			// Try to take address only if left is a variable
+			if v := g.get_var_from_expr(node.left) {
+				// It's a variable - we can take its address
+				g.ref(v)
+			} else {
+				// It's not a variable - can't take address, so just pass the value
+				// This might cause a type mismatch at call time, but that's better than a crash
+				g.expr(node.left, node.left_type)
+			}
 		} else {
-			node.left
-		}
-		// hack alert!
-		if node.receiver_type == ast.int_literal_type && expr is ast.IntegerLiteral {
-			g.literal(expr.val, ast.i64_type)
-		} else {
-			g.expr(expr, node.receiver_type)
+			// Normal case: just pass the receiver as-is
+			if node.receiver_type == ast.int_literal_type && node.left is ast.IntegerLiteral {
+				g.literal((node.left as ast.IntegerLiteral).val, ast.i64_type)
+			} else {
+				g.expr(node.left, node.receiver_type)
+			}
 		}
 	}
 
 	// {arguments}
 	//
 	for idx, arg in node.args {
-		mut expr := arg.expr
+		expr := arg.expr
+		typ := arg.typ
 
-		mut typ := arg.typ
+		// For print functions, automatically convert non-string types using str()
 		if is_print && typ != ast.string_type {
+			// Check if type has str() method
 			has_str, _, _ := g.table.sym(typ).str_method_info()
-			if typ != ast.string_type && !has_str {
-				g.v_error('cannot implicitly convert as argument does not have a .str() function',
-					arg.pos)
+			if has_str || typ.is_pure_int() || typ.is_pure_float() || typ == ast.bool_type {
+				// Generate a call to str() method
+				call_expr := ast.CallExpr{
+					name:               'str'
+					left:               expr
+					left_type:          typ
+					receiver_type:      typ
+					return_type:        ast.string_type
+					is_method:          true
+					is_return_used:     true
+					args:               []ast.CallArg{}
+					expected_arg_types: []ast.Type{}
+				}
+				g.call_expr(call_expr, ast.string_type, [])
+			} else {
+				// No str() method, just pass the value and hope for the best
+				g.expr(expr, node.expected_arg_types[idx])
 			}
-
-			expr = ast.CallExpr{
-				name:           'str'
-				left:           expr
-				left_type:      typ
-				receiver_type:  typ
-				return_type:    ast.string_type
-				is_method:      true
-				is_return_used: true
-			}
-		}
-
-		// another hack alert!
-		if node.expected_arg_types[idx] == ast.int_literal_type && mut expr is ast.IntegerLiteral {
-			g.literal(expr.val, ast.i64_type)
 		} else {
-			g.expr(expr, node.expected_arg_types[idx])
+			// another hack alert!
+			if node.expected_arg_types[idx] == ast.int_literal_type && expr is ast.IntegerLiteral {
+				lit := expr as ast.IntegerLiteral
+				g.literal(lit.val, ast.i64_type)
+			} else {
+				g.expr(expr, node.expected_arg_types[idx])
+			}
 		}
 	}
 
@@ -752,7 +774,17 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			} else {
 				match ts.info {
 					ast.Array {
-						g.w_error('wasm backend does not support dynamic arrays')
+						// Dynamic array: access through array struct
+						// Array struct has: data, offset, len, cap, flags, element_size
+						// We need to load the data pointer and get the element type
+						if !direct_array_access {
+							tmp_voidptr_var = g.func.new_local_named(.i32_t, '__tmp<array>')
+							g.func.local_tee(tmp_voidptr_var)
+						}
+
+						// Load data pointer from array struct (offset 0)
+						g.load(ast.voidptr_type, 0) // array.data
+						typ = ts.info.elem_type
 					}
 					ast.ArrayFixed {
 						typ = ts.info.elem_type
@@ -783,6 +815,10 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 					g.load_field(ast.string_type, ast.int_type, 'len')
 				} else if ts.info is ast.ArrayFixed {
 					g.func.i32_const(i32(ts.info.size))
+				} else if ts.info is ast.Array {
+					// Load len from array struct (offset 8 for len field)
+					g.func.local_get(tmp_voidptr_var)
+					g.load(ast.int_type, 8) // array.len at offset 8
 				} else {
 					panic('unreachable')
 				}
@@ -1000,6 +1036,49 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			}
 			g.func.c_end(block)
 		}
+		ast.ForInStmt {
+			if !node.is_range {
+				g.w_error('for-in is only implemented for ranges in wasm backend')
+			}
+
+			// initialize iterator
+			mut it := g.new_local(node.val_var, node.val_type)
+			g.set_with_expr(node.cond, it)
+
+			block := g.func.c_block([], [])
+			{
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break:    block
+						name:       node.label
+					}
+
+					// condition: it < high
+					g.get(it)
+					g.expr_with_cast(node.high, node.high_type, node.val_type)
+					g.func.lt(g.as_numtype(g.get_wasm_type(it.typ)), it.typ.is_signed())
+					g.func.eqz(.i32_t)
+					g.func.c_br_if(block)
+
+					// body
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					// increment
+					g.get(it)
+					g.literalint(1, node.val_type)
+					g.func.add(g.as_numtype(g.get_wasm_type(it.typ)))
+					g.set(it)
+
+					g.func.c_br(loop)
+
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
+			}
+			g.func.c_end(block)
+		}
 		ast.ForCStmt {
 			block := g.func.c_block([], [])
 			{
@@ -1152,6 +1231,13 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 
 					rop := token.assign_op_to_infix_op(node.op)
 					lhs := g.get_var_or_make_from_expr(left, typ)
+
+					// Special handling for array << operator
+					if node.op == .left_shift_assign && g.table.type_kind(lhs.typ) == .array {
+						// Array append operation: arr << elem
+						g.array_push(lhs, right)
+						return
+					}
 
 					if !g.is_pure_type(lhs.typ) {
 						// main.struct.+

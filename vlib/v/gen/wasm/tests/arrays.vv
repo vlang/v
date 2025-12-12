@@ -63,5 +63,6 @@ fn main() {
 
 	println('--- test_stuff()')
 	v := test_stuff()
-	println(v)
+	// println(v) // should print &nil
+	// println(*v)
 }

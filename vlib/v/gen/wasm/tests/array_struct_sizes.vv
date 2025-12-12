@@ -1,0 +1,51 @@
+// Test arrays with different element sizes
+struct SmallStruct {
+	a int
+}
+
+struct MediumStruct {
+	a int
+	b int
+	c int
+}
+
+struct LargeStruct {
+	a int
+	b int
+	c int
+	d int
+	e int
+	f int
+}
+
+fn main() {
+	// Test small struct array
+	mut small := []SmallStruct{}
+	small << SmallStruct{10}
+	small << SmallStruct{20}
+	println('Small structs:')
+	println(small[0].a)
+	println(small[1].a)
+	
+	// Test medium struct array
+	mut medium := []MediumStruct{}
+	medium << MediumStruct{1, 2, 3}
+	medium << MediumStruct{4, 5, 6}
+	println('Medium structs:')
+	println(medium[0].a)
+	println(medium[0].b)
+	println(medium[0].c)
+	println(medium[1].a)
+	println(medium[1].b)
+	println(medium[1].c)
+	
+	// Test large struct array
+	mut large := []LargeStruct{}
+	large << LargeStruct{1, 2, 3, 4, 5, 6}
+	large << LargeStruct{7, 8, 9, 10, 11, 12}
+	println('Large structs:')
+	println(large[0].a)
+	println(large[0].f)
+	println(large[1].a)
+	println(large[1].f)
+}

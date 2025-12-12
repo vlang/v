@@ -1,0 +1,32 @@
+// Test arrays of structs
+struct Point {
+	x int
+	y int
+}
+
+struct Person {
+	name string
+	age int
+}
+
+fn main() {
+	// Test array of simple structs
+	mut points := []Point{}
+	points << Point{10, 20}
+	points << Point{30, 40}
+	points << Point{50, 60}
+	
+	println('Points array:')
+	println(points[0].x)
+	println(points[0].y)
+	println(points[1].x)
+	println(points[1].y)
+	println(points[2].x)
+	println(points[2].y)
+	
+	// Test array initialization with struct literals
+	people := [Person{'Alice', 25}, Person{'Bob', 30}]
+	println('People array:')
+	println(people[0].age)
+	println(people[1].age)
+}

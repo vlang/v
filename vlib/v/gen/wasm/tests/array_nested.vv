@@ -1,0 +1,34 @@
+// Test nested arrays (2D arrays)
+fn main() {
+	// Test array of arrays (nested arrays)
+	mut matrix := [][]int{}
+	
+	mut row1 := []int{}
+	row1 << 1
+	row1 << 2
+	row1 << 3
+	
+	mut row2 := []int{}
+	row2 << 4
+	row2 << 5
+	row2 << 6
+	
+	matrix << row1
+	matrix << row2
+	
+	println('Nested array (matrix):')
+	println(matrix[0][0])
+	println(matrix[0][1])
+	println(matrix[0][2])
+	println(matrix[1][0])
+	println(matrix[1][1])
+	println(matrix[1][2])
+	
+	// Test initialization with nested literals
+	grid := [[10, 20], [30, 40]]
+	println('Grid:')
+	println(grid[0][0])
+	println(grid[0][1])
+	println(grid[1][0])
+	println(grid[1][1])
+}

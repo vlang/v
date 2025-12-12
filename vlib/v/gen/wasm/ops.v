@@ -73,6 +73,10 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		ast.Alias {
 			return g.get_wasm_type(ts.info.parent_type)
 		}
+		ast.Array {
+			// Dynamic arrays are represented as pointer to array struct
+			return wasm.ValType.i32_t // pointer
+		}
 		ast.ArrayFixed {
 			return wasm.ValType.i32_t // pointer
 		}
