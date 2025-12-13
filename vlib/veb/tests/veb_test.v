@@ -14,6 +14,7 @@ const vexe = os.getenv('VEXE')
 const veb_logfile = os.getenv('VEB_LOGFILE')
 const vroot = os.dir(vexe)
 const serverexe = os.join_path(os.cache_dir(), 'veb_test_server.exe')
+const serverexe_new = os.join_path(os.cache_dir(), 'veb_test_server_new_veb.exe')
 const tcp_r_timeout = 10 * time.second
 const tcp_w_timeout = 10 * time.second
 
@@ -23,6 +24,9 @@ fn testsuite_begin() {
 	if os.exists(serverexe) {
 		os.rm(serverexe) or {}
 	}
+	if os.exists(serverexe_new) {
+		os.rm(serverexe_new) or {}
+	}
 }
 
 fn test_simple_veb_app_can_be_compiled() {
@@ -30,6 +34,13 @@ fn test_simple_veb_app_can_be_compiled() {
 	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
+}
+
+fn test_new_veb_app_can_be_compiled() {
+	// Ensure the new fasthttp backend builds successfully.
+	did_server_compile := os.system('${os.quoted_path(vexe)} -d new_veb -o ${os.quoted_path(serverexe_new)} vlib/veb/tests/veb_test_server.v')
+	assert did_server_compile == 0
+	assert os.exists(serverexe_new)
 }
 
 fn test_a_simple_veb_app_runs_in_the_background() {

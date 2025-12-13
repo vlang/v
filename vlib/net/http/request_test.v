@@ -230,3 +230,38 @@ fn test_parse_multipart_form_issue_24974_cooked() {
 	assert files['files'][0].filename == 'mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg'
 	assert files['files'][0].content_type == 'image/jpeg'
 }
+
+fn test_parse_request_head_str_basic() {
+	s := 'GET / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 0\r\n\r\n'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.method == .get
+	assert req.url == '/'
+	assert req.version == .v1_1
+	assert req.host == 'example.com'
+}
+
+fn test_parse_request_head_str_post_with_headers() {
+	s := 'POST /api HTTP/1.1\r\nHost: test.com\r\nContent-Type: application/json\r\nContent-Length: 10\r\n\r\n'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.method == .post
+	assert req.url == '/api'
+	assert req.version == .v1_1
+	assert req.host == 'test.com'
+	assert req.header.custom_values('Content-Type') == ['application/json']
+}
+
+fn test_parse_request_head_str_with_spaces_in_header_values() {
+	s := 'GET /path HTTP/1.1\r\nX-Custom-Header: value with spaces\r\n\r\n'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.method == .get
+	assert req.url == '/path'
+	assert req.header.custom_values('X-Custom-Header') == ['value with spaces']
+}
+
+fn test_parse_request_head_str_multiple_same_header() {
+	s := 'GET / HTTP/1.1\r\nHost: example.com\r\nSet-Cookie: session=abc\r\nSet-Cookie: user=xyz\r\n\r\n'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.method == .get
+	assert req.host == 'example.com'
+	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
+}
