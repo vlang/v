@@ -170,11 +170,11 @@ make
 
 ### OpenBSD
 
-On OpenBSD (release 7.7), V needs `boehm-gc` and `openssl-3.4.1p0v0` packages preinstalled. After
+On OpenBSD (release 7.8), V needs `boehm-gc` and `openssl-3.5` packages preinstalled. After
 installing them, use GNU `make` (installed with `gmake` package), to build V.
 
 ```bash
-pkg_add boehm-gc openssl-3.4.1p0v0 gmake
+pkg_add boehm-gc openssl%3.5 gmake
 git clone --depth=1 https://github.com/vlang/v
 cd v
 gmake
