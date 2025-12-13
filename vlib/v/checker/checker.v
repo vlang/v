@@ -3353,7 +3353,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		// }
 		ast.ParExpr {
 			if node.expr is ast.ParExpr {
-				c.warn('redundant parentheses are used', node.pos)
+				c.note('redundant parentheses are used', node.pos)
 			}
 			return c.expr(mut node.expr)
 		}
