@@ -33,7 +33,7 @@ jobs:
         uses: cross-platform-actions/action@v0.30.0
         with:
           operating_system: openbsd
-          version: '7.7'
+          version: '7.8'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -59,7 +59,7 @@ jobs:
         uses: cross-platform-actions/action@v0.30.0
         with:
           operating_system: openbsd
-          version: '7.7'
+          version: '7.8'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -85,7 +85,7 @@ jobs:
         uses: cross-platform-actions/action@v0.30.0
         with:
           operating_system: openbsd
-          version: '7.7'
+          version: '7.8'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
