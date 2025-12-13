@@ -170,7 +170,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as ast.Array
 	elem_type := info.elem_type
-	elem_sym := g.table.sym(elem_type)
+	elem_sym := g.table.final_sym(elem_type)
 	elem_type_str := if elem_sym.kind == .function {
 		'voidptr'
 	} else {
