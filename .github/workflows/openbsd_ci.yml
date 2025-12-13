@@ -98,5 +98,5 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
-            export VFLAGS='-cc egcc'
+            export VFLAGS='-cc gcc'
             ./v run ci/openbsd_ci.vsh all
