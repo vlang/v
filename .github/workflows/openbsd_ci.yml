@@ -74,3 +74,29 @@ jobs:
             sudo ./v symlink
             export VFLAGS='-cc clang'
             ./v run ci/openbsd_ci.vsh all
+
+  gcc-openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tests on OpenBSD with gcc
+        id: tests-openbsd-clang
+        uses: cross-platform-actions/action@v0.30.0
+        with:
+          operating_system: openbsd
+          version: '7.8'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          run: |
+            sudo pkg_add git sqlite3 gmake boehm-gc libiconv gcc%11
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s openbsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            gmake
+            sudo ./v symlink
+            export VFLAGS='-cc egcc'
+            ./v run ci/openbsd_ci.vsh all
