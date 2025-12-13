@@ -507,7 +507,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 		time.sleep(thirdparty_obj_build_retry_delay)
 	}
 	if res.exit_code != 0 {
-		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
+		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}\nresult:${res.output}')
 	}
 	$if trace_thirdparty_obj_files ? {
 		println(res.output)
