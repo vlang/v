@@ -2909,7 +2909,7 @@ fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.
 	}
 }
 
-fn (mut c Checker) post_process_generic_fns() ! {
+pub fn (mut c Checker) post_process_generic_fns() ! {
 	mut all_generic_fns := map[string]int{}
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.

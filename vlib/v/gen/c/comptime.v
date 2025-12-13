@@ -431,9 +431,17 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
 		} else {
-			g.error('checker error: condition result idx string not found => [${idx_str}]',
-				node.branches[i].cond.pos())
-			return
+			if comptime_branch_context_str.contains('method.name=str') {
+				// workaround for auto_str(). Because `builder` call `checker` before `gen_auto_fn()`
+				// Always set to false to bypass this
+				is_true = ast.ComptTimeCondResult{
+					c_str: 'false'
+				}
+			} else {
+				g.error('checker error: condition result idx string not found => [${idx_str}]',
+					node.branches[i].cond.pos())
+				return
+			}
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if i == 0 {
