@@ -244,26 +244,20 @@ pub fn in_bounce(x f64) f64 {
 
 // out_bounce returns the equivalent of https://easings.net/#easeOutBounce .
 pub fn out_bounce(x f64) f64 {
-	if math.close(x, 1.0) {
-		return 1.0
-	}
 	xd1 := x * d1
-	return n1 * (if xd1 < 1.0 {
-		x * x
+	return if xd1 < 1.0 {
+		n1 * x * x
 	} else if xd1 < 2.0 {
-		pow((x - 1.5 / d1), 2.0) + 0.75
+		n1 * pow(x - 1.5 / d1, 2.0) + 0.75
 	} else if xd1 < 2.5 {
-		pow((x - 2.25 / d1), 2.0) + 0.9375
+		n1 * pow(x - 2.25 / d1, 2.0) + 0.9375
 	} else {
-		pow((x - 2.625 / d1), 2.0) + 0.984375
-	})
+		n1 * pow(x - 2.625 / d1, 2.0) + 0.984375
+	}
 }
 
 // in_out_bounce returns the equivalent of https://easings.net/#easeInOutBounce .
 pub fn in_out_bounce(x f64) f64 {
-	if math.close(x, 1.0) {
-		return 1.0
-	}
 	return if x < 0.5 {
 		(1.0 - out_bounce(1.0 - 2.0 * x)) / 2.0
 	} else {
