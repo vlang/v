@@ -21,15 +21,19 @@ struct MyTest {
 	t ITest
 }
 
-fn main() {
-	interface_var(Test{ a: true })
+fn struct_to_interface_field() {
 	t1 := Test{}
-	t2 := MyTest{
+	_ := MyTest{
 		t: t1
 	}
-	mut t3 := Test{}
-	t4 := MyTest{
-		t: t3
+	mut t2 := Test{}
+	_ := MyTest{
+		t: t2
 	}
 	$dbg;
+}
+
+fn main() {
+	interface_var(Test{ a: true })
+	struct_to_interface_field()
 }
