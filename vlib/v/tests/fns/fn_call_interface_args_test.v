@@ -1,8 +1,8 @@
 interface Foo {}
 
 fn has_interface_args(mut a Foo, b &Foo, c Foo) {
-	assert a == &Foo(1)
-	assert b == &Foo(1)
+	assert a == unsafe { &Foo(1) }
+	assert b == unsafe { &Foo(1) }
 	assert c == Foo(1)
 }
 

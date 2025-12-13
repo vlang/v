@@ -10,7 +10,7 @@ fn (mut s MyStruct[T]) add(e &T) bool {
 }
 
 fn fill(mut s MyStruct[i64]) {
-	s.add(&i64(123))
+	s.add(unsafe { &i64(123) })
 }
 
 fn test_generics_call_with_reference_arg() {

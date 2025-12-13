@@ -1,5 +1,5 @@
 struct Foo {
-	option ?int = none
+	option ?int = unsafe { none }
 }
 
 fn test_main() {

@@ -21,7 +21,7 @@ fn test_pure_v_math_module() {
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('v -silent test-self vlib')
+		exec('v -W -silent test-self vlib')
 	} else {
 		exec('v -progress test-self vlib')
 	}
@@ -29,7 +29,7 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v build-examples')
+		exec('v -W build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
