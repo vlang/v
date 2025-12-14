@@ -82,6 +82,16 @@ fn test_net_http_connecting_through_ipv6_works() {
 		log.warn('skipping test ${@FN} on windows for now')
 		return
 	}
+	$if freebsd {
+		// if the sysctl net.inet.ip.connect_inaddr_wild doesn't exist or
+		// if it axists and is non-zero, we should expect the IPv6 socket to be open.
+		result := os.execute('sysctl net.inet.ip.connect_inaddr_wild')
+		if result.exit_code == 0
+			&& result.output.trim_space() == 'net.inet.ip.connect_inaddr_wild: 0' {
+			log.warn('skipping test ${@FN} on FreeBSD because sysctl setting net.inet.ip.connect_inaddr_wild=0')
+			return
+		}
+	}
 	res := http.get('http://[::1]:${port}/')!
 	assert res.status_code == 200, res.str()
 	assert res.status_msg == 'OK', res.str()
