@@ -85,8 +85,7 @@ fn main() {
 		app.dtmi.stop_cache_handler()
 	}
 
-	/*
-    Here is an example of init configuration :
+	// Here is an example of init configuration:
 
 	dtm.initialize(
       def_cache_path: cache_folder_path
@@ -94,7 +93,6 @@ fn main() {
 	  active_cache_server: false
 	  max_size_data_in_mem: 100
     )
-	*/
 
 	veb.run[App, Context](mut app, 18081)
 }
