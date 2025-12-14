@@ -847,7 +847,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									}
 								}
 							} else {
-								g.write('${styp}/**/ ')
+								g.write('${styp} ')
 							}
 						}
 						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
