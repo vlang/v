@@ -53,6 +53,11 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 			}
 
 			routes[method.name] = route
+		} $else {
+			// If we have route attributes, but the wrong return type, return an error
+			if has_route_attributes(method.attrs) {
+				return error('method `${method.name}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+			}
 		}
 	}
 	return routes
