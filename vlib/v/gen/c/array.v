@@ -61,7 +61,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(expr, expr_type, node.elem_type)
 				} else if elem_type.unaliased_sym.kind == .array_fixed
-					&& expr in [ast.Ident, ast.SelectorExpr] {
+					&& expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr] {
 					info := elem_type.unaliased_sym.info as ast.ArrayFixed
 					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 						info.elem_type, info.size)
