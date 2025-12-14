@@ -14,6 +14,9 @@ mut:
 }
 
 pub fn Map.create(values ...Value) Map {
+	if values.len == 1 && values[0] is []Value {
+		return Map.create(...(values[0] as []Value))
+	}
 	assert values.len > 1
 	assert values.len % 2 == 0
 	mut m := Map{}
@@ -35,4 +38,5 @@ pub fn build_map(index_from int, index_to int) Map {
 fn main() {
 	m := build_map(2, 4)
 	_ = m
+	_ := Map.create(1, [Value(1)])
 }
