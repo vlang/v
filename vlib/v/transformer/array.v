@@ -11,10 +11,17 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	for mut expr in node.exprs {
 		expr = t.expr(mut expr)
 	}
-	node.len_expr = t.expr(mut node.len_expr)
-	node.cap_expr = t.expr(mut node.cap_expr)
-	node.init_expr = t.expr(mut node.init_expr)
-	if !t.pref.new_transform || node.is_fixed || t.inside_in || node.has_len || node.has_cap {
+	if node.has_len {
+		node.len_expr = t.expr(mut node.len_expr)
+	}
+	if node.has_cap {
+		node.cap_expr = t.expr(mut node.cap_expr)
+	}
+	if node.has_init {
+		node.init_expr = t.expr(mut node.init_expr)
+	}
+	if !t.pref.new_transform || node.is_fixed || t.inside_in || node.has_len || node.has_cap
+		|| node.exprs.len == 0 {
 		return node
 	}
 	// For C and native transform into a function call `builtin__new_array_from_c_array_noscan(...)` etc
@@ -73,13 +80,13 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	mut call_expr := ast.CallExpr{
 		name:        fn_name
 		mod:         'builtin'
+		scope:       unsafe { nil }
 		args:        [len_arg, len_arg, sizeof_arg, fixed_array_arg] //, sizeof(voidptr), _MOV((voidptr[${len}]){')
 		return_type: node.typ
 	}
 	// println('call expr')
 	// println(call_expr)
-	final_expr := t.expr(mut call_expr)
-	return final_expr
+	return call_expr
 	/*
 		if len > 8 {
 			g.writeln('')
