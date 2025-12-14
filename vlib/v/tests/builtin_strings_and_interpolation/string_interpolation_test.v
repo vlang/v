@@ -97,10 +97,12 @@ fn test_inttypes_string_interpolation() {
 	ui := u32(3421958087) // 0xCBF6 EFC7
 	vp := voidptr(ui)
 	mut bp := &u8(unsafe { nil })
-	$if x64 {
-		bp = &u8(15541149836) // 0x3 9E53 208C
-	} $else {
-		bp = &u8(3541149836) // 0xD311 A88C
+	unsafe {
+		$if x64 {
+			bp = &u8(15541149836) // 0x3 9E53 208C
+		} $else {
+			bp = &u8(3541149836) // 0xD311 A88C
+		}
 	}
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)

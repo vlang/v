@@ -23,6 +23,6 @@ fn test_main() {
 		assert false
 	}
 
-	assert typeof(command_arr_el_ptr) == 'Call'
-	assert typeof(command_arr_ptr) == '[]&Command'
+	assert unsafe { typeof(command_arr_el_ptr) == 'Call' }
+	assert unsafe { typeof(command_arr_ptr) == '[]&Command' }
 }

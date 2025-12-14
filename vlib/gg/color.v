@@ -130,7 +130,25 @@ pub fn hex(color i32) Color {
 	}
 }
 
-// rgb builds a Color instance from given r, g, b values
+// frgb builds a Color instance from the given floating point values (between 0.0 and 1.0) r, g, b
+@[inline]
+pub fn frgb[T](r T, g T, b T) Color {
+	return frgba(r, g, b, 1.0)
+}
+
+// frgba builds a Color instance from the given floating point values (between 0.0 and 1.0) r, g, b, a
+@[inline]
+pub fn frgba[T](r T, g T, b T, a T) Color {
+	return Color{
+		r: u8(r * 255.0)
+		g: u8(g * 255.0)
+		b: u8(b * 255.0)
+		a: u8(a * 255.0)
+	}
+}
+
+// rgb builds a Color instance from the given r, g, b u8 values
+@[inline]
 pub fn rgb(r u8, g u8, b u8) Color {
 	return Color{
 		r: r
@@ -139,7 +157,8 @@ pub fn rgb(r u8, g u8, b u8) Color {
 	}
 }
 
-// rgba builds a Color instance from given r, g, b, a values
+// rgba builds a Color instance from the given r, g, b, a u8 values
+@[inline]
 pub fn rgba(r u8, g u8, b u8, a u8) Color {
 	return Color{
 		r: r

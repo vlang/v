@@ -41,6 +41,18 @@ fn test_str_methods() {
 	assert charptr(1).str() == '0x1'
 }
 
+fn test_str_length() {
+	assert i8(-125).str() == '-125'
+	assert i16(-32760).str() == '-32760'
+	assert i32(-2147483610).str() == '-2147483610'
+	assert int(-2147483620).str() == '-2147483620'
+	assert i64(-9223372036854775801).str() == '-9223372036854775801'
+	assert u8(250).str() == '250'
+	assert u16(65530).str() == '65530'
+	assert u32(4294967250).str() == '4294967250'
+	assert u64(18446744073709551611).str() == '18446744073709551611'
+}
+
 fn test_and_precedence() {
 	assert (2 & 0 == 0) == ((2 & 0) == 0)
 	assert (2 & 0 != 0) == ((2 & 0) != 0)

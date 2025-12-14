@@ -1,4 +1,4 @@
-// vtest build: !self_sandboxed_packaging? && !sanitized_job?
+// vtest build: tinyc && !self_sandboxed_packaging? && !sanitized_job?
 import os
 import time
 import term

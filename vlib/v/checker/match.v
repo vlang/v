@@ -238,6 +238,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 
+		for mut expr in branch.exprs {
+			// (expr) => expr
+			expr = expr.remove_par()
+		}
+
 		if !c.pref.translated && !c.file.is_translated {
 			// check for always true/false match branch
 			for mut expr in branch.exprs {

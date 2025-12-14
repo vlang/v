@@ -6,7 +6,7 @@ type Func = fn () int
 fn handle_fns(fns []Func, mut w MyInterface) {}
 
 fn test_main() {
-	mut w := &MyInterface(123)
+	mut w := unsafe { &MyInterface(123) }
 	spawn handle_fns([], mut w)
 	assert true
 }

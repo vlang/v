@@ -52,7 +52,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write(g.type_default_sumtype(unwrapped_typ, sym))
 		}
 		return
-	} else if sym.kind == .map {
+	} else if sym.kind == .map || (sym.kind == .array && node.init_fields.len == 0) {
 		g.write(g.type_default(unwrapped_typ))
 		return
 	}

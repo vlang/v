@@ -2647,7 +2647,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					if variadic_count == 1
 						&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
 						|| (varg_type.has_flag(.variadic)
-						&& args[arg_nr].typ == varg_type.clear_flag(.variadic))) {
+						&& args[arg_nr].typ == varg_type.clear_flag(.variadic)
+						&& !g.table.sumtype_has_variant(arr_info.elem_type, args[arg_nr].typ, false))) {
 						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
 							false)
 					} else {

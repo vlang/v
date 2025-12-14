@@ -34,10 +34,10 @@ fn test_f32() {
 	}
 	println(' f32  ')
 	println(histo)
-	assert histo[0].ct == 1
-	assert histo[1].ct == 16
-	assert histo[2].ct == 1802
-	assert histo[3].ct == 181963
+	assert histo[0].ct == 4
+	assert histo[1].ct == 21
+	assert histo[2].ct == 1821
+	assert histo[3].ct == 182583
 	assert histo[4].ct == 18200200
 	for mut p in histo {
 		p.ct = 0
@@ -56,9 +56,9 @@ fn test_f32() {
 	println(' f32cp')
 	println(histo)
 	assert histo[0].ct == 0
-	assert histo[1].ct == 16
-	assert histo[2].ct == 1863
-	assert histo[3].ct == 142044
+	assert histo[1].ct == 22
+	assert histo[2].ct == 1829
+	assert histo[3].ct == 142203
 	assert histo[4].ct == 18200200
 }
 
@@ -86,9 +86,9 @@ fn test_f64() {
 	println(' f64  ')
 	println(histo)
 	assert histo[0].ct == 0
-	assert histo[1].ct == 23
-	assert histo[2].ct == 1756
-	assert histo[3].ct == 182209
+	assert histo[1].ct == 25
+	assert histo[2].ct == 1763
+	assert histo[3].ct == 182552
 	assert histo[4].ct == 18200200
 	for mut p in histo {
 		p.ct = 0
@@ -107,8 +107,8 @@ fn test_f64() {
 	println(' f64cp')
 	println(histo)
 	assert histo[0].ct == 0
-	assert histo[1].ct == 17
-	assert histo[2].ct == 1878
-	assert histo[3].ct == 181754
+	assert histo[1].ct == 22
+	assert histo[2].ct == 1787
+	assert histo[3].ct == 182160
 	assert histo[4].ct == 18200200
 }

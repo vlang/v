@@ -2149,9 +2149,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
+	expected_cast_type := g.expected_cast_type
 	mut last_stmt_was_return := false
 	for i, stmt in stmts {
 		if i == stmts.len - 1 {
+			g.expected_cast_type = expected_cast_type
 			if stmt is ast.Return {
 				last_stmt_was_return = true
 			}
@@ -4830,7 +4832,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 							'&'
 						} else if !str_method_expects_ptr && obj.typ.is_ptr() {
 							'*'.repeat(obj.typ.nr_muls())
-						} else if !str_method_expects_ptr && obj_sym.is_heap() {
+						} else if !str_method_expects_ptr && (obj_sym.is_heap() || obj.is_auto_heap) {
 							'*'
 						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
 							'*'
