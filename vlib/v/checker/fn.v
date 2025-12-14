@@ -4068,7 +4068,8 @@ fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_
 	styp := c.table.type_to_str(typ)
 	elem_styp := c.table.type_to_str(expected_type)
 	expected_kind := c.table.sym(expected_type).kind
-	sum_type_needs_spread := expected_kind == .sum_type && is_single_array_arg
+	sum_type_needs_spread := expected_kind == .sum_type
+		&& !c.table.sumtype_has_variant(expected_type, typ, false) && is_single_array_arg
 	if kind == .array && !is_decompose && !allow_variadic_pass
 		&& (expected_kind !in [.sum_type, .interface] || sum_type_needs_spread)
 		&& !param_typ.has_flag(.generic) && expected_type != typ {

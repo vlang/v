@@ -2,7 +2,7 @@ type Nil = u8
 
 const c_nil = Nil(`\0`)
 
-pub type Value = Nil | int | string | []Value | Map
+pub type Value = Nil | int | string | Map
 
 pub fn (v Value) string() string {
 	return '${v.str()}'
