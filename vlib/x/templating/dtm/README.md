@@ -88,11 +88,11 @@ fn main() {
 	// Here is an example of init configuration:
 
 	dtm.initialize(
-      def_cache_path: cache_folder_path
-	  compress_html: false
-	  active_cache_server: false
-	  max_size_data_in_mem: 100
-    )
+		def_cache_path:       cache_folder_path
+		compress_html:        false
+		active_cache_server:  false
+		max_size_data_in_mem: 100
+	)
 
 	veb.run[App, Context](mut app, 18081)
 }
@@ -257,10 +257,11 @@ An example of a template, corresponding to the previous subsection:
 </html>
 ```
 
-You will note that the `_#includehtml` directive is not found in the template with `@placeholder_name_3`,
-and this is entirely normal. Directives are specially handled by the DTM, and including them in the name
-of your placeholders within the template will result in the placeholder not being found because it does
-not match the key name defined in the map containing the dynamic content.
+You will note that the `_#includehtml` directive is not found in the template with
+`@placeholder_name_3`, and this is entirely normal. Directives are specially handled
+by the DTM, and including them in the name of your placeholders within the template
+will result in the placeholder not being found because it does not match the key name
+defined in the map containing the dynamic content.
 
 Like the traditional template system in V, inclusions or placeholders start with the `@`
 character. The traditional inclusion system is still perfectly usable, such as:
