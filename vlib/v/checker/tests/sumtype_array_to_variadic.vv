@@ -35,5 +35,4 @@ pub fn build_map(index_from int, index_to int) Map {
 fn main() {
 	m := build_map(2, 4)
 	_ = m
-	_ := Map.create(1, [Value(1)])
 }
