@@ -70,16 +70,16 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	fn_name = 'new_array_from_c_array' + noscan
 	// g.write('builtin__new_array_from_c_array${noscan}(${len}, ${len}, sizeof(${elem_styp}), _MOV((${elem_styp}[${len}]){')
 	//}
-	call_expr := ast.CallExpr{
+	mut call_expr := ast.CallExpr{
 		name:        fn_name
 		mod:         'builtin'
-		scope:       ast.empty_scope // node.scope
 		args:        [len_arg, len_arg, sizeof_arg, fixed_array_arg] //, sizeof(voidptr), _MOV((voidptr[${len}]){')
 		return_type: node.typ
 	}
 	// println('call expr')
 	// println(call_expr)
-	return call_expr
+	final_expr := t.expr(mut call_expr)
+	return final_expr
 	/*
 		if len > 8 {
 			g.writeln('')
