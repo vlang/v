@@ -6,6 +6,6 @@ fn (d Dummy) sample_method() {
 
 fn main() {
 	$for method in Dummy.methods {
-		println(method)
+		println(method.attrs)
 	}
 }
