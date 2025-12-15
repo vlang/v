@@ -578,9 +578,9 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			if ret_elem_sym.kind == .array_fixed {
-					// unpack fixed array return value
-					g.writeln('{0};')
-					g.write('memcpy(&${tmp_map_expr_result_name}, ')
+				// unpack fixed array return value
+				g.writeln('{0};')
+				g.write('memcpy(&${tmp_map_expr_result_name}, ')
 			}
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
@@ -589,7 +589,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				g.write('${expr.decl.name}(${var_name})')
 			}
 			if ret_elem_sym.kind == .array_fixed {
-					g.write('.ret_arr, sizeof(${ret_elem_styp}))')
+				g.write('.ret_arr, sizeof(${ret_elem_styp}))')
 			}
 		}
 		ast.Ident {

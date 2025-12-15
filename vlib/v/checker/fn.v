@@ -3514,13 +3514,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	for mut arg in node.args {
 		mut expr_type := c.expr(mut arg.expr)
 		if arg.expr is ast.AnonFn {
-				// fix anon fn when return is a fixed array
-				expr_sym := c.table.sym(expr_type)
-				info := expr_sym.info as ast.FnType
-				return_type_sym := c.table.sym(info.func.return_type)
-				if return_type_sym.kind == .array_fixed {
-						expr_type = c.cast_fixed_array_ret(info.func.return_type, return_type_sym)
-				}
+			// fix anon fn when return is a fixed array
+			expr_sym := c.table.sym(expr_type)
+			info := expr_sym.info as ast.FnType
+			return_type_sym := c.table.sym(info.func.return_type)
+			if return_type_sym.kind == .array_fixed {
+				expr_type = c.cast_fixed_array_ret(info.func.return_type, return_type_sym)
+			}
 		}
 		arg_type = c.check_expr_option_or_result_call(arg.expr, expr_type)
 	}
