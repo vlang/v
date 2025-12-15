@@ -15,8 +15,11 @@ fn (mut it Iter) next() ?&MyFn {
 }
 
 fn test_main() {
+	mut c := 0
 	for p in Iter{} {
 		println(p)
 		p()
+		c += 1
 	}
+	assert c == 1
 }
