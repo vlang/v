@@ -662,6 +662,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} : ${method.name} */ {')
 			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
+			mlocation := util.cescaped_path(util.path_styled_for_error_messages(method.file))
+			g.writeln('\t${node.val_var}.location = _S("${mlocation}:${method.name_pos.line_nr + 1}:${method.name_pos.col}");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
 			} else {
