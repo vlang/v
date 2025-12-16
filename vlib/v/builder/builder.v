@@ -167,7 +167,9 @@ pub fn (mut b Builder) middle_stages() ! {
 	}
 	// generate auto fns, such as `.str()`
 	b.gen_auto_fn()
-	b.print_warnings_and_errors()
+	$if trace_auto_fn ? {
+		b.print_warnings_and_errors()
+	}
 }
 
 pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {

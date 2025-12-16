@@ -10,7 +10,7 @@ pub fn (mut b Builder) gen_auto_fn() {
 }
 
 fn (mut b Builder) gen_auto_str_fn() {
-	mut generic_to_concrete_map := map[ast.Type][]ast.Type{}
+	mut generic_to_concrete_map := map[ast.Type][][]ast.Type{}
 	// construct a `type_map`, to generate only one file for a module
 	mut need_auto_str_fn_type_map := map[string][]&ast.TypeSymbol{}
 	mut already_gen_str_map := map[string]bool{}
@@ -37,8 +37,7 @@ fn (mut b Builder) gen_auto_str_fn() {
 		mut check_file_list := []&ast.File{}
 		for full_mod_name, types in need_auto_str_fn_type_map {
 			mod_name := full_mod_name.all_after_last('.')
-			sb.writeln('module ${mod_name}')
-			b.auto_str_has_import_strings = false
+			sb.writeln('module ${mod_name}\nimport strings')
 			for t in types {
 				mut type_name := b.auto_fn_get_type_name(t, false) // main.MyS[int] => MyS[T]
 				if t.name.starts_with('C.') {
@@ -47,34 +46,35 @@ fn (mut b Builder) gen_auto_str_fn() {
 					type_name = full_mod_name + '.' + type_name
 				}
 				type_name2 := b.auto_fn_get_type_name(t, true) // main.MyS[int] => MyS[${T.name}]
-				if type_name !in already_gen_str_map {
-					match t.kind {
-						.struct {
-							info := t.info as ast.Struct
-							if info.parent_type.has_flag(.generic) {
-								// for `post_process_generic_fns`
-								generic_to_concrete_map[info.parent_type] << info.concrete_types
-							}
-							hint := 'type=${t.idx}\nt.name=${t.name}'
+				match t.kind {
+					.struct {
+						info := t.info as ast.Struct
+						if info.parent_type.has_flag(.generic) {
+							// for `post_process_generic_fns`
+							generic_to_concrete_map[info.parent_type] << [
+								info.concrete_types,
+							]
+						}
+						hint := 'type=${t.idx}\nt.name=${t.name}'
+						if type_name !in already_gen_str_map {
 							b.gen_str_for_struct(mut sb, type_name, type_name2, info,
 								hint)
+							already_gen_str_map[type_name] = true
 						}
-						else {}
 					}
-					already_gen_str_map[type_name] = true
+					else {}
 				}
 			}
 			v_file := sb.str()
 			v_file_name := b.get_mod_full_path(full_mod_name) +
 				'/v_auto_generated_auto_fn(${full_mod_name}).v'
 			// os.write_file(v_file_name, v_file) or {}
-			// dump(v_file_name)
-			// dump(v_file)
+			$if trace_auto_fn ? {
+				dump(v_file_name)
+				dump(v_file)
+			}
 			mut the_file := parser.parse_text(v_file, v_file_name, mut b.table, .skip_comments,
 				b.pref)
-			// mut the_file := parser.parse_file(v_file_name, mut b.table, .skip_comments, b.pref)
-			// os.rm(v_file_name) or {}
-			// the_file.is_parse_text = false
 			b.parsed_files << the_file
 			b.table.filelist << v_file_name
 			check_file_list << the_file
@@ -82,7 +82,6 @@ fn (mut b Builder) gen_auto_str_fn() {
 		// need to call `checker` for this generated v_file
 		for mut f in check_file_list {
 			b.checker.check(mut f)
-			// dump(b.checker.table.fn_generic_types)
 			b.auto_fn_fix_generics(mut f, generic_to_concrete_map)
 		}
 	}
@@ -97,19 +96,15 @@ fn (mut b Builder) gen_str_for_struct(mut sb strings.Builder, struct_name string
 		''
 	}
 	if info.fields.len == 0 {
-		sb.writeln("@[markused]\npub fn (it &${struct_name}) str${generic_types}() string { return '${clean_struct_v_type_name}{}' }")
+		sb.writeln("@[markused]\npub fn (it ${struct_name}) str${generic_types}() string { return '${clean_struct_v_type_name}{}' }")
 		return
 	}
 	// -hide-auto-str hides potential sensitive struct data from resulting binary files
 	if b.pref.hide_auto_str {
-		sb.writeln("@[markused]\npub fn (it &${struct_name}) str${generic_types}() string { return 'str() used with -hide-auto-str' }")
+		sb.writeln("@[markused]\npub fn (it ${struct_name}) str${generic_types}() string { return 'str() used with -hide-auto-str' }")
 		return
 	}
-	if !b.auto_str_has_import_strings {
-		b.auto_str_has_import_strings = true
-		sb.writeln('import strings\n')
-	}
-	sb.writeln('@[markused]\npub fn (it &${struct_name}) str${generic_types}() string {')
+	sb.writeln('@[markused]\npub fn (it ${struct_name}) str${generic_types}() string {')
 	// is_c_struct := struct_name.starts_with('C.')
 	sb.writeln('\tmut res := strings.new_builder(222)')
 	sb.writeln('\tres.write_string(\'${clean_struct_v_type_name}{\')')
@@ -195,12 +190,12 @@ fn (mut b Builder) auto_fn_get_type_name(t &ast.TypeSymbol, is_get_type_name boo
 	return type_name
 }
 
-fn (mut b Builder) auto_fn_fix_generics(mut file ast.File, generic_to_concrete_map map[ast.Type][]ast.Type) {
+fn (mut b Builder) auto_fn_fix_generics(mut file ast.File, generic_to_concrete_map map[ast.Type][][]ast.Type) {
 	if file.generic_fns.len == 0 {
 		return
 	}
 	for node in file.generic_fns {
-		if concrete_types := generic_to_concrete_map[node.receiver.typ.deref()] {
+		if concrete_types := generic_to_concrete_map[node.receiver.typ] {
 			fkey := node.fkey()
 			b.table.fn_generic_types[fkey] << concrete_types
 		}
