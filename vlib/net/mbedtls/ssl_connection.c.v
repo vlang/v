@@ -691,7 +691,8 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				remaining_time = (deadline - time.now()).milliseconds()
 				continue
 			}
-			return error_with_code('net.mbedtls select, failed, res: ${res}', C.errno)
+			cerr := C.errno
+			return error_with_code('net.mbedtls select, failed, res: ${res}', cerr)
 		} else if res == 0 {
 			return net.err_timed_out
 		}
