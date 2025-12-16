@@ -3051,7 +3051,7 @@ fn call_convention_attribute(cconvention string, is_cc_msvc bool) string {
 	return if is_cc_msvc { '__${cconvention} ' } else { '__attribute__((${cconvention})) ' }
 }
 
-fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType) {
+fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType, nr_muls int) {
 	ret_styp := g.styp(info.func.return_type)
 	mut call_conv := ''
 	mut msvc_call_conv := ''
@@ -3072,7 +3072,7 @@ fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType) {
 	} else {
 		''
 	}
-	g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
+	g.write('${ret_styp} (${msvc_call_conv}${'*'.repeat(nr_muls + 1)}${fn_name}) (')
 	def_pos := g.definitions.len
 	g.fn_decl_params(info.func.params, unsafe { nil }, false, false)
 	g.definitions.go_back(g.definitions.len - def_pos)

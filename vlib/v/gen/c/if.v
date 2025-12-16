@@ -397,7 +397,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							}
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info)
+								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())
 							} else {
 								g.write('\t${base_type} ${left_var_name}')
 							}

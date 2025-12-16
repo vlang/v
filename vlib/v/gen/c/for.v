@@ -562,7 +562,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')
 			} else {
 				if ret_sym.info is ast.FnType {
-					g.write_fntype_decl(val, ret_sym.info)
+					g.write_fntype_decl(val, ret_sym.info, 0)
 					g.writeln(' = **(${val_styp}**)&${t_var}.data;')
 				} else {
 					g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
