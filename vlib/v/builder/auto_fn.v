@@ -62,6 +62,14 @@ fn (mut b Builder) gen_auto_str_fn() {
 							already_gen_str_map[type_name] = true
 						}
 					}
+					.alias {
+						info := t.info as ast.Alias
+						hint := 'type=${t.idx}\nt.name=${t.name}'
+						if type_name !in already_gen_str_map {
+							b.gen_str_for_alias(mut sb, type_name, type_name2, info, hint)
+							already_gen_str_map[type_name] = true
+						}
+					}
 					else {}
 				}
 			}
@@ -131,21 +139,25 @@ fn (mut b Builder) gen_str_for_struct(mut sb strings.Builder, struct_name string
 			sb.writeln('\trlock it.${f.name} {')
 		}
 		if f.typ == ast.string_type {
-			sb.writeln('\tres.write_string(\'    ${f.name}: \\\'\${it.${f.name}}\\\'\\n\')')
+			sb.writeln('\tres.write_string(\'${f.name}: \\\'\${it.${f.name}}\\\'\\n\')')
 		} else {
 			sym := b.table.sym(f.typ)
 			if sym.kind == .struct {
 				if f.typ.has_flag(.option) {
 					sb.writeln('\tif option_f := it.${f.name} {')
-					sb.writeln("\t\tres.writeln('    ${f.name}: Option(\${option_f})')")
+					sb.writeln("\t\tres.writeln('${f.name}: Option(\${option_f})')")
 					sb.writeln('\t}\n\telse {')
-					sb.writeln("\t\tres.writeln('    ${f.name}: Option(none)')")
+					sb.writeln("\t\tres.writeln('${f.name}: Option(none)')")
 					sb.writeln('\t}')
 				} else {
-					sb.writeln("\tres.writeln('    ${f.name}: \${it.${f.name}}')")
+					sb.writeln("\tres.writeln('${f.name}: \${it.${f.name}}')")
 				}
+			} else if sym.kind == .chan {
+				elem_info := sym.info as ast.Chan
+				elem_type_str := b.table.type_to_str(elem_info.elem_type)
+				sb.writeln("\tres.writeln('${f.name}: chan ${elem_type_str}{cap: \${it.${f.name}.cap}, closed: \${it.${f.name}.closed}}')")
 			} else {
-				sb.writeln("\tres.writeln('    ${f.name}: \${it.${f.name}}')")
+				sb.writeln("\tres.writeln('${f.name}: \${it.${f.name}}')")
 			}
 		}
 		if f.typ.has_flag(.shared_f) {
@@ -159,6 +171,25 @@ fn (mut b Builder) gen_str_for_struct(mut sb strings.Builder, struct_name string
 	sb.writeln('\treturn sb.str()\n}')
 }
 
+fn (mut b Builder) gen_str_for_alias(mut sb strings.Builder, alias_name string, alias_name2 string, info ast.Alias, hint string) {
+	sb.writeln('/*${hint}*/')
+	// -hide-auto-str hides potential sensitive struct data from resulting binary files
+	if b.pref.hide_auto_str {
+		sb.writeln("@[markused]\npub fn (it ${alias_name}) str() string { return 'str() used with -hide-auto-str' }")
+		return
+	}
+	parent_type_name := b.table.type_to_str(info.parent_type)
+	sb.writeln('@[markused]\npub fn (it ${alias_name}) str() string {')
+	sb.writeln('\tparent_it := *(&${parent_type_name}(&it))')
+	sb.writeln('\tmut res := strings.new_builder(222)')
+	sb.writeln("\tres.write_string('    ${alias_name2}(\${parent_it})')")
+	// sb.writeln('\t// note: this can be removed after move dump beyond cgen')
+	// sb.writeln('\tmut sb := strings.new_builder(222)')
+	// sb.writeln('\tsb.indent(res.str())')
+	// sb.writeln('\treturn sb.str()\n}')
+	sb.writeln('\treturn res.str()\n}')
+}
+
 fn (b Builder) get_mod_full_path(full_mod_name string) string {
 	for f in b.parsed_files {
 		if f.mod.name == full_mod_name {
@@ -169,7 +200,7 @@ fn (b Builder) get_mod_full_path(full_mod_name string) string {
 }
 
 fn (mut b Builder) auto_fn_get_type_name(t &ast.TypeSymbol, is_get_type_name bool) string {
-	mut type_name := t.name
+	mut type_name := t.name.all_after_last('.')
 	if t.kind == .struct {
 		// main.MyS[int] => MyS[T]
 		info := t.info as ast.Struct
