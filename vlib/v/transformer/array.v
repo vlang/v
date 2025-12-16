@@ -70,7 +70,7 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 				typ:        fixed_array_typ
 				elem_type:  node.elem_type
 				exprs:      node.exprs
-				expr_types: node.exprs.map(expr_type(it))
+				expr_types: node.exprs.map(it.type())
 			}
 			typ:       ast.voidptr_type
 			typname:   'voidptr'
