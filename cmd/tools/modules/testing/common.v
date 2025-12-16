@@ -912,8 +912,8 @@ fn check_openssl_present() bool {
 		return false
 	}
 	$if openbsd {
-		return os.execute('eopenssl34 --version').exit_code == 0
-			&& os.execute('pkg-config eopenssl34 --libs').exit_code == 0
+		return os.execute('eopenssl35 --version').exit_code == 0
+			&& os.execute('pkg-config eopenssl35 --libs').exit_code == 0
 	} $else {
 		return os.execute('openssl --version').exit_code == 0
 			&& os.execute('pkg-config openssl --libs').exit_code == 0
