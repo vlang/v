@@ -1,4 +1,4 @@
-import net
+import net as _
 
 const C.AF_UNIX u16
 

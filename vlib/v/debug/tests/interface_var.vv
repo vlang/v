@@ -17,6 +17,23 @@ fn interface_var(a ITest) {
 	}
 }
 
+struct MyTest {
+	t ITest
+}
+
+fn struct_to_interface_field() {
+	t1 := Test{}
+	_ := MyTest{
+		t: t1
+	}
+	mut t2 := Test{}
+	_ := MyTest{
+		t: t2
+	}
+	$dbg;
+}
+
 fn main() {
 	interface_var(Test{ a: true })
+	struct_to_interface_field()
 }

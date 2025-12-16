@@ -395,7 +395,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							} else {
 								'-> '
 							}
-							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}${dot_or_ptr}data;')
+							expr_sym := g.table.sym(branch.cond.expr_type)
+							if expr_sym.info is ast.FnType {
+								g.write_fntype_decl(left_var_name, expr_sym.info)
+							} else {
+								g.write('\t${base_type} ${left_var_name}')
+							}
+							g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 						}
 					} else if branch.cond.vars.len > 1 {
 						sym := g.table.sym(branch.cond.expr_type)

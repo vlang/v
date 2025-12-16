@@ -2647,7 +2647,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					if variadic_count == 1
 						&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
 						|| (varg_type.has_flag(.variadic)
-						&& args[arg_nr].typ == varg_type.clear_flag(.variadic))) {
+						&& args[arg_nr].typ == varg_type.clear_flag(.variadic)
+						&& !g.table.sumtype_has_variant(arr_info.elem_type, args[arg_nr].typ, false))) {
 						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
 							false)
 					} else {
@@ -3048,4 +3049,32 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 
 fn call_convention_attribute(cconvention string, is_cc_msvc bool) string {
 	return if is_cc_msvc { '__${cconvention} ' } else { '__attribute__((${cconvention})) ' }
+}
+
+fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType) {
+	ret_styp := g.styp(info.func.return_type)
+	mut call_conv := ''
+	mut msvc_call_conv := ''
+	for attr in info.func.attrs {
+		match attr.name {
+			'callconv' {
+				if g.is_cc_msvc {
+					msvc_call_conv = '__${attr.arg} '
+				} else {
+					call_conv = '${attr.arg}'
+				}
+			}
+			else {}
+		}
+	}
+	call_conv_attribute_suffix := if call_conv.len != 0 {
+		'__attribute__((${call_conv}))'
+	} else {
+		''
+	}
+	g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
+	def_pos := g.definitions.len
+	g.fn_decl_params(info.func.params, unsafe { nil }, false, false)
+	g.definitions.go_back(g.definitions.len - def_pos)
+	g.write(')${call_conv_attribute_suffix}')
 }

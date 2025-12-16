@@ -483,7 +483,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		}
 	}
 	if !b.pref.is_vls && b.checker.nr_errors > 0 && b.pref.path.ends_with('.v')
-		&& os.is_file(b.pref.path) {
+		&& os.is_file(b.pref.path) && !b.pref.path.ends_with('vrepl_temp.v') {
 		if b.checker.errors.any(it.message.starts_with('unknown ')) {
 			// Sometimes users try to `v main.v`, when they have several .v files in their project.
 			// Then, they encounter puzzling errors about missing or unknown types. In this case,

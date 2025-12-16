@@ -618,7 +618,10 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		}
 		.alias {
 			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
-			if !node.name.starts_with('C.') {
+			if !node.name.starts_with('C.')
+				&& parent_typ_sym.name !in ['strings.Builder', 'StringBuilder', 'builtin.StringBuilder'] {
+				// TODO: remove the whole check, or at least the need for special casing `strings.Builder` and `StringBuilder` here
+				// after more testing and bootstrapping of the strings.Builder -> builtin.StringBuilder change
 				c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
 					node.type_pos)
 			}
@@ -3350,7 +3353,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		// }
 		ast.ParExpr {
 			if node.expr is ast.ParExpr {
-				c.warn('redundant parentheses are used', node.pos)
+				c.note('redundant parentheses are used', node.pos)
 			}
 			return c.expr(mut node.expr)
 		}
