@@ -411,6 +411,11 @@ fn get_all_commands() []Command {
 			okmsg:  'A simple veb app, compiles with `-gc none -no-retry-compilation -cc tcc -d use_openssl` on macos and linux'
 			rmfile: 'examples/veb/todo/main'
 		}
+		res << Command{
+			line:   '${vexe} -d trace_before_request examples/veb/veb_example.v'
+			okmsg:  'examples/veb/veb_example.v compiles with `-d trace_before_request` on macos and linux'
+			rmfile: 'examples/veb/veb_example'
+		}
 	}
 	$if linux {
 		res << Command{

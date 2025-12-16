@@ -148,6 +148,11 @@ mut:
 	before_accept_loop()
 }
 
+interface HasBeforeRequestOnContext {
+mut:
+	before_request()
+}
+
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
 	mut route := Route{}
 	mut middleware_has_sent_response := false
@@ -201,8 +206,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// first execute before_request
-	$if A is HasBeforeRequest {
-		app.before_request()
+	$if X is HasBeforeRequestOnContext {
+		user_context.before_request()
 	}
 	// user_context.before_request()
 	if user_context.Context.done {
