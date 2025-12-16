@@ -2253,6 +2253,55 @@ pub:
 	pos token.Pos
 }
 
+pub fn (e Expr) type() Type {
+	return match e {
+		AnonFn { e.typ }
+		ArrayDecompose { e.expr_type }
+		ArrayInit { e.typ }
+		AsCast { e.typ }
+		AtExpr { string_type }
+		BoolLiteral { bool_type }
+		CTempVar { e.typ }
+		CallExpr { e.return_type }
+		CastExpr { e.typ }
+		ChanInit { e.typ }
+		CharLiteral { char_type }
+		ComptimeCall { e.result_type }
+		ComptimeSelector { e.typ }
+		ConcatExpr { e.return_type }
+		DumpExpr { e.expr_type }
+		EnumVal { e.typ }
+		FloatLiteral { float_literal_type }
+		Ident { e.info.typ }
+		IfExpr { e.typ }
+		IfGuardExpr { e.expr_type }
+		IndexExpr { e.typ }
+		InfixExpr { e.promoted_type }
+		IntegerLiteral { int_literal_type }
+		IsRefType { e.typ }
+		LambdaExpr { e.typ }
+		Likely { e.expr.type() }
+		LockExpr { e.typ }
+		MapInit { e.typ }
+		MatchExpr { e.return_type }
+		Nil { voidptr_type }
+		ParExpr { e.expr.type() }
+		PostfixExpr { e.typ }
+		PrefixExpr { e.right_type }
+		RangeExpr { e.typ }
+		SelectorExpr { e.typ }
+		SizeOf { e.typ }
+		SqlExpr { e.typ }
+		StringInterLiteral { string_type }
+		StringLiteral { string_type }
+		StructInit { e.typ }
+		TypeNode { e.typ }
+		TypeOf { e.typ }
+		UnsafeExpr { e.expr.type() }
+		else { void_type }
+	}
+}
+
 @[inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	if expr is Ident {

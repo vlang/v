@@ -2664,9 +2664,15 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			for elem_expr in expr.exprs {
 				names << t.dependent_names_in_expr(elem_expr)
 			}
-			names << t.dependent_names_in_expr(expr.len_expr)
-			names << t.dependent_names_in_expr(expr.cap_expr)
-			names << t.dependent_names_in_expr(expr.init_expr)
+			if expr.has_len {
+				names << t.dependent_names_in_expr(expr.len_expr)
+			}
+			if expr.has_cap {
+				names << t.dependent_names_in_expr(expr.cap_expr)
+			}
+			if expr.has_init {
+				names << t.dependent_names_in_expr(expr.init_expr)
+			}
 		}
 		CallExpr {
 			if expr.is_method {

@@ -16,6 +16,7 @@ pub mut:
 mut:
 	is_assert   bool
 	inside_dump bool
+	inside_in   bool
 	//
 	strings_builder_type ast.Type = ast.no_type
 }
@@ -264,7 +265,9 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			return t.interface_decl(mut node)
+			for mut field in node.fields {
+				field.default_expr = t.expr(mut field.default_expr)
+			}
 		}
 		ast.Module {}
 		ast.Return {
@@ -505,14 +508,6 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	return node
 }
 
-pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
-	for mut field in node.fields {
-		field.default_expr = t.expr(mut field.default_expr)
-	}
-
-	return node
-}
-
 pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 	if t.inside_dump {
 		return node
@@ -739,8 +734,16 @@ fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 }
 
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
-	node.left = t.expr(mut node.left)
-	node.right = t.expr(mut node.right)
+	if node.op == .not_in || node.op == .key_in {
+		tmp_inside_in := t.inside_in
+		t.inside_in = true
+		node.left = t.expr(mut node.left)
+		node.right = t.expr(mut node.right)
+		t.inside_in = tmp_inside_in
+	} else {
+		node.left = t.expr(mut node.left)
+		node.right = t.expr(mut node.right)
+	}
 	if !t.pref.translated {
 		t.trans_const_value_to_literal(mut node.left)
 		t.trans_const_value_to_literal(mut node.right)
