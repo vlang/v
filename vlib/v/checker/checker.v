@@ -154,6 +154,9 @@ mut:
 
 	js_string           ast.Type                 = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
 	checker_transformer &transformer.Transformer = unsafe { nil }
+
+	shown_xvweb_deprecation bool // prevents showing the deprecation more than once per compilation
+	shown_vweb_deprecation  bool // prevents showing the deprecation more than once per compilation
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -2920,10 +2923,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
-	if node.mod == 'x.vweb' {
+	if node.mod == 'x.vweb' && !c.shown_xvweb_deprecation {
 		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
-	} else if node.mod == 'vweb' {
+		c.shown_xvweb_deprecation = true
+	} else if node.mod == 'vweb' && !c.shown_vweb_deprecation {
 		println('`vweb` has been deprecated. Please use the more stable and fast `veb` instead.')
+		c.shown_vweb_deprecation = true
 	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {
