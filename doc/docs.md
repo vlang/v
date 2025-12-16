@@ -6207,7 +6207,7 @@ V will still type check the function and all its calls, *even* if they will not 
 final executable, due to the passed -d flags.
 
 In order to see it in action, run the following example with `v run example.v` once,
-and then a second time with `v -d trace_logs example.v`:
+and then a second time with `v -d trace_logs run example.v`:
 ```v
 @[if trace_logs ?]
 fn elog(s string) {
