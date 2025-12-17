@@ -54,6 +54,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
+	if typ.has_flag(.shared_f) {
+		typ = typ.clear_flag(.shared_f).deref()
+	}
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
@@ -270,18 +273,27 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				g.write('*')
 			}
 			g.expr(expr)
+			if typ.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			g.write(')')
 		} else {
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
+			if typ.has_flag(.shared_f) {
+				g.write('->val')
+			}
 		}
 	} else {
 		if expr.is_auto_deref_var() && fmt != `p` {
 			g.write('*')
 		}
 		g.expr(expr)
+		if typ.has_flag(.shared_f) {
+			g.write('->val')
+		}
 	}
 }
 
