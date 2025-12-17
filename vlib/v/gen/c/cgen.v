@@ -226,8 +226,10 @@ mut:
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	type_resolver                    type_resolver.TypeResolver
-	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
+	type_resolver type_resolver.TypeResolver
+	comptime      &type_resolver.ResolverInfo = unsafe { nil }
+	// Track current generic instantiation for type cache lookups
+	generic_instantiation_key        string
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -4223,7 +4225,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						// Try to get cached type first, then fall back to resolving
+						cached_type := g.get_cached_type(voidptr(&node.expr), node.expr.typ)
+						if cached_type != 0 {
+							name_type = g.unwrap_generic(cached_type)
+						} else {
+							name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						}
 					}
 					g.type_name(name_type)
 					return
@@ -8735,4 +8743,15 @@ fn get_overflow_fn_type(typ ast.Type) ast.Type {
 			typ
 		}
 	}
+}
+
+// get_cached_type retrieves a type from the generic type cache, or falls back to default
+fn (g &Gen) get_cached_type(node_ptr voidptr, default_typ ast.Type) ast.Type {
+	if g.generic_instantiation_key != '' && g.cur_fn != unsafe { nil } {
+		key := '${g.cur_fn.name}|${g.generic_instantiation_key}|${u64(node_ptr)}'
+		if cached_typ := g.table.generic_type_cache[key] {
+			return cached_typ
+		}
+	}
+	return default_typ
 }

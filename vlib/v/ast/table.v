@@ -85,7 +85,11 @@ pub mut:
 	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
 	cur_concrete_types []Type // current concrete types, e.g. <int, string>
-	gostmts            int    // how many `go` statements there were in the parsed files.
+	// Type resolution cache for generic function instantiations
+	// Key format: "fn_name|concrete_types_str|node_ptr"
+	// This prevents type pollution across different generic instantiations
+	generic_type_cache map[string]Type
+	gostmts            int // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	vls_info          map[string]VlsInfo
@@ -2862,4 +2866,14 @@ pub fn (mut t Table) register_vls_info(key string, val VlsInfo) {
 pub fn (t &Table) unwrap(typ Type) Type {
 	ts := t.sym(typ)
 	return if ts.info is Alias { t.unwrap(ts.info.parent_type) } else { typ }
+}
+
+// make_generic_instantiation_key creates a unique key for a generic instantiation
+// Used to cache type information per instantiation to prevent pollution
+pub fn (t &Table) make_generic_instantiation_key(concrete_types []Type) string {
+	if concrete_types.len == 0 {
+		return ''
+	}
+	// Create a simple string representation of concrete types
+	return concrete_types.map(t.type_to_str(it)).join('|')
 }

@@ -2927,9 +2927,20 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		$if trace_post_process_generic_fns ? {
 			eprintln('> post_process_generic_fns ${node.mod} | ${node.name} | fkey: ${fkey} | gtypes: ${gtypes} | c.file.generic_fns.len: ${c.file.generic_fns.len}')
 		}
-		for concrete_types in gtypes {
+		// Save original scope to restore between instantiations
+		original_scope := node.scope
+		for idx, concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
+			// Clone scope for subsequent instantiations (not the first)
+			// This prevents variable pollution between instantiations
+			if idx > 0 && original_scope != unsafe { nil } {
+				node.scope = original_scope.clone_shallow()
+			}
+			// Set the instantiation key for type cache lookups
+			c.generic_instantiation_key = c.table.make_generic_instantiation_key(concrete_types)
 			c.fn_decl(mut node)
+			// Clear the key after checking
+			c.generic_instantiation_key = ''
 			if node.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at', 'vweb.run',
 				'vweb.run_at'] {
 				for ct in concrete_types {

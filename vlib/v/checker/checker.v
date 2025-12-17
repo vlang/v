@@ -111,19 +111,21 @@ mut:
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
 	// files                            []ast.File
-	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
-	type_level                       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
-	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
-	cur_orm_ts                       ast.TypeSymbol
-	cur_or_expr                      &ast.OrExpr = unsafe { nil }
-	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
-	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
-	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
-	vweb_gen_types                   []ast.Type // vweb route checks
-	timers                           &util.Timers = util.get_timers()
-	type_resolver                    type_resolver.TypeResolver
-	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
-	fn_scope                         &ast.Scope                  = unsafe { nil }
+	expr_level                int // to avoid infinite recursion segfaults due to compiler bugs
+	type_level                int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	ensure_generic_type_level int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
+	cur_orm_ts                ast.TypeSymbol
+	cur_or_expr               &ast.OrExpr = unsafe { nil }
+	cur_anon_fn               &ast.AnonFn = unsafe { nil }
+	vmod_file_content         string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
+	loop_labels               []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
+	vweb_gen_types            []ast.Type // vweb route checks
+	timers                    &util.Timers = util.get_timers()
+	type_resolver             type_resolver.TypeResolver
+	comptime                  &type_resolver.ResolverInfo = unsafe { nil }
+	// Track current generic instantiation for type cache lookups
+	generic_instantiation_key        string
+	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
@@ -3470,7 +3472,13 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		}
 		ast.TypeOf {
 			if !node.is_type {
-				node.typ = c.expr(mut node.expr)
+				typ := c.expr(mut node.expr)
+				// In generic instantiation, always recompute and store fresh in cache
+				// Don't trust node.typ as it may be polluted from previous instantiation
+				if c.generic_instantiation_key != '' {
+					c.store_generic_type(voidptr(&node), typ)
+				}
+				node.typ = typ
 			}
 			return ast.string_type
 		}
@@ -4259,7 +4267,34 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	} else if node.kind in [.constant, .global, .variable] {
 		// second use
 		info := node.info as ast.IdentVar
-		typ := c.type_resolver.get_type_or_default(node, info.typ)
+		// Try to get cached type if we're in a generic instantiation
+		mut typ := ast.void_type
+		if c.generic_instantiation_key != '' && node.kind == .variable
+			&& c.table.cur_fn != unsafe { nil } {
+			// Use variable name as key since the Var object might be copied/moved
+			var_key := '${c.table.cur_fn.name}|${c.generic_instantiation_key}|var:${node.name}'
+			if cached_typ := c.table.generic_type_cache[var_key] {
+				typ = cached_typ
+			} else {
+				// Not in cache - look up from scope to get fresh type
+				// info.typ is stale from previous instantiation (AST nodes are shared)
+				if obj := node.scope.find(node.name) {
+					if obj is ast.Var {
+						// Respect smartcasts if present
+						is_sum_type_cast := obj.smartcasts.len != 0
+							&& !c.prevent_sum_type_unwrapping_once
+						typ = if is_sum_type_cast { obj.smartcasts.last() } else { obj.typ }
+					} else {
+						typ = info.typ
+					}
+				} else {
+					typ = info.typ
+				}
+			}
+		} else {
+			typ = info.typ
+		}
+		typ = c.type_resolver.get_type_or_default(node, typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !info.typ.has_flag(.option) {
@@ -4294,8 +4329,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			}
 		}
 		return info.typ
-	} else if node.kind == .unresolved {
-		// first use
+	} else if node.kind == .unresolved || (c.generic_instantiation_key != ''
+		&& node.kind == .variable && node.scope.find(node.name) == none) {
+		// first use (or re-declaring in generic instantiation with fresh scope)
 		if node.tok_kind == .assign && node.is_mut {
 			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
 				node.pos)
@@ -4373,6 +4409,11 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					if !is_sum_type_cast {
 						obj.typ = typ
+						// Cache variable type for generic instantiation
+						if c.generic_instantiation_key != '' && c.table.cur_fn != unsafe { nil } {
+							var_key := '${c.table.cur_fn.name}|${c.generic_instantiation_key}|var:${node.name}'
+							c.table.generic_type_cache[var_key] = typ
+						}
 					}
 					node.obj = obj
 					node.ct_expr = obj.ct_type_var != .no_comptime
@@ -5988,4 +6029,25 @@ pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 
 fn (mut c Checker) dir_path() string {
 	return os.real_path(os.dir(c.file.path))
+}
+
+// Generic type cache helpers - prevent type pollution across instantiations
+
+// store_generic_type stores a type for a specific node during generic instantiation
+fn (mut c Checker) store_generic_type(node_ptr voidptr, typ ast.Type) {
+	if c.generic_instantiation_key != '' && c.table.cur_fn != unsafe { nil } {
+		key := '${c.table.cur_fn.name}|${c.generic_instantiation_key}|${u64(node_ptr)}'
+		c.table.generic_type_cache[key] = typ
+	}
+}
+
+// get_generic_type retrieves a cached type for a node, or returns the default
+fn (c &Checker) get_generic_type(node_ptr voidptr, default_typ ast.Type) ast.Type {
+	if c.generic_instantiation_key != '' && c.table.cur_fn != unsafe { nil } {
+		key := '${c.table.cur_fn.name}|${c.generic_instantiation_key}|${u64(node_ptr)}'
+		if cached_typ := c.table.generic_type_cache[key] {
+			return cached_typ
+		}
+	}
+	return default_typ
 }

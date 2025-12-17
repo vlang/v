@@ -2952,3 +2952,14 @@ pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
 		return error('expected pure literal, found "${str}"')
 	}
 }
+
+// clone creates a shallow copy of the scope for generic function instantiation
+// Variables will be re-created during checking, so we just need a fresh container
+pub fn (s &Scope) clone_shallow() &Scope {
+	return &Scope{
+		parent:               s.parent
+		detached_from_parent: s.detached_from_parent // Keep same detachment as original
+		start_pos:            s.start_pos
+		end_pos:              s.end_pos
+	}
+}

@@ -932,8 +932,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.warn('`++` and `--` are statements, not expressions', node.pos)
 	}
 	*/
-	node.promoted_type = if node.op.is_relational() { ast.bool_type } else { return_type }
-	return node.promoted_type
+	promoted := if node.op.is_relational() { ast.bool_type } else { return_type }
+	node.promoted_type = promoted
+	// Also store in cache if in generic instantiation
+	if c.generic_instantiation_key != '' {
+		c.store_generic_type(voidptr(&node), promoted)
+	}
+	return promoted
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
