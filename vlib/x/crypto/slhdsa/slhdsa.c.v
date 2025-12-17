@@ -22,6 +22,9 @@ module slhdsa
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
+#flag openbsd -I/usr/local/include/eopenssl35
+#flag openbsd -L/usr/local/lib/eopenssl35 -Wl,-rpath,/usr/local/lib/eopenssl35
+
 #include <openssl/obj_mac.h>
 #include <openssl/evp.h>
 #include <openssl/bio.h>
