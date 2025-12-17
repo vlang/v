@@ -9,7 +9,9 @@ import v.token
 import v.pref
 import v.util
 import v.errors
-import v.ast as _
+
+@[markused]
+const workaround_markused_bug = map[string]int{}
 
 const single_quote = `'`
 const double_quote = `"`
