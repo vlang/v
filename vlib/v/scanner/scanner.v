@@ -9,7 +9,7 @@ import v.token
 import v.pref
 import v.util
 import v.errors
-import v.ast
+// import v.ast as _
 
 const single_quote = `'`
 const double_quote = `"`
@@ -963,26 +963,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.ge, '', 2)
 				} else if nextc == `>` {
 					if s.pos + 2 < s.text.len {
-						// an algorithm to decide it's generic or non-generic
-						// such as `foo<Baz, Bar<int>>(a)` vs `a, b := Foo{}<Foo{}, bar>>(baz)`
-						// @SleepyRoy if you have smarter algorithm :-)
-						// almost correct heuristics: last <T> of generic cannot be extremely long
-						// here we set the limit 100 which should be nice for real cases
-						// e.g. ...Bar<int, []Foo<int>, Baz_, [20]f64, map[string][]bool>> =>
-						// <int, Baz_, [20]f64, map[string][]bool => int, Baz_, f64, bool
-						is_generic := if s.last_lt >= 0 && s.pos - s.last_lt < 100 {
-							typs := s.text[s.last_lt + 1..s.pos].split(',').map(it.trim_space().trim_right('>').after(']'))
-							// if any typ is neither Type nor builtin, then the case is non-generic
-							typs.all(it.len > 0
-								&& ((it[0].is_capital() && it[1..].bytes().all(it.is_alnum()
-								|| it == `_`))
-								|| ast.builtin_type_names_matcher.matches(it)))
-						} else {
-							false
-						}
-						if is_generic {
-							return s.new_token(.gt, '', 1)
-						} else if s.text[s.pos + 2] == `=` {
+						if s.text[s.pos + 2] == `=` {
 							s.pos += 2
 							return s.new_token(.right_shift_assign, '', 3)
 						} else if s.text[s.pos + 2] == `>` {
