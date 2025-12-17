@@ -57,6 +57,7 @@ pub fn remove_fd_from_epoll(epoll_fd int, fd int) {
 	C.close(fd)
 }
 
+// Close the epoll instance.
 pub fn close(epoll_fd int) {
 	C.close(epoll_fd)
 }
