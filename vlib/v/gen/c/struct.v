@@ -451,7 +451,11 @@ fn (mut g Gen) init_shared_field(field ast.StructField) {
 	shared_styp := g.styp(field_typ)
 	g.write('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx= {0}, .val=')
 	if field.has_default_expr {
+		// avoid generate shared assign inside expr
+		old_is_shared := g.is_shared
+		g.is_shared = false
 		g.expr(field.default_expr)
+		g.is_shared = old_is_shared
 	} else {
 		g.write(g.type_default(field_typ.clear_flag(.shared_f)))
 	}
