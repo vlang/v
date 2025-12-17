@@ -21,13 +21,6 @@ pub struct C.epoll_event {
 	data   C.epoll_data
 }
 
-// Callbacks for epoll-driven IO events.
-pub struct EpollEventCallbacks {
-pub:
-	on_read  fn (fd int) @[required]
-	on_write fn (fd int) @[required]
-}
-
 // Create a new epoll instance. Returns fd or <0 on error.
 pub fn create() int {
 	epoll_fd := C.epoll_create1(0)
