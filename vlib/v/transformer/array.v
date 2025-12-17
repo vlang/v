@@ -60,8 +60,13 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 		}
 		typ:  ast.int_type
 	}
-	fixed_array_typ := t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
+	fixed_array_idx := t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
 		false)
+	fixed_array_typ := if node.elem_type.has_flag(.generic) {
+		ast.new_type(fixed_array_idx).set_flag(.generic)
+	} else {
+		ast.new_type(fixed_array_idx)
+	}
 	fixed_array_arg := ast.CallArg{
 		expr: ast.CastExpr{
 			expr:      ast.ArrayInit{
