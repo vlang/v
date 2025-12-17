@@ -1,11 +1,11 @@
 import io.multiplexing.epoll
 
 fn test_create_epoll_fd() {
-	fd := epoll.create()
-	assert fd >= 0
-	if fd >= 0 {
+	epoll_fd := epoll.create()
+	assert epoll_fd >= 0
+	if epoll_fd >= 0 {
 		// Clean up
-		epoll.close(fd)
+		epoll_fd.close()
 	}
 }
 
@@ -22,16 +22,18 @@ fn test_epoll_wait_for_read_event() {
 	read_fd := fds[0]
 	write_fd := fds[1]
 	// Add read_fd to epoll for read events (EPOLLIN = 1)
-	ret := epoll.add_fd_to_epoll(epoll_fd, read_fd, 1)
+	ret := epoll_fd.add_fd(read_fd, 1)
 	assert ret == 0
 	// Write data to the pipe to trigger the event
 	msg := 'vlang!'
 	written := C.write(write_fd, msg.str, msg.len)
 	assert written == msg.len
 	// Prepare event struct
-	mut events := C.epoll_event{}
+	// mut events := C.epoll_event{}
+	mut events := epoll.EpollEvent{}
 	// Wait for the event (timeout 1000ms)
-	n := C.epoll_wait(epoll_fd, &events, 1, 1000)
+	// n := C.epoll_wait(int(epoll_fd), &events, 1, 1000)
+	n := epoll_fd.wait_for_events(mut events, 1, 1000)
 	assert n == 1
 	assert (events.events & 1) != 0 // EPOLLIN
 	assert unsafe { events.data.fd } == read_fd
@@ -41,9 +43,9 @@ fn test_epoll_wait_for_read_event() {
 	assert nread == msg.len
 	assert buf.bytestr() == msg
 	// Cleanup
-	epoll.remove_fd_from_epoll(epoll_fd, read_fd)
-	epoll.close(write_fd)
-	epoll.close(epoll_fd)
+	epoll_fd.remove_fd(read_fd)
+	C.close(write_fd)
+	epoll_fd.close()
 }
 
 fn test_add_and_remove_fd_to_epoll() {
@@ -59,11 +61,11 @@ fn test_add_and_remove_fd_to_epoll() {
 	read_fd := fds[0]
 	write_fd := fds[1]
 	// Add read_fd to epoll
-	ret := epoll.add_fd_to_epoll(epoll_fd, read_fd, 1) // 1 = EPOLLIN
+	ret := epoll_fd.add_fd(read_fd, 1) // 1 = EPOLLIN
 	assert ret == 0
 	// Remove read_fd from epoll
-	epoll.remove_fd_from_epoll(epoll_fd, read_fd)
+	epoll_fd.remove_fd(read_fd)
 	// Clean up
-	epoll.close(write_fd)
-	epoll.close(epoll_fd)
+	C.close(write_fd)
+	epoll_fd.close()
 }
