@@ -16,8 +16,22 @@ union C.epoll_data {
 	u64 u64
 }
 
+// C.epoll_event represents an event structure used by epoll.
+//
+// The 'events' field is a bitmask of event flags that epoll will monitor for the file descriptor.
+// Common event flags include:
+//   EPOLLIN      (0x001):  The associated file is available for read operations.
+//   EPOLLOUT     (0x004):  The associated file is available for write operations.
+//   EPOLLRDHUP   (0x2000): Stream peer closed connection, or shut down writing half.
+//   EPOLLPRI     (0x002):  There is urgent data to read (e.g., out-of-band data on TCP socket).
+//   EPOLLERR     (0x008):  Error condition happened on the associated file descriptor.
+//   EPOLLHUP     (0x010):  Hang up happened on the associated file descriptor.
+//   EPOLLET      (1 << 31): Set Edge Triggered behavior, instead of Level Triggered.
+//   EPOLLONESHOT (1 << 30): Set one-shot behavior for the monitored fd.
+//
+// You can combine these flags using bitwise OR (|) to monitor multiple events.
 struct C.epoll_event {
-	events u32
+	events u32 // Bitmask of epoll event flags (see above)
 	data   C.epoll_data
 }
 
@@ -36,7 +50,12 @@ pub fn create() EpollFd {
 	return EpollFd(epoll_fd)
 }
 
-// Add a file descriptor to an epoll instance with given event mask.
+// Add a file descriptor to an epoll instance with the given event mask.
+//
+// 'events' is a bitmask of epoll event flags to monitor for the file descriptor.
+// For example, to monitor for readable events, use EPOLLIN (1).
+// You can combine multiple flags using bitwise OR (e.g., EPOLLIN | EPOLLOUT).
+// See the documentation for C.epoll_event for possible values.
 pub fn (epoll_fd EpollFd) add_fd(fd int, events u32) int {
 	mut ev := C.epoll_event{
 		events: events
