@@ -9,7 +9,7 @@ import v.token
 import v.pref
 import v.util
 import v.errors
-// import v.ast as _
+import v.ast as _
 
 const single_quote = `'`
 const double_quote = `"`
