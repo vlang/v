@@ -232,15 +232,20 @@ pub fn (t &ResolverInfo) check_comptime_is_field_selector_bool(node ast.Selector
 pub fn (mut t TypeResolver) get_comptime_selector_bool_field(field_name string) bool {
 	field := t.info.comptime_for_field_value
 	field_typ := t.info.comptime_for_field_type
-	field_sym := t.table.sym(t.resolver.unwrap_generic(t.info.comptime_for_field_type))
+	// Ensure we unwrap generic types properly for flag checks
+	unwrapped_field_typ := t.resolver.unwrap_generic(field_typ)
+	field_sym := t.table.sym(unwrapped_field_typ)
 
 	match field_name {
 		'is_pub' { return field.is_pub }
 		'is_mut' { return field.is_mut }
 		'is_embed' { return field.is_embed }
-		'is_shared' { return field_typ.has_flag(.shared_f) }
-		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_option' { return field.typ.has_flag(.option) }
+		'is_shared' { return unwrapped_field_typ.has_flag(.shared_f) }
+		'is_atomic' { return unwrapped_field_typ.has_flag(.atomic_f) }
+		'is_option' { 
+			// Check both the field's typ and the unwrapped type to handle generic contexts
+			return field.typ.has_flag(.option) || unwrapped_field_typ.has_flag(.option)
+		}
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
@@ -262,7 +267,12 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 			return x_kind == .map
 		}
 		.string {
-			return x_kind == .string
+			// Unwrap generics and unalias to handle generic contexts and alias types
+			unwrapped := t.resolver.unwrap_generic(x)
+			unaliased := t.table.unaliased_type(unwrapped)
+			// Clear option/result flags to check the base type
+			base_type := unaliased.clear_flag(.option).clear_flag(.result)
+			return base_type.idx() == ast.string_type.idx()
 		}
 		.voidptr {
 			return x.is_voidptr()
@@ -271,11 +281,23 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 			return x.is_any_kind_of_pointer()
 		}
 		.int {
-			return x_kind in [.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
+			// Unwrap generics and unalias to handle generic contexts and alias types
+			unwrapped := t.resolver.unwrap_generic(x)
+			unaliased := t.table.unaliased_type(unwrapped)
+			// Clear option/result flags to check the base type
+			base_type := unaliased.clear_flag(.option).clear_flag(.result)
+			base_kind := t.table.type_kind(base_type)
+			return base_kind in [.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
 				.int_literal]
 		}
 		.float {
-			return x_kind in [.f32, .f64, .float_literal]
+			// Unwrap generics and unalias to handle generic contexts and alias types
+			unwrapped := t.resolver.unwrap_generic(x)
+			unaliased := t.table.unaliased_type(unwrapped)
+			// Clear option/result flags to check the base type
+			base_type := unaliased.clear_flag(.option).clear_flag(.result)
+			base_kind := t.table.type_kind(base_type)
+			return base_kind in [.f32, .f64, .float_literal]
 		}
 		.struct {
 			return x_kind == .struct
@@ -305,7 +327,9 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 			return x_kind == .function
 		}
 		.option {
-			return x.has_flag(.option)
+			// Check if type has option flag, even in generic contexts
+			unwrapped := t.resolver.unwrap_generic(x)
+			return unwrapped.has_flag(.option)
 		}
 		.shared {
 			return x.has_flag(.shared_f)

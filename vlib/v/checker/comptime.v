@@ -298,7 +298,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime.comptime_for_field_var = node.val_var
 				c.type_resolver.update_ct_type(node.val_var, c.field_data_type)
 				c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
-				c.comptime.comptime_for_field_type = field.typ
+				// Ensure field types are properly unwrapped for generic contexts
+				c.comptime.comptime_for_field_type = c.unwrap_generic(field.typ)
 				c.comptime.has_different_types = has_different_types
 				c.stmts(mut node.stmts)
 
@@ -895,7 +896,13 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 				type_only:     true
 			)
 		} else {
-			return left_type == right_type
+			// For direct type comparisons (e.g., field.typ is bool), unwrap and unalias both sides
+			// to handle generic contexts and alias types
+			unwrapped_left := c.unwrap_generic(left_type)
+			unaliased_left := c.table.unaliased_type(unwrapped_left)
+			unaliased_right := c.table.unaliased_type(right_type)
+			// Compare unaliased types to handle alias types correctly
+			return unaliased_left == unaliased_right
 		}
 	}
 	return false

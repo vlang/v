@@ -297,14 +297,44 @@ pub fn (f Any) to_time() !time.Time {
 			return time.unix(f)
 		}
 		string {
-			is_iso8601 := f[4] == `-` && f[7] == `-`
-			if is_iso8601 {
-				return time.parse_iso8601(f)!
+			// Improved ISO8601 detection: check for date pattern (YYYY-MM-DD) and optional time separator
+			if f.len >= 10 && f[4] == `-` && f[7] == `-` {
+				// Check for ISO8601 time separator 'T' or space, or date-only format
+				if f.len == 10 || (f.len > 10 && (f[10] == `T` || f[10] == ` `)) {
+					return time.parse_iso8601(f)!
+				}
 			}
-			is_rfc3339 := f.len == 24 && f[23] == `Z` && f[10] == `T`
-			if is_rfc3339 {
+			
+			// RFC3339 detection (subset of ISO8601 with 'Z' timezone)
+			if f.len == 24 && f[23] == `Z` && f[10] == `T` {
 				return time.parse_rfc3339(f)!
 			}
+			
+			// RFC2822 detection: check for day name pattern (Mon, Tue, etc.) and comma
+			if f.len >= 16 {
+				// RFC2822 format: "Mon, 11 Mar 2022 13:54:25 +0000"
+				// Check for day name abbreviation (3 letters) followed by comma
+				has_day_name := f.len >= 4 && f[3] == `,` && 
+					((f[0] >= `A` && f[0] <= `Z`) || (f[0] >= `a` && f[0] <= `z`))
+				mut has_month_name := false
+				// Check for month name (3 letters) after the comma
+				if f.len >= 8 {
+					for i := 5; i < f.len - 3; i++ {
+						if (f[i] >= `A` && f[i] <= `Z`) || (f[i] >= `a` && f[i] <= `z`) {
+							if i + 2 < f.len && ((f[i + 1] >= `A` && f[i + 1] <= `Z`) || (f[i + 1] >= `a` && f[i + 1] <= `z`)) &&
+								((f[i + 2] >= `A` && f[i + 2] <= `Z`) || (f[i + 2] >= `a` && f[i + 2] <= `z`)) {
+								has_month_name = true
+								break
+							}
+						}
+					}
+				}
+				if has_day_name && has_month_name {
+					return time.parse_rfc2822(f)!
+				}
+			}
+			
+			// Unix timestamp detection: all digits (or negative sign + digits)
 			mut is_unix_timestamp := true
 			for c in f {
 				if c == `-` || (c >= `0` && c <= `9`) {
@@ -316,8 +346,8 @@ pub fn (f Any) to_time() !time.Time {
 			if is_unix_timestamp {
 				return time.unix(f.i64())
 			}
-			// TODO: parse_iso8601
-			// TODO: parse_rfc2822
+			
+			// Fallback to generic time.parse() for other formats
 			return time.parse(f)!
 		}
 		else {
@@ -331,9 +361,36 @@ pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
 		$for field in T.fields {
-			value := t.$(field.name)
-
-			$if field.is_array {
+			// Check if field is option type - use exact pattern from working V test
+			// vlib/v/tests/comptime/comptime_for_in_options_struct_test.v uses: $if f is $option
+			$if field is $option {
+				// Get field value (like working example does)
+				field_value := t.$(field.name)
+				// Handle option fields: only include if not none
+				if field_value != none {
+					// Unwrap option value using ? operator
+					unwrapped := field_value?
+					$if unwrapped is $struct {
+						m[field.name] = map_from(unwrapped)
+					} $else $if unwrapped is $array {
+						mut arr_result := []Any{}
+						for item in unwrapped {
+							$if item is $struct {
+								arr_result << map_from(item)
+							} $else {
+								arr_result << Any(item)
+							}
+						}
+						m[field.name] = arr_result
+					} $else {
+						// For primitive types, use directly
+						m[field.name] = Any(unwrapped)
+					}
+				}
+				// If none, field is omitted from map
+			} $else $if field.is_array {
+				// For non-option fields, get value once
+				value := t.$(field.name)
 				mut top_arr := unsafe { []Any{len: t.$(field.name).len} }
 				for idx, variable in value {
 					$if variable is $array {
@@ -345,43 +402,105 @@ pub fn map_from[T](t T) map[string]Any {
 				m[field.name] = top_arr
 				top_arr.clear()
 			} $else $if field.is_struct {
+				value := t.$(field.name)
 				m[field.name] = map_from(value)
 			} $else $if field.is_map {
-				// TODO
+				value := t.$(field.name)
+				// Handle map fields: recursively convert map values to Any
+				$if field.unaliased_typ is $map {
+					// For map[string]T, convert values to Any
+					mut map_result := map[string]Any{}
+					// Use $for to iterate map at compile time
+					// Since we can't iterate generically, handle common cases
+					$if field.typ is map[string]string {
+						for k, v in value {
+							map_result[k] = Any(v)
+						}
+						m[field.name] = map_result
+					} $else $if field.typ is map[string]int {
+						for k, v in value {
+							map_result[k] = Any(v)
+						}
+						m[field.name] = map_result
+					} $else {
+						// For other map types, try recursive conversion
+						// Convert map values using map_from if they're structs
+						for k, v in value {
+							$if v is $struct {
+								map_result[k] = map_from(v)
+							} $else {
+								map_result[k] = Any(v)
+							}
+						}
+						m[field.name] = map_result
+					}
+				}
 			} $else $if field.is_alias {
-				// TODO
-			} $else $if field.is_option {
-				// TODO
-			} $else {
-				// TODO: simplify check of type & improve memory usage when convert
-				$if field.typ is string {
-					m[field.name] = value
-				} $else $if field.typ is bool {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is i8 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is i16 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is i32 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is int {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is i64 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is f32 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is f64 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is u8 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is u16 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is u32 {
-					m[field.name] = t.$(field.name)
-				} $else $if field.typ is u64 {
-					m[field.name] = t.$(field.name)
+				// Handle alias fields: process underlying type
+				// Aliases are resolved at compile time via unaliased_typ
+				value := t.$(field.name)
+				$if field.unaliased_typ is $struct {
+					m[field.name] = map_from(value)
+				} $else $if field.unaliased_typ is $array {
+					// Handle array aliases
+					mut arr_result := []Any{}
+					for item in value {
+						$if item is $struct {
+							arr_result << map_from(item)
+						} $else {
+							arr_result << Any(item)
+						}
+					}
+					m[field.name] = arr_result
 				} $else {
-					// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
+					// For primitive aliases, use value directly
+					m[field.name] = Any(value)
+				}
+			} $else {
+				// Handle primitive types (non-option, non-array, non-struct, non-map, non-alias)
+				value := t.$(field.name)
+				// Final fallback: check if this is an option field that fell through
+				// This should rarely be needed if primary checks work correctly
+				$if field.typ is $option {
+					// Final fallback: option field was not caught by primary checks above
+					if value != none {
+						unwrapped := value?
+						m[field.name] = Any(unwrapped)
+					}
+					// If none, field is omitted
+				} $else {
+					// Handle primitive types
+					// Note: Alias fields that fall through will be handled here
+					// since their underlying type (e.g., string) will match
+					$if field.typ is string {
+						m[field.name] = value
+					} $else $if field.typ is bool {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is i8 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is i16 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is i32 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is int {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is i64 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is f32 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is f64 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is u8 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is u16 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is u32 {
+						m[field.name] = t.$(field.name)
+					} $else $if field.typ is u64 {
+						m[field.name] = t.$(field.name)
+					} $else {
+						// Other types are not handled
+					}
 				}
 			}
 		}

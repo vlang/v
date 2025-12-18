@@ -20,6 +20,7 @@ mut:
 	prefix string
 
 	output []u8 = []u8{cap: 2048}
+	field_info_cache map[string][]EncoderFieldInfo = map[string][]EncoderFieldInfo{} // Instance-based cache for autofree compatibility
 }
 
 @[inline]
@@ -342,48 +343,56 @@ fn check_not_empty[T](val T) ?bool {
 	return true
 }
 
-// TODO: fix compilation with -autofree, and remove the tag @[manualfree] here:
-@[manualfree; unsafe]
+// cached_field_infos returns field information for a type, using instance-based caching
+// for autofree compatibility (replaces static mutable state)
 fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
-	static field_infos := &[]EncoderFieldInfo(nil)
-	if field_infos == nil {
-		field_infos = &[]EncoderFieldInfo{}
-		$for field in T.fields {
-			mut is_skip := false
-			mut key_name := ''
-			mut is_omitempty := false
-			mut is_required := false
-			for attr in field.attrs {
-				match attr {
-					'skip' {
-						is_skip = true
-						break
-					}
-					'omitempty' {
-						is_omitempty = true
-					}
-					'required' {
-						is_required = true
-					}
-					else {}
+	type_name := typeof(T{}).name
+	
+	// Check instance cache first
+	if type_name in encoder.field_info_cache {
+		return encoder.field_info_cache[type_name]
+	}
+	
+	// Build field info and cache it
+	mut field_infos := []EncoderFieldInfo{}
+	$for field in T.fields {
+		mut is_skip := false
+		mut key_name := ''
+		mut is_omitempty := false
+		mut is_required := false
+		for attr in field.attrs {
+			match attr {
+				'skip' {
+					is_skip = true
+					break
 				}
-				if attr.starts_with('json:') {
-					if attr == 'json: -' {
-						is_skip = true
-						break
-					}
-					key_name = attr[6..]
+				'omitempty' {
+					is_omitempty = true
 				}
+				'required' {
+					is_required = true
+				}
+				else {}
 			}
-			field_infos << EncoderFieldInfo{
-				key_name:     if key_name == '' { field.name } else { key_name }
-				is_skip:      is_skip
-				is_omitempty: is_omitempty
-				is_required:  is_required
+			if attr.starts_with('json:') {
+				if attr == 'json: -' {
+					is_skip = true
+					break
+				}
+				key_name = attr[6..]
 			}
 		}
+		field_infos << EncoderFieldInfo{
+			key_name:     if key_name == '' { field.name } else { key_name }
+			is_skip:      is_skip
+			is_omitempty: is_omitempty
+			is_required:  is_required
+		}
 	}
-	return *field_infos
+	
+	// Cache for future use
+	encoder.field_info_cache[type_name] = field_infos
+	return field_infos
 }
 
 @[unsafe]

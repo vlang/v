@@ -554,7 +554,35 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												decoder.decode_error('`raw` attribute can only be used with string fields')!
 											}
 										} else {
-											$if field.typ is $option {
+											$if field.typ is $pointer {
+												// Handle pointer fields: decode into base type, then take address
+												// For heap structs (@[heap]), we allocate values on the heap
+												$if field.typ is &string {
+													// Allocate on heap and decode into it
+													// For @[heap] structs, we can create local and take address
+													mut str_val := ''
+													decoder.decode_value(mut str_val)!
+													val.$(field.name) = &str_val
+												} $else $if field.typ is &int {
+													mut int_val := 0
+													decoder.decode_value(mut int_val)!
+													val.$(field.name) = &int_val
+												} $else $if field.typ is &bool {
+													mut bool_val := false
+													decoder.decode_value(mut bool_val)!
+													val.$(field.name) = &bool_val
+												} $else {
+													// For other pointer types (including generic pointers),
+													// we need to handle them based on the base type
+													// Since the struct is @[heap], we can allocate on heap
+													$if field.unaliased_typ is $pointer {
+														// Try to decode into the base type
+														// This is a limitation - we can't handle all pointer types generically
+														// but we handle the common cases above
+														decoder.decode_error('Pointer type ${field.typ} not fully supported - only &string, &int, &bool are supported')!
+													}
+												}
+											} $else $if field.typ is $option {
 												// it would be nicer to do this at the start of the function
 												// but options cant be passed to generic functions
 												if decoder.current_node.value.value_kind == .null {
@@ -614,13 +642,47 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
 
-		if value_info.value_kind != .boolean {
+		if value_info.value_kind == .boolean {
+			unsafe {
+				val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
+					true_in_string.len) == 0
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+			return
+		} else if value_info.value_kind == .string {
+			// Coerce string to bool
+			str_val := decoder.json[value_info.position + 1..value_info.position + value_info.length - 1]
+			if str_val == 'false' {
+				val = false
+			} else if str_val == 'true' {
+				val = true
+			} else if str_val.len > 0 {
+				val = str_val != '0' && str_val != '0.0'
+			} else {
+				val = false
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+			return
+		} else if value_info.value_kind == .number {
+			// Coerce number to bool
+			decoder.checker_idx = value_info.position
+			decoder.check_number()!
+			number_str := decoder.json[value_info.position..value_info.position + value_info.length]
+			if number_str == '0' || number_str == '0.0' {
+				val = false
+			} else {
+				val = true
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+			return
+		} else {
 			decoder.decode_error('Expected boolean, but got ${value_info.value_kind}')!
-		}
-
-		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
-				true_in_string.len) == 0
 		}
 	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value
@@ -633,6 +695,17 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			decoder.check_number()!
 
 			unsafe { decoder.decode_number(&val)! }
+		} else if value_info.value_kind == .boolean {
+			// Coerce boolean to number
+			unsafe {
+				is_true := vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
+					true_in_string.len) == 0
+				val = if is_true { T(1) } else { T(0) }
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+			return
 		} else {
 			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
@@ -744,6 +817,14 @@ fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 		}
 
 		val = string_buffer.bytestr()
+	} else if string_info.value_kind == .number {
+		// Coerce number to string (similar to number coercion from string)
+		number_str := decoder.json[string_info.position..string_info.position + string_info.length]
+		val = number_str
+		if decoder.current_node != unsafe { nil } {
+			decoder.current_node = decoder.current_node.next
+		}
+		return
 	} else {
 		decoder.decode_error('Expected string, but got ${string_info.value_kind}')!
 	}

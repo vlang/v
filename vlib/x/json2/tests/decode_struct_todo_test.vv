@@ -1,78 +1,405 @@
-import json
+import x.json2 as json
+import time
+
+const fixed_time = time.new(
+	year:   2022
+	month:  3
+	day:    11
+	hour:   13
+	minute: 54
+	second: 25
+)
+
+type StringAlias = string
+type BoolAlias = bool
+type IntAlias = int
+type TimeAlias = time.Time
+type StructAlias = StructType[int]
+type EnumAlias = Enumerates
+
+type SumTypes = bool | int | string
+
+enum Enumerates {
+	a
+	b
+	c
+	d
+	e = 99
+	f
+}
+
+struct StructType[T] {
+mut:
+	val T
+}
+
+struct StructTypeOption[T] {
+mut:
+	val ?T
+}
+
+@[heap]
+struct StructTypePointer[T] {
+mut:
+	val &T
+}
 
 fn test_option_types() {
-	assert json.decode[StructTypeOption[string]]('{}')!.val == none
-	assert json.decode[StructTypeOption[string]]('{"val": ""}')!.val == ''
-	assert json.decode[StructTypeOption[string]]('{"val": "0"}')!.val == '0'
-	assert json.decode[StructTypeOption[string]]('{"val": "1"}')!.val == '1'
-	assert json.decode[StructTypeOption[string]]('{"val": "2"}')!.val == '2'
-	assert json.decode[StructTypeOption[string]]('{"val": 0}')!.val == '0'
-	assert json.decode[StructTypeOption[string]]('{"val": 1}')!.val == '1'
-	assert json.decode[StructTypeOption[string]]('{"val": 2}')!.val == '2'
-	assert json.decode[StructTypeOption[string]]('{"val": "true"}')!.val == 'true'
-	assert json.decode[StructTypeOption[string]]('{"val": "false"}')!.val == 'false'
-	assert json.decode[StructTypeOption[string]]('{"val": true}')!.val == 'true'
-	assert json.decode[StructTypeOption[string]]('{"val": false}')!.val == 'false'
+	result1 := json.decode[StructTypeOption[string]]('{}')!
+	assert result1.val == none
+	result2 := json.decode[StructTypeOption[string]]('{"val": ""}')!
+	assert (result2.val or { panic('expected value') }) == ''
+	result3 := json.decode[StructTypeOption[string]]('{"val": "0"}')!
+	assert (result3.val or { panic('expected value') }) == '0'
+	result4 := json.decode[StructTypeOption[string]]('{"val": "1"}')!
+	assert (result4.val or { panic('expected value') }) == '1'
+	result5 := json.decode[StructTypeOption[string]]('{"val": "2"}')!
+	assert (result5.val or { panic('expected value') }) == '2'
+	result6 := json.decode[StructTypeOption[string]]('{"val": "true"}')!
+	assert (result6.val or { panic('expected value') }) == 'true'
+	result7 := json.decode[StructTypeOption[string]]('{"val": "false"}')!
+	assert (result7.val or { panic('expected value') }) == 'false'
 
-	assert json.decode[StructTypeOption[bool]]('{}')!.val == none
-	assert json.decode[StructTypeOption[bool]]('{"val": ""}')!.val == false
-	assert json.decode[StructTypeOption[bool]]('{"val": "0"}')!.val == false
-	assert json.decode[StructTypeOption[bool]]('{"val": "1"}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": "2"}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": 0}')!.val == false
-	assert json.decode[StructTypeOption[bool]]('{"val": 1}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": 2}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": "true"}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": "false"}')!.val == false
-	assert json.decode[StructTypeOption[bool]]('{"val": true}')!.val == true
-	assert json.decode[StructTypeOption[bool]]('{"val": false}')!.val == false
+	result13 := json.decode[StructTypeOption[bool]]('{}')!
+	assert result13.val == none
+	result14 := json.decode[StructTypeOption[bool]]('{"val": ""}')!
+	assert (result14.val or { panic('expected value') }) == false
+	result15 := json.decode[StructTypeOption[bool]]('{"val": "0"}')!
+	assert (result15.val or { panic('expected value') }) == false
+	result16 := json.decode[StructTypeOption[bool]]('{"val": "1"}')!
+	assert (result16.val or { panic('expected value') }) == true
+	result17 := json.decode[StructTypeOption[bool]]('{"val": "2"}')!
+	assert (result17.val or { panic('expected value') }) == true
+	result18 := json.decode[StructTypeOption[bool]]('{"val": 0}')!
+	assert (result18.val or { panic('expected value') }) == false
+	result19 := json.decode[StructTypeOption[bool]]('{"val": 1}')!
+	assert (result19.val or { panic('expected value') }) == true
+	result20 := json.decode[StructTypeOption[bool]]('{"val": 2}')!
+	assert (result20.val or { panic('expected value') }) == true
+	result21 := json.decode[StructTypeOption[bool]]('{"val": "true"}')!
+	assert (result21.val or { panic('expected value') }) == true
+	result22 := json.decode[StructTypeOption[bool]]('{"val": "false"}')!
+	assert (result22.val or { panic('expected value') }) == false
+	result23 := json.decode[StructTypeOption[bool]]('{"val": true}')!
+	assert (result23.val or { panic('expected value') }) == true
+	result24 := json.decode[StructTypeOption[bool]]('{"val": false}')!
+	assert (result24.val or { panic('expected value') }) == false
 
-	assert json.decode[StructTypeOption[int]]('{}')!.val == none
-	assert json.decode[StructTypeOption[int]]('{"val": ""}')!.val == 0
-	assert json.decode[StructTypeOption[int]]('{"val": "0"}')!.val == 0
-	assert json.decode[StructTypeOption[int]]('{"val": "1"}')!.val == 1
-	assert json.decode[StructTypeOption[int]]('{"val": "2"}')!.val == 2
-	assert json.decode[StructTypeOption[int]]('{"val": 0}')!.val == 0
-	assert json.decode[StructTypeOption[int]]('{"val": 1}')!.val == 1
-	assert json.decode[StructTypeOption[int]]('{"val": 2}')!.val == 2
-	assert json.decode[StructTypeOption[int]]('{"val": "true"}')!.val == 1
-	assert json.decode[StructTypeOption[int]]('{"val": "false"}')!.val == 0
-	assert json.decode[StructTypeOption[int]]('{"val": true}')!.val == 1
-	assert json.decode[StructTypeOption[int]]('{"val": false}')!.val == 0
+	result25 := json.decode[StructTypeOption[int]]('{}')!
+	assert result25.val == none
+	result26 := json.decode[StructTypeOption[int]]('{"val": ""}')!
+	assert (result26.val or { panic('expected value') }) == 0
+	result27 := json.decode[StructTypeOption[int]]('{"val": "0"}')!
+	assert (result27.val or { panic('expected value') }) == 0
+	result28 := json.decode[StructTypeOption[int]]('{"val": "1"}')!
+	assert (result28.val or { panic('expected value') }) == 1
+	result29 := json.decode[StructTypeOption[int]]('{"val": "2"}')!
+	assert (result29.val or { panic('expected value') }) == 2
+	result30 := json.decode[StructTypeOption[int]]('{"val": 0}')!
+	assert (result30.val or { panic('expected value') }) == 0
+	result31 := json.decode[StructTypeOption[int]]('{"val": 1}')!
+	assert (result31.val or { panic('expected value') }) == 1
+	result32 := json.decode[StructTypeOption[int]]('{"val": 2}')!
+	assert (result32.val or { panic('expected value') }) == 2
+	result33 := json.decode[StructTypeOption[int]]('{"val": "true"}')!
+	assert (result33.val or { panic('expected value') }) == 1
+	result34 := json.decode[StructTypeOption[int]]('{"val": "false"}')!
+	assert (result34.val or { panic('expected value') }) == 0
+	result35 := json.decode[StructTypeOption[int]]('{"val": true}')!
+	assert (result35.val or { panic('expected value') }) == 1
+	result36 := json.decode[StructTypeOption[int]]('{"val": false}')!
+	assert (result36.val or { panic('expected value') }) == 0
 }
 
 fn test_array() {
-	// TODO
+	assert json.decode[[]StructType[string]]('[{"val": "a"}, {"val": "b"}]')! == [
+		StructType[string]{ val: 'a' },
+		StructType[string]{ val: 'b' },
+	]
+
+	assert json.decode[[]StructType[int]]('[{"val": 1}, {"val": 2}, {"val": 3}]')! == [
+		StructType[int]{ val: 1 },
+		StructType[int]{ val: 2 },
+		StructType[int]{ val: 3 },
+	]
+
+	assert json.decode[[]StructType[bool]]('[{"val": true}, {"val": false}]')! == [
+		StructType[bool]{ val: true },
+		StructType[bool]{ val: false },
+	]
+
+	assert json.decode[[]StructType[Enumerates]]('[{"val": 0}, {"val": 1}, {"val": 99}]')! == [
+		StructType[Enumerates]{ val: Enumerates.a },
+		StructType[Enumerates]{ val: Enumerates.b },
+		StructType[Enumerates]{ val: Enumerates.e },
+	]
 }
 
 fn test_option_array() {
-	// TODO
+	assert json.decode[StructTypeOption[[]string]]('{}')!.val == none
+	result1 := json.decode[StructTypeOption[[]string]]('{"val": ["a", "b"]}')!
+	assert (result1.val or { panic('expected value') }) == ['a', 'b']
+
+	assert json.decode[StructTypeOption[[]int]]('{}')!.val == none
+	result2 := json.decode[StructTypeOption[[]int]]('{"val": [1, 2, 3]}')!
+	assert (result2.val or { panic('expected value') }) == [1, 2, 3]
+
+	assert json.decode[StructTypeOption[[]StructType[string]]]('{}')!.val == none
+	result3 := json.decode[StructTypeOption[[]StructType[string]]]('{"val": [{"val": "a"}, {"val": "b"}]}')!
+	assert (result3.val or { panic('expected value') }) == [
+		StructType[string]{ val: 'a' },
+		StructType[string]{ val: 'b' },
+	]
 }
 
 fn test_alias() {
-	// TODO
+	assert json.decode[StructType[StringAlias]]('{"val": "test"}')!.val == 'test'
+	assert json.decode[StructType[BoolAlias]]('{"val": true}')!.val == true
+	assert json.decode[StructType[IntAlias]]('{"val": 42}')!.val == 42
+	assert json.decode[StructType[EnumAlias]]('{"val": 0}')!.val == Enumerates.a
+	assert json.decode[StructType[EnumAlias]]('{"val": 99}')!.val == Enumerates.e
+	result1 := json.decode[StructType[StructAlias]]('{"val": {"val": 123}}')!
+	assert result1.val.val == 123
 }
 
 fn test_option_alias() {
-	// TODO
+	assert json.decode[StructTypeOption[StringAlias]]('{}')!.val == none
+	result1 := json.decode[StructTypeOption[StringAlias]]('{"val": "test"}')!
+	assert (result1.val or { panic('expected value') }) == 'test'
+
+	assert json.decode[StructTypeOption[BoolAlias]]('{}')!.val == none
+	result2 := json.decode[StructTypeOption[BoolAlias]]('{"val": true}')!
+	assert (result2.val or { panic('expected value') }) == true
+	result3 := json.decode[StructTypeOption[BoolAlias]]('{"val": false}')!
+	assert (result3.val or { panic('expected value') }) == false
+
+	assert json.decode[StructTypeOption[IntAlias]]('{}')!.val == none
+	result4 := json.decode[StructTypeOption[IntAlias]]('{"val": 42}')!
+	assert (result4.val or { panic('expected value') }) == 42
+
+	assert json.decode[StructTypeOption[EnumAlias]]('{}')!.val == none
+	result5 := json.decode[StructTypeOption[EnumAlias]]('{"val": 0}')!
+	assert (result5.val or { panic('expected value') }) == Enumerates.a
+	result6 := json.decode[StructTypeOption[EnumAlias]]('{"val": 99}')!
+	assert (result6.val or { panic('expected value') }) == Enumerates.e
+
+	assert json.decode[StructTypeOption[StructAlias]]('{}')!.val == none
+	result7 := json.decode[StructTypeOption[StructAlias]]('{"val": {"val": 123}}')!
+	assert ((result7.val or { panic('expected value') }).val) == 123
 }
 
 fn test_sumtypes() {
-	// TODO
+	result1 := json.decode[StructType[SumTypes]]('{"val": "test"}')!
+	match result1.val {
+		string { assert result1.val == 'test' }
+		else { assert false }
+	}
+	result2 := json.decode[StructType[SumTypes]]('{"val": 42}')!
+	match result2.val {
+		int { assert result2.val == 42 }
+		else { assert false }
+	}
+	result3 := json.decode[StructType[SumTypes]]('{"val": true}')!
+	match result3.val {
+		bool { assert result3.val == true }
+		else { assert false }
+	}
+	result4 := json.decode[StructType[SumTypes]]('{"val": false}')!
+	match result4.val {
+		bool { assert result4.val == false }
+		else { assert false }
+	}
+	result5 := json.decode[StructType[SumTypes]]('{"val": 0}')!
+	match result5.val {
+		int { assert result5.val == 0 }
+		else { assert false }
+	}
 }
 
 fn test_option_sumtypes() {
-	// TODO
+	assert json.decode[StructTypeOption[SumTypes]]('{}')!.val == none
+	result1 := json.decode[StructTypeOption[SumTypes]]('{"val": "test"}')!
+	val1 := result1.val or { panic('expected value') }
+	match val1 {
+		string { assert val1 == 'test' }
+		else { assert false }
+	}
+	result2 := json.decode[StructTypeOption[SumTypes]]('{"val": 42}')!
+	val2 := result2.val or { panic('expected value') }
+	match val2 {
+		int { assert val2 == 42 }
+		else { assert false }
+	}
+	result3 := json.decode[StructTypeOption[SumTypes]]('{"val": true}')!
+	val3 := result3.val or { panic('expected value') }
+	match val3 {
+		bool { assert val3 == true }
+		else { assert false }
+	}
+	result4 := json.decode[StructTypeOption[SumTypes]]('{"val": false}')!
+	val4 := result4.val or { panic('expected value') }
+	match val4 {
+		bool { assert val4 == false }
+		else { assert false }
+	}
+	result5 := json.decode[StructTypeOption[SumTypes]]('{"val": 0}')!
+	val5 := result5.val or { panic('expected value') }
+	match val5 {
+		int { assert val5 == 0 }
+		else { assert false }
+	}
 }
 
 fn test_pointer() {
-	// TODO
+	result1 := json.decode[StructTypePointer[string]]('{"val": "test"}')!
+	assert *result1.val == 'test'
+
+	result2 := json.decode[StructTypePointer[int]]('{"val": 42}')!
+	assert *result2.val == 42
+
+	result3 := json.decode[StructTypePointer[bool]]('{"val": true}')!
+	assert *result3.val == true
+
+	result4 := json.decode[StructTypePointer[Enumerates]]('{"val": 0}')!
+	assert *result4.val == Enumerates.a
+
+	result5 := json.decode[StructTypePointer[Enumerates]]('{"val": 99}')!
+	assert *result5.val == Enumerates.e
 }
 
 fn test_caos() {
-	// TODO
+	// StructType[StructType[string]]
+	result1 := json.decode[StructType[StructType[string]]]('{"val": {"val": "a"}}')!
+	assert result1.val.val == 'a'
+
+	// StructType[StructType[StringAlias]]
+	result2 := json.decode[StructType[StructType[StringAlias]]]('{"val": {"val": "a"}}')!
+	assert result2.val.val == 'a'
+
+	// StructType[StructType[SumTypes]]
+	result3 := json.decode[StructType[StructType[SumTypes]]]('{"val": {"val": "a"}}')!
+	match result3.val.val {
+		string { assert result3.val.val == 'a' }
+		else { assert false }
+	}
+
+	// StructType[StructTypeOption[string]]
+	result4 := json.decode[StructType[StructTypeOption[string]]]('{"val": {"val": "a"}}')!
+	assert (result4.val.val or { panic('expected value') }) == 'a'
+
+	result5 := json.decode[StructType[StructTypeOption[string]]]('{"val": {}}')!
+	assert result5.val.val == none
+
+	// StructTypeOption[StructType[string]]
+	result6 := json.decode[StructTypeOption[StructType[string]]]('{"val": {"val": "a"}}')!
+	assert ((result6.val or { panic('expected value') }).val) == 'a'
+
+	result7 := json.decode[StructTypeOption[StructType[string]]]('{}')!
+	assert result7.val == none
+
+	// StructTypeOption[StructTypeOption[string]]
+	result8 := json.decode[StructTypeOption[StructTypeOption[string]]]('{"val": {"val": "a"}}')!
+	inner8 := result8.val or { panic('expected value') }
+	assert (inner8.val or { panic('expected value') }) == 'a'
+
+	result9 := json.decode[StructTypeOption[StructTypeOption[string]]]('{"val": {}}')!
+	inner9 := result9.val or { panic('expected value') }
+	assert inner9.val == none
+
+	// StructTypePointer[StructType[string]]
+	result10 := json.decode[StructTypePointer[StructType[string]]]('{"val": {"val": "a"}}')!
+	assert (*result10.val).val == 'a'
+
+	// StructTypePointer[StructTypeOption[string]]
+	result11 := json.decode[StructTypePointer[StructTypeOption[string]]]('{"val": {"val": "a"}}')!
+	assert ((*result11.val).val or { panic('expected value') }) == 'a'
+
+	result12 := json.decode[StructTypePointer[StructTypeOption[string]]]('{"val": {}}')!
+	assert (*result12.val).val == none
 }
 
 fn test_caos_array() {
-	// TODO
+	// StructType[[]StructType[string]]
+	result1 := json.decode[StructType[[]StructType[string]]]('{"val": [{"val": "a"}, {"val": "b"}]}')!
+	assert result1.val == [
+		StructType[string]{ val: 'a' },
+		StructType[string]{ val: 'b' },
+	]
+
+	// StructType[[]StructType[StringAlias]]
+	result2 := json.decode[StructType[[]StructType[StringAlias]]]('{"val": [{"val": "a"}]}')!
+	assert result2.val[0].val == 'a'
+
+	// StructType[[]StructType[SumTypes]]
+	result3 := json.decode[StructType[[]StructType[SumTypes]]]('{"val": [{"val": "a"}, {"val": 42}]}')!
+	match result3.val[0].val {
+		string { assert result3.val[0].val == 'a' }
+		else { assert false }
+	}
+	match result3.val[1].val {
+		int { assert result3.val[1].val == 42 }
+		else { assert false }
+	}
+
+	// StructType[[]StructTypeOption[string]]
+	result4 := json.decode[StructType[[]StructTypeOption[string]]]('{"val": [{"val": "a"}, {}]}')!
+	assert (result4.val[0].val or { panic('expected value') }) == 'a'
+	assert result4.val[1].val == none
+
+	// StructTypeOption[[]StructType[string]]
+	result5 := json.decode[StructTypeOption[[]StructType[string]]]('{"val": [{"val": "a"}]}')!
+	assert ((result5.val or { panic('expected value') })[0].val) == 'a'
+
+	result6 := json.decode[StructTypeOption[[]StructType[string]]]('{}')!
+	assert result6.val == none
+
+	// StructTypeOption[[]StructTypeOption[string]]
+	result7 := json.decode[StructTypeOption[[]StructTypeOption[string]]]('{"val": [{"val": "a"}, {}]}')!
+	inner7 := result7.val or { panic('expected value') }
+	assert (inner7[0].val or { panic('expected value') }) == 'a'
+	assert inner7[1].val == none
+
+	// StructTypePointer[[]StructType[string]]
+	result8 := json.decode[StructTypePointer[[]StructType[string]]]('{"val": [{"val": "a"}]}')!
+	assert (*result8.val)[0].val == 'a'
+
+	// StructTypePointer[[]StructTypeOption[string]]
+	result9 := json.decode[StructTypePointer[[]StructTypeOption[string]]]('{"val": [{"val": "a"}, {}]}')!
+	assert ((*result9.val)[0].val or { panic('expected value') }) == 'a'
+	assert (*result9.val)[1].val == none
+}
+
+fn main() {
+	test_option_types()
+	println('✓ test_option_types')
+	
+	test_array()
+	println('✓ test_array')
+	
+	test_option_array()
+	println('✓ test_option_array')
+	
+	test_alias()
+	println('✓ test_alias')
+	
+	test_option_alias()
+	println('✓ test_option_alias')
+	
+	test_sumtypes()
+	println('✓ test_sumtypes')
+	
+	test_option_sumtypes()
+	println('✓ test_option_sumtypes')
+	
+	test_pointer()
+	println('✓ test_pointer')
+	
+	test_caos()
+	println('✓ test_caos')
+	
+	test_caos_array()
+	println('✓ test_caos_array')
+	
+	println('')
+	println('All decode_struct_todo tests passed!')
 }

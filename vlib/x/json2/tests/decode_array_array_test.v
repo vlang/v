@@ -1,5 +1,3 @@
-module main
-
 import json
 import x.json2
 
