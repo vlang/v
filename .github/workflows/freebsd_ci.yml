@@ -33,7 +33,7 @@ jobs:
         uses: cross-platform-actions/action@v0.31.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -46,9 +46,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc tcc -no-retry-compilation'
             ./v run ci/freebsd_ci.vsh all
 
@@ -62,7 +62,7 @@ jobs:
         uses: cross-platform-actions/action@v0.31.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -75,9 +75,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc clang'
             ./v run ci/freebsd_ci.vsh all
 
@@ -91,7 +91,7 @@ jobs:
         uses: cross-platform-actions/action@v0.31.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -104,8 +104,8 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
-            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
-            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
-            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc gcc'
             ./v run ci/freebsd_ci.vsh all

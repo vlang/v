@@ -9,6 +9,7 @@ import sync
 import sync.pool
 import v.pref
 import v.util.vtest
+import v.util.vflags
 import runtime
 import rand
 import strings
@@ -410,7 +411,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options := [ts.vargs]
+	mut cmd_options := vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
@@ -912,8 +913,8 @@ fn check_openssl_present() bool {
 		return false
 	}
 	$if openbsd {
-		return os.execute('eopenssl34 --version').exit_code == 0
-			&& os.execute('pkg-config eopenssl34 --libs').exit_code == 0
+		return os.execute('eopenssl35 --version').exit_code == 0
+			&& os.execute('pkg-config eopenssl35 --libs').exit_code == 0
 	} $else {
 		return os.execute('openssl --version').exit_code == 0
 			&& os.execute('pkg-config openssl --libs').exit_code == 0

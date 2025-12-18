@@ -213,6 +213,23 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 				else {}
 			}
 		}
+		ast.Ident {
+			mut obj := init.obj
+			if obj !in [ast.ConstField, ast.GlobalField] {
+				obj = init.scope.find(init.name) or { return none }
+			}
+			match mut obj {
+				ast.ConstField {
+					return g.literal_to_constant_expression(typ, obj.expr)
+				}
+				ast.GlobalField {
+					return g.literal_to_constant_expression(typ, obj.expr)
+				}
+				else {
+					return none
+				}
+			}
+		}
 		else {}
 	}
 	return none

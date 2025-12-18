@@ -171,10 +171,27 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.Array
 	elem_type := info.elem_type
 	elem_sym := g.table.final_sym(elem_type)
+	result_type := match true {
+		gen_or && elem_type.has_flag(.option) {
+			node.typ.clear_flag(.option)
+		}
+		gen_or {
+			node.typ
+		}
+		else {
+			elem_type
+		}
+	}
+	result_sym := g.table.final_sym(result_type)
 	elem_type_str := if elem_sym.kind == .function {
 		'voidptr'
 	} else {
 		g.styp(info.elem_type)
+	}
+	result_type_str := if result_sym.kind == .function {
+		'voidptr'
+	} else {
+		g.styp(result_type)
 	}
 	left_is_shared := node.left_type.has_flag(.shared_f)
 	// `vals[i].field = x` is an exception and requires `array_get`:
@@ -334,7 +351,16 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			opt_elem_type := g.styp(elem_type.set_flag(.option))
 			g.writeln('${opt_elem_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')
-			g.writeln('\t*((${elem_type_str}*)&${tmp_opt}.data) = *((${elem_type_str}*)${tmp_opt_ptr});')
+			if elem_type.has_flag(.option) && !g.inside_opt_or_res {
+				g.writeln('\tif (${tmp_opt_ptr}->state == 0) {')
+				g.writeln('\t\t*((${result_type_str}*)&${tmp_opt}.data) = *((${result_type_str}*)${tmp_opt_ptr}->data);')
+				g.writeln('\t} else {')
+				g.writeln('\t\t${tmp_opt}.state = ${tmp_opt_ptr}->state;')
+				g.writeln('\t\t${tmp_opt}.err = ${tmp_opt_ptr}->err;')
+				g.writeln('\t}')
+			} else {
+				g.writeln('\t*((${elem_type_str}*)&${tmp_opt}.data) = *((${elem_type_str}*)${tmp_opt_ptr});')
+			}
 			g.writeln('} else {')
 			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("array index out of range"));')
 			g.writeln('}')
@@ -344,6 +370,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !g.is_amp {
 				if g.inside_opt_or_res && elem_type.has_flag(.option) && g.inside_assign {
 					g.write('\n${cur_line}(*(${elem_type_str}*)&${tmp_opt})')
+				} else if elem_type.has_flag(.option) && !g.inside_opt_or_res {
+					g.write('\n${cur_line}(*(${result_type_str}*)${tmp_opt}.data)')
 				} else {
 					g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
 				}
