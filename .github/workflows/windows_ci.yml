@@ -29,9 +29,9 @@ jobs:
     timeout-minutes: 90
     env:
       VFLAGS: -cc gcc
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
       - name: Show tool versions
@@ -99,9 +99,9 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
       - name: Build
@@ -148,9 +148,9 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
       - name: Build with make.bat -tcc
