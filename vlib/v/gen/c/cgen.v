@@ -7203,7 +7203,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					}
 				}
 				if !skip {
-					dep := g.table.final_sym(sym.info.elem_type).name
+					dep := g.table.final_sym(sym.info.elem_type).scoped_name()
 					if dep in type_names {
 						field_deps << dep
 					}
