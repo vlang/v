@@ -38,8 +38,8 @@ const runtime_init = constant()
 // Test constants referencing other constants
 const base_value = 53
 const ref_const1 = base_value
-const ref_const2 = base_value
-const ref_const3 = base_value
+const ref_const2 = ref_const1
+const ref_const3 = ref_const2
 
 struct EE {
 	a int
