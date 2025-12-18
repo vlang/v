@@ -719,10 +719,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if !exp_type_is_option {
 					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
 					init_field.typ = got_type
-					has_or_block := match init_field.expr {
-						ast.IndexExpr { (init_field.expr as ast.IndexExpr).or_expr.kind != .absent }
-						ast.CallExpr { (init_field.expr as ast.CallExpr).or_block.kind != .absent }
-						ast.SelectorExpr { (init_field.expr as ast.SelectorExpr).or_block.kind != .absent }
+					has_or_block := match mut init_field.expr {
+						ast.IndexExpr { init_field.expr.or_expr.kind != .absent }
+						ast.CallExpr { init_field.expr.or_block.kind != .absent }
+						ast.SelectorExpr { init_field.expr.or_block.kind != .absent }
 						else { false }
 					}
 					if got_type.has_flag(.option) && !has_or_block {
