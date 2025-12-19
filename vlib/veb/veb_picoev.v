@@ -1,8 +1,7 @@
 module veb
 
-import os
-
 $if !new_veb ? {
+	import os
 	import picoev
 	import time
 	import net

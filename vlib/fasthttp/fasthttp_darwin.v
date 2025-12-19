@@ -1,6 +1,15 @@
 module fasthttp
 
+import net
+
 #include <sys/event.h>
+
+const buf_size = max_connection_size
+const kqueue_max_events = 128
+const backlog = max_connection_size
+
+fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
+fn C.kqueue() int
 
 struct C.kevent {
 	ident  u64
@@ -10,9 +19,6 @@ struct C.kevent {
 	data   isize
 	udata  voidptr
 }
-
-fn C.kqueue() int
-fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
 
 // Helper to set fields of a kevent struct
 fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data isize, udata voidptr) {
@@ -24,58 +30,181 @@ fn ev_set(mut ev C.kevent, ident u64, filter i16, flags u16, fflags u32, data is
 	ev.udata = udata
 }
 
-// process_dones handles connections that have been processed by a worker thread.
-// It manipulates the Kqueue state (EVFILT_WRITE/READ)
-fn (mut s Server) process_dones() {
-	C.pthread_mutex_lock(&s.worker_data.done_mutex)
-	mut local_head := s.worker_data.done_head
-	s.worker_data.done_head = unsafe { nil }
-	s.worker_data.done_tail = unsafe { nil }
-	C.pthread_mutex_unlock(&s.worker_data.done_mutex)
+struct Conn {
+	fd        int
+	user_data voidptr
+mut:
+	read_buf  [buf_size]u8
+	read_len  int
+	write_buf []u8
+	write_pos int
+}
 
-	for local_head != unsafe { nil } {
-		d := local_head
-		local_head = d.next
-		mut c := d.c
-		c.write_buf = d.resp
-		c.write_len = d.len
-		c.write_pos = 0
+pub struct Server {
+pub mut:
+	port            int
+	socket_fd       int
+	poll_fd         int // kqueue fd
+	user_data       voidptr
+	request_handler fn (HttpRequest) ![]u8 @[required]
+}
 
-		// Try to write immediately
-		write_ptr := unsafe { &u8(c.write_buf) + c.write_pos }
-		written := C.write(c.fd, write_ptr, c.write_len - c.write_pos)
-		if written > 0 {
-			c.write_pos += int(written)
-		} else if written < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-			s.close_conn(c)
-			unsafe { C.free(d) }
-			continue
+// new_server creates and initializes a new Server instance.
+pub fn new_server(config ServerConfig) !&Server {
+	mut server := &Server{
+		port:            config.port
+		user_data:       config.user_data
+		request_handler: config.handler
+	}
+	return server
+}
+
+fn set_nonblocking(fd int) {
+	flags := C.fcntl(fd, C.F_GETFL, 0)
+	if flags == -1 {
+		return
+	}
+	C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
+}
+
+fn add_event(kq int, ident u64, filter i16, flags u16, udata voidptr) int {
+	mut ev := C.kevent{}
+	ev_set(mut &ev, ident, filter, flags, u32(0), isize(0), udata)
+	return C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
+}
+
+fn delete_event(kq int, ident u64, filter i16, udata voidptr) {
+	mut ev := C.kevent{}
+	ev_set(mut &ev, ident, filter, u16(C.EV_DELETE), u32(0), isize(0), udata)
+	C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
+}
+
+fn close_conn(kq int, c_ptr voidptr) {
+	mut c := unsafe { &Conn(c_ptr) }
+	delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
+	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+	C.close(c.fd)
+	if c.write_buf.len > 0 {
+		c.write_buf.clear()
+	}
+	unsafe { free(c_ptr) }
+}
+
+fn send_pending(c_ptr voidptr) bool {
+	mut c := unsafe { &Conn(c_ptr) }
+	if c.write_buf.len == 0 {
+		return false
+	}
+	remaining := c.write_buf.len - c.write_pos
+	if remaining <= 0 {
+		return false
+	}
+	write_ptr := unsafe { &c.write_buf[0] + c.write_pos }
+	sent := C.send(c.fd, write_ptr, remaining, 0)
+	if sent > 0 {
+		c.write_pos += int(sent)
+	}
+	if sent < 0 && (C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK) {
+		return true
+	}
+	return c.write_pos < c.write_buf.len
+}
+
+fn send_bad_request(fd int) {
+	C.send(fd, tiny_bad_request_response.data, tiny_bad_request_response.len, 0)
+}
+
+fn handle_write(kq int, c_ptr voidptr) {
+	mut c := unsafe { &Conn(c_ptr) }
+	if send_pending(c_ptr) {
+		return
+	}
+	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+	close_conn(kq, c_ptr)
+}
+
+fn handle_read(mut s Server, kq int, c_ptr voidptr) {
+	mut c := unsafe { &Conn(c_ptr) }
+	n := C.recv(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len, 0)
+	if n <= 0 {
+		if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+			// Unexpected recv error - send 444 No Response
+			C.send(c.fd, status_444_response.data, status_444_response.len, 0)
+			close_conn(kq, c_ptr)
+			return
 		}
+		// Normal client closure (n == 0 or would block)
+		close_conn(kq, c_ptr)
+		return
+	}
 
-		if c.write_pos < c.write_len {
-			// Add write event if not all data was sent
-			mut ev := C.kevent{}
-			ev_set(mut &ev, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_EOF),
-				u32(0), isize(0), c)
-			C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-		} else {
-			// Response sent, re-enable reading for keep-alive
-			C.free(c.write_buf)
-			c.write_buf = unsafe { nil }
-			mut ev := C.kevent{}
-			ev_set(mut &ev, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_EOF), u32(0),
-				isize(0), c)
-			C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-			c.read_len = 0
+	c.read_len += int(n)
+	if c.read_len == 0 {
+		return
+	}
+
+	// Check if request exceeds buffer size
+	if c.read_len >= buf_size {
+		C.send(c.fd, status_413_response.data, status_413_response.len, 0)
+		close_conn(kq, c_ptr)
+		return
+	}
+
+	mut req_buf := []u8{cap: c.read_len}
+	unsafe {
+		req_buf.push_many(&c.read_buf[0], c.read_len)
+	}
+
+	mut decoded := decode_http_request(req_buf) or {
+		send_bad_request(c.fd)
+		close_conn(kq, c_ptr)
+		return
+	}
+	decoded.client_conn_fd = c.fd
+	decoded.user_data = s.user_data
+
+	resp := s.request_handler(decoded) or {
+		send_bad_request(c.fd)
+		close_conn(kq, c_ptr)
+		return
+	}
+
+	c.write_buf = resp.clone()
+	c.write_pos = 0
+	c.read_len = 0
+
+	if send_pending(c_ptr) {
+		add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
+			c)
+		return
+	}
+
+	close_conn(kq, c_ptr)
+}
+
+fn accept_clients(kq int, listen_fd int) {
+	for {
+		client_fd := C.accept(listen_fd, unsafe { nil }, unsafe { nil })
+		if client_fd < 0 {
+			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+				break
+			}
+			C.perror(c'accept')
+			break
 		}
-		unsafe { C.free(d) }
+		set_nonblocking(client_fd)
+		mut c := &Conn{
+			fd:        client_fd
+			user_data: unsafe { nil }
+		}
+		add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
+			c)
 	}
 }
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
-	// Create server socket
-	s.socket_fd = C.socket(.ip, .tcp, 0)
+	s.socket_fd = C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
@@ -84,12 +213,10 @@ pub fn (mut s Server) run() ! {
 	opt := 1
 	C.setsockopt(s.socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int))
 
-	mut addr := C.sockaddr_in{}
-	C.memset(&addr, 0, sizeof(addr))
-	addr.sin_family = C.AF_INET
-	addr.sin_port = u16(C.htons(u16(s.port)))
+	addr := net.new_ip(u16(s.port), [u8(0), 0, 0, 0]!)
+	alen := addr.len()
 
-	if C.bind(s.socket_fd, voidptr(&addr), sizeof(addr)) < 0 {
+	if C.bind(s.socket_fd, voidptr(&addr), alen) < 0 {
 		C.perror(c'bind')
 		return error('socket bind failed')
 	}
@@ -97,49 +224,23 @@ pub fn (mut s Server) run() ! {
 		C.perror(c'listen')
 		return error('socket listen failed')
 	}
-	C.fcntl(s.socket_fd, C.F_SETFL, C.O_NONBLOCK)
 
-	// Create kqueue
+	set_nonblocking(s.socket_fd)
+
 	s.poll_fd = C.kqueue()
 	if s.poll_fd < 0 {
 		C.perror(c'kqueue')
 		return error('kqueue creation failed')
 	}
 
-	mut ev := C.kevent{}
-	ev_set(mut &ev, u64(s.socket_fd), i16(C.EVFILT_READ), u16(C.EV_ADD), u32(0), isize(0),
+	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
 		unsafe { nil })
-	C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 
-	// Initialize worker data
-	C.pthread_mutex_init(&s.worker_data.task_mutex, unsafe { nil })
-	C.pthread_cond_init(&s.worker_data.task_cond, unsafe { nil })
-	C.pthread_mutex_init(&s.worker_data.done_mutex, unsafe { nil })
+	println('listening on http://localhost:${s.port}/')
 
-	// Create wake pipe
-	if C.pipe(&s.worker_data.wake_pipe[0]) < 0 {
-		C.perror(c'pipe')
-		return error('pipe creation failed')
-	}
-	C.fcntl(s.worker_data.wake_pipe[0], C.F_SETFL, C.O_NONBLOCK)
-	C.fcntl(s.worker_data.wake_pipe[1], C.F_SETFL, C.O_NONBLOCK)
-
-	// Add wake pipe to kqueue
-	ev_set(mut &ev, u64(s.worker_data.wake_pipe[0]), i16(C.EVFILT_READ), u16(C.EV_ADD),
-		u32(0), isize(0), unsafe { nil })
-	C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-
-	// Create worker threads
-	for i := 0; i < num_threads; i++ {
-		C.pthread_create(&s.threads[i], unsafe { nil }, worker_func, s)
-	}
-
-	println('Server listening on port ${s.port}')
-
-	// Event loop
-	events := [64]C.kevent{}
+	mut events := [kqueue_max_events]C.kevent{}
 	for {
-		nev := C.kevent(s.poll_fd, unsafe { nil }, 0, &events[0], 64, unsafe { nil })
+		nev := C.kevent(s.poll_fd, unsafe { nil }, 0, &events[0], kqueue_max_events, unsafe { nil })
 		if nev < 0 {
 			C.perror(c'kevent')
 			break
@@ -147,130 +248,39 @@ pub fn (mut s Server) run() ! {
 
 		for i := 0; i < nev; i++ {
 			event := events[i]
-			mut c := unsafe { &Conn(event.udata) }
-
 			if event.flags & u16(C.EV_ERROR) != 0 {
-				if c != unsafe { nil } {
-					s.close_conn(c)
+				if event.ident == u64(s.socket_fd) {
+					C.perror(c'listener error')
+					continue
+				}
+				if event.udata != unsafe { nil } {
+					close_conn(s.poll_fd, event.udata)
 				}
 				continue
 			}
 
-			if event.ident == u64(s.socket_fd) { // New connection
-				client_fd := C.accept(s.socket_fd, unsafe { nil }, unsafe { nil })
-				if client_fd < 0 {
-					continue
-				}
-				mut new_c := unsafe { &Conn(C.malloc(sizeof(Conn))) }
-				C.memset(new_c, 0, sizeof(Conn))
-				new_c.fd = client_fd
-				C.fcntl(new_c.fd, C.F_SETFL, C.O_NONBLOCK)
-				ev_set(mut &ev, u64(new_c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_EOF),
-					u32(0), isize(0), new_c)
-				C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-			} else if event.ident == u64(s.worker_data.wake_pipe[0]) { // Worker is done
-				buf := [1024]u8{}
-				for C.read(s.worker_data.wake_pipe[0], &buf[0], sizeof(buf)) > 0 {}
-				s.process_dones()
-			} else if event.filter == i16(C.EVFILT_READ) { // Data from client
-				if event.flags & u16(C.EV_EOF) != 0 {
-					s.close_conn(c)
-					continue
-				}
-				n := C.read(c.fd, &c.read_buf[c.read_len], buf_size - c.read_len)
-				if n <= 0 {
-					if n < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-						s.close_conn(c)
-					}
-					continue
-				}
-				c.read_len += int(n)
+			if event.ident == u64(s.socket_fd) {
+				accept_clients(s.poll_fd, s.socket_fd)
+				continue
+			}
 
-				header_end := C.memmem(&c.read_buf[0], c.read_len, c'\r\n\r\n', 4)
-				if header_end == unsafe { nil } {
-					if c.read_len >= buf_size {
-						s.close_conn(c)
-					}
-					continue
-				}
+			if event.udata == unsafe { nil } {
+				continue
+			}
 
-				if C.memcmp(&c.read_buf[0], c'GET ', 4) != 0 {
-					s.close_conn(c)
-					continue
-				}
-				path_start := &c.read_buf[4]
-				path_end := C.strchr(path_start, ` `)
-				if path_end == unsafe { nil } {
-					s.close_conn(c)
-					continue
-				}
-				path_len := unsafe { path_end - path_start }
+			if event.flags & u16(C.EV_EOF) != 0 {
+				close_conn(s.poll_fd, event.udata)
+				continue
+			}
 
-				req := HttpRequest{
-					buffer:         c.read_buf[..c.read_len]
-					method:         Slice{
-						buf: &c.read_buf[0]
-						len: 3
-					}
-					path:           Slice{
-						buf: path_start
-						len: path_len
-					}
-					client_conn_fd: c.fd
-				}
-
-				c.read_len = 0
-
-				// Offload to worker thread
-				// DELETE Read event so we don't trigger while worker is busy
-				ev_set(mut &ev, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_DELETE), u32(0),
-					isize(0), c)
-				C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-
-				mut t := unsafe { &Task(C.malloc(sizeof(Task))) }
-				t.c = c
-				t.req = req
-				t.next = unsafe { nil }
-
-				C.pthread_mutex_lock(&s.worker_data.task_mutex)
-				if s.worker_data.task_tail != unsafe { nil } {
-					s.worker_data.task_tail.next = t
-				} else {
-					s.worker_data.task_head = t
-				}
-				s.worker_data.task_tail = t
-				C.pthread_cond_signal(&s.worker_data.task_cond)
-				C.pthread_mutex_unlock(&s.worker_data.task_mutex)
-			} else if event.filter == i16(C.EVFILT_WRITE) { // Ready to write more data
-				if event.flags & u16(C.EV_EOF) != 0 {
-					s.close_conn(c)
-					continue
-				}
-				write_ptr := unsafe { &u8(c.write_buf) + c.write_pos }
-				written := C.write(c.fd, write_ptr, c.write_len - c.write_pos)
-				if written > 0 {
-					c.write_pos += int(written)
-				} else if written < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-					s.close_conn(c)
-					continue
-				}
-
-				if c.write_pos >= c.write_len {
-					C.free(c.write_buf)
-					c.write_buf = unsafe { nil }
-					// Done writing, delete write filter
-					ev_set(mut &ev, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_DELETE),
-						u32(0), isize(0), c)
-					C.kevent(s.poll_fd, &ev, 1, unsafe { nil }, 0, unsafe { nil })
-
-					c.read_len = 0
-				}
+			if event.filter == i16(C.EVFILT_READ) {
+				handle_read(mut s, s.poll_fd, event.udata)
+			} else if event.filter == i16(C.EVFILT_WRITE) {
+				handle_write(s.poll_fd, event.udata)
 			}
 		}
 	}
 
 	C.close(s.socket_fd)
 	C.close(s.poll_fd)
-	C.close(s.worker_data.wake_pipe[0])
-	C.close(s.worker_data.wake_pipe[1])
 }
