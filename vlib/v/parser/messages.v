@@ -67,7 +67,7 @@ fn (mut p Parser) note(s string) {
 
 fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
-	mut kind := 'error:'
+	mut kind := 'parser error:'
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
 	if p.pref.fatal_errors {
 		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
@@ -110,7 +110,7 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 }
 
 fn (mut p Parser) error_with_error(error errors.Error) {
-	mut kind := 'error:'
+	mut kind := 'parser error:'
 	if p.pref.fatal_errors {
 		util.show_compiler_message(kind, error.CompilerMessage)
 		exit(1)
