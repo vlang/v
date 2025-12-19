@@ -75,8 +75,6 @@ const invalid_exceptions = [
 const valid_value_exceptions = [
 	'do_not_remove',
 ]
-// BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
-//'integer/long.toml', // TODO: https://github.com/vlang/v/issues/9507
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
 const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_toml_lang')
@@ -312,12 +310,7 @@ fn to_toml_lang(value ast.Value) string {
 				}
 				return '{ "type": "float", "value": "${val}" }'
 			}
-			v := value.i64()
-			// TODO: workaround https://github.com/vlang/v/issues/9507
-			if v == i64(-9223372036854775807 - 1) {
-				return '{ "type": "integer", "value": "-9223372036854775808" }'
-			}
-			return '{ "type": "integer", "value": "${v}" }'
+			return '{ "type": "integer", "value": "${value.i64()}" }'
 		}
 		map[string]ast.Value {
 			mut str := '{ '

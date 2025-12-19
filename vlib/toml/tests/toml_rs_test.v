@@ -284,12 +284,7 @@ fn to_toml_rs(value ast.Value, array_type int) string {
 				}
 				return '{ "type": "float", "value": "${val}" }'
 			}
-			v := value.i64()
-			// TODO: workaround https://github.com/vlang/v/issues/9507
-			if v == i64(-9223372036854775807 - 1) {
-				return '{ "type": "integer", "value": "-9223372036854775808" }'
-			}
-			return '{ "type": "integer", "value": "${v}" }'
+			return '{ "type": "integer", "value": "${value.i64()}" }'
 		}
 		map[string]ast.Value {
 			mut str := '{ '
