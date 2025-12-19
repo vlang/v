@@ -5688,6 +5688,10 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('(${styp}[]){(')
 		g.expr(node.expr)
 		g.write(')?1:0}[0]')
+	} else if node.typ == ast.bool_type {
+		g.write('((')
+		g.expr(node.expr)
+		g.write(' == 0)?0:1)')
 	} else {
 		styp := g.styp(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
