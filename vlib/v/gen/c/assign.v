@@ -799,7 +799,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					ret_styp := g.styp(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
-					g.write_fntype_decl(fn_name, right_sym.info)
+					g.write_fntype_decl(fn_name, right_sym.info, var_type.nr_muls())
 				}
 			} else {
 				if is_decl {

@@ -5747,6 +5747,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				g.expr(node.expr)
 				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
+				old_inside_assign_fn_var := g.inside_assign_fn_var
+				g.inside_assign_fn_var = g.table.final_sym(expr_type).kind == .function
 				g.write('(')
 				if node.expr is ast.Ident {
 					if !node.typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
@@ -5766,6 +5768,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.write('(${expr_styp})')
 				}
 				g.expr(node.expr)
+				g.inside_assign_fn_var = old_inside_assign_fn_var
 				g.write('))')
 			}
 		}
@@ -7203,7 +7206,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					}
 				}
 				if !skip {
-					dep := g.table.final_sym(sym.info.elem_type).name
+					dep := g.table.final_sym(sym.info.elem_type).scoped_name()
 					if dep in type_names {
 						field_deps << dep
 					}

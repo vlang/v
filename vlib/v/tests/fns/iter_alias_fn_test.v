@@ -18,7 +18,8 @@ fn test_main() {
 	mut c := 0
 	for p in Iter{} {
 		println(p)
-		p()
+		w := *p
+		w()
 		c += 1
 	}
 	assert c == 1

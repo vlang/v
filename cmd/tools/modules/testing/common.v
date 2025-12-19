@@ -9,6 +9,7 @@ import sync
 import sync.pool
 import v.pref
 import v.util.vtest
+import v.util.vflags
 import runtime
 import rand
 import strings
@@ -21,6 +22,8 @@ pub const host_os = pref.get_host_os()
 pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
+
+pub const keep_session = os.getenv('VTEST_KEEP_SESSION') == '1'
 
 pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
 
@@ -280,6 +283,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
+	if keep_session {
+		ts.rm_binaries = false
+		println('> vtmp_dir: ${new_vtmp_dir}')
+	}
+
 	ts.handle_test_runner_option()
 	return ts
 }
@@ -410,7 +418,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options := [ts.vargs]
+	mut cmd_options := vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
