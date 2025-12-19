@@ -1,0 +1,10 @@
+fn add(x int, y int) int {
+	return x + y
+}
+
+fn main() {
+	arg1 := '10'
+	arg2 := '20'
+	result := add(arg1.int, arg2.int)
+	println(result)
+}
