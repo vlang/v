@@ -16,18 +16,22 @@ pub struct LoremCfg {
 	words_per_sentence      int = 10
 	sentences_per_paragraph int = 5
 	commas_per_sentence     int = 2
+	seed                    int
 }
 
 // ---------------- Generator --------------------
 
 pub fn generate_lorem(cfg LoremCfg) string {
-	lorem_words := (
-	'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod ' +
-	'tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam '+
-	'quis nostrud exercitation ullamco laboris nisi aliquip ex ea').split(' ')
+	lorem_words := ('lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod ' +
+		'tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam ' +
+		'quis nostrud exercitation ullamco laboris nisi aliquip ex ea').split(' ')
 
 	comma_marks := ['‚', '،', '，', ',', '﹐']
 	sentence_marks := ['.', '…', '。', '!', '?']
+
+	if cfg.seed != 0 {
+		rand.seed([u32(cfg.seed), u32(cfg.seed ^ 0x9e3779b9)])
+	}
 
 	mut out := strings.new_builder(2048)
 
@@ -150,18 +154,12 @@ fn main() {
 		return
 	}
 
-	// Deterministic and portable seeding
-	if seed != 0 {
-		rand.seed([u32(seed), u32(seed ^ 0x9e3779b9)])
-	} else {
-		rand.seed([u32(0x12345678), 0x9abcdef0])
-	}
-
 	cfg := LoremCfg{
 		paragraphs:              paragraphs
 		words_per_sentence:      words
 		sentences_per_paragraph: sentences
 		commas_per_sentence:     commas
+		seed:                    seed
 	}
 
 	println(generate_lorem(cfg))
