@@ -21,10 +21,7 @@ pub struct LoremCfg {
 // ---------------- Generator --------------------
 
 pub fn generate_lorem(cfg LoremCfg) string {
-	lorem_words :=
-		'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor ' +
-		'incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud ' +
-		'exercitation ullamco laboris nisi aliquip ex ea'.split(' ')
+	lorem_words := 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud exercitation ullamco laboris nisi aliquip ex ea'.split(' ')
 
 	comma_marks := ['‚', '،', '，', ',', '﹐']
 	sentence_marks := ['.', '…', '。', '!', '?']
