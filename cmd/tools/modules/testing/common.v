@@ -23,6 +23,8 @@ pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
 
+pub const keep_session = os.getenv('VTEST_KEEP_SESSION') == '1'
+
 pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
 
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
@@ -281,6 +283,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
+	if keep_session {
+		ts.rm_binaries = false
+		println('> vtmp_dir: ${new_vtmp_dir}')
+	}
+
 	ts.handle_test_runner_option()
 	return ts
 }
