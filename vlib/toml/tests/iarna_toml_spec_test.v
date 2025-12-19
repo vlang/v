@@ -302,7 +302,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			}
 			// NOTE test suite inconsistency.
 			// It seems it's implementation specific how time and
-			// date-time values are represented in detail. For now we follow the BurntSushi format
+			// date-time values are represented in detail. For now we follow the toml-lang format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
 			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
