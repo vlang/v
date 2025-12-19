@@ -1,7 +1,7 @@
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
-// `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/burntsushi`
-// `git -C vlib/toml/tests/testdata/burntsushi reset --hard f30c716
+// `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang`
+// `git -C vlib/toml/tests/testdata/toml_lang reset --hard f30c716
 // See also the CI toml tests
 import os
 import toml
@@ -79,7 +79,7 @@ const valid_value_exceptions = [
 //'integer/long.toml', // TODO: https://github.com/vlang/v/issues/9507
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_burntsushi')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_toml_lang')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -103,10 +103,10 @@ fn run(args []string) !string {
 	return res.output
 }
 
-// test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
-fn test_burnt_sushi_tomltest() {
+// test_toml_lang_tomltest run though 'testdata/toml_lang/toml-test/*' if found.
+fn test_toml_lang_tomltest() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/burntsushi/tests'
+	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_lang/tests'
 	if !os.is_dir(test_root) {
 		println('No test data directory found in "${test_root}"')
 		assert true
@@ -186,7 +186,7 @@ fn test_burnt_sushi_tomltest() {
 			bs_toml_json_path := os.join_path(compare_work_dir_root,
 				os.file_name(valid_test_file).all_before_last('.') + '.json')
 
-			os.write_file(v_toml_json_path, to_burntsushi(toml_doc.ast.table))!
+			os.write_file(v_toml_json_path, to_toml_lang(toml_doc.ast.table))!
 
 			bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json')!
 
@@ -256,8 +256,8 @@ fn test_burnt_sushi_tomltest() {
 	}
 }
 
-// to_burntsushi returns a BurntSushi compatible json string converted from the `value` ast.Value.
-fn to_burntsushi(value ast.Value) string {
+// to_toml_lang returns a toml-lang compatible json string converted from the `value` ast.Value.
+fn to_toml_lang(value ast.Value) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
@@ -323,7 +323,7 @@ fn to_burntsushi(value ast.Value) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' ${json_key}: ${to_burntsushi(val)},'
+				str += ' ${json_key}: ${to_toml_lang(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -332,7 +332,7 @@ fn to_burntsushi(value ast.Value) string {
 		[]ast.Value {
 			mut str := '[ '
 			for val in value {
-				str += ' ${to_burntsushi(val)},'
+				str += ' ${to_toml_lang(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' ]\n'
