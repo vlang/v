@@ -3,6 +3,12 @@ import strings
 import flag
 import os
 
+// Features:
+// - All parameters configurable via flags
+// - Reproducible output via --seed
+// - No invalid punctuation sequences
+// - Em-dashes never near sentence edges
+
 // ---------------- Configuration ----------------
 
 pub struct LoremCfg {
@@ -15,74 +21,10 @@ pub struct LoremCfg {
 // ---------------- Generator --------------------
 
 pub fn generate_lorem(cfg LoremCfg) string {
-	lorem_words := [
-		'lorem',
-		'ipsum',
-		'dolor',
-		'sit',
-		'amet',
-		'consectetur',
-		'adipiscing',
-		'elit',
-		'sed',
-		'do',
-		'eiusmod',
-		'tempor',
-		'incididunt',
-		'ut',
-		'labore',
-		'et',
-		'dolore',
-		'magna',
-		'aliqua',
-		'enim',
-		'ad',
-		'minim',
-		'veniam',
-		'quis',
-		'nostrud',
-		'exercitation',
-		'ullamco',
-		'laboris',
-		'nisi',
-		'aliquip',
-		'ex',
-		'ea',
-		'commodo',
-		'consequat',
-		'phasellus',
-		'faucibus',
-		'scelerisque',
-		'eleifend',
-		'vestibulum',
-		'fringilla',
-		'pellentesque',
-		'habitant',
-		'morbi',
-		'tristique',
-		'senectus',
-		'netus',
-		'malesuada',
-		'fames',
-		'turpis',
-		'egestas',
-		'sapien',
-		'sodales',
-		'vivamus',
-		'fermentum',
-		'curabitur',
-		'rhoncus',
-		'suscipit',
-		'ultrices',
-		'placerat',
-		'imperdiet',
-		'convallis',
-		'bibendum',
-		'volutpat',
-		'accumsan',
-		'iaculis',
-		'ornare',
-	]
+	lorem_words :=
+		'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor ' +
+		'incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud ' +
+		'exercitation ullamco laboris nisi aliquip ex ea'.split(' ')
 
 	comma_marks := ['‚', '،', '，', ',', '﹐']
 	sentence_marks := ['.', '…', '。', '!', '?']
