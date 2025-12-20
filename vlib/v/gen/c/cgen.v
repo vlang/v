@@ -5685,9 +5685,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 	} else if (expr_type == ast.bool_type && node.typ.is_int()) || node.typ == ast.bool_type {
 		styp := g.styp(node.typ)
-		g.write('((${styp})(')
+		g.write('((${styp})((')
 		g.expr(node.expr)
-		g.write(')?1:0)')
+		g.write(')?1:0))')
 	} else {
 		styp := g.styp(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
