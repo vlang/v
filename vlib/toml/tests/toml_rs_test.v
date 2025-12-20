@@ -9,7 +9,7 @@ const no_jq = os.getenv('VNO_JQ') == '1'
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/toml_rs`
-// `git -C vlib/toml/tests/testdata/toml_rs reset --hard 499e8c4`
+// `git -C vlib/toml/tests/testdata/toml_rs reset --hard 9bd454c`
 // See also the CI toml tests
 // Kept for easier handling of future updates to the tests
 const valid_exceptions = [
@@ -36,7 +36,7 @@ const use_type_2_arrays = [
 	'valid/table-array-nest.toml',
 	'valid/table-array-nest-no-keys.toml',
 ]
-const tests_folder = os.join_path('test-suite', 'tests')
+const tests_folder = os.join_path('crates', 'test-suite', 'tests')
 const jq = os.find_abs_path_of_executable('jq') or { '' }
 const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_toml_rs')
 // From: https://stackoverflow.com/a/38266731/1904615
@@ -62,10 +62,10 @@ fn run(args []string) !string {
 	return res.output
 }
 
-// test_toml_rs_toml_rs run though 'testdata/toml_rs/toml-test/test-suite/tests/*' if found.
+// test_toml_rs_toml_rs run though 'testdata/toml_rs/crates/test-suite/tests/*' if found.
 fn test_toml_rs_toml_rs() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_rs/test-suite/tests'
+	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_rs/crates/test-suite/tests'
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')

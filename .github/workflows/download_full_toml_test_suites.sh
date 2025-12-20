@@ -12,5 +12,9 @@ git -C vlib/toml/tests/testdata/iarna checkout 1880b1a
 ./v retry -- git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang
 git -C vlib/toml/tests/testdata/toml_lang checkout f30c716
 
+# A few history notes of toml-rs (previously alexcrichton):
+#  commit 7f5472c the test-suite dir moves to the crates/ sub-directory
+#  commit 8461f7c *a lot* of test files are removed in *hope* that they are covered by the compliance test suite (assumed to be BurntSushi/toml-test, later toml-lang/toml-test)
+#  commit 9bd454c the last known good commit we can test against
 ./v retry -- git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/toml_rs
-git -C vlib/toml/tests/testdata/toml_rs reset --hard 499e8c4
+git -C vlib/toml/tests/testdata/toml_rs reset --hard 9bd454c
