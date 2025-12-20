@@ -5684,7 +5684,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.expr(node.expr)
 		}
 	} else if (expr_type == ast.bool_type && node.typ.is_int()) || node.typ == ast.bool_type {
-		g.write('((')
+		styp := g.styp(node.typ)
+		g.write('((${styp})(')
 		g.expr(node.expr)
 		g.write(')?1:0)')
 	} else {
