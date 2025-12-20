@@ -1900,8 +1900,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
 		c.markused_comptime_call(typ.has_flag(.generic), '${int(method.params[0].typ)}.${field_name}')
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
-			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
-			// if the expected type includes the receiver, don't hide it behind a closure
+			mut method_copy := method
+			method_copy.name = ''
+			fn_type := ast.new_type(c.table.find_or_register_fn_type(method_copy, false,
+				true))
 			if c.check_types(fn_type, c.expected_type) {
 				c.table.used_features.anon_fn = true
 				return fn_type

@@ -67,12 +67,12 @@ fn main() {
 		documentation := flag.to_doc[Config](
 			version: '1.0' // NOTE: this overrides the `@[version: '1.2.3']` struct attribute
 			fields:  {
-				'level':                                    'This is a doc string of the field `level` on struct `Config`'
-				'example':                                  'This is another doc string'
-				'multi':                                    'This flag can be repeated'
-				'-e, --extra':                              'Extra flag that does not exist on the struct, but we want documented (in same format as the others)'
-				'-q, --quiet-and-quite-long-flag <string>': 'This is a flag with a long name'
-				'square':                                   '.____.\n|    |\n|    |\n|____|'
+				'level':                    'This is a doc string of the field `level` on struct `Config`'
+				'example':                  'This is another doc string'
+				'multi':                    'This flag can be repeated'
+				'-e, --extra':              'Not on the struct, with documentation (in same format as the others)'
+				'-q, --long-flag <string>': 'This is a flag with a long name'
+				'square':                   '.____.\n|    |\n|    |\n|____|'
 			}
 		)!
 		println(documentation)
@@ -119,7 +119,7 @@ documentation. The documentation can be tweaked in several ways to suit any spec
 user needs via the `DocConfig` configuration struct or directly via attributes
 on the struct itself and it's fields.
 
-See also `examples/flag/flag_layout_editor.v` for a WYSIWYG editor.
+See also `examples/flag_layout_editor.v` for a WYSIWYG editor.
 
 # Sub commands
 

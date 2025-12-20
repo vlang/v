@@ -21,7 +21,7 @@ pub fn (c Config) read_input() !string {
 			' ${typeof(c).name} should contain only one of the fields `file_path` OR `text` filled out')
 	}
 	if c.file_path == '' && c.text == '' {
-		// TODO: passing both empty is used *a lot* by `./v vlib/toml/tests/burntsushi_toml_test.v`; investigate why.
+		// TODO: passing both empty is used *a lot* by `./v vlib/toml/tests/toml_lang_test.v`; investigate why.
 		return ''
 	}
 	if c.text != '' {

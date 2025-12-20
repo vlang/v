@@ -5,13 +5,13 @@ struct TestA {
 }
 
 fn test_main() {
-	func := &fn () int {
+	func := fn () int {
 		arr := []TestA{}
 		return arr.len
 	}
 	assert func() == 0
 
-	func2 := &fn () int {
+	func2 := fn () int {
 		arr := []TestA{}
 		return arr.len
 	}
