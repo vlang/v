@@ -73,3 +73,20 @@ fn test_option_types() {
 		assert false, 'Should not return none'
 	}
 }
+
+struct JsonU8 {
+	val1 u8
+	val2 u8
+}
+
+fn test_u8_vals() {
+	x := JsonU8{
+		val1: 58
+		val2: 58
+	}
+
+	str := json.encode(x)
+
+	y := json.decode[JsonU8](str) or { panic(err) }
+	assert x == y
+}

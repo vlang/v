@@ -302,7 +302,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			}
 			// NOTE test suite inconsistency.
 			// It seems it's implementation specific how time and
-			// date-time values are represented in detail. For now we follow the BurntSushi format
+			// date-time values are represented in detail. For now we follow the toml-lang format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
 			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
@@ -367,13 +367,6 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO: workaround https://github.com/vlang/v/issues/9507
-			if v == i64(-9223372036854775807 - 1) {
-				if skip_value_map {
-					return '-9223372036854775808'
-				}
-				return '{ "type": "integer", "value": "-9223372036854775808" }'
-			}
 			if skip_value_map {
 				return '${v}'
 			}

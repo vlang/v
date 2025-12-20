@@ -499,8 +499,8 @@ pub fn (mut p Parser) root_table() ! {
 							continue
 						}
 						// Check for "table injection":
-						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
-						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
+						// https://github.com/toml-lang/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
+						// https://github.com/toml-lang/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
 						if p.build_abs_dotted_key(sub_table).starts_with(explicit_key) {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
@@ -933,7 +933,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 					nm = &map[string]ast.Value{}
 					// We register this implicit allocation as *explicit* to be able to catch
 					// special cases like:
-					// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+					// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
 					p.explicit_declared << first
 				}
 

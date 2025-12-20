@@ -8,8 +8,8 @@ const no_jq = os.getenv('VNO_JQ') == '1'
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
-// `git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/alexcrichton`
-// `git -C vlib/toml/tests/testdata/alexcrichton reset --hard 499e8c4`
+// `git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/toml_rs`
+// `git -C vlib/toml/tests/testdata/toml_rs reset --hard 499e8c4`
 // See also the CI toml tests
 // Kept for easier handling of future updates to the tests
 const valid_exceptions = [
@@ -38,7 +38,7 @@ const use_type_2_arrays = [
 ]
 const tests_folder = os.join_path('test-suite', 'tests')
 const jq = os.find_abs_path_of_executable('jq') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_alexcrichton')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_toml_rs')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -62,10 +62,10 @@ fn run(args []string) !string {
 	return res.output
 }
 
-// test_alexcrichton_toml_rs run though 'testdata/alexcrichton/toml-test/test-suite/tests/*' if found.
-fn test_alexcrichton_toml_rs() {
+// test_toml_rs_toml_rs run though 'testdata/toml_rs/toml-test/test-suite/tests/*' if found.
+fn test_toml_rs_toml_rs() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/alexcrichton/test-suite/tests'
+	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_rs/test-suite/tests'
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
@@ -139,7 +139,7 @@ fn test_alexcrichton_toml_rs() {
 
 				v_toml_json_path := os.join_path(compare_work_dir_root,
 					os.file_name(valid_test_file).all_before_last('.') + '.v.json')
-				alexcrichton_toml_json_path := os.join_path(compare_work_dir_root,
+				toml_rs_toml_json_path := os.join_path(compare_work_dir_root,
 					os.file_name(valid_test_file).all_before_last('.') + '.json')
 
 				mut array_type := 1
@@ -147,23 +147,23 @@ fn test_alexcrichton_toml_rs() {
 					array_type = 2
 				}
 
-				os.write_file(v_toml_json_path, to_alexcrichton(toml_doc.ast.table, array_type))!
+				os.write_file(v_toml_json_path, to_toml_rs(toml_doc.ast.table, array_type))!
 
-				alexcrichton_json := os.read_file(valid_test_file.all_before_last('.') + '.json')!
+				toml_rs_json := os.read_file(valid_test_file.all_before_last('.') + '.json')!
 
-				os.write_file(alexcrichton_toml_json_path, alexcrichton_json)!
+				os.write_file(toml_rs_toml_json_path, toml_rs_json)!
 
 				v_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', v_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}')
 				}
-				alexcrichton_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"',
-					alexcrichton_toml_json_path]) or {
+				toml_rs_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"',
+					toml_rs_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}')
 				}
 
-				assert alexcrichton_normalized_json == v_normalized_json
+				assert toml_rs_normalized_json == v_normalized_json
 
 				valid++
 			}
@@ -213,8 +213,8 @@ fn test_alexcrichton_toml_rs() {
 	}
 }
 
-// to_alexcrichton_time
-fn to_alexcrichton_time(time_str string) string {
+// to_toml_rs_time
+fn to_toml_rs_time(time_str string) string {
 	if time_str.contains('.') {
 		date_and_time := time_str.all_before('.')
 		mut ms := time_str.all_after('.')
@@ -229,8 +229,8 @@ fn to_alexcrichton_time(time_str string) string {
 	}
 }
 
-// to_alexcrichton returns an alexcrichton compatible json string converted from the `value` ast.Value.
-fn to_alexcrichton(value ast.Value, array_type int) string {
+// to_toml_rs returns an toml_rs compatible json string converted from the `value` ast.Value.
+fn to_toml_rs(value ast.Value, array_type int) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
@@ -248,9 +248,9 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			}
 			// NOTE test suite inconsistency.
 			// It seems it's implementation specific how time and
-			// date-time values are represented in detail. For now we follow the BurntSushi format
+			// date-time values are represented in detail. For now we follow the toml-lang format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
-			json_text = to_alexcrichton_time(json_text[1..json_text.len - 1])
+			json_text = to_toml_rs_time(json_text[1..json_text.len - 1])
 			return '{ "type": "${typ}", "value": "${json_text}" }'
 		}
 		ast.Date {
@@ -259,7 +259,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
-			json_text = to_alexcrichton_time(json_text[1..json_text.len - 1])
+			json_text = to_toml_rs_time(json_text[1..json_text.len - 1])
 			return '{ "type": "time", "value": "${json_text}" }'
 		}
 		ast.Bool {
@@ -284,18 +284,13 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 				}
 				return '{ "type": "float", "value": "${val}" }'
 			}
-			v := value.i64()
-			// TODO: workaround https://github.com/vlang/v/issues/9507
-			if v == i64(-9223372036854775807 - 1) {
-				return '{ "type": "integer", "value": "-9223372036854775808" }'
-			}
-			return '{ "type": "integer", "value": "${v}" }'
+			return '{ "type": "integer", "value": "${value.i64()}" }'
 		}
 		map[string]ast.Value {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' ${json_key}: ${to_alexcrichton(val, array_type)},'
+				str += ' ${json_key}: ${to_toml_rs(val, array_type)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -309,7 +304,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 				str = '[ '
 			}
 			for val in value {
-				str += ' ${to_alexcrichton(val, array_type)},'
+				str += ' ${to_toml_rs(val, array_type)},'
 			}
 			str = str.trim_right(',')
 			if array_type == 1 {
