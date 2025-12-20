@@ -88,7 +88,7 @@ fn main() {
 	b.measure('avx2_path_matcher for ${max_iterations} iterations')
 
 	if idx >= 0 {
-		println('Matched path: ${paths[idx]} (index ${idx})')
+		println('Matched path: ${paths[idx].bytestr()} (index ${idx})')
 	} else {
 		println('No match found')
 	}
