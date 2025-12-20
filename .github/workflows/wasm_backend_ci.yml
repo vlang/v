@@ -76,7 +76,7 @@ jobs:
         uses: wasmerio/setup-wasmer@v3.1
 
       - name: Test the WASM backend
-        run: ./v test vlib/v/gen/wasm/tests/
+        run: ./v test vlib/v/gen/wasm/
 
       - name: Build examples
         run: ./v build-examples
