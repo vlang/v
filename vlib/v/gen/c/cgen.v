@@ -5684,10 +5684,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.expr(node.expr)
 		}
 	} else if (expr_type == ast.bool_type && node.typ.is_int()) || node.typ == ast.bool_type {
-		styp := g.styp(node.typ)
-		g.write('((${styp})((')
-		g.expr(node.expr)
-		g.write(')?1:0))')
+		if node_typ_is_option {
+			g.expr_with_opt(node.expr, expr_type, node.typ)
+		} else {
+			styp := g.styp(node.typ)
+			g.write('((${styp})((')
+			g.expr(node.expr)
+			g.write(')?1:0))')
+		}
 	} else {
 		styp := g.styp(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
