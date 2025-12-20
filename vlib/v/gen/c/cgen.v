@@ -3293,7 +3293,8 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 		// swap destination and operands for att syntax, not for arm64
 		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64
-			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .loongarch64 {
+			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .loongarch64
+			&& stmt.arch != .rv64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
@@ -3370,7 +3371,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.IntegerLiteral {
 			if stmt.arch == .arm64 {
 				g.write('#${arg.val}')
-			} else if stmt.arch == .s390x || stmt.arch == .ppc64le || stmt.arch == .loongarch64 {
+			} else if stmt.arch == .s390x || stmt.arch == .ppc64le || stmt.arch == .loongarch64
+				|| stmt.arch == .rv64 {
 				g.write('${arg.val}')
 			} else {
 				g.write('\$${arg.val}')
@@ -3387,7 +3389,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$${arg.val.str()}')
 		}
 		ast.AsmRegister {
-			if stmt.arch == .loongarch64 {
+			if stmt.arch == .rv64 {
+				g.write('${arg.name}')
+			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')
 			} else {
 				if !stmt.is_basic {
