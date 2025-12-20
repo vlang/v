@@ -70,7 +70,7 @@ jobs:
 
       - name: Install WABT to get wasm-decompile
         if: runner.os != 'Windows'
-        run: v retry -- sudo apt install wabt
+        run: ./v retry -- sudo apt install wabt
 
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
