@@ -5688,9 +5688,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
 			styp := g.styp(node.typ)
-			g.write('((${styp})((')
+			g.write('(${styp}[]){(')
 			g.expr(node.expr)
-			g.write(')?1:0))')
+			g.write(')?1:0}[0]')
 		}
 	} else {
 		styp := g.styp(node.typ)
