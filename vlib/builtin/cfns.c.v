@@ -12,6 +12,8 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
 fn C.memset(str voidptr, c int, n usize) voidptr
 
+fn C.memchr(buf &u8, char int, len usize) &u8
+
 @[trusted]
 fn C.calloc(int, int) &u8
 
