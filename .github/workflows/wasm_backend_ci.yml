@@ -18,6 +18,9 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/wasm/**.v'
       - 'vlib/v/gen/wasm/tests/**.v'
+      - 'vlib/v/gen/wasm/tests/**.vv'
+      - 'vlib/v/gen/wasm/tests_decompile/**.v'
+      - 'vlib/v/gen/wasm/tests_decompile/**.vv'
       - '**/wasm_backend_ci.yml'
   pull_request:
     paths:
@@ -36,6 +39,9 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/wasm/**.v'
       - 'vlib/v/gen/wasm/tests/**.v'
+      - 'vlib/v/gen/wasm/tests/**.vv'
+      - 'vlib/v/gen/wasm/tests_decompile/**.v'
+      - 'vlib/v/gen/wasm/tests_decompile/**.vv'
       - '**/wasm_backend_ci.yml'
 
 concurrency:
@@ -54,15 +60,23 @@ jobs:
       VTEST_ONLY: wasm
     steps:
       - uses: actions/checkout@v6
+
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: ./make.bat
-      - name: Build examples
-        run: ./v -silent build-examples
+
+      - name: Install WABT to get wasm-decompile
+        if: runner.os != 'Windows'
+        run: v retry -- sudo apt install wabt
+
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
+
       - name: Test the WASM backend
-        run: ./v -silent test vlib/v/gen/wasm/tests/
+        run: ./v test vlib/v/gen/wasm/tests/
+
+      - name: Build examples
+        run: ./v build-examples
