@@ -75,6 +75,9 @@ jobs:
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
 
+      - name: Prebuild the WASM backend
+        run: ./v cmd/tools/builders/wasm_builder.v
+
       - name: Test the WASM backend
         run: ./v test vlib/v/gen/wasm/
 
