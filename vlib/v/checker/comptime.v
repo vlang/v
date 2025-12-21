@@ -269,7 +269,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		c.error('only known compile-time variables can be used', node.typ_pos)
 		return
 	}
-	mut need_check_stmts_at_least_once := true
 	if node.kind == .fields {
 		if sym.kind in [.struct, .interface] {
 			mut fields := []ast.StructField{}
@@ -289,7 +288,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
 			for field in fields {
-				need_check_stmts_at_least_once = false
 				c.push_new_comptime_info()
 				prev_inside_x_matches_type := c.inside_x_matches_type
 				c.comptime.inside_comptime_for = true
@@ -328,7 +326,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		if sym.kind == .enum {
 			if sym.info is ast.Enum {
 				for _ in sym.info.vals {
-					need_check_stmts_at_least_once = false
 					c.push_new_comptime_info()
 					c.comptime.inside_comptime_for = true
 					if c.enum_data_type == 0 {
@@ -349,7 +346,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	} else if node.kind == .methods {
 		methods := sym.get_methods()
 		for method in methods {
-			need_check_stmts_at_least_once = false
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_method = unsafe { &method }
@@ -375,7 +371,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		// `d` is params[0], `x` is params[1], `y` is params[2]
 		// so we at least has one param (`d`) for method
 		for param in params {
-			need_check_stmts_at_least_once = false
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_method_param_var = node.val_var
@@ -384,9 +379,12 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.pop_comptime_info()
 		}
 	} else if node.kind == .attributes {
-		attrs := c.table.get_attrs(sym)
+		mut attrs := c.table.get_attrs(sym)
+		if attrs.len == 0 {
+			// force eval `node.stmts` to set their types
+			attrs << ast.Attr{}
+		}
 		for attr in attrs {
-			need_check_stmts_at_least_once = false
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_attr_var = node.val_var
@@ -410,7 +408,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			variants = (sym.info as ast.SumType).variants.clone()
 		}
 		for variant in variants {
-			need_check_stmts_at_least_once = false
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_variant_var = node.val_var
@@ -419,9 +416,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
-	}
-
-	if need_check_stmts_at_least_once {
+	} else {
 		c.stmts(mut node.stmts)
 	}
 }
