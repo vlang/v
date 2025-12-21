@@ -428,7 +428,7 @@ fn (c &Checker) check_time(t ast.Time) ! {
 				pos: t.pos.pos + check_length
 			}
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' "${mm}" second specifier in "${parts[1]}" should be between 00 and 24 in ...${c.excerpt(pos)}...')
+				' "${mm}" second specifier in "${parts[1]}" should be between 00 and 59 in ...${c.excerpt(pos)}...')
 		}
 	}
 	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
