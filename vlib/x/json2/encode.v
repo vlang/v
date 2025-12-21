@@ -217,7 +217,10 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 fn (mut encoder Encoder) encode_number[T](val T) {
 	integer_val := val.str()
 	$if T is $float {
-		if integer_val[integer_val.len - 1] == `0` { // ends in .0
+		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
+			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
+			// `2.0` = > `2`
+			// but skip float in scientific notation, `1e+10`
 			unsafe {
 				integer_val.len -= 2
 			}
