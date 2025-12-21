@@ -10,7 +10,7 @@ rm -rf vlib/toml/tests/testdata/iarna vlib/toml/tests/testdata/toml_rs vlib/toml
 git -C vlib/toml/tests/testdata/iarna checkout 1880b1a
 
 ./v retry -- git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang
-git -C vlib/toml/tests/testdata/toml_lang checkout f30c716
+git -C vlib/toml/tests/testdata/toml_lang checkout c6a78f1
 
 ./v retry -- git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/toml_rs
 git -C vlib/toml/tests/testdata/toml_rs reset --hard 499e8c4
