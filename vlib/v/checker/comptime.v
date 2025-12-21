@@ -287,6 +287,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
+			if fields.len == 0 {
+				// force eval `node.stmts` to set their types
+				fields << ast.StructField{}
+			}
 			for field in fields {
 				c.push_new_comptime_info()
 				prev_inside_x_matches_type := c.inside_x_matches_type
@@ -302,15 +306,17 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime.has_different_types = has_different_types
 				c.stmts(mut node.stmts)
 
-				unwrapped_expr_type := c.unwrap_generic(field.typ)
-				tsym := c.table.sym(unwrapped_expr_type)
-				c.markused_comptimefor(mut node, unwrapped_expr_type)
-				if tsym.kind == .array_fixed {
-					info := tsym.info as ast.ArrayFixed
-					if !info.is_fn_ret {
-						// for dumping fixed array we must register the fixed array struct to return from function
-						c.table.find_or_register_array_fixed(info.elem_type, info.size,
-							info.size_expr, true)
+				if field.typ != ast.no_type {
+					unwrapped_expr_type := c.unwrap_generic(field.typ)
+					tsym := c.table.sym(unwrapped_expr_type)
+					c.markused_comptimefor(mut node, unwrapped_expr_type)
+					if tsym.kind == .array_fixed {
+						info := tsym.info as ast.ArrayFixed
+						if !info.is_fn_ret {
+							// for dumping fixed array we must register the fixed array struct to return from function
+							c.table.find_or_register_array_fixed(info.elem_type, info.size,
+								info.size_expr, true)
+						}
 					}
 				}
 				c.inside_x_matches_type = prev_inside_x_matches_type
@@ -344,7 +350,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .methods {
-		methods := sym.get_methods()
+		mut methods := sym.get_methods()
+		if methods.len == 0 {
+			// force eval `node.stmts` to set their types
+			methods << ast.Fn{}
+		}
 		for method in methods {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
@@ -352,8 +362,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
 			c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
-			for j, arg in method.params[1..] {
-				c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
+			if method.params.len > 0 {
+				for j, arg in method.params[1..] {
+					c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
+				}
 			}
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
@@ -366,7 +378,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 
 		func := if sym.info is ast.FnType { &sym.info.func } else { c.comptime.comptime_for_method }
-		params := if func.is_method { func.params[1..] } else { func.params }
+		mut params := if func.is_method { func.params[1..] } else { func.params }
+		if params.len == 0 {
+			// force eval `node.stmts` to set their types
+			params << ast.Param{}
+		}
 		// example: fn (mut d MyStruct) add(x int, y int) string
 		// `d` is params[0], `x` is params[1], `y` is params[2]
 		// so we at least has one param (`d`) for method
