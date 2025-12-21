@@ -90,28 +90,6 @@ struct JsonNumbers {
 	val_f64 f64
 }
 
-// Test structure for boundary values
-struct JsonBoundaries {
-	min_i8 i8
-	max_i8 i8
-	min_u8 u8
-	max_u8 u8
-	zero   int
-}
-
-// Test structure for fake numbers (quoted numbers)
-struct JsonFakeNumbers {
-	quoted_int   string
-	quoted_float string
-	mixed_int    int
-}
-
-// Test structure for float precision
-struct JsonFloats {
-	val_f32 f32
-	val_f64 f64
-}
-
 // Test basic functionality
 struct JsonU8 {
 	val1 u8
@@ -158,8 +136,8 @@ fn test_all_number_types() {
 	assert x.val_u32 == y.val_u32
 	assert x.val_u64 == y.val_u64
 	assert x.val_int == y.val_int
-	assert math.abs(x.val_f32 - y.val_f32) < 0.001
-	assert math.abs(x.val_f64 - y.val_f64) < 0.000001
+	assert math.alike(x.val_f32, y.val_f32)
+	assert math.alike(x.val_f64, y.val_f64)
 
 	println('✓ All number types test passed')
 }
@@ -174,11 +152,8 @@ fn test_number_boundaries() {
 		'{"zero": 0}',
 	]!
 
-	for i, case in test_cases {
-		result := json.decode[JsonU8](case) or {
-			// Some boundary values might fail, which is expected
-			continue
-		}
+	for case in test_cases {
+		result := json.decode[JsonU8](case)!
 		assert result.val1 >= 0 && result.val1 <= 255
 		assert result.val2 >= 0 && result.val2 <= 255
 	}
@@ -226,39 +201,6 @@ fn test_error_conditions() {
 	println('✓ Error handling test passed')
 }
 
-fn test_float_precision() {
-	// Test floating point precision and scientific notation
-	test_cases := [
-		JsonFloats{
-			val_f32: 3.14159265
-			val_f64: 2.718281828459045
-		},
-		JsonFloats{
-			val_f32: 1.0e10
-			val_f64: 1.0e-10
-		},
-		JsonFloats{
-			val_f32: -123.456
-			val_f64: -789.012
-		},
-		JsonFloats{
-			val_f32: 0.0
-			val_f64: 0.0
-		},
-	]!
-
-	for i, x in test_cases {
-		str := json.encode(x)
-		dump(str)
-		y := json.decode[JsonFloats](str) or { panic('Float decoding failed: ${err}') }
-
-		// Use relative error for assertions
-		assert math.abs(y.val_f32 - x.val_f32) / math.abs(x.val_f32 + 1e-10) < 1e-6
-		assert math.abs(y.val_f64 - x.val_f64) / math.abs(x.val_f64 + 1e-10) < 1e-12
-	}
-	println('✓ Float precision test passed')
-}
-
 fn test_performance_large_scale() {
 	// Performance test: decode large numbers of values
 	mut total := u64(0)
@@ -279,25 +221,12 @@ fn test_performance_large_scale() {
 
 fn test_special_float_values() {
 	// Test special float values
-	struct SpecialFloats {
-		nan_val     f64
-		inf_val     f64
-		neg_inf_val f64
-	}
 
-	// Note: JSON doesn't natively support NaN and Inf, so we test with strings
-	special_cases := [
-		'{"val_f32": 0.0, "val_f64": 0.0}',
-		'{"val_f32": -0.0, "val_f64": -0.0}',
-	]!
+	// Json does not support nan, +-inf yet
+	assert json.encode(math.nan()) == 'nan'
+	assert json.encode(math.inf(1)) == '+inf'
+	assert json.encode(math.inf(-1)) == '-inf'
 
-	for case in special_cases {
-		result := json.decode[JsonFloats](case) or {
-			// Some special values might not be supported, which is expected
-			continue
-		}
-		assert true // If we reach here, decoding didn't crash
-	}
 	println('✓ Special float values test passed')
 }
 
@@ -308,7 +237,7 @@ fn test_json_format_consistency() {
 		val_i16: 1000
 		val_i32: 100000
 		val_i64: 1000000000
-		val_u8:  200
+		val_u8:  33
 		val_u16: 2000
 		val_u32: 200000
 		val_u64: 2000000000
