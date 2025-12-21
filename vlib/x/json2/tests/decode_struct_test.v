@@ -90,6 +90,12 @@ struct JsonNumbers {
 	val_f64 f64
 }
 
+// Test structure for float precision
+struct JsonFloats {
+	val_f32 f32
+	val_f64 f64
+}
+
 // Test basic functionality
 struct JsonU8 {
 	val1 u8
@@ -199,6 +205,38 @@ fn test_error_conditions() {
 	}
 	assert error_count > 0 // Ensure we caught some errors
 	println('✓ Error handling test passed')
+}
+
+fn test_float_precision() {
+	// Test floating point precision and scientific notation
+	test_cases := [
+		JsonFloats{
+			val_f32: 3.14159265
+			val_f64: 2.718281828459045
+		},
+		JsonFloats{
+			val_f32: 1.0e10
+			val_f64: 1.0e-10
+		},
+		JsonFloats{
+			val_f32: -123.456
+			val_f64: -789.012
+		},
+		JsonFloats{
+			val_f32: 0.0
+			val_f64: 0.0
+		},
+	]!
+
+	for x in test_cases {
+		str := json.encode(x)
+		y := json.decode[JsonFloats](str) or { panic('Float decoding failed: ${err}') }
+
+		// Use relative error for assertions
+		assert math.alike(y.val_f32, x.val_f32)
+		assert math.alike(y.val_f64, x.val_f64)
+	}
+	println('✓ Float precision test passed')
 }
 
 fn test_performance_large_scale() {
