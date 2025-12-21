@@ -5687,13 +5687,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
-			if g.pref.translated || g.file.is_translated {
+			if (g.pref.translated || g.file.is_translated) && g.inside_global_decl {
 				styp := g.styp(node.typ)
 				g.write('(${styp})')
 				g.expr(node.expr)
 			} else if node.typ == ast.bool_type && expr_type == ast.bool_type {
 				g.expr(node.expr)
 			} else {
+				// due to tcc(0.9.27) bug, can't use `(cond)?1:0` here
 				styp := g.styp(node.typ)
 				g.write('(${styp}[]){(')
 				g.expr(node.expr)
