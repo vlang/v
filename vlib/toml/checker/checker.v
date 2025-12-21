@@ -405,6 +405,32 @@ fn (c &Checker) check_time(t ast.Time) ! {
 			' "${lit}" is not a valid RFC 3339 Time format string in ...${c.excerpt(t.pos)}...')
 	}
 
+	if parts.len > 1 {
+		// Offset
+		offset_parts := parts[1].split(':')
+		if offset_parts.len != 2 {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${parts[1]}" is not a valid RFC 3339 time offset specifier in ...${c.excerpt(t.pos)}...')
+		}
+		hh := offset_parts[0].int()
+		if hh < 0 || hh > 24 {
+			pos := token.Pos{
+				...t.pos
+				pos: t.pos.pos + check_length
+			}
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${hh}" hour specifier in "${parts[1]}" should be between 00 and 24 in ...${c.excerpt(pos)}...')
+		}
+		mm := offset_parts[1].int()
+		if mm < 0 || mm > 59 {
+			pos := token.Pos{
+				...t.pos
+				pos: t.pos.pos + check_length
+			}
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${mm}" second specifier in "${parts[1]}" should be between 00 and 24 in ...${c.excerpt(pos)}...')
+		}
+	}
 	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 	mut has_time_offset := false
 	for ch in parts[0]#[8..] {

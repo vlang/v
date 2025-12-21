@@ -1,7 +1,7 @@
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang`
-// `git -C vlib/toml/tests/testdata/toml_lang reset --hard c6a78f1
+// `git -C vlib/toml/tests/testdata/toml_lang reset --hard 8bb8d9c
 // See also the CI toml tests
 import os
 import toml

@@ -10,7 +10,7 @@ rm -rf vlib/toml/tests/testdata/iarna vlib/toml/tests/testdata/toml_rs vlib/toml
 git -C vlib/toml/tests/testdata/iarna checkout 1880b1a
 
 ./v retry -- git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang
-git -C vlib/toml/tests/testdata/toml_lang checkout c6a78f1
+git -C vlib/toml/tests/testdata/toml_lang checkout 8bb8d9c
 
 # A few history notes of toml-rs (previously alexcrichton):
 #  commit 7f5472c the test-suite dir moves to the crates/ sub-directory
