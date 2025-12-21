@@ -289,7 +289,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
 			if fields.len == 0 {
 				// force eval `node.stmts` to set their types
-				fields << ast.StructField{}
+				fields << ast.StructField{
+					typ: ast.error_type
+				}
 			}
 			for field in fields {
 				c.push_new_comptime_info()
