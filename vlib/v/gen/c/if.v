@@ -200,8 +200,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut exit_label := ''
 	if needs_tmp_var {
 		exit_label = g.new_tmp_var()
-		mut styp := g.styp(node.typ)
-		if g.inside_if_option || node.typ.has_flag(.option) {
+		node_typ := if g.inside_or_block {
+			node.typ.clear_option_and_result()
+		} else {
+			node.typ
+		}
+		mut styp := g.styp(node_typ)
+		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
 			if node.typ != ast.void_type {
 				g.last_if_option_type = node.typ
@@ -214,7 +219,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 			g.inside_if_option = true
 			styp = styp.replace('*', '_ptr')
-		} else if node.typ.has_flag(.result) {
+		} else if node_typ.has_flag(.result) && !g.inside_or_block {
 			raw_state = g.inside_if_result
 			defer(fn) {
 				g.inside_if_result = raw_state
@@ -222,7 +227,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.inside_if_result = true
 			styp = styp.replace('*', '_ptr')
 		} else {
-			g.last_if_option_type = node.typ
+			g.last_if_option_type = node_typ
 			defer(fn) {
 				g.last_if_option_type = tmp_if_option_type
 			}
@@ -397,11 +402,16 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							}
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
-								g.write_fntype_decl(left_var_name, expr_sym.info)
+								g.write_fntype_decl(left_var_name, expr_sym.info, branch.cond.expr_type.nr_muls())
+								if branch.cond.expr_type.nr_muls() == 0 {
+									g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
+								} else {
+									g.writeln(' = (${base_type}*)${var_name}${dot_or_ptr}data;')
+								}
 							} else {
 								g.write('\t${base_type} ${left_var_name}')
+								g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 							}
-							g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 						}
 					} else if branch.cond.vars.len > 1 {
 						sym := g.table.sym(branch.cond.expr_type)

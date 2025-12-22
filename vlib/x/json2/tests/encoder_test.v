@@ -177,3 +177,15 @@ fn test_encode_time() {
 
 	assert json.encode(time.Time{}) == '"0000-00-00T00:00:00.000Z"'
 }
+
+fn test_encode_float() {
+	// remove ending `.0`
+	assert json.encode(1.0) == '1'
+
+	// TODO: better generate `1e10` instead of `1e+10`
+	assert json.encode(1.0e+10) == '1e+10'
+	assert json.encode(1.0e10) == '1e+10'
+	assert json.encode(1.e10) == '1e+10'
+	assert json.encode(1.0e-10) == '1e-10'
+	assert json.encode(1.1e10) == '1.1e+10'
+}

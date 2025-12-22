@@ -649,7 +649,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 			right_is_ptr := right_type.is_any_kind_of_pointer()
-			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
+			if !left_type.has_flag(.shared_f) && !right_is_ptr && node.op == .assign
+				&& right_type_unwrapped.is_number() {
 				c.error('cannot assign to `${left}`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.pos())
 			}

@@ -195,6 +195,7 @@ pub fn (a Color) + (b Color) Color {
 }
 
 // - subtracts `b` from `a`, with a minimum value of 0 for each channel
+// the alpha channel will be set as the minimum between ``a.a`` and ``b.a``
 pub fn (a Color) - (b Color) Color {
 	mut na := if a.a > b.a { a.a } else { b.a }
 	mut nr := i32(a.r) - b.r

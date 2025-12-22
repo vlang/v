@@ -1,4 +1,3 @@
-// vtest build: gcc
 fn test_inline_asm() {
 	a, mut b := 10, 0
 	asm arm64 {
@@ -13,13 +12,10 @@ fn test_inline_asm() {
 
 	mut c := 0
 	asm arm64 {
-		mov x0, 5
-		mov c, x0
+		mov c, 5
 		; +r (c)
-		; ; x0
 	}
 	assert c == 5
-
 	d, e, mut f := 10, 2, 0
 	asm arm64 {
 		mov x0, d
@@ -38,8 +34,6 @@ fn test_inline_asm() {
 	assert f == 17
 
 	mut j := 0
-	// do 5*3
-	// adding three, five times
 	asm arm64 {
 		mov x0, 5 // loop 5 times
 		mov x1, 0
@@ -54,71 +48,40 @@ fn test_inline_asm() {
 		  x1
 	}
 	assert j == 5 * 3
-	/*
-	// not marked as mut because we dereference m to change l
+
 	l := 5
 	m := &l
 	asm arm64 {
-		movd [m], 7 // have to specify size with q
+		mov w0, 7
+		str w0, [m]
 		; ; r (m)
+		; w0
+		  memory
 	}
 	assert l == 7
-
-	mut manu := Manu{}
-	asm arm64 {
-		mov x0, MIDR_EL1
-		mov x1, ID_AA64ISAR0_EL1
-		mov x2, ID_AA64MMFR0_EL1
-		; =r (manu.midr_el1) as x0
-		  =r (manu.id_aa64isar0_el1) as x1
-		  =r (manu.id_aa64mmfr0_el1) as x2
-	}
-	manu.str()
-	*/
-}
-
-/*
-@[packed]
-struct Manu {
-mut:
-	midr_el1  u64
-	id_aa64isar0_el1  u64
-	id_aa64mmfr0_el1  u64
-	zero u8 // for string
-}
-
-fn (m Manu) str() string {
-	return unsafe {
-		string{
-			str:    &u8(&m)
-			len:    24
-			is_lit: 1
-		}
-	}
 }
 
 fn test_asm_generic() {
 	u := u64(49)
-	b := unsafe { bool(123) }
+	b := unsafe { bool(0) }
 	assert generic_asm(u) == 14
 	assert u == 63
-	assert u64(generic_asm(b)) == 14
-	assert u64(b) == 137
+	assert generic_asm(b) == true
+	assert b == true
 }
 
 fn generic_asm[T](var &T) T {
 	mut ret := T(14)
 	unsafe {
 		asm volatile arm64 {
-			mov x0, ret
-			mov x1, var
-			add x1, x0, 0
-			mov var, x1
-			; +m (var[0]) as var
-			  +r (ret)
-			; ; memory x0 x1
+			ldr x0, [var]
+			add x0, x0, ret
+			str x0, [var]
+			; ; r (var)
+			  r (ret)
+			; x0
+			  memory
 		}
 	}
 	return ret
 }
-*/

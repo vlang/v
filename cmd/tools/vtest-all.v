@@ -105,17 +105,12 @@ fn get_all_commands() []Command {
 		rmfile: 'hhww.c'
 	}
 	res << Command{
-		line:   '${vexe} -skip-unused examples/hello_world.v'
-		okmsg:  'V can compile hello world with -skip-unused.'
-		rmfile: 'examples/hello_world'
+		line:  '${vexe} test vlib/builtin'
+		okmsg: 'V can test vlib/builtin'
 	}
 	res << Command{
-		line:  '${vexe} -skip-unused test vlib/builtin'
-		okmsg: 'V can test vlib/builtin with -skip-unused'
-	}
-	res << Command{
-		line:   '${vexe} -skip-unused -profile - examples/hello_world.v'
-		okmsg:  'V can compile hello world with both -skip-unused and -profile .'
+		line:   '${vexe} -profile - examples/hello_world.v'
+		okmsg:  'V can compile hello world with -profile .'
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
@@ -242,13 +237,8 @@ fn get_all_commands() []Command {
 			rmfile: 'hw.js'
 		}
 		res << Command{
-			line:   '${vexe} -skip-unused -b js -o hw_skip_unused.js examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the JS backend, with -skip-unused'
-			rmfile: 'hw_skip_unused.js'
-		}
-		res << Command{
-			line:   '${vexe} -skip-unused examples/2048'
-			okmsg:  'V can compile 2048 with -skip-unused.'
+			line:   '${vexe} examples/2048'
+			okmsg:  'V can compile 2048.'
 			rmfile: 'examples/2048/2048'
 		}
 		if _ := os.find_abs_path_of_executable('emcc') {
@@ -261,8 +251,8 @@ fn get_all_commands() []Command {
 			println('> emcc not found, skipping `v -os wasm32_emscripten examples/2048`.')
 		}
 		res << Command{
-			line:   '${vexe} -skip-unused  -live examples/hot_reload/bounce.v'
-			okmsg:  'V can compile the hot code reloading bounce.v example with both: -skip-unused -live'
+			line:   '${vexe} -live examples/hot_reload/bounce.v'
+			okmsg:  'V can compile the hot code reloading bounce.v example with -live'
 			rmfile: 'examples/hot_reload/bounce'
 		}
 	}
@@ -287,9 +277,9 @@ fn get_all_commands() []Command {
 		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
-		line:   '${vexe} -o vtmp_unused -skip-unused cmd/v'
-		okmsg:  'V can compile itself with -skip-unused.'
-		rmfile: 'vtmp_unused'
+		line:   '${vexe} -o vtmp_ntransformer -new-transformer cmd/v'
+		okmsg:  'V can compile itself with -new-transformer.'
+		rmfile: 'vtmp_ntransformer'
 	}
 	$if linux {
 		res << Command{

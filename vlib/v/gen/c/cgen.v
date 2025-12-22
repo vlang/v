@@ -3293,7 +3293,8 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 		// swap destination and operands for att syntax, not for arm64
 		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64
-			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .loongarch64 {
+			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .loongarch64
+			&& stmt.arch != .rv64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
@@ -3370,7 +3371,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.IntegerLiteral {
 			if stmt.arch == .arm64 {
 				g.write('#${arg.val}')
-			} else if stmt.arch == .s390x || stmt.arch == .ppc64le || stmt.arch == .loongarch64 {
+			} else if stmt.arch == .s390x || stmt.arch == .ppc64le || stmt.arch == .loongarch64
+				|| stmt.arch == .rv64 {
 				g.write('${arg.val}')
 			} else {
 				g.write('\$${arg.val}')
@@ -3387,7 +3389,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$${arg.val.str()}')
 		}
 		ast.AsmRegister {
-			if stmt.arch == .loongarch64 {
+			if stmt.arch == .rv64 {
+				g.write('${arg.name}')
+			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')
 			} else {
 				if !stmt.is_basic {
@@ -3406,9 +3410,17 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			scale := arg.scale
 			match arg.mode {
 				.base {
-					g.write('(')
+					if stmt.arch == .arm64 {
+						g.write('[')
+					} else {
+						g.write('(')
+					}
 					g.asm_arg(base, stmt)
-					g.write(')')
+					if stmt.arch == .arm64 {
+						g.write(']')
+					} else {
+						g.write(')')
+					}
 				}
 				.displacement {
 					g.asm_arg(displacement, stmt)
@@ -5658,38 +5670,51 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			return
 		}
 		if node_typ_is_option && node.expr is ast.None {
-			g.gen_option_error(node.typ, node.expr)
+			g.gen_option_error(node_typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
 			g.expr_with_cast(node.expr, g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 				ast.void_type), node_typ)
 		} else if node_typ_is_option {
-			g.expr_with_opt(node.expr, expr_type, node.typ)
+			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else {
 			g.expr_with_cast(node.expr, expr_type, node_typ)
 		}
-	} else if !node_typ_is_option && !node.typ.is_ptr() && sym.info is ast.Struct
+	} else if !node_typ_is_option && !node_typ.is_ptr() && sym.info is ast.Struct
 		&& !sym.info.is_typedef {
 		// deprecated, replaced by Struct{...exr}
-		styp := g.styp(node.typ)
+		styp := g.styp(node_typ)
 		g.write('*((${styp} *)(&')
 		g.expr(node.expr)
 		g.write('))')
-	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
+	} else if sym.kind == .alias && g.table.final_sym(node_typ).kind == .array_fixed {
 		if node_typ_is_option {
-			g.expr_with_opt(node.expr, expr_type, node.typ)
+			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else {
 			if node.expr is ast.ArrayInit && g.assign_op != .decl_assign && !g.inside_const {
 				g.write('(${g.styp(node.expr.typ)})')
 			}
 			g.expr(node.expr)
 		}
-	} else if expr_type == ast.bool_type && node.typ.is_int() {
-		styp := g.styp(node_typ)
-		g.write('(${styp}[]){(')
-		g.expr(node.expr)
-		g.write(')?1:0}[0]')
+	} else if (expr_type == ast.bool_type && node_typ.is_int()) || node_typ == ast.bool_type {
+		if node_typ_is_option {
+			g.expr_with_opt(node.expr, expr_type, node_typ)
+		} else {
+			if (g.pref.translated || g.file.is_translated) && g.inside_global_decl {
+				styp := g.styp(node_typ)
+				g.write('(${styp})')
+				g.expr(node.expr)
+			} else if node_typ == ast.bool_type && expr_type == ast.bool_type {
+				g.expr(node.expr)
+			} else {
+				// due to tcc(0.9.27) bug, can't use `(cond)?1:0` here
+				styp := g.styp(node_typ)
+				g.write('(${styp}[]){(')
+				g.expr(node.expr)
+				g.write(')?1:0}[0]')
+			}
+		}
 	} else {
-		styp := g.styp(node.typ)
+		styp := g.styp(node_typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO: handle the type in fn casts, not just exprs
 			/*
@@ -5704,14 +5729,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if sym.kind != .alias
 			|| (sym.info is ast.Alias && !sym.info.parent_type.has_flag(.option)
 			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
-			if sym.kind == .string && !node.typ.is_ptr() {
+			if sym.kind == .string && !node_typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else if !(g.is_cc_msvc && g.styp(node.typ) == g.styp(expr_type)) {
+			} else if !(g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type)) {
 				cast_label = '(${styp})'
 			}
 		}
 		if node_typ_is_option && node.expr is ast.None {
-			g.gen_option_error(node.typ, node.expr)
+			g.gen_option_error(node_typ, node.expr)
 		} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
@@ -5727,12 +5752,12 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.writeln('builtin___option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
 					g.write2(cur_stmt, tmp_var)
 				} else if node.expr_type.has_flag(.option) {
-					g.expr_opt_with_alias(node.expr, expr_type, node.typ)
+					g.expr_opt_with_alias(node.expr, expr_type, node_typ)
 				} else {
-					g.expr_with_opt(node.expr, expr_type, node.typ)
+					g.expr_with_opt(node.expr, expr_type, node_typ)
 				}
 			} else {
-				g.expr_with_opt(node.expr, expr_type, node.typ)
+				g.expr_with_opt(node.expr, expr_type, node_typ)
 			}
 		} else if sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
 			g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
@@ -5747,25 +5772,28 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				g.expr(node.expr)
 				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
+				old_inside_assign_fn_var := g.inside_assign_fn_var
+				g.inside_assign_fn_var = g.table.final_sym(expr_type).kind == .function
 				g.write('(')
 				if node.expr is ast.Ident {
-					if !node.typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
+					if !node_typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
 						&& node.expr.obj.smartcasts.len > 0 {
 						g.write('*'.repeat(node.expr_type.nr_muls()))
 					}
 				}
-				if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
-					ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
+				if sym.kind == .alias && g.table.final_sym(node_typ).kind == .string {
+					ptr_cnt := node_typ.nr_muls() - expr_type.nr_muls()
 					if ptr_cnt > 0 {
 						g.write('&'.repeat(ptr_cnt))
 					}
 				}
-				if node.typ == ast.voidptr_type && node.expr is ast.ArrayInit
+				if node_typ == ast.voidptr_type && node.expr is ast.ArrayInit
 					&& (node.expr as ast.ArrayInit).is_fixed {
 					expr_styp := g.styp(node.expr_type)
 					g.write('(${expr_styp})')
 				}
 				g.expr(node.expr)
+				g.inside_assign_fn_var = old_inside_assign_fn_var
 				g.write('))')
 			}
 		}
@@ -7203,7 +7231,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					}
 				}
 				if !skip {
-					dep := g.table.final_sym(sym.info.elem_type).name
+					dep := g.table.final_sym(sym.info.elem_type).scoped_name()
 					if dep in type_names {
 						field_deps << dep
 					}

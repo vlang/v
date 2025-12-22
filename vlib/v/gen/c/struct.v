@@ -450,7 +450,15 @@ fn (mut g Gen) init_shared_field(field ast.StructField) {
 	field_typ := field.typ.deref()
 	shared_styp := g.styp(field_typ)
 	g.write('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx= {0}, .val=')
-	g.write(g.type_default(field_typ.clear_flag(.shared_f)))
+	if field.has_default_expr {
+		// avoid generate shared assign inside expr
+		old_is_shared := g.is_shared
+		g.is_shared = false
+		g.expr(field.default_expr)
+		g.is_shared = old_is_shared
+	} else {
+		g.write(g.type_default(field_typ.clear_flag(.shared_f)))
+	}
 	g.write('}, sizeof(${shared_styp}))')
 }
 
@@ -537,6 +545,9 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ, field.default_expr !is ast.CallExpr)
 			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
 			g.inside_memset = old_inside_memset
+			return true
+		} else if field.typ.has_flag(.shared_f) {
+			g.init_shared_field(field)
 			return true
 		}
 		g.expr(field.default_expr)

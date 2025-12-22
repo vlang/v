@@ -13,7 +13,7 @@ pub fn download_file(url string, out_file_path string) ! {
 	}
 	s := get(url) or { return err }
 	if s.status() != .ok {
-		return error('received http code ${s.status_code}')
+		return error_with_code(s.body, s.status_code)
 	}
 	$if debug_http ? {
 		println('http.download_file saving ${s.body.len} bytes')

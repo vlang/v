@@ -1276,7 +1276,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	// check for arg (var) of fn type
 	if !found {
-		mut typ := 0
+		mut typ := ast.no_type
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {
@@ -1300,6 +1300,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 					node.is_fn_var = true
 					node.fn_var_type = typ
+					if typ.nr_muls() > 0 {
+						c.error('function pointer must be undereferenced first', node.pos)
+					}
 				}
 				else {}
 			}
