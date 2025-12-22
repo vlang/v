@@ -12,24 +12,39 @@ pub fn (mut b Builder) gen_auto_fn() {
 fn (mut b Builder) gen_auto_str_fn() {
 	mut generic_to_concrete_map := map[ast.Type][][]ast.Type{}
 	// construct a `type_map`, to generate only one file for a module
-	mut need_auto_str_fn_type_map := map[string][]&ast.TypeSymbol{}
+	mut need_auto_str_fn_type_map := map[string][]ast.Type{}
 	mut already_gen_str_map := map[string]bool{}
 	for t, _ in b.table.used_features.used_str {
 		if t == ast.no_type || t == ast.void_type {
 			continue
 		}
 		s := b.table.sym(t)
+		$if trace_auto_fn ? {
+			dump(s.name)
+		}
 		has_str_method := s.has_method_with_sumtype_parent('str')
 			|| s.has_method_with_generic_parent('str')
 		if has_str_method || s.kind == .function || s.mod == '' {
 			continue
 		} else {
 			unsafe {
-				if s !in need_auto_str_fn_type_map[s.mod] {
-					need_auto_str_fn_type_map[s.mod] << s
+				if t !in need_auto_str_fn_type_map[s.mod] {
+					need_auto_str_fn_type_map[s.mod] << t
 				}
 			}
 		}
+	}
+	$if trace_auto_fn ? {
+		dump(need_auto_str_fn_type_map)
+		// x := b.table.type_symbols.map(it.name).join('\n')
+		// dump(x)
+		// for k in b.table.type_symbols {
+		//	if k.name.contains('main.Response') {
+		//		if k.info is ast.Struct {
+		//			dump(k.info)
+		//		}
+		//	}
+		//}
 	}
 
 	if need_auto_str_fn_type_map.len > 0 {
@@ -38,7 +53,8 @@ fn (mut b Builder) gen_auto_str_fn() {
 		for full_mod_name, types in need_auto_str_fn_type_map {
 			mod_name := full_mod_name.all_after_last('.')
 			sb.writeln('module ${mod_name}\nimport strings')
-			for t in types {
+			for t_ in types {
+				t := b.table.sym(t_)
 				mut type_name := b.auto_fn_get_type_name(t, false) // main.MyS[int] => MyS[T]
 				if t.name.starts_with('C.') {
 					type_name = 'C.' + type_name
@@ -49,11 +65,18 @@ fn (mut b Builder) gen_auto_str_fn() {
 				match t.kind {
 					.struct {
 						info := t.info as ast.Struct
+						//$if trace_auto_fn ? {
+						//	dump(info)
+						//}
 						if info.parent_type.has_flag(.generic) {
 							// for `post_process_generic_fns`
 							generic_to_concrete_map[info.parent_type] << [
 								info.concrete_types,
 							]
+						}
+						concrete_types := b.get_concrete_types(t_)
+						if concrete_types.len > 0 {
+							generic_to_concrete_map[t_] << concrete_types
 						}
 						hint := 'type=${t.idx}\nt.name=${t.name}'
 						if type_name !in already_gen_str_map {
@@ -180,9 +203,11 @@ fn (mut b Builder) gen_str_for_alias(mut sb strings.Builder, alias_name string, 
 	}
 	parent_type_name := b.table.type_to_str(info.parent_type)
 	sb.writeln('@[markused]\npub fn (it ${alias_name}) str() string {')
-	sb.writeln('\tparent_it := *(&${parent_type_name}(&it))')
+	// sb.writeln('\tparent_it := *(&${parent_type_name}(&it))')
+	sb.writeln('\tmut parent_it := ${parent_type_name}{}')
+	sb.writeln('\tparent_it = unsafe {it}')
 	sb.writeln('\tmut res := strings.new_builder(222)')
-	sb.writeln("\tres.write_string('    ${alias_name2}(\${parent_it})')")
+	sb.writeln("\tres.write_string('${alias_name2}(\${parent_it})')")
 	// sb.writeln('\t// note: this can be removed after move dump beyond cgen')
 	// sb.writeln('\tmut sb := strings.new_builder(222)')
 	// sb.writeln('\tsb.indent(res.str())')
@@ -225,12 +250,33 @@ fn (mut b Builder) auto_fn_fix_generics(mut file ast.File, generic_to_concrete_m
 	if file.generic_fns.len == 0 {
 		return
 	}
+	$if trace_auto_fn ? {
+		dump(generic_to_concrete_map)
+	}
 	for node in file.generic_fns {
+		$if trace_auto_fn ? {
+			dump(node.receiver.typ)
+		}
 		if concrete_types := generic_to_concrete_map[node.receiver.typ] {
+			$if trace_auto_fn ? {
+				dump(concrete_types)
+			}
 			fkey := node.fkey()
 			b.table.fn_generic_types[fkey] << concrete_types
 		}
 	}
 	b.checker.change_current_file(file)
 	b.checker.post_process_generic_fns() or {}
+}
+
+fn (mut b Builder) get_concrete_types(typ ast.Type) []ast.Type {
+	mut concrete_types := []ast.Type{}
+	for t in b.table.type_symbols {
+		if t.info is ast.Struct {
+			if t.info.parent_type == typ && t.info.concrete_types.len > 0 {
+				concrete_types << t.info.concrete_types
+			}
+		}
+	}
+	return concrete_types
 }
