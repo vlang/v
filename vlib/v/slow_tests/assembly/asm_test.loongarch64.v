@@ -34,4 +34,15 @@ fn test_inline_asm() {
 	assert d == 10
 	assert e == 2
 	assert f == 17
+
+	l := 5
+	m := &l
+	asm loongarch64 {
+		li.w r20, 7
+		st.w r20, [m], 0
+		; ; r (m)
+		; r20
+		  memory
+	}
+	assert l == 7
 }
