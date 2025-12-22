@@ -77,9 +77,6 @@ fn (p &Parser) is_array_type() bool {
 			break
 		}
 		i++
-		if tok.kind == .lsbr || tok.kind != .rsbr {
-			continue
-		}
 	}
 	return false
 }
