@@ -1787,7 +1787,6 @@ pub fn (mut g Gen) write_typedef_types() {
 										g.type_definitions.writeln('${g.option_type_text(styp_elem,
 											elem_base)};')
 										g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
-										g.options_forward << base
 										g.done_options << styp
 									}
 								}
