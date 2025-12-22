@@ -84,14 +84,15 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 }
 
 // generate function variable definition, e.g. `void (*var_name) (int, string)`
-fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_name string) string {
+fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_name string, nr_muls int) string {
 	ret_styp := g.styp(return_type)
-	mut sig := '${ret_styp} (*${c_name(var_name)}) ('
+	mut sig := '${ret_styp} (${'*'.repeat(nr_muls + 1)}${c_name(var_name)}) ('
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
 			func := arg_sym.info.func
-			arg_sig := g.fn_var_signature(func.return_type, func.params.map(it.typ), '')
+			arg_sig := g.fn_var_signature(func.return_type, func.params.map(it.typ), '',
+				arg_typ.nr_muls())
 			sig += arg_sig
 		} else {
 			arg_styp := g.styp(arg_typ)

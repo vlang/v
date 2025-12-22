@@ -103,7 +103,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
 			if ret_final_sym.info is ast.FnType {
 				def := g.fn_var_signature(ret_final_sym.info.func.return_type, ret_final_sym.info.func.params.map(it.typ),
-					tmp_var)
+					tmp_var, 0)
 				func_decl = '${def} = &${g.styp(node.return_type)};'
 			}
 		}
