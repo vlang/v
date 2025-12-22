@@ -239,16 +239,14 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 					} else if p.prev_tok.kind == .rsbr {
 						v.typ = ast.array_type_idx
 					}
-					if p.pref.autofree {
-						r0 := right[0]
-						if r0 is ast.CallExpr {
-							// Set correct variable position (after the or block)
-							// so that autofree doesn't free it in cgen before
-							// it's declared. (`Or` variables are declared after the or block).
-							if r0.or_block.pos.pos > 0 && r0.or_block.stmts.len > 0 {
-								v.is_or = true
-								// v.pos = r0.or_block.pos.
-							}
+					if p.pref.autofree && right.len > 0 {
+						expr_for_or := if v.expr !is ast.EmptyExpr {
+							v.expr
+						} else {
+							right[0]
+						}
+						if expr_has_block_or(expr_for_or) {
+							v.is_or = true
 						}
 					}
 					obj := ast.ScopeObject(v)
@@ -314,5 +312,31 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		is_static:     is_static
 		is_volatile:   is_volatile
 		attr:          attr
+	}
+}
+
+fn expr_has_block_or(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr {
+			expr.or_block.kind == .block && expr.or_block.stmts.len > 0
+		}
+		ast.SelectorExpr {
+			expr.or_block.kind == .block && expr.or_block.stmts.len > 0
+		}
+		ast.PrefixExpr {
+			expr.or_block.kind == .block && expr.or_block.stmts.len > 0
+		}
+		ast.SqlExpr {
+			expr.or_expr.kind == .block && expr.or_expr.stmts.len > 0
+		}
+		ast.IndexExpr {
+			expr.or_expr.kind == .block && expr.or_expr.stmts.len > 0
+		}
+		ast.Ident {
+			expr.or_expr.kind == .block && expr.or_expr.stmts.len > 0
+		}
+		else {
+			false
+		}
 	}
 }

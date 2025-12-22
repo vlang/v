@@ -1,0 +1,27 @@
+// vtest vflags: -autofree
+import db.sqlite
+
+@[table: 'tasks']
+struct Task {
+pub mut:
+	id    int    @[primary]
+	title string @[unique]
+}
+
+fn get_tasks(db sqlite.DB) []Task {
+	tasks := sql db {
+		select from Task
+	} or {
+		return []Task{}
+	}
+	return tasks
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	sql db {
+		create table Task
+	}!
+	tasks := get_tasks(db)
+	println(tasks.len)
+}

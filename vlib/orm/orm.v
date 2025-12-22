@@ -640,6 +640,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	fs << unique_fields
+	unique_fields.clear() // ownership transferred to fs to avoid double-free under -autofree
 	str += fs.join(', ')
 	if index_fields.len > 0 && sql_dialect == .mysql {
 		str += ', INDEX `idx_${table.name}` (`'
