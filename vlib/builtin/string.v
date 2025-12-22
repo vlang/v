@@ -1615,6 +1615,30 @@ pub fn (s string) ends_with(p string) bool {
 	return false
 }
 
+// mask to select all bytes
+const ascii_all_bytes_mask = u64(0x0101010101010101)
+// mask to detect high bits in each byte
+const ascii_high_mask = u64(0x8080808080808080)
+// diff between uppercase and lowercase ASCII letters
+const diff = u64(0x20) // 32
+
+// Detect if a chunk contains any non-ASCII bytes (any byte with high bit set)
+fn has_non_ascii(chunk u64) bool {
+	return (chunk & ascii_high_mask) != 0
+}
+
+// to_lower_swar_chunk converts an 8-byte chunk to lowercase using SWAR technique.
+fn to_lower_swar_chunk(octets u64) u64 {
+	// heptets: bits 0-6 of each byte
+	heptets := octets & (0x7F * ascii_all_bytes_mask)
+	is_ge_upper_a := heptets + ((0x80 - u64(`A`)) * ascii_all_bytes_mask)
+	is_gt_upper_z := heptets + ((0x7F - u64(`Z`)) * ascii_all_bytes_mask)
+	is_ascii := ~octets & ascii_high_mask
+	is_upper := is_ascii & (is_ge_upper_a ^ is_gt_upper_z)
+	to_lower := (is_upper >> 2) & (diff * ascii_all_bytes_mask)
+	return octets ^ to_lower
+}
+
 // to_lower_ascii returns the string in all lowercase characters.
 // It is faster than `s.to_lower()`, but works only when the input
 // string `s` is composed *entirely* from ASCII characters.
@@ -1623,13 +1647,46 @@ pub fn (s string) ends_with(p string) bool {
 pub fn (s string) to_lower_ascii() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
-		for i in 0 .. s.len {
-			if s.str[i] >= `A` && s.str[i] <= `Z` {
-				b[i] = s.str[i] + 32
+		mut p := &u64(b)
+		mut src := &u64(s.str)
+		mut len := s.len
+
+		// Process 8-byte chunks
+		for len >= 8 {
+			chunk := *src
+			if !has_non_ascii(chunk) {
+				// Fast path: all ASCII, use SWAR
+				*p = to_lower_swar_chunk(chunk)
 			} else {
-				b[i] = s.str[i]
+				// Mixed ASCII/non-ASCII or all non-ASCII: process byte by byte
+				mut tail_p := &u8(p)
+				mut tail_src := &u8(src)
+				for i in 0 .. 8 {
+					c := tail_src[i]
+					if c >= `A` && c <= `Z` {
+						tail_p[i] = c + 32
+					} else {
+						tail_p[i] = c
+					}
+				}
+			}
+			p++
+			src++
+			len -= 8
+		}
+
+		// Process remaining bytes
+		mut tail_p := &u8(p)
+		mut tail_src := &u8(src)
+		for i in 0 .. len {
+			c := tail_src[i]
+			if c >= `A` && c <= `Z` {
+				tail_p[i] = c + 32
+			} else {
+				tail_p[i] = c
 			}
 		}
+
 		b[s.len] = 0
 		return tos(b, s.len)
 	}
