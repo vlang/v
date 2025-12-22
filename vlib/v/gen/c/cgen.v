@@ -5674,7 +5674,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 	} else if !node_typ_is_option && !node_typ.is_ptr() && !expr_type.is_ptr()
 		&& ((sym.info is ast.Struct && !sym.info.is_typedef)
-		|| (sym.kind == .alias && final_sym.kind == .struct)) {
+		|| (sym.kind == .alias && final_sym.info is ast.Struct && !final_sym.info.is_typedef)) {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.styp(node_typ)
 		g.write('*((${styp} *)(&')
