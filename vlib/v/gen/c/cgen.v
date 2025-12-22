@@ -1779,8 +1779,13 @@ pub fn (mut g Gen) write_typedef_types() {
 						} else if !info.is_fn_ret {
 							base := g.styp(info.elem_type.clear_option_and_result())
 							if info.elem_type.has_flag(.option) && base !in g.options_forward {
+								styp_elem, elem_base := g.option_type_name(info.elem_type)
 								lock g.done_options {
 									if base !in g.done_options {
+										g.done_options << elem_base
+										g.typedefs.writeln('typedef struct ${styp_elem} ${styp_elem};')
+										g.type_definitions.writeln('${g.option_type_text(styp_elem,
+											elem_base)};')
 										g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 										g.options_forward << base
 										g.done_options << styp
