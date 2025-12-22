@@ -10,9 +10,10 @@ import v.util
 pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
-	index &IndexState
-	table &ast.Table = unsafe { nil }
-	file  &ast.File  = unsafe { nil }
+	index   &IndexState
+	table   &ast.Table = unsafe { nil }
+	file    &ast.File  = unsafe { nil }
+	checker bool // is the checker transformer, set by the checker
 mut:
 	is_assert   bool
 	inside_dump bool

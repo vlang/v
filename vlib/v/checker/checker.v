@@ -180,6 +180,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		v_current_commit_hash:         v_current_commit_hash
 		checker_transformer:           transformer.new_transformer_with_table(table, pref_)
 	}
+	checker.checker_transformer.checker = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
 	return checker
