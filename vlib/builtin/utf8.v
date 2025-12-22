@@ -34,6 +34,7 @@ pub fn utf32_to_str_no_malloc(code u32, mut buf &u8) string {
 	}
 }
 
+// Convert utf32 to utf8 into a pre-allocated buffer
 @[manualfree; unsafe]
 pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 	unsafe {
@@ -65,6 +66,42 @@ pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 		}
 	}
 	return 0
+}
+
+// Convert utf32 to utf8 into a pre-allocated buffer
+@[unsafe]
+pub fn push_utf32_decode_to_buffer(code u32, mut buf []u8) {
+	unsafe {
+		icode := int(code) // Prevents doing casts everywhere
+		if icode <= 127 {
+			buf << u8(icode) // 0x00 - 0x7F
+			return
+		} else if icode <= 2047 {
+			t_buf := [
+				u8(192 | u8(icode >> 6)), // 0xC0 - 110xxxxx
+				u8(128 | u8(icode & 63)), // 0x80 - 0x3F - 10xxxxxx
+			]!
+			buf.push_many(&t_buf[0], 2)
+			return
+		} else if icode <= 65535 {
+			t_buf := [
+				u8(224 | u8(icode >> 12)), // 0xE0 - 1110xxxx
+				u8(128 | (u8(icode >> 6) & 63)), // 0x80 - 0x3F - 10xxxxxx
+				u8(128 | u8(icode & 63)), // 0x80 - 0x3F - 10xxxxxx
+			]!
+			buf.push_many(&t_buf[0], 3)
+			return
+		} else if icode <= 1114111 {
+			t_buf := [
+				u8(240 | u8(icode >> 18)), // 0xF0 - 11110xxx
+				u8(128 | (u8(icode >> 12) & 63)), // 0x80 - 0x3F - 10xxxxxx
+				u8(128 | (u8(icode >> 6) & 63)), // 0x80 - 0x3F - 10xxxxxx
+				u8(128 | u8(icode & 63)), // 0x80 - 0x3F - 10xxxxxx
+			]!
+			buf.push_many(&t_buf[0], 4)
+			return
+		}
+	}
 }
 
 // Convert utf8 to utf32
