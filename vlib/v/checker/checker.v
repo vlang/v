@@ -3540,9 +3540,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		to_type
 	}
 
-	if final_to_sym == final_from_sym {
-		// type alias
-		return to_type
+	if final_to_sym == final_from_sym && final_to_type.flags() == from_type.flags()
+		&& to_type.flags() == from_type.flags() {
+		// type alias, and flags are same, e.g. option, result, nr_muls...
+		return node.typ
 	}
 
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
