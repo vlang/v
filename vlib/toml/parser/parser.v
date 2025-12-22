@@ -1118,6 +1118,14 @@ pub fn (mut p Parser) array() ![]ast.Value {
 				p.expect(.comma)!
 			}
 			previous_token_was_value = false
+		} else {
+			if p.tok.kind == .comma {
+				p.ignore_while_peek(space_formatting)
+				if p.peek_tok.kind == .rsbr {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' unexpected empty value in array "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+				}
+			}
 		}
 
 		match p.tok.kind {

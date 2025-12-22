@@ -377,6 +377,21 @@ fn (c &Checker) check_date(date ast.Date) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" does not have a valid RFC 3339 day indication in ...${c.excerpt(date.pos)}...')
 	}
+	if mm.int() == 2 {
+		ddi := dd.int()
+		if ddi > 28 {
+			if ddi == 29 {
+				yyyyi := yyyy.int()
+				if !(yyyyi % 4 == 0 && (yyyyi % 100 != 0 || yyyyi % 400 == 0)) {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' "${lit}" is not a valid RFC 3339 date: ${yyyy} is not a leap year so February can not have 29 days in it ...${c.excerpt(date.pos)}...')
+				}
+			} else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' "${lit}" is not a valid RFC 3339 date: February can not have more that 28 or 29 days in it ...${c.excerpt(date.pos)}...')
+			}
+		}
+	}
 	toml_parse_time(lit) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Date format string "${err}". In ...${c.excerpt(date.pos)}...')
