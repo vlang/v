@@ -33,6 +33,7 @@ pub enum OS {
 	wasi    // -b wasm -os wasi
 	raw
 	all
+	bsd // macos freebsd openbsd netbsd dragonfly
 }
 
 // Helper function to convert string names to OS enum
@@ -163,6 +164,7 @@ pub fn (o OS) lower() string {
 		.browser { 'browser' }
 		.wasi { 'wasi' }
 		.all { 'all' }
+		.bsd { 'bsd' }
 	}
 }
 
@@ -201,6 +203,7 @@ pub fn (o OS) str() string {
 		.wasi { return 'wasi' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
+		.bsd { return 'bsd' }
 	}
 }
 

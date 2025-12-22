@@ -125,6 +125,8 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'nix.c.v',
 		'_',
+		'bsd.c.v',
+		'_',
 		'windows.c.v',
 		'_',
 		'linux.c.v',
@@ -293,12 +295,19 @@ pub fn (this_os OS) is_target_of(target string) bool {
 	if this_os == .all {
 		return true
 	}
+
+	// bsd refers to variants of BSD Unix, macos, freebsd, openbsd, netbsd, and dragonfly
+	if this_os == .bsd && target in ['darwin', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+		return true
+	}
+
 	// Note: Termux is running natively on Android devices, but the compilers there (clang) usually do not have access
 	// to the Android SDK. The code here ensures that you can have `_termux.c.v` and `_android_outside_termux.c.v` postfixes,
 	// to target both the cross compilation case (where the SDK headers are used and available), and the Termux case,
 	// where the Android SDK is not used.
 	// 'nix' means "all but Windows"
-	if (this_os == .windows && target == 'nix')
+	// 'bsd' means "all BSD variants of Unix but not others or Windows"
+	if (this_os == .windows && target in ['nix', 'bsd'])
 		|| (this_os != .windows && target == 'windows')
 		|| (this_os != .linux && target == 'linux')
 		|| (this_os != .macos && target in ['darwin', 'macos'])
