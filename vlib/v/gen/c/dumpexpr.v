@@ -30,6 +30,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
 					.result))).replace('*', '')
 			}
+		} else if node.expr is ast.CallExpr {
+			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+				'')
 		}
 	}
 	// var.$(field.name)
