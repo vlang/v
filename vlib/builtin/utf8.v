@@ -100,19 +100,32 @@ fn impl_utf8_to_utf32(_bytes &u8, _bytes_len int) rune {
 	}
 	// return ASCII unchanged
 	if _bytes_len == 1 {
-		return unsafe { rune(_bytes[0]) }
+		return rune(unsafe { _bytes[0] })
 	}
-	mut b := u8(int(unsafe { _bytes[0] }))
-	b = b << _bytes_len
-	mut res := rune(b)
-	mut shift := 6 - _bytes_len
-	for i := 1; i < _bytes_len; i++ {
-		c := rune(unsafe { _bytes[i] })
-		res = rune(res) << shift
-		res |= c & 63 // 0x3f
-		shift = 6
+
+	match _bytes_len {
+		2 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			return ((b0 & 0x1F) << 6) | (b1 & 0x3F)
+		}
+		3 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			b2 := rune(unsafe { _bytes[2] })
+			return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F)
+		}
+		4 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			b2 := rune(unsafe { _bytes[2] })
+			b3 := rune(unsafe { _bytes[3] })
+			return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+		}
+		else {
+			return 0
+		}
 	}
-	return res
 }
 
 // Calculate string length for formatting, i.e. number of "characters"
