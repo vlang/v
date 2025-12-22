@@ -3539,6 +3539,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else {
 		to_type
 	}
+
+	if final_to_sym == final_from_sym {
+		// type alias
+		return to_type
+	}
+
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
 	c.markused_castexpr(mut node, to_type, mut final_to_sym)
 	if to_type.has_flag(.result) {
