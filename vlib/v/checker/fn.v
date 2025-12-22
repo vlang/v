@@ -1276,7 +1276,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	// check for arg (var) of fn type
 	if !found {
-		mut typ := 0
+		mut typ := ast.no_type
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {
@@ -1300,6 +1300,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 					node.is_fn_var = true
 					node.fn_var_type = typ
+					if typ.nr_muls() > 0 {
+						c.error('function pointer must be undereferenced first', node.pos)
+					}
 				}
 				else {}
 			}
@@ -3512,7 +3515,17 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := unaliased_left_type
 	for mut arg in node.args {
-		arg_type = c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+		mut expr_type := c.expr(mut arg.expr)
+		if arg.expr is ast.AnonFn {
+			// fix anon fn when return is a fixed array
+			expr_sym := c.table.sym(expr_type)
+			info := expr_sym.info as ast.FnType
+			return_type_sym := c.table.sym(info.func.return_type)
+			if return_type_sym.kind == .array_fixed {
+				expr_type = c.cast_fixed_array_ret(info.func.return_type, return_type_sym)
+			}
+		}
+		arg_type = c.check_expr_option_or_result_call(arg.expr, expr_type)
 	}
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')

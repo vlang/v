@@ -12,21 +12,23 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
 fn C.memset(str voidptr, c int, n usize) voidptr
 
+fn C.memchr(str voidptr, c int, n usize) voidptr
+
 @[trusted]
-fn C.calloc(int, int) &u8
+fn C.calloc(usize, usize) voidptr
 
 fn C.atoi(&char) int
 
-fn C.malloc(int) &u8
+fn C.malloc(usize) voidptr
 
-fn C.realloc(a &u8, b int) &u8
+fn C.realloc(a voidptr, b usize) voidptr
 
 fn C.free(ptr voidptr)
 
-fn C.mmap(addr_length int, length isize, prot int, flags int, fd int, offset u64) voidptr
-fn C.mprotect(addr_length int, len isize, prot int) int
+fn C.mmap(addr_length voidptr, length usize, prot int, flags int, fd int, offset isize) voidptr
+fn C.mprotect(addr_length voidptr, len usize, prot int) int
 
-fn C.aligned_alloc(align isize, size isize) voidptr
+fn C.aligned_alloc(align usize, size usize) voidptr
 
 // windows aligned memory functions
 fn C._aligned_malloc(size isize, align isize) voidptr

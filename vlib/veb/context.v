@@ -367,9 +367,14 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	return ctx.send_response_to_client('text/plain', status.str())
 }
 
-// before_request is always the first function that is executed and acts as middleware
-pub fn (mut ctx Context) before_request() Result {
-	return Result{}
+// before_request is *always* the first function that is executed.
+// It can be overriden on your custom context. You can use it to
+// log information about the current request, like its target url,
+// client IP etc, or to enrich the request with common information,
+// by setting session cookies, adding custom headers etc.
+// For more control over the request, use the explicit Middleware
+// support described in https://modules.vlang.io/veb.html#middleware .
+pub fn (mut ctx Context) before_request() {
 }
 
 // returns a HTTP 404 response

@@ -309,7 +309,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 			if call_fn.is_fn_var {
 				sig := g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
-					call_fn.name)
+					call_fn.name, 0)
 				g.write(sig)
 				g.definitions.write_string(sig)
 			} else {
@@ -741,8 +741,8 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			for var in node.inherited_vars {
 				var_sym := g.table.sym(var.typ)
 				if var_sym.info is ast.FnType {
-					sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-						c_name(var.name))
+					mut sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
+						c_name(var.name), var.typ.nr_muls())
 					g.definitions.writeln('\t' + sig + ';')
 				} else {
 					styp := g.styp(var.typ)
@@ -881,7 +881,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		if node.left.inherited_vars.len > 0 {
 			tmp_anon_fn_var = g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
-				tmp_anon_fn_var)
+				tmp_anon_fn_var, 0)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${fn_type} = ')
@@ -914,7 +914,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_res := g.new_tmp_var()
 			fn_sym := g.table.sym(left_typ).info as ast.FnType
 			fn_type := g.fn_var_signature(fn_sym.func.return_type, fn_sym.func.params.map(it.typ),
-				tmp_res)
+				tmp_res, 0)
 
 			old_is_fn_index_call := g.is_fn_index_call
 			g.is_fn_index_call = true
@@ -1080,8 +1080,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					unwrapped_styp = unwrapped_styp[3..]
 				}
 				if node.is_return_used {
+					is_fn := g.table.final_sym(unwrapped_typ).kind == .function
 					// return value is used, so we need to write the unwrapped temporary var
-					g.write('\n ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
+					if is_fn && unwrapped_typ.nr_muls() > 0 {
+						g.write('\n ${cur_line}((${unwrapped_styp}*)${tmp_opt}.data)')
+					} else {
+						g.write('\n ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
+					}
 				} else {
 					g.write('\n ${cur_line}')
 				}
@@ -3051,7 +3056,7 @@ fn call_convention_attribute(cconvention string, is_cc_msvc bool) string {
 	return if is_cc_msvc { '__${cconvention} ' } else { '__attribute__((${cconvention})) ' }
 }
 
-fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType) {
+fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType, nr_muls int) {
 	ret_styp := g.styp(info.func.return_type)
 	mut call_conv := ''
 	mut msvc_call_conv := ''
@@ -3072,7 +3077,7 @@ fn (mut g Gen) write_fntype_decl(fn_name string, info ast.FnType) {
 	} else {
 		''
 	}
-	g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
+	g.write('${ret_styp} (${msvc_call_conv}${'*'.repeat(nr_muls + 1)}${fn_name}) (')
 	def_pos := g.definitions.len
 	g.fn_decl_params(info.func.params, unsafe { nil }, false, false)
 	g.definitions.go_back(g.definitions.len - def_pos)

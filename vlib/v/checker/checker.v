@@ -154,6 +154,9 @@ mut:
 
 	js_string           ast.Type                 = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
 	checker_transformer &transformer.Transformer = unsafe { nil }
+
+	shown_xvweb_deprecation bool // prevents showing the deprecation more than once per compilation
+	shown_vweb_deprecation  bool // prevents showing the deprecation more than once per compilation
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -1464,6 +1467,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						expr)
 					c.cur_or_expr = last_cur_or_expr
 				}
+				return ret_type.clear_flag(.result)
 			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
 				with_modifier_kind := if expr.left_type.has_flag(.option) {
 					'an Option'
@@ -1896,8 +1900,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
 		c.markused_comptime_call(typ.has_flag(.generic), '${int(method.params[0].typ)}.${field_name}')
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
-			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
-			// if the expected type includes the receiver, don't hide it behind a closure
+			mut method_copy := method
+			method_copy.name = ''
+			fn_type := ast.new_type(c.table.find_or_register_fn_type(method_copy, false,
+				true))
 			if c.check_types(fn_type, c.expected_type) {
 				c.table.used_features.anon_fn = true
 				return fn_type
@@ -2601,10 +2607,7 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			// add global to exports for duplicate check
 			c.table.export_names[field.name] = field.name
 		}
-		sym := c.table.sym(field.typ)
-		if sym.kind == .placeholder {
-			c.error('unknown type `${sym.name}`', field.typ_pos)
-		}
+		c.ensure_type_exists(field.typ, field.typ_pos)
 		if field.has_expr {
 			if field.expr is ast.AnonFn && field.name == 'main' {
 				c.error('the `main` function is the program entry point, cannot redefine it',
@@ -2920,10 +2923,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
-	if node.mod == 'x.vweb' {
+	if node.mod == 'x.vweb' && !c.shown_xvweb_deprecation {
 		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
-	} else if node.mod == 'vweb' {
+		c.shown_xvweb_deprecation = true
+	} else if node.mod == 'vweb' && !c.shown_vweb_deprecation {
 		println('`vweb` has been deprecated. Please use the more stable and fast `veb` instead.')
+		c.shown_vweb_deprecation = true
 	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {
@@ -5340,7 +5345,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.expected_or_type = typ
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-	c.check_expr_option_or_result_call(node, typ)
+	typ = c.check_expr_option_or_result_call(node, typ)
 	node.typ = typ
 	return typ
 }

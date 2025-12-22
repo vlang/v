@@ -177,10 +177,11 @@ fn ssl_error(ret int, ssl voidptr) !SSLError {
 	}
 	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
-			return error_with_code('unrecoverable syscall (${res})', res)
+			return error_with_code('net.openssl unrecoverable syscall (${res})', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('unrecoverable ssl protocol error (${res})', res)
+			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})',
+				res)
 		}
 		else {
 			return unsafe { SSLError(res) }

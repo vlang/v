@@ -718,10 +718,17 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				exp_type_is_option := exp_type.has_flag(.option)
 				if !exp_type_is_option {
 					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
-					if got_type.has_flag(.option) {
+					init_field.typ = got_type
+					has_or_block := match mut init_field.expr {
+						ast.IndexExpr { init_field.expr.or_expr.kind != .absent }
+						ast.CallExpr { init_field.expr.or_block.kind != .absent }
+						ast.SelectorExpr { init_field.expr.or_block.kind != .absent }
+						else { false }
+					}
+					if got_type.has_flag(.option) && !has_or_block {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
-					} else if got_type.has_flag(.result) {
+					} else if got_type.has_flag(.result) && !has_or_block {
 						c.error('cannot assign a Result value to a non-option struct field',
 							init_field.pos)
 					}

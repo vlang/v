@@ -286,7 +286,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.fn_local_idx_end = (g.local_vars.len + g.ret_rvars.len)
 	g.fn_name = name
 
-	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
+	mut should_export := g.pref.os in [.browser, .wasi] && node.is_pub && node.mod == 'main'
 
 	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()

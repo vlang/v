@@ -282,10 +282,6 @@ pub fn decode_zstd[T]() MiddlewareOptions[T] {
 	}
 }
 
-interface HasBeforeRequest {
-	before_request()
-}
-
 pub const cors_safelisted_response_headers = [http.CommonHeader.cache_control, .content_language,
 	.content_length, .content_type, .expires, .last_modified, .pragma].map(it.str()).join(',')
 

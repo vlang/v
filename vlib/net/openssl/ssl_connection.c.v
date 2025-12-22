@@ -86,7 +86,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 			if s.sslctx != 0 {
 				C.SSL_CTX_free(s.sslctx)
 			}
-			return error('Could not connect using SSL. (${err_res}),err')
+			return error('net.openssl Could not connect using SSL. (${err_res}),err')
 		}
 		C.SSL_free(voidptr(s.ssl))
 	}
@@ -105,7 +105,7 @@ fn (mut s SSLConn) init() ! {
 	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
-		return error("Couldn't get ssl context")
+		return error('net.openssl Could not get ssl context')
 	}
 
 	if s.config.validate {
@@ -115,7 +115,7 @@ fn (mut s SSLConn) init() ! {
 
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
 	if s.ssl == 0 {
-		return error("Couldn't create OpenSSL instance.")
+		return error('net.openssl Could not create OpenSSL instance')
 	}
 
 	mut res := 0
@@ -143,20 +143,20 @@ fn (mut s SSLConn) init() ! {
 			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str),
 				0)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_load_verify_locations failed')
+				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_certificate_file failed, res: ${res}')
+				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
 			}
 		}
 		if s.config.cert_key != '' {
 			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
 				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: ${res}')
+				return error('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}')
 			}
 		}
 
@@ -175,17 +175,14 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
-
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
 	if res != 1 {
-		return error('cannot set host name')
+		return error('net.openssl SSLConn.connect, could not set host name')
 	}
-
 	if C.SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
-		return error("Couldn't assign ssl to socket.")
+		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
-
-	s.complete_connect() or { return err }
+	s.complete_connect()!
 }
 
 // dial opens an ssl connection on hostname:port
@@ -219,7 +216,7 @@ fn (mut s SSLConn) complete_connect() ! {
 			s.wait_for_write(deadline - time.now())!
 			continue
 		}
-		return error('Could not connect using SSL. (${err_res}),err')
+		return error('net.openssl SSLConn.complete_connect, could not connect using SSL. (${err_res}),err')
 	}
 
 	if s.config.validate {
@@ -238,7 +235,7 @@ fn (mut s SSLConn) complete_connect() ! {
 				s.wait_for_write(deadline - time.now())!
 				continue
 			}
-			return error('Could not validate SSL certificate. (${err_res}),err')
+			return error('net.openssl SSLConn.complete_connect, could not validate SSL certificate. (${err_res}),err')
 		}
 		$if openbsd {
 			pcert = C.SSL_get_peer_certificate(voidptr(s.ssl))
@@ -252,7 +249,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		}
 		res := C.SSL_get_verify_result(voidptr(s.ssl))
 		if res != C.X509_V_OK {
-			return error('SSL handshake failed (OpenSSL SSL_get_verify_result = ${res})')
+			return error('net.openssl SSLConn.complete_connect, failed SSL handshake (OpenSSL SSL_get_verify_result = ${res})')
 		}
 	}
 }
@@ -317,14 +314,14 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: could not read, err_res: ${err_res}')
 					}
-					return error('Could not read using SSL. (${err_res})')
+					return error('net.openssl SSLConn.socket_read_into_ptr, could not read. (${err_res})')
 				}
 			}
 		}
 	}
 
-	// Dead code, for the compiler to pass
-	return error('Unknown error')
+	// Dead code, to satisfy the compiler
+	return error('net.openssl SSLConn.socket_read_into_ptr, unknown error')
 }
 
 pub fn (mut s SSLConn) read(mut buffer []u8) !int {
@@ -362,12 +359,13 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: ssl write on closed connection .ssl_error_zero_return')
 					}
-					return error('ssl write on closed connection') // TODO: error_with_code close
+					return error('net.openssl SSLConn.write_ptr, ssl write on closed connection') // TODO: error_with_code close
 				}
 				$if trace_ssl ? {
 					eprintln('${@METHOD} ---> res: could not write SSL, err_res: ${err_res}')
 				}
-				return error_with_code('Could not write SSL. (${err_res}),err', int(err_res))
+				return error_with_code('net.openssl SSLConn.write_ptr, could not write. (${err_res}),err',
+					int(err_res))
 			}
 			total_sent += sent
 		}
@@ -431,7 +429,8 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				remaining_time = (deadline - time.now()).milliseconds()
 				continue
 			}
-			return error_with_code('Select failed: ${res}', C.errno)
+			cerr := C.errno
+			return error_with_code('net.openssl select, failed: ${res}', cerr)
 		} else if res == 0 {
 			return net.err_timed_out
 		}

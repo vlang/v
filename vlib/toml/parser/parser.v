@@ -59,6 +59,8 @@ mut:
 	// The root map (map is called table in TOML world)
 	root_map                          map[string]ast.Value
 	root_map_key                      DottedKey
+	value_is_immutable                bool
+	immutable                         []DottedKey
 	explicit_declared                 []DottedKey
 	explicit_declared_array_of_tables []DottedKey
 	implicit_declared                 []DottedKey
@@ -274,6 +276,14 @@ fn (p &Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 // TODO: remove.
 fn todo_msvc_astring2dkey(s []string) DottedKey {
 	return s
+}
+
+// check_immutable returns an error if `key` has been declared as immutable.
+fn (p &Parser) check_immutable(key DottedKey) ! {
+	if p.immutable.len > 0 && p.immutable.has(key) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' key `${key.str()}` is immutable. Unexpected mutation at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+	}
 }
 
 // check_explicitly_declared returns an error if `key` has been explicitly declared.
@@ -499,8 +509,8 @@ pub fn (mut p Parser) root_table() ! {
 							continue
 						}
 						// Check for "table injection":
-						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
-						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
+						// https://github.com/toml-lang/toml-test/blob/576db85/tests/invalid/table/injection-1.toml
+						// https://github.com/toml-lang/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
 						if p.build_abs_dotted_key(sub_table).starts_with(explicit_key) {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
 								' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
@@ -612,6 +622,15 @@ pub fn (mut p Parser) root_table() ! {
 						continue
 					}
 
+					// Disallow mutation of immutable values (inline tables)
+					if dotted_key.len > 1 {
+						for part in dotted_key {
+							dotted_part := DottedKey([part])
+							if p.explicit_declared.has(dotted_part) {
+								p.check_immutable(dotted_part)!
+							}
+						}
+					}
 					// Disallow re-declaring the key
 					p.check_explicitly_declared(dotted_key)!
 					p.explicit_declared << dotted_key
@@ -740,7 +759,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 // The V map type is corresponding to a "table" in TOML.
 pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
-
+	defer { p.value_is_immutable = true }
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
 		p.next()!
@@ -786,8 +805,15 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
-
 					mut t := p.find_in_table(mut tbl, sub_table)!
+
+					// Disallow mutation of immutable values (inline tables)
+					if p.explicit_declared.has(dotted_key) {
+						left_most := DottedKey([dotted_key[0]])
+						if t.len > 0 {
+							p.check_immutable(left_most)!
+						}
+					}
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "${key}" = ${val} into ${ptr_str(t)}')
 						t[key.str()] = val
@@ -907,12 +933,15 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 	p.check_explicitly_declared(dotted_key)!
 
+	first := DottedKey([dotted_key[0]]) // The array that holds the entries
+	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
+
+	// Disallow re-declaring last part
+	p.check_explicitly_declared(last)!
+
 	if !p.explicit_declared_array_of_tables.has(dotted_key) {
 		p.explicit_declared_array_of_tables << dotted_key
 	}
-
-	first := DottedKey([dotted_key[0]]) // The array that holds the entries
-	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
 
 	mut t_arr := &[]ast.Value(unsafe { nil })
 	mut t_map := ast.Value(ast.Null{})
@@ -933,7 +962,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 					nm = &map[string]ast.Value{}
 					// We register this implicit allocation as *explicit* to be able to catch
 					// special cases like:
-					// https://github.com/BurntSushi/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+					// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
 					p.explicit_declared << first
 				}
 
@@ -1245,17 +1274,20 @@ pub fn (mut p Parser) key() !ast.Key {
 pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
 	key := p.key()!
+	dotted_key := DottedKey([key.str()])
+	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
 	p.next()!
 	p.ignore_while(space_formatting)
 	p.check(.assign)! // Assignment operator
 	p.ignore_while(space_formatting)
 	value := p.value()!
+	if p.value_is_immutable {
+		if !p.immutable.has(dotted_key) {
+			p.immutable << p.build_abs_dotted_key(dotted_key) // Mark the key we are assigning to as immutable
+		}
+		p.value_is_immutable = false
+	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `${key} = ${value}`')
-
-	p.explicit_declared << p.build_abs_dotted_key(DottedKey([
-		key.str(),
-	]))
-
 	return key, value
 }
 
@@ -1265,13 +1297,18 @@ pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key value pair...')
 	p.ignore_while(space_formatting)
 	dotted_key := p.dotted_key()!
+	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
 	p.ignore_while(space_formatting)
 	p.check(.assign)!
 	p.ignore_while(space_formatting)
 	value := p.value()!
+	if p.value_is_immutable {
+		if !p.immutable.has(dotted_key) {
+			p.immutable << p.build_abs_dotted_key(dotted_key) // Mark the key we are assigning to as immutable
+		}
+		p.value_is_immutable = false
+	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `${dotted_key} = ${value}`...')
-
-	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
 
 	return dotted_key, value
 }
@@ -1281,7 +1318,6 @@ pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 pub fn (mut p Parser) value() !ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value from token "${p.tok.kind}" "${p.tok.lit}"...')
 	mut value := ast.Value(ast.Null{})
-
 	if p.tok.kind == .number {
 		number_or_date := p.number_or_date()!
 		value = number_or_date

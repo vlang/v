@@ -134,6 +134,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	is_none := node.is_option && !node.has_init && !node.has_val
 
+	if node.has_val && node.exprs.len == 0 {
+		g.write('NULL')
+		return
+	}
+
 	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res
 		&& !g.inside_sumtype_cast) || (node.is_option && !is_none) {
 		ret_typ_str := g.styp(node.typ)
@@ -165,10 +170,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
+				expr_type := if node.expr_types.len > i {
+					node.expr_types[i]
+				} else {
+					node.elem_type
 				}
-				g.expr(expr)
+				g.expr_with_cast(expr, expr_type, node.elem_type)
 			}
 			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
@@ -464,7 +471,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 
 fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
 	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-		var_name)
+		var_name, 0)
 	g.write('${decl_var} = ')
 	g.gen_anon_fn(mut expr)
 	g.writeln(';')
@@ -525,6 +532,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	} else {
 		(ret_sym.info as ast.ArrayFixed).elem_type
 	}
+	ret_elem_sym := g.table.final_sym(ret_elem_type)
 	mut ret_elem_styp := g.styp(ret_elem_type)
 	inp_elem_type := if left_is_array {
 		(inp_sym.info as ast.Array).elem_type
@@ -545,7 +553,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			if var_sym.info is ast.FnType {
 				ret_elem_styp = 'voidptr'
 				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					tmp_map_expr_result_name)
+					tmp_map_expr_result_name, 0)
 			}
 		}
 	}
@@ -576,11 +584,19 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	match mut expr {
 		ast.AnonFn {
 			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
+			if ret_elem_sym.kind == .array_fixed {
+				// unpack fixed array return value
+				g.writeln('{0};')
+				g.write('memcpy(&${tmp_map_expr_result_name}, ')
+			}
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(${var_name})')
+			}
+			if ret_elem_sym.kind == .array_fixed {
+				g.write('.ret_arr, sizeof(${ret_elem_styp}))')
 			}
 		}
 		ast.Ident {

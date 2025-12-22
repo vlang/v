@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_ptr_undereferenced_err.vv:10:2: error: function pointer must be undereferenced first
+    8 |     ref := &f
+    9 |     deref := ref 
+   10 |     deref()
+      |     ~~~~~~~
+   11 | }

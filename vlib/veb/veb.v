@@ -56,7 +56,7 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
-				return error('method `${method.name}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
 			}
 		}
 	}
@@ -148,6 +148,11 @@ mut:
 	before_accept_loop()
 }
 
+interface HasBeforeRequestOnContext {
+mut:
+	before_request()
+}
+
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
 	mut route := Route{}
 	mut middleware_has_sent_response := false
@@ -201,8 +206,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// first execute before_request
-	$if A is HasBeforeRequest {
-		app.before_request()
+	$if X is HasBeforeRequestOnContext {
+		user_context.before_request()
 	}
 	// user_context.before_request()
 	if user_context.Context.done {

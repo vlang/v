@@ -8,13 +8,20 @@ import v.ast
 pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	// For JS and Go generate array init using their syntax
 	// if t.pref.backend !in [.c, .native] {
-	if !t.pref.new_transform || node.is_fixed {
-		for mut expr in node.exprs {
-			expr = t.expr(mut expr)
-		}
+	for mut expr in node.exprs {
+		expr = t.expr(mut expr)
+	}
+	if node.has_len {
 		node.len_expr = t.expr(mut node.len_expr)
+	}
+	if node.has_cap {
 		node.cap_expr = t.expr(mut node.cap_expr)
+	}
+	if node.has_init {
 		node.init_expr = t.expr(mut node.init_expr)
+	}
+	if !t.pref.new_transform || node.is_fixed || t.inside_in || node.has_len || node.has_cap
+		|| node.exprs.len == 0 {
 		return node
 	}
 	// For C and native transform into a function call `builtin__new_array_from_c_array_noscan(...)` etc
@@ -53,14 +60,26 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 		}
 		typ:  ast.int_type
 	}
+	fixed_array_idx := t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
+		false)
+	fixed_array_typ := if node.elem_type.has_flag(.generic) {
+		ast.new_type(fixed_array_idx).set_flag(.generic)
+	} else {
+		ast.new_type(fixed_array_idx)
+	}
 	fixed_array_arg := ast.CallArg{
-		expr: ast.ArrayInit{
-			is_fixed:  true
-			has_val:   true
-			typ:       t.table.find_or_register_array_fixed(node.elem_type, len, ast.empty_expr,
-				false)
-			elem_type: node.elem_type
-			exprs:     node.exprs
+		expr: ast.CastExpr{
+			expr:      ast.ArrayInit{
+				is_fixed:   true
+				has_val:    true
+				typ:        fixed_array_typ
+				elem_type:  node.elem_type
+				exprs:      node.exprs
+				expr_types: node.exprs.map(it.type())
+			}
+			typ:       ast.voidptr_type
+			typname:   'voidptr'
+			expr_type: fixed_array_typ
 		}
 		typ:  ast.voidptr_type_idx
 	}
@@ -69,10 +88,10 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	fn_name = 'new_array_from_c_array' + noscan
 	// g.write('builtin__new_array_from_c_array${noscan}(${len}, ${len}, sizeof(${elem_styp}), _MOV((${elem_styp}[${len}]){')
 	//}
-	call_expr := ast.CallExpr{
+	mut call_expr := ast.CallExpr{
 		name:        fn_name
 		mod:         'builtin'
-		scope:       ast.empty_scope // node.scope
+		scope:       unsafe { nil }
 		args:        [len_arg, len_arg, sizeof_arg, fixed_array_arg] //, sizeof(voidptr), _MOV((voidptr[${len}]){')
 		return_type: node.typ
 	}

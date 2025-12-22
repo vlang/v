@@ -11,6 +11,7 @@ pub:
 pub struct FunctionData {
 pub:
 	name        string
+	location    string
 	attrs       []string
 	args        []FunctionParam
 	return_type int

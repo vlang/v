@@ -15,8 +15,8 @@ module ecdsa
 #flag linux -I/usr/local/include/openssl
 #flag linux -L/usr/local/lib64/
 
-#flag openbsd -I/usr/local/include/eopenssl34
-#flag openbsd -L/usr/local/lib/eopenssl34 -Wl,-rpath,/usr/local/lib/eopenssl34
+#flag openbsd -I/usr/local/include/eopenssl35
+#flag openbsd -L/usr/local/lib/eopenssl35 -Wl,-rpath,/usr/local/lib/eopenssl35
 
 // Installed through choco:
 #flag windows -IC:/Program Files/OpenSSL-Win64/include
