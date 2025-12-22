@@ -3410,9 +3410,17 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			scale := arg.scale
 			match arg.mode {
 				.base {
-					g.write('(')
+					if stmt.arch == .arm64 {
+						g.write('[')
+					} else {
+						g.write('(')
+					}
 					g.asm_arg(base, stmt)
-					g.write(')')
+					if stmt.arch == .arm64 {
+						g.write(']')
+					} else {
+						g.write(')')
+					}
 				}
 				.displacement {
 					g.asm_arg(displacement, stmt)
