@@ -29,12 +29,6 @@ const valid_exceptions = [
 ]
 const jq_not_equal = [
 	'do_not_remove',
-	'datetime/milliseconds.toml',
-	'float/zero.toml',
-	'inline-table/spaces.toml',
-	'spec/array-of-tables-1.toml',
-	'spec/float-0.toml',
-	'spec/float-2.toml',
 ]
 const invalid_exceptions = [
 	'do_not_remove',
