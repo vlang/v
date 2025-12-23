@@ -553,6 +553,13 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.init_generic_types = []ast.Type{}
 	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	sym := p.table.sym(typ)
+	struct_name := sym.name.all_after_last('.')
+	if sym.kind == .placeholder && !sym.name.starts_with('C.') && struct_name.len > 0
+		&& !struct_name[0].is_capital() {
+		p.error_with_pos('struct name must begin with capital letter', first_pos)
+		return ast.StructInit{}
+	}
 	struct_init_generic_types := p.init_generic_types.clone()
 	if is_option {
 		typ = typ.set_flag(.option)
