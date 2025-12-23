@@ -5652,10 +5652,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
+	expr_sym := g.table.sym(expr_type)
+	final_expr_sym := g.table.final_sym(expr_type)
 	node_typ_is_option := node.typ.has_flag(.option)
 	if sym.kind in [.sum_type, .interface] {
 		if g.table.unaliased_type(expr_type) == node_typ {
@@ -5674,7 +5675,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 	} else if !node_typ_is_option && !node_typ.is_ptr() && !expr_type.is_ptr()
 		&& ((sym.info is ast.Struct && !sym.info.is_typedef)
-		|| (sym.kind == .alias && final_sym.info is ast.Struct && !final_sym.info.is_typedef)) {
+		|| (expr_sym.kind == .alias && final_expr_sym.info is ast.Struct
+		&& !final_expr_sym.info.is_typedef)) {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.styp(node_typ)
 		g.write('*((${styp} *)(&')
