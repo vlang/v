@@ -397,6 +397,12 @@ pub fn (t Type) deref() Type {
 	return t & 0xff00ffff | (nr_muls - 1) << 16
 }
 
+// flags returns type's flags
+@[inline]
+pub fn (t Type) flags() int {
+	return t >> 16
+}
+
 // has_flag returns whether the given named `flag` is set
 @[inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {

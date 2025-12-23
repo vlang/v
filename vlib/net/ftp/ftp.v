@@ -232,7 +232,6 @@ pub fn (mut zftp FTP) dir() ![]string {
 		if lfile.len > 1 {
 			trimmed := lfile.after(':')
 			dir << trimmed#[3..trimmed.len - 1]
-			continue
 		}
 	}
 	return dir

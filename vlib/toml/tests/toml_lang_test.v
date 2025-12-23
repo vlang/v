@@ -1,7 +1,7 @@
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang`
-// `git -C vlib/toml/tests/testdata/toml_lang reset --hard f30c716
+// `git -C vlib/toml/tests/testdata/toml_lang reset --hard 8bb8d9c
 // See also the CI toml tests
 import os
 import toml
@@ -13,61 +13,26 @@ const no_jq = os.getenv('VNO_JQ') == '1'
 
 // Kept for easier handling of future updates to the tests
 const valid_exceptions = [
+	'do_not_remove',
 	'array/open-parent-table.toml',
 	'comment/after-literal-no-ws.toml',
-	'comment/everywhere.toml',
-	'datetime/no-seconds.toml',
+	'datetime/no-seconds.toml', // only allowed in TOML v1.1.0
 	'inline-table/newline.toml',
 	'key/space.toml',
 	'key/start.toml',
-	'key/unicode.toml',
 	'string/escapes.toml',
 	'string/escape-esc.toml',
 	'string/hex-escape.toml',
-	'string/multiline-escaped-crlf.toml',
 	'string/multiline-quotes.toml',
 	'table/array-implicit-and-explicit-after.toml',
 	'table/array-within-dotted.toml',
 ]
 const jq_not_equal = [
 	'do_not_remove',
-	'datetime/milliseconds.toml',
-	'float/zero.toml',
-	'inline-table/spaces.toml',
-	'spec/array-of-tables-1.toml',
-	'spec/float-0.toml',
-	'spec/float-2.toml',
 ]
 const invalid_exceptions = [
-	'array/only-comma-1.toml',
-	'control/bare-cr.toml',
-	'datetime/hour-over.toml',
-	'datetime/mday-under.toml',
-	'datetime/minute-over.toml',
-	'datetime/month-under.toml',
-	'datetime/second-over.toml',
-	'datetime/feb-29.toml',
-	'datetime/feb-30.toml',
+	'do_not_remove',
 	'inline-table/duplicate-key-2.toml',
-	'inline-table/duplicate-key-3.toml',
-	'inline-table/overwrite-2.toml',
-	'inline-table/overwrite-4.toml',
-	'inline-table/overwrite-5.toml',
-	'inline-table/overwrite-8.toml',
-	'local-date/feb-29.toml',
-	'local-date/feb-30.toml',
-	'local-date/mday-under.toml',
-	'local-date/month-under.toml',
-	'local-datetime/feb-29.toml',
-	'local-datetime/feb-30.toml',
-	'local-datetime/hour-over.toml',
-	'local-datetime/mday-under.toml',
-	'local-datetime/minute-over.toml',
-	'local-datetime/month-under.toml',
-	'local-datetime/second-over.toml',
-	'local-time/hour-over.toml',
-	'local-time/minute-over.toml',
-	'local-time/second-over.toml',
 	'string/multiline-escape-space-2.toml',
 	'table/duplicate-key-dotted-array.toml',
 	'table/redefine-2.toml',

@@ -350,7 +350,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if expr_sym.kind == .function {
 		// allow for: `const xyz = abc`, where `abc` is `fn abc() {}`
 		func := (expr_sym.info as ast.FnType).func
-		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname)
+		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname, 0)
 	}
 	init_str := init.str().trim_right('\n')
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{

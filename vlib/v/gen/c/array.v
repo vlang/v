@@ -170,7 +170,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
-				expr_type := if node.expr_types.len > i {
+				expr_type := if node.expr_types.len > i && node.expr_types[i] != 0 {
 					node.expr_types[i]
 				} else {
 					node.elem_type
@@ -471,7 +471,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 
 fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
 	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-		var_name)
+		var_name, 0)
 	g.write('${decl_var} = ')
 	g.gen_anon_fn(mut expr)
 	g.writeln(';')
@@ -553,7 +553,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			if var_sym.info is ast.FnType {
 				ret_elem_styp = 'voidptr'
 				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					tmp_map_expr_result_name)
+					tmp_map_expr_result_name, 0)
 			}
 		}
 	}

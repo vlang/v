@@ -309,7 +309,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 			if call_fn.is_fn_var {
 				sig := g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
-					call_fn.name)
+					call_fn.name, 0)
 				g.write(sig)
 				g.definitions.write_string(sig)
 			} else {
@@ -741,8 +741,8 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			for var in node.inherited_vars {
 				var_sym := g.table.sym(var.typ)
 				if var_sym.info is ast.FnType {
-					sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-						c_name(var.name))
+					mut sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
+						c_name(var.name), var.typ.nr_muls())
 					g.definitions.writeln('\t' + sig + ';')
 				} else {
 					styp := g.styp(var.typ)
@@ -881,7 +881,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		if node.left.inherited_vars.len > 0 {
 			tmp_anon_fn_var = g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
-				tmp_anon_fn_var)
+				tmp_anon_fn_var, 0)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${fn_type} = ')
@@ -914,7 +914,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_res := g.new_tmp_var()
 			fn_sym := g.table.sym(left_typ).info as ast.FnType
 			fn_type := g.fn_var_signature(fn_sym.func.return_type, fn_sym.func.params.map(it.typ),
-				tmp_res)
+				tmp_res, 0)
 
 			old_is_fn_index_call := g.is_fn_index_call
 			g.is_fn_index_call = true

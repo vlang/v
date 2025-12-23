@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
-        uses: cross-platform-actions/action@v0.31.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
-        uses: cross-platform-actions/action@v0.31.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
-        uses: cross-platform-actions/action@v0.31.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
           version: '15.0'

@@ -27,7 +27,6 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 		}
 		if v.pref.os == .windows && flag.os == 'mingw' && v.pref.ccompiler != 'msvc' {
 			flags << flag
-			continue
 		}
 	}
 	return flags

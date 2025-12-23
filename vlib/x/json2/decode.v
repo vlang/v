@@ -823,68 +823,6 @@ fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
 }
 
-fn get_number_max[T](num T) T {
-	$if num is i8 {
-		return max_i8
-	} $else $if num is i16 {
-		return max_i16
-	} $else $if num is i32 {
-		return max_i32
-	} $else $if num is i64 {
-		return max_i64
-	} $else $if num is u8 {
-		return max_u8
-	} $else $if num is u16 {
-		return max_u16
-	} $else $if num is u32 {
-		return max_u32
-	} $else $if num is u64 {
-		return max_u64
-	} $else $if num is int {
-		return max_int
-	}
-	return 0
-}
-
-fn get_number_min[T](num T) T {
-	$if num is i8 {
-		return min_i8
-	} $else $if num is i16 {
-		return min_i16
-	} $else $if num is i32 {
-		return min_i32
-	} $else $if num is i64 {
-		return min_i64
-	} $else $if num is u8 {
-		return min_u8
-	} $else $if num is u16 {
-		return min_u16
-	} $else $if num is u32 {
-		return min_u32
-	} $else $if num is u64 {
-		return min_u64
-	} $else $if num is int {
-		return min_int
-	}
-	return 0
-}
-
-fn get_number_digits[T](num T) int {
-	return $if T.unaliased_typ is i8 || T.unaliased_typ is u8 {
-		3
-	} $else $if T.unaliased_typ is i16 || T.unaliased_typ is u16 {
-		5
-	} $else $if T.unaliased_typ is i32 || T.unaliased_typ is u32 || T.unaliased_typ is int {
-		10
-	} $else $if T.unaliased_typ is i64 {
-		19
-	} $else $if T.unaliased_typ is u64 {
-		20
-	} $else {
-		0
-	}
-}
-
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	enum_info := decoder.current_node.value
 
@@ -927,22 +865,18 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		}
 	}
 
-	$if T.unaliased_typ is $float {
-		*val = T(strconv.atof_quick(decoder.json[number_info.position..number_info.position +
-			number_info.length]))
-	} $else {
-		str := decoder.json[number_info.position..number_info.position + number_info.length]
-		$match T.unaliased_typ {
-			i8 { *val = strconv.atoi8(str)! }
-			i16 { *val = strconv.atoi16(str)! }
-			i32 { *val = strconv.atoi32(str)! }
-			i64 { *val = strconv.atoi64(str)! }
-			u8 { *val = strconv.atou8(str)! }
-			u16 { *val = strconv.atou16(str)! }
-			u32 { *val = strconv.atou32(str)! }
-			u64 { *val = strconv.atou64(str)! }
-			int { *val = strconv.atoi(str)! }
-			$else { return error('`decode_number` can not decode ${T.name} type') }
-		}
+	str := decoder.json[number_info.position..number_info.position + number_info.length]
+	$match T.unaliased_typ {
+		i8 { *val = strconv.atoi8(str)! }
+		i16 { *val = strconv.atoi16(str)! }
+		i32 { *val = strconv.atoi32(str)! }
+		i64 { *val = strconv.atoi64(str)! }
+		u8 { *val = strconv.atou8(str)! }
+		u16 { *val = strconv.atou16(str)! }
+		u32 { *val = strconv.atou32(str)! }
+		u64 { *val = strconv.atou64(str)! }
+		int { *val = strconv.atoi(str)! }
+		$float { *val = T(strconv.atof_quick(str)) }
+		$else { return error('`decode_number` can not decode ${T.name} type') }
 	}
 }
