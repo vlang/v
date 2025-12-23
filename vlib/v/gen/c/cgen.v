@@ -2441,7 +2441,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					if expr in [ast.CastExpr, ast.CallExpr, ast.Ident, ast.SelectorExpr] {
 						no_cast = true
 					}
-
+					assign_op := g.assign_op
+					defer(fn) {
+						g.assign_op = assign_op
+					}
+					g.assign_op = .unknown
 					elem_sym := g.table.sym(info.elem_type)
 					if elem_sym.kind == .struct {
 						expr_is_fixed_array_var = false
