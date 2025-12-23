@@ -170,7 +170,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
-				expr_type := if node.expr_types.len > i {
+				expr_type := if node.expr_types.len > i && node.expr_types[i] != 0 {
 					node.expr_types[i]
 				} else {
 					node.elem_type
