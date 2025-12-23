@@ -2354,7 +2354,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // expr_with_tmp_var is used in assign expr to `option` or `result` type.
 // applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
-fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
+fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string, use_at_once bool) {
 	if !ret_typ.has_option_or_result() {
 		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
@@ -2434,10 +2434,23 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& expr.right is ast.StructInit
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('builtin___option_none(&(${styp}[]) { ')
-				} else if expr in [ast.Ident, ast.SelectorExpr]
-					&& final_expr_sym.kind == .array_fixed {
+				} else if final_expr_sym.kind == .array_fixed {
 					expr_is_fixed_array_var = true
-					g.write('builtin___option_ok(&')
+					info := final_expr_sym.array_fixed_info()
+					mut no_cast := false
+					if expr in [ast.CastExpr, ast.CallExpr, ast.Ident, ast.SelectorExpr] {
+						no_cast = true
+					}
+
+					elem_sym := g.table.sym(info.elem_type)
+					if elem_sym.kind == .struct {
+						expr_is_fixed_array_var = false
+						g.write('builtin___option_ok(&(${styp}[]) { ')
+					} else if no_cast {
+						g.write('builtin___option_ok(/*1111${expr}*/')
+					} else {
+						g.write('builtin___option_ok((${g.styp(final_expr_sym.idx)})/*2222${expr}*/')
+					}
 				} else {
 					g.write('builtin___option_ok(&(${styp}[]) { ')
 					if final_expr_sym.info is ast.FnType {
@@ -2493,7 +2506,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	}
 
 	g.write2(stmt_str, ' ')
-	g.write(tmp_var)
+	if use_at_once {
+		g.write(tmp_var)
+	}
 }
 
 @[inline]
@@ -6426,7 +6441,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			if fn_return_is_fixed_array && (expr0 in [ast.StructInit, ast.CallExpr, ast.CastExpr]
+			if fn_return_is_option {
+				g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
+				g.writeln('')
+			} else if fn_return_is_fixed_array
+				&& (expr0 in [ast.StructInit, ast.CallExpr, ast.CastExpr]
 				|| (expr0 is ast.ArrayInit && expr0.has_callexpr))
 				&& g.table.final_sym(type0).kind == .array_fixed {
 				styp := g.styp(fn_ret_type.clear_option_and_result())

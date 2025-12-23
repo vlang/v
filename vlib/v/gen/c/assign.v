@@ -182,7 +182,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 	} else {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
+		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var, true)
 		return tmp_out_var
 	}
 	return ''
@@ -950,7 +950,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write('&')
 					}
 					tmp_var := g.new_tmp_var()
-					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+					g.expr_with_tmp_var(val, val_type, var_type, tmp_var, true)
 				} else if is_fixed_array_var {
 					// TODO: Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &

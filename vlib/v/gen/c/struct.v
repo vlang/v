@@ -498,7 +498,8 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 					} else {
 						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var,
+							true)
 					}
 				} else {
 					g.struct_init(default_init)
@@ -532,12 +533,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var)
+				tmp_var, true)
 			return true
 		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var)
+				tmp_var, true)
 			return true
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			old_inside_memset := g.inside_memset
@@ -813,7 +814,8 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if field_unwrap_sym.kind == .function && sfield.expected_type.has_flag(.option) {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var)
+		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var,
+			true)
 	} else {
 		g.left_is_opt = true
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
