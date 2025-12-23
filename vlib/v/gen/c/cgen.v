@@ -2435,25 +2435,25 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('builtin___option_none(&(${styp}[]) { ')
 				} else if final_expr_sym.kind == .array_fixed {
+					assign_op := g.assign_op
+					defer(fn) {
+						g.assign_op = assign_op
+					}
+					g.assign_op = .unknown
 					expr_is_fixed_array_var = true
 					info := final_expr_sym.array_fixed_info()
 					mut no_cast := false
 					if expr in [ast.CastExpr, ast.CallExpr, ast.Ident, ast.SelectorExpr] {
 						no_cast = true
 					}
-					assign_op := g.assign_op
-					defer(fn) {
-						g.assign_op = assign_op
-					}
-					g.assign_op = .unknown
 					elem_sym := g.table.sym(info.elem_type)
 					if elem_sym.kind == .struct {
 						expr_is_fixed_array_var = false
 						g.write('builtin___option_ok(&(${styp}[]) { ')
 					} else if no_cast {
-						g.write('builtin___option_ok(/*1111${expr}*/')
+						g.write('builtin___option_ok(')
 					} else {
-						g.write('builtin___option_ok((${g.styp(final_expr_sym.idx)})/*2222${expr}*/')
+						g.write('builtin___option_ok((${g.styp(final_expr_sym.idx)})')
 					}
 				} else {
 					g.write('builtin___option_ok(&(${styp}[]) { ')
@@ -6445,50 +6445,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			if fn_return_is_option {
-				g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
-				g.writeln('')
-			} else if fn_return_is_fixed_array
-				&& (expr0 in [ast.StructInit, ast.CallExpr, ast.CastExpr]
-				|| (expr0 is ast.ArrayInit && expr0.has_callexpr))
-				&& g.table.final_sym(type0).kind == .array_fixed {
-				styp := g.styp(fn_ret_type.clear_option_and_result())
-				if expr0 is ast.CallExpr {
-					tmp_var := g.expr_with_fixed_array(expr0, type0, fn_ret_type)
-					g.writeln('${ret_typ} ${tmpvar} = ${tmp_var};')
-				} else {
-					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={E_STRUCT} };')
-					if expr0 is ast.StructInit {
-						g.write('memcpy(${tmpvar}.data, ')
-						tmp_var := g.expr_with_opt(expr0, type0, fn_ret_type)
-						g.writeln('.data, sizeof(${styp}));')
-						if tmp_var != '' {
-							g.writeln('${tmpvar}.state = ${tmp_var}.state;')
-						}
-					} else {
-						g.write('memcpy(${tmpvar}.data, ')
-						g.expr(expr0)
-						g.writeln(', sizeof(${styp}));')
-					}
-				}
-			} else {
-				g.writeln('${ret_typ} ${tmpvar};')
-				styp := g.base_type(fn_ret_type)
-				g.write('builtin___option_ok(&(${styp}[]) { ')
-				if !fn_ret_type.is_ptr() && type0.is_ptr() {
-					if !(expr0 is ast.Ident && !g.is_amp) {
-						g.write('*')
-					}
-				}
-				if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
-					info := return_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
-						info.elem_type, info.size)
-				} else {
-					g.expr_with_cast(expr0, type0, fn_ret_type.clear_option_and_result())
-				}
-				g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
-			}
+			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
+			g.writeln('')
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if g.is_autofree {
 				g.detect_used_var_on_return(expr0)
