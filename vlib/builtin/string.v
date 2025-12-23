@@ -1694,16 +1694,112 @@ pub fn (s string) to_lower_ascii() string {
 
 // to_lower returns the string in all lowercase characters.
 // Example: assert 'Hello V'.to_lower() == 'hello v'
-@[direct_array_access]
+@[direct_array_access; manualfree]
 pub fn (s string) to_lower() string {
+	if s.len == 0 {
+		return ''
+	}
+
+	// Quick check: if all ASCII, use optimized ASCII-only version
 	if s.is_pure_ascii() {
 		return s.to_lower_ascii()
 	}
-	mut runes := s.runes()
-	for i in 0 .. runes.len {
-		runes[i] = runes[i].to_lower()
+
+	mut sb := strings.new_builder(s.len)
+	defer {
+		unsafe {
+			sb.free()
+		}
 	}
-	return runes.string()
+	unsafe {
+		sb.flags.set(.noshrink | .noslices)
+	}
+	mut i := 0
+
+	unsafe {
+		for i < s.len {
+			// Skip non-ASCII characters first
+			for i < s.len && s.str[i] >= 128 {
+				b := s.str[i]
+				char_len := utf8_char_len(b)
+				end := if i + char_len > s.len { s.len } else { i + char_len }
+
+				// Use V's built-in Unicode handling
+				sub := s.substr(i, end)
+				if sub.len > 0 {
+					r := sub.utf32_code()
+					if r > 0 {
+						lower_rune := rune(r).to_lower()
+						push_utf32_decode_to_buffer(u32(lower_rune), mut sb)
+					} else {
+						// Invalid UTF-8, copy as-is
+						sb.push_many(&u8(s.str + i), end - i)
+					}
+				}
+
+				i = end
+			}
+
+			// Process ASCII run
+			mut ascii_start := i
+			for i < s.len && s.str[i] < 128 {
+				i++
+			}
+
+			ascii_len := i - ascii_start
+			if ascii_len > 0 {
+				// Use vectorized processing for ASCII run
+				if ascii_len >= 8 {
+					mut p := &u64(s.str + ascii_start)
+					mut remaining := ascii_len
+
+					for remaining >= 8 {
+						chunk := *p
+						if !has_non_ascii(chunk) {
+							// Process with SWAR
+							lower_chunk := to_lower_swar_chunk(chunk)
+							// Write 8 bytes
+
+							sb.push_many(&u8(&lower_chunk), 8)
+						} else {
+							// Fallback to scalar
+							for j in 0 .. 8 {
+								c := (&u8(p))[j]
+								if c >= `A` && c <= `Z` {
+									sb << u8(c + 32)
+								} else {
+									sb << c
+								}
+							}
+						}
+						p++
+						remaining -= 8
+					}
+
+					// Process remaining ASCII bytes
+					for j in ascii_len - remaining .. ascii_len {
+						c := s.str[ascii_start + j]
+						if c >= `A` && c <= `Z` {
+							sb << (c + 32)
+						} else {
+							sb << c
+						}
+					}
+				} else {
+					// Short ASCII run, process scalar
+					for j in ascii_start .. i {
+						c := s.str[j]
+						if c >= `A` && c <= `Z` {
+							sb << (c + 32)
+						} else {
+							sb << c
+						}
+					}
+				}
+			}
+		}
+	}
+	return sb.str()
 }
 
 // is_lower returns `true`, if all characters in the string are lowercase.
