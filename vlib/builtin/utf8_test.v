@@ -101,3 +101,63 @@ fn test_string_to_ansi_not_null_terminated() {
 fn test_utf8_str_visible_length() {
 	assert utf8_str_visible_length('𝐀𝐁𝐂') == 3
 }
+
+fn test_utf8_to_utf32_cases() {
+	test_case1 := [u8(0x41)]
+	assert impl_utf8_to_utf32(&u8(test_case1.data), test_case1.len) == rune(`A`)
+
+	test_case2 := [u8(0xC3), 0xA9]
+	assert impl_utf8_to_utf32(&u8(test_case2.data), test_case2.len) == rune(`é`)
+
+	test_case3 := [u8(0xE2), 0x82, 0xAC]
+	assert impl_utf8_to_utf32(&u8(test_case3.data), test_case3.len) == rune(`€`)
+
+	test_case4 := [u8(0xF0), 0x90, 0x8D, 0x88]
+	assert impl_utf8_to_utf32(&u8(test_case4.data), test_case4.len) == rune(0x10348)
+	assert impl_utf8_to_utf32(&u8(test_case4.data), test_case4.len) == rune(`𐍈`)
+
+	test_case5 := [u8(0xE4), 0xB8, 0xAD]
+	assert impl_utf8_to_utf32(&u8(test_case5.data), test_case5.len) == rune(0x4E2D)
+	assert impl_utf8_to_utf32(&u8(test_case5.data), test_case5.len) == rune(`中`)
+
+	// emoji, 4-byte UTF-8
+	test_case6 := [u8(0xF0), 0x9F, 0x98, 0x80]
+	assert impl_utf8_to_utf32(&u8(test_case6.data), test_case6.len) == rune(0x1F600)
+	assert impl_utf8_to_utf32(&u8(test_case6.data), test_case6.len) == `😀`
+
+	test_case7 := [u8(0xD0), 0x96]
+	assert impl_utf8_to_utf32(&u8(test_case7.data), test_case7.len) == rune(`Ж`)
+
+	test_case8 := [u8(0xD9), 0x85]
+	assert impl_utf8_to_utf32(&u8(test_case8.data), test_case8.len) == rune(`م`)
+
+	test_case9 := [u8(0xDF), 0xBF]
+	assert impl_utf8_to_utf32(&u8(test_case9.data), test_case9.len) == rune(0x07FF)
+	assert impl_utf8_to_utf32(&u8(test_case9.data), test_case9.len) == rune(`߿`)
+
+	test_case10 := [u8(0xE0), 0xA0, 0x80]
+	assert impl_utf8_to_utf32(&u8(test_case10.data), test_case10.len) == rune(0x0800)
+	assert impl_utf8_to_utf32(&u8(test_case10.data), test_case10.len) == rune(`ࠀ`)
+
+	test_case11 := [u8(0xEF), 0xBF, 0xBF]
+	assert impl_utf8_to_utf32(&u8(test_case11.data), test_case11.len) == rune(0xFFFF)
+	assert impl_utf8_to_utf32(&u8(test_case11.data), test_case11.len) == rune(`￿`)
+
+	test_case12 := [u8(0xF0), 0x90, 0x80, 0x80]
+	assert impl_utf8_to_utf32(&u8(test_case12.data), test_case12.len) == rune(0x10000)
+	assert impl_utf8_to_utf32(&u8(test_case12.data), test_case12.len) == rune(`𐀀`)
+
+	test_case13 := [u8(0xF4), 0x8F, 0xBF, 0xBF]
+	assert impl_utf8_to_utf32(&u8(test_case13.data), test_case13.len) == rune(0x10FFFF)
+	assert impl_utf8_to_utf32(&u8(test_case13.data), test_case13.len) == rune(`􏿿`)
+}
+
+fn test_utf8_to_utf32_invalid_length() {
+	// More than 4 bytes is invalid
+	invalid := [u8(0xF0), 0x9F, 0x98, 0x80, 0x00]
+	assert impl_utf8_to_utf32(&u8(invalid.data), invalid.len) == 0
+}
+
+fn test_utf8_to_utf32_empty() {
+	assert impl_utf8_to_utf32(&u8([]u8{}.data), 0) == 0
+}
