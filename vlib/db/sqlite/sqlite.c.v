@@ -384,11 +384,14 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 				return db.error_message(code, query)
 			}
 		}
-		mut row := Row{}
 		for {
+			mut row := Row{}
 			code = C.sqlite3_step(stmt)
 			if is_error(code) {
 				return db.error_message(code, query)
+			}
+			if code == sqlite_done {
+				break
 			}
 			for i in 0 .. nr_cols {
 				val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
@@ -399,15 +402,11 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 				}
 			}
 			rows << row
-			if code == sqlite_done {
-				break
-			}
 		}
 	} else if params is [][]string {
-		mut row := Row{}
-
 		// Rows to process
 		for r in 0 .. params[0].len {
+			mut row := Row{}
 			// Param values to bind
 			for i, param in params {
 				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param[r].str), param[r].len,
@@ -421,6 +420,9 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 				if is_error(code) {
 					return db.error_message(code, query)
 				}
+				if code == sqlite_done {
+					break
+				}
 				for i in 0 .. nr_cols {
 					val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 					if val == &u8(unsafe { nil }) {
@@ -430,9 +432,6 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 					}
 				}
 				rows << row
-				if code == sqlite_done {
-					break
-				}
 			}
 			C.sqlite3_reset(stmt)
 		}
