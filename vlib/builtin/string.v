@@ -315,10 +315,34 @@ pub fn (s string) len_utf8() int {
 // 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 @[direct_array_access]
 pub fn (s string) is_pure_ascii() bool {
-	for i in 0 .. s.len {
-		if s[i] >= 0x80 {
+	mut i := 0
+	len := s.len
+
+	// Process 8 bytes at a time on 64-bit, 4 bytes on 32-bit
+	$if x64 {
+		for i + 8 <= len {
+			chunk := unsafe { *(&u64(s.str + i)) }
+			if (chunk & 0x8080808080808080) != 0 {
+				return false
+			}
+			i += 8
+		}
+	} $else {
+		for i + 4 <= len {
+			chunk := unsafe { *(&u32(s.str + i)) }
+			if (chunk & 0x80808080) != 0 {
+				return false
+			}
+			i += 4
+		}
+	}
+
+	// Process remaining bytes
+	for i < len {
+		if unsafe { s.str[i] } >= 0x80 {
 			return false
 		}
+		i++
 	}
 	return true
 }
@@ -2167,7 +2191,7 @@ pub fn (str string) is_hex() bool {
 	for i < str.len {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
-		if (str[i] < `0` || str[i] > `9`) && 
+		if (str[i] < `0` || str[i] > `9`) &&
 		    ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
 			return false
 		}
@@ -2890,7 +2914,7 @@ pub fn (s string) camel_to_snake() string {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && 
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) &&
 			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
