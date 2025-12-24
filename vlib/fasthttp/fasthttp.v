@@ -48,12 +48,15 @@ pub:
 	len   int
 }
 
+// TODO make fields immutable
 pub struct HttpRequest {
 pub mut:
 	buffer         []u8 // A V slice of the read buffer for convenience
 	method         Slice
 	path           Slice
 	version        Slice
+	header_fields  Slice
+	body           Slice
 	client_conn_fd int
 	user_data      voidptr // User-defined context data
 }
@@ -65,56 +68,4 @@ pub:
 	max_request_buffer_size int = 8192
 	handler                 fn (HttpRequest) ![]u8 @[required]
 	user_data               voidptr
-}
-
-@[direct_array_access]
-fn parse_request_line(buffer []u8) !HttpRequest {
-	mut req := HttpRequest{
-		buffer: buffer
-	}
-
-	mut i := 0
-	// Parse HTTP method
-	for i < buffer.len && buffer[i] != ` ` {
-		i++
-	}
-	req.method = Slice{
-		start: 0
-		len:   i
-	}
-	i++
-
-	// Parse path
-	mut path_start := i
-	for i < buffer.len && buffer[i] != ` ` {
-		i++
-	}
-	req.path = Slice{
-		start: path_start
-		len:   i - path_start
-	}
-	i++
-
-	// Parse HTTP version
-	mut version_start := i
-	for i < buffer.len && buffer[i] != `\r` {
-		i++
-	}
-	req.version = Slice{
-		start: version_start
-		len:   i - version_start
-	}
-
-	// Move to the end of the request line
-	if i + 1 < buffer.len && buffer[i] == `\r` && buffer[i + 1] == `\n` {
-		i += 2
-	} else {
-		return error('Invalid HTTP request line')
-	}
-
-	return req
-}
-
-fn decode_http_request(buffer []u8) !HttpRequest {
-	return parse_request_line(buffer)
 }
