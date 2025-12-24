@@ -250,6 +250,32 @@ fn test_parse_request_head_str_post_with_headers() {
 	assert req.header.custom_values('Content-Type') == ['application/json']
 }
 
+fn test_parse_request_head_str_post_with_headers_and_body() {
+	s := 'POST /index HTTP/1.1\r\nHost: localhost:9008\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: keep-alive\r\n\r\n{"username": "test"}'
+	req := http.parse_request_head_str(s) or {
+		assert false, 'did not parse: ${err}'
+		return
+	}
+	assert req.method == .post
+	assert req.url == '/index'
+	assert req.version == .v1_1
+	assert req.host == 'localhost:9008'
+	assert req.header.custom_values('User-Agent') == ['curl/7.68.0']
+	assert req.header.custom_values('Accept') == ['*/*']
+	assert req.header.custom_values('Content-Type') == ['application/json']
+	assert req.header.custom_values('Connection') == ['keep-alive']
+	assert req.data == ''
+}
+
+fn test_parse_request_head_post_with_headers_and_body() {
+	s := 'POST /index HTTP/1.1\r\nHost: localhost:9008\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: keep-alive\r\n\r\n{"username": "test"}'
+	req := http.parse_request_str(s) or {
+		assert false, 'did not parse: ${err}'
+		return
+	}
+	assert req.data == '{"username": "test"}'
+}
+
 fn test_parse_request_head_str_with_spaces_in_header_values() {
 	s := 'GET /path HTTP/1.1\r\nX-Custom-Header: value with spaces\r\n\r\n'
 	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
