@@ -8,6 +8,9 @@ import toml
 import toml.ast
 import x.json2
 
+const test_root = os.join_path(@VROOT, 'vlib/toml/tests/testdata/toml_lang/tests')
+const test_files_file = os.join_path(test_root, 'files-toml-1.0.0')
+
 const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 const no_jq = os.getenv('VNO_JQ') == '1'
 
@@ -16,13 +19,9 @@ const valid_exceptions = [
 	'do_not_remove',
 	'array/open-parent-table.toml',
 	'comment/after-literal-no-ws.toml',
-	'datetime/no-seconds.toml', // only allowed in TOML v1.1.0
-	'inline-table/newline.toml',
 	'key/space.toml',
 	'key/start.toml',
 	'string/escapes.toml',
-	'string/escape-esc.toml',
-	'string/hex-escape.toml',
 	'string/multiline-quotes.toml',
 	'table/array-implicit-and-explicit-after.toml',
 	'table/array-within-dotted.toml',
@@ -69,31 +68,41 @@ fn run(args []string) !string {
 // test_toml_lang_tomltest run though 'testdata/toml_lang/toml-test/*' if found.
 fn test_toml_lang_tomltest() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_lang/tests'
 	if !os.is_dir(test_root) {
 		println('No test data directory found in "${test_root}"')
 		assert true
 		return
 	}
+	test_files_list := os.read_lines(test_files_file) or {
+		panic('Could not read "${test_files_file}" with test files list. It should reside in "${test_root}": ${err.msg()}')
+	}
+
 	valid_folder := 'valid'
-	valid_test_files := os.walk_ext('${test_root}/valid', '.toml').map(it.replace('\\',
-		'/')).sorted()
+	valid_test_files := test_files_list.filter(it.starts_with('valid/') && it.ends_with('.toml')).map(it.replace('\\',
+		'/'))
 	invalid_folder := 'invalid'
-	invalid_test_files := os.walk_ext('${test_root}/invalid', '.toml').map(it.replace('\\',
-		'/')).sorted()
+	invalid_test_files := test_files_list.filter(it.starts_with('invalid/') && it.ends_with('.toml')).map(it.replace('\\',
+		'/'))
+
+	assert valid_test_files.len > 0, 'Expected a list of *valid* test files'
+	assert invalid_test_files.len > 0, 'Expected a list of *invalid* test files'
+
+	assert os.is_file(os.join_path(test_root, valid_test_files[0])), 'Expected at least one file from the valid list to be present'
+	assert os.is_file(os.join_path(test_root, invalid_test_files[0])), 'Expected at least one file from the invalid list to present'
 
 	println('\nTesting ${valid_test_files.len} valid TOML files...')
 	mut valid := 0
 	mut e := 0
-	for i, valid_test_file in valid_test_files {
-		relative := valid_test_file.all_after(valid_folder).trim_left('/')
+	for i, relative_valid_test_file in valid_test_files {
+		relative := relative_valid_test_file.all_after(valid_folder).trim_left('/')
+		valid_test_file := os.join_path(test_root, relative_valid_test_file)
 		if relative in valid_exceptions {
 			e++
 			idx := valid_exceptions.index(relative) + 1
 			println('SKIP [${i + 1}/${valid_test_files.len}] "${valid_test_file}" VALID EXCEPTION [${idx}/${valid_exceptions.len}]...')
 			continue
 		}
-		// eprintln('>>> trying to parse: ${valid_test_file} | relative: $relative')
+		// eprintln('>>> trying to parse: ${valid_test_file} | relative: ${relative}')
 		toml_doc := toml.parse_file(valid_test_file) or {
 			eprintln('>>> error while parsing: ${valid_test_file}')
 			panic(err)
@@ -122,8 +131,9 @@ fn test_toml_lang_tomltest() {
 
 		valid = 0
 		e = 0
-		for i, valid_test_file in valid_test_files {
-			relative := valid_test_file.all_after(valid_folder).trim_left('/')
+		for i, relative_valid_test_file in valid_test_files {
+			relative := relative_valid_test_file.all_after(valid_folder).trim_left('/')
+			valid_test_file := os.join_path(test_root, relative_valid_test_file)
 			// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
 			if relative in valid_exceptions {
 				e++
@@ -190,8 +200,9 @@ fn test_toml_lang_tomltest() {
 	println('\nTesting ${invalid_test_files.len} invalid TOML files...')
 	mut invalid := 0
 	e = 0
-	for i, invalid_test_file in invalid_test_files {
-		relative := invalid_test_file.all_after(invalid_folder).trim_left('/')
+	for i, relative_invalid_test_file in invalid_test_files {
+		relative := relative_invalid_test_file.all_after(invalid_folder).trim_left('/')
+		invalid_test_file := os.join_path(test_root, relative_invalid_test_file)
 		if relative in invalid_exceptions {
 			e++
 			idx := invalid_exceptions.index(relative) + 1
