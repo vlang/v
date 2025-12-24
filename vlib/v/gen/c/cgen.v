@@ -5689,6 +5689,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
+	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
@@ -5719,7 +5720,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('*((${styp} *)(&')
 		g.expr(node.expr)
 		g.write('))')
-	} else if sym.kind == .alias && g.table.final_sym(node_typ).kind == .array_fixed {
+	} else if final_expr_sym.kind == .array_fixed || final_sym.kind == .array_fixed {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else {
