@@ -148,11 +148,10 @@ fn test_exec_param_many2() {
 	db.exec_param_many('insert into users (id, name) values (?, ?)', [
 		['60', 'Sam'],
 		['61', 'Foo'],
-		['62', 'Bar']
-	]) or { panic(err)}
+		['62', 'Bar'],
+	]) or { panic(err) }
 	count := db.q_int('select count(*) from users')!
 	assert count == 3
 
 	db.close()!
-
 }
