@@ -446,6 +446,9 @@ pub fn parse_request_head_str(s string) !Request {
 	mut header := new_header()
 	for i := 1; i < lines.len; i++ {
 		mut line := lines[i].trim_right('\r')
+		if line.len == 0 {
+			break
+		}
 		if !line.contains(':') {
 			continue
 		}
@@ -465,6 +468,23 @@ pub fn parse_request_head_str(s string) !Request {
 		// header.coerce(canonicalize: true)
 	}
 
+	// Collect the request body
+	mut body := ''
+	mut in_body := false
+	for i := 1; i < lines.len; i++ {
+		mut line := lines[i].trim_right('\r')
+		if line.len == 0 {
+			in_body = true
+			continue
+		}
+		if in_body {
+			if body.len > 0 {
+				body += '\n'
+			}
+			body += line
+		}
+	}
+
 	mut request_cookies := map[string]string{}
 	for _, cookie in read_cookies(header, '') {
 		request_cookies[cookie.name] = cookie.value
@@ -477,6 +497,7 @@ pub fn parse_request_head_str(s string) !Request {
 		host:    header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
+		data:    body
 	}
 }
 
