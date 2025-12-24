@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_static_name.vv:29:9: error: `?` is not needed, use `return Boolean.from_bytes1()`
+   27 | 
+   28 | fn parse_universal_primitive1(content []u8) ?Element {
+   29 |     return Boolean.from_bytes1(content)?
+      |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   30 | }
+   31 |

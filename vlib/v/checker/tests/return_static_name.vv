@@ -1,0 +1,34 @@
+module main
+
+pub struct Boolean {
+mut:
+	value u8
+}
+
+fn (b Boolean) payload() ![]u8 {
+	return []u8{}
+}
+
+fn Boolean.from_bytes(bytes []u8) !Boolean {
+	return Boolean{}
+}
+
+fn Boolean.from_bytes1(bytes []u8) ?Boolean {
+	return Boolean{}
+}
+
+pub interface Element {
+	payload() ![]u8
+}
+
+fn parse_universal_primitive(content []u8) !Element {
+	return Boolean.from_bytes(content)!
+}
+
+fn parse_universal_primitive1(content []u8) ?Element {
+	return Boolean.from_bytes1(content)?
+}
+
+fn main() {
+	println(parse_universal_primitive1([u8(1)])?)
+}
