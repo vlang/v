@@ -1541,7 +1541,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	lit += p.tok.lit
 	p.check(.number)!
 	lit += p.tok.lit
-	// TODO: does TOML even have optional seconds?
+	// NOTE: TOML v1.1.0 have optional seconds
 	// if p.peek_tok.kind == .colon {
 	p.check(.colon)!
 	lit += p.tok.lit
@@ -1555,6 +1555,11 @@ pub fn (mut p Parser) time() !ast.Time {
 		p.check(.period)!
 		lit += p.tok.lit
 		p.expect(.number)!
+	}
+
+	if !lit[lit.len - 1].is_digit() {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' expected a number as last occurrence in "${lit}" got "${lit[lit.len - 1].ascii_str()}"')
 	}
 
 	// Parse offset
