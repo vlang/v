@@ -5720,7 +5720,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('*((${styp} *)(&')
 		g.expr(node.expr)
 		g.write('))')
-	} else if final_expr_sym.kind == .array_fixed || final_sym.kind == .array_fixed {
+	} else if sym.kind == .alias && final_sym.kind == .array_fixed {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else {
@@ -5765,7 +5765,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node_typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else if !(g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type)) {
+			} else if !((g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type))
+				|| (final_sym.kind == .array_fixed && final_expr_sym == final_sym)) {
+				// not cast fixed array, which will use `memcpy`
 				cast_label = '(${styp})'
 			}
 		}
@@ -5807,7 +5809,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
-				g.inside_assign_fn_var = g.table.final_sym(expr_type).kind == .function
+				g.inside_assign_fn_var = final_expr_sym.kind == .function
 				g.write('(')
 				if node.expr is ast.Ident {
 					if !node_typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
@@ -5815,7 +5817,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 						g.write('*'.repeat(node.expr_type.nr_muls()))
 					}
 				}
-				if sym.kind == .alias && g.table.final_sym(node_typ).kind == .string {
+				if sym.kind == .alias && final_sym.kind == .string {
 					ptr_cnt := node_typ.nr_muls() - expr_type.nr_muls()
 					if ptr_cnt > 0 {
 						g.write('&'.repeat(ptr_cnt))
