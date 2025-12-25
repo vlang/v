@@ -20,8 +20,6 @@ const valid_exceptions = [
 	'do_not_remove',
 	'array/open-parent-table.toml',
 	'comment/after-literal-no-ws.toml',
-	'key/space.toml',
-	'key/start.toml',
 	'string/escapes.toml',
 	'string/multiline-quotes.toml',
 	'table/array-implicit-and-explicit-after.toml',
