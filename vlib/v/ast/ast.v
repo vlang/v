@@ -820,6 +820,21 @@ pub enum CallKind {
 	free
 	try_push
 	try_pop
+	keys
+	values
+	slice
+	map
+	insert
+	prepend
+	sort_with_compare
+	sorted_with_compare
+	sort
+	sorted
+	filter
+	any
+	all
+	count
+	clone
 }
 
 // function or method call expr

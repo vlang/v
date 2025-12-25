@@ -130,17 +130,62 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'str' {
 			.str
 		}
+		'keys' {
+			.keys
+		}
+		'values' {
+			.values
+		}
 		'wait' {
 			.wait
 		}
 		'free' {
 			.free
 		}
+		'slice' {
+			.slice
+		}
+		'map' {
+			.map
+		}
+		'insert' {
+			.insert
+		}
+		'prepend' {
+			.prepend
+		}
 		'try_push' {
 			.try_push
 		}
 		'try_pop' {
 			.try_pop
+		}
+		'sort_with_compare' {
+			.sort_with_compare
+		}
+		'sorted_with_compare' {
+			.sorted_with_compare
+		}
+		'sort' {
+			.sort
+		}
+		'sorted' {
+			.sorted
+		}
+		'filter' {
+			.filter
+		}
+		'any' {
+			.any
+		}
+		'all' {
+			.all
+		}
+		'count' {
+			.count
+		}
+		'clone' {
+			.clone
 		}
 		else {
 			.unknown

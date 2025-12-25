@@ -3263,16 +3263,16 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
 			info := left_sym.info as ast.Map
-			typ := if method_name == 'keys' {
+			typ := if node.kind == ast.CallKind.keys {
 				c.table.find_or_register_array(info.key_type)
 			} else {
 				c.table.find_or_register_array(info.value_type)
 			}
 			ret_type = ast.idx_to_type(typ)
-			if info.key_type.has_flag(.generic) && method_name == 'keys' {
+			if info.key_type.has_flag(.generic) && node.kind == ast.CallKind.keys {
 				ret_type = ret_type.set_flag(.generic)
 			}
-			if info.value_type.has_flag(.generic) && method_name == 'values' {
+			if info.value_type.has_flag(.generic) && node.kind == ast.CallKind.values {
 				ret_type = ret_type.set_flag(.generic)
 			}
 		}
@@ -3313,7 +3313,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	left_sym := c.table.final_sym(left_type)
 	method_name := node.name
 	mut elem_typ := ast.void_type
-	if !c.is_builtin_mod && method_name == 'slice' {
+	if !c.is_builtin_mod && node.kind == ast.CallKind.slice {
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
 		return ast.void_type
 	}
@@ -3334,7 +3334,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					arg0.expr.pos)
 				return ast.void_type
 			}
-			if method_name == 'map' {
+			if node.kind == ast.CallKind.map {
 				c.lambda_expr_fix_type_of_param(mut arg0.expr, mut arg0.expr.params[0],
 					elem_typ)
 				le_type := c.expr(mut arg0.expr.expr)
@@ -3347,8 +3347,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
-	} else if method_name in ['insert', 'prepend'] {
-		if method_name == 'insert' {
+	} else if node.kind in [ast.CallKind.insert, ast.CallKind.prepend] {
+		if node.kind == ast.CallKind.insert {
 			if node_args_len != 2 {
 				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
 					node.pos)
@@ -3372,7 +3372,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		c.check_for_mut_receiver(mut node.left)
 		info := left_sym.info as ast.Array
-		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
+		val_arg_n := if node.kind == ast.CallKind.insert { 1 } else { 0 }
 		node.receiver_type = ast.array_type.ref()
 		node.return_type = ast.void_type
 
@@ -3403,7 +3403,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				}
 			}
 		}
-	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+	} else if node.kind in [ast.CallKind.sort_with_compare, ast.CallKind.sorted_with_compare] {
 		if node_args_len != 1 {
 			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3438,7 +3438,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 						arg0.pos)
 				}
 			}
-			if method_name == 'sort_with_compare' {
+			if node.kind == ast.CallKind.sort_with_compare {
 				c.check_for_mut_receiver(mut node.left)
 				node.return_type = ast.void_type
 				node.receiver_type = node.left_type.ref()
@@ -3447,8 +3447,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				node.receiver_type = node.left_type
 			}
 		}
-	} else if method_name in ['sort', 'sorted'] {
-		if method_name == 'sort' {
+	} else if node.kind in [ast.CallKind.sort, ast.CallKind.sorted] {
+		if node.kind == ast.CallKind.sort {
 			if node.left is ast.CallExpr {
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 					node.pos)
@@ -3492,7 +3492,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
 				node.pos)
 		}
-	} else if method_name == 'wait' {
+	} else if node.kind == ast.CallKind.wait {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
 			if node_args_len != 0 {
@@ -3527,7 +3527,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		arg_type = c.check_expr_option_or_result_call(arg.expr, expr_type)
 	}
-	if method_name == 'map' {
+	if node.kind == ast.CallKind.map {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn
 		c.check_predicate_param(true, elem_typ, node)
@@ -3552,7 +3552,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if ret_sym.kind == .multi_return {
 			c.error('returning multiple values is not supported in .map() calls', node.pos)
 		}
-	} else if method_name == 'filter' {
+	} else if node.kind == ast.CallKind.filter {
 		// check fn
 		if node.return_type.has_flag(.shared_f) {
 			node.return_type = node.return_type.clear_flag(.shared_f).deref()
@@ -3560,21 +3560,21 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.return_type = node.return_type.deref()
 		}
 		c.check_predicate_param(false, elem_typ, node)
-	} else if method_name in ['any', 'all'] {
+	} else if node.kind in [ast.CallKind.any, ast.CallKind.all] {
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
-	} else if method_name == 'count' {
+	} else if node.kind == ast.CallKind.count {
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
-	} else if method_name == 'clone' {
+	} else if node.kind == ast.CallKind.clone {
 		if node_args_len != 0 {
 			c.error('`.clone()` does not have any arguments', arg0.pos)
 		}
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name == 'sorted' {
+	} else if node.kind == ast.CallKind.sorted {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
-		if method_name == 'sorted_with_compare' {
+	} else if node.kind in [ast.CallKind.sort_with_compare, ast.CallKind.sorted_with_compare] {
+		if node.kind == ast.CallKind.sorted_with_compare {
 			c.ensure_same_array_return_type(mut node, left_type)
 		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
