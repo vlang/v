@@ -857,6 +857,7 @@ pub enum CallKind {
 	move
 	main_main
 	va_arg
+	addr
 }
 
 // function or method call expr

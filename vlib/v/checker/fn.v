@@ -996,7 +996,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
+	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .jsonencode {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
 	} else if args_len > 0 && (is_va_arg || is_json_decode) {
@@ -1047,7 +1047,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.table.used_features.comptime_syms[c.unwrap_generic(typ.typ)] = true
 		}
 		return node.return_type
-	} else if fn_name == '__addr' {
+	} else if node.kind == .addr {
 		if !c.inside_unsafe {
 			c.error('`__addr` must be called from an unsafe block', node.pos)
 		}

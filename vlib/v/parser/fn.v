@@ -250,6 +250,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'C.va_arg' {
 			.va_arg
 		}
+		'__addr' {
+			.addr
+		}
 		else {
 			.unknown
 		}
