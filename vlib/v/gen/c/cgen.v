@@ -2363,6 +2363,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	defer {
 		g.assign_op = assign_op
 	}
+	g.assign_op = .unknown
 	stmt_str := g.go_before_last_stmt().trim_space()
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
@@ -2440,7 +2441,6 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('builtin___option_none(&(${styp}[]) { ')
 				} else if final_expr_sym.kind == .array_fixed {
-					g.assign_op = .unknown
 					expr_is_fixed_array_var = true
 					info := final_expr_sym.array_fixed_info()
 					mut no_cast := false
@@ -2487,7 +2487,6 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 			}
 		} else {
-			g.assign_op = .unknown
 			if final_expr_sym.kind == .array_fixed {
 				expr_is_fixed_array_var = true
 				info := final_expr_sym.array_fixed_info()
