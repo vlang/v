@@ -24,7 +24,7 @@ fn parse(input string) RawVersion {
 		metadata = raw_version[(plus_idx + 1)..]
 		raw_version = raw_version[0..plus_idx]
 	}
-	hyphen_idx := raw_version.index('-') or { -1 }
+	hyphen_idx := raw_version.index_('-')
 	if hyphen_idx > 0 {
 		prerelease = raw_version[(hyphen_idx + 1)..]
 		raw_version = raw_version[0..hyphen_idx]
