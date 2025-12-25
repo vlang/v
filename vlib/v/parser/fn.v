@@ -106,6 +106,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		name_pos:           first_pos
 		args:               args
 		mod:                p.mod
+		kind:               p.call_kind(fn_name)
 		pos:                pos
 		language:           language
 		concrete_types:     concrete_types
@@ -121,6 +122,29 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		comments:           comments
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
+	}
+}
+
+fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
+	return match fn_name {
+		'str' {
+			.str
+		}
+		'wait' {
+			.wait
+		}
+		'free' {
+			.free
+		}
+		'try_push' {
+			.try_push
+		}
+		'try_pop' {
+			.try_pop
+		}
+		else {
+			.unknown
+		}
 	}
 }
 

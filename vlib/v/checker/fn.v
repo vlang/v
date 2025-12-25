@@ -2171,7 +2171,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		unaliased_left_type := c.table.unaliased_type(left_type)
 		return c.map_builtin_method_call(mut node, unaliased_left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
-		&& method_name == 'wait' {
+		&& node.kind == ast.CallKind.wait {
 		info := left_sym.info as ast.Struct
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
@@ -2182,13 +2182,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		node.return_type = info.concrete_types[0]
 		node.return_type.set_flag(.option)
 		return node.return_type
-	} else if left_sym.info is ast.Thread && method_name == 'wait' {
+	} else if left_sym.info is ast.Thread && node.kind == ast.CallKind.wait {
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
 		}
 		node.return_type = left_sym.info.return_type
 		return left_sym.info.return_type
-	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
+	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && node.kind == ast.CallKind.str {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
 		return ast.void_type
@@ -2264,7 +2264,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 	if !has_method {
 		// TODO: str methods
-		if method_name == 'str' {
+		if node.kind == ast.CallKind.str {
 			if left_sym.kind == .interface {
 				iname := left_sym.name
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
@@ -2280,7 +2280,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.table.used_features.auto_str = true
 			}
 			return ast.string_type
-		} else if method_name == 'free' {
+		} else if node.kind == ast.CallKind.free {
 			if !c.is_builtin_mod && !c.inside_unsafe && !method.is_unsafe {
 				c.warn('manual memory management with `free()` is only allowed in unsafe code',
 					node.pos)
@@ -2505,9 +2505,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	mut param_is_mut := false
 	mut no_type_promotion := false
 	if left_sym.info is ast.Chan {
-		if method_name == 'try_push' {
+		if node.kind == ast.CallKind.try_push {
 			exp_arg_typ = left_sym.info.elem_type.ref()
-		} else if method_name == 'try_pop' {
+		} else if node.kind == ast.CallKind.try_pop {
 			exp_arg_typ = left_sym.info.elem_type
 			param_is_mut = true
 			no_type_promotion = true

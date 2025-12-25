@@ -813,6 +813,15 @@ pub:
 	pos   token.Pos
 }
 
+pub enum CallKind {
+	unknown
+	str
+	wait
+	free
+	try_push
+	try_pop
+}
+
 // function or method call expr
 @[minify]
 pub struct CallExpr {
@@ -820,6 +829,7 @@ pub:
 	pos      token.Pos
 	name_pos token.Pos
 	mod      string
+	kind     CallKind
 pub mut:
 	name                   string // left.name()
 	is_method              bool
