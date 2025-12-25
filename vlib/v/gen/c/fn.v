@@ -1150,15 +1150,15 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 }
 
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
-	match node.name {
-		'reserve' {
+	match node.kind {
+		.reserve {
 			g.write('builtin__map_reserve(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(', ')
 			g.expr(node.args[0].expr)
 			g.write(')')
 		}
-		'delete' {
+		.delete {
 			left_info := left_sym.info as ast.Map
 			elem_type_str := g.styp(left_info.key_type)
 			g.write('builtin__map_delete(')
@@ -1167,7 +1167,7 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.expr(node.args[0].expr)
 			g.write('})')
 		}
-		'free', 'clear', 'keys', 'values' {
+		.free, .clear, .keys, .values {
 			g.write('builtin__map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
@@ -1223,7 +1223,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			if node.name != 'delete_last' {
 				g.write(', ')
 				g.expr(node.args[0].expr)
-				if node.name == 'delete_many' {
+				if node.kind == ast.CallKind.delete_many {
 					g.write(', ')
 					g.expr(node.args[1].expr)
 				}
@@ -1267,7 +1267,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
 			mut is_range_slice := false
 			if node.left is ast.IndexExpr && node.left.index is ast.RangeExpr
-				&& node.name == 'clone' {
+				&& node.kind == ast.CallKind.clone {
 				is_range_slice = true
 			}
 			to_static := if is_range_slice { '_static' } else { '' }
@@ -1287,7 +1287,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 				}
 				g.expr(node.left)
 			}
-			if node.name == 'repeat' {
+			if node.kind == ast.CallKind.repeat {
 				g.write(', ')
 				g.expr(node.args[0].expr)
 			}
@@ -1304,44 +1304,44 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 }
 
 fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type) bool {
-	match node.name {
-		'filter' {
+	match node.kind {
+		.filter {
 			g.gen_array_filter(node)
 		}
-		'index' {
+		.index {
 			g.gen_array_index(node)
 		}
-		'contains' {
+		.contains {
 			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
 		}
-		'any' {
+		.any {
 			g.gen_array_any(node)
 		}
-		'count' {
+		.count {
 			g.gen_array_count(node)
 		}
-		'all' {
+		.all {
 			g.gen_array_all(node)
 		}
-		'map' {
+		.map {
 			g.gen_array_map(node)
 		}
-		'sort' {
+		.sort {
 			g.gen_array_sort(node)
 		}
-		'sorted' {
+		.sorted {
 			g.gen_array_sorted(node)
 		}
-		'sort_with_compare' {
+		.sort_with_compare {
 			g.gen_fixed_array_sort_with_compare(node)
 		}
-		'sorted_with_compare' {
+		.sorted_with_compare {
 			g.gen_fixed_array_sorted_with_compare(node)
 		}
-		'reverse' {
+		.reverse {
 			g.gen_fixed_array_reverse(node)
 		}
-		'reverse_in_place' {
+		.reverse_in_place {
 			g.gen_fixed_array_reverse_in_place(node)
 		}
 		else {
@@ -1656,15 +1656,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	if left_sym.kind in [.sum_type, .interface] {
 		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
-		match node.name {
-			'type_name' {
+		match node.kind {
+			.type_name {
 				if left_sym.kind in [.sum_type, .interface] {
 					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_${prefix_name}_${typ_sym.cname}',
 						')', node)
 					return
 				}
 			}
-			'type_idx' {
+			.type_idx {
 				if left_sym.kind in [.sum_type, .interface] {
 					g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}',
 						'', node)
@@ -1676,11 +1676,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	mut is_free_method := false
-	if node.name == 'str' {
+	if node.kind == ast.CallKind.str {
 		if g.gen_to_str_method_call(node) {
 			return
 		}
-	} else if node.name == 'free' {
+	} else if node.kind == ast.CallKind.free {
 		g.register_free_method(node.receiver_type)
 		is_free_method = true
 	}
@@ -2150,7 +2150,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.inside_interface_deref = false
 			}
 		}
-		if g.pref.is_debug && node.name == 'panic' {
+		if g.pref.is_debug && node.kind == ast.CallKind.panic {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 			g.write('builtin__panic_debug(${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"),  ')
 			g.call_args(node)
@@ -2581,7 +2581,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if use_tmp_var_autofree {
-				n := if node.name == 'json.decode' { i + 2 } else { i + 1 }
+				n := if node.kind == ast.CallKind.jsondecode { i + 2 } else { i + 1 }
 				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				name := '_arg_expr_${fn_name}_${n}_${node.pos.pos}'

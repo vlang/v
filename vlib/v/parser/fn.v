@@ -214,6 +214,33 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'reverse' {
 			.reverse
 		}
+		'reverse_in_place' {
+			.reverse_in_place
+		}
+		'panic' {
+			.panic
+		}
+		'json.decode' {
+			.jsondecode
+		}
+		'repeat' {
+			.repeat
+		}
+		'type_name' {
+			.type_name
+		}
+		'type_idx' {
+			.type_idx
+		}
+		'clear' {
+			.clear
+		}
+		'reserve' {
+			.reserve
+		}
+		'move' {
+			.move
+		}
 		else {
 			.unknown
 		}

@@ -844,6 +844,15 @@ pub enum CallKind {
 	delete
 	delete_many
 	reverse
+	reverse_in_place
+	panic
+	jsondecode
+	repeat
+	type_name
+	type_idx
+	clear
+	reserve
+	move
 }
 
 // function or method call expr

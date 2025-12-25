@@ -3243,8 +3243,8 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 		left_type_
 	}
 	left_sym := c.table.final_sym(left_type)
-	match method_name {
-		'clone', 'move' {
+	match node.kind {
+		.clone, .move {
 			if node.args.len != 0 {
 				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
@@ -3258,7 +3258,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			}
 			ret_type = ret_type.clear_flag(.shared_f)
 		}
-		'keys', 'values' {
+		.keys, .values {
 			if node.args.len != 0 {
 				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
@@ -3276,7 +3276,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 				ret_type = ret_type.set_flag(.generic)
 			}
 		}
-		'delete' {
+		.delete {
 			c.check_for_mut_receiver(mut node.left)
 			if node.args.len == 1 {
 				info := left_sym.info as ast.Map
@@ -3775,7 +3775,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())
 		}
-	} else if method_name == 'map' {
+	} else if node.kind == ast.CallKind.map {
 		if node_args_len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3819,8 +3819,8 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		if ret_sym.kind == .multi_return {
 			c.error('returning multiple values is not supported in .map() calls', node.pos)
 		}
-	} else if method_name in ['sort', 'sorted'] {
-		if method_name == 'sort' {
+	} else if node.kind in [.sort, .sorted] {
+		if node.kind == .sort {
 			if node.left is ast.CallExpr {
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 					node.pos)
@@ -3867,12 +3867,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		for mut arg in node.args {
 			c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 		}
-		if method_name == 'sort' {
+		if node.kind == .sort {
 			node.return_type = ast.void_type
 		} else {
 			node.return_type = node.left_type
 		}
-	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+	} else if node.kind in [.sort_with_compare, .sorted_with_compare] {
 		if node_args_len != 1 {
 			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3919,11 +3919,11 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				node.receiver_type = node.left_type
 			}
 		}
-	} else if method_name in ['reverse', 'reverse_in_place'] {
+	} else if node.kind in [.reverse, .reverse_in_place] {
 		if node_args_len != 0 {
 			c.error('`.${method_name}` does not have any arguments', arg0.pos)
 		} else {
-			if method_name == 'reverse' {
+			if node.kind == .reverse {
 				node.return_type = node.left_type
 			} else {
 				c.check_for_mut_receiver(mut node.left)
