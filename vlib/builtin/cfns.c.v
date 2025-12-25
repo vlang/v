@@ -14,7 +14,7 @@ fn C.memset(str voidptr, c int, n usize) voidptr
 
 fn C.memchr(str voidptr, c int, n usize) voidptr
 
-fn C.memmem(haystack &u8, h_len usize, needle &u8, n_len usize) &u8
+fn C.memmem(haystack voidptr, haystacklen usize, needle voidptr, needlelen usize) voidptr
 
 fn C.mempcpy(dest voidptr, src voidptr, n usize) voidptr
 
