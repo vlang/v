@@ -103,7 +103,7 @@ fn test_utf8_str_visible_length() {
 }
 
 fn test_utf8_to_utf32_cases() {
-	test_case1 := [u8(0x41)]
+	test_case1 := 'A'.bytes()
 	assert impl_utf8_to_utf32(&u8(test_case1.data), test_case1.len) == rune(`A`)
 
 	test_case2 := 'é'.bytes()
