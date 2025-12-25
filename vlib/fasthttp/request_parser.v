@@ -96,6 +96,7 @@ pub fn parse_http1_request_line(mut req HttpRequest) !int {
 	}
 }
 
+// decode_http_request parses a raw HTTP request from the given byte buffer
 pub fn decode_http_request(buffer []u8) !HttpRequest {
 	mut req := HttpRequest{
 		buffer: buffer
