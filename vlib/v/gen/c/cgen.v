@@ -6468,17 +6468,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.option)
 			}
 		}
-		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
-			g.writeln('')
-			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
-			if g.is_autofree {
-				g.detect_used_var_on_return(expr0)
-			}
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar};')
-			return
-		}
 		expr_type_is_result := match expr0 {
 			ast.CallExpr {
 				expr0.return_type.has_flag(.result) && expr0.or_block.kind == .absent
@@ -6487,45 +6476,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.result)
 			}
 		}
-		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
-			if fn_return_is_result {
-				g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
-				g.writeln('')
-			} else if fn_return_is_fixed_array && expr0 !is ast.ArrayInit
-				&& g.table.final_sym(type0).kind == .array_fixed {
-				g.writeln('${ret_typ} ${tmpvar} = {0};')
-				styp := g.styp(fn_ret_type.clear_option_and_result())
-				g.write('memcpy(${tmpvar}.data, ')
-				if expr0 in [ast.CallExpr, ast.StructInit] {
-					g.expr_with_opt(expr0, type0, fn_ret_type)
-					g.write('.data')
-				} else {
-					g.expr(expr0)
-				}
-				g.writeln(', sizeof(${styp}));')
-			} else {
-				g.writeln('${ret_typ} ${tmpvar} = {0};')
-				styp := g.base_type(fn_ret_type)
-				g.write('builtin___result_ok(&(${styp}[]) { ')
-				if !fn_ret_type.is_ptr() && type0.is_ptr() {
-					if !((expr0 is ast.Ident && !g.is_amp) || sym.kind == .interface) {
-						g.write('*')
-					}
-				}
-				if fn_ret_type.has_flag(.option) {
-					g.writeln('/*hasoption*/')
-					g.expr_with_opt(expr0, type0, fn_ret_type.clear_flag(.result))
-				} else if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
-					g.writeln('/*hasarray*/')
-					info := return_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
-						info.elem_type, info.size)
-				} else {
-					g.writeln('/*no cast*/')
-					g.expr_with_cast(expr0, type0, fn_ret_type.clear_flag(.result))
-				}
-				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
-			}
+		if (fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name)
+			|| (fn_return_is_result && !expr_type_is_result && return_sym.name != result_name) {
+			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
+			g.writeln('')
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if g.is_autofree {
 				g.detect_used_var_on_return(expr0)
