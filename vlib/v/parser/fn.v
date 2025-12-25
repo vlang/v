@@ -744,8 +744,10 @@ run them via `v file.v` instead',
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
 		receiver:              ast.StructField{
-			name: rec.name
-			typ:  rec.typ
+			name:     rec.name
+			typ:      rec.typ
+			type_pos: rec.type_pos
+			pos:      rec.pos
 		}
 		generic_names:         generic_names
 		receiver_pos:          rec.pos

@@ -9,6 +9,31 @@ import os
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	// handle vls go to definition for method receiver types
+	if c.pref.is_vls {
+		if node.is_method && node.receiver.type_pos.line_nr > 0 {
+			if c.vls_is_the_node(node.receiver.type_pos) {
+				typ_str := c.table.type_to_str(node.receiver.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					}
+					exit(0)
+				}
+			}
+		}
+		if node.return_type_pos.line_nr > 0 {
+			if c.vls_is_the_node(node.return_type_pos) {
+				typ_str := c.table.type_to_str(node.return_type)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					}
+					exit(0)
+				}
+			}
+		}
+	}
 	$if trace_post_process_generic_fns_types ? {
 		if node.generic_names.len > 0 {
 			eprintln('>>> post processing node.name: ${node.name:-30} | ${node.generic_names} <=> ${c.table.cur_concrete_types}')

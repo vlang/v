@@ -296,6 +296,17 @@ pub mut:
 	name_pos       token.Pos
 }
 
+pub fn (ti TypeInfo) get_name_pos() ?token.Pos {
+	return match ti {
+		Struct, Alias, SumType, Enum, Interface {
+			ti.name_pos
+		}
+		else {
+			none
+		}
+	}
+}
+
 // <atomic.h> defines special typenames
 pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
