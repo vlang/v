@@ -668,6 +668,7 @@ pub fn (mut p Parser) root_table() ! {
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
 					p.next()!
+					p.ignore_while(space_formatting)
 					p.expect(.rsbr)!
 					p.peek_for_correct_line_ending_or_fail()!
 				}
@@ -1224,7 +1225,13 @@ pub fn (mut p Parser) key() !ast.Key {
 				pos:  pos
 			})
 		}
-		key = ast.Key(p.number())
+		num := p.number()
+		// Handles if key is `1key`
+		if p.peek_tok.kind in [.bare, .underscore, .minus] {
+			bare := p.bare()!
+			return bare
+		}
+		key = ast.Key(num)
 	} else {
 		key = match p.tok.kind {
 			.bare, .underscore, .minus {
