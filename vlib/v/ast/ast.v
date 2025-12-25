@@ -835,6 +835,15 @@ pub enum CallKind {
 	all
 	count
 	clone
+	contains
+	index
+	first
+	last
+	pop_left
+	pop
+	delete
+	delete_many
+	reverse
 }
 
 // function or method call expr

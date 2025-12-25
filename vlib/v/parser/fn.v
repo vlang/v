@@ -187,6 +187,33 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'clone' {
 			.clone
 		}
+		'contains' {
+			.contains
+		}
+		'index' {
+			.index
+		}
+		'first' {
+			.first
+		}
+		'last' {
+			.last
+		}
+		'pop_left' {
+			.pop_left
+		}
+		'pop' {
+			.pop
+		}
+		'delete' {
+			.delete
+		}
+		'delete_many' {
+			.delete_many
+		}
+		'reverse' {
+			.reverse
+		}
 		else {
 			.unknown
 		}
