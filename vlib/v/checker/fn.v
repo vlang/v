@@ -2187,7 +2187,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		node.return_type = left_sym.info.return_type
 		return left_sym.info.return_type
-	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && node.kind == ast.CallKind.str {
+	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && node.kind == .str {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
 		return ast.void_type
