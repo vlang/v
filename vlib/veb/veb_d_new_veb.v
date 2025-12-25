@@ -22,7 +22,6 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 
 // run_new - start a new veb server using the parallel fasthttp backend.
 pub fn run_new[A, X](mut global_app A, port int) ! {
-	// gapp = global_app
 	if port <= 0 || port > 65535 {
 		return error('invalid port number `${port}`, it should be between 1 and 65535')
 	}
@@ -52,35 +51,16 @@ pub fn run_new[A, X](mut global_app A, port int) ! {
 	server.run() or { panic(err) }
 }
 
-// const test_text = 'test'
-
 fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
-	/*
-	if true {
-		return test_text.bytes()
-	}
-	*/
 	// Get parameters from user_data - copy to avoid use-after-free
 	params := unsafe { *(&RequestParams(req.user_data)) }
 	mut global_app := unsafe { &A(params.global_app) }
-	// println('parallel_request_handler() params.routes=${params.routes}')
-	// println('global_app=$global_app')
-	// println('params=$params')
-	// println('req=$req')
-	// println('buffer=${req.buffer.bytestr()}')
-	s := req.buffer.bytestr()
-	// method := unsafe { tos(&req.buffer[req.method.start], req.method.len) }
-	// println('method=${method}')
-	// path := unsafe { tos(&req.buffer[req.path.start], req.path.len) }
-	// println('path=${path}')
+
 	client_fd := req.client_conn_fd
 
+	s := req.buffer.bytestr()
 	// Parse the raw request bytes into a standard `http.Request`.
 	req2 := http.parse_request_str(s.clone()) or {
-		eprintln('[veb] Failed to parse request: ${err}')
-		println('s=')
-		println(s)
-		println('==============')
 		return 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 	}
 	// Create and populate the `veb.Context`.
@@ -96,20 +76,11 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 
 // runs middleware, and finds the correct route for a request.
 fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, routes &map[string]Route, controllers []&ControllerPath) &Context {
-	/*
-	// Create a `net.TcpConn` from the file descriptor for context compatibility.
-	mut conn := &net.TcpConn{
-		sock:        net.tcp_socket_from_handle_raw(client_fd)
-		handle:      client_fd
-		is_blocking: false // vanilla_http_server ensures this
-	}
-	*/
 	// Create and populate the `veb.Context` from the request.
 	mut url := urllib.parse(req.url) or {
 		// This should be rare if http.parse_request succeeded.
 		mut bad_ctx := &Context{
 			req: req
-			// conn: conn
 		}
 		bad_ctx.not_found()
 		return bad_ctx
@@ -118,7 +89,6 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	form, files := parse_form_from_request(req) or {
 		mut bad_ctx := &Context{
 			req: req
-			// conn: conn
 		}
 		bad_ctx.request_error('Failed to parse form data: ${err.msg()}')
 		return bad_ctx
@@ -128,10 +98,9 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	mut ctx := &Context{
 		req:            req
 		page_gen_start: time.ticks()
-		// conn:           conn
-		query: query
-		form:  form
-		files: files
+		query:          query
+		form:           form
+		files:          files
 	}
 	if connection_header := req.header.get(.connection) {
 		if connection_header.to_lower() == 'close' {
@@ -150,7 +119,6 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	// Create a new user context and pass veb's context
 	mut user_context := X{}
 	user_context.Context = ctx
-	// println('calling handle_route')
 	handle_route[A, X](mut app, mut user_context, url, host, routes)
 	return &user_context.Context
 }
