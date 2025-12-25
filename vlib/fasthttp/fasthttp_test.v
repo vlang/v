@@ -25,7 +25,7 @@ fn test_fasthttp_example_compiles() {
 fn test_parse_request_line() {
 	// Test basic GET request
 	request := 'GET / HTTP/1.1\r\n'.bytes()
-	req := parse_request_line(request) or {
+	req := decode_http_request(request) or {
 		assert false, 'Failed to parse valid request: ${err}'
 		return
 	}
@@ -50,7 +50,7 @@ fn test_parse_request_line() {
 fn test_parse_request_line_with_path() {
 	// Test GET request with path
 	request := 'GET /users/123 HTTP/1.1\r\n'.bytes()
-	req := parse_request_line(request) or {
+	req := decode_http_request(request) or {
 		assert false, 'Failed to parse valid request: ${err}'
 		return
 	}
@@ -62,7 +62,7 @@ fn test_parse_request_line_with_path() {
 fn test_parse_request_line_post() {
 	// Test POST request
 	request := 'POST /api/data HTTP/1.1\r\n'.bytes()
-	req := parse_request_line(request) or {
+	req := decode_http_request(request) or {
 		assert false, 'Failed to parse valid request: ${err}'
 		return
 	}
@@ -77,8 +77,8 @@ fn test_parse_request_line_post() {
 fn test_parse_request_line_invalid() {
 	// Test invalid request (missing \r\n)
 	request := 'GET / HTTP/1.1'.bytes()
-	parse_request_line(request) or {
-		assert err.msg() == 'Invalid HTTP request line'
+	decode_http_request(request) or {
+		assert err.msg() == 'Invalid HTTP request line: Missing CR'
 		return
 	}
 	assert false, 'Should have failed to parse invalid request'
