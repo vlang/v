@@ -1348,7 +1348,7 @@ println(b) // [7, 3]
 ```
 
 Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
-So without the .clone() call the result of the code above will be the same. Make the slice in an
+So without the `.clone()` call the result of the code above will be the same. Make the slice in an
 `unsafe {}` block if you want to reuse memory, otherwise use explicit cloning.
 
 ##### Slices with negative indexes
