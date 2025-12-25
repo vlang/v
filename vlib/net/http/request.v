@@ -435,34 +435,41 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 
 // parse_request_head parses *only* the header of a raw HTTP request into a Request object
 pub fn parse_request_head_str(s string) !Request {
-	// TODO called by veb twice!?
-	pos0 := s.index('\n') or { 0 }
-	lines := s.split('\n')
+	pos0 := s.index('\n') or { return error('malformed request: no request line found') }
 	line0 := s[..pos0].trim_space()
-
 	method, target, version := parse_request_line(line0)!
 
 	// headers
 	mut header := new_header()
-	for i := 1; i < lines.len; i++ {
-		mut line := lines[i].trim_right('\r')
+	// split by newline and skip the first line (request line)
+	lines := s[pos0 + 1..].split('\n')
+
+	for line_raw in lines {
+		line := line_raw.trim_right('\r')
+
+		// IMPORTANT: HTTP headers end at the first empty line.
+		// If we hit this, we are now at the body, so we stop parsing headers.
+		if line == '' {
+			break
+		}
+
 		if !line.contains(':') {
 			continue
 		}
-		// key, value := parse_header(line)!
+
 		mut pos := parse_header_fast(line)!
 		key := line.substr_unsafe(0, pos)
-		for pos < line.len - 1 && line[pos + 1].is_space() {
-			// Skip space or tab in value name
-			pos++
+
+		// Skip space or tab after the colon
+		mut val_start := pos + 1
+		for val_start < line.len && line[val_start].is_space() {
+			val_start++
 		}
-		if pos + 1 < line.len {
-			value := line.substr_unsafe(pos + 1, line.len)
-			_, _ = key, value
-			// println('key,value=${key},${value}')
+
+		if val_start < line.len {
+			value := line.substr_unsafe(val_start, line.len)
 			header.add_custom(key, value)!
 		}
-		// header.coerce(canonicalize: true)
 	}
 
 	mut request_cookies := map[string]string{}
@@ -478,6 +485,20 @@ pub fn parse_request_head_str(s string) !Request {
 		version: version
 		cookies: request_cookies
 	}
+}
+
+// parse_request_str parses a raw HTTP request string into a Request object.
+pub fn parse_request_str(s string) !Request {
+	mut request := parse_request_head_str(s)!
+
+	delim := '\r\n\r\n'
+	body_pos := s.index(delim) or { -1 }
+
+	if body_pos != -1 {
+		request.data = s[body_pos + delim.len..]
+	}
+
+	return request
 }
 
 fn parse_request_line(line string) !(Method, urllib.URL, Version) {
