@@ -16,6 +16,7 @@ fn find_byte(buf &u8, len int, c u8) int {
 	}
 }
 
+// parse_http1_request_line parses the request line of an HTTP/1.1 request.
 // spec: https://datatracker.ietf.org/doc/rfc9112/
 // request-line is the start-line for for requests
 // According to RFC 9112, the request line is structured as:
@@ -26,6 +27,7 @@ fn find_byte(buf &u8, len int, c u8) int {
 // REQUEST-TARGET is the path or resource being requested
 // HTTP-VERSION is the version of HTTP being used (e.g., HTTP/1.1)
 // CRLF is a carriage return followed by a line feed
+// returns the position after the CRLF on success
 @[direct_array_access]
 pub fn parse_http1_request_line(mut req HttpRequest) !int {
 	unsafe {

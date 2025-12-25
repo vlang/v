@@ -48,6 +48,7 @@ pub:
 	len   int
 }
 
+// HttpRequest represents an HTTP request.
 // TODO make fields immutable
 pub struct HttpRequest {
 pub mut:
