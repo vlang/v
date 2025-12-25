@@ -1223,7 +1223,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			if node.name != 'delete_last' {
 				g.write(', ')
 				g.expr(node.args[0].expr)
-				if node.kind == ast.CallKind.delete_many {
+				if node.kind == .delete_many {
 					g.write(', ')
 					g.expr(node.args[1].expr)
 				}
@@ -1266,8 +1266,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			array_depth := g.get_array_depth(array_info.elem_type)
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
 			mut is_range_slice := false
-			if node.left is ast.IndexExpr && node.left.index is ast.RangeExpr
-				&& node.kind == ast.CallKind.clone {
+			if node.left is ast.IndexExpr && node.left.index is ast.RangeExpr && node.kind == .clone {
 				is_range_slice = true
 			}
 			to_static := if is_range_slice { '_static' } else { '' }
@@ -1287,7 +1286,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 				}
 				g.expr(node.left)
 			}
-			if node.kind == ast.CallKind.repeat {
+			if node.kind == .repeat {
 				g.write(', ')
 				g.expr(node.args[0].expr)
 			}
@@ -1676,11 +1675,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	mut is_free_method := false
-	if node.kind == ast.CallKind.str {
+	if node.kind == .str {
 		if g.gen_to_str_method_call(node) {
 			return
 		}
-	} else if node.kind == ast.CallKind.free {
+	} else if node.kind == .free {
 		g.register_free_method(node.receiver_type)
 		is_free_method = true
 	}
@@ -2150,7 +2149,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.inside_interface_deref = false
 			}
 		}
-		if g.pref.is_debug && node.kind == ast.CallKind.panic {
+		if g.pref.is_debug && node.kind == .panic {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 			g.write('builtin__panic_debug(${paline}, builtin__tos3("${pafile}"), builtin__tos3("${pamod}"), builtin__tos3("${pafn}"),  ')
 			g.call_args(node)
@@ -2581,7 +2580,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if use_tmp_var_autofree {
-				n := if node.kind == ast.CallKind.jsondecode { i + 2 } else { i + 1 }
+				n := if node.kind == .jsondecode { i + 2 } else { i + 1 }
 				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				name := '_arg_expr_${fn_name}_${n}_${node.pos.pos}'
