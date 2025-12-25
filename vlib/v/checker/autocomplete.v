@@ -73,6 +73,22 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 	exit(0)
 }
 
+fn (mut c Checker) name_pos_gotodef(name string) ?token.Pos {
+	idx := c.table.find_type_idx(name)
+	if idx > 0 {
+		sym := c.table.type_symbols[idx]
+		return match sym.info {
+			ast.Struct, ast.Alias, ast.SumType, ast.Enum, ast.Interface {
+				sym.info.name_pos
+			}
+			else {
+				none
+			}
+		}
+	}
+	return none
+}
+
 fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 	if c.pref.linfo.method != .definition {
 		return
@@ -113,21 +129,21 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 					pos = obj.pos
 				}
 			}
-			//
+			// If not found as a variable/const, try as a type
+			if pos == token.Pos{} {
+				full_name := if node.mod != '' { '${node.mod}.${node.name}' } else { node.name }
+				if np := c.name_pos_gotodef(full_name) {
+					pos = np
+				}
+			}
 		}
 		ast.StructInit {
 			if !c.vls_is_the_node(node.name_pos) {
 				return
 			}
-			mut info := c.table.sym(node.typ).info
-			pos = match mut info {
-				ast.Struct {
-					info.name_pos
-				}
-				ast.Alias {
-					info.name_pos
-				}
-				ast.SumType {
+			info := c.table.sym(node.typ).info
+			pos = match info {
+				ast.Struct, ast.Alias, ast.SumType {
 					info.name_pos
 				}
 				else {
@@ -136,12 +152,55 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
+			// Check if clicking on the field name or method
 			sym := c.table.sym(node.expr_type)
-			f := c.table.find_field(sym, node.field_name) or {
-				println('failed to find field "${node.field_name}"')
-				exit(1)
+			if field := c.table.find_field_with_embeds(sym, node.field_name) {
+				pos = field.pos
+			} else {
+				if method := c.table.find_method(sym, node.field_name) {
+					pos = method.name_pos
+				} else {
+					println('failed to find field or method "${node.field_name}"')
+					exit(1)
+				}
 			}
-			pos = f.pos
+		}
+		ast.EnumVal {
+			// Go to enum field definition
+			mut enum_name := if node.enum_name == '' && node.typ != ast.void_type {
+				c.table.sym(node.typ).name
+			} else {
+				node.enum_name
+			}
+			if enum_decl := c.table.enum_decls[enum_name] {
+				for field in enum_decl.fields {
+					if field.name == node.val {
+						pos = field.pos
+						break
+					}
+				}
+			}
+		}
+		ast.TypeNode {
+			// Go to type definition
+			typ_str := c.table.type_to_str(node.typ)
+			if np := c.name_pos_gotodef(typ_str) {
+				pos = np
+			}
+		}
+		ast.CastExpr {
+			// Go to type definition in cast expr
+			if node.typname != '' {
+				if np := c.name_pos_gotodef(node.typname) {
+					pos = np
+				}
+			}
+			if pos == token.Pos{} && node.typ != ast.void_type {
+				typ_str := c.table.type_to_str(node.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					pos = np
+				}
+			}
 		}
 		else {}
 	}
