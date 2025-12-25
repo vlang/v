@@ -106,7 +106,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		c.check_module_name_conflict(node.short_name, node.pos)
 	}
-	if node.name == 'main.main' {
+	if node.kind == .main_main {
 		c.main_fn_decl_node = *node
 	}
 	if node.language == .v && node.attrs.len > 0 {
@@ -230,12 +230,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('option types cannot have methods', node.receiver_pos)
 		}
 		mut sym := c.table.sym(node.receiver.typ)
-		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+		if sym.kind == .array && !c.is_builtin_mod && node.kind == .map {
 			// TODO: `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
-		} else if sym.kind == .sum_type && node.name == 'type_name' {
+		} else if sym.kind == .sum_type && node.kind == .type_name {
 			c.error('method overrides built-in sum type method', node.pos)
-		} else if sym.kind == .sum_type && node.name == 'type_idx' {
+		} else if sym.kind == .sum_type && node.kind == .type_idx {
 			c.error('method overrides built-in sum type method', node.pos)
 		} else if sym.kind == .multi_return {
 			c.error('cannot define method on multi-value', node.method_type_pos)
@@ -261,7 +261,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.pos)
 				}
 			}
-			if node.name == 'free' {
+			if node.kind == .free {
 				if node.return_type != ast.void_type {
 					c.error('`.free()` methods should not have a return type', node.return_type_pos)
 				}
@@ -411,7 +411,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
 			return
 		}
-		if node.language == .v && node.is_method && node.name == 'str' {
+		if node.language == .v && node.is_method && node.kind == .str {
 			if node.return_type != ast.string_type {
 				c.error('.str() methods should return `string`', node.pos)
 			}
@@ -916,9 +916,9 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 }
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
-	is_va_arg := node.name == 'C.va_arg'
-	is_json_decode := node.name == 'json.decode'
-	is_json_encode := node.name == 'json.encode'
+	is_va_arg := node.kind == .va_arg
+	is_json_decode := node.kind == .jsondecode
+	is_json_encode := node.kind == .jsonencode
 	mut fn_name := node.name
 	if node.is_static_method {
 		// resolve static call T.name()

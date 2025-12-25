@@ -587,6 +587,7 @@ pub:
 	name                  string // 'math.bits.normalize'
 	short_name            string // 'normalize'
 	mod                   string // 'math.bits'
+	kind                  CallKind
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
@@ -847,12 +848,15 @@ pub enum CallKind {
 	reverse_in_place
 	panic
 	jsondecode
+	jsonencode
 	repeat
 	type_name
 	type_idx
 	clear
 	reserve
 	move
+	main_main
+	va_arg
 }
 
 // function or method call expr

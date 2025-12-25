@@ -223,6 +223,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'json.decode' {
 			.jsondecode
 		}
+		'json.encode' {
+			.jsonencode
+		}
 		'repeat' {
 			.repeat
 		}
@@ -240,6 +243,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		}
 		'move' {
 			.move
+		}
+		'main.main' {
+			.main_main
+		}
+		'C.va_arg' {
+			.va_arg
 		}
 		else {
 			.unknown
@@ -839,6 +848,7 @@ run them via `v file.v` instead',
 		name:               name
 		short_name:         short_fn_name
 		mod:                p.mod
+		kind:               p.call_kind(name)
 		stmts:              stmts
 		return_type:        return_type
 		return_type_pos:    return_type_pos
