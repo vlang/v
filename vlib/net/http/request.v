@@ -487,6 +487,7 @@ pub fn parse_request_head_str(s string) !Request {
 	}
 }
 
+// parse_request_str parses a raw HTTP request string into a Request object.
 pub fn parse_request_str(s string) !Request {
 	mut request := parse_request_head_str(s)!
 
