@@ -362,8 +362,8 @@ pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBui
 		}
 		fields << field
 	}
-	qb.data.fields = fields
-	qb.data.data = values
+	qb.data.fields << fields
+	qb.data.data << values
 	return qb
 }
 

@@ -2359,10 +2359,16 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
 
+	assign_op := g.assign_op
+	defer {
+		g.assign_op = assign_op
+	}
+	g.assign_op = .unknown
 	stmt_str := g.go_before_last_stmt().trim_space()
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
 	final_expr_sym := g.table.final_sym(expr_typ)
+	mut expected_type := ret_typ
 
 	if final_expr_sym.kind == .none {
 		g.write('${g.styp(ret_typ)} ${tmp_var} = ')
@@ -2435,11 +2441,6 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('builtin___option_none(&(${styp}[]) { ')
 				} else if final_expr_sym.kind == .array_fixed {
-					assign_op := g.assign_op
-					defer(fn) {
-						g.assign_op = assign_op
-					}
-					g.assign_op = .unknown
 					expr_is_fixed_array_var = true
 					info := final_expr_sym.array_fixed_info()
 					mut no_cast := false
@@ -2486,10 +2487,29 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 			}
 		} else {
-			g.write('builtin___result_ok(&(${styp}[]) { ')
+			if final_expr_sym.kind == .array_fixed {
+				expr_is_fixed_array_var = true
+				info := final_expr_sym.array_fixed_info()
+				mut no_cast := false
+				if expr in [ast.CastExpr, ast.CallExpr, ast.Ident, ast.SelectorExpr] {
+					no_cast = true
+				}
+				elem_sym := g.table.sym(info.elem_type)
+				if elem_sym.kind == .struct {
+					expr_is_fixed_array_var = false
+					g.write('builtin___result_ok(&(${styp}[]) { ')
+				} else if no_cast {
+					g.write('builtin___result_ok(')
+				} else {
+					g.write('builtin___result_ok((${g.styp(final_expr_sym.idx)})')
+				}
+			} else {
+				g.write('builtin___result_ok(&(${styp}[]) { ')
+				expected_type = ret_typ.clear_flag(.result)
+			}
 		}
 		if !already_generated {
-			g.expr_with_cast(expr, expr_typ, ret_typ)
+			g.expr_with_cast(expr, expr_typ, expected_type)
 		}
 
 		if fn_option_clone {
@@ -2504,7 +2524,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			}
 		} else {
-			g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
+			if expr_is_fixed_array_var {
+				g.writeln(', (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
+			} else {
+				g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
+			}
 		}
 		g.set_current_pos_as_last_stmt_pos()
 	}
@@ -5689,6 +5713,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
+	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
@@ -5719,7 +5744,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('*((${styp} *)(&')
 		g.expr(node.expr)
 		g.write('))')
-	} else if sym.kind == .alias && g.table.final_sym(node_typ).kind == .array_fixed {
+	} else if sym.kind == .alias && final_sym.kind == .array_fixed {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node_typ)
 		} else {
@@ -5764,7 +5789,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node_typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else if !(g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type)) {
+			} else if !((g.is_cc_msvc && g.styp(node_typ) == g.styp(expr_type))
+				|| (final_sym.kind == .array_fixed && final_expr_sym == final_sym)) {
+				// not cast fixed array, which will use `memcpy`
 				cast_label = '(${styp})'
 			}
 		}
@@ -5806,7 +5833,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
 				old_inside_assign_fn_var := g.inside_assign_fn_var
-				g.inside_assign_fn_var = g.table.final_sym(expr_type).kind == .function
+				g.inside_assign_fn_var = final_expr_sym.kind == .function
 				g.write('(')
 				if node.expr is ast.Ident {
 					if !node_typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
@@ -5814,7 +5841,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 						g.write('*'.repeat(node.expr_type.nr_muls()))
 					}
 				}
-				if sym.kind == .alias && g.table.final_sym(node_typ).kind == .string {
+				if sym.kind == .alias && final_sym.kind == .string {
 					ptr_cnt := node_typ.nr_muls() - expr_type.nr_muls()
 					if ptr_cnt > 0 {
 						g.write('&'.repeat(ptr_cnt))
@@ -6444,17 +6471,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.option)
 			}
 		}
-		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
-			g.writeln('')
-			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
-			if g.is_autofree {
-				g.detect_used_var_on_return(expr0)
-			}
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar};')
-			return
-		}
 		expr_type_is_result := match expr0 {
 			ast.CallExpr {
 				expr0.return_type.has_flag(.result) && expr0.or_block.kind == .absent
@@ -6463,38 +6479,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				type0.has_flag(.result)
 			}
 		}
-		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
-			g.writeln('${ret_typ} ${tmpvar} = {0};')
-			if fn_return_is_fixed_array && expr0 !is ast.ArrayInit
-				&& g.table.final_sym(type0).kind == .array_fixed {
-				styp := g.styp(fn_ret_type.clear_option_and_result())
-				g.write('memcpy(${tmpvar}.data, ')
-				if expr0 in [ast.CallExpr, ast.StructInit] {
-					g.expr_with_opt(expr0, type0, fn_ret_type)
-					g.write('.data')
-				} else {
-					g.expr(expr0)
-				}
-				g.writeln(', sizeof(${styp}));')
-			} else {
-				styp := g.base_type(fn_ret_type)
-				g.write('builtin___result_ok(&(${styp}[]) { ')
-				if !fn_ret_type.is_ptr() && type0.is_ptr() {
-					if !((expr0 is ast.Ident && !g.is_amp) || sym.kind == .interface) {
-						g.write('*')
-					}
-				}
-				if fn_ret_type.has_flag(.option) {
-					g.expr_with_opt(expr0, type0, fn_ret_type.clear_flag(.result))
-				} else if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
-					info := return_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
-						info.elem_type, info.size)
-				} else {
-					g.expr_with_cast(expr0, type0, fn_ret_type.clear_flag(.result))
-				}
-				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
-			}
+		if (fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name)
+			|| (fn_return_is_result && !expr_type_is_result && return_sym.name != result_name) {
+			g.expr_with_tmp_var(expr0, type0, fn_ret_type, tmpvar, false)
+			g.writeln('')
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if g.is_autofree {
 				g.detect_used_var_on_return(expr0)

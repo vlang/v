@@ -76,12 +76,12 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 	client_fd := req.client_conn_fd
 
 	// Parse the raw request bytes into a standard `http.Request`.
-	req2 := http.parse_request_head_str(s.clone()) or {
+	req2 := http.parse_request_str(s.clone()) or {
 		eprintln('[veb] Failed to parse request: ${err}')
 		println('s=')
 		println(s)
 		println('==============')
-		return http_ok_response // tiny_bad_request_response
+		return 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
