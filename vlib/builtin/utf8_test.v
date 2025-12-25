@@ -106,7 +106,7 @@ fn test_utf8_to_utf32_cases() {
 	test_case1 := [u8(0x41)]
 	assert impl_utf8_to_utf32(&u8(test_case1.data), test_case1.len) == rune(`A`)
 
-	test_case2 := [u8(0xC3), 0xA9]
+	test_case2 := 'é'.bytes()
 	assert impl_utf8_to_utf32(&u8(test_case2.data), test_case2.len) == rune(`é`)
 
 	test_case3 := [u8(0xE2), 0x82, 0xAC]
