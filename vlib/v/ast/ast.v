@@ -844,6 +844,8 @@ pub enum CallKind {
 	pop
 	delete
 	delete_many
+	delete_last
+	drop
 	reverse
 	reverse_in_place
 	panic
@@ -858,6 +860,11 @@ pub enum CallKind {
 	main_main
 	va_arg
 	addr
+	main
+	jsawait
+	error
+	grow_cap
+	grow_len
 }
 
 // function or method call expr

@@ -211,6 +211,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'delete_many' {
 			.delete_many
 		}
+		'delete_last' {
+			.delete_last
+		}
+		'drop' {
+			.drop
+		}
 		'reverse' {
 			.reverse
 		}
@@ -247,11 +253,26 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'main.main' {
 			.main_main
 		}
+		'main' {
+			.main
+		}
 		'C.va_arg' {
 			.va_arg
 		}
 		'__addr' {
 			.addr
+		}
+		'JS.await' {
+			.jsawait
+		}
+		'error' {
+			.error
+		}
+		'grow_len' {
+			.grow_len
+		}
+		'grow_cap' {
+			.grow_cap
 		}
 		else {
 			.unknown

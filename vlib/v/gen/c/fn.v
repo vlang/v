@@ -1180,44 +1180,44 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 }
 
 fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
-	match node.name {
-		'filter' {
+	match node.kind {
+		.filter {
 			g.gen_array_filter(node)
 		}
-		'sort' {
+		.sort {
 			g.gen_array_sort(node)
 		}
-		'sorted' {
+		.sorted {
 			g.gen_array_sorted(node)
 		}
-		'insert' {
+		.insert {
 			g.gen_array_insert(node)
 		}
-		'map' {
+		.map {
 			g.gen_array_map(node)
 		}
-		'prepend' {
+		.prepend {
 			g.gen_array_prepend(node)
 		}
-		'contains' {
+		.contains {
 			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
 		}
-		'index' {
+		.index {
 			g.gen_array_index(node)
 		}
-		'wait' {
+		.wait {
 			g.gen_array_wait(node)
 		}
-		'any' {
+		.any {
 			g.gen_array_any(node)
 		}
-		'count' {
+		.count {
 			g.gen_array_count(node)
 		}
-		'all' {
+		.all {
 			g.gen_array_all(node)
 		}
-		'delete', 'drop', 'delete_last', 'delete_many' {
+		.delete, .drop, .delete_last, .delete_many {
 			g.write('builtin__array_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			if node.name != 'delete_last' {
@@ -1230,14 +1230,14 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			}
 			g.write(')')
 		}
-		'grow_cap', 'grow_len' {
+		.grow_cap, .grow_len {
 			g.write('builtin__array_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(', ')
 			g.expr(node.args[0].expr)
 			g.write(')')
 		}
-		'first', 'last', 'pop_left', 'pop' {
+		.first, .last, .pop_left, .pop {
 			mut noscan := ''
 			array_info := left_sym.info as ast.Array
 			if node.name in ['pop_left', 'pop'] {
@@ -1261,7 +1261,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			}
 			g.write('))')
 		}
-		'clone', 'repeat' {
+		.clone, .repeat {
 			array_info := left_sym.info as ast.Array
 			array_depth := g.get_array_depth(array_info.elem_type)
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }

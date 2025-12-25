@@ -928,7 +928,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
-	if !c.file.is_test && fn_name == 'main' {
+	if !c.file.is_test && node.kind == .main {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}
 	mut has_generic := false // foo[T]() instead of foo[int]()
@@ -965,7 +965,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	args_len := node.args.len
-	if fn_name == 'JS.await' {
+	if node.kind == .jsawait {
 		if node.args.len > 1 {
 			c.error('JS.await expects 1 argument, a promise value (e.g `JS.await(fs.read())`',
 				node.pos)
@@ -1488,7 +1488,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
-	if args_len == 1 && fn_name == 'error' {
+	if args_len == 1 && node.kind == .error {
 		mut arg := node.args[0]
 		node.args[0].typ = c.expr(mut arg.expr)
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
@@ -2144,10 +2144,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		return ast.void_type
 	}
 	if left_sym.kind in [.sum_type, .interface] {
-		if method_name == 'type_name' {
+		if node.kind == .type_name {
 			return ast.string_type
 		}
-		if method_name == 'type_idx' {
+		if node.kind == .type_idx {
 			return ast.int_type
 		}
 	}
@@ -2165,9 +2165,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
-	} else if final_left_sym.kind == .map
-		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
-		&& left_sym.has_method(method_name)) {
+	} else if final_left_sym.kind == .map && node.kind in [.clone, .keys, .values, .move, .delete]
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		unaliased_left_type := c.table.unaliased_type(left_type)
 		return c.map_builtin_method_call(mut node, unaliased_left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
@@ -3726,7 +3725,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.expr(mut arg0.expr)
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
-	} else if method_name == 'count' {
+	} else if node.kind == .count {
 		if node_args_len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3746,7 +3745,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.expr(mut arg0.expr)
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
-	} else if method_name == 'filter' {
+	} else if node.kind == .filter {
 		if node_args_len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3756,7 +3755,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.expr(mut arg0.expr)
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = c.table.find_or_register_array(elem_typ)
-	} else if method_name == 'wait' {
+	} else if node.kind == .wait {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
 			if node_args_len != 0 {
@@ -3910,7 +3909,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			for mut arg in node.args {
 				c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 			}
-			if method_name == 'sort_with_compare' {
+			if node.kind == .sort_with_compare {
 				c.check_for_mut_receiver(mut node.left)
 				node.return_type = ast.void_type
 				node.receiver_type = node.left_type.ref()
