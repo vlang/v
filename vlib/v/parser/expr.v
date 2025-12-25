@@ -266,14 +266,30 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr {
-				mut n := 2
+			} else {
+				// check is `cast_expr` or `array_init`
+				// [name.name][]a{}  => array_init
+				// [name.name][]a(expr) => cast_expr, same line
+				line_nr := p.tok.line_nr
+				mut n := 1
+				mut prev_n_tok := p.tok
 				mut peek_n_tok := p.peek_token(n)
-				for peek_n_tok.kind in [.name, .dot] {
+				mut sbr_level := 1
+				for peek_n_tok.kind in [.name, .dot, .lsbr, .rsbr, .number] {
+					if peek_n_tok.kind == .rsbr {
+						sbr_level--
+					} else if peek_n_tok.kind == .lsbr {
+						sbr_level++
+					}
+					if peek_n_tok.kind == .dot && prev_n_tok.kind != .name {
+						// [xxx].method()
+						break
+					}
 					n++
+					prev_n_tok = peek_n_tok
 					peek_n_tok = p.peek_token(n)
 				}
-				if peek_n_tok.kind != .lcbr {
+				if peek_n_tok.kind == .lpar && sbr_level == 0 && peek_n_tok.line_nr == line_nr {
 					pos := p.tok.pos()
 					typ := p.parse_type()
 					typname := p.table.sym(typ).name
@@ -289,8 +305,6 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				} else {
 					node = p.array_init(false, ast.void_type)
 				}
-			} else {
-				node = p.array_init(false, ast.void_type)
 			}
 		}
 		.key_none {
