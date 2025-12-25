@@ -2262,7 +2262,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 	if !has_method {
 		// TODO: str methods
-		if node.kind == ast.CallKind.str {
+		if node.kind == .str {
 			if left_sym.kind == .interface {
 				iname := left_sym.name
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
@@ -2278,7 +2278,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.table.used_features.auto_str = true
 			}
 			return ast.string_type
-		} else if node.kind == ast.CallKind.free {
+		} else if node.kind == .free {
 			if !c.is_builtin_mod && !c.inside_unsafe && !method.is_unsafe {
 				c.warn('manual memory management with `free()` is only allowed in unsafe code',
 					node.pos)
@@ -3571,8 +3571,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if node.kind == .sorted {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if node.kind in [ast.CallKind.sort_with_compare, ast.CallKind.sorted_with_compare] {
-		if node.kind == ast.CallKind.sorted_with_compare {
+	} else if node.kind in [.sort_with_compare, .sorted_with_compare] {
+		if node.kind == .sorted_with_compare {
 			c.ensure_same_array_return_type(mut node, left_type)
 		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
@@ -3586,9 +3586,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			expr_type: c.expr(mut arg0.expr)
 			pos:       node.pos
 		}
-	} else if node.kind == ast.CallKind.sort {
+	} else if node.kind == .sort {
 		node.return_type = ast.void_type
-	} else if node.kind == ast.CallKind.contains {
+	} else if node.kind == .contains {
 		// c.warn('use `value in arr` instead of `arr.contains(value)`', node.pos)
 		if node_args_len != 1 {
 			c.error('`.contains()` expected 1 argument, but got ${node_args_len}', node.pos)
@@ -3601,7 +3601,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.bool_type
-	} else if node.kind == ast.CallKind.index {
+	} else if node.kind == .index {
 		if node_args_len != 1 {
 			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
 		} else if !left_sym.has_method('index') {
@@ -3613,20 +3613,19 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
-	} else if node.kind in [ast.CallKind.first, ast.CallKind.last, ast.CallKind.pop_left,
-		ast.CallKind.pop] {
+	} else if node.kind in [.first, .last, .pop_left, .pop] {
 		c.markused_array_method(!c.is_builtin_mod, method_name)
 		if node_args_len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', arg0.pos)
 		}
 		node.return_type = array_info.elem_type
-		if node.kind in [ast.CallKind.pop_left, ast.CallKind.pop] {
+		if node.kind in [.pop_left, .pop] {
 			c.check_for_mut_receiver(mut node.left)
 			node.receiver_type = node.left_type.ref()
 		} else {
 			node.receiver_type = node.left_type
 		}
-	} else if node.kind == ast.CallKind.delete {
+	} else if node.kind == .delete {
 		c.markused_array_method(!c.is_builtin_mod, method_name)
 		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
@@ -3642,7 +3641,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		node.return_type = ast.void_type
-	} else if node.kind == ast.CallKind.delete_many {
+	} else if node.kind == .delete_many {
 		if node_args_len != 2 {
 			c.error('`.delete_many()` expected 2 arguments, but got ${node_args_len}',
 				node.pos)
@@ -3655,7 +3654,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		node.return_type = ast.void_type
-	} else if node.kind == ast.CallKind.reverse {
+	} else if node.kind == .reverse {
 		c.table.used_features.arr_reverse = true
 	}
 	return node.return_type
@@ -3674,7 +3673,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	node_args_len := node.args.len
 	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }
 	elem_typ := array_info.elem_type
-	if node.kind == ast.CallKind.index {
+	if node.kind == .index {
 		if node_args_len != 1 {
 			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
 			return ast.int_type
@@ -3689,7 +3688,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
-	} else if node.kind == ast.CallKind.contains {
+	} else if node.kind == .contains {
 		if node_args_len != 1 {
 			c.error('`.contains()` expected 1 argument, but got ${node_args_len}', node.pos)
 			return ast.bool_type
@@ -3704,7 +3703,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.bool_type
-	} else if node.kind in [ast.CallKind.any, ast.CallKind.all] {
+	} else if node.kind in [.any, .all] {
 		if node_args_len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
@@ -3773,7 +3772,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())
 		}
-	} else if node.kind == ast.CallKind.map {
+	} else if node.kind == .map {
 		if node_args_len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
