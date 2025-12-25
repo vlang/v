@@ -2181,7 +2181,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		node.return_type = info.concrete_types[0]
 		node.return_type.set_flag(.option)
 		return node.return_type
-	} else if left_sym.info is ast.Thread && node.kind == ast.CallKind.wait {
+	} else if left_sym.info is ast.Thread && node.kind == .wait {
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
 		}
