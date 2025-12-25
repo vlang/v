@@ -1,0 +1,53 @@
+// Test data file for goto_def_test.v
+module main
+
+import v.tests.vls.sample_mod1 as s
+
+struct LocalStruct {
+	value int
+}
+
+enum LocalEnum {
+	first
+	second
+	third
+}
+
+type LocalAlias = string
+
+type LocalSum = int | string
+
+fn (ls LocalStruct) my_method() string {
+	return 'method'
+}
+
+fn main() {
+	mut obj := LocalStruct{value: 42}
+
+	msg := obj.my_method()
+	println(msg)
+
+	e1 := LocalEnum.first
+
+	match e1 {
+		.second { println('second') }
+		else {}
+	}
+
+	casted := LocalAlias('test')
+
+	sum_val := LocalSum(42)
+	println(sum_val)
+
+	another := LocalStruct{}
+	println(another.value)
+
+	yet_another := obj
+	println(yet_another)
+
+	imported_e := s.PublicEnum1.a
+	println(imported_e)
+
+	val := obj.value
+	println(val)
+}

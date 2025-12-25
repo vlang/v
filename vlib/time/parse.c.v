@@ -397,7 +397,7 @@ pub fn parse_iso8601(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	t_i := s.index('T') or { -1 }
+	t_i := s.index_('T')
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12, 'malformed date')

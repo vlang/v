@@ -1010,9 +1010,10 @@ pub fn (t &Table) array_name(elem_type Type) string {
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
-	mut name := elem_type_sym.name
-	if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
-		name = elem_type_sym.info.scoped_name
+	name := if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
+		elem_type_sym.info.scoped_name
+	} else {
+		elem_type_sym.name
 	}
 	return '[]${opt}${res}${ptr}${name}'
 }
@@ -1023,11 +1024,12 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
+	cname := elem_type_sym.scoped_cname()
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
+		type_name := cname.replace_each(map_cname_escape_seq)
 		return 'Array_${opt}${res}${type_name}${suffix}'
 	} else {
-		return 'Array_${opt}${res}${elem_type_sym.cname}${suffix}'
+		return 'Array_${opt}${res}${cname}${suffix}'
 	}
 }
 
@@ -1044,7 +1046,12 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) str
 	} else {
 		size_expr.str()
 	}
-	return '[${size_str}]${opt}${res}${ptr}${elem_type_sym.name}'
+	name := if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
+		elem_type_sym.info.scoped_name
+	} else {
+		elem_type_sym.name
+	}
+	return '[${size_str}]${opt}${res}${ptr}${name}'
 }
 
 @[inline]
@@ -1053,11 +1060,12 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	suffix := if elem_type.is_ptr() { '_ptr${elem_type.nr_muls()}' } else { '' }
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
+	mut cname := elem_type_sym.scoped_cname()
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
+		type_name := cname.replace_each(map_cname_escape_seq)
 		return 'Array_fixed_${opt}${res}${type_name}${suffix}_${size}'
 	} else {
-		return 'Array_fixed_${opt}${res}${elem_type_sym.cname}${suffix}_${size}'
+		return 'Array_fixed_${opt}${res}${cname}${suffix}_${size}'
 	}
 }
 

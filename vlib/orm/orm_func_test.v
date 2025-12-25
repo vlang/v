@@ -498,12 +498,22 @@ fn test_orm_func_stmts() {
 	assert only_names[0].score == 0
 	assert only_names[0].created_at == none
 
-	// update
+	// update with single `set()`
 	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?', 'John')!.update()!
 	john := qb.where('name = ?', 'John')!.query()!
 	assert john[0].name == 'John'
 	assert john[0].age == 71
 	assert john[0].title == 'boss'
+
+	// update with multiple `set()`
+
+	qb.set('age = ?', 51)!
+		.set('title = ?', 'employee')!
+		.where('name = ?', 'John')!.update()!
+	john2 := qb.where('name = ?', 'John')!.query()!
+	assert john2[0].name == 'John'
+	assert john2[0].age == 51
+	assert john2[0].title == 'employee'
 
 	// delete
 	qb.where('name = ?', 'John')!.delete()!

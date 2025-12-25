@@ -2043,7 +2043,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 fn (mut f Fmt) write_static_method(name string, short_name string) {
 	if short_name.contains('.') {
-		indx := short_name.index('.') or { -1 } + 1
+		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
 	} else {
 		f.write(short_name.replace('__static__', '.').capitalize())

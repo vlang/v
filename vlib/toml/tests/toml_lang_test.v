@@ -1,7 +1,7 @@
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/toml_lang`
-// `git -C vlib/toml/tests/testdata/toml_lang reset --hard 8bb8d9c
+// `git -C vlib/toml/tests/testdata/toml_lang reset --hard 229ce2e
 // See also the CI toml tests
 import os
 import toml
@@ -14,29 +14,34 @@ const test_files_file = os.join_path(test_root, 'files-toml-1.0.0')
 const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 const no_jq = os.getenv('VNO_JQ') == '1'
 
-// Kept for easier handling of future updates to the tests
+// Kept for easier lookup and handling of future updates to the tests.
+// NOTE: entries in this list are valid TOML that the parser should work with, but currently does not.
 const valid_exceptions = [
 	'do_not_remove',
 	'array/open-parent-table.toml',
 	'comment/after-literal-no-ws.toml',
-	'key/space.toml',
-	'key/start.toml',
 	'string/escapes.toml',
 	'string/multiline-quotes.toml',
 	'table/array-implicit-and-explicit-after.toml',
 	'table/array-within-dotted.toml',
 ]
-const jq_not_equal = [
-	'do_not_remove',
-]
+// NOTE: entries in this list are tests of invalid TOML that should have the parser fail, but currently does not.
 const invalid_exceptions = [
 	'do_not_remove',
-	'inline-table/duplicate-key-2.toml',
-	'string/multiline-escape-space-2.toml',
+	'key/duplicate-keys-06.toml',
+	'inline-table/duplicate-key-02.toml',
+	'string/multiline-escape-space-02.toml',
+	'string/missing-quotes-array.toml',
 	'table/duplicate-key-dotted-array.toml',
-	'table/redefine-2.toml',
+	'table/append-with-dotted-keys-05.toml',
+	'table/duplicate-key-03.toml',
+	'table/duplicate-key-10.toml',
+	'table/redefine-02.toml',
 ]
 const valid_value_exceptions = [
+	'do_not_remove',
+]
+const jq_not_equal = [
 	'do_not_remove',
 ]
 

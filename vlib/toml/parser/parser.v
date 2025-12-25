@@ -668,6 +668,7 @@ pub fn (mut p Parser) root_table() ! {
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
 					p.next()!
+					p.ignore_while(space_formatting)
 					p.expect(.rsbr)!
 					p.peek_for_correct_line_ending_or_fail()!
 				}
@@ -1224,7 +1225,13 @@ pub fn (mut p Parser) key() !ast.Key {
 				pos:  pos
 			})
 		}
-		key = ast.Key(p.number())
+		num := p.number()
+		// Handles if key is `1key`
+		if p.peek_tok.kind in [.bare, .underscore, .minus] {
+			bare := p.bare()!
+			return bare
+		}
+		key = ast.Key(num)
 	} else {
 		key = match p.tok.kind {
 			.bare, .underscore, .minus {
@@ -1541,7 +1548,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	lit += p.tok.lit
 	p.check(.number)!
 	lit += p.tok.lit
-	// TODO: does TOML even have optional seconds?
+	// NOTE: TOML v1.1.0 have optional seconds
 	// if p.peek_tok.kind == .colon {
 	p.check(.colon)!
 	lit += p.tok.lit
@@ -1555,6 +1562,11 @@ pub fn (mut p Parser) time() !ast.Time {
 		p.check(.period)!
 		lit += p.tok.lit
 		p.expect(.number)!
+	}
+
+	if !lit[lit.len - 1].is_digit() {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' expected a number as last occurrence in "${lit}" got "${lit[lit.len - 1].ascii_str()}"')
 	}
 
 	// Parse offset

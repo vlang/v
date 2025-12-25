@@ -470,8 +470,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 }
 
 fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
-	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-		var_name, 0)
+	decl_var := g.fn_var_signature(expr.typ, expr.decl.return_type, expr.decl.params.map(it.typ),
+		var_name)
 	g.write('${decl_var} = ')
 	g.gen_anon_fn(mut expr)
 	g.writeln(';')
@@ -552,8 +552,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			var_sym := g.table.sym(expr.typ)
 			if var_sym.info is ast.FnType {
 				ret_elem_styp = 'voidptr'
-				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					tmp_map_expr_result_name, 0)
+				closure_var_decl = g.fn_var_signature(expr.typ, var_sym.info.func.return_type,
+					var_sym.info.func.params.map(it.typ), tmp_map_expr_result_name)
 			}
 		}
 	}
