@@ -2170,7 +2170,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		unaliased_left_type := c.table.unaliased_type(left_type)
 		return c.map_builtin_method_call(mut node, unaliased_left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
-		&& node.kind == ast.CallKind.wait {
+		&& node.kind == .wait {
 		info := left_sym.info as ast.Struct
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
