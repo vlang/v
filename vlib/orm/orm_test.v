@@ -237,9 +237,9 @@ fn test_orm() {
 	assert kate3.name == 'Kate N'
 
 	struct_user := User{
-		id:   3,
-		name: 'Kate N',
-		age:  32,
+		id:   3
+		name: 'Kate N'
+		age:  32
 	}
 	sql db {
 		update User set struct_user where name == 'Kate'
