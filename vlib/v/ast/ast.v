@@ -2516,6 +2516,7 @@ pub fn (e &Expr) is_lockable() bool {
 	return match e {
 		Ident { true }
 		SelectorExpr { e.expr.is_lockable() }
+		ComptimeSelector { true }
 		else { false }
 	}
 }
