@@ -31,9 +31,14 @@ pub fn (mut c Comptime) solve_files(ast_files []&ast.File) {
 
 pub fn (mut c Comptime) solve(mut ast_file ast.File) {
 	c.file = ast_file
-	for mut stmt in ast_file.stmts {
+	ast_file.stmts = c.stmts(mut ast_file.stmts)
+}
+
+pub fn (mut c Comptime) stmts(mut nodes []ast.Stmt) []ast.Stmt {
+	for mut stmt in nodes {
 		stmt = c.stmt(mut stmt)
 	}
+	return nodes
 }
 
 pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
@@ -46,48 +51,38 @@ pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
 			node.expr = c.expr(mut node.expr)
 		}
 		ast.AssignStmt {
-			for mut right in node.right {
-				right = c.expr(mut right)
-			}
-			for mut left in node.left {
-				left = c.expr(mut left)
-			}
+			node.right = c.exprs(mut node.right)
+			node.left = c.exprs(mut node.left)
 		}
 		ast.Block {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.BranchStmt {}
 		ast.ComptimeFor {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.ConstDecl {
-			for mut field in node.fields {
-				field.expr = c.expr(mut field.expr)
-			}
+			// node.fields = c.const_decl_fields(mut node.fields)
 		}
 		ast.DeferStmt {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.EnumDecl {
-			for mut field in node.fields {
-				if field.has_expr {
-					field.expr = c.expr(mut field.expr)
+			// node.fields = c.enum_decl_fields(mut node.fields)
+		}
+		ast.ExprStmt {
+			res := c.expr_stmt(mut node.expr)
+			match res {
+				ast.Expr {
+					node.expr = res
+				}
+				ast.Stmt {
+					return res
 				}
 			}
 		}
-		ast.ExprStmt {
-			node.expr = c.expr(mut node.expr)
-		}
 		ast.FnDecl {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.ForCStmt {
 			if node.has_init && !node.is_multi {
@@ -98,59 +93,91 @@ pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
 				node.cond = c.expr(mut node.cond)
 			}
 
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 
 			if node.has_inc && !node.is_multi {
 				node.inc = c.stmt(mut node.inc)
 			}
 		}
 		ast.ForInStmt {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.ForStmt {
 			node.cond = c.expr(mut node.cond)
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.GlobalDecl {
-			for mut field in node.fields {
-				field.expr = c.expr(mut field.expr)
-			}
+			// node.fields = c.global_decl_fields(mut node.fields)
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {
-			for mut cond in node.ct_conds {
-				cond = c.expr(mut cond)
-			}
+			// node.ct.conds = c.hashstmt_ct_conds(mut node.ct_conds)
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			for mut field in node.fields {
-				field.default_expr = c.expr(mut field.default_expr)
-			}
+			// node.fields = c.interface_decl_fields(mut node.fields)
 		}
 		ast.Module {}
 		ast.Return {
-			for mut expr in node.exprs {
-				expr = c.expr(mut expr)
-			}
+			node.exprs = c.exprs(mut node.exprs)
 		}
 		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
-			for mut field in node.fields {
-				field.default_expr = c.expr(mut field.default_expr)
-			}
+			// node.fields = c.struct_decl_fields(mut node.fields)
 		}
 		ast.TypeDecl {}
 	}
 	return node
+}
+
+type StmtOrExpr = ast.Expr | ast.Stmt
+
+pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
+	match mut node {
+		ast.IfExpr {
+			if node.is_comptime { // TODO, move that in expr_stmt
+				if !node.is_expr && !node.has_else && node.branches.len == 1 {
+					if node.branches[0].stmts.len == 0 {
+						// empty ifdef; result of target OS != conditional => skip
+						return ast.Stmt(ast.Block{
+							pos:   node.pos
+							scope: ast.empty_scope
+						})
+					}
+					if !c.pref.output_cross_c {
+						if node.branches[0].cond is ast.Ident {
+							if c.pref.os == (pref.os_from_string(node.branches[0].cond.name) or {
+								pref.OS._auto
+							}) {
+								// Same target OS as the conditional...
+								// => skip the #if defined ... #endif wrapper
+								// and just generate the branch statements:
+								return ast.Stmt(ast.Block{
+									stmts: node.branches[0].stmts
+									scope: node.branches[0].scope
+									pos:   node.pos
+								})
+							}
+						}
+					}
+				}
+			}
+			return c.expr(mut node)
+		}
+		else {
+			return c.expr(mut node)
+		}
+	}
+	return node
+}
+
+pub fn (mut c Comptime) exprs(mut nodes []ast.Expr) []ast.Expr {
+	for mut e in nodes {
+		e = c.expr(mut e)
+	}
+	return nodes
 }
 
 pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
@@ -162,9 +189,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 			node.expr = c.expr(mut node.expr)
 		}
 		ast.ArrayInit {
-			for mut expr in node.exprs {
-				expr = c.expr(mut expr)
-			}
+			node.exprs = c.exprs(mut node.exprs)
 			if node.has_len {
 				node.len_expr = c.expr(mut node.len_expr)
 			}
@@ -218,9 +243,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		ast.IfExpr {
 			for mut branch in node.branches {
 				branch.cond = c.expr(mut branch.cond)
-				for mut stmt in branch.stmts {
-					stmt = c.stmt(mut stmt)
-				}
+				branch.stmts = c.stmts(mut branch.stmts)
 			}
 			// where we place the result of the if when a := if ...
 			node.left = c.expr(mut node.left)
@@ -244,36 +267,22 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 			node.expr = c.expr(mut node.expr)
 		}
 		ast.LockExpr {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
-			for mut locked in node.lockeds {
-				locked = c.expr(mut locked)
-			}
+			node.stmts = c.stmts(mut node.stmts)
+			node.lockeds = c.exprs(mut node.lockeds)
 		}
 		ast.MapInit {
-			for mut key in node.keys {
-				key = c.expr(mut key)
-			}
-			for mut val in node.vals {
-				val = c.expr(mut val)
-			}
+			node.keys = c.exprs(mut node.keys)
+			node.vals = c.exprs(mut node.vals)
 		}
 		ast.MatchExpr {
 			node.cond = c.expr(mut node.cond)
 			for mut branch in node.branches {
-				for mut expr in branch.exprs {
-					expr = c.expr(mut expr)
-				}
-				for mut stmt in branch.stmts {
-					stmt = c.stmt(mut stmt)
-				}
+				branch.exprs = c.exprs(mut branch.exprs)
+				branch.stmts = c.stmts(mut branch.stmts)
 			}
 		}
 		ast.OrExpr {
-			for mut stmt in node.stmts {
-				stmt = c.stmt(mut stmt)
-			}
+			node.stmts = c.stmts(mut node.stmts)
 		}
 		ast.ParExpr {
 			node.expr = c.expr(mut node.expr)
@@ -292,9 +301,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		ast.SelectExpr {
 			for mut branch in node.branches {
 				branch.stmt = c.stmt(mut branch.stmt)
-				for mut stmt in branch.stmts {
-					stmt = c.stmt(mut stmt)
-				}
+				branch.stmts = c.stmts(mut branch.stmts)
 			}
 		}
 		ast.SelectorExpr {
@@ -325,9 +332,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.StringInterLiteral {
-			for mut expr in node.exprs {
-				expr = c.expr(mut expr)
-			}
+			node.exprs = c.exprs(mut node.exprs)
 		}
 		ast.StructInit {
 			node.update_expr = c.expr(mut node.update_expr)
