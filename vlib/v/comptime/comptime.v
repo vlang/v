@@ -137,7 +137,7 @@ type StmtOrExpr = ast.Expr | ast.Stmt
 pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
 	match mut node {
 		ast.IfExpr {
-			if node.is_comptime { // TODO, move that in expr_stmt
+			if node.is_comptime {
 				if !node.is_expr && !node.has_else && node.branches.len == 1 {
 					if node.branches[0].stmts.len == 0 {
 						// empty ifdef; result of target OS != conditional => skip
