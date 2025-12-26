@@ -927,11 +927,6 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 	p.ignore_while(all_formatting)
 
-	if dotted_key.len != 2 {
-		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
-	}
-
 	p.check_explicitly_declared(dotted_key)!
 
 	first := DottedKey([dotted_key[0]]) // The array that holds the entries

@@ -22,7 +22,6 @@ const valid_exceptions = [
 	'string/escapes.toml',
 	'string/multiline-quotes.toml',
 	'table/array-implicit-and-explicit-after.toml',
-	'table/array-within-dotted.toml',
 ]
 // NOTE: entries in this list are tests of invalid TOML that should have the parser fail, but currently does not.
 const invalid_exceptions = [
