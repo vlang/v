@@ -1635,15 +1635,20 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 		}
 		.update {
 			f.write('update ${table_name} set ')
-			for i, col in node.updated_columns {
-				f.write('${col} = ')
-				f.expr(node.update_exprs[i])
-				if i < node.updated_columns.len - 1 {
-					f.write(', ')
-				} else {
-					f.write(' ')
+
+			if node.object_var != '' && node.updated_columns.len == 0 && node.update_exprs.len == 0 {
+				f.write('${node.object_var} ')
+			} else {
+				for i, col in node.updated_columns {
+					f.write('${col} = ')
+					f.expr(node.update_exprs[i])
+					if i < node.updated_columns.len - 1 {
+						f.write(', ')
+					} else {
+						f.write(' ')
+					}
+					f.wrap_long_line(3, true)
 				}
-				f.wrap_long_line(3, true)
 			}
 			f.write('where ')
 			f.expr(node.where_expr)

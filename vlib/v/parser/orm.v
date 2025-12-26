@@ -273,76 +273,158 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			}
 		}
 	}
-	n = p.check_name() // into
-	mut updated_columns := []string{}
-	mut update_exprs := []ast.Expr{cap: 5}
-	if kind == .insert && n != 'into' {
-		p.error('expecting `into`')
-		return ast.SqlStmtLine{}
+
+	// Check different keywords based on different types of statements
+	if kind == .insert {
+		n = p.check_name() // into
+		if n != 'into' {
+			p.error('expecting `into`')
+			return ast.SqlStmtLine{}
+		}
 	} else if kind == .update {
+		n = p.check_name() // set
 		if n != 'set' {
 			p.error('expecting `set`')
 			return ast.SqlStmtLine{}
 		}
-		for {
-			column := p.check_name()
-			updated_columns << column
-			p.check(.assign)
-			update_exprs << p.expr(0)
-			if p.tok.kind == .comma {
-				p.check(.comma)
-			} else {
-				break
+	} else if kind == .delete {
+		n = p.check_name() // from
+		if n != 'from' {
+			p.error('expecting `from`')
+			return ast.SqlStmtLine{}
+		}
+	}
+
+	mut updated_columns := []string{}
+	mut update_exprs := []ast.Expr{cap: 5}
+
+	if kind == .update {
+		// If it is a set struct syntax, the format is: set var_2 where
+		// If it is traditional syntax, the format is: set column=expr
+
+		peek_tok := p.peek_tok // Save current location for rollback
+
+		// Check if it is set struct syntax
+		if p.tok.kind == .name && peek_tok.kind == .name && peek_tok.lit == 'where' {
+			struct_var_name := p.check_name() // Structure variable name
+			if struct_var_name != '' {
+				p.scope.mark_var_as_used(struct_var_name)
+			}
+			p.check_name() // where
+			where_expr := p.expr(0)
+
+			end_comments := p.eat_comments()
+			return ast.SqlStmtLine{
+				table_expr:      ast.TypeNode{
+					typ: table_type
+					pos: p.prev_tok.pos()
+				}
+				object_var:      struct_var_name
+				pos:             pos
+				updated_columns: []string{}
+				update_exprs:    []ast.Expr{}
+				kind:            kind
+				where_expr:      where_expr
+				is_generated:    false
+				scope:           p.scope
+				pre_comments:    pre_comments
+				end_comments:    end_comments
+			}
+		} else {
+			// Traditional update syntax: set column=expr
+			for {
+				column := p.check_name()
+				updated_columns << column
+				p.check(.assign)
+				update_exprs << p.expr(0)
+				if p.tok.kind == .comma {
+					p.check(.comma)
+				} else {
+					break
+				}
+			}
+
+			// Traditional grammar requires a 'where' clause
+			p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
+			where_expr := p.expr(0)
+
+			where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+				[])
+			if where_expr_result is ast.NodeError {
+				return ast.SqlStmtLine{}
+			}
+
+			end_comments := p.eat_comments()
+			return ast.SqlStmtLine{
+				table_expr:      ast.TypeNode{
+					typ: table_type
+					pos: p.prev_tok.pos()
+				}
+				object_var:      inserted_var
+				pos:             pos
+				updated_columns: updated_columns
+				update_exprs:    update_exprs
+				kind:            kind
+				where_expr:      where_expr
+				is_generated:    false
+				scope:           p.scope
+				pre_comments:    pre_comments
+				end_comments:    end_comments
 			}
 		}
-	} else if kind == .delete && n != 'from' {
-		p.error('expecting `from`')
-		return ast.SqlStmtLine{}
-	}
-
-	mut table_pos := p.tok.pos()
-	mut where_expr := ast.empty_expr
-	if kind == .insert {
-		table_pos = p.tok.pos()
+	} else if kind == .insert {
+		// Insert statement processing
+		table_pos := p.tok.pos()
 		table_type = p.parse_type()
-	} else if kind == .update {
-		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
-		where_expr = p.expr(0)
-
-		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
-			[])
-		if where_expr_result is ast.NodeError {
-			return ast.SqlStmtLine{}
+		end_comments := p.eat_comments()
+		return ast.SqlStmtLine{
+			table_expr:      ast.TypeNode{
+				typ: table_type
+				pos: table_pos
+			}
+			object_var:      inserted_var
+			pos:             pos
+			updated_columns: updated_columns
+			update_exprs:    update_exprs
+			kind:            kind
+			is_generated:    false
+			scope:           p.scope
+			pre_comments:    pre_comments
+			end_comments:    end_comments
 		}
 	} else if kind == .delete {
-		table_pos = p.tok.pos()
+		// Delete statement processing
+		table_pos := p.tok.pos()
 		table_type = p.parse_type()
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
-		where_expr = p.expr(0)
+		where_expr := p.expr(0)
 
 		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
 			[])
 		if where_expr_result is ast.NodeError {
 			return ast.SqlStmtLine{}
 		}
-	}
-	end_comments := p.eat_comments()
-	return ast.SqlStmtLine{
-		table_expr:      ast.TypeNode{
-			typ: table_type
-			pos: table_pos
+		end_comments := p.eat_comments()
+		return ast.SqlStmtLine{
+			table_expr:      ast.TypeNode{
+				typ: table_type
+				pos: table_pos
+			}
+			object_var:      inserted_var
+			pos:             pos
+			updated_columns: updated_columns
+			update_exprs:    update_exprs
+			kind:            kind
+			where_expr:      where_expr
+			is_generated:    false
+			scope:           p.scope
+			pre_comments:    pre_comments
+			end_comments:    end_comments
 		}
-		object_var:      inserted_var
-		pos:             pos
-		updated_columns: updated_columns
-		update_exprs:    update_exprs
-		kind:            kind
-		where_expr:      where_expr
-		is_generated:    false
-		scope:           p.scope
-		pre_comments:    pre_comments
-		end_comments:    end_comments
 	}
+
+	p.error('unexpected SQL statement')
+	return ast.SqlStmtLine{}
 }
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {

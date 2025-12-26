@@ -236,6 +236,21 @@ fn test_orm() {
 	assert kate3.age == 32
 	assert kate3.name == 'Kate N'
 
+	struct_user := User{
+		id:   3,
+		name: 'Kate N',
+		age:  32,
+	}
+	sql db {
+		update User set struct_user where name == 'Kate'
+	}!
+	struct_users := sql db {
+		select from User where id == 3
+	}!
+	struct_kate3 := struct_users.first()
+	assert struct_kate3.age == 32
+	assert struct_kate3.name == 'Kate N'
+
 	new_age := 33
 	sql db {
 		update User set age = new_age, name = 'Kate N' where id == 3

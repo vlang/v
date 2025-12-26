@@ -295,45 +295,135 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.write_orm_table_struct(node.table_expr.typ)
 	g.writeln(',')
-	g.writeln('(orm__QueryData){')
-	g.indent++
-	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 
-	if node.updated_columns.len > 0 {
-		g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
-		g.indent++
-		g.writeln('_MOV((string[${node.updated_columns.len}]){')
-		g.indent++
-		for field in node.updated_columns {
-			g.writeln('_S("${field}"),')
+	// Check if it is set struct syntax
+	if node.object_var != '' && node.updated_columns.len == 0 && node.update_exprs.len == 0 {
+		struct_type := node.table_expr.typ
+		struct_sym := g.table.sym(struct_type)
+		info := struct_sym.struct_info()
+
+		// Filter out fields that need to be updated (excluding primary keys, auto increment, etc.)
+		mut update_fields := []ast.StructField{}
+		mut update_exprs_str := []string{}
+
+		for field in info.fields {
+			if field.attrs.contains('primary') {
+				continue
+			}
+			if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
+				continue
+			}
+			if field.attrs.contains('sql: serial') || field.attrs.contains('serial') {
+				continue
+			}
+
+			update_fields << field
+			// Save field access expression string (for debugging)
+			update_exprs_str << '${node.object_var}.${field.name}'
+			_ = g.get_orm_column_name_from_struct_field(field) //  Ignore for now, but keep the function call
 		}
+
+		g.writeln('(orm__QueryData){')
+		g.indent++
+		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+
+		if update_fields.len > 0 {
+			g.writeln('.fields = builtin__new_array_from_c_array(${update_fields.len}, ${update_fields.len}, sizeof(string),')
+			g.indent++
+			g.writeln('_MOV((string[${update_fields.len}]){')
+			g.indent++
+			for field in update_fields {
+				column_name := g.get_orm_column_name_from_struct_field(field)
+				g.writeln('_S("${column_name}"),')
+			}
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		} else {
+			g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0')
+		}
+
+		g.writeln2('),', '.data = builtin__new_array_from_c_array(${update_fields.len}, ${update_fields.len}, sizeof(orm__Primitive),')
+
+		if update_fields.len > 0 {
+			g.indent++
+			g.writeln('_MOV((orm__Primitive[${update_fields.len}]){')
+			g.indent++
+			for field in update_fields {
+				// Expressions need to be generated for each field here
+				// We need to create an expression to access the fields of a struct
+				field_expr := ast.SelectorExpr{
+					pos:        node.pos
+					field_name: field.name
+					is_mut:     false
+					expr:       ast.Ident{
+						name: node.object_var
+						pos:  node.pos
+						info: ast.IdentVar{
+							typ: struct_type
+						}
+						kind: .unresolved
+					}
+					expr_type:  struct_type
+					typ:        field.typ
+					scope:      node.scope
+				}
+				g.write_orm_expr_to_primitive(field_expr)
+			}
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		} else {
+			g.writeln('NULL')
+		}
+
+		g.writeln('),')
 		g.indent--
-		g.writeln('})')
-		g.indent--
+		g.writeln('},')
 	} else {
-		g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
-	}
-
-	g.writeln2('),', '.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
-
-	if node.update_exprs.len > 0 {
+		g.writeln('(orm__QueryData){')
 		g.indent++
-		g.writeln('_MOV((orm__Primitive[${node.update_exprs.len}]){')
-		g.indent++
-		for e in node.update_exprs {
-			g.write_orm_expr_to_primitive(e)
+		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+
+		if node.updated_columns.len > 0 {
+			g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
+			g.indent++
+			g.writeln('_MOV((string[${node.updated_columns.len}]){')
+			g.indent++
+			for field in node.updated_columns {
+				g.writeln('_S("${field}"),')
+			}
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		} else {
+			g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 		}
+
+		g.writeln2('),', '.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+
+		if node.update_exprs.len > 0 {
+			g.indent++
+			g.writeln('_MOV((orm__Primitive[${node.update_exprs.len}]){')
+			g.indent++
+			for e in node.update_exprs {
+				g.write_orm_expr_to_primitive(e)
+			}
+			g.indent--
+			g.writeln('})')
+			g.indent--
+		}
+		g.writeln('),')
 		g.indent--
-		g.writeln('})')
-		g.indent--
+		g.writeln('},')
 	}
 
-	g.writeln('),')
-	g.indent--
-	g.writeln('},')
 	g.write_orm_where(node.where_expr)
 	g.indent--
 	g.writeln(');')
