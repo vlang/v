@@ -979,6 +979,22 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 			}
 		}
 
+		if table[p.last_aot.str()] is map[string]ast.Value {
+			if first == p.last_aot {
+				// Here we "undo" the implicit-explicit special-case declaration above to make the following test pass:
+				// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/array/open-parent-table.toml
+				p.explicit_declared.pop()
+				p.last_aot.clear()
+				p.next()!
+				return
+			}
+		}
+
+		// Give a nicer error if the `as` cast below can not be done
+		if table[p.last_aot.str()] !is []ast.Value {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' nested array of tables "${p.last_aot}" expected an array but got "${table[p.last_aot.str()].type_name()}". Re-definition is not allowed. (excerpt): "...${p.excerpt()}..."')
+		}
 		t_arr = &(table[p.last_aot.str()] as []ast.Value)
 		t_map = ast.Value(map[string]ast.Value{})
 		if p.last_aot_index < t_arr.len {
