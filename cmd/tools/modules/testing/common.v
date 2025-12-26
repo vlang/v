@@ -60,8 +60,7 @@ pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
 pub const is_python_present = os.execute('python --version').exit_code == 0
 	&& os.execute('pkg-config python3 --libs').exit_code == 0
 
-pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
-	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
+pub const is_sqlite3_present = os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
 
 pub const all_processes = get_all_processes()
 

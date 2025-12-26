@@ -91,6 +91,8 @@ pub mut:
 	vals []string
 }
 
+pub type Params = []string | [][]string
+
 //
 fn C.sqlite3_open(&char, &&C.sqlite3) int
 
@@ -104,6 +106,8 @@ fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
 
 fn C.sqlite3_step(&C.sqlite3_stmt) int
+
+fn C.sqlite3_reset(&C.sqlite3_stmt) int
 
 fn C.sqlite3_finalize(&C.sqlite3_stmt) int
 
@@ -357,46 +361,82 @@ pub fn (db &DB) exec_none(query string) int {
 
 // exec_param_many executes a query with parameters provided as ?,
 // and returns either an error on failure, or the full result set on success
-pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 	$if trace_sqlite ? {
 		eprintln('> exec_param_many query: "${query}", params: ${params}')
 	}
 	mut stmt := &C.sqlite3_stmt(unsafe { nil })
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
-	if code != 0 {
+	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
-	for i, param in params {
-		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
-		if code != 0 {
-			return db.error_message(code, query)
-		}
-	}
-	nr_cols := C.sqlite3_column_count(stmt)
-	mut res := 0
+
 	mut rows := []Row{}
-	for {
-		res = C.sqlite3_step(stmt)
-		if res != sqlite_row {
-			if rows.len == 0 && is_error(res) {
-				return db.error_message(res, query)
-			}
-			break
-		}
-		mut row := Row{}
-		for i in 0 .. nr_cols {
-			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
-			if val == &u8(unsafe { nil }) {
-				row.vals << ''
-			} else {
-				row.vals << unsafe { val.vstring() }
+	nr_cols := C.sqlite3_column_count(stmt)
+
+	if params is []string {
+		for i, param in params {
+			code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
+			if code != sqlite_ok {
+				return db.error_message(code, query)
 			}
 		}
-		rows << row
+		for {
+			mut row := Row{}
+			code = C.sqlite3_step(stmt)
+			if is_error(code) {
+				return db.error_message(code, query)
+			}
+			if code == sqlite_done {
+				break
+			}
+			for i in 0 .. nr_cols {
+				val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+				if val == &u8(unsafe { nil }) {
+					row.vals << ''
+				} else {
+					row.vals << unsafe { val.vstring() }
+				}
+			}
+			rows << row
+		}
+	} else if params is [][]string {
+		// Rows to process
+		for r in 0 .. params[0].len {
+			mut row := Row{}
+			// Param values to bind
+			for i, param in params {
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param[r].str), param[r].len,
+					0)
+				if code != sqlite_ok {
+					return db.error_message(code, query)
+				}
+			}
+			for {
+				code = C.sqlite3_step(stmt)
+				if is_error(code) {
+					return db.error_message(code, query)
+				}
+				if code == sqlite_done {
+					break
+				}
+				for i in 0 .. nr_cols {
+					val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+					if val == &u8(unsafe { nil }) {
+						row.vals << ''
+					} else {
+						row.vals << unsafe { val.vstring() }
+					}
+				}
+				rows << row
+			}
+			C.sqlite3_reset(stmt)
+		}
 	}
+
 	return rows
 }
 
