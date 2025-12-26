@@ -60,7 +60,7 @@ pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
 pub const is_python_present = os.execute('python --version').exit_code == 0
 	&& os.execute('pkg-config python3 --libs').exit_code == 0
 
-pub const is_sqlite3_present = os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
+pub const is_sqlite3_present = get_present_sqlite()
 
 pub const all_processes = get_all_processes()
 
@@ -76,6 +76,14 @@ fn get_max_compilation_retries() int {
 
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
+}
+
+fn get_present_sqlite() bool {
+	if os.user_os() == 'windows' {
+		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
+	}
+	return os.execute('sqlite3 --version').exit_code == 0
+		&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
 }
 
 fn get_all_processes() []string {
