@@ -22,7 +22,9 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			break
 		}
 		if p.tok.kind == .name {
+			p.inside_lock_exprs = true
 			exprs := p.expr_list(true)
+			p.inside_lock_exprs = false
 			for e in exprs {
 				if !e.is_lockable() {
 					p.error_with_pos('`${e}` cannot be locked - only `x`, `x.y` or `x.$(y)` are supported',

@@ -73,6 +73,7 @@ mut:
 	inside_orm               bool
 	inside_chan_decl         bool
 	inside_attr_decl         bool
+	inside_lock_exprs        bool
 	array_dim                int               // array dim parsing level
 	fixed_array_dim          int               // fixed array dim parsing level
 	or_is_handled            bool              // ignore `or` in this expression
@@ -1789,7 +1790,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	} else if !known_var && (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
-		&& (!p.inside_for || p.inside_select) {
+		&& (!p.inside_for || p.inside_select) && !p.inside_lock_exprs {
 		alias_array_type := p.alias_array_type()
 		if alias_array_type != ast.void_type {
 			return p.array_init(is_option, alias_array_type)
