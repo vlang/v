@@ -100,3 +100,81 @@ The number following the $ specifies which parameter from the argument array to 
 db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword']) or { panic(err) }
 db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom') or { panic(err) }
 ```
+
+## Using LISTEN/NOTIFY
+
+PostgreSQL's LISTEN/NOTIFY mechanism allows you to build event-driven applications. One
+connection can send notifications on a channel, and all connections listening on that
+channel will receive them.
+
+### Basic Usage
+
+```v ignore
+import db.pg
+
+fn main() {
+	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	defer { db.close() or {} }
+
+	// Start listening on a channel
+	db.listen('my_channel')!
+
+	// From another connection or session, send a notification
+	db.notify('my_channel', 'Hello, World!')!
+
+	// Process incoming data from the server
+	db.consume_input()!
+
+	// Check for notifications
+	if notification := db.get_notification() {
+		println('Received notification on channel: ${notification.channel}')
+		println('Payload: ${notification.payload}')
+		println('From server process: ${notification.pid}')
+	}
+
+	// Stop listening
+	db.unlisten('my_channel')!
+	// Or unlisten from all channels
+	db.unlisten_all()!
+}
+```
+
+### Event Loop with Polling
+
+For real-time applications, you can use the socket file descriptor with select/poll:
+
+```v ignore
+import db.pg
+import time
+
+fn main() {
+	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	defer { db.close() or {} }
+
+	db.listen('events')!
+
+	// Get socket fd for polling (useful with select/epoll)
+	socket_fd := db.socket()
+	println('Socket FD: ${socket_fd}')
+
+	// Simple polling loop
+	for {
+		db.consume_input()!
+		for {
+			notification := db.get_notification() or { break }
+			println('Event: ${notification.channel} - ${notification.payload}')
+		}
+		time.sleep(100 * time.millisecond)
+	}
+}
+```
+
+### Available Methods
+
+- `listen(channel string)` - Register to receive notifications on a channel
+- `unlisten(channel string)` - Unregister from a specific channel
+- `unlisten_all()` - Unregister from all channels
+- `notify(channel string, payload string)` - Send a notification (payload can be empty)
+- `consume_input()` - Read pending data from server (call before get_notification)
+- `get_notification()` - Returns the next pending notification, or none if there are no notifications
+- `socket()` - Returns the connection's socket file descriptor for use with select/poll
