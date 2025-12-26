@@ -18,7 +18,6 @@ const no_jq = os.getenv('VNO_JQ') == '1'
 // NOTE: entries in this list are valid TOML that the parser should work with, but currently does not.
 const valid_exceptions = [
 	'do_not_remove',
-	'array/open-parent-table.toml',
 	'comment/after-literal-no-ws.toml',
 	'string/escapes.toml',
 	'string/multiline-quotes.toml',
