@@ -4,7 +4,6 @@
 module builtin
 
 import strconv
-import strings
 
 /*
 Note: A V string should be/is immutable from the point of view of
@@ -602,7 +601,7 @@ pub fn (s string) expand_tabs(tab_len int) string {
 	if tab_len <= 0 {
 		return s.clone() // Handle invalid tab length
 	}
-	mut output := strings.new_builder(s.len)
+	mut output := new_string_builder(cap: s.len)
 	mut column := 0
 	for r in s.runes_iterator() {
 		match r {
@@ -2971,7 +2970,7 @@ pub fn (s string) wrap(config WrapConfig) string {
 	if words.len == 0 {
 		return ''
 	}
-	mut sb := strings.new_builder(s.len)
+	mut sb := new_string_builder(cap: s.len)
 	sb.write_string(words[0])
 	mut space_left := config.width - words[0].len
 	for i in 1 .. words.len {

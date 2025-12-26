@@ -1,7 +1,5 @@
 module strconv
 
-import strings
-
 /*
 printf/sprintf V implementation
 
@@ -85,7 +83,7 @@ pub fn format_str(s string, p BF_param) string {
 	if dif <= 0 {
 		return s.clone()
 	}
-	mut res := strings.new_builder(s.len + dif)
+	mut res := new_string_builder(cap: s.len + dif)
 	defer {
 		unsafe { res.free() }
 	}

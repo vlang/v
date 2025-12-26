@@ -7,10 +7,8 @@ This file contains string interpolation V functions
 =============================================================================*/
 module strconv
 
-import strings
-
-// format_str_sb is a `strings.Builder` version of `format_str`.
-pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
+// format_str_sb is a `StringBuilder` version of `format_str`.
+pub fn format_str_sb(s string, p BF_param, mut sb StringBuilder) {
 	if p.len0 <= 0 {
 		sb.write_string(s)
 		return
@@ -39,9 +37,9 @@ const max_size_f64_char = 512 // the f64 max representation is -36,028,797,018,9
 // digit pairs in reverse order
 const digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 
-// format_dec_sb formats an u64 using a `strings.Builder`.
+// format_dec_sb formats an u64 using a `StringBuilder`.
 @[direct_array_access]
-pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
+pub fn format_dec_sb(d u64, p BF_param, mut res StringBuilder) {
 	mut n_char := dec_digits(d)
 	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
 	number_len := sign_len + n_char
@@ -311,7 +309,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	}
 }
 
-// format_fl is a `strings.Builder` version of format_fl.
+// format_fl is a `StringBuilder` version of format_fl.
 @[direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
 	unsafe {

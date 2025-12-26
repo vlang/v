@@ -1,7 +1,5 @@
 module builtin
 
-import strings
-
 const cp_acp = 0
 const cp_utf8 = 65001
 
@@ -88,7 +86,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 			return tos2(str_to)
 		}
 	} $else {
-		mut sb := strings.new_builder(len)
+		mut sb := new_string_builder(cap: len)
 		for i := 0; i < len; i++ {
 			u := unsafe { rune(_wstr[i]) }
 			sb.write_rune(u)

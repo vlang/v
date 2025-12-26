@@ -1,6 +1,5 @@
 module builtin
 
-import strings
 /// Internal representation of `array` type. It is used to implement slices and to make slices behave correctly
 /// it simply stores reference to original array and to index them properly it does index array relative to `index_start`.
 
@@ -380,7 +379,7 @@ pub fn (a array) bytestr() string {
 }
 
 pub fn (a []string) str() string {
-	mut sb := strings.new_builder(a.len * 3)
+	mut sb := new_string_builder(cap: a.len * 3)
 	sb.write_string('[')
 	for i in 0 .. a.len {
 		val := a[i]

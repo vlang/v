@@ -1,12 +1,11 @@
 // vtest build: present_node?
-import strings
 
 type MyInt = int
 
 const maxn = 100000
 
 fn test_sb() {
-	mut sb := strings.new_builder(100)
+	mut sb := new_string_builder(cap: 100)
 	sb.write_string('hi')
 	sb.write_string('!')
 	sb.write_string('hello')
@@ -15,13 +14,13 @@ fn test_sb() {
 	assert sb_end == 'hi!hello'
 	assert sb.len == 0
 	///
-	sb = strings.new_builder(10)
+	sb = new_string_builder(cap: 10)
 	sb.write_string('a')
 	sb.write_string('b')
 	assert sb.len == 2
 	assert sb.str() == 'ab'
 	// Test interpolation optimization
-	sb = strings.new_builder(10)
+	sb = new_string_builder(cap: 10)
 	x := 10
 	y := MyInt(20)
 	sb.writeln('x = ${x} y = ${y}')
@@ -30,11 +29,11 @@ fn test_sb() {
 	println('"${res}"')
 	assert res.trim_space() == 'x = 10 y = 20'
 
-	sb = strings.new_builder(10)
+	sb = new_string_builder(cap: 10)
 	sb.write_string('x = ${x} y = ${y}')
 	assert sb.str() == 'x = 10 y = 20'
 	//$if !windows {
-	sb = strings.new_builder(10)
+	sb = new_string_builder(cap: 10)
 	sb.write_string('123456')
 	last_2 := sb.cut_last(2)
 	assert last_2 == '56'
@@ -47,8 +46,8 @@ fn test_sb() {
 }
 
 fn test_big_sb() {
-	mut sb := strings.new_builder(100)
-	mut sb2 := strings.new_builder(10000)
+	mut sb := new_string_builder(cap: 100)
+	mut sb2 := new_string_builder(cap: 10000)
 	for i in 0 .. maxn {
 		sb.writeln(i.str())
 		sb2.write_string('+')
@@ -65,7 +64,7 @@ fn test_big_sb() {
 }
 
 fn test_byte_write() {
-	mut sb := strings.new_builder(100)
+	mut sb := new_string_builder(cap: 100)
 	temp_str := 'byte testing'
 	mut count := 0
 	for word in temp_str {
@@ -78,7 +77,7 @@ fn test_byte_write() {
 }
 
 fn test_strings_builder_reuse() {
-	mut sb := strings.new_builder(256)
+	mut sb := new_string_builder(cap: 256)
 	sb.write_string('world')
 	assert sb.str() == 'world'
 	sb.write_string('hello')
@@ -86,7 +85,7 @@ fn test_strings_builder_reuse() {
 }
 
 fn test_cut_to() {
-	mut sb := strings.new_builder(16)
+	mut sb := new_string_builder(cap: 16)
 	sb.write_string('hello')
 	assert sb.cut_to(3) == 'lo'
 	assert sb.len == 3

@@ -1,7 +1,5 @@
 module wchar
 
-import strings
-
 #include <wchar.h>
 
 @[typedef]
@@ -91,7 +89,7 @@ pub fn to_string(p voidptr) string {
 @[manualfree; unsafe]
 pub fn to_string2(p voidptr, len int) string {
 	pc := &Character(p)
-	mut sb := strings.new_builder(len)
+	mut sb := new_string_builder(cap: len)
 	defer {
 		unsafe { sb.free() }
 	}

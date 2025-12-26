@@ -1,8 +1,6 @@
 module strconv
 
-import strings
-
-pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
+pub fn format_str_sb(s string, p BF_param, mut sb StringBuilder) {
 	if p.len0 <= 0 {
 		sb.write_string(s)
 		return
@@ -35,7 +33,7 @@ const digit_pairs = '00102030405060708090011121314151617181910212223242526272829
 
 // format_dec_sb format a u64
 @[direct_array_access]
-pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
+pub fn format_dec_sb(d u64, p BF_param, mut res StringBuilder) {
 	mut n_char := dec_digits(d)
 	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
 	number_len := sign_len + n_char

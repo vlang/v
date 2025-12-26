@@ -7,8 +7,6 @@ This file contains string interpolation V functions
 =============================================================================*/
 module strconv
 
-import strings
-
 enum Char_parse_state {
 	start
 	norm_char
@@ -44,7 +42,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 // ```
 @[direct_array_access; manualfree; unsafe]
 pub fn v_sprintf(str string, pt ...voidptr) string {
-	mut res := strings.new_builder(pt.len * 16)
+	mut res := new_string_builder(cap: pt.len * 16)
 	defer {
 		unsafe { res.free() }
 	}
@@ -573,7 +571,7 @@ fn fabs(x f64) f64 {
 	return x
 }
 
-// strings.Builder version of format_fl
+// StringBuilder version of format_fl
 @[direct_array_access; manualfree]
 pub fn format_fl_old(f f64, p BF_param) string {
 	unsafe {
@@ -594,7 +592,9 @@ pub fn format_fl_old(f f64, p BF_param) string {
 			fs = remove_tail_zeros_old(fs)
 			tmp.free()
 		}
-		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+		mut res := new_string_builder(
+			cap: if p.len0 > fs.len { p.len0 } else { fs.len }
+		)
 		defer {
 			res.free()
 		}
@@ -661,7 +661,9 @@ fn format_es_old(f f64, p BF_param) string {
 			fs = remove_tail_zeros_old(fs)
 			tmp.free()
 		}
-		mut res := strings.new_builder(if p.len0 > fs.len { p.len0 } else { fs.len })
+		mut res := new_string_builder(
+			cap: if p.len0 > fs.len { p.len0 } else { fs.len }
+		)
 		defer {
 			res.free()
 			fs.free()
@@ -760,7 +762,7 @@ fn remove_tail_zeros_old(s string) string {
 @[manualfree]
 pub fn format_dec_old(d u64, p BF_param) string {
 	mut s := ''
-	mut res := strings.new_builder(20)
+	mut res := new_string_builder(cap: 20)
 	defer {
 		unsafe { res.free() }
 		unsafe { s.free() }

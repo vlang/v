@@ -1,9 +1,7 @@
 module builtin
 
-import strings
-
 pub fn (ra []rune) string() string {
-	mut sb := strings.new_builder(ra.len)
+	mut sb := new_string_builder(cap: ra.len)
 	sb.write_runes(ra)
 	res := sb.str()
 	return res

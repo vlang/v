@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
-
 // array is a struct, used for denoting all array types in V.
 // `.data` is a void pointer to the backing heap memory block,
 // which avoids using generics and thus without generating extra
@@ -1021,7 +1019,7 @@ pub fn (a []string) str() string {
 		sb_len *= a.len
 	}
 	sb_len += 2 // 1x[ + 1x]
-	mut sb := strings.new_builder(sb_len)
+	mut sb := new_string_builder(cap: sb_len)
 	sb.write_u8(`[`)
 	for i in 0 .. a.len {
 		val := a[i]

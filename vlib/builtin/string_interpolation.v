@@ -1,7 +1,6 @@
 module builtin
 
 import strconv
-import strings
 
 // Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
@@ -150,7 +149,7 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 
 // convert from struct to formatted string
 @[manualfree]
-fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
+fn (data &StrIntpData) process_str_intp_data(mut sb StringBuilder) {
 	x := data.fmt
 	typ := unsafe { StrIntpType(x & 0x1F) }
 	align := int((x >> 5) & 0x01)
@@ -679,7 +678,7 @@ pub:
 // str_intp is the main entry point for string interpolation
 @[direct_array_access; manualfree]
 pub fn str_intp(data_len int, input_base &StrIntpData) string {
-	mut res := strings.new_builder(64)
+	mut res := new_string_builder(cap: 64)
 	for i := 0; i < data_len; i++ {
 		data := unsafe { &input_base[i] }
 		// avoid empty strings
