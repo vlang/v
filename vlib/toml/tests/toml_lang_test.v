@@ -27,7 +27,6 @@ const valid_exceptions = [
 // NOTE: entries in this list are tests of invalid TOML that should have the parser fail, but currently does not.
 const invalid_exceptions = [
 	'do_not_remove',
-	'key/duplicate-keys-06.toml',
 	'inline-table/duplicate-key-02.toml',
 	'string/multiline-escape-space-02.toml',
 	'string/missing-quotes-array.toml',
