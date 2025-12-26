@@ -2257,6 +2257,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
+			kind:              p.call_kind(field_name)
 			args:              args
 			name_pos:          name_pos
 			pos:               pos

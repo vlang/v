@@ -587,6 +587,7 @@ pub:
 	name                  string // 'math.bits.normalize'
 	short_name            string // 'normalize'
 	mod                   string // 'math.bits'
+	kind                  CallKind
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
@@ -813,6 +814,59 @@ pub:
 	pos   token.Pos
 }
 
+pub enum CallKind {
+	unknown
+	str
+	wait
+	free
+	try_push
+	try_pop
+	keys
+	values
+	slice
+	map
+	insert
+	prepend
+	sort_with_compare
+	sorted_with_compare
+	sort
+	sorted
+	filter
+	any
+	all
+	count
+	clone
+	contains
+	index
+	first
+	last
+	pop_left
+	pop
+	delete
+	delete_many
+	delete_last
+	drop
+	reverse
+	reverse_in_place
+	panic
+	jsondecode
+	jsonencode
+	repeat
+	type_name
+	type_idx
+	clear
+	reserve
+	move
+	main_main
+	va_arg
+	addr
+	main
+	jsawait
+	error
+	grow_cap
+	grow_len
+}
+
 // function or method call expr
 @[minify]
 pub struct CallExpr {
@@ -820,6 +874,7 @@ pub:
 	pos      token.Pos
 	name_pos token.Pos
 	mod      string
+	kind     CallKind
 pub mut:
 	name                   string // left.name()
 	is_method              bool
