@@ -125,7 +125,7 @@ const test_cases = [
 		name:        'method_return_type_builtin'
 		line:        31
 		col:         33
-		expected:    '${vroot}/vlib/builtin/string.v:45:11'
+		expected:    os.join_path(vroot, 'vlib', 'builtin', 'string.v') + ':45:11'
 		description: 'Builtin return type (string) jumps to builtin string definition'
 	},
 ]
