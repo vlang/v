@@ -97,8 +97,8 @@ Parameterized queries (exec_param, etc.) in V require the use of the following s
 The number following the $ specifies which parameter from the argument array to use.
 
 ```v ignore
-db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword']) or { panic(err) }
-db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom') or { panic(err) }
+db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword'])!
+db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom')!
 ```
 
 ## Using LISTEN/NOTIFY
@@ -176,5 +176,5 @@ fn main() {
 - `unlisten_all()` - Unregister from all channels
 - `notify(channel string, payload string)` - Send a notification (payload can be empty)
 - `consume_input()` - Read pending data from server (call before get_notification)
-- `get_notification()` - Returns the next pending notification, or none if there are no notifications
+- `get_notification()` - Returns the next pending notification, or none for no notifications.
 - `socket()` - Returns the connection's socket file descriptor for use with select/poll
