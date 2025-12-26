@@ -583,3 +583,49 @@ fn test_orm_func_f32_f64() {
 	assert data.age_f32 == p.age_f32
 	assert data.age_f64 == p.age_f64
 }
+
+@[index: 'age_f33, age_f64']
+struct InvalidIndexFieldName1 {
+	age_f32 f32
+	age_f64 f64
+}
+
+fn test_orm_func_invalid_index_field_name1() {
+	p := InvalidIndexFieldName1{
+		age_f32: 10.33
+		age_f64: 10.343
+	}
+
+	db := sqlite.connect(':memory:')!
+
+	mut qb := orm.new_query[InvalidIndexFieldName1](db)
+
+	qb.create() or {
+		assert err.msg() == "table `InvalidIndexFieldName1` has no field's name: `age_f33`"
+		return
+	}
+	assert false, 'should not be here'
+}
+
+@[index: 'age_f32, age_f64']
+struct InvalidIndexFieldName2 {
+	age_f32 f32 @[sql: abc]
+	age_f64 f64
+}
+
+fn test_orm_func_invalid_index_field_name2() {
+	p := InvalidIndexFieldName2{
+		age_f32: 10.33
+		age_f64: 10.343
+	}
+
+	db := sqlite.connect(':memory:')!
+
+	mut qb := orm.new_query[InvalidIndexFieldName2](db)
+
+	qb.create() or {
+		assert err.msg() == "table `InvalidIndexFieldName2` has no field's name: `age_f32`"
+		return
+	}
+	assert false, 'should not be here'
+}
