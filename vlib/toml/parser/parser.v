@@ -486,7 +486,7 @@ pub fn (mut p Parser) root_table() ! {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
 				continue
 			}
-			.bare, .quoted, .number, .minus, .underscore {
+			.bare, .boolean, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, keys_and_space_formatting)!
 
