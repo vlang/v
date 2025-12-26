@@ -103,7 +103,7 @@ pub fn (mut b Builder) write_decimal(n i64) {
 }
 
 // write implements the io.Writer interface, that is why it returns how many bytes were written to the string builder.
-pub fn (mut b Builder) write(data []u8) !int {
+pub fn (mut b Builder) write(data []u8) int {
 	if data.len == 0 {
 		return 0
 	}
