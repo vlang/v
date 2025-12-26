@@ -406,7 +406,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			fields << ast.StructField{
 				name:             field_name
 				typ:              typ
-				pos:              field_pos
+				pos:              if is_embed { type_pos } else { field_pos }
 				type_pos:         type_pos
 				option_pos:       option_pos
 				pre_comments:     pre_field_comments

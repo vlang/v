@@ -2445,7 +2445,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.interface_decl(mut node)
 		}
 		ast.Module {
-			c.check_valid_snake_case(node.name, 'module name', node.pos)
+			module_name := node.name.all_after_last('.')
+			c.check_valid_snake_case(module_name, 'module name', node.pos)
 		}
 		ast.Return {
 			// c.returns = true

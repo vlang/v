@@ -7,6 +7,17 @@ struct LocalStruct {
 	value int
 }
 
+struct DeepStruct {
+	LocalStruct
+	st struct {
+		sstt struct {
+			l2 int
+		}
+		l1 int
+	}
+	l0 int
+}
+
 enum LocalEnum {
 	first
 	second
@@ -50,4 +61,17 @@ fn main() {
 
 	val := obj.value
 	println(val)
+
+	deep := DeepStruct{}
+	nested_val := deep.st.sstt.l2
+	println(nested_val)
+
+	embedded_val := deep.LocalStruct
+	println(embedded_val)
+
+	result := obj.my_method()
+	println(result)
+
+	ret_type := obj.my_method()
+	println(ret_type)
 }

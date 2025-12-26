@@ -77,14 +77,7 @@ fn (mut c Checker) name_pos_gotodef(name string) ?token.Pos {
 	idx := c.table.find_type_idx(name)
 	if idx > 0 {
 		sym := c.table.type_symbols[idx]
-		return match sym.info {
-			ast.Struct, ast.Alias, ast.SumType, ast.Enum, ast.Interface {
-				sym.info.name_pos
-			}
-			else {
-				none
-			}
-		}
+		return sym.info.get_name_pos()
 	}
 	return none
 }
