@@ -405,11 +405,11 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 		}
 	} else if params is [][]string {
 		// Rows to process
-		for r in 0 .. params[0].len {
+		for params_row in params {
 			mut row := Row{}
 			// Param values to bind
-			for i, param in params {
-				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param[r].str), param[r].len,
+			for i, param in params_row {
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,
 					0)
 				if code != sqlite_ok {
 					return db.error_message(code, query)
