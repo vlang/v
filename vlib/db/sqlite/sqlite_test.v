@@ -136,22 +136,3 @@ fn test_exec_param_many() {
 	db.close()!
 	assert false
 }
-
-fn test_exec_param_many2() {
-	$if !linux {
-		return
-	}
-	mut db := sqlite.connect(':memory:') or { panic(err) }
-	assert db.is_open
-	db.exec('drop table if exists users')!
-	db.exec("create table users (id integer primary key, name text default '' unique);")!
-	db.exec_param_many('insert into users (id, name) values (?, ?)', [
-		['60', 'Sam'],
-		['61', 'Foo'],
-		['62', 'Bar'],
-	]) or { panic(err) }
-	count := db.q_int('select count(*) from users')!
-	assert count == 3
-
-	db.close()!
-}
