@@ -238,7 +238,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				continue
 			}
 			g.cur_concrete_types = concrete_types
+			// Set the instantiation key for cache lookups
+			g.generic_instantiation_key = g.table.make_generic_instantiation_key(concrete_types)
 			g.gen_fn_decl(node, skip)
+			// Clear the key after generation
+			g.generic_instantiation_key = ''
 		}
 		g.cur_concrete_types = []
 		return
