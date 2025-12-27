@@ -35,6 +35,28 @@ fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
 	}
 }
 
+// int_to_byte_array_no_pad fulfill buffer by part
+// it doesn't pad with leading zeros for performance reasons
+@[direct_array_access; unsafe]
+fn int_to_ptr_byte_array_no_pad(value int, arr_prt &u8, arr_len int) {
+	mut num := value
+	if arr_len <= 0 || num < 0 {
+		return
+	}
+
+	// Start from the end of the array
+	mut i := arr_len - 1
+
+	// Convert each digit to a character and store it in the array
+	for num > 0 && i >= 0 {
+		unsafe {
+			*(arr_prt + i) = (num % 10) + `0`
+		}
+		num /= 10
+		i--
+	}
+}
+
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
 @[manualfree]
 pub fn (t Time) format() string {
@@ -698,26 +720,31 @@ pub fn (t Time) utc_string() string {
 // e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
 @[manualfree]
 pub fn (t Time) http_header_string() string {
+	mut buf := []u8{cap: 29}
+	t.push_to_http_header(mut buf)
+
+	return buf.bytestr()
+}
+
+// push_to_http_header returns a date string in the format used in HTTP headers, as defined in RFC 2616.
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
+pub fn (t Time) push_to_http_header(mut buffer []u8) {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
 
 	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
 		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
-		`G`, `M`, `T`]
-
-	defer {
-		unsafe { buf.free() }
+		`G`, `M`, `T`]!
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
 	}
-
-	int_to_byte_array_no_pad(t.day, mut buf, 7)
-	int_to_byte_array_no_pad(t.year, mut buf, 16)
-	int_to_byte_array_no_pad(t.hour, mut buf, 19)
-	int_to_byte_array_no_pad(t.minute, mut buf, 22)
-	int_to_byte_array_no_pad(t.second, mut buf, 25)
-
-	http_header_string := buf.bytestr()
-
-	return http_header_string
+	unsafe {
+		buffer.push_many(&buf[0], buf.len)
+	}
 }
 
 // mceil returns the least integer value greater than or equal to x.
