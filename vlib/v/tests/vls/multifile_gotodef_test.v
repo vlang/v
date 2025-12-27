@@ -5,6 +5,7 @@ const vroot = @VMODROOT
 const test_dir = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'multifile_gotodef')
 const main_file = os.join_path(test_dir, 'main.v')
 const types_file = os.join_path(test_dir, 'types.v')
+const types_expected = os.join_path('multifile_gotodef', 'types.v')
 
 struct TestCase {
 	name        string
@@ -19,35 +20,35 @@ const test_cases = [
 		name:        'struct_name_cross_file'
 		line:        4
 		col:         12
-		expected:    'multifile_gotodef/types.v:3:11'
+		expected:    types_expected + ':3:11'
 		description: 'Go to struct definition in another file (MyStruct in types.v)'
 	},
 	TestCase{
 		name:        'method_call_cross_file'
 		line:        8
 		col:         18
-		expected:    'multifile_gotodef/types.v:14:21'
+		expected:    types_expected + ':14:21'
 		description: 'Go to method definition in another file (get_value in types.v)'
 	},
 	TestCase{
 		name:        'struct_field_cross_file'
 		line:        11
 		col:         22
-		expected:    'multifile_gotodef/types.v:4:1'
+		expected:    types_expected + ':4:1'
 		description: 'Go to struct field definition in another file (value in types.v)'
 	},
 	TestCase{
 		name:        'enum_value_cross_file'
 		line:        14
 		col:         15
-		expected:    'multifile_gotodef/types.v:9:1'
+		expected:    types_expected + ':9:1'
 		description: 'Go to enum value definition in another file (first in types.v)'
 	},
 	TestCase{
 		name:        'enum_short_form_cross_file'
 		line:        18
 		col:         4
-		expected:    'multifile_gotodef/types.v:10:1'
+		expected:    types_expected + ':10:1'
 		description: 'Go to enum value definition from short form in match (.second in types.v)'
 	},
 ]
