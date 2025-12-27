@@ -48,7 +48,7 @@ pub fn new_suggestion(wanted string, possibilities []string, params SuggestionPa
 	return s
 }
 
-const max_suggestions_limit = $d('max_suggestions_limit', 140)
+const max_suggestions_limit = $d('max_suggestions_limit', 200)
 
 // add adds the `val` to the list of known possibilities of the suggestion.
 // It calculates the similarity metric towards the wanted value.
