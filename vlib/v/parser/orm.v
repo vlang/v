@@ -28,6 +28,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	// kind := if is_select { ast.SqlExprKind.select_ } else { ast.SqlExprKind.insert }
 	mut inserted_var := ''
 	mut is_count := false
+	mut has_distinct := false
 	if is_insert {
 		inserted_var = p.check_name()
 		p.scope.mark_var_as_used(inserted_var)
@@ -36,7 +37,14 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			p.error('expecting `into`')
 		}
 	} else if is_select {
-		is_count = p.check_name() == 'count'
+		n := p.check_name()
+		if n == 'distinct' {
+			has_distinct = true
+			n2 := p.check_name()
+			is_count = n2 == 'count'
+		} else {
+			is_count = n == 'count'
+		}
 	}
 	mut typ := ast.void_type
 
@@ -128,6 +136,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_order:    has_order
 		order_expr:   order_expr
 		has_desc:     has_desc
+		has_distinct: has_distinct
 		is_array:     if is_count { false } else { true }
 		is_generated: false
 		inserted_var: inserted_var

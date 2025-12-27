@@ -168,6 +168,35 @@ fn test_orm_select_gen_with_all() {
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1 ORDER BY '' DESC LIMIT ?2 OFFSET ?3;"
 }
 
+fn test_orm_select_gen_with_distinct() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:        orm.Table{
+			name: 'test_table'
+		}
+		fields:       get_select_fields()
+		has_distinct: true
+	}, "'", true, '?', 0, orm.QueryData{})
+
+	assert query == "SELECT DISTINCT 'id', 'test', 'abc' FROM 'test_table';"
+}
+
+fn test_orm_select_gen_with_distinct_and_where() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:        orm.Table{
+			name: 'test_table'
+		}
+		fields:       get_select_fields()
+		has_distinct: true
+		has_where:    true
+	}, "'", true, '?', 0, orm.QueryData{
+		fields: ['abc']
+		kinds:  [.eq]
+		is_and: []
+	})
+
+	assert query == "SELECT DISTINCT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0;"
+}
+
 fn test_orm_table_gen() {
 	table := orm.Table{
 		name: 'test_table'

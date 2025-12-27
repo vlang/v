@@ -184,17 +184,18 @@ pub mut:
 // types - Types to select
 pub struct SelectConfig {
 pub mut:
-	table      Table
-	is_count   bool
-	has_where  bool
-	has_order  bool
-	order      string
-	order_type OrderType
-	has_limit  bool
-	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
-	has_offset bool
-	fields     []string
-	types      []int
+	table        Table
+	is_count     bool
+	has_where    bool
+	has_order    bool
+	order        string
+	order_type   OrderType
+	has_limit    bool
+	primary      string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
+	has_offset   bool
+	has_distinct bool
+	fields       []string
+	types        []int
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -348,6 +349,10 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 // where - See QueryData
 pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
+
+	if cfg.has_distinct {
+		str += 'DISTINCT '
+	}
 
 	if cfg.is_count {
 		str += 'COUNT(*)'

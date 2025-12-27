@@ -409,3 +409,17 @@ fn test_orm() {
 		drop table TestTime
 	}!
 }
+
+fn test_distinct() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	// Create table without unique constraints to allow true duplicates
+	db.exec('CREATE TABLE items (name TEXT, category TEXT)')!
+	db.exec("INSERT INTO items VALUES ('Apple', 'Fruit'), ('Apple', 'Fruit'), ('Banana', 'Fruit')")!
+
+	without_distinct := db.exec('SELECT name, category FROM items')!
+	assert without_distinct.len == 3
+
+	with_distinct := db.exec('SELECT DISTINCT name, category FROM items')!
+	assert with_distinct.len == 2
+}

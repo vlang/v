@@ -3077,6 +3077,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	} else {
 		f.write('\tselect ')
 	}
+	if node.has_distinct {
+		f.write('distinct ')
+	}
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {

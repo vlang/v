@@ -314,3 +314,21 @@ fn test_inserting_passed_optionals() {
 	assert res3[1].name == none
 	assert res3[2].name or { '' } == 'www'
 }
+
+fn test_distinct_select() {
+	db := MockDB.new()
+
+	sql db {
+		create table Foo
+	}!
+
+	_ := sql db {
+		select distinct from Foo
+	}!
+	assert db.st.last == 'SELECT DISTINCT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo`;'
+
+	_ := sql db {
+		select distinct from Foo where e > 5
+	}!
+	assert db.st.last == 'SELECT DISTINCT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `e` > ?;'
+}
