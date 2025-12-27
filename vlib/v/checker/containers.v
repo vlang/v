@@ -323,6 +323,11 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	if node.elem_type.is_number() && init_typ.is_number() {
 		return
 	}
+	if c.table.type_kind(node.elem_type) == .interface {
+		if c.type_implements(init_typ, node.elem_type, init_expr.pos()) {
+			return
+		}
+	}
 	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
