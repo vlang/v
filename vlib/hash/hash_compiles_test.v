@@ -1,6 +1,8 @@
 import hash
 
 fn test_wyhash_basic() {
+	assert hash.sum64_string('abc', 5).hex_full() == '4b4b66779c7a16f1'
+
 	// Official wyhash final v4.2 test vectors (seed=0, default secret)
 	assert hash.sum64_string('', 0).hex_full() == '93228a4de0eec5a2'
 	assert hash.sum64_string('a', 1).hex_full() == 'c5bac3db178713c4'
