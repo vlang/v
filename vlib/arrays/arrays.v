@@ -789,10 +789,7 @@ pub fn compare[T](a []T, b []T) bool {
 	if a.len != b.len {
 		return false
 	}
-	for i in 0 .. a.len {
-		if a[i] != b[i] {
-			return false
-		}
+	unsafe {
+		return vmemcmp(a.data, b.data, u64(a.len) * u64(sizeof(T))) == 0
 	}
-	return true
 }
