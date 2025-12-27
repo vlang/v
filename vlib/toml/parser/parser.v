@@ -651,7 +651,7 @@ pub fn (mut p Parser) root_table() ! {
 
 					p.check_implicitly_declared(dotted_key) or {
 						p.check_explicitly_declared(dotted_key) or {
-							if p.root_map[key.str()] is map[string]ast.Value {
+							if p.root_map[key.str()] or { ast.Bool{} } is map[string]ast.Value {
 								// NOTE: Here we "undo" the implicit-explicit special case declaration for:
 								// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
 								// ... to make the following test pass:
