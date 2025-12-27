@@ -117,6 +117,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.EnumDecl {}
 		ast.TypeDecl {}
 		ast.InterfaceDecl {}
+		ast.EmptyStmt {
+			// this is intentionally a NOP - EmptyStmt nodes are produced by previous stages, as a replacement of other eliminated nodes.
+		}
 		else {
 			g.n_error('${@LOCATION} bad node: ' + node.type_name())
 		}
