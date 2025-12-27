@@ -266,6 +266,21 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
+fn should_skip_vls_file(pref_ &pref.Preferences, path string) bool {
+	if !pref_.is_vls {
+		return false
+	}
+	if pref_.line_info != '' {
+		project_dir := if os.is_dir(pref_.path) {
+			os.real_path(pref_.path)
+		} else {
+			os.real_path(os.dir(pref_.linfo.path))
+		}
+		return !os.real_path(path).starts_with(project_dir)
+	}
+	return path != pref_.path
+}
+
 pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
@@ -287,7 +302,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
 		// Otherwise we'd be parsing entire stdlib in vls mode
 		is_vls:           pref_.is_vls && path == pref_.path
-		is_vls_skip_file: pref_.is_vls && path != pref_.path
+		is_vls_skip_file: should_skip_vls_file(pref_, path)
 		scope:            &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
