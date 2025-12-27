@@ -175,7 +175,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				} else {
 					node.elem_type
 				}
-				g.expr_with_cast(expr, expr_type, node.elem_type)
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(expr, expr_type, node.elem_type)
+				} else {
+					g.expr_with_cast(expr, expr_type, node.elem_type)
+				}
 			}
 			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
