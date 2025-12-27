@@ -836,6 +836,8 @@ pub enum CallKind {
 	all
 	count
 	clone
+	clone_to_depth
+	trim
 	contains
 	index
 	first
@@ -849,8 +851,9 @@ pub enum CallKind {
 	reverse
 	reverse_in_place
 	panic
-	jsondecode
-	jsonencode
+	json_decode
+	json_encode
+	json_encode_pretty
 	repeat
 	type_name
 	type_idx
@@ -865,6 +868,15 @@ pub enum CallKind {
 	error
 	grow_cap
 	grow_len
+	eprint
+	eprintln
+	print
+	println
+	close
+	pointers
+	push_many
+	malloc
+	writeln
 }
 
 // function or method call expr
