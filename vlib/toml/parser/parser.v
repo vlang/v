@@ -649,17 +649,20 @@ pub fn (mut p Parser) root_table() ! {
 					key := p.key()!
 					dotted_key := DottedKey([key.str()])
 
+					p.check_implicitly_declared(dotted_key) or {
+						p.check_explicitly_declared(dotted_key) or {
+							if p.root_map[key.str()] or { ast.Bool{} } is map[string]ast.Value {
+								// NOTE: Here we "undo" the implicit-explicit special case declaration for:
+								// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+								// ... to make the following test pass:
+								// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/table/array-implicit-and-explicit-after.toml
+								p.undo_special_case_01(dotted_key)
+							}
+						}
+					}
 					// Disallow re-declaring the key
 					p.check_explicitly_declared(dotted_key)!
 					p.explicit_declared << dotted_key
-
-					// Check for footgun redeclaration in this odd way:
-					// [[tbl]]
-					// [tbl]
-					if p.last_aot == dotted_key {
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
-					}
 
 					// Allow [ key ]
 					p.ignore_while(space_formatting)
@@ -956,9 +959,10 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 				} else {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `${first}` in dotted key `${dotted_key}`.')
 					nm = &map[string]ast.Value{}
-					// We register this implicit allocation as *explicit* to be able to catch
-					// special cases like:
+					p.implicit_declared << first
+					// NOTE: We register this implicit allocation also as *explicit* to be able to catch a special case like:
 					// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+					// See also: undo_special_case_01
 					p.explicit_declared << first
 				}
 
@@ -974,12 +978,13 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 			}
 		}
 
-		if table[p.last_aot.str()] is map[string]ast.Value {
-			if first == p.last_aot {
-				// Here we "undo" the implicit-explicit special-case declaration above to make the following test pass:
+		if first == p.last_aot {
+			if table[p.last_aot.str()] is map[string]ast.Value {
+				// NOTE: Here we "undo" the implicit-explicit special case declaration for:
+				// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+				// ... to make the following test pass:
 				// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/array/open-parent-table.toml
-				p.explicit_declared.pop()
-				p.last_aot.clear()
+				p.undo_special_case_01(dotted_key)
 				p.next()!
 				return
 			}
@@ -1601,6 +1606,19 @@ pub fn (mut p Parser) time() !ast.Time {
 	return ast.Time{
 		text: lit
 		pos:  pos
+	}
+}
+
+// undo_special_case_01 reverts an operation needed for a few special case / edge case tests to pass.
+// See:
+// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/table/array-implicit-and-explicit-after.toml
+// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/array/open-parent-table.toml
+pub fn (mut p Parser) undo_special_case_01(dotted_key DottedKey) {
+	exd_i := p.explicit_declared.index(dotted_key)
+	if exd_i > -1 {
+		p.explicit_declared.delete(exd_i)
+		p.last_aot.clear()
 	}
 }
 
