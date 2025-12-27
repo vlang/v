@@ -604,3 +604,16 @@ fn test_each_indexed() {
 	})
 	assert control_sum == sum
 }
+
+fn test_compare() {
+	a := [1, 2, 3]
+	b := [4, 5, 6]
+	c := [1, 2]
+	d1 := []int{}
+	d2 := []int{}
+
+	assert compare(a, a) == true
+	assert compare(a, b) == false
+	assert compare(a, c) == false
+	assert compare(d1, d2) == true
+}

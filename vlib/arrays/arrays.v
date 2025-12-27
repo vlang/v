@@ -12,6 +12,7 @@ import strings
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 // - each - call a callback fn, for each element of the array, similar to a.map(), but unlike it, the callback should not return anything
+// - compare - compare two arrays
 
 // min returns the minimum value in the array.
 // Example: arrays.min([1, 2, 3, 0, 9])! // => 0
@@ -780,4 +781,18 @@ pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
 	for idx, item in a {
 		cb(idx, item)
 	}
+}
+
+// compare compares two arrays.
+@[direct_array_access]
+pub fn compare[T](a []T, b []T) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i in 0 .. a.len {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
