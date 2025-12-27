@@ -382,8 +382,14 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 					c.table.fn_generic_types[im_fkey] << inferred_types
 				}
 			}
-			inter_sym.info.concrete_types = inferred_types
-			return c.table.unwrap_generic_type(interface_type, generic_names, inter_sym.info.concrete_types)
+			result_type := c.table.unwrap_generic_type(interface_type, generic_names,
+				inferred_types)
+			// Set concrete types on the instantiated interface symbol
+			mut result_sym := c.table.sym(result_type)
+			if mut result_sym.info is ast.Interface {
+				result_sym.info.concrete_types = inferred_types
+			}
+			return result_type
 		}
 	}
 	return interface_type
