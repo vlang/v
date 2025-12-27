@@ -1,7 +1,7 @@
 import os
 import term
 
-const vroot = os.real_path(@VMODROOT)
+const vroot = @VMODROOT
 const test_dir = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'multifile_gotodef')
 const main_file = os.join_path(test_dir, 'main.v')
 const types_file = os.join_path(test_dir, 'types.v')
