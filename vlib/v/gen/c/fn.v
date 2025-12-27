@@ -1529,8 +1529,21 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
+				// If receiver_type is the generic parent but left_type is an instantiated version,
+				// use left_type's concrete_types for the conversion
+				mut concrete_types := sym.info.concrete_types.clone()
+				if concrete_types.len == 0 && generic_names.len > 0 {
+					left_sym := g.table.sym(left_type)
+					if left_sym.info is ast.Interface {
+						concrete_types = left_sym.info.concrete_types.clone()
+					} else if left_sym.info is ast.Struct {
+						concrete_types = left_sym.info.concrete_types.clone()
+					} else if left_sym.info is ast.SumType {
+						concrete_types = left_sym.info.concrete_types.clone()
+					}
+				}
 				if utyp := muttable.convert_generic_type(node.receiver_type, generic_names,
-					sym.info.concrete_types)
+					concrete_types)
 				{
 					unwrapped_rec_type = utyp
 				}
