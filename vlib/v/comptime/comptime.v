@@ -141,9 +141,8 @@ pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
 				if !node.is_expr && !node.has_else && node.branches.len == 1 {
 					if node.branches[0].stmts.len == 0 {
 						// empty ifdef; result of target OS != conditional => skip
-						return ast.Stmt(ast.Block{
-							pos:   node.pos
-							scope: ast.empty_scope
+						return ast.Stmt(ast.EmptyStmt{
+							pos: node.pos
 						})
 					}
 					if !c.pref.output_cross_c {
