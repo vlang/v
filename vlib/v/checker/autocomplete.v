@@ -507,7 +507,10 @@ fn (c &Checker) vls_is_the_node(pos token.Pos) bool {
 	if pos.file_idx < 0 {
 		return false
 	}
-	if c.pref.linfo.path != c.table.filelist[pos.file_idx] {
+	// Normalize paths for comparison to handle directory compilation
+	linfo_path := os.real_path(c.pref.linfo.path)
+	file_path := os.real_path(c.table.filelist[pos.file_idx])
+	if linfo_path != file_path {
 		return false
 	}
 	if c.pref.linfo.col > pos.col + pos.len || c.pref.linfo.col < pos.col {

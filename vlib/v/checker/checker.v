@@ -387,13 +387,26 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
+	// Determine the project directory when using -line-info
+	mut project_dir := ''
+	if c.pref.is_vls && c.pref.line_info != '' {
+		project_dir = if os.is_dir(c.pref.path) {
+			os.real_path(c.pref.path)
+		} else {
+			os.real_path(os.dir(c.pref.linfo.path))
+		}
+	}
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
-			if c.pref.is_vls && file.path != c.pref.path {
-				// in `vls` mode, only check the user file
+			if c.pref.is_vls && c.pref.line_info == '' && file.path != c.pref.path {
 				continue
+			}
+			if c.pref.is_vls && c.pref.line_info != '' && project_dir != '' {
+				if !os.real_path(file.path).starts_with(project_dir) {
+					continue
+				}
 			}
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
