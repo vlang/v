@@ -93,3 +93,15 @@ fn test_invalid_decode_fails() {
 		}
 	}
 }
+
+fn test_map_string_enum_decode() {
+	m := json.decode[map[string]Bar]('{"foo": "a", "bar": "b", "baz": "c"}')!
+	assert m['foo'] == .a
+	assert m['bar'] == .b
+	assert m['baz'] == .c
+
+	m2 := json.decode[map[string]Bar]('{"x": 0, "y": 1, "z": 10}')!
+	assert m2['x'] == .a
+	assert m2['y'] == .b
+	assert m2['z'] == .c
+}

@@ -839,7 +839,7 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 		decoder.decode_error('Number value: `${result}` does not match any field in enum: ${typeof(val).name}')!
 	} else if enum_info.value_kind == .string {
 		mut result := ''
-		unsafe { decoder.decode_value(mut result)! }
+		decoder.decode_string(mut result)!
 
 		$for value in T.values {
 			if value.name == result {
