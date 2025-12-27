@@ -608,6 +608,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		if c.vls_is_the_node(node.type_pos) {
+			typ_str := c.table.type_to_str(node.parent_type)
+			if np := c.name_pos_gotodef(typ_str) {
+				if np.file_idx != -1 {
+					println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					exit(0)
+				}
+			}
+		}
+	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
@@ -773,6 +784,19 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		for variant in node.variants {
+			if c.vls_is_the_node(variant.pos) {
+				typ_str := c.table.type_to_str(variant.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						exit(0)
+					}
+				}
+			}
+		}
+	}
 	mut names_used := []string{}
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
