@@ -2602,18 +2602,22 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.unsafe_level++
 			}
 
-			if !node.is_unsafe {
-				g.writeln('{')
-			} else {
-				if g.pref.is_prod {
+			if g.cur_fn != unsafe { nil } {
+				if !node.is_unsafe {
 					g.writeln('{')
 				} else {
-					g.writeln('{ // Unsafe block')
+					if g.pref.is_prod {
+						g.writeln('{')
+					} else {
+						g.writeln('{ // Unsafe block')
+					}
 				}
 			}
 			g.stmts(node.stmts)
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.writeln('}')
+			if g.cur_fn != unsafe { nil } {
+				g.writeln('}')
+			}
 			if node.is_unsafe {
 				g.unsafe_level--
 			}
