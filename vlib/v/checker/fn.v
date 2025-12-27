@@ -942,8 +942,8 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	is_va_arg := node.kind == .va_arg
-	is_json_decode := node.kind == .jsondecode
-	is_json_encode := node.kind == .jsonencode
+	is_json_decode := node.kind == .json_decode
+	is_json_encode := node.kind == .json_encode
 	mut fn_name := node.name
 	if node.is_static_method {
 		// resolve static call T.name()
@@ -1021,7 +1021,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .jsonencode {
+	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .json_encode {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
 	} else if args_len > 0 && (is_va_arg || is_json_decode) {
