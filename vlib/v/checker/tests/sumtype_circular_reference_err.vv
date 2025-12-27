@@ -1,0 +1,6 @@
+type Type6 = Type7 | int
+type Type7 = Type6 | string
+
+struct Foo {
+	name Type7
+}

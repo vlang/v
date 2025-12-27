@@ -871,9 +871,42 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
+		} else if sym.kind == .sum_type && sym.info is ast.SumType {
+			// Check for circular references through other sum types
+			mut visited := map[int]bool{}
+			visited[node.typ.idx()] = true
+			if c.sumtype_has_circular_ref(variant.typ, node.typ, mut visited) {
+				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
+			}
 		}
 		names_used << variant_name
 	}
+}
+
+// Checks if the sum type `sum_typ` contains `target_typ` in its variants (directly or indirectly through other sum types)
+fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Type, mut visited map[int]bool) bool {
+	sum_sym := c.table.sym(sum_typ)
+	if sum_sym.kind != .sum_type || sum_sym.info !is ast.SumType {
+		return false
+	}
+	sum_info := sum_sym.info as ast.SumType
+	for variant in sum_info.variants {
+		if variant.idx() == target_typ.idx() {
+			return true
+		}
+		// Avoid infinite recursion by tracking visited types
+		if variant.idx() in visited {
+			continue
+		}
+		variant_sym := c.table.sym(variant)
+		if variant_sym.kind == .sum_type {
+			visited[variant.idx()] = true
+			if c.sumtype_has_circular_ref(variant, target_typ, mut visited) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
