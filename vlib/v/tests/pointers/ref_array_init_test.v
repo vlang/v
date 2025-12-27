@@ -1,5 +1,8 @@
 fn test_reference_array_init() {
 	mut b := &[5, 6, 7]
+	assert '${b}' == '&[5, 6, 7]'
+	mut b_fixed := &[5, 6, 7]!
+	assert '${b_fixed}' == '&[5, 6, 7]'
 	{
 		mut a := [1, 2, 3]
 		// TODO: this should probably produce a notice at least,
@@ -7,7 +10,9 @@ fn test_reference_array_init() {
 		// on the stack, that will very soon be out of scope, even
 		// though it is still in the same function:
 		b = &a
+		b_fixed = &[1, 2, 3]!
 	}
 	println(b)
 	assert '${b}' == '&[1, 2, 3]'
+	assert '${b_fixed}' == '&[1, 2, 3]'
 }

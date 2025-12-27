@@ -20,14 +20,23 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
 	} else if is_amp {
 		array_styp = g.styp(array_type.typ)
-		g.write('HEAP(${array_styp}, ')
+		if node.is_fixed {
+			line := g.go_before_last_stmt()
+			tmp_var := g.new_tmp_var()
+			g.write('${array_styp} ${tmp_var} = ')
+			g.fixed_array_init(node, array_type, var_name, is_amp)
+			g.writeln(';')
+			g.write(line)
+			g.write('builtin__memdup((void*)&${tmp_var}, sizeof(${array_styp}))')
+		} else {
+			g.write('HEAP(${array_styp}, ')
+		}
 	}
 	len := node.exprs.len
 	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
 	if node.is_fixed || array_type.unaliased_sym.kind == .array_fixed {
-		g.fixed_array_init(node, array_type, var_name, is_amp)
-		if is_amp {
-			g.write(')')
+		if !is_amp {
+			g.fixed_array_init(node, array_type, var_name, is_amp)
 		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
