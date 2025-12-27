@@ -522,6 +522,7 @@ const c_wyhash_headers = '
 // 2: extra protection against entropy loss (probability=2^-63), aka. "blind multiplication"
 #define WYHASH_CONDOM 1
 #endif
+
 #ifndef WYHASH_32BIT_MUM
 // 0: normal version, slow on 32 bit systems
 // 1: faster on 32 bit systems but produces different results, incompatible with wy2u0k function
@@ -533,6 +534,16 @@ const c_wyhash_headers = '
 	#include <intrin.h>
 	#pragma intrinsic(_umul128)
 #endif
+
+// likely and unlikely macros
+#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+	#define _likely_(x)  __builtin_expect(x,1)
+	#define _unlikely_(x)  __builtin_expect(x,0)
+#else
+	#define _likely_(x) (x)
+	#define _unlikely_(x) (x)
+#endif
+
 // 128bit multiply function
 static inline uint64_t _wyrot(uint64_t x) { return (x>>32)|(x<<32); }
 static inline void _wymum(uint64_t *A, uint64_t *B){
@@ -569,21 +580,27 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	#endif
 #endif
 }
+
 // multiply and xor mix function, aka MUM
 static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }
+
 // endian macros
 #ifndef WYHASH_LITTLE_ENDIAN
-	#ifdef TARGET_ORDER_IS_LITTLE
+	#if defined(_WIN32) || defined(__LITTLE_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 		#define WYHASH_LITTLE_ENDIAN 1
-	#else
+	#elif defined(__BIG_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 		#define WYHASH_LITTLE_ENDIAN 0
+	#else
+		#warning could not determine endianness! Falling back to little endian.
+		#define WYHASH_LITTLE_ENDIAN 1
 	#endif
 #endif
+
 // read functions
 #if (WYHASH_LITTLE_ENDIAN)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
-#elif !defined(__TINYC__) && (defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__))
+#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)
@@ -625,22 +642,129 @@ static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const 
 	a^=secret[1]; b^=seed;  _wymum(&a,&b);
 	return  _wymix(a^secret[0]^len,b^secret[1]);
 }
+
 // the default secret parameters
 static const uint64_t _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};
+
 // a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
 static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0x2d358dccaa6c78a5ull; B^=0x8bb84b93962eacc9ull; _wymum(&A,&B); return _wymix(A^0x2d358dccaa6c78a5ull,B^0x8bb84b93962eacc9ull);}
-// the wyrand PRNG that pass BigCrush and PractRand
+
+// The wyrand PRNG that pass BigCrush and PractRand
 static inline uint64_t wyrand(uint64_t *seed){ *seed+=0x2d358dccaa6c78a5ull; return _wymix(*seed,*seed^0x8bb84b93962eacc9ull);}
-#ifndef __vinix__
+
 // convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}
+
 // convert any 64 bit pseudo random numbers to APPROXIMATE Gaussian distribution. It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2gau(uint64_t r){ const double _wynorm=1.0/(1ull<<20); return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;}
+
+#ifdef	WYTRNG
+// The wytrand true random number generator, passed BigCrush.
+static inline uint64_t wytrand(uint64_t *seed){
+	struct	timeval	t;	gettimeofday(&t,0);
+	uint64_t	teed=(((uint64_t)t.tv_sec)<<32)|t.tv_usec;
+	teed=_wymix(teed^_wyp[0],*seed^_wyp[1]);
+	*seed=_wymix(teed^_wyp[0],_wyp[2]);
+	return _wymix(*seed,*seed^_wyp[3]);
+}
 #endif
+
 #if(!WYHASH_32BIT_MUM)
 // fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.
 static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; }
 #endif
+
+// modified from https://github.com/going-digital/Prime64
+static	inline	unsigned long long	mul_mod(unsigned long long a, unsigned long long b, unsigned long long m) {
+    unsigned long long r=0;
+    while (b) {
+        if (b & 1) {
+            unsigned long long r2 = r + a;
+            if (r2 < r) r2 -= m;
+            r = r2 % m;
+        }
+        b >>= 1;
+        if (b) {
+            unsigned long long a2 = a + a;
+            if (a2 < a) a2 -= m;
+            a = a2 % m;
+        }
+    }
+    return r;
+}
+static inline unsigned long long pow_mod(unsigned long long a, unsigned long long b, unsigned long long m) {
+    unsigned long long r=1;
+    while (b) {
+        if (b&1) r=mul_mod(r,a,m);
+        b>>=1;
+        if (b) a=mul_mod(a,a,m);
+    }
+    return r;
+}
+unsigned sprp(unsigned long long n, unsigned long long a) {
+    unsigned long long d=n-1;
+    unsigned char s=0;
+    while (!(d & 0xff)) { d>>=8; s+=8; }
+    if (!(d & 0xf)) { d>>=4; s+=4; }
+    if (!(d & 0x3)) { d>>=2; s+=2; }
+    if (!(d & 0x1)) { d>>=1; s+=1; }
+    unsigned long long b=pow_mod(a,d,n);
+    if ((b==1) || (b==(n-1))) return 1;
+    unsigned char r;
+    for (r=1; r<s; r++) {
+        b=mul_mod(b,b,n);
+        if (b<=1) return 0;
+        if (b==(n-1)) return 1;
+    }
+    return 0;
+}
+unsigned is_prime(unsigned long long n) {
+    if (n<2||!(n&1)) return 0;
+    if (n<4) return 1;
+    if (!sprp(n,2)) return 0;
+    if (n<2047) return 1;
+    if (!sprp(n,3)) return 0;
+    if (!sprp(n,5)) return 0;
+    if (!sprp(n,7)) return 0;
+    if (!sprp(n,11)) return 0;
+    if (!sprp(n,13)) return 0;
+    if (!sprp(n,17)) return 0;
+    if (!sprp(n,19)) return 0;
+    if (!sprp(n,23)) return 0;
+    if (!sprp(n,29)) return 0;
+    if (!sprp(n,31)) return 0;
+    if (!sprp(n,37)) return 0;
+    return 1;
+}
+//make your own secret
+static inline void make_secret(uint64_t seed, uint64_t *secret){
+  uint8_t c[] = {15, 23, 27, 29, 30, 39, 43, 45, 46, 51, 53, 54, 57, 58, 60, 71, 75, 77, 78, 83, 85, 86, 89, 90, 92, 99, 101, 102, 105, 106, 108, 113, 114, 116, 120, 135, 139, 141, 142, 147, 149, 150, 153, 154, 156, 163, 165, 166, 169, 170, 172, 177, 178, 180, 184, 195, 197, 198, 201, 202, 204, 209, 210, 212, 216, 225, 226, 228, 232, 240 };
+  for(size_t i=0;i<4;i++){
+    uint8_t ok;
+    do{
+      ok=1; secret[i]=0;
+      for(size_t j=0;j<64;j+=8) secret[i]|=((uint64_t)c[wyrand(&seed)%sizeof(c)])<<j;
+      if(secret[i]%2==0){ ok=0; continue; }
+      for(size_t j=0;j<i;j++) {
+#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+        if(__builtin_popcountll(secret[j]^secret[i])!=32){ ok=0; break; }
+#elif defined(_MSC_VER) && defined(_M_X64)
+        if(_mm_popcnt_u64(secret[j]^secret[i])!=32){ ok=0; break; }
+#else
+        //manual popcount
+        uint64_t x = secret[j]^secret[i];
+        x -= (x >> 1) & 0x5555555555555555;
+        x = (x & 0x3333333333333333) + ((x >> 2) & 0x3333333333333333);
+        x = (x + (x >> 4)) & 0x0f0f0f0f0f0f0f0f;
+        x = (x * 0x0101010101010101) >> 56;
+        if(x!=32){ ok=0; break; }
+#endif
+      }
+      if(ok&&!is_prime(secret[i]))	ok=0;
+    }while(!ok);
+  }
+}
+
 #endif
 #define _IN_MAP(val, m) builtin__map_exists(m, val)
 '
