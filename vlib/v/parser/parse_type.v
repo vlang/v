@@ -800,7 +800,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
+						if p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok) {
 							return p.parse_generic_inst_type(name, name_pos)
 						}
 						return p.find_type_or_add_placeholder(name, language)
@@ -837,14 +837,14 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					//   fn symbol_name_except_generic()
 					//   fn embed_name()
 					//   fn strip_extra_struct_types()
-					mut sym_name := sym.name + '<'
+					mut sym_name := sym.name + '['
 					for i, gt in generic_names {
 						sym_name += gt
 						if i != generic_names.len - 1 {
 							sym_name += ','
 						}
 					}
-					sym_name += '>'
+					sym_name += ']'
 					existing_idx := p.table.type_idxs[sym_name]
 					if existing_idx > 0 {
 						idx = existing_idx
@@ -865,14 +865,14 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
 					if generic_names != sym.info.func.generic_names {
-						mut sym_name := sym.name + '<'
+						mut sym_name := sym.name + '['
 						for i, gt in generic_names {
 							sym_name += gt
 							if i != generic_names.len - 1 {
 								sym_name += ','
 							}
 						}
-						sym_name += '>'
+						sym_name += ']'
 						existing_idx := p.table.type_idxs[sym_name]
 						if existing_idx > 0 {
 							idx = existing_idx
@@ -934,9 +934,6 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 	if p.generic_type_level > generic_type_level_cutoff_limit {
 		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
 		return ast.void_type
-	}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
 	}
 	mut bs_name := name
 	mut bs_cname := name
