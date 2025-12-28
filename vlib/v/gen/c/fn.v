@@ -2143,7 +2143,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
-		if is_print && node.args[0].expr is ast.Ident {
+		if is_print && node.args[0].expr !is ast.CallExpr {
 			// only need for `println(err)`
 			// not need for `println(err.msg())`
 			g.inside_interface_deref = true
