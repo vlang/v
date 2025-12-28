@@ -126,156 +126,188 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 }
 
 fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
-	return match fn_name {
-		'str' {
-			.str
+	return match fn_name.len {
+		3 {
+			match fn_name {
+				'str' {
+					.str
+				}
+				'map' {
+					.map
+				}
+				'any' {
+					.any
+				}
+				'all' {
+					.all
+				}
+				'pop' {
+					.pop
+				}
+				else {
+					.unknown
+				}
+			}
 		}
-		'keys' {
-			.keys
+		4 {
+			match fn_name {
+				'wait' {
+					.wait
+				}
+				'free' {
+					.free
+				}
+				'keys' {
+					.keys
+				}
+				'sort' {
+					.sort
+				}
+				'last' {
+					.last
+				}
+				'drop' {
+					.drop
+				}
+				'main' {
+					.main
+				}
+				'move' {
+					.move
+				}
+				else {
+					.unknown
+				}
+			}
 		}
-		'values' {
-			.values
+		5 {
+			return match fn_name {
+				'count' {
+					.count
+				}
+				'slice' {
+					.slice
+				}
+				'clone' {
+					.clone
+				}
+				'index' {
+					.index
+				}
+				'first' {
+					.first
+				}
+				'panic' {
+					.panic
+				}
+				'clear' {
+					.clear
+				}
+				'error' {
+					.error
+				}
+				else {
+					.unknown
+				}
+			}
 		}
-		'wait' {
-			.wait
-		}
-		'free' {
-			.free
-		}
-		'slice' {
-			.slice
-		}
-		'map' {
-			.map
-		}
-		'insert' {
-			.insert
-		}
-		'prepend' {
-			.prepend
-		}
-		'try_push' {
-			.try_push
-		}
-		'try_pop' {
-			.try_pop
-		}
-		'sort_with_compare' {
-			.sort_with_compare
-		}
-		'sorted_with_compare' {
-			.sorted_with_compare
-		}
-		'sort' {
-			.sort
-		}
-		'sorted' {
-			.sorted
-		}
-		'filter' {
-			.filter
-		}
-		'any' {
-			.any
-		}
-		'all' {
-			.all
-		}
-		'count' {
-			.count
-		}
-		'clone' {
-			.clone
-		}
-		'contains' {
-			.contains
-		}
-		'index' {
-			.index
-		}
-		'first' {
-			.first
-		}
-		'last' {
-			.last
-		}
-		'pop_left' {
-			.pop_left
-		}
-		'pop' {
-			.pop
-		}
-		'delete' {
-			.delete
-		}
-		'delete_many' {
-			.delete_many
-		}
-		'delete_last' {
-			.delete_last
-		}
-		'drop' {
-			.drop
-		}
-		'reverse' {
-			.reverse
-		}
-		'reverse_in_place' {
-			.reverse_in_place
-		}
-		'panic' {
-			.panic
-		}
-		'json.decode' {
-			.jsondecode
-		}
-		'json.encode' {
-			.jsonencode
-		}
-		'repeat' {
-			.repeat
-		}
-		'type_name' {
-			.type_name
-		}
-		'type_idx' {
-			.type_idx
-		}
-		'clear' {
-			.clear
-		}
-		'reserve' {
-			.reserve
-		}
-		'move' {
-			.move
-		}
-		'main.main' {
-			.main_main
-		}
-		'main' {
-			.main
-		}
-		'C.va_arg' {
-			.va_arg
-		}
-		'__addr' {
-			.addr
-		}
-		'JS.await' {
-			.jsawait
-		}
-		'error' {
-			.error
-		}
-		'grow_len' {
-			.grow_len
-		}
-		'grow_cap' {
-			.grow_cap
+		6 {
+			return match fn_name {
+				'values' {
+					.values
+				}
+				'sorted' {
+					.sorted
+				}
+				'filter' {
+					.filter
+				}
+				'insert' {
+					.insert
+				}
+				'delete' {
+					.delete
+				}
+				'repeat' {
+					.repeat
+				}
+				else {
+					.unknown
+				}
+			}
 		}
 		else {
-			.unknown
+			return match fn_name {
+				'prepend' {
+					.prepend
+				}
+				'try_push' {
+					.try_push
+				}
+				'try_pop' {
+					.try_pop
+				}
+				'sort_with_compare' {
+					.sort_with_compare
+				}
+				'sorted_with_compare' {
+					.sorted_with_compare
+				}
+				'contains' {
+					.contains
+				}
+				'pop_left' {
+					.pop_left
+				}
+				'delete_many' {
+					.delete_many
+				}
+				'delete_last' {
+					.delete_last
+				}
+				'reverse' {
+					.reverse
+				}
+				'reverse_in_place' {
+					.reverse_in_place
+				}
+				'json.decode' {
+					.jsondecode
+				}
+				'json.encode' {
+					.jsonencode
+				}
+				'type_name' {
+					.type_name
+				}
+				'type_idx' {
+					.type_idx
+				}
+				'reserve' {
+					.reserve
+				}
+				'main.main' {
+					.main_main
+				}
+				'C.va_arg' {
+					.va_arg
+				}
+				'__addr' {
+					.addr
+				}
+				'JS.await' {
+					.jsawait
+				}
+				'grow_len' {
+					.grow_len
+				}
+				'grow_cap' {
+					.grow_cap
+				}
+				else {
+					.unknown
+				}
+			}
 		}
 	}
 }
