@@ -305,6 +305,25 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 			}
 		}
+		11 {
+			return match fn_name {
+				'delete_many' {
+					.delete_many
+				}
+				'delete_last' {
+					.delete_last
+				}
+				'json.decode' {
+					.jsondecode
+				}
+				'json.encode' {
+					.jsonencode
+				}
+				else {
+					.unknown
+				}
+			}
+		}
 		else {
 			return match fn_name {
 				'sort_with_compare' {
@@ -313,20 +332,8 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'sorted_with_compare' {
 					.sorted_with_compare
 				}
-				'delete_many' {
-					.delete_many
-				}
-				'delete_last' {
-					.delete_last
-				}
 				'reverse_in_place' {
 					.reverse_in_place
-				}
-				'json.decode' {
-					.jsondecode
-				}
-				'json.encode' {
-					.jsonencode
 				}
 				else {
 					.unknown
