@@ -129,3 +129,24 @@ fn test_imported_enum() {
 	imported_e := s.PublicEnum1.a
 	println(imported_e)
 }
+
+struct OpStruct {
+	val int
+}
+
+fn (a OpStruct) + (b OpStruct) OpStruct {
+	return OpStruct{val: a.val + b.val}
+}
+
+fn takes_struct(param OpStruct) string {
+	return param.str()
+}
+
+struct ArrayElemStruct {
+	value int
+}
+
+struct ContainerStruct {
+	items []ArrayElemStruct
+	fixed_items [5]ArrayElemStruct
+}

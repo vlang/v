@@ -311,6 +311,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for mut param in node.params {
+			// handle vls go to definition for parameter types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(param.type_pos) {
+					typ_str := c.table.type_to_str(param.typ)
+					if np := c.name_pos_gotodef(typ_str) {
+						if np.file_idx != -1 {
+							println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						}
+						exit(0)
+					}
+				}
+			}
 			if !c.ensure_type_exists(param.typ, param.type_pos) {
 				return
 			}
