@@ -821,3 +821,25 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	}
 }
+
+// struct_has_large_fixed_array returns true if the struct type contains
+// fixed arrays whose total size exceeds the threshold (64KB).
+// This is used to determine whether to avoid stack-allocated compound literals
+// which can cause stack overflow for large structs.
+fn (g &Gen) struct_has_large_fixed_array(typ ast.Type) bool {
+	sym := g.table.final_sym(typ)
+	if sym.info is ast.Struct {
+		for field in sym.info.fields {
+			field_sym := g.table.final_sym(field.typ)
+			if field_sym.info is ast.ArrayFixed {
+				// Check if this fixed array is large (> 64KB)
+				// Conservative estimate: 8 bytes per element
+				size := i64(field_sym.info.size) * 8
+				if size > 65536 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
