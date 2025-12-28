@@ -26,10 +26,6 @@ const invalid_exceptions = [
 	'do_not_remove',
 	'string/multiline-escape-space-02.toml',
 	'string/missing-quotes-array.toml',
-	'table/append-with-dotted-keys-05.toml',
-	'table/duplicate-key-03.toml',
-	'table/duplicate-key-10.toml',
-	'table/redefine-02.toml',
 ]
 const valid_value_exceptions = [
 	'do_not_remove',
