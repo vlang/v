@@ -500,6 +500,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 					stmt = t.stmt(mut stmt)
 				}
 				t.index.unindent()
+				return node
 			}
 		}
 	}

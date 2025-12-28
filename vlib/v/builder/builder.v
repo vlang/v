@@ -9,6 +9,7 @@ import v.ast
 import v.vmod
 import v.checker
 import v.transformer
+import v.comptime
 import v.parser
 import v.markused
 import v.depgraph
@@ -23,6 +24,7 @@ pub:
 pub mut:
 	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
+	comptime            &comptime.Comptime       = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
 	stats_lines         int // size of backend generated source code in lines
@@ -82,6 +84,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		table:             table
 		checker:           checker.new_checker(table, pref_)
 		transformer:       transformer.new_transformer_with_table(table, pref_)
+		comptime:          comptime.new_comptime_with_table(table, pref_)
 		compiled_dir:      compiled_dir
 		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
@@ -136,6 +139,11 @@ pub fn (mut b Builder) middle_stages() ! {
 			println('> t: ${t:10} | s.mod: ${s.mod:-40} | s.name: ${'${s.name#[..30]}':-30} | s.is_builtin: ${s.is_builtin:6} | s.is_pub: ${s.is_pub}')
 		}
 	}
+
+	util.timing_start('COMPTIME')
+	b.comptime.solve_files(b.parsed_files)
+	util.timing_measure('COMPTIME')
+
 	if b.pref.dump_defines != '' {
 		b.dump_defines()
 	}

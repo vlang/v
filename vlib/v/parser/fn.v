@@ -44,8 +44,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind in [.lt, .lsbr] {
-		// `foo<int>(10)`
+	if p.tok.kind == .lsbr {
+		// `foo[int](10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())

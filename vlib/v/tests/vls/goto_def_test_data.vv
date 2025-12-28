@@ -7,6 +7,32 @@ struct LocalStruct {
 	value int
 }
 
+fn (ls LocalStruct) my_method() string {
+	return 'method'
+}
+
+fn test_local_struct() {
+ 	mut obj := LocalStruct{value: 42}
+
+	msg := obj.my_method()
+	println(msg)
+
+	another := LocalStruct{}
+	println(another.value)
+
+	yet_another := obj
+	println(yet_another)
+
+	val := obj.value
+	println(val)
+
+	result := obj.my_method()
+	println(result)
+
+	ret_type := obj.my_method()
+	println(ret_type)
+}
+
 struct DeepStruct {
 	LocalStruct
 	st struct {
@@ -18,60 +44,88 @@ struct DeepStruct {
 	l0 int
 }
 
-enum LocalEnum {
-	first
-	second
-	third
-}
-
-type LocalAlias = string
-
-type LocalSum = int | string
-
-fn (ls LocalStruct) my_method() string {
-	return 'method'
-}
-
-fn main() {
-	mut obj := LocalStruct{value: 42}
-
-	msg := obj.my_method()
-	println(msg)
-
-	e1 := LocalEnum.first
-
-	match e1 {
-		.second { println('second') }
-		else {}
-	}
-
-	casted := LocalAlias('test')
-
-	sum_val := LocalSum(42)
-	println(sum_val)
-
-	another := LocalStruct{}
-	println(another.value)
-
-	yet_another := obj
-	println(yet_another)
-
-	imported_e := s.PublicEnum1.a
-	println(imported_e)
-
-	val := obj.value
-	println(val)
-
-	deep := DeepStruct{}
+fn test_deep_struct() {
+  deep := DeepStruct{}
 	nested_val := deep.st.sstt.l2
 	println(nested_val)
 
 	embedded_val := deep.LocalStruct
 	println(embedded_val)
 
-	result := obj.my_method()
-	println(result)
+	deep_2 := DeepStruct {
+	  st: struct {
+			sstt: struct {
+			  l2: deep.st.sstt.l2
+			}
+			l1: deep.st.l1
+		}
+	}
+}
 
-	ret_type := obj.my_method()
-	println(ret_type)
+enum LocalEnum {
+	first
+	second
+	third
+}
+
+fn test_local_enum() {
+  e1 := LocalEnum.first
+
+	match e1 {
+		.second { println('second') }
+		else {}
+	}
+}
+
+type LocalAlias = string
+
+fn test_local_alias() {
+  casted := LocalAlias('test')
+}
+
+type LocalSum = int | string
+
+struct TypeA {
+	a int
+}
+
+struct TypeB {
+	b string
+}
+
+type UserSum = TypeA | TypeB
+
+fn test_local_sum() {
+	sum_val := LocalSum(42)
+	println(sum_val)
+
+	user_sum := UserSum(TypeA{a: 10})
+	println(user_sum)
+}
+
+enum Method {
+	completion
+	signature_help
+	definition
+}
+
+fn test_match_enum() {
+	method := Method.completion
+	line_info := match method {
+		.completion {
+			'completion_info'
+		}
+		.signature_help {
+			'signature_info'
+		}
+		.definition {
+			'definition_info'
+		}
+	}
+	println(line_info)
+}
+
+fn test_imported_enum() {
+	imported_e := s.PublicEnum1.a
+	println(imported_e)
 }

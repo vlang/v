@@ -20,15 +20,12 @@ const valid_exceptions = [
 	'do_not_remove',
 	'string/escapes.toml',
 	'string/multiline-quotes.toml',
-	'table/array-implicit-and-explicit-after.toml',
 ]
 // NOTE: entries in this list are tests of invalid TOML that should have the parser fail, but currently does not.
 const invalid_exceptions = [
 	'do_not_remove',
-	'inline-table/duplicate-key-02.toml',
 	'string/multiline-escape-space-02.toml',
 	'string/missing-quotes-array.toml',
-	'table/duplicate-key-dotted-array.toml',
 	'table/append-with-dotted-keys-05.toml',
 	'table/duplicate-key-03.toml',
 	'table/duplicate-key-10.toml',

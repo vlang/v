@@ -387,13 +387,26 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
+	// Determine the project directory when using -line-info
+	mut project_dir := ''
+	if c.pref.is_vls && c.pref.line_info != '' {
+		project_dir = if os.is_dir(c.pref.path) {
+			os.real_path(c.pref.path)
+		} else {
+			os.real_path(os.dir(c.pref.linfo.path))
+		}
+	}
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
-			if c.pref.is_vls && file.path != c.pref.path {
-				// in `vls` mode, only check the user file
+			if c.pref.is_vls && c.pref.line_info == '' && file.path != c.pref.path {
 				continue
+			}
+			if c.pref.is_vls && c.pref.line_info != '' && project_dir != '' {
+				if !os.real_path(file.path).starts_with(project_dir) {
+					continue
+				}
 			}
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
@@ -608,6 +621,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		if c.vls_is_the_node(node.type_pos) {
+			typ_str := c.table.type_to_str(node.parent_type)
+			if np := c.name_pos_gotodef(typ_str) {
+				if np.file_idx != -1 {
+					println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					exit(0)
+				}
+			}
+		}
+	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
@@ -773,6 +797,19 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		for variant in node.variants {
+			if c.vls_is_the_node(variant.pos) {
+				typ_str := c.table.type_to_str(variant.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						exit(0)
+					}
+				}
+			}
+		}
+	}
 	mut names_used := []string{}
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
@@ -847,9 +884,42 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
+		} else if sym.kind == .sum_type && sym.info is ast.SumType {
+			// Check for circular references through other sum types
+			mut visited := map[int]bool{}
+			visited[node.typ.idx()] = true
+			if c.sumtype_has_circular_ref(variant.typ, node.typ, mut visited) {
+				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
+			}
 		}
 		names_used << variant_name
 	}
+}
+
+// Checks if the sum type `sum_typ` contains `target_typ` in its variants (directly or indirectly through other sum types)
+fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Type, mut visited map[int]bool) bool {
+	sum_sym := c.table.sym(sum_typ)
+	if sum_sym.kind != .sum_type || sum_sym.info !is ast.SumType {
+		return false
+	}
+	sum_info := sum_sym.info as ast.SumType
+	for variant in sum_info.variants {
+		if variant.idx() == target_typ.idx() {
+			return true
+		}
+		// Avoid infinite recursion by tracking visited types
+		if variant.idx() in visited {
+			continue
+		}
+		variant_sym := c.table.sym(variant)
+		if variant_sym.kind == .sum_type {
+			visited[variant.idx()] = true
+			if c.sumtype_has_circular_ref(variant, target_typ, mut visited) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {

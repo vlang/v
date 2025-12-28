@@ -131,17 +131,24 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 			}
 		}
 		ast.StructInit {
-			if !c.vls_is_the_node(node.name_pos) {
-				return
+			// Check if clicking on a field name in struct init
+			for field in node.init_fields {
+				if c.vls_is_the_node(field.name_pos) {
+					sym := c.table.sym(node.typ)
+					if struct_field := c.table.find_field_with_embeds(sym, field.name) {
+						pos = struct_field.pos
+						break
+					}
+				}
 			}
-			info := c.table.sym(node.typ).info
-			pos = match info {
-				ast.Struct, ast.Alias, ast.SumType {
-					info.name_pos
+			if pos == token.Pos{} && c.vls_is_the_node(node.name_pos) {
+				info := c.table.sym(node.typ).info
+				if np := info.get_name_pos() {
+					pos = np
 				}
-				else {
-					pos
-				}
+			}
+			if pos == token.Pos{} {
+				return
 			}
 		}
 		ast.SelectorExpr {
@@ -160,7 +167,7 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 		}
 		ast.EnumVal {
 			// Go to enum field definition
-			mut enum_name := if node.enum_name == '' && node.typ != ast.void_type {
+			mut enum_name := if node.enum_name == '' && node.typ != ast.void_type && node.typ != 0 {
 				c.table.sym(node.typ).name
 			} else {
 				node.enum_name
@@ -500,7 +507,10 @@ fn (c &Checker) vls_is_the_node(pos token.Pos) bool {
 	if pos.file_idx < 0 {
 		return false
 	}
-	if c.pref.linfo.path != c.table.filelist[pos.file_idx] {
+	// Normalize paths for comparison to handle directory compilation
+	linfo_path := os.real_path(c.pref.linfo.path)
+	file_path := os.real_path(c.table.filelist[pos.file_idx])
+	if linfo_path != file_path {
 		return false
 	}
 	if c.pref.linfo.col > pos.col + pos.len || c.pref.linfo.col < pos.col {
