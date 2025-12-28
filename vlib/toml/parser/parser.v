@@ -399,21 +399,24 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 
 // is_all_tables returns `true` if *all* entries in `dotted_key` (`a.b.c`) are tables (`map[string]ast.Value`), `false` otherwise.
 fn is_all_tables(table map[string]ast.Value, dotted_key DottedKey) bool {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${dotted_key}" in map ${ptr_str(table)}')
 	if dotted_key.len == 0 {
 		return false
 	}
-	mut key := dotted_key.clone()
-	k := key.pop_left()
-	if val := table[k] {
-		if val is map[string]ast.Value {
-			if key.len == 0 {
-				return true
+	unsafe {
+		mut t := &table
+		for key in dotted_key {
+			if val := t[key] {
+				if val is map[string]ast.Value {
+					t = &val
+				} else {
+					return false
+				}
+			} else {
+				return false
 			}
-			return is_all_tables(val, key)
 		}
 	}
-	return false
+	return true
 }
 
 // find_array_of_tables returns an array if found in the root table based on the parser's
