@@ -238,7 +238,7 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'json.encode' {
 			.json_encode
 		}
-		'json_encode_pretty' {
+		'json.encode_pretty' {
 			.json_encode_pretty
 		}
 		'print' {
