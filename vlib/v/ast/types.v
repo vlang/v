@@ -1455,6 +1455,41 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	return result.all_before('[')
 }
 
+// strip_extra_struct_types removes the `<generic names>` from the
+// complete qualified name and keep the `[concrete names]`, For example:
+// `main.Foo<T, <T, U>>[int, [int, string]]` -> `main.Foo[int, [int, string]]`
+// `main.Foo<T>[int] -> main.Foo[int]`
+fn strip_extra_struct_types(name string) string {
+	mut start := 0
+	mut is_start := false
+	mut nested_count := 0
+	mut strips := []string{}
+
+	for i, ch in name {
+		if ch == `<` {
+			if is_start {
+				nested_count++
+			} else {
+				is_start = true
+				start = i
+			}
+		} else if ch == `>` {
+			if nested_count > 0 {
+				nested_count--
+			} else {
+				strips << name.substr(start, i + 1)
+				strips << ''
+				is_start = false
+			}
+		}
+	}
+	if strips.len > 0 {
+		return name.replace_each(strips)
+	} else {
+		return name
+	}
+}
+
 // delete_cached_type_to_str remove a `type_to_str` from the cache
 pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
 	cache_key := (u64(import_aliases_len) << 32) | u64(typ)
@@ -1595,6 +1630,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					import_aliases))
 				res = '${variant_names.join('|')}'
 			} else {
+				res = strip_extra_struct_types(res)
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
@@ -1751,6 +1787,9 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 // symbol_name_except_generic return the name of the complete qualified name of the type,
 // but without the generic parts. The potential `[]`, `&[][]` etc prefixes are kept. For example:
 // `main.Abc[int]` -> `main.Abc`
+// `main.Abc<T>[int]` -> `main.Abc<T>`
+// `[]main.Abc<T>[int]` -> `[]main.Abc<T>`
+// `&[][]main.Abc<T>[int]` -> `&[][]main.Abc<T>`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// &[]main.Abc[int], [][]main.Abc[int]...
 	mut prefix := ''
@@ -1777,8 +1816,13 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 // embed_name return the pure name of the complete qualified name of the type,
 // without the generic parts, concrete parts and mod parts. For example:
 // `main.Abc[int]` -> `Abc`
+// `main.Abc<T>[int]` -> `Abc`
 pub fn (t &TypeSymbol) embed_name() string {
-	if t.name.contains('[') {
+	if t.name.contains('<') {
+		// Abc<T>[int] => Abc
+		// main.Abc<T>[main.Enum] => Abc
+		return t.name.split('<')[0].split('.').last()
+	} else if t.name.contains('[') {
 		// Abc[int] => Abc
 		// main.Abc[main.Enum] => Abc
 		return t.name.split('[')[0].split('.').last()

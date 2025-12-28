@@ -2309,7 +2309,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					node.pos)
 			}
 			if left_sym.kind == .array_fixed {
-				name := left_sym.symbol_name_except_generic()
+				name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
 				c.error('unknown method or field: ${name}.free()', node.pos)
 			}
 			return ast.void_type
@@ -2423,7 +2423,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if field := c.table.find_field(left_sym, method_name) {
 					unknown_method_msg = 'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 				} else {
-					name := left_sym.symbol_name_except_generic()
+					sname := left_sym.symbol_name_except_generic()
+					name := sname.replace_each(['<', '[', '>', ']'])
 					unknown_method_msg = 'unknown method or field: `${name}.${method_name}`'
 				}
 			}

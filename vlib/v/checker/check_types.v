@@ -393,8 +393,8 @@ fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, st
 // FIXME(vincenzopalazzo) This is a work around to the issue
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
 fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
-	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('[')
-	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('[')
+	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
+	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {
 		return true
 		// The following if confition should catch the bugs descripted in the issue

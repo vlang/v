@@ -837,14 +837,14 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					//   fn symbol_name_except_generic()
 					//   fn embed_name()
 					//   fn strip_extra_struct_types()
-					mut sym_name := sym.name + '['
+					mut sym_name := sym.name + '<'
 					for i, gt in generic_names {
 						sym_name += gt
 						if i != generic_names.len - 1 {
 							sym_name += ','
 						}
 					}
-					sym_name += ']'
+					sym_name += '>'
 					existing_idx := p.table.type_idxs[sym_name]
 					if existing_idx > 0 {
 						idx = existing_idx
@@ -865,14 +865,14 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
 					if generic_names != sym.info.func.generic_names {
-						mut sym_name := sym.name + '['
+						mut sym_name := sym.name + '<'
 						for i, gt in generic_names {
 							sym_name += gt
 							if i != generic_names.len - 1 {
 								sym_name += ','
 							}
 						}
-						sym_name += ']'
+						sym_name += '>'
 						existing_idx := p.table.type_idxs[sym_name]
 						if existing_idx > 0 {
 							idx = existing_idx
