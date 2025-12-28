@@ -277,19 +277,20 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 				'C.va_arg' {
 					.va_arg
-				}	
+				}
 				else {
 					.unknown
 				}
+			}
 		}
 		9 {
 			return match fn_name {
 				'type_name' {
 					.type_name
-				}								
+				}
 				'main.main' {
 					.main_main
-				}							
+				}
 				'JS.await' {
 					.jsawait
 				}
@@ -305,19 +306,19 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			}
 		}
 		else {
-			return match fn_name {			
+			return match fn_name {
 				'sort_with_compare' {
 					.sort_with_compare
 				}
 				'sorted_with_compare' {
 					.sorted_with_compare
-				}				
+				}
 				'delete_many' {
 					.delete_many
 				}
 				'delete_last' {
 					.delete_last
-				}				
+				}
 				'reverse_in_place' {
 					.reverse_in_place
 				}
@@ -326,7 +327,7 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 				'json.encode' {
 					.jsonencode
-				}				
+				}
 				else {
 					.unknown
 				}
