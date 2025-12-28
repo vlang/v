@@ -49,3 +49,26 @@ fn ftp_client_test_inside() ! {
 	}
 	assert blob.len > 0
 }
+
+fn test_ftp_get() ! {
+	$if !network ? {
+		return
+	}
+
+	mut zftp := ftp.new()
+	defer {
+		zftp.close() or { panic(err) }
+	}
+	connect_result := zftp.connect('ftp.sunet.se:21')!
+	assert connect_result
+	login_result := zftp.login('ftp', 'ftp')!
+	assert login_result
+	pwd := zftp.pwd()!
+	assert pwd.len > 0
+	mut txt := zftp.get('robots.txt')!
+	assert txt[0] == 35 // first byte is # char
+	zftp.pwd()!
+	zftp.cd('pub')!
+	zftp.cd('..')!
+	zftp.get('robots.txt')!
+}
