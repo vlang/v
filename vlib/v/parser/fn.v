@@ -187,6 +187,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		'clone' {
 			.clone
 		}
+		'trim' {
+			.trim
+		}
+		'clone_to_depth' {
+			.clone_to_depth
+		}
 		'contains' {
 			.contains
 		}
@@ -227,10 +233,31 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			.panic
 		}
 		'json.decode' {
-			.jsondecode
+			.json_decode
 		}
 		'json.encode' {
-			.jsonencode
+			.json_encode
+		}
+		'json.encode_pretty' {
+			.json_encode_pretty
+		}
+		'print' {
+			.print
+		}
+		'println' {
+			.println
+		}
+		'eprint' {
+			.eprint
+		}
+		'eprintln' {
+			.eprintln
+		}
+		'close' {
+			.close
+		}
+		'pointers' {
+			.pointers
 		}
 		'repeat' {
 			.repeat
@@ -273,6 +300,15 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 		}
 		'grow_cap' {
 			.grow_cap
+		}
+		'push_many' {
+			.push_many
+		}
+		'malloc' {
+			.malloc
+		}
+		'writeln' {
+			.writeln
 		}
 		else {
 			.unknown
