@@ -659,7 +659,6 @@ pub fn (mut p Parser) root_table() ! {
 					// Disallow re-defining
 					// This check also covers *implicit* table allocations from "dotted" keys, so no need for e.g: `p.check_implicitly_declared(dotted_key)!`
 					if is_all_tables(p.root_map, dotted_key) {
-						p.check_explicitly_declared(dotted_key)!
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' key `${dotted_key.str()}` is already declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 					}
