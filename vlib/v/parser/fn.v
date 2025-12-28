@@ -259,6 +259,7 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				else {
 					.unknown
 				}
+			}
 		}
 		8 {
 			return match fn_name {
