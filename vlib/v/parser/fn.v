@@ -234,27 +234,36 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'repeat' {
 					.repeat
 				}
+				'__addr' {
+					.addr
+				}
 				else {
 					.unknown
 				}
 			}
 		}
-		else {
+		7 {
 			return match fn_name {
 				'prepend' {
 					.prepend
 				}
-				'try_push' {
-					.try_push
-				}
 				'try_pop' {
 					.try_pop
 				}
-				'sort_with_compare' {
-					.sort_with_compare
+				'reverse' {
+					.reverse
 				}
-				'sorted_with_compare' {
-					.sorted_with_compare
+				'reserve' {
+					.reserve
+				}
+				else {
+					.unknown
+				}
+		}
+		8 {
+			return match fn_name {
+				'try_push' {
+					.try_push
 				}
 				'contains' {
 					.contains
@@ -262,42 +271,24 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'pop_left' {
 					.pop_left
 				}
-				'delete_many' {
-					.delete_many
-				}
-				'delete_last' {
-					.delete_last
-				}
-				'reverse' {
-					.reverse
-				}
-				'reverse_in_place' {
-					.reverse_in_place
-				}
-				'json.decode' {
-					.jsondecode
-				}
-				'json.encode' {
-					.jsonencode
-				}
-				'type_name' {
-					.type_name
-				}
 				'type_idx' {
 					.type_idx
 				}
-				'reserve' {
-					.reserve
-				}
-				'main.main' {
-					.main_main
-				}
 				'C.va_arg' {
 					.va_arg
+				}	
+				else {
+					.unknown
 				}
-				'__addr' {
-					.addr
-				}
+		}
+		9 {
+			return match fn_name {
+				'type_name' {
+					.type_name
+				}								
+				'main.main' {
+					.main_main
+				}							
 				'JS.await' {
 					.jsawait
 				}
@@ -307,6 +298,34 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'grow_cap' {
 					.grow_cap
 				}
+				else {
+					.unknown
+				}
+			}
+		}
+		else {
+			return match fn_name {			
+				'sort_with_compare' {
+					.sort_with_compare
+				}
+				'sorted_with_compare' {
+					.sorted_with_compare
+				}				
+				'delete_many' {
+					.delete_many
+				}
+				'delete_last' {
+					.delete_last
+				}				
+				'reverse_in_place' {
+					.reverse_in_place
+				}
+				'json.decode' {
+					.jsondecode
+				}
+				'json.encode' {
+					.jsonencode
+				}				
 				else {
 					.unknown
 				}
