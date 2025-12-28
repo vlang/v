@@ -800,7 +800,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
+						if p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok) {
 							return p.parse_generic_inst_type(name, name_pos)
 						}
 						return p.find_type_or_add_placeholder(name, language)
@@ -934,9 +934,6 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 	if p.generic_type_level > generic_type_level_cutoff_limit {
 		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
 		return ast.void_type
-	}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
 	}
 	mut bs_name := name
 	mut bs_cname := name

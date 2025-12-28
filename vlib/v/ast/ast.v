@@ -903,7 +903,7 @@ pub mut:
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
-	concrete_types         []Type // concrete types, e.g. <int, string>
+	concrete_types         []Type // concrete types, e.g. [int, string]
 	concrete_list_pos      token.Pos
 	raw_concrete_types     []Type
 	free_receiver          bool // true if the receiver expression needs to be freed
