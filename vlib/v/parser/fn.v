@@ -126,6 +126,9 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 }
 
 fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
+	if fn_name.len < 3 || fn_name.len > 20 {
+		return .unknown
+	}
 	return match fn_name.len {
 		3 {
 			match fn_name {
