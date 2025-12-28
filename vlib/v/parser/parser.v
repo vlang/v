@@ -1731,7 +1731,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
-		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
+		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name != '' && (is_capital_after_last_dot
 			|| name[0].is_capital()
@@ -2343,9 +2343,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types, param_names
 	}
@@ -2396,9 +2393,6 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types
 	}
