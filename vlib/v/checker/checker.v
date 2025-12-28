@@ -2266,10 +2266,11 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							// Use the value from the previously seen values and transform to IntegerLiteral
 							if signed {
 								ref_val := iseen[ref_idx]
-								if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
-									&& ref_val in iseen {
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in iseen {
 									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed')
-									c.error('enum value `${ref_val}` already exists', field.expr.pos)
+									c.error('enum value `${ref_val}` already exists',
+										field.expr.pos)
 								}
 								iseen << ref_val
 								// Transform to IntegerLiteral for code generation
@@ -2279,10 +2280,11 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 								}
 							} else {
 								ref_val := useen[ref_idx]
-								if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
-									&& ref_val in useen {
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in useen {
 									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed')
-									c.error('enum value `${ref_val}` already exists', field.expr.pos)
+									c.error('enum value `${ref_val}` already exists',
+										field.expr.pos)
 								}
 								useen << ref_val
 								// Transform to IntegerLiteral for code generation
@@ -2293,7 +2295,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							}
 						}
 					} else {
-						c.error('the default value for an enum has to be an integer', field.expr.pos)
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
 					}
 				}
 				ast.CastExpr {
