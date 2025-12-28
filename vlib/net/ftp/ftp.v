@@ -249,6 +249,10 @@ pub fn (mut zftp FTP) get(file string) ![]u8 {
 		return error('Data connection not ready')
 	}
 	blob := dtp.read()!
+	result, _ := zftp.read()!
+	if result != complete {
+		return error('`RETR` not ok')
+	}
 	dtp.close()
 	return blob
 }
