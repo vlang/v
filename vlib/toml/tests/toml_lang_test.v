@@ -15,17 +15,13 @@ const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 const no_jq = os.getenv('VNO_JQ') == '1'
 
 // Kept for easier lookup and handling of future updates to the tests.
-// NOTE: entries in this list are valid TOML that the parser should work with, but currently does not.
+// NOTE: entries in this list, except `do_not_remove`, are valid TOML that the parser should work with, but currently does not.
 const valid_exceptions = [
 	'do_not_remove',
-	'string/escapes.toml',
-	'string/multiline-quotes.toml',
 ]
-// NOTE: entries in this list are tests of invalid TOML that should have the parser fail, but currently does not.
+// NOTE: entries in this list, except `do_not_remove`, are tests of invalid TOML that should have the parser fail, but currently does not.
 const invalid_exceptions = [
 	'do_not_remove',
-	'string/multiline-escape-space-02.toml',
-	'string/missing-quotes-array.toml',
 ]
 const valid_value_exceptions = [
 	'do_not_remove',
