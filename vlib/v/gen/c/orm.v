@@ -977,6 +977,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('.has_limit = ${node.has_limit},')
 	g.writeln('.has_offset = ${node.has_offset},')
+	g.writeln('.has_distinct = ${node.has_distinct},')
 
 	if primary_field.name != '' {
 		g.writeln('.primary = _S("${primary_field.name}"),')
