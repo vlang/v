@@ -62,7 +62,7 @@ extern void __atomic_thread_fence (int memory_order);
 #elif !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
 	static inline void atomic_thread_fence_impl(int memory_order) {
 		if (memory_order == 0) { // memory_order_relaxed
-			__asm__ volatile ("" : : : );
+			__asm__ volatile ("" : : : "memory");
 			return;
 		}
 
