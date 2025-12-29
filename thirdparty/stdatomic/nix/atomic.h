@@ -54,14 +54,38 @@ typedef volatile uintptr_t atomic_uintptr_t;
 extern void atomic_thread_fence (int memory_order);
 extern void __atomic_thread_fence (int memory_order);
 
-// workaround for tcc/aarch64 bug
-#if !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
-  #define atomic_thread_fence(order) do {} while(0)
-  #define __atomic_thread_fence(order) do {} while(0)
-#elif !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
+// workaround for tcc/aarch64
+#if !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
   #define atomic_thread_fence(order) __atomic_thread_fence(order)
 #elif !defined(__atomic_thread_fence) && defined(atomic_thread_fence)
   #define __atomic_thread_fence(order) atomic_thread_fence(order)
+#elif !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
+	static inline void atomic_thread_fence_impl(int memory_order) {
+		if (memory_order == 0) { // memory_order_relaxed
+			__asm__ volatile ("" : : : );
+			return;
+		}
+
+		#if defined(__i386__) || defined(__i386) || defined(_M_IX86)
+			__asm__ volatile ("lock orl $0x0, (%%esp)" : : : "memory");
+		#elif defined(__x86_64__) || defined(__x86_64) || defined(_M_X64)
+			__asm__ volatile ("lock orq $0x0, (%%rsp)" : : : "memory");
+		#elif defined(__arm__) || defined(__arm) || defined(_M_ARM)
+			// mcr     p15, #0, r0, c7, c10, #5
+			__asm__ volatile (".int 0xee070fba" : : : "memory");
+		#elif defined(__aarch64__) || defined(__aarch64) || defined(_M_ARM64)
+			// dmb ish
+			__asm__ volatile (".int 0xd5033bbf" : : : "memory");
+		#elif defined(__riscv) || defined(__riscv__)
+			// fence   rw,rw
+			__asm__ volatile (".int 0x0330000f" : : : "memory");
+		#else
+			__asm__ volatile ("" : : : "memory");
+		#endif
+	}
+
+	#define atomic_thread_fence(order) atomic_thread_fence_impl(order)
+	#define __atomic_thread_fence(order) atomic_thread_fence_impl(order)
 #endif
 
 // use functions for 64, 32 and 8 bit from libatomic directly
