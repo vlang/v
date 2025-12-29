@@ -213,6 +213,14 @@ fn test_parse_multipart_form_empty_body() {
 	assert files.len == 0
 }
 
+fn test_parse_multipart_form_issue_26204__do_not_panic_for_small_or_partial_forms() {
+	boundary := '----01KDN6J6BKWY9WMYWRW4MG5J59'
+	body := '${boundary}\r\nContent-Disposition: form-data; name="fooz"${boundary}--\r\n'
+	form, files := http.parse_multipart_form(body, boundary)
+	assert form.len == 0
+	assert files.len == 0
+}
+
 fn test_parse_multipart_form_issue_24974_raw() {
 	body := r'------WebKiormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="michael-sum-LEpfefQf4rU-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b--\r\n'
 	boundary := r'----WebKitFormBoundaryQcBIkwnOACVsvR8b'
