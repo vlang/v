@@ -243,7 +243,6 @@ v -o doom_v/doom.o -w -translated doom_v
 
 cc -o doomv \
   $DOOM/src/doom/doom_v/doom.o \
-
   $DOOM/src/CMakeFiles/chocolate-doom.dir/*.o \
   $DOOM/textscreen/CMakeFiles/textscreen.dir/*.o \
   $DOOM/pcsound/CMakeFiles/pcsound.dir/*.o \
