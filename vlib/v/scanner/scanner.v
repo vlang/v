@@ -1138,6 +1138,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 	return s.end_of_file()
 }
 
+@[direct_array_access]
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
 	end := int_min(s.pos + len, s.text.len)
