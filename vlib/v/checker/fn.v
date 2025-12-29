@@ -2305,7 +2305,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
 					node.pos)
 			}
-			node.receiver_type = left_type
+			node.receiver_type = left_type.clear_ref()
 			node.return_type = ast.string_type
 			if node.args.len > 0 {
 				c.error('.str() method calls should have no arguments', node.pos)
