@@ -56,7 +56,6 @@ extern void __atomic_thread_fence (int memory_order);
 
 // workaround for tcc/aarch64 bug
 #if !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
-  #warning "atomic_thread_fence replaced by no-op"
   #define atomic_thread_fence(order) do {} while(0)
   #define __atomic_thread_fence(order) do {} while(0)
 #elif !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
