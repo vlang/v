@@ -43,6 +43,7 @@ fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
 	p.expr_level++

@@ -39,6 +39,7 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub

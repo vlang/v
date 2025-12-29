@@ -212,6 +212,7 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 }
 
 // compile_file compiles the content of a file by the given path as a template
+@[direct_array_access]
 pub fn (mut p Parser) compile_template_file(template_file string, fn_name string) string {
 	mut lines := os.read_lines(template_file) or {
 		p.error('reading from ${template_file} failed')

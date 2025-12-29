@@ -630,6 +630,7 @@ fn (mut p Parser) next() {
 	p.peek_tok = p.scanner.scan()
 }
 
+@[direct_array_access]
 fn (mut p Parser) check(expected token.Kind) {
 	p.name_error = false
 	if _likely_(p.tok.kind == expected) {
@@ -2340,6 +2341,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	return sel_expr
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
@@ -2414,6 +2416,7 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 	return types
 }
 
+@[direct_array_access]
 fn (mut p Parser) string_expr() ast.Expr {
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
@@ -2899,6 +2902,7 @@ fn source_name(name string) string {
 	return name
 }
 
+@[direct_array_access]
 fn (mut p Parser) type_decl() ast.TypeDecl {
 	attrs := p.attrs
 	start_pos := p.tok.pos()
@@ -3330,7 +3334,7 @@ fn (mut p Parser) skip_scope() {
 //
 // will return a string:
 // 'MyS is a struct ...\nNote:...'
-
+@[direct_array_access]
 fn (mut p Parser) keyword_comments_to_string(keyword string, comments []ast.Comment) string {
 	mut sb := strings.new_builder(128)
 	mut is_found_keyword := false
@@ -3352,6 +3356,7 @@ fn (mut p Parser) keyword_comments_to_string(keyword string, comments []ast.Comm
 }
 
 // comments_to_string will construct all in `comments` into a string.
+@[direct_array_access]
 fn (mut p Parser) comments_to_string(comments []ast.Comment) string {
 	mut sb := strings.new_builder(128)
 	for line in comments {

@@ -81,6 +81,7 @@ fn (p &Parser) is_array_type() bool {
 	return false
 }
 
+@[direct_array_access]
 fn (mut p Parser) is_following_concrete_types() bool {
 	if !(p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok)) {
 		return false

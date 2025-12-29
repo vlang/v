@@ -7,6 +7,7 @@ import v.pref
 const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
 	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
 
+@[direct_array_access]
 fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	p.inside_asm = true
 	p.inside_asm_template = true
@@ -303,6 +304,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	p.check(.name)
 	if p.prev_tok.lit in p.scope.objects {

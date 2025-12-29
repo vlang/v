@@ -8,6 +8,7 @@ import v.token
 import v.util
 import os
 
+@[direct_array_access]
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
@@ -391,6 +392,7 @@ mut:
 	language ast.Language
 }
 
+@[direct_array_access]
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.pos()
@@ -1061,6 +1063,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.pos()
 	p.check(.key_fn)
@@ -1186,6 +1189,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 
 // part of fn declaration
 // returns: params, are_params_type_only, mut is_variadic, mut is_c_variadic
+@[direct_array_access]
 fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	p.check(.lpar)
 	mut params := []ast.Param{}

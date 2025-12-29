@@ -7,6 +7,7 @@ import v.ast
 import v.token
 import v.util
 
+@[direct_array_access]
 fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
@@ -549,6 +550,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	return struct_decl
 }
 
+@[direct_array_access]
 fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.init_generic_types = []ast.Type{}
@@ -685,6 +687,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
 	mut pos := p.tok.pos()

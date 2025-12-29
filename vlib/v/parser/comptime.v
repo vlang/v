@@ -388,6 +388,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// p.comptime_for() handles these special forms:
 	// `$for method in App.methods {`

@@ -246,6 +246,7 @@ fn (mut p Parser) parse_chan_type() ast.Type {
 	return ast.new_type(idx)
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_thread_type() ast.Type {
 	if p.peek_tok.kind == .lpar {
 		p.next()
@@ -637,6 +638,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
 	name_pos := p.tok.pos()
 	mut name := p.tok.lit
@@ -813,6 +815,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
 	mut idx := p.table.find_type_idx_fn_scoped(name, p.cur_fn_scope)
@@ -911,6 +914,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 	return ast.new_type(idx)
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {

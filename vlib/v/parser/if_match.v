@@ -268,6 +268,7 @@ fn (mut p Parser) is_only_array_type() bool {
 	return false
 }
 
+@[direct_array_access]
 fn (mut p Parser) is_match_sumtype_type() bool {
 	is_option := p.tok.kind == .question
 	name_tok := if is_option { p.peek_tok } else { p.tok }
