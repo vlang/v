@@ -278,6 +278,15 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'C.va_arg' {
 					.va_arg
 				}
+				'JS.await' {
+					.jsawait
+				}
+				'grow_len' {
+					.grow_len
+				}
+				'grow_cap' {
+					.grow_cap
+				}
 				else {
 					.unknown
 				}
@@ -290,15 +299,6 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 				'main.main' {
 					.main_main
-				}
-				'JS.await' {
-					.jsawait
-				}
-				'grow_len' {
-					.grow_len
-				}
-				'grow_cap' {
-					.grow_cap
 				}
 				else {
 					.unknown
