@@ -269,6 +269,7 @@ fn (s &Scanner) num_lit(start int, end int) string {
 	}
 }
 
+@[direct_array_access]
 fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -353,6 +354,7 @@ fn (mut s Scanner) ident_hex_number() string {
 	return number
 }
 
+@[direct_array_access]
 fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -1460,6 +1462,7 @@ fn (mut s Scanner) decode_u32erune(str string) string {
 	return ss.join('')
 }
 
+@[direct_array_access]
 fn trim_slash_line_break(s string) string {
 	mut start := 0
 	mut ret_str := s
@@ -1497,6 +1500,7 @@ fn trim_slash_line_break(s string) string {
 ///   escaped unicode 32 literals like `\U00002605`
 ///   escaped utf8 runes in hex like `\xe2\x98\x85` => (★)
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
+@[direct_array_access]
 pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
 		line_nr:  s.line_nr
