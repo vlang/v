@@ -879,6 +879,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 }
 
 // comptime_selector_type computes the selector type from an comptime var
+@[direct_array_access]
 fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	if !(node.expr is ast.Ident && node.expr.ct_expr) {
 		return node.expr_type

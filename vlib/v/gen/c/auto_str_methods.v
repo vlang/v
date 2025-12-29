@@ -1271,6 +1271,7 @@ fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
 }
 
+@[direct_array_access]
 fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 	enum_name := fn_name.all_before('__static__')
 	mut mod_enum_name := if !enum_name.contains('.') {

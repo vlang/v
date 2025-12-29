@@ -1865,6 +1865,7 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 	}
 }
 
+@[direct_array_access]
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	mut levels := 0
 	parent := g.table.type_symbols[sym.parent_idx]
@@ -3320,6 +3321,7 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 	}
 }
 
+@[direct_array_access]
 fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	g.write('__asm__')
 	if stmt.is_volatile {
@@ -4199,6 +4201,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 	g.is_void_expr_stmt = old_is_void_expr_stmt
 }
 
+@[direct_array_access]
 fn (mut g Gen) char_literal(node ast.CharLiteral) {
 	if node.val == r'\`' {
 		g.write("'`'")
@@ -7565,6 +7568,7 @@ fn c_fn_name(name_ string) string {
 	return name
 }
 
+@[direct_array_access]
 fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if typ_.has_flag(.option) {
 		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'

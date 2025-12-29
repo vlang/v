@@ -277,6 +277,7 @@ pub fn (v Builder) get_builtin_files() []string {
 	verror('`builtin/` not included on module lookup path.\nDid you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
+@[direct_array_access]
 pub fn (v &Builder) get_user_files() []string {
 	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash']
 		|| v.pref.path.ends_with('vlib/builtin') {
