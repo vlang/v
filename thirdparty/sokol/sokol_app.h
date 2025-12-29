@@ -2440,9 +2440,15 @@ MyView2* g_view;
 @end
 #if defined(SOKOL_METAL)
     @interface _sapp_macos_view : MTKView
+    #if !defined(SOKOL_NO_IME)
+    <NSTextInputClient>
+    #endif
     @end
 #elif defined(SOKOL_GLCORE)
     @interface _sapp_macos_view : NSOpenGLView
+    #if !defined(SOKOL_NO_IME)
+    <NSTextInputClient>
+    #endif
     - (void)timerFired:(id)sender;
     @end
 #endif // SOKOL_GLCORE
@@ -2463,6 +2469,13 @@ typedef struct {
     #if defined(SOKOL_METAL)
         id<MTLDevice> mtl_device;
     #endif
+    // __v_ start - IME support for Vietnamese input
+    #if !defined(SOKOL_NO_IME)
+    NSMutableAttributedString* markedText;
+    NSRange markedRange;
+    NSRange selectedRange;
+    #endif
+    // __v_ end
 } _sapp_macos_t;
 
 #endif // _SAPP_MACOS
@@ -3619,6 +3632,13 @@ _SOKOL_PRIVATE void _sapp_macos_init_cursors(void) {
     _sapp.macos.cursors[SAPP_MOUSECURSOR_RESIZE_NESW] = [NSCursor respondsToSelector:@selector(_windowResizeNorthEastSouthWestCursor)] ? [NSCursor _windowResizeNorthEastSouthWestCursor] : [NSCursor closedHandCursor];
     _sapp.macos.cursors[SAPP_MOUSECURSOR_RESIZE_ALL] = [NSCursor closedHandCursor];
     _sapp.macos.cursors[SAPP_MOUSECURSOR_NOT_ALLOWED] = [NSCursor operationNotAllowedCursor];
+    // __v_ start - Initialize IME support for Vietnamese input
+    #if !defined(SOKOL_NO_IME)
+    _sapp.macos.markedText = [[NSMutableAttributedString alloc] init];
+    _sapp.macos.markedRange = NSMakeRange(NSNotFound, 0);
+    _sapp.macos.selectedRange = NSMakeRange(0, 0);
+    #endif
+    // __v_ end
 }
 
 _SOKOL_PRIVATE void _sapp_macos_run(const sapp_desc* desc) {
@@ -4525,6 +4545,11 @@ static void _sapp_gl_make_current(void) {
         const uint32_t mods = _sapp_macos_mods(event);
         const sapp_keycode key_code = _sapp_translate_key(event.keyCode);
         _sapp_macos_key_event(SAPP_EVENTTYPE_KEY_DOWN, key_code, event.isARepeat, mods);
+
+        #if !defined(SOKOL_NO_IME)
+        // IME support
+        [self interpretKeyEvents:@[event]];
+        #else
         const NSString* chars = event.characters;
         const NSUInteger len = chars.length;
         if (len > 0) {
@@ -4540,6 +4565,8 @@ static void _sapp_gl_make_current(void) {
                 _sapp_call_event(&_sapp.event);
             }
         }
+        #endif
+
         /* if this is a Cmd+V (paste), also send a CLIPBOARD_PASTE event */
         if (_sapp.clipboard.enabled && (mods == SAPP_MODIFIER_SUPER) && (key_code == SAPP_KEYCODE_V)) {
             _sapp_init_event(SAPP_EVENTTYPE_CLIPBOARD_PASTED);
@@ -4583,6 +4610,88 @@ static void _sapp_gl_make_current(void) {
             _sapp_macos_mods(event));
     }
 }
+
+
+#if !defined(SOKOL_NO_IME)
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+    NSString* chars;
+    if ([string isKindOfClass:[NSAttributedString class]]) {
+        chars = [(NSAttributedString*)string string];
+    } else {
+        chars = (NSString*)string;
+    }
+    if (_sapp_events_enabled()) {
+        const NSUInteger len = [chars length];
+        for (NSUInteger i = 0; i < len; i++) {
+            const unichar codepoint = [chars characterAtIndex:i];
+            if ((codepoint & 0xFF00) == 0xF700) {
+                continue;
+            }
+            _sapp_init_event(SAPP_EVENTTYPE_CHAR);
+            _sapp.event.char_code = codepoint;
+            _sapp.event.key_repeat = NO; // TODO: detecting key repeat is hard in this context
+            _sapp.event.modifiers = 0; // TODO: retrieving modifiers here is tricky
+            _sapp_call_event(&_sapp.event);
+        }
+    }
+    // Clear marked text
+    [_sapp.macos.markedText setAttributedString:[[NSAttributedString alloc] init]];
+    _sapp.macos.markedRange = NSMakeRange(NSNotFound, 0);
+    _sapp.macos.selectedRange = NSMakeRange(0, 0);
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+    if ([string isKindOfClass:[NSAttributedString class]]) {
+        [_sapp.macos.markedText setAttributedString:string];
+    } else {
+        [[_sapp.macos.markedText mutableString] setString:string];
+    }
+    _sapp.macos.markedRange = NSMakeRange(0, [_sapp.macos.markedText length]);
+    _sapp.macos.selectedRange = selectedRange;
+}
+
+- (void)unmarkText {
+    [_sapp.macos.markedText setAttributedString:[[NSAttributedString alloc] init]];
+    _sapp.macos.markedRange = NSMakeRange(NSNotFound, 0);
+    _sapp.macos.selectedRange = NSMakeRange(0, 0);
+}
+
+- (BOOL)hasMarkedText {
+    return _sapp.macos.markedRange.location != NSNotFound;
+}
+
+- (NSRange)markedRange {
+    return _sapp.macos.markedRange;
+}
+
+- (NSRange)selectedRange {
+    return _sapp.macos.selectedRange;
+}
+
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText {
+    return @[];
+}
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    return nil;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point {
+    return 0;
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    // Return cursor position for IME candidate window if possible
+    // For now returning a dummy rect, but ideally should be the cursor position
+    // Since we don't have easy access to cursor screen pos here...
+    return NSMakeRect(0, 0, 0, 0); 
+}
+
+- (void)doCommandBySelector:(SEL)selector {
+    // Handle special commands here if necessary
+}
+#endif
+
 @end
 
 #endif // macOS
