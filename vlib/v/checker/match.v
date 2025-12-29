@@ -550,6 +550,7 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 	if mut expr is ast.CharLiteral {
 		return expr.val[0]

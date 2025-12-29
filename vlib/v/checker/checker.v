@@ -333,6 +333,7 @@ pub fn (mut c Checker) reorder_fns_at_the_end(mut ast_file ast.File) {
 	ast_file.stmts = stmts
 }
 
+@[direct_array_access]
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 	if !c.pref.is_repl && !c.file.is_test {
 		for _, obj in sc.objects {
@@ -593,6 +594,7 @@ fn stripped_name(name string) string {
 	return name[(idx + 1)..]
 }
 
+@[direct_array_access]
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
 	if c.pref.translated || c.file.is_translated {
 		return
@@ -1755,6 +1757,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
@@ -3062,6 +3065,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) import_stmt(node ast.Import) {
 	if node.mod == 'x.vweb' && !c.shown_xvweb_deprecation {
 		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
@@ -3649,6 +3653,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 // 	return ast.void_type
 // }
 
+@[direct_array_access]
 fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
@@ -5305,6 +5310,7 @@ fn (mut c Checker) type_error_for_operator(op_label string, types_label string, 
 		pos)
 }
 
+@[direct_array_access]
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos,
 	range_index bool, is_gated bool) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {

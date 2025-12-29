@@ -24,6 +24,7 @@ fn (mut c Checker) error_unaliased_type_name(exp_type ast.Type) string {
 }
 
 // TODO: non deferred
+@[direct_array_access]
 fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return

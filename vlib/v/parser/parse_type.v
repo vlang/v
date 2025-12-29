@@ -930,6 +930,7 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	return ast.new_type(idx).set_flag(.generic)
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.Type {
 	p.generic_type_level++
 	defer {

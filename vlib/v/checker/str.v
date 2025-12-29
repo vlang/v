@@ -203,6 +203,7 @@ const iencoding_map = {
 	`X`: LoHiLimit{'8000000000000000', 'FFFFFFFFFFFFFFFF'}
 }
 
+@[direct_array_access]
 fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	if node.val.len < 17 {
 		// can not be a too large number, no need for more expensive checks

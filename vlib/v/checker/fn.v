@@ -952,6 +952,7 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 	return false
 }
 
+@[direct_array_access]
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	is_va_arg := node.kind == .va_arg
 	is_json_decode := node.kind == .json_decode
@@ -3268,6 +3269,7 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast.Type) ast.Type {
 	method_name := node.name
 	mut ret_type := ast.void_type
@@ -3344,6 +3346,7 @@ fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_typ
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
 	left_sym := c.table.final_sym(left_type)
 	method_name := node.name
@@ -3697,6 +3700,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	return node.return_type
 }
 
+@[direct_array_access]
 fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
 	left_sym := c.table.final_sym(left_type)
 	method_name := node.name

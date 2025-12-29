@@ -6,6 +6,7 @@ import v.ast
 import v.util
 import v.token
 
+@[direct_array_access]
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {
@@ -486,6 +487,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool, mut inited_fields []string) ast.Type {
 	util.timing_start(@METHOD)
 	defer {
