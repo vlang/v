@@ -54,8 +54,12 @@ typedef volatile uintptr_t atomic_uintptr_t;
 extern void atomic_thread_fence (int memory_order);
 extern void __atomic_thread_fence (int memory_order);
 
-// workaround for tcc/aarch64
-#if !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
+// workaround for tcc/aarch64 bug
+#if !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
+  #warning "atomic_thread_fence replaced by no-op"
+  #define atomic_thread_fence(order) do {} while(0)
+  #define __atomic_thread_fence(order) do {} while(0)
+#elif !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
   #define atomic_thread_fence(order) __atomic_thread_fence(order)
 #elif !defined(__atomic_thread_fence) && defined(atomic_thread_fence)
   #define __atomic_thread_fence(order) atomic_thread_fence(order)
