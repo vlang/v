@@ -397,6 +397,28 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	return t
 }
 
+// is_all_tables returns `true` if *all* entries in `dotted_key` (`a.b.c`) are tables (`map[string]ast.Value`), `false` otherwise.
+fn is_all_tables(table map[string]ast.Value, dotted_key DottedKey) bool {
+	if dotted_key.len == 0 {
+		return false
+	}
+	unsafe {
+		mut t := &table
+		for key in dotted_key {
+			if val := t[key] {
+				if val is map[string]ast.Value {
+					t = &val
+				} else {
+					return false
+				}
+			} else {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // find_array_of_tables returns an array if found in the root table based on the parser's
 // last encountered "Array Of Tables" key.
 // If the state key does not exist find_array_in_table will return an error.
@@ -486,7 +508,7 @@ pub fn (mut p Parser) root_table() ! {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
 				continue
 			}
-			.bare, .quoted, .number, .minus, .underscore {
+			.bare, .boolean, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
 				peek_tok, _ := p.peek_over(1, keys_and_space_formatting)!
 
@@ -494,6 +516,11 @@ pub fn (mut p Parser) root_table() ! {
 					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
+
+					if is_all_tables(p.root_map, dotted_key) {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' key `${dotted_key.str()}` is already declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+					}
 
 					// NOTE these are *relatively* costly checks. In general - and by specification,
 					// TOML documents are expected to be "small" so this shouldn't be a problem. Famous last words.
@@ -631,14 +658,16 @@ pub fn (mut p Parser) root_table() ! {
 							}
 						}
 					}
-					// Disallow re-declaring the key
-					p.check_explicitly_declared(dotted_key)!
+
+					// Disallow re-defining
+					// This check also covers *implicit* table allocations from "dotted" keys, so no need for e.g: `p.check_implicitly_declared(dotted_key)!`
+					if is_all_tables(p.root_map, dotted_key) {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' key `${dotted_key.str()}` is already declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+					}
 					p.explicit_declared << dotted_key
-					// ... also check implicitly declared keys
-					p.check_implicitly_declared(dotted_key)!
 
 					p.ignore_while(space_formatting)
-
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `${dotted_key}` at "${p.tok.kind}" "${p.tok.lit}"')
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
@@ -649,17 +678,20 @@ pub fn (mut p Parser) root_table() ! {
 					key := p.key()!
 					dotted_key := DottedKey([key.str()])
 
+					p.check_implicitly_declared(dotted_key) or {
+						p.check_explicitly_declared(dotted_key) or {
+							if p.root_map[key.str()] or { ast.Bool{} } is map[string]ast.Value {
+								// NOTE: Here we "undo" the implicit-explicit special case declaration for:
+								// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+								// ... to make the following test pass:
+								// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/table/array-implicit-and-explicit-after.toml
+								p.undo_special_case_01(dotted_key)
+							}
+						}
+					}
 					// Disallow re-declaring the key
 					p.check_explicitly_declared(dotted_key)!
 					p.explicit_declared << dotted_key
-
-					// Check for footgun redeclaration in this odd way:
-					// [[tbl]]
-					// [tbl]
-					if p.last_aot == dotted_key {
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
-					}
 
 					// Allow [ key ]
 					p.ignore_while(space_formatting)
@@ -668,6 +700,7 @@ pub fn (mut p Parser) root_table() ! {
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
 					p.next()!
+					p.ignore_while(space_formatting)
 					p.expect(.rsbr)!
 					p.peek_for_correct_line_ending_or_fail()!
 				}
@@ -814,19 +847,24 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 							p.check_immutable(left_most)!
 						}
 					}
+					key_str := key.str()
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "${key_str}" = ${val} into ${ptr_str(t)}')
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "${key}" = ${val} into ${ptr_str(t)}')
-						t[key.str()] = val
+						if _ := t[key_str] {
+							return error(@MOD + '.' + @STRUCT + '.' + @FN +
+								' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+						}
+						t[key_str] = val
 					}
 				} else {
 					p.ignore_while(space_formatting)
 					key, val := p.key_value()!
 					key_str := key.str()
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "${key_str}" = ${val} into ${ptr_str(tbl)}')
 					if _ := tbl[key_str] {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 					}
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "${key_str}" = ${val} into ${ptr_str(tbl)}')
 					tbl[key_str] = val
 				}
 				previous_token_was_value = true
@@ -877,7 +915,6 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 
 	// Disallow re-declaring the key
 	p.check_explicitly_declared(dotted_key)!
-
 	unsafe {
 		if val := table[dotted_key_str] {
 			if val is []ast.Value {
@@ -926,22 +963,18 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 	p.ignore_while(all_formatting)
 
-	if dotted_key.len != 2 {
-		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
-	}
-
 	p.check_explicitly_declared(dotted_key)!
-
-	first := DottedKey([dotted_key[0]]) // The array that holds the entries
-	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
-
-	// Disallow re-declaring last part
-	p.check_explicitly_declared(last)!
+	if is_all_tables(p.root_map, dotted_key) {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' key `${dotted_key.str()}` is already declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+	}
 
 	if !p.explicit_declared_array_of_tables.has(dotted_key) {
 		p.explicit_declared_array_of_tables << dotted_key
 	}
+
+	first := DottedKey([dotted_key[0]]) // The array that holds the entries
+	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
 
 	mut t_arr := &[]ast.Value(unsafe { nil })
 	mut t_map := ast.Value(ast.Null{})
@@ -956,13 +989,19 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 				mut nm := &p.root_map
 				if first.str() in table.keys() {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'adding to existing table entry at `${first}`.')
-					nm = &(table[first.str()] as map[string]ast.Value)
+					table_first := table[first.str()]
+					if table_first !is map[string]ast.Value {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' expected a table at "${first.str()}" but got "${table_first.type_name()}" instead. (excerpt): "...${p.excerpt()}..."')
+					}
+					nm = &(table_first as map[string]ast.Value)
 				} else {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `${first}` in dotted key `${dotted_key}`.')
 					nm = &map[string]ast.Value{}
-					// We register this implicit allocation as *explicit* to be able to catch
-					// special cases like:
+					p.implicit_declared << first
+					// NOTE: We register this implicit allocation also as *explicit* to be able to catch a special case like:
 					// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+					// See also: undo_special_case_01
 					p.explicit_declared << first
 				}
 
@@ -978,12 +1017,34 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 			}
 		}
 
-		t_arr = &(table[p.last_aot.str()] as []ast.Value)
+		array_of_tables := table[p.last_aot.str()]
+		if first == p.last_aot {
+			if array_of_tables is map[string]ast.Value {
+				// NOTE: Here we "undo" the implicit-explicit special case declaration for:
+				// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+				// ... to make the following test pass:
+				// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/array/open-parent-table.toml
+				p.undo_special_case_01(dotted_key)
+				p.next()!
+				return
+			}
+		}
+
+		// Give a nicer error if the `as` cast below can not be done
+		if array_of_tables !is []ast.Value {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' nested array of tables "${p.last_aot}" expected an array but got "${table[p.last_aot.str()].type_name()}". Re-definition is not allowed. (excerpt): "...${p.excerpt()}..."')
+		}
+		t_arr = &(array_of_tables as []ast.Value)
 		t_map = ast.Value(map[string]ast.Value{})
 		if p.last_aot_index < t_arr.len {
 			t_map = t_arr[p.last_aot_index]
 		}
 
+		if t_map !is map[string]ast.Value {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' expected a table but got "${t_map.type_name()}". (excerpt): "...${p.excerpt()}..."')
+		}
 		mut t := &(t_map as map[string]ast.Value)
 
 		if val := t[last.str()] {
@@ -1127,7 +1188,7 @@ pub fn (mut p Parser) array() ![]ast.Value {
 				}
 			}
 		}
-
+		p.ignore_while(all_formatting)
 		match p.tok.kind {
 			.boolean {
 				arr << ast.Value(p.boolean()!)
@@ -1180,9 +1241,13 @@ pub fn (mut p Parser) array() ![]ast.Value {
 			.rsbr {
 				break
 			}
+			.bare {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' unexpected value "${p.tok.lit}". Array values should be quoted (with " or \') in this (excerpt): "...${p.excerpt()}..."')
+			}
 			else {
-				error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse  "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' unexpected token "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
@@ -1224,7 +1289,13 @@ pub fn (mut p Parser) key() !ast.Key {
 				pos:  pos
 			})
 		}
-		key = ast.Key(p.number())
+		num := p.number()
+		// Handles if key is `1key`
+		if p.peek_tok.kind in [.bare, .underscore, .minus] {
+			bare := p.bare()!
+			return bare
+		}
+		key = ast.Key(num)
 	} else {
 		key = match p.tok.kind {
 			.bare, .underscore, .minus {
@@ -1583,6 +1654,19 @@ pub fn (mut p Parser) time() !ast.Time {
 	return ast.Time{
 		text: lit
 		pos:  pos
+	}
+}
+
+// undo_special_case_01 reverts an operation needed for a few special case / edge case tests to pass.
+// See:
+// https://github.com/toml-lang/toml-test/blob/576db852/tests/invalid/table/array-implicit.toml
+// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/table/array-implicit-and-explicit-after.toml
+// https://github.com/toml-lang/toml-test/blob/229ce2e/tests/valid/array/open-parent-table.toml
+pub fn (mut p Parser) undo_special_case_01(dotted_key DottedKey) {
+	exd_i := p.explicit_declared.index(dotted_key)
+	if exd_i > -1 {
+		p.explicit_declared.delete(exd_i)
+		p.last_aot.clear()
 	}
 }
 

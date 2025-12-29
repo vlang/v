@@ -6,7 +6,6 @@ module c
 import os
 import v.ast
 import v.util
-import v.pref
 import v.type_resolver
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
@@ -368,29 +367,6 @@ fn (mut g Gen) gen_branch_context_string() string {
 }
 
 fn (mut g Gen) comptime_if(node ast.IfExpr) {
-	if !node.is_expr && !node.has_else && node.branches.len == 1 {
-		if node.branches[0].stmts.len == 0 {
-			// empty ifdef; result of target OS != conditional => skip
-			return
-		}
-		if !g.pref.output_cross_c {
-			if node.branches[0].cond is ast.Ident {
-				if g.pref.os == (pref.os_from_string(node.branches[0].cond.name) or {
-					pref.OS._auto
-				}) {
-					// Same target OS as the conditional...
-					// => skip the #if defined ... #endif wrapper
-					// and just generate the branch statements:
-					g.indent--
-					branch := node.branches[0]
-					g.stmts(branch.stmts)
-					g.indent++
-					g.write_defer_stmts(branch.scope, false, branch.pos)
-					return
-				}
-			}
-		}
-	}
 	tmp_var := g.new_tmp_var()
 	is_opt_or_result := node.typ.has_option_or_result()
 	is_array_fixed := g.table.final_sym(node.typ).kind == .array_fixed

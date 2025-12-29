@@ -116,7 +116,7 @@ fn (c &Checker) check_number(num ast.Number) ! {
 	mut is_bin, mut is_oct, mut is_hex := false, false, false
 	is_float := lit_lower_case.all_before('e').contains('.')
 	has_exponent_notation := lit_lower_case.contains('e')
-	float_decimal_index := lit.index('.') or { -1 }
+	float_decimal_index := lit.index_('.')
 	// mut is_first_digit := u8(lit[0]).is_digit()
 	mut ascii := u8(lit[0]).ascii_str()
 	is_sign_prefixed := lit[0] in [`+`, `-`]
@@ -471,9 +471,9 @@ pub fn (c &Checker) check_quoted(q ast.Quoted) ! {
 	lit := q.text
 	quote := q.quote.ascii_str()
 	triple_quote := quote + quote + quote
-	if q.is_multiline && lit.ends_with(triple_quote) {
+	if q.is_multiline && lit.ends_with(triple_quote) && !lit.ends_with('\\' + triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' string values like "${lit}" has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
+			' string values like "${lit}" has unbalanced quote literals `${quote}` in ...${c.excerpt(q.pos)}...')
 	}
 	c.check_quoted_escapes(q)!
 	c.check_utf8_validity(q)!
@@ -526,7 +526,7 @@ fn (c &Checker) check_quoted_escapes(q ast.Quoted) ! {
 						// Rest of line must only be space chars from this point on
 						for {
 							ch_ := s.next()
-							if ch_ == scanner.end_of_text || ch_ == `\n` {
+							if ch_ == `\n` {
 								break
 							}
 							if !(ch_ == ` ` || ch_ == `\t`) {

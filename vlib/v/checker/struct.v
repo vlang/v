@@ -31,6 +31,17 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
 		for embed in node.embeds {
+			// gotodef for embedded struct types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(embed.pos) {
+					embed_sym := c.table.sym(embed.typ)
+					pos := embed_sym.info.get_name_pos() or { token.Pos{} }
+					if pos.file_idx != -1 {
+						println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
+						exit(0)
+					}
+				}
+			}
 			embed_sym := c.table.sym(embed.typ)
 			if embed_sym.info is ast.Alias {
 				parent_sym := c.table.sym(embed_sym.info.parent_type)
@@ -174,6 +185,38 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
+			}
+			// gotodef for struct field types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(field.type_pos) {
+					sym := c.table.sym(field.typ)
+					elem_type := match sym.kind {
+						.array {
+							(sym.info as ast.Array).elem_type
+						}
+						.array_fixed {
+							(sym.info as ast.ArrayFixed).elem_type
+						}
+						else {
+							ast.Type(0)
+						}
+					}
+					if elem_type == 0 {
+						pos := sym.info.get_name_pos() or { token.Pos{} }
+						if pos.file_idx != -1 {
+							println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
+							exit(0)
+						}
+					} else {
+						elem_sym := c.table.sym(elem_type)
+						if np := elem_sym.info.get_name_pos() {
+							if np.file_idx != -1 {
+								println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+								exit(0)
+							}
+						}
+					}
+				}
 			}
 			field_is_generic := field.typ.has_flag(.generic)
 			if c.table.type_kind(field.typ) != .alias
@@ -770,6 +813,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
 							name:           'clone'
+							kind:           .clone
 							left:           init_field.expr
 							left_type:      got_type
 							is_method:      true

@@ -387,13 +387,26 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
+	// Determine the project directory when using -line-info
+	mut project_dir := ''
+	if c.pref.is_vls && c.pref.line_info != '' {
+		project_dir = if os.is_dir(c.pref.path) {
+			os.real_path(c.pref.path)
+		} else {
+			os.real_path(os.dir(c.pref.linfo.path))
+		}
+	}
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
-			if c.pref.is_vls && file.path != c.pref.path {
-				// in `vls` mode, only check the user file
+			if c.pref.is_vls && c.pref.line_info == '' && file.path != c.pref.path {
 				continue
+			}
+			if c.pref.is_vls && c.pref.line_info != '' && project_dir != '' {
+				if !os.real_path(file.path).starts_with(project_dir) {
+					continue
+				}
 			}
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
@@ -608,6 +621,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		if c.vls_is_the_node(node.type_pos) {
+			typ_str := c.table.type_to_str(node.parent_type)
+			if np := c.name_pos_gotodef(typ_str) {
+				if np.file_idx != -1 {
+					println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					exit(0)
+				}
+			}
+		}
+	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
@@ -773,6 +797,19 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		for variant in node.variants {
+			if c.vls_is_the_node(variant.pos) {
+				typ_str := c.table.type_to_str(variant.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						exit(0)
+					}
+				}
+			}
+		}
+	}
 	mut names_used := []string{}
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
@@ -847,9 +884,42 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
+		} else if sym.kind == .sum_type && sym.info is ast.SumType {
+			// Check for circular references through other sum types
+			mut visited := map[int]bool{}
+			visited[node.typ.idx()] = true
+			if c.sumtype_has_circular_ref(variant.typ, node.typ, mut visited) {
+				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
+			}
 		}
 		names_used << variant_name
 	}
+}
+
+// Checks if the sum type `sum_typ` contains `target_typ` in its variants (directly or indirectly through other sum types)
+fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Type, mut visited map[int]bool) bool {
+	sum_sym := c.table.sym(sum_typ)
+	if sum_sym.kind != .sum_type || sum_sym.info !is ast.SumType {
+		return false
+	}
+	sum_info := sum_sym.info as ast.SumType
+	for variant in sum_info.variants {
+		if variant.idx() == target_typ.idx() {
+			return true
+		}
+		// Avoid infinite recursion by tracking visited types
+		if variant.idx() in visited {
+			continue
+		}
+		variant_sym := c.table.sym(variant)
+		if variant_sym.kind == .sum_type {
+			visited[variant.idx()] = true
+			if c.sumtype_has_circular_ref(variant, target_typ, mut visited) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
@@ -2192,6 +2262,74 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							iseen, enum_imin, enum_imax)
 					}
 				}
+				ast.EnumVal {
+					// Handle `.a` shorthand syntax to reference another field from same enum
+					ref_name := if field.expr.enum_name == '' {
+						node.name
+					} else {
+						field.expr.enum_name
+					}
+					if ref_name == node.name {
+						if field.expr.val !in seen_enum_field_names {
+							c.error('`${node.name}.${field.expr.val}` should be declared before using it',
+								field.expr.pos)
+						} else {
+							// Get the index of the referenced field
+							ref_idx := seen_enum_field_names[field.expr.val]
+							// Use the value from the previously seen values and transform to IntegerLiteral
+							if signed {
+								mut was_seen := true
+								ref_val := iseen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in iseen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								iseen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							} else {
+								mut was_seen := true
+								ref_val := useen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in useen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								useen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							}
+						}
+					} else {
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
+					}
+				}
 				ast.CastExpr {
 					fe_type := c.cast_expr(mut field.expr)
 					if node.typ != fe_type {
@@ -2445,7 +2583,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.interface_decl(mut node)
 		}
 		ast.Module {
-			c.check_valid_snake_case(node.name, 'module name', node.pos)
+			module_name := node.name.all_after_last('.')
+			c.check_valid_snake_case(module_name, 'module name', node.pos)
 		}
 		ast.Return {
 			// c.returns = true

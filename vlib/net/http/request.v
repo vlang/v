@@ -323,7 +323,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			req.on_progress(req, bchunk, u64(new_len))!
 		}
 		if body_pos == 0 {
-			bidx := schunk.index('\r\n\r\n') or { -1 }
+			bidx := schunk.index_(headers_body_boundary)
 			if bidx > 0 {
 				body_buffer_offset := bidx + 4
 				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
@@ -333,7 +333,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		body_so_far := u64(new_len) - body_pos
 		if req.on_progress_body != unsafe { nil } {
 			if expected_size == 0 {
-				lidx := schunk.index('Content-Length: ') or { -1 }
+				lidx := schunk.index_('Content-Length: ')
 				if lidx > 0 {
 					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
 					if esize > 0 {
@@ -435,34 +435,44 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 
 // parse_request_head parses *only* the header of a raw HTTP request into a Request object
 pub fn parse_request_head_str(s string) !Request {
-	// TODO called by veb twice!?
-	pos0 := s.index('\n') or { 0 }
-	lines := s.split('\n')
+	pos0 := s.index_('\n')
+	if pos0 == -1 {
+		return error('malformed request: no request line found')
+	}
 	line0 := s[..pos0].trim_space()
-
 	method, target, version := parse_request_line(line0)!
 
 	// headers
 	mut header := new_header()
-	for i := 1; i < lines.len; i++ {
-		mut line := lines[i].trim_right('\r')
+	// split by newline and skip the first line (request line)
+	lines := s[pos0 + 1..].split('\n')
+
+	for line_raw in lines {
+		line := line_raw.trim_right('\r')
+
+		// IMPORTANT: HTTP headers end at the first empty line.
+		// If we hit this, we are now at the body, so we stop parsing headers.
+		if line == '' {
+			break
+		}
+
 		if !line.contains(':') {
 			continue
 		}
-		// key, value := parse_header(line)!
+
 		mut pos := parse_header_fast(line)!
 		key := line.substr_unsafe(0, pos)
-		for pos < line.len - 1 && line[pos + 1].is_space() {
-			// Skip space or tab in value name
-			pos++
+
+		// Skip space or tab after the colon
+		mut val_start := pos + 1
+		for val_start < line.len && line[val_start].is_space() {
+			val_start++
 		}
-		if pos + 1 < line.len {
-			value := line.substr_unsafe(pos + 1, line.len)
-			_, _ = key, value
-			// println('key,value=${key},${value}')
+
+		if val_start < line.len {
+			value := line.substr_unsafe(val_start, line.len)
 			header.add_custom(key, value)!
 		}
-		// header.coerce(canonicalize: true)
 	}
 
 	mut request_cookies := map[string]string{}
@@ -478,6 +488,18 @@ pub fn parse_request_head_str(s string) !Request {
 		version: version
 		cookies: request_cookies
 	}
+}
+
+const headers_body_boundary = '\r\n\r\n'
+
+// parse_request_str parses a raw HTTP request string into a Request object.
+pub fn parse_request_str(s string) !Request {
+	mut request := parse_request_head_str(s)!
+	body_pos := s.index_(headers_body_boundary)
+	if body_pos != -1 {
+		request.data = s[body_pos + headers_body_boundary.len..]
+	}
+	return request
 }
 
 fn parse_request_line(line string) !(Method, urllib.URL, Version) {

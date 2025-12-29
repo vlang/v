@@ -20,14 +20,27 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
 	} else if is_amp {
 		array_styp = g.styp(array_type.typ)
-		g.write('HEAP(${array_styp}, ')
+		if node.is_fixed && !g.inside_global_decl {
+			line := g.go_before_last_stmt()
+			tmp_var := g.new_tmp_var()
+			g.write('${array_styp} ${tmp_var} = ')
+			g.fixed_array_init(node, array_type, var_name, is_amp)
+			g.writeln(';')
+			g.write(line)
+
+			g.write('builtin__memdup((void*)&${tmp_var}, sizeof(${array_styp}))')
+		} else {
+			g.write('HEAP(${array_styp}, ')
+		}
 	}
 	len := node.exprs.len
 	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
 	if node.is_fixed || array_type.unaliased_sym.kind == .array_fixed {
-		g.fixed_array_init(node, array_type, var_name, is_amp)
-		if is_amp {
-			g.write(')')
+		if !(is_amp && !g.inside_global_decl) {
+			g.fixed_array_init(node, array_type, var_name, is_amp)
+			if is_amp {
+				g.write(')')
+			}
 		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
@@ -175,7 +188,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				} else {
 					node.elem_type
 				}
-				g.expr_with_cast(expr, expr_type, node.elem_type)
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(expr, expr_type, node.elem_type)
+				} else {
+					g.expr_with_cast(expr, expr_type, node.elem_type)
+				}
 			}
 			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
@@ -470,8 +487,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 }
 
 fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
-	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-		var_name, 0)
+	decl_var := g.fn_var_signature(expr.typ, expr.decl.return_type, expr.decl.params.map(it.typ),
+		var_name)
 	g.write('${decl_var} = ')
 	g.gen_anon_fn(mut expr)
 	g.writeln(';')
@@ -552,8 +569,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			var_sym := g.table.sym(expr.typ)
 			if var_sym.info is ast.FnType {
 				ret_elem_styp = 'voidptr'
-				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					tmp_map_expr_result_name, 0)
+				closure_var_decl = g.fn_var_signature(expr.typ, var_sym.info.func.return_type,
+					var_sym.info.func.params.map(it.typ), tmp_map_expr_result_name)
 			}
 		}
 	}

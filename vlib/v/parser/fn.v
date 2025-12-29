@@ -44,8 +44,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind in [.lt, .lsbr] {
-		// `foo<int>(10)`
+	if p.tok.kind == .lsbr {
+		// `foo[int](10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
@@ -106,6 +106,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		name_pos:           first_pos
 		args:               args
 		mod:                p.mod
+		kind:               p.call_kind(fn_name)
 		pos:                pos
 		language:           language
 		concrete_types:     concrete_types
@@ -121,6 +122,197 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		comments:           comments
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
+	}
+}
+
+fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
+	return match fn_name {
+		'str' {
+			.str
+		}
+		'keys' {
+			.keys
+		}
+		'values' {
+			.values
+		}
+		'wait' {
+			.wait
+		}
+		'free' {
+			.free
+		}
+		'slice' {
+			.slice
+		}
+		'map' {
+			.map
+		}
+		'insert' {
+			.insert
+		}
+		'prepend' {
+			.prepend
+		}
+		'try_push' {
+			.try_push
+		}
+		'try_pop' {
+			.try_pop
+		}
+		'sort_with_compare' {
+			.sort_with_compare
+		}
+		'sorted_with_compare' {
+			.sorted_with_compare
+		}
+		'sort' {
+			.sort
+		}
+		'sorted' {
+			.sorted
+		}
+		'filter' {
+			.filter
+		}
+		'any' {
+			.any
+		}
+		'all' {
+			.all
+		}
+		'count' {
+			.count
+		}
+		'clone' {
+			.clone
+		}
+		'trim' {
+			.trim
+		}
+		'clone_to_depth' {
+			.clone_to_depth
+		}
+		'contains' {
+			.contains
+		}
+		'index' {
+			.index
+		}
+		'first' {
+			.first
+		}
+		'last' {
+			.last
+		}
+		'pop_left' {
+			.pop_left
+		}
+		'pop' {
+			.pop
+		}
+		'delete' {
+			.delete
+		}
+		'delete_many' {
+			.delete_many
+		}
+		'delete_last' {
+			.delete_last
+		}
+		'drop' {
+			.drop
+		}
+		'reverse' {
+			.reverse
+		}
+		'reverse_in_place' {
+			.reverse_in_place
+		}
+		'panic' {
+			.panic
+		}
+		'json.decode' {
+			.json_decode
+		}
+		'json.encode' {
+			.json_encode
+		}
+		'json.encode_pretty' {
+			.json_encode_pretty
+		}
+		'print' {
+			.print
+		}
+		'println' {
+			.println
+		}
+		'eprint' {
+			.eprint
+		}
+		'eprintln' {
+			.eprintln
+		}
+		'close' {
+			.close
+		}
+		'pointers' {
+			.pointers
+		}
+		'repeat' {
+			.repeat
+		}
+		'type_name' {
+			.type_name
+		}
+		'type_idx' {
+			.type_idx
+		}
+		'clear' {
+			.clear
+		}
+		'reserve' {
+			.reserve
+		}
+		'move' {
+			.move
+		}
+		'main.main' {
+			.main_main
+		}
+		'main' {
+			.main
+		}
+		'C.va_arg' {
+			.va_arg
+		}
+		'__addr' {
+			.addr
+		}
+		'JS.await' {
+			.jsawait
+		}
+		'error' {
+			.error
+		}
+		'grow_len' {
+			.grow_len
+		}
+		'grow_cap' {
+			.grow_cap
+		}
+		'push_many' {
+			.push_many
+		}
+		'malloc' {
+			.malloc
+		}
+		'writeln' {
+			.writeln
+		}
+		else {
+			.unknown
+		}
 	}
 }
 
@@ -716,6 +908,7 @@ run them via `v file.v` instead',
 		name:               name
 		short_name:         short_fn_name
 		mod:                p.mod
+		kind:               p.call_kind(name)
 		stmts:              stmts
 		return_type:        return_type
 		return_type_pos:    return_type_pos
@@ -744,8 +937,10 @@ run them via `v file.v` instead',
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
 		receiver:              ast.StructField{
-			name: rec.name
-			typ:  rec.typ
+			name:     rec.name
+			typ:      rec.typ
+			type_pos: rec.type_pos
+			pos:      rec.pos
 		}
 		generic_names:         generic_names
 		receiver_pos:          rec.pos

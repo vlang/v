@@ -32,9 +32,6 @@ fn create_host(db Connection) !Host {
 }
 
 fn test_sqlite() {
-	$if !linux {
-		return
-	}
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	assert db.is_open
 	assert db.validate()!
@@ -61,12 +58,12 @@ fn test_sqlite() {
 	assert db.get_affected_rows_count() == 0
 
 	mut users := db.exec('select * from users')!
-	dump(users)
+	// dump(users)
 	assert users.len == 4
 	code := db.exec_none('vacuum')
 	assert code == 101
 	user := db.exec_one('select * from users where id = 3') or { panic(err) }
-	dump(user)
+	// dump(user)
 	assert user.vals.len == 3
 
 	db.exec("update users set name='zzzz' where name='qqqq'")!
@@ -95,7 +92,7 @@ fn test_sqlite() {
 	assert db.last_insert_rowid() == 6
 	db.commit()!
 	users = db.exec('select * from users')!
-	dump(users)
+	// dump(users)
 	assert users.len == 5
 
 	db.close() or { panic(err) }
@@ -117,9 +114,6 @@ fn test_alias_db() {
 }
 
 fn test_exec_param_many() {
-	$if !linux {
-		return
-	}
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	assert db.is_open
 	db.exec('drop table if exists users')!
@@ -135,4 +129,20 @@ fn test_exec_param_many() {
 	}
 	db.close()!
 	assert false
+}
+
+fn test_exec_param_many2() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	assert db.is_open
+	db.exec('drop table if exists users')!
+	db.exec("create table users (id integer primary key, name text default '' unique);")!
+	db.exec_param_many('insert into users (id, name) values (?, ?)', [
+		['60', 'Sam'],
+		['61', 'Foo'],
+		['62', 'Bar'],
+	])!
+	count := db.q_int('select count(*) from users')!
+	assert count == 3
+
+	db.close()!
 }

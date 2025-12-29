@@ -22,9 +22,9 @@ fn main() {
 
 	// index initializations
 	list1 := []string{len: 3, init: 'Item ${index}'}
-	list2 := []string{len: 3, init: 'Item ${it}'}
+	list2 := []string{len: 3, init: 'Item ${index}'}
 	list3 := []int{len: 3, init: index}
-	list4 := []string{len: 4, init: '${index}:${it * 2}'}
+	list4 := []string{len: 4, init: '${index}:${index * 2}'}
 	println(list1)
 	println(list2)
 	println(list1 == list2)

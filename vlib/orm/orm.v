@@ -473,6 +473,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut field_comments := map[string]string{}
 	mut index_fields := []string{}
 
+	valid_sql_field_names := fields.map(sql_field_name(it))
+
 	for attr in table.attrs {
 		match attr.name {
 			'comment' {
@@ -485,6 +487,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 					index_strings := attr.arg.split(',')
 					for i in index_strings {
 						x := i.trim_space()
+						if x !in valid_sql_field_names {
+							return error("table `${table.name}` has no field's name: `${x}`")
+						}
 						if x.len > 0 && x !in index_fields {
 							index_fields << x
 						}

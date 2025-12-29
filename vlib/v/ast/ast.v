@@ -587,6 +587,7 @@ pub:
 	name                  string // 'math.bits.normalize'
 	short_name            string // 'normalize'
 	mod                   string // 'math.bits'
+	kind                  CallKind
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
@@ -813,6 +814,71 @@ pub:
 	pos   token.Pos
 }
 
+pub enum CallKind {
+	unknown
+	str
+	wait
+	free
+	try_push
+	try_pop
+	keys
+	values
+	slice
+	map
+	insert
+	prepend
+	sort_with_compare
+	sorted_with_compare
+	sort
+	sorted
+	filter
+	any
+	all
+	count
+	clone
+	clone_to_depth
+	trim
+	contains
+	index
+	first
+	last
+	pop_left
+	pop
+	delete
+	delete_many
+	delete_last
+	drop
+	reverse
+	reverse_in_place
+	panic
+	json_decode
+	json_encode
+	json_encode_pretty
+	repeat
+	type_name
+	type_idx
+	clear
+	reserve
+	move
+	main_main
+	va_arg
+	addr
+	main
+	jsawait
+	error
+	grow_cap
+	grow_len
+	eprint
+	eprintln
+	print
+	println
+	close
+	pointers
+	push_many
+	malloc
+	writeln
+}
+
 // function or method call expr
 @[minify]
 pub struct CallExpr {
@@ -820,6 +886,7 @@ pub:
 	pos      token.Pos
 	name_pos token.Pos
 	mod      string
+	kind     CallKind
 pub mut:
 	name                   string // left.name()
 	is_method              bool
@@ -848,7 +915,7 @@ pub mut:
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
-	concrete_types         []Type // concrete types, e.g. <int, string>
+	concrete_types         []Type // concrete types, e.g. [int, string]
 	concrete_list_pos      token.Pos
 	raw_concrete_types     []Type
 	free_receiver          bool // true if the receiver expression needs to be freed
@@ -2461,6 +2528,7 @@ pub fn (e &Expr) is_lockable() bool {
 	return match e {
 		Ident { true }
 		SelectorExpr { e.expr.is_lockable() }
+		ComptimeSelector { true }
 		else { false }
 	}
 }

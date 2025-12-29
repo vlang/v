@@ -50,18 +50,19 @@ pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
 // Note, it works with `-no-parallel`, and it works when that whole expr is inside a function, like below:
 pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
+pub const pkgcmd = get_pkgcmd()
+
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const is_go_present = os.execute('go version').exit_code == 0
 
 pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
-	&& os.execute('pkg-config ruby --libs').exit_code == 0
+	&& os.execute('${pkgcmd} ruby --libs').exit_code == 0
 
 pub const is_python_present = os.execute('python --version').exit_code == 0
-	&& os.execute('pkg-config python3 --libs').exit_code == 0
+	&& os.execute('${pkgcmd} python3 --libs').exit_code == 0
 
-pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
-	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
+pub const is_sqlite3_present = get_present_sqlite()
 
 pub const all_processes = get_all_processes()
 
@@ -77,6 +78,23 @@ fn get_max_compilation_retries() int {
 
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
+}
+
+fn get_pkgcmd() string {
+	for cmd in ['pkgconf', 'pkg-config'] {
+		if os.execute('${cmd} --version').exit_code == 0 {
+			return cmd
+		}
+	}
+	return 'false'
+}
+
+fn get_present_sqlite() bool {
+	if os.user_os() == 'windows' {
+		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
+	}
+	return os.execute('sqlite3 --version').exit_code == 0
+		&& os.execute('${pkgcmd} sqlite3 --libs').exit_code == 0
 }
 
 fn get_all_processes() []string {
@@ -921,10 +939,10 @@ fn check_openssl_present() bool {
 	}
 	$if openbsd {
 		return os.execute('eopenssl35 --version').exit_code == 0
-			&& os.execute('pkg-config eopenssl35 --libs').exit_code == 0
+			&& os.execute('${pkgcmd} eopenssl35 --libs').exit_code == 0
 	} $else {
 		return os.execute('openssl --version').exit_code == 0
-			&& os.execute('pkg-config openssl --libs').exit_code == 0
+			&& os.execute('${pkgcmd} openssl --libs').exit_code == 0
 	}
 }
 

@@ -248,7 +248,9 @@ fn (mut g Gen) extern_var_ident(var ExternVar) {
 		g.cg.cg_mov64(.reg0, Number(i64(0)))
 		g.cg.cg_mov_deref(.reg0, .reg0, ast.u64_type_idx)
 	} else if g.pref.os == .macos {
-		eprintln('## TODO, macos, extern_var_ident, var: ${var}')
+		$if trace_native_todos ? {
+			eprintln('## TODO, macos, extern_var_ident, var: ${var}')
+		}
 	} else {
 		g.n_error('${@LOCATION} unsupported os for ${var}')
 	}

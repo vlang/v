@@ -1,0 +1,52 @@
+const a = 10
+const b = 20
+
+enum ExampleSigned as i8 {
+	a = a
+	b = a
+	c = .a
+	c = .c
+	d = .d
+}
+
+enum ExampleUnSigned as u8 {
+	a = a
+	b = a
+	c = .a
+	c = .c
+	d = .d
+}
+
+@[_allow_multiple_values]
+enum AllowedExampleSigned as i8 {
+	a     = a
+	b     = a
+	c     = .z
+	c     = .a
+	c     = .c
+	d     = .d
+	prev1 = .a
+	prev2 = .c
+	rec1  = .rec2
+	rec2  = .rec1
+	a     = 2
+	z     = 5
+	w     = .w
+}
+
+@[_allow_multiple_values]
+enum AllowedExampleUnSigned as u8 {
+	a     = a
+	b     = a
+	c     = .z
+	c     = .a
+	c     = .c
+	d     = .d
+	prev1 = .a
+	prev2 = .c
+	rec1  = .rec2
+	rec2  = .rec1
+	a     = 2
+	z     = 5
+	w     = .w
+}

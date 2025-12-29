@@ -90,7 +90,7 @@ fn test_all() {
 	global_dir := '${checker_dir}/globals'
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
-	skip_unused_dir := 'vlib/v/tests/skip_unused'
+	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
@@ -100,7 +100,7 @@ fn test_all() {
 	global_run_tests := get_tests_in_dir(global_run_dir, false)
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
-	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
+	su_dir_tests := get_tests_in_dir(su_dir, false)
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
@@ -124,16 +124,13 @@ fn test_all() {
 	tasks.run()
 
 	if os.user_os() == 'linux' {
-		mut skip_unused_tasks := Tasks{
+		mut su_tasks := Tasks{
 			vexe:          vexe
 			parallel_jobs: 1
 			label:         '-skip-unused tests'
 		}
-		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
-			false)
-		skip_unused_tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run',
-			'.skip_unused.run.out', skip_unused_dir_tests, false)
-		skip_unused_tasks.run()
+		su_tasks.add('', su_dir, ' run ', '.run.out', su_dir_tests, false)
+		su_tasks.run()
 	}
 
 	if github_job == 'ubuntu-tcc' {

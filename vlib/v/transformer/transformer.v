@@ -500,6 +500,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 					stmt = t.stmt(mut stmt)
 				}
 				t.index.unindent()
+				return node
 			}
 		}
 	}
@@ -1306,7 +1307,9 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		if val == '' {
 			// there is no point in appending empty strings
 			// so instead, just emit an empty statement, to be ignored by the backend
-			calls << ast.EmptyStmt{}
+			calls << ast.EmptyStmt{
+				pos: nexpr.pos
+			}
 			continue
 		}
 		mut ncall := ast.ExprStmt{
@@ -1322,6 +1325,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 				]
 			})
 			typ:  ntype
+			pos:  nexpr.pos
 		}
 		calls << ncall
 	}
@@ -1338,6 +1342,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					},
 				]
 			})
+			pos:  nexpr.pos
 		}
 		etype := original.expr_types[idx]
 		if etype.is_int() {
@@ -1352,6 +1357,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		*onode = ast.Stmt(ast.Block{
 			scope: ast.empty_scope
 			stmts: calls
+			pos:   nexpr.pos
 		})
 	}
 	return true

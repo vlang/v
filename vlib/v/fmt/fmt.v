@@ -47,6 +47,7 @@ pub mut:
 	is_index_expr            bool
 	is_mbranch_expr          bool // match a { x...y { } }
 	is_struct_init           bool
+	is_array_init            bool
 	fn_scope                 &ast.Scope = unsafe { nil }
 	wsinfix_depth            int
 	format_state             FormatState
@@ -1839,7 +1840,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		if node.has_init {
 			f.write('init: ')
+			old_is_array_init := f.is_array_init
+			f.is_array_init = true
 			f.expr(node.init_expr)
+			f.is_array_init = old_is_array_init
 		}
 		f.write('}')
 		return
@@ -2043,7 +2047,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 fn (mut f Fmt) write_static_method(name string, short_name string) {
 	if short_name.contains('.') {
-		indx := short_name.index('.') or { -1 } + 1
+		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
 	} else {
 		f.write(short_name.replace('__static__', '.').capitalize())
@@ -2358,6 +2362,8 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		name := f.short_module(node.name)
 		if node.name.contains('__static__') {
 			f.write_static_method(node.name, name)
+		} else if f.is_array_init && name == 'it' {
+			f.write('index')
 		} else {
 			f.write(name)
 		}

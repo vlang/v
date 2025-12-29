@@ -73,6 +73,7 @@ mut:
 	inside_orm               bool
 	inside_chan_decl         bool
 	inside_attr_decl         bool
+	inside_lock_exprs        bool
 	array_dim                int               // array dim parsing level
 	fixed_array_dim          int               // fixed array dim parsing level
 	or_is_handled            bool              // ignore `or` in this expression
@@ -265,6 +266,21 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
+fn should_skip_vls_file(pref_ &pref.Preferences, path string) bool {
+	if !pref_.is_vls {
+		return false
+	}
+	if pref_.line_info != '' {
+		project_dir := if os.is_dir(pref_.path) {
+			os.real_path(pref_.path)
+		} else {
+			os.real_path(os.dir(pref_.linfo.path))
+		}
+		return !os.real_path(path).starts_with(project_dir)
+	}
+	return path != pref_.path
+}
+
 pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
@@ -286,7 +302,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
 		// Otherwise we'd be parsing entire stdlib in vls mode
 		is_vls:           pref_.is_vls && path == pref_.path
-		is_vls_skip_file: pref_.is_vls && path != pref_.path
+		is_vls_skip_file: should_skip_vls_file(pref_, path)
 		scope:            &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
@@ -1715,7 +1731,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
-		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
+		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name != '' && (is_capital_after_last_dot
 			|| name[0].is_capital()
@@ -1789,7 +1805,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	} else if !known_var && (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
-		&& (!p.inside_for || p.inside_select) {
+		&& (!p.inside_for || p.inside_select) && !p.inside_lock_exprs {
 		alias_array_type := p.alias_array_type()
 		if alias_array_type != ast.void_type {
 			return p.array_init(is_option, alias_array_type)
@@ -2257,6 +2273,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
+			kind:              p.call_kind(field_name)
 			args:              args
 			name_pos:          name_pos
 			pos:               pos
@@ -2326,9 +2343,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types, param_names
 	}
@@ -2379,9 +2393,6 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types
 	}
