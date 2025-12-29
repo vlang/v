@@ -27,6 +27,7 @@ pub mut:
 	vars_printed map[string]bool // to avoid dups
 }
 
+@[direct_array_access]
 fn (mut p Preferences) parse_line_info(line string) {
 	format_err := 'wrong format, use `-line-info "file.v:24:7"'
 	vals := line.split(':')

@@ -1500,6 +1500,7 @@ pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
+@[direct_array_access]
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
 	if cached_res := t.cached_type_to_str[cache_key] {

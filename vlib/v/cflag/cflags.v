@@ -37,6 +37,7 @@ fn find_first_existing_path(remainder string, literal string) (bool, string, int
 }
 
 // expand the flag value
+@[direct_array_access]
 pub fn (cf &CFlag) eval() ?string {
 	mut value_builder := strings.new_builder(10 * cf.value.len)
 	cflag_eval_outer_loop: for i := 0; i < cf.value.len; i++ {

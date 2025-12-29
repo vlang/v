@@ -2991,6 +2991,7 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 
 // validate_type_string_is_pure_literal returns `Error` if `str` can not be converted
 // to pure literal `typ` (`i64`, `f64`, `bool`, `char` or `string`).
+@[direct_array_access]
 pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
 	if typ == bool_type {
 		if !(str == 'true' || str == 'false') {

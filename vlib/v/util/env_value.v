@@ -7,6 +7,7 @@ import os
 
 // resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
 // in `str` with the value of the env variable `$ENV_VAR_NAME`.
+@[direct_array_access]
 pub fn resolve_env_value(str string, check_for_presence bool) !string {
 	env_ident := "\$env('"
 	at := str.index(env_ident) or {

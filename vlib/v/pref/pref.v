@@ -316,6 +316,7 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	exit(tmp_result)
 }
 
+@[direct_array_access]
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	detect_musl(mut res)

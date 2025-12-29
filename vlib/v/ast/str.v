@@ -96,6 +96,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 	return f.str()
 }
 
+@[direct_array_access]
 pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
@@ -268,6 +269,7 @@ fn write_comments(comments []Comment, mut f strings.Builder) {
 	}
 }
 
+@[direct_array_access]
 fn write_comment(node Comment, mut f strings.Builder) {
 	if node.is_multi {
 		x := node.text.trim_left('\x01').trim_space()
@@ -353,6 +355,7 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 // This method creates the format specifier (including the colon) or an empty
 // string if none is needed and also returns (as bool) if the expression
 // must be enclosed in braces.
+@[direct_array_access]
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]

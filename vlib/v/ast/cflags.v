@@ -17,6 +17,7 @@ pub fn (t &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (ast.cflags) []CFlag
 // Note: clean up big time (joe-c)
+@[direct_array_access]
 pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ! {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', 'D']
 	flag_orig := cflg.trim_space()

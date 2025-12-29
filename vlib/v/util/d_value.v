@@ -7,6 +7,7 @@ const d_sig = "\$d('"
 
 // resolve_d_value replaces all occurrences of `$d('ident','value')`
 // in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
+@[direct_array_access]
 pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	start := str.index(d_sig) or { return error('no "${d_sig}...\')" could be found in "${str}"') }
 	mut i := 0

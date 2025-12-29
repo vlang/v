@@ -2024,6 +2024,7 @@ fn generic_names_push_with_filter(mut to_names []string, from_names []string) {
 	}
 }
 
+@[direct_array_access]
 pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 	mut names := []string{}
 	mut sym := t.sym(generic_type)

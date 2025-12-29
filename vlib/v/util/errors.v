@@ -145,6 +145,7 @@ pub fn set_source_for_path(path string, source string) []string {
 	return lines
 }
 
+@[direct_array_access]
 pub fn source_file_context(kind string, filepath string, pos token.Pos) []string {
 	mut clines := []string{}
 	source_lines := unsafe { cached_file2sourcelines(filepath) }

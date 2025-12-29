@@ -29,6 +29,7 @@ pub fn join_env_vflags_and_os_args() []string {
 // It supports quoted arguments, where "several little words" for example,
 // will become a *single argument* in the output.
 // The quotes can be single or double ones.
+@[direct_array_access]
 pub fn tokenize_to_args(s string) []string {
 	mut tokens := []string{}
 	mut ctoken := strings.new_builder(20)
