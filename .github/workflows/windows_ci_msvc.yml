@@ -28,7 +28,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     env:
-      VFLAGS: -cc msvc
+      VFLAGS: -cc msvc -g
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
