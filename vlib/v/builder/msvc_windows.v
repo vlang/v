@@ -313,21 +313,6 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.build_mode == .build_module {
 		// Compile only
 		a << '/c'
-	} else if v.pref.build_mode == .default_mode {
-		/*
-		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
-		alibs << '"$b"'
-		if !os.exists(b) {
-			println('`builtin.obj` not found')
-			exit(1)
-		}
-		for imp in v.ast.imports {
-			if imp == 'webview' {
-				continue
-			}
-			alibs << '"' + os.real_path( '${pref.default_module_path}/vlib/${imp}.obj' ) + '"'
-		}
-		*/
 	}
 	if v.pref.sanitize {
 		eprintln('Sanitize not supported on msvc.')
@@ -342,7 +327,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'ws2_32.lib']
-	sflags := msvc_string_flags(v.get_os_cflags())
+	sflags := v.msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
@@ -424,19 +409,27 @@ pub fn (mut v Builder) cc_msvc() {
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
-	msvc := v.cached_msvc
-	if msvc.valid == false {
+	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
+	msvc := v.cached_msvc
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	// msvc expects .obj not .o
 	path_without_o_postfix := path[..path.len - 2] // remove .o
-	mut obj_path := '${path_without_o_postfix}.obj'
+	mut obj_path := if v.pref.is_debug {
+		// compiling in debug mode (-cg / -g), should produce and use its own completely separate .obj file,
+		// since it uses /MDD . Those .obj files can not be mixed with programs/objects compiled with just /MD .
+		// See https://stackoverflow.com/questions/924830/what-is-difference-btw-md-and-mdd-in-visualstudio-c
+		'${path_without_o_postfix}.debug.obj'
+	} else {
+		'${path_without_o_postfix}.obj'
+	}
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
 		// println('$obj_path already built.')
 		return
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('${obj_path} not found, building it (with msvc)...')
 	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
@@ -444,7 +437,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	} else {
 		'${path_without_o_postfix}.cpp'
 	}
-	flags := msvc_string_flags(moduleflags)
+	flags := v.msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
 
@@ -460,13 +453,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if v.pref.is_prod {
 		if !v.pref.no_prod_options {
 			oargs << '/O2'
-			oargs << '/MD'
-			oargs << '/DNDEBUG'
-			oargs << '/DNO_DEBUGGING'
 		}
-	} else {
+	}
+	if v.pref.is_debug {
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
+	} else {
+		oargs << '/MD'
+		oargs << '/DNDEBUG'
+		oargs << '/DNO_DEBUGGING'
 	}
 	oargs << defines
 	oargs << msvc.include_paths()
@@ -482,7 +477,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	str_oargs := oargs.join(' ')
 	cmd := '"${msvc.full_cl_exe_path}" ${str_oargs}'
 	// Note: the quotes above ARE balanced.
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
@@ -511,7 +506,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
           cmd:\n${cmd}
        result:\n${res.output}')
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println(res.output)
 	}
 }
@@ -528,8 +523,7 @@ mut:
 	other_flags []string
 }
 
-// pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
-pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
+pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
@@ -564,7 +558,12 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.value.ends_with('.o') {
 			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
 			// msvc expects .obj not .o
-			other_flags << '"${flag.value}bj"'
+			path_with_no_o := flag.value[..flag.value.len - 2]
+			if v.pref.is_debug {
+				other_flags << '"${path_with_no_o}.debug.obj"'
+			} else {
+				other_flags << '"${path_with_no_o}.obj"'
+			}
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
 		} else {

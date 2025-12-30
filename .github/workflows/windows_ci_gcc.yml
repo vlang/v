@@ -1,0 +1,93 @@
+name: CI Windows GCC
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**.bat'
+      - '!**/windows_ci_gcc.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**.bat'
+      - '!**/windows_ci_gcc.yml'
+      - '!**/windows-install-sqlite.bat'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gcc-windows:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      VFLAGS: -cc gcc
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Show tool versions
+        run: |
+          gcc --version
+          pkg-config --version
+          openssl version
+          echo "Flags for openssl:"
+          pkg-config openssl --cflags
+          echo "Flags for openssl libs:"
+          pkg-config openssl --libs
+          .github/workflows/find_openssl.bat
+          echo "OpenSSL files:"
+          where.exe /R "C:\Program Files\OpenSSL" *.*
+          echo "Include files for openssl:"
+          dir "c:/Program Files/OpenSSL/include"
+          echo "Lib Include files for openssl:"
+          dir "c:/Program Files/OpenSSL/lib/VC/x64/"
+      - name: Build
+        run: |
+          .\make.bat -gcc
+          .\v.exe symlink
+          .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Test v binaries
+        run: v build-vbinaries
+      - name: All code is formatted
+        run: v -silent test-cleancode
+      - name: Test new v.c
+        run: |
+          v -o v.c cmd/v
+          gcc -Werror -municode -w v.c -lws2_32 -std=c99
+      - name: Install dependencies
+        run: |
+          v retry -- v setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Test pure V math module
+        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: v -silent test-self vlib
+      - name: Build option_test.c.v with -autofree
+        run: v -autofree vlib/v/tests/options/option_test.c.v
+      - name: Test v->js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
+      - name: Build examples
+        run: v build-examples
+      - name: v2 self compilation
+        run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: compile vdoctor.v with -prod
+        run: v -showcc -prod cmd/tools/vdoctor.v
+      - name: compile vup.v with -prod
+        run: v -showcc -prod cmd/tools/vup.v
