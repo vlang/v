@@ -1175,24 +1175,16 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 	}
 }
 
+enum SourceKind {
+	c
+	cpp
+	asm
+	unknown
+}
+
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
-	mut cfile := '${obj_path[..obj_path.len - 2]}.c'
-	mut cpp_file := false
-	if !os.exists(cfile) {
-		// Guessed C file does not exist, so it may be a CPP file
-		cfile += 'pp'
-		cpp_file = true
-	}
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	mut rebuild_reason_message := '${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
-	if os.exists(opath) {
-		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
-			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(cfile)}, rebuilding ...'
-		} else {
-			return
-		}
-	}
 	if os.exists(obj_path) {
 		// Some .o files are distributed with no source
 		// for example thirdparty\tcc\lib\openlibm.o
@@ -1200,6 +1192,29 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		// and hope that they work with any compiler...
 		os.cp(obj_path, opath) or { panic(err) }
 		return
+	}
+	base := obj_path[..obj_path.len - 2]
+
+	source_kind, source_file := if os.exists(base + '.c') {
+		SourceKind.c, base + '.c'
+	} else if os.exists(base + '.cpp') {
+		SourceKind.cpp, base + '.cpp'
+	} else if os.exists(base + '.S') {
+		SourceKind.asm, base + '.S'
+	} else {
+		SourceKind.unknown, base + '.unknown'
+	}
+	if source_kind == .unknown {
+		eprintln('> File not found: ${base}{.c,.cpp,.S}')
+		verror('build_thirdparty_obj_file only support .c, .cpp, and .S source file.')
+	}
+	mut rebuild_reason_message := '${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
+	if os.exists(opath) {
+		if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
+			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)}, rebuilding ...'
+		} else {
+			return
+		}
 	}
 	if v.pref.is_verbose {
 		println(rebuild_reason_message)
@@ -1209,15 +1224,22 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	os.chdir(v.pref.vroot) or {}
 
 	mut all_options := []string{}
-	all_options << v.pref.third_party_option
-	all_options << moduleflags.c_options_before_target()
+	if source_kind != .asm {
+		all_options << v.pref.third_party_option
+		all_options << moduleflags.c_options_before_target()
+	}
 	all_options << '-o ${v.tcc_quoted_path(opath)}'
-	all_options << '-c ${v.tcc_quoted_path(cfile)}'
-	cc_options := v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+	all_options << '-c ${v.tcc_quoted_path(source_file)}'
+	cc_options := if source_kind == .asm {
+		''
+	} else {
+		cpp_file := source_kind == .cpp
+		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+	}
 
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
 	mut ccompiler := v.pref.ccompiler
-	if cpp_file {
+	if source_kind == .cpp {
 		$if trace_thirdparty_obj_files ? {
 			println('>>> build_thirdparty_obj_files switched from compiler "${ccompiler}" to "${v.pref.cppcompiler}"')
 		}
@@ -1233,7 +1255,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		eprintln('> Failed build_thirdparty_obj_file cmd')
 		eprintln('>           mod: ${mod}')
 		eprintln('>          path: ${path}')
-		eprintln('>         cfile: ${cfile}')
+		eprintln('>   source_file: ${source_file}')
 		eprintln('> wd before cmd: ${current_folder}')
 		eprintln('> getwd for cmd: ${v.pref.vroot}')
 		eprintln('>           cmd: ${cmd}')
