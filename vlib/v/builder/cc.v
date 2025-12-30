@@ -1202,7 +1202,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	} else if os.exists(base + '.S') {
 		SourceKind.asm, base + '.S'
 	} else {
-		SourceKind.unknown, base + '.unknown'
+		SourceKind.unknown, ''
 	}
 	if source_kind == .unknown {
 		eprintln('> File not found: ${base}{.c,.cpp,.S}')
