@@ -12,9 +12,7 @@ fn (ls LocalStruct) my_method() string {
 }
 
 fn test_local_struct() {
-	mut obj := LocalStruct{
-		value: 42
-	}
+ 	mut obj := LocalStruct{value: 42}
 
 	msg := obj.my_method()
 	println(msg)
@@ -41,25 +39,25 @@ struct DeepStruct {
 		sstt struct {
 			l2 int
 		}
-		l1   int
+		l1 int
 	}
 	l0 int
 }
 
 fn test_deep_struct() {
-	deep := DeepStruct{}
+  deep := DeepStruct{}
 	nested_val := deep.st.sstt.l2
 	println(nested_val)
 
 	embedded_val := deep.LocalStruct
 	println(embedded_val)
 
-	deep_2 := DeepStruct{
-		st: struct {
+	deep_2 := DeepStruct {
+	  st: struct {
 			sstt: struct {
-				l2: deep.st.sstt.l2
+			  l2: deep.st.sstt.l2
 			}
-			l1:   deep.st.l1
+			l1: deep.st.l1
 		}
 	}
 }
@@ -71,7 +69,7 @@ enum LocalEnum {
 }
 
 fn test_local_enum() {
-	e1 := LocalEnum.first
+  e1 := LocalEnum.first
 
 	match e1 {
 		.second { println('second') }
@@ -82,7 +80,7 @@ fn test_local_enum() {
 type LocalAlias = string
 
 fn test_local_alias() {
-	casted := LocalAlias('test')
+  casted := LocalAlias('test')
 }
 
 type LocalSum = int | string
@@ -101,9 +99,7 @@ fn test_local_sum() {
 	sum_val := LocalSum(42)
 	println(sum_val)
 
-	user_sum := UserSum(TypeA{
-		a: 10
-	})
+	user_sum := UserSum(TypeA{a: 10})
 	println(user_sum)
 }
 
@@ -139,9 +135,7 @@ struct OpStruct {
 }
 
 fn (a OpStruct) + (b OpStruct) OpStruct {
-	return OpStruct{
-		val: a.val + b.val
-	}
+	return OpStruct{val: a.val + b.val}
 }
 
 fn takes_struct(param OpStruct) string {
@@ -153,6 +147,6 @@ struct ArrayElemStruct {
 }
 
 struct ContainerStruct {
-	items       []ArrayElemStruct
+	items []ArrayElemStruct
 	fixed_items [5]ArrayElemStruct
 }
