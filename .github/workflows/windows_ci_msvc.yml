@@ -25,10 +25,10 @@ concurrency:
 
 jobs:
   msvc-windows:
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 60
     env:
-      VFLAGS: -cc msvc -g
+      VFLAGS: -cc msvc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
