@@ -364,6 +364,63 @@ fn test_server_keep_alive() {
 	assert handler.request_count == 3
 }
 
+fn test_server_max_keep_alive_requests() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut handler := KeepAliveHandler{}
+	mut server := &http.Server{
+		accept_timeout:          atimeout
+		handler:                 handler
+		addr:                    '127.0.0.1:18200'
+		show_startup_message:    false
+		max_keep_alive_requests: 3 // Limit to 3 requests per connection
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	// Test that connection closes after max_keep_alive_requests
+	mut conn := net.dial_tcp('127.0.0.1:18200')!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	// Send first request
+	request1 := 'GET /test1 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	conn.write(request1.bytes())!
+	mut resp1 := read_http_response(mut conn)!
+	log.info('Response 1: ${resp1}')
+	assert resp1.contains('request #1')
+	assert resp1.to_lower().contains('connection: keep-alive')
+
+	// Send second request
+	request2 := 'GET /test2 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	conn.write(request2.bytes())!
+	mut resp2 := read_http_response(mut conn)!
+	log.info('Response 2: ${resp2}')
+	assert resp2.contains('request #2')
+	assert resp2.to_lower().contains('connection: keep-alive')
+
+	// Send third request - should get Connection: close since max is reached
+	request3 := 'GET /test3 HTTP/1.1\r\nHost: 127.0.0.1:18200\r\nConnection: keep-alive\r\n\r\n'
+	conn.write(request3.bytes())!
+	mut resp3 := read_http_response(mut conn)!
+	log.info('Response 3: ${resp3}')
+	assert resp3.contains('request #3')
+	assert resp3.to_lower().contains('connection: close'), 'Expected connection: close after max requests reached'
+
+	server.stop()
+	t.wait()
+
+	assert handler.request_count == 3
+}
+
 fn read_http_response(mut conn net.TcpConn) !string {
 	mut response := []u8{}
 	mut buf := []u8{len: 1024}
