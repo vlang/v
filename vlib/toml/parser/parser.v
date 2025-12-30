@@ -1188,7 +1188,7 @@ pub fn (mut p Parser) array() ![]ast.Value {
 				}
 			}
 		}
-
+		p.ignore_while(all_formatting)
 		match p.tok.kind {
 			.boolean {
 				arr << ast.Value(p.boolean()!)
@@ -1241,9 +1241,13 @@ pub fn (mut p Parser) array() ![]ast.Value {
 			.rsbr {
 				break
 			}
+			.bare {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' unexpected value "${p.tok.lit}". Array values should be quoted (with " or \') in this (excerpt): "...${p.excerpt()}..."')
+			}
 			else {
-				error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse  "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' unexpected token "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}

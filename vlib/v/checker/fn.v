@@ -311,6 +311,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for mut param in node.params {
+			// handle vls go to definition for parameter types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(param.type_pos) {
+					typ_str := c.table.type_to_str(param.typ)
+					if np := c.name_pos_gotodef(typ_str) {
+						if np.file_idx != -1 {
+							println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						}
+						exit(0)
+					}
+				}
+			}
 			if !c.ensure_type_exists(param.typ, param.type_pos) {
 				return
 			}
@@ -942,8 +954,8 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	is_va_arg := node.kind == .va_arg
-	is_json_decode := node.kind == .jsondecode
-	is_json_encode := node.kind == .jsonencode
+	is_json_decode := node.kind == .json_decode
+	is_json_encode := node.kind == .json_encode
 	mut fn_name := node.name
 	if node.is_static_method {
 		// resolve static call T.name()
@@ -1021,7 +1033,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .jsonencode {
+	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && node.kind == .json_encode {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
 	} else if args_len > 0 && (is_va_arg || is_json_decode) {
@@ -2293,7 +2305,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
 					node.pos)
 			}
-			node.receiver_type = left_type
+			node.receiver_type = left_type.clear_ref()
 			node.return_type = ast.string_type
 			if node.args.len > 0 {
 				c.error('.str() method calls should have no arguments', node.pos)

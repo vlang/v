@@ -198,6 +198,72 @@ const test_cases = [
 		expected:    '${mod1_text_file}:25:1'
 		description: 'Go to imported enum value definition'
 	},
+	// test_operator_overload() tests
+	TestCase{
+		name:        'operator_receiver_type'
+		line:        137
+		col:         8
+		expected:    '${test_file}:133:7'
+		description: 'Go to struct definition from operator overload receiver type'
+	},
+	TestCase{
+		name:        'operator_param_type'
+		line:        137
+		col:         22
+		expected:    '${test_file}:133:7'
+		description: 'Go to struct definition from operator overload parameter type'
+	},
+	TestCase{
+		name:        'operator_return_type'
+		line:        137
+		col:         33
+		expected:    '${test_file}:133:7'
+		description: 'Go to struct definition from operator overload return type'
+	},
+	TestCase{
+		name:        'struct_init_field_in_params_left'
+		line:        138
+		col:         23
+		expected:    '${test_file}:137:4'
+		description: 'Go to param definition from struct init variable (left fn param)'
+	},
+	TestCase{
+		name:        'struct_init_field_in_params_right'
+		line:        138
+		col:         31
+		expected:    '${test_file}:137:19'
+		description: 'Go to param definition from struct init variable (right fn param)'
+	},
+	TestCase{
+		name:        'field_selector_in_struct_init'
+		line:        138
+		col:         25
+		expected:    '${test_file}:134:1'
+		description: 'Go to field definition from selector expression in struct init value (a.val)'
+	},
+	// test_function_params() tests
+	TestCase{
+		name:        'function_param_type'
+		line:        141
+		col:         24
+		expected:    '${test_file}:133:7'
+		description: 'Go to struct definition from function parameter type'
+	},
+	// test_array_field_types() tests
+	TestCase{
+		name:        'array_elem_type_in_struct_field'
+		line:        150
+		col:         10
+		expected:    '${test_file}:145:7'
+		description: 'Go to element type definition from array type in struct field ([]ArrayElemStruct)'
+	},
+	TestCase{
+		name:        'fixed_array_elem_type_in_struct_field'
+		line:        151
+		col:         17
+		expected:    '${test_file}:145:7'
+		description: 'Go to element type definition from fixed array type in struct field ([5]ArrayElemStruct)'
+	},
 ]
 
 fn test_goto_definition() {

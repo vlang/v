@@ -446,6 +446,12 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	}
 }
 
+// clear_ref clear refs of type
+@[inline]
+pub fn (t Type) clear_ref() Type {
+	return t & ~0x00FF_0000
+}
+
 // clear option and result flags
 @[inline]
 pub fn (t Type) clear_option_and_result() Type {

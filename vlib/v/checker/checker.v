@@ -2262,6 +2262,74 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							iseen, enum_imin, enum_imax)
 					}
 				}
+				ast.EnumVal {
+					// Handle `.a` shorthand syntax to reference another field from same enum
+					ref_name := if field.expr.enum_name == '' {
+						node.name
+					} else {
+						field.expr.enum_name
+					}
+					if ref_name == node.name {
+						if field.expr.val !in seen_enum_field_names {
+							c.error('`${node.name}.${field.expr.val}` should be declared before using it',
+								field.expr.pos)
+						} else {
+							// Get the index of the referenced field
+							ref_idx := seen_enum_field_names[field.expr.val]
+							// Use the value from the previously seen values and transform to IntegerLiteral
+							if signed {
+								mut was_seen := true
+								ref_val := iseen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in iseen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								iseen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							} else {
+								mut was_seen := true
+								ref_val := useen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in useen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								useen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							}
+						}
+					} else {
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
+					}
+				}
 				ast.CastExpr {
 					fe_type := c.cast_expr(mut field.expr)
 					if node.typ != fe_type {

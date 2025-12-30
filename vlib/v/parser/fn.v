@@ -314,10 +314,10 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 					.delete_last
 				}
 				'json.decode' {
-					.jsondecode
+					.json_decode
 				}
 				'json.encode' {
-					.jsonencode
+					.json_encode
 				}
 				else {
 					.unknown

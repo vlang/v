@@ -665,8 +665,12 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		if line_segments.len < 2 {
 			continue
 		}
-		line1 := field[line_segments[1].start..line_segments[1].end]
-		line2 := field[line_segments[2].start..line_segments[2].end]
+		line1 := field#[line_segments[1].start..line_segments[1].end]
+		line2 := if line_segments.len == 2 {
+			''
+		} else {
+			field#[line_segments[2].start..line_segments[2].end]
+		}
 		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
 		name := disposition['name'] or { continue }
