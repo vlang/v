@@ -327,7 +327,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'ws2_32.lib']
-	sflags := msvc_string_flags(v.get_os_cflags())
+	sflags := v.msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
@@ -437,7 +437,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	} else {
 		'${path_without_o_postfix}.cpp'
 	}
-	flags := msvc_string_flags(moduleflags)
+	flags := v.msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
 
@@ -523,8 +523,7 @@ mut:
 	other_flags []string
 }
 
-// pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
-pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
+pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
@@ -559,7 +558,12 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.value.ends_with('.o') {
 			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
 			// msvc expects .obj not .o
-			other_flags << '"${flag.value}bj"'
+			path_with_no_o := flag.value[..flag.value.len - 2]
+			if v.pref.is_debug {
+				other_flags << '"${path_with_no_o}.debug.obj"'
+			}else {			  
+				other_flags << '"${path_with_no_o}.obj"'
+			}
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
 		} else {
