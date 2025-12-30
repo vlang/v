@@ -12,7 +12,19 @@ const fixed_time = time.new(
 
 type StringAlias = string
 type BoolAlias = bool
+type U8Alias = u8
+type U16Alias = u16
+type U32Alias = u32
+type U64Alias = u64
+type I8Alias = i8
+type I16Alias = i16
+type I32Alias = i32
+type I64Alias = i64
 type IntAlias = int
+type UsizeAlias = usize
+type IsizeAlias = isize
+type F32Alias = f32
+type F64Alias = f64
 type TimeAlias = time.Time
 type StructAlias = StructType[int]
 type EnumAlias = Enumerates
@@ -315,4 +327,29 @@ fn test_maps() {
 			}
 		}
 	}) == '{"val":{"a":{"1":1}}}'
+}
+
+struct AliasStruct {
+	f_string StringAlias = 'hello'
+	f_bool   BoolAlias   = true
+	f_u8     U8Alias     = 123
+	f_u16    U16Alias    = 456
+	f_u32    U32Alias    = 789
+	f_u64    U64Alias    = 112233
+	f_i8     I8Alias     = -123
+	f_i16    I16Alias    = -456
+	f_i32    I32Alias    = -789
+	f_i64    I64Alias    = -112233
+	f_int    IntAlias    = 7788
+	f_usize  UsizeAlias  = 9900
+	f_isize  IsizeAlias  = -9900
+	f_f32    F32Alias    = -1.5
+	f_f64    F64Alias    = 7.25
+}
+
+fn test_struct_alias() {
+	s := AliasStruct{}
+	str := json.encode(s)
+	assert str == '{"f_string":"hello","f_bool":true,"f_u8":123,"f_u16":456,"f_u32":789,"f_u64":112233,"f_i8":-123,"f_i16":-456,"f_i32":-789,"f_i64":-112233,"f_int":7788,"f_usize":9900,"f_isize":-9900,"f_f32":-1.5,"f_f64":7.25}'
+	assert json.decode[AliasStruct](str)! == s
 }
