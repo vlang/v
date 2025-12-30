@@ -424,10 +424,11 @@ pub fn (mut v Builder) cc_msvc() {
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
-	msvc := v.cached_msvc
-	if msvc.valid == false {
+	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
+	msvc := v.cached_msvc
 	// msvc expects .obj not .o
 	path_without_o_postfix := path[..path.len - 2] // remove .o
 	mut obj_path := '${path_without_o_postfix}.obj'
@@ -436,7 +437,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 		// println('$obj_path already built.')
 		return
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('${obj_path} not found, building it (with msvc)...')
 	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
@@ -482,7 +483,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	str_oargs := oargs.join(' ')
 	cmd := '"${msvc.full_cl_exe_path}" ${str_oargs}'
 	// Note: the quotes above ARE balanced.
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
@@ -511,7 +512,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
           cmd:\n${cmd}
        result:\n${res.output}')
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println(res.output)
 	}
 }
