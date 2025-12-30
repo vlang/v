@@ -313,21 +313,6 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.build_mode == .build_module {
 		// Compile only
 		a << '/c'
-	} else if v.pref.build_mode == .default_mode {
-		/*
-		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
-		alibs << '"$b"'
-		if !os.exists(b) {
-			println('`builtin.obj` not found')
-			exit(1)
-		}
-		for imp in v.ast.imports {
-			if imp == 'webview' {
-				continue
-			}
-			alibs << '"' + os.real_path( '${pref.default_module_path}/vlib/${imp}.obj' ) + '"'
-		}
-		*/
 	}
 	if v.pref.sanitize {
 		eprintln('Sanitize not supported on msvc.')
@@ -427,11 +412,18 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
-	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	msvc := v.cached_msvc
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	// msvc expects .obj not .o
 	path_without_o_postfix := path[..path.len - 2] // remove .o
-	mut obj_path := '${path_without_o_postfix}.obj'
+	mut obj_path := if v.pref.is_debug {
+		// compiling in debug mode (-cg / -g), should produce and use its own completely separate .obj file,
+		// since it uses /MDD . Those .obj files can not be mixed with programs/objects compiled with just /MD .
+		// See https://stackoverflow.com/questions/924830/what-is-difference-btw-md-and-mdd-in-visualstudio-c
+		'${path_without_o_postfix}.debug.obj'
+	} else {
+		'${path_without_o_postfix}.obj'
+	}
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
 		// println('$obj_path already built.')
@@ -461,13 +453,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if v.pref.is_prod {
 		if !v.pref.no_prod_options {
 			oargs << '/O2'
-			oargs << '/MD'
-			oargs << '/DNDEBUG'
-			oargs << '/DNO_DEBUGGING'
 		}
-	} else {
+	}
+	if v.pref.is_debug {
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
+	} else {
+		oargs << '/MD'
+		oargs << '/DNDEBUG'
+		oargs << '/DNO_DEBUGGING'
 	}
 	oargs << defines
 	oargs << msvc.include_paths()
