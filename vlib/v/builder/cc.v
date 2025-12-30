@@ -1176,6 +1176,7 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 }
 
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
 	mut cfile := '${obj_path[..obj_path.len - 2]}.c'
 	mut cpp_file := false
@@ -1218,13 +1219,13 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
 	mut ccompiler := v.pref.ccompiler
 	if cpp_file {
-		$if trace_thirdparty_obj_files ? {
+		if trace_thirdparty_obj_files {
 			println('>>> build_thirdparty_obj_files switched from compiler "${ccompiler}" to "${v.pref.cppcompiler}"')
 		}
 		ccompiler = v.pref.cppcompiler
 	}
 	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
 	res := os.execute(cmd)
@@ -1246,7 +1247,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	if v.pref.show_cc {
 		println('>> OBJECT FILE compilation cmd: ${cmd}')
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		if res.output != '' {
 			println(res.output)
 		}
