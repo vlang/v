@@ -561,7 +561,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			path_with_no_o := flag.value[..flag.value.len - 2]
 			if v.pref.is_debug {
 				other_flags << '"${path_with_no_o}.debug.obj"'
-			}else {			  
+			} else {
 				other_flags << '"${path_with_no_o}.obj"'
 			}
 		} else if flag.value.starts_with('-D') {
