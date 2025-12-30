@@ -166,6 +166,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'sort' {
 					.sort
 				}
+				'trim' {
+					.trim
+				}
 				'last' {
 					.last
 				}
@@ -187,6 +190,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			return match fn_name {
 				'count' {
 					.count
+				}
+				'print' {
+					.print
+				}
+				'close' {
+					.close
 				}
 				'slice' {
 					.slice
@@ -219,6 +228,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'values' {
 					.values
 				}
+				'eprint' {
+					.eprint
+				}
 				'sorted' {
 					.sorted
 				}
@@ -237,6 +249,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'__addr' {
 					.addr
 				}
+				'malloc' {
+					.malloc
+				}
 				else {
 					.unknown
 				}
@@ -246,6 +261,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			return match fn_name {
 				'prepend' {
 					.prepend
+				}
+				'writeln' {
+					.writeln
+				}
+				'println' {
+					.println
 				}
 				'try_pop' {
 					.try_pop
@@ -265,6 +286,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			return match fn_name {
 				'try_push' {
 					.try_push
+				}
+				'eprintln' {
+					.eprintln
+				}
+				'pointers' {
+					.pointers
 				}
 				'contains' {
 					.contains
@@ -300,6 +327,9 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				'main.main' {
 					.main_main
 				}
+				'push_many' {
+					.push_many
+				}
 				else {
 					.unknown
 				}
@@ -334,6 +364,12 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 				'reverse_in_place' {
 					.reverse_in_place
+				}
+				'json.encode_pretty' {
+					.json_encode_pretty
+				}
+				'clone_to_depth' {
+					.clone_to_depth
 				}
 				else {
 					.unknown
