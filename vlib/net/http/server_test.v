@@ -285,3 +285,123 @@ fn test_host_header_sent_to_server() {
 	dump(x)
 	assert x.body.ends_with('${ip}:${port}')
 }
+
+//
+
+struct KeepAliveHandler {
+mut:
+	request_count int
+}
+
+fn (mut handler KeepAliveHandler) handle(req http.Request) http.Response {
+	handler.request_count++
+	mut r := http.Response{
+		body: 'request #${handler.request_count}'
+	}
+	r.set_status(.ok)
+	r.set_version(req.version)
+	// Echo back the Connection header from the request if present
+	if conn := req.header.get(.connection) {
+		r.header.set(.connection, conn)
+	}
+	return r
+}
+
+fn test_server_keep_alive() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut handler := KeepAliveHandler{}
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		handler:              handler
+		addr:                 '127.0.0.1:18198'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	// Test keep-alive by sending multiple requests over a single TCP connection
+	mut conn := net.dial_tcp('127.0.0.1:18198')!
+	defer { conn.close() or {} }
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	// Send first request with Connection: keep-alive
+	request1 := 'GET /test1 HTTP/1.1\r\nHost: 127.0.0.1:18198\r\nConnection: keep-alive\r\n\r\n'
+	conn.write(request1.bytes())!
+	mut resp1 := read_http_response(mut conn)!
+	log.info('Response 1: ${resp1}')
+	assert resp1.contains('request #1')
+	assert resp1.to_lower().contains('connection: keep-alive')
+
+	// Send second request on the same connection
+	request2 := 'GET /test2 HTTP/1.1\r\nHost: 127.0.0.1:18198\r\nConnection: keep-alive\r\n\r\n'
+	conn.write(request2.bytes())!
+	mut resp2 := read_http_response(mut conn)!
+	log.info('Response 2: ${resp2}')
+	assert resp2.contains('request #2')
+	assert resp2.to_lower().contains('connection: keep-alive')
+
+	// Send third request with Connection: close to end the connection
+	request3 := 'GET /test3 HTTP/1.1\r\nHost: 127.0.0.1:18198\r\nConnection: close\r\n\r\n'
+	conn.write(request3.bytes())!
+	mut resp3 := read_http_response(mut conn)!
+	log.info('Response 3: ${resp3}')
+	assert resp3.contains('request #3')
+	assert resp3.to_lower().contains('connection: close')
+
+	server.stop()
+	t.wait()
+
+	// Verify all 3 requests were handled
+	assert handler.request_count == 3
+}
+
+fn read_http_response(mut conn net.TcpConn) !string {
+	mut response := []u8{}
+	mut buf := []u8{len: 1024}
+	mut content_length := -1
+	mut headers_end := -1
+
+	for {
+		n := conn.read(mut buf) or { break }
+		if n <= 0 {
+			break
+		}
+		response << buf[..n]
+
+		// Check if we have received all headers
+		response_str := response.bytestr()
+		if headers_end == -1 {
+			headers_end = response_str.index('\r\n\r\n') or { -1 }
+			if headers_end != -1 {
+				// Parse Content-Length from headers
+				headers := response_str[..headers_end]
+				for line in headers.split('\r\n') {
+					if line.to_lower().starts_with('content-length:') {
+						content_length = line.all_after(':').trim_space().int()
+						break
+					}
+				}
+			}
+		}
+
+		// Check if we have received the full response
+		if headers_end != -1 && content_length >= 0 {
+			body_start := headers_end + 4
+			body_received := response.len - body_start
+			if body_received >= content_length {
+				break
+			}
+		}
+	}
+
+	return response.bytestr()
+}

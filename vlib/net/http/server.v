@@ -192,28 +192,64 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 			reader.free()
 		}
 	}
-	mut req := parse_request(mut reader) or {
-		$if debug {
-			// only show in debug mode to prevent abuse
-			eprintln('error parsing request: ${err}')
+
+	for {
+		mut req := parse_request(mut reader) or {
+			$if debug {
+				// only show in debug mode to prevent abuse
+				eprintln('error parsing request: ${err}')
+			}
+			return
 		}
-		return
+
+		remote_ip := conn.peer_ip() or { '0.0.0.0' }
+		req.header.add_custom('Remote-Addr', remote_ip) or {}
+
+		mut resp := w.handler.handle(req)
+		if resp.version() == .unknown {
+			resp.set_version(req.version)
+		}
+
+		// Implemented by developers?
+		if !resp.header.contains(.content_length) {
+			resp.header.set(.content_length, '${resp.body.len}')
+		}
+
+		// Determine if connection should be kept alive
+		// HTTP/1.1 defaults to keep-alive, HTTP/1.0 defaults to close
+		req_conn := (req.header.get(.connection) or { '' }).to_lower()
+		resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
+		keep_alive := if resp_conn == 'close' {
+			false
+		} else if resp_conn == 'keep-alive' {
+			true
+		} else if req_conn == 'close' {
+			false
+		} else if req_conn == 'keep-alive' {
+			true
+		} else {
+			// Default behavior based on HTTP version
+			req.version == .v1_1
+		}
+
+		// Set Connection header in response if not already set
+		if !resp.header.contains(.connection) {
+			if keep_alive {
+				resp.header.set(.connection, 'keep-alive')
+			} else {
+				resp.header.set(.connection, 'close')
+			}
+		}
+
+		conn.write(resp.bytes()) or {
+			eprintln('error sending response: ${err}')
+			return
+		}
+
+		if !keep_alive {
+			return
+		}
 	}
-
-	remote_ip := conn.peer_ip() or { '0.0.0.0' }
-	req.header.add_custom('Remote-Addr', remote_ip) or {}
-
-	mut resp := w.handler.handle(req)
-	if resp.version() == .unknown {
-		resp.set_version(req.version)
-	}
-
-	// Implemented by developers?
-	if !resp.header.contains(.content_length) {
-		resp.header.set(.content_length, '${resp.body.len}')
-	}
-
-	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
 }
 
 // DebugHandler implements the Handler interface by echoing the request
