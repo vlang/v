@@ -55,15 +55,13 @@ extern void atomic_thread_fence (int memory_order);
 extern void __atomic_thread_fence (int memory_order);
 
 // workaround for tcc/aarch64
-#if !defined(atomic_thread_fence) && defined(__atomic_thread_fence)
-    #define atomic_thread_fence(order) __atomic_thread_fence(order)
-#elif !defined(__atomic_thread_fence) && defined(atomic_thread_fence)
-    #define __atomic_thread_fence(order) atomic_thread_fence(order)
-#elif !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)
+#if defined(__aarch64__) || defined(_M_ARM64)
     // `_V_atomic_thread_fence` is defined in `atomic.S`
     extern void _V_atomic_thread_fence(int memory_order);
     #define atomic_thread_fence(order) _V_atomic_thread_fence(order)
     #define __atomic_thread_fence(order) _V_atomic_thread_fence(order)
+#else
+    #define atomic_thread_fence(order) __atomic_thread_fence(order)
 #endif
 
 // use functions for 64, 32 and 8 bit from libatomic directly
