@@ -627,12 +627,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			unsafe { decoder.decode_number(&val)! }
-		} else if value_info.value_kind == .string {
-			// recheck if string contains number
-			decoder.checker_idx = value_info.position + 1
-			decoder.check_number()!
-
-			unsafe { decoder.decode_number(&val)! }
 		} else {
 			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
@@ -856,15 +850,7 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
-	mut number_info := decoder.current_node.value
-
-	if decoder.json[number_info.position] == `"` { // fake number
-		number_info = ValueInfo{
-			position: number_info.position + 1
-			length:   number_info.length - 2
-		}
-	}
-
+	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {
 		i8 { *val = strconv.atoi8(str)! }

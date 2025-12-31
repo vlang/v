@@ -166,22 +166,23 @@ fn test_number_boundaries() {
 	println('✓ Boundary values test passed')
 }
 
-fn test_fake_numbers() {
-	// Test quoted numbers (fake numbers)
-	fake_number_cases := [
-		'{"val1": "123", "val2": "45"}', // Fully quoted
-		'{"val1": 123, "val2": "45"}', // Mixed format
-		'{"val1": "255", "val2": 0}', // Boundary value as string
+fn test_quoted_numbers_should_fail() {
+	// Test that quoted numbers (strings containing numbers) are rejected.
+	// According to JSON spec, numbers must be unquoted.
+	quoted_number_cases := [
+		'{"val1": "123", "val2": "45"}', // Fully quoted - should fail
+		'{"val1": 123, "val2": "45"}', // Mixed format - should fail (val2 is quoted)
+		'{"val1": "255", "val2": 0}', // val1 is quoted - should fail
 	]!
 
-	for case in fake_number_cases {
-		result := json.decode[JsonU8](case) or {
-			panic('Fake number decoding failed: ${err}, input: ${case}')
+	for case in quoted_number_cases {
+		json.decode[JsonU8](case) or {
+			// Expected: decoding should fail for quoted numbers
+			continue
 		}
-		assert result.val1 >= 0 && result.val1 <= 255
-		assert result.val2 >= 0 && result.val2 <= 255
+		panic('Expected decoding to fail for quoted number but succeeded: ${case}')
 	}
-	println('✓ Fake numbers (quoted numbers) test passed')
+	println('✓ Quoted numbers correctly rejected test passed')
 }
 
 fn test_error_conditions() {
