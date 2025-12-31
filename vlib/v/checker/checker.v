@@ -6073,6 +6073,9 @@ fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guess
 }
 
 fn (c &Checker) check_import_sym_conflict(ident string) bool {
+	if ident == '_' {
+		return false
+	}
 	for import_sym in c.file.imports {
 		// Check if alias exists or not
 		if !import_sym.alias.is_blank() {
