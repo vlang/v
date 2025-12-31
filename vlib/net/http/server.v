@@ -29,14 +29,15 @@ pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string        = ':${default_server_port}'
-	handler            Handler       = DebugHandler{}
-	read_timeout       time.Duration = 30 * time.second
-	write_timeout      time.Duration = 30 * time.second
-	accept_timeout     time.Duration = 30 * time.second
-	pool_channel_slots int           = 1024
-	worker_num         int           = runtime.nr_jobs()
-	listener           net.TcpListener
+	addr                    string        = ':${default_server_port}'
+	handler                 Handler       = DebugHandler{}
+	read_timeout            time.Duration = 30 * time.second
+	write_timeout           time.Duration = 30 * time.second
+	accept_timeout          time.Duration = 30 * time.second
+	pool_channel_slots      int           = 1024
+	worker_num              int           = runtime.nr_jobs()
+	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
+	listener                net.TcpListener
 
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
@@ -77,7 +78,7 @@ pub fn (mut s Server) listen_and_serve() {
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_handler_worker(wid, ch, s.handler)
+		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
 	}
 
 	if s.show_startup_message {
@@ -159,17 +160,19 @@ pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
 }
 
 struct HandlerWorker {
-	id int
-	ch chan &net.TcpConn
+	id                      int
+	ch                      chan &net.TcpConn
+	max_keep_alive_requests int
 pub mut:
 	handler Handler
 }
 
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler) thread {
+fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int) thread {
 	mut w := &HandlerWorker{
-		id:      wid
-		ch:      ch
-		handler: handler
+		id:                      wid
+		ch:                      ch
+		handler:                 handler
+		max_keep_alive_requests: max_keep_alive_requests
 	}
 	return spawn w.process_requests()
 }
@@ -192,28 +195,72 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 			reader.free()
 		}
 	}
-	mut req := parse_request(mut reader) or {
-		$if debug {
-			// only show in debug mode to prevent abuse
-			eprintln('error parsing request: ${err}')
+
+	mut request_count := 0
+	for {
+		mut req := parse_request(mut reader) or {
+			$if debug {
+				// only show in debug mode to prevent abuse
+				eprintln('error parsing request: ${err}')
+			}
+			return
 		}
-		return
+		request_count++
+
+		remote_ip := conn.peer_ip() or { '0.0.0.0' }
+		req.header.add_custom('Remote-Addr', remote_ip) or {}
+
+		mut resp := w.handler.handle(req)
+		if resp.version() == .unknown {
+			resp.set_version(req.version)
+		}
+
+		// Implemented by developers?
+		if !resp.header.contains(.content_length) {
+			resp.header.set(.content_length, '${resp.body.len}')
+		}
+
+		// Check if max keep-alive requests limit reached
+		max_reached := w.max_keep_alive_requests > 0 && request_count >= w.max_keep_alive_requests
+
+		// Determine if connection should be kept alive
+		// HTTP/1.1 defaults to keep-alive, HTTP/1.0 defaults to close
+		req_conn := (req.header.get(.connection) or { '' }).to_lower()
+		resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
+		keep_alive := if max_reached {
+			false
+		} else if resp_conn == 'close' {
+			false
+		} else if resp_conn == 'keep-alive' {
+			true
+		} else if req_conn == 'close' {
+			false
+		} else if req_conn == 'keep-alive' {
+			true
+		} else {
+			// Default behavior based on HTTP version
+			req.version == .v1_1
+		}
+
+		// Set Connection header in response
+		// Always override if max requests reached, otherwise only set if not already present
+		if max_reached || !resp.header.contains(.connection) {
+			if keep_alive {
+				resp.header.set(.connection, 'keep-alive')
+			} else {
+				resp.header.set(.connection, 'close')
+			}
+		}
+
+		conn.write(resp.bytes()) or {
+			eprintln('error sending response: ${err}')
+			return
+		}
+
+		if !keep_alive {
+			return
+		}
 	}
-
-	remote_ip := conn.peer_ip() or { '0.0.0.0' }
-	req.header.add_custom('Remote-Addr', remote_ip) or {}
-
-	mut resp := w.handler.handle(req)
-	if resp.version() == .unknown {
-		resp.set_version(req.version)
-	}
-
-	// Implemented by developers?
-	if !resp.header.contains(.content_length) {
-		resp.header.set(.content_length, '${resp.body.len}')
-	}
-
-	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
 }
 
 // DebugHandler implements the Handler interface by echoing the request
