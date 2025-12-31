@@ -876,7 +876,10 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		u32 { *val = strconv.atou32(str)! }
 		u64 { *val = strconv.atou64(str)! }
 		int { *val = strconv.atoi(str)! }
-		$float { *val = T(strconv.atof_quick(str)) }
+		isize { *val = isize(strconv.atoi64(str)!) }
+		usize { *val = usize(strconv.atou64(str)!) }
+		f32 { *val = f32(strconv.atof_quick(str)) }
+		f64 { *val = strconv.atof_quick(str) }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
 	}
 }

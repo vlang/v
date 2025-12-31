@@ -47,6 +47,7 @@ pub mut:
 	is_index_expr            bool
 	is_mbranch_expr          bool // match a { x...y { } }
 	is_struct_init           bool
+	is_array_init            bool
 	fn_scope                 &ast.Scope = unsafe { nil }
 	wsinfix_depth            int
 	format_state             FormatState
@@ -1839,7 +1840,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		if node.has_init {
 			f.write('init: ')
+			old_is_array_init := f.is_array_init
+			f.is_array_init = true
 			f.expr(node.init_expr)
+			f.is_array_init = old_is_array_init
 		}
 		f.write('}')
 		return
@@ -2358,6 +2362,8 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		name := f.short_module(node.name)
 		if node.name.contains('__static__') {
 			f.write_static_method(node.name, name)
+		} else if f.is_array_init && name == 'it' {
+			f.write('index')
 		} else {
 			f.write(name)
 		}
@@ -3076,6 +3082,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 		f.write('\tinsert ')
 	} else {
 		f.write('\tselect ')
+	}
+	if node.has_distinct {
+		f.write('distinct ')
 	}
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name

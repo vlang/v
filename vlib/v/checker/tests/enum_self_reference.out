@@ -1,0 +1,132 @@
+vlib/v/checker/tests/enum_self_reference.vv:6:6: error: enum value `10` already exists
+    4 | enum ExampleSigned as i8 {
+    5 |     a = a
+    6 |     b = a
+      |         ^
+    7 |     c = .a
+    8 |     c = .c
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed
+vlib/v/checker/tests/enum_self_reference.vv:7:6: error: enum value `10` already exists
+    5 |     a = a
+    6 |     b = a
+    7 |     c = .a
+      |         ~~
+    8 |     c = .c
+    9 |     d = .d
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed
+vlib/v/checker/tests/enum_self_reference.vv:8:2: error: duplicate enum field name `c`
+    6 |     b = a
+    7 |     c = .a
+    8 |     c = .c
+      |     ^
+    9 |     d = .d
+   10 | }
+vlib/v/checker/tests/enum_self_reference.vv:9:6: error: enum value `d` is not allowed to reference itself
+    7 |     c = .a
+    8 |     c = .c
+    9 |     d = .d
+      |         ~~
+   10 | }
+   11 |
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed
+vlib/v/checker/tests/enum_self_reference.vv:14:6: error: enum value `10` already exists
+   12 | enum ExampleUnSigned as u8 {
+   13 |     a = a
+   14 |     b = a
+      |         ^
+   15 |     c = .a
+   16 |     c = .c
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed
+vlib/v/checker/tests/enum_self_reference.vv:15:6: error: enum value `10` already exists
+   13 |     a = a
+   14 |     b = a
+   15 |     c = .a
+      |         ~~
+   16 |     c = .c
+   17 |     d = .d
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed
+vlib/v/checker/tests/enum_self_reference.vv:16:2: error: duplicate enum field name `c`
+   14 |     b = a
+   15 |     c = .a
+   16 |     c = .c
+      |     ^
+   17 |     d = .d
+   18 | }
+vlib/v/checker/tests/enum_self_reference.vv:17:6: error: enum value `d` is not allowed to reference itself
+   15 |     c = .a
+   16 |     c = .c
+   17 |     d = .d
+      |         ~~
+   18 | }
+   19 |
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed
+vlib/v/checker/tests/enum_self_reference.vv:24:10: error: `AllowedExampleSigned.z` should be declared before using it
+   22 |     a     = a
+   23 |     b     = a
+   24 |     c     = .z
+      |             ~~
+   25 |     c     = .a
+   26 |     c     = .c
+vlib/v/checker/tests/enum_self_reference.vv:25:2: error: duplicate enum field name `c`
+   23 |     b     = a
+   24 |     c     = .z
+   25 |     c     = .a
+      |     ^
+   26 |     c     = .c
+   27 |     d     = .d
+vlib/v/checker/tests/enum_self_reference.vv:26:2: error: duplicate enum field name `c`
+   24 |     c     = .z
+   25 |     c     = .a
+   26 |     c     = .c
+      |     ^
+   27 |     d     = .d
+   28 |     prev1 = .a
+vlib/v/checker/tests/enum_self_reference.vv:30:10: error: `AllowedExampleSigned.rec2` should be declared before using it
+   28 |     prev1 = .a
+   29 |     prev2 = .c
+   30 |     rec1  = .rec2
+      |             ~~~~~
+   31 |     rec2  = .rec1
+   32 |     a     = 2
+vlib/v/checker/tests/enum_self_reference.vv:32:2: error: duplicate enum field name `a`
+   30 |     rec1  = .rec2
+   31 |     rec2  = .rec1
+   32 |     a     = 2
+      |     ^
+   33 |     z     = 5
+   34 |     w     = .w
+vlib/v/checker/tests/enum_self_reference.vv:41:10: error: `AllowedExampleUnSigned.z` should be declared before using it
+   39 |     a     = a
+   40 |     b     = a
+   41 |     c     = .z
+      |             ~~
+   42 |     c     = .a
+   43 |     c     = .c
+vlib/v/checker/tests/enum_self_reference.vv:42:2: error: duplicate enum field name `c`
+   40 |     b     = a
+   41 |     c     = .z
+   42 |     c     = .a
+      |     ^
+   43 |     c     = .c
+   44 |     d     = .d
+vlib/v/checker/tests/enum_self_reference.vv:43:2: error: duplicate enum field name `c`
+   41 |     c     = .z
+   42 |     c     = .a
+   43 |     c     = .c
+      |     ^
+   44 |     d     = .d
+   45 |     prev1 = .a
+vlib/v/checker/tests/enum_self_reference.vv:47:10: error: `AllowedExampleUnSigned.rec2` should be declared before using it
+   45 |     prev1 = .a
+   46 |     prev2 = .c
+   47 |     rec1  = .rec2
+      |             ~~~~~
+   48 |     rec2  = .rec1
+   49 |     a     = 2
+vlib/v/checker/tests/enum_self_reference.vv:49:2: error: duplicate enum field name `a`
+   47 |     rec1  = .rec2
+   48 |     rec2  = .rec1
+   49 |     a     = 2
+      |     ^
+   50 |     z     = 5
+   51 |     w     = .w

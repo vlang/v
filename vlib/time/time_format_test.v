@@ -89,3 +89,10 @@ fn test_utc_string() {
 fn test_http_header_string() {
 	assert 'Fri, 11 Jul 1980 21:23:42 GMT' == time_to_test.http_header_string()
 }
+
+fn test_push_to_http_header() {
+	mut http1_1_buffer := 'HTTP/1.1 200 OK\r\nDate: '.bytes()
+	time_to_test.push_to_http_header(mut http1_1_buffer)
+
+	assert http1_1_buffer.bytestr() == 'HTTP/1.1 200 OK\r\nDate: Fri, 11 Jul 1980 21:23:42 GMT'
+}

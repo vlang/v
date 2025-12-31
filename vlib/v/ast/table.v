@@ -84,7 +84,7 @@ pub mut:
 	panic_npanics      int
 	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
-	cur_concrete_types []Type // current concrete types, e.g. <int, string>
+	cur_concrete_types []Type // current concrete types, e.g. [int, string]
 	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
@@ -2327,7 +2327,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					}
 				}
 			}
-			mut all_methods := unsafe { ts.methods }
+			mut all_methods := ts.methods.clone()
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
@@ -2352,6 +2352,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			mut ts_copy := t.sym(idx_to_type(new_idx))
 			for method in all_methods {
 				ts_copy.register_method(method)
+			}
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2485,7 +2488,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 							sym.register_method(method)
 						}
-						mut all_methods := unsafe { parent.methods }
+						mut all_methods := parent.methods.clone()
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {

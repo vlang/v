@@ -414,6 +414,11 @@ pub fn (a array) to_number_array() JS.Array {
 	return tmp
 }
 
+// push_many - appends multiple values to the end of the array.
+pub fn (mut a array) push_many(val voidptr, size int) {
+	a.insert_many(a.len, val, size)
+}
+
 type EveryFn = fn (JS.Number, JS.Number) JS.Boolean
 
 type BigEveryFn = fn (JS.BigInt, JS.Number) JS.Boolean
