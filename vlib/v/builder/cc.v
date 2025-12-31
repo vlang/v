@@ -1227,7 +1227,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	cc_options := if source_kind == .asm {
 		'-o ${v.tcc_quoted_path(opath)} -c ${v.tcc_quoted_path(source_file)}'
 	} else {
-		mut all_options := []string{}
+		mut all_options := []string{cap: 4}
 		all_options << v.pref.third_party_option
 		all_options << moduleflags.c_options_before_target()
 		all_options << '-o ${v.tcc_quoted_path(opath)}'
