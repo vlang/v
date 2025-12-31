@@ -102,7 +102,7 @@ fn main() {
 	}
 	mut lines := os.read_lines(log_txt)!
 	// Trim everything before current version, commit "(tag: 0.4.4) V 0.4.4"
-	mut prev_version := get_prev_version(version)
+	mut prev_version := '0.4.12'// get_prev_version(version)
 	println('prev version=${prev_version}')
 	for i, line in lines {
 		if line == ('V ${prev_version}') {
