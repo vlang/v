@@ -11,6 +11,11 @@ $if windows {
 	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 
+$if tinyc {
+	// if tinyc not defined `atomic_thread_fence`, we need to link with `atomic.o`
+	#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.o
+}
+
 $if linux {
 	$if tinyc {
 		$if amd64 {
