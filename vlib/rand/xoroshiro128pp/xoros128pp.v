@@ -48,8 +48,7 @@ pub fn (mut rng XOROS128PPRNG) u8() u8 {
 	ans := rng.u64()
 	rng.buffer = ans >> 8
 	rng.bytes_left = 7
-	value := u8(ans)
-	return value
+	return u8(ans)
 }
 
 // u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
@@ -62,7 +61,7 @@ pub fn (mut rng XOROS128PPRNG) u16() u16 {
 		return value
 	}
 	ans := rng.u64()
-	rng.buffer = u32(ans >> 16)
+	rng.buffer = ans >> 16
 	rng.bytes_left = 6
 	return u16(ans)
 }
