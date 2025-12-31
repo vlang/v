@@ -255,6 +255,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.key_in, .not_in {
+			if left_type.has_flag(.option) || left_type.has_flag(.result) {
+				option_or_result := if left_type.has_flag(.option) { 'Option' } else { 'Result' }
+				c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
+					left_pos)
+			}
 			match right_final_sym.kind {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface] {
@@ -313,18 +318,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('`${node.op.str()}` can only be used with arrays and maps',
 							node.pos)
 					}
-				}
-			}
-			if mut node.left is ast.CallExpr {
-				if node.left.return_type.has_flag(.option)
-					|| node.left.return_type.has_flag(.result) {
-					option_or_result := if node.left.return_type.has_flag(.option) {
-						'option'
-					} else {
-						'result'
-					}
-					c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
-						left_pos)
 				}
 			}
 			node.promoted_type = ast.bool_type
