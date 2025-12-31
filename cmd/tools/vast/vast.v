@@ -36,7 +36,7 @@ fn main() {
 	fp.usage_example('-w demo.v    generate demo.json file, and watch for changes.')
 	fp.usage_example('-c demo.v    generate demo.json *and* a demo.c file, and watch for changes.')
 	fp.usage_example('-p demo.v    print the json output to stdout.')
-	fp.usage_example('-n demo.v    do NOT show the properties having default values, like false for bools, 0 for ints etc.')
+	fp.usage_example('-s demo.v    do NOT show the properties having default values, like false for bools, 0 for ints etc.')
 	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
 	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
 	fp.description('Pass -p to see it instead.')
