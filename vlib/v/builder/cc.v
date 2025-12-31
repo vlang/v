@@ -1224,16 +1224,14 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	current_folder := os.getwd()
 	os.chdir(v.pref.vroot) or {}
 
-	mut all_options := []string{}
-	if source_kind != .asm {
+	cc_options := if source_kind == .asm {
+		'-o ${v.tcc_quoted_path(opath)} -c ${v.tcc_quoted_path(source_file)}'
+	} else {
+		mut all_options := []string{cap: 4}
 		all_options << v.pref.third_party_option
 		all_options << moduleflags.c_options_before_target()
-	}
-	all_options << '-o ${v.tcc_quoted_path(opath)}'
-	all_options << '-c ${v.tcc_quoted_path(source_file)}'
-	cc_options := if source_kind == .asm {
-		''
-	} else {
+		all_options << '-o ${v.tcc_quoted_path(opath)}'
+		all_options << '-c ${v.tcc_quoted_path(source_file)}'
 		cpp_file := source_kind == .cpp
 		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
 	}
