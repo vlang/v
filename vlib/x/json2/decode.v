@@ -41,9 +41,20 @@ mut:
 	is_decoded bool
 }
 
+// DecodeParams contains parameters for JSON decoding.
+@[params]
+pub struct DecodeParams {
+pub:
+	// In strict mode, quoted strings are not accepted as numbers.
+	// For example, '"123"' will fail to decode as int in strict mode,
+	// but will succeed in default mode.
+	strict bool
+}
+
 // Decoder represents a JSON decoder.
 struct Decoder {
-	json string // json is the JSON data to be decoded.
+	json   string // json is the JSON data to be decoded.
+	strict bool   // strict mode rejects quoted strings as numbers
 mut:
 	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
@@ -271,8 +282,17 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
-@[manualfree]
+// By default, accepts quoted strings as numbers for compatibility.
+// Use `decode2` with `strict: true` for strict JSON spec compliance.
 pub fn decode[T](val string) !T {
+	return decode2[T](val, DecodeParams{})
+}
+
+// decode2 decodes a JSON string into a specified type with configurable parameters.
+// In strict mode, quoted strings are not accepted as numbers (JSON spec compliant).
+// In default mode, quoted strings like '"123"' are accepted as numbers for compatibility.
+@[manualfree]
+pub fn decode2[T](val string, params DecodeParams) !T {
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -281,7 +301,8 @@ pub fn decode[T](val string) !T {
 		}
 	}
 	mut decoder := Decoder{
-		json: val
+		json:   val
+		strict: params.strict
 	}
 
 	decoder.check_json_format()!
@@ -627,6 +648,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			unsafe { decoder.decode_number(&val)! }
+		} else if value_info.value_kind == .string && !decoder.strict {
+			// In default mode, try to parse quoted strings as numbers
+			val = decoder.decode_number_from_string[T]()!
 		} else {
 			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
@@ -867,5 +891,45 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		f32 { *val = f32(strconv.atof_quick(str)) }
 		f64 { *val = strconv.atof_quick(str) }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
+	}
+}
+
+// decode_number_from_string parses a number from a JSON string value (default mode).
+// This extracts the content between quotes and parses it as a number.
+fn (mut decoder Decoder) decode_number_from_string[T]() !T {
+	string_info := decoder.current_node.value
+	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
+	if string_info.length < 2 {
+		return error('invalid string for number conversion')
+	}
+	str := decoder.json[string_info.position + 1..string_info.position + string_info.length - 1]
+	$if T.unaliased_typ is i8 {
+		return T(strconv.atoi8(str)!)
+	} $else $if T.unaliased_typ is i16 {
+		return T(strconv.atoi16(str)!)
+	} $else $if T.unaliased_typ is i32 {
+		return T(strconv.atoi32(str)!)
+	} $else $if T.unaliased_typ is i64 {
+		return T(strconv.atoi64(str)!)
+	} $else $if T.unaliased_typ is u8 {
+		return T(strconv.atou8(str)!)
+	} $else $if T.unaliased_typ is u16 {
+		return T(strconv.atou16(str)!)
+	} $else $if T.unaliased_typ is u32 {
+		return T(strconv.atou32(str)!)
+	} $else $if T.unaliased_typ is u64 {
+		return T(strconv.atou64(str)!)
+	} $else $if T.unaliased_typ is int {
+		return T(strconv.atoi(str)!)
+	} $else $if T.unaliased_typ is isize {
+		return T(isize(strconv.atoi64(str)!))
+	} $else $if T.unaliased_typ is usize {
+		return T(usize(strconv.atou64(str)!))
+	} $else $if T.unaliased_typ is f32 {
+		return T(f32(strconv.atof_quick(str)))
+	} $else $if T.unaliased_typ is f64 {
+		return T(strconv.atof_quick(str))
+	} $else {
+		return error('`decode_number_from_string` cannot decode ${T.name} type')
 	}
 }

@@ -166,23 +166,30 @@ fn test_number_boundaries() {
 	println('✓ Boundary values test passed')
 }
 
-fn test_quoted_numbers_should_fail() {
-	// Test that quoted numbers (strings containing numbers) are rejected.
-	// According to JSON spec, numbers must be unquoted.
+fn test_quoted_numbers_in_strict_mode() {
 	quoted_number_cases := [
-		'{"val1": "123", "val2": "45"}', // Fully quoted - should fail
-		'{"val1": 123, "val2": "45"}', // Mixed format - should fail (val2 is quoted)
-		'{"val1": "255", "val2": 0}', // val1 is quoted - should fail
+		'{"val1": "123", "val2": "45"}',
+		'{"val1": 123, "val2": "45"}',
+		'{"val1": "255", "val2": 0}',
 	]!
 
 	for case in quoted_number_cases {
-		json.decode[JsonU8](case) or {
-			// Expected: decoding should fail for quoted numbers
-			continue
-		}
-		panic('Expected decoding to fail for quoted number but succeeded: ${case}')
+		json.decode2[JsonU8](case, strict: true) or { continue }
+		panic('Expected decoding to fail for quoted number in strict mode but succeeded: ${case}')
 	}
-	println('✓ Quoted numbers correctly rejected test passed')
+	println('✓ Quoted numbers correctly rejected in strict mode test passed')
+}
+
+fn test_quoted_numbers_in_default_mode() {
+	assert json.decode[JsonU8]('{"val1": "123", "val2": "45"}')! == JsonU8{
+		val1: 123
+		val2: 45
+	}
+	assert json.decode[JsonU8]('{"val1": 123, "val2": "45"}')! == JsonU8{
+		val1: 123
+		val2: 45
+	}
+	println('✓ Quoted numbers accepted in default mode test passed')
 }
 
 fn test_error_conditions() {
