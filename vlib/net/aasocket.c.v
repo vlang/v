@@ -31,6 +31,7 @@ pub enum SocketType {
 	udp       = C.SOCK_DGRAM
 	tcp       = C.SOCK_STREAM
 	seqpacket = C.SOCK_SEQPACKET
+	raw       = C.SOCK_RAW
 }
 
 // AddrFamily are the available address families
