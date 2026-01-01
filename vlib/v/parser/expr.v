@@ -126,10 +126,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.is_stmt_ident = is_stmt_ident
 				}
 				.key_if {
-					return p.if_expr(true, false)
+					mut is_expr := false
+					if p.prev_tok.kind.is_assign() {
+						is_expr = true
+					}
+					return p.if_expr(true, is_expr)
 				}
 				.key_match {
-					return p.match_expr(true)
+					return p.match_expr(true, p.prev_tok.kind.is_assign())
 				}
 				else {
 					return p.unexpected_with_pos(p.peek_tok.pos(),
@@ -184,10 +188,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_match {
-			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
-				node = p.call_expr(p.language, p.mod)
+			node = if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				p.call_expr(p.language, p.mod)
 			} else {
-				node = p.match_expr(false)
+				p.match_expr(false, false)
 			}
 		}
 		.key_select {

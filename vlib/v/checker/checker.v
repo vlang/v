@@ -1439,6 +1439,9 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 
 // return the actual type of the expression, once the result or option type is handled
 fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
+	if ret_type.idx() == 0 {
+		return ret_type
+	}
 	match expr {
 		ast.CallExpr {
 			mut expr_ret_type := expr.return_type
@@ -5799,7 +5802,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 }
 
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
-	if typ == 0 {
+	if typ == 0 || typ.idx() == 0 {
 		c.error('unknown type', pos)
 		return c.pref.is_vls
 	}

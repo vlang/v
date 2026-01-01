@@ -368,12 +368,27 @@ fn (mut g Gen) gen_branch_context_string() string {
 
 fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	tmp_var := g.new_tmp_var()
-	is_opt_or_result := node.typ.has_option_or_result()
-	is_array_fixed := g.table.final_sym(node.typ).kind == .array_fixed
-	line := if node.is_expr {
+	mut inferred_typ := node.typ
+	if node.is_expr && node.typ == ast.void_type && node.branches.len > 0 {
+		for branch in node.branches {
+			if branch.stmts.len > 0 {
+				last_stmt := branch.stmts.last()
+				if last_stmt is ast.ExprStmt {
+					expr_typ := g.type_resolver.get_type_or_default(last_stmt.expr, last_stmt.typ)
+					if expr_typ != ast.void_type && !expr_typ.has_flag(.generic) {
+						inferred_typ = expr_typ
+						break
+					}
+				}
+			}
+		}
+	}
+	is_opt_or_result := inferred_typ.has_option_or_result()
+	is_array_fixed := g.table.final_sym(inferred_typ).kind == .array_fixed
+	line := if node.is_expr && inferred_typ != ast.void_type {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
-		styp := g.styp(node.typ)
+		styp := g.styp(inferred_typ)
 		g.writeln('${styp} ${tmp_var};')
 		stmt_str
 	} else {
@@ -446,9 +461,9 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.skip_stmt_pos = true
 					if is_opt_or_result {
 						tmp_var2 := g.new_tmp_var()
-						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
+						g.write('{ ${g.base_type(inferred_typ)} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('builtin___result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('builtin___result_ok(&(${g.base_type(inferred_typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(inferred_typ)}));')
 						g.writeln('}')
 					} else {
 						g.write('\t${tmp_var} = ')
@@ -465,14 +480,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.skip_stmt_pos = true
 					if is_opt_or_result {
 						tmp_var2 := g.new_tmp_var()
-						base_styp := g.base_type(node.typ)
+						base_styp := g.base_type(inferred_typ)
 						g.write('{ ${base_styp} ${tmp_var2} = ')
 						g.stmt(last)
 						g.writeln('builtin___result_ok(&(${base_styp}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${base_styp}));')
 						g.writeln('}')
 					} else if is_array_fixed {
 						tmp_var2 := g.new_tmp_var()
-						base_styp := g.base_type(node.typ)
+						base_styp := g.base_type(inferred_typ)
 						g.write('{ ${base_styp} ${tmp_var2} = ')
 						g.stmt(last)
 						if g.out.last_n(2).contains(';') {
@@ -976,11 +991,28 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 
 fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 	tmp_var := g.new_tmp_var()
-	is_opt_or_result := node.return_type.has_option_or_result()
-	line := if node.is_expr {
+	mut inferred_typ := node.return_type
+	if node.is_expr && (node.return_type == ast.void_type || node.return_type.idx() == 0)
+		&& node.branches.len > 0 {
+		for branch in node.branches {
+			if branch.stmts.len > 0 {
+				last_stmt := branch.stmts.last()
+				if last_stmt is ast.ExprStmt {
+					expr_typ := g.type_resolver.get_type_or_default(last_stmt.expr, last_stmt.typ)
+					if expr_typ != ast.void_type && expr_typ.idx() != 0
+						&& !expr_typ.has_flag(.generic) {
+						inferred_typ = expr_typ
+						break
+					}
+				}
+			}
+		}
+	}
+	is_opt_or_result := inferred_typ.has_option_or_result()
+	line := if node.is_expr && inferred_typ != ast.void_type && inferred_typ.idx() != 0 {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
-		styp := g.styp(node.return_type)
+		styp := g.styp(inferred_typ)
 		g.writeln('${styp} ${tmp_var};')
 		stmt_str
 	} else {
@@ -1034,9 +1066,9 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						g.skip_stmt_pos = true
 						if is_opt_or_result {
 							tmp_var2 := g.new_tmp_var()
-							g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+							g.write('{ ${g.base_type(inferred_typ)} ${tmp_var2} = ')
 							g.stmt(last)
-							g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+							g.writeln('builtin___result_ok(&(${g.base_type(inferred_typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(inferred_typ)}));')
 							g.writeln('}')
 						} else {
 							g.write('\t${tmp_var} = ')
@@ -1054,9 +1086,9 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						g.skip_stmt_pos = true
 						if is_opt_or_result {
 							tmp_var2 := g.new_tmp_var()
-							g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+							g.write('{ ${g.base_type(inferred_typ)} ${tmp_var2} = ')
 							g.stmt(last)
-							g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+							g.writeln('builtin___result_ok(&(${g.base_type(inferred_typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(inferred_typ)}));')
 							g.writeln('}')
 						} else {
 							g.write('${tmp_var} = ')

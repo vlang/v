@@ -773,6 +773,9 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
+	if idx == 0 {
+		return t.type_symbols[1]
+	}
 	// this should never happen
 	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
@@ -789,6 +792,9 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 			idx = cur_sym.info.parent_type.idx()
 		}
 		return t.type_symbols[idx]
+	}
+	if idx == 0 {
+		return t.type_symbols[1]
 	}
 	// this should never happen
 	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
@@ -1807,6 +1813,10 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 // convert_generic_type convert generics to real types (T => int) or other generics type.
 pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []string, to_types []Type) ?Type {
 	if generic_names.len != to_types.len {
+		return none
+	}
+	type_idx := generic_type.idx()
+	if type_idx == 0 || type_idx >= t.type_symbols.len {
 		return none
 	}
 	mut sym := t.sym(generic_type)
