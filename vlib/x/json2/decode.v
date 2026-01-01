@@ -41,9 +41,9 @@ mut:
 	is_decoded bool
 }
 
-// DecodeParams contains parameters for JSON decoding.
+// DecoderOptions provides a list of options for decoding.
 @[params]
-pub struct DecodeParams {
+pub struct DecoderOptions {
 pub:
 	// In strict mode, quoted strings are not accepted as numbers.
 	// For example, '"123"' will fail to decode as int in strict mode,
@@ -51,8 +51,20 @@ pub:
 	strict bool
 }
 
-// Decoder represents a JSON decoder.
-struct Decoder {
+// Decoder is a JSON decoder with configurable options.
+pub struct Decoder {
+	DecoderOptions
+}
+
+// new_decoder creates a new JSON decoder with the given options.
+pub fn new_decoder(options DecoderOptions) Decoder {
+	return Decoder{
+		DecoderOptions: options
+	}
+}
+
+// DecodeContext is the internal decoding state.
+struct DecodeContext {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
 mut:
@@ -152,7 +164,7 @@ fn (e JsonDecodeError) msg() string {
 }
 
 // checker_error generates a checker error message showing the position in the json string
-fn (mut checker Decoder) checker_error(message string) ! {
+fn (mut checker DecodeContext) checker_error(message string) ! {
 	position := checker.checker_idx
 
 	mut line_number := 0
@@ -213,7 +225,7 @@ fn (mut checker Decoder) checker_error(message string) ! {
 }
 
 // decode_error generates a decoding error from the decoding stage
-fn (mut decoder Decoder) decode_error(message string) ! {
+fn (mut decoder DecodeContext) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
 	if decoder.current_node != unsafe { nil } {
 		error_info = decoder.current_node.value
@@ -283,16 +295,16 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 
 // decode decodes a JSON string into a specified type.
 // By default, accepts quoted strings as numbers for compatibility.
-// Use `decode2` with `strict: true` for strict JSON spec compliance.
+// Use `new_decoder` with `strict: true` for strict JSON spec compliance.
+@[manualfree]
 pub fn decode[T](val string) !T {
-	return decode2[T](val, DecodeParams{})
+	decoder := new_decoder()
+	return decoder.decode[T](val)
 }
 
-// decode2 decodes a JSON string into a specified type with configurable parameters.
-// In strict mode, quoted strings are not accepted as numbers (JSON spec compliant).
-// In default mode, quoted strings like '"123"' are accepted as numbers for compatibility.
+// decode decodes a JSON string into a specified type using the decoder's options.
 @[manualfree]
-pub fn decode2[T](val string, params DecodeParams) !T {
+pub fn (d &Decoder) decode[T](val string) !T {
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -300,18 +312,18 @@ pub fn decode2[T](val string, params DecodeParams) !T {
 			character: 1
 		}
 	}
-	mut decoder := Decoder{
+	mut ctx := DecodeContext{
 		json:   val
-		strict: params.strict
+		strict: d.strict
 	}
 
-	decoder.check_json_format()!
+	ctx.check_json_format()!
 
 	mut result := T{}
-	decoder.current_node = decoder.values_info.head
-	decoder.decode_value(mut result)!
+	ctx.current_node = ctx.values_info.head
+	ctx.decode_value(mut result)!
 	unsafe {
-		decoder.values_info.free()
+		ctx.values_info.free()
 	}
 	return result
 }
@@ -322,7 +334,7 @@ fn get_dynamic_from_element[T](t T) []T {
 
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
-fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+fn (mut decoder DecodeContext) decode_value[T](mut val T) ! {
 	// Custom Decoders
 	$if val is StringDecoder {
 		struct_info := decoder.current_node.value
@@ -665,7 +677,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_string[T](mut val T) ! {
+fn (mut decoder DecodeContext) decode_string[T](mut val T) ! {
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -767,7 +779,7 @@ fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
+fn (mut decoder DecodeContext) decode_array[T](mut val []T) ! {
 	array_info := decoder.current_node.value
 
 	if array_info.value_kind == .array {
@@ -793,7 +805,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+fn (mut decoder DecodeContext) decode_map[K, V](mut val map[K]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -841,7 +853,7 @@ fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
 }
 
-fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
+fn (mut decoder DecodeContext) decode_enum[T](mut val T) ! {
 	enum_info := decoder.current_node.value
 
 	if enum_info.value_kind == .number {
@@ -873,7 +885,7 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 
 // use pointer instead of mut so enum cast works
 @[unsafe]
-fn (mut decoder Decoder) decode_number[T](val &T) ! {
+fn (mut decoder DecodeContext) decode_number[T](val &T) ! {
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {
@@ -896,7 +908,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 
 // decode_number_from_string parses a number from a JSON string value (default mode).
 // This extracts the content between quotes and parses it as a number.
-fn (mut decoder Decoder) decode_number_from_string[T]() !T {
+fn (mut decoder DecodeContext) decode_number_from_string[T]() !T {
 	string_info := decoder.current_node.value
 	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
 	if string_info.length < 2 {
