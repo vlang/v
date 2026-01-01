@@ -322,11 +322,6 @@ $if !new_veb ? {
 				pv.delete(fd)
 				return
 			}
-			// TODO: At this point the Context can safely be freed when this function returns.
-			// The user will have to clone the context if the context object should be kept.
-			// defer {
-			// 	completed_context.free()
-			// }
 			match completed_context.return_type {
 				.normal {
 					// small optimization: if the response is small write it immediately
