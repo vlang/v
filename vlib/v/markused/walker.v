@@ -1703,6 +1703,11 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		charptr_idx_str := ast.charptr_type_idx.str()
 		w.fn_by_name(charptr_idx_str + '.vstring_literal')
 	}
+	if w.used_arr_method['map'] || w.used_arr_method['filter'] {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
+	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 
