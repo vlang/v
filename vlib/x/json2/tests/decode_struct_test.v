@@ -173,9 +173,8 @@ fn test_quoted_numbers_in_strict_mode() {
 		'{"val1": "255", "val2": 0}',
 	]!
 
-	decoder := json.new_decoder(strict: true)
 	for case in quoted_number_cases {
-		decoder.decode[JsonU8](case) or { continue }
+		json.decode[JsonU8](case, strict: true) or { continue }
 		panic('Expected decoding to fail for quoted number in strict mode but succeeded: ${case}')
 	}
 	println('✓ Quoted numbers correctly rejected in strict mode test passed')

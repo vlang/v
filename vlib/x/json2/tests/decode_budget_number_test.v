@@ -6,8 +6,7 @@ import x.json2 as json
 // ===== STRICT MODE TESTS =====
 
 fn test_strict_string_not_decoded_as_int() {
-	decoder := json.new_decoder(strict: true)
-	decoder.decode[int]('"0"') or {
+	json.decode[int]('"0"', strict: true) or {
 		assert err is json.JsonDecodeError
 		if err is json.JsonDecodeError {
 			assert err.message == 'Data: Expected number, but got string'
@@ -18,8 +17,7 @@ fn test_strict_string_not_decoded_as_int() {
 }
 
 fn test_strict_string_not_decoded_as_int_positive() {
-	decoder := json.new_decoder(strict: true)
-	decoder.decode[int]('"100"') or {
+	json.decode[int]('"100"', strict: true) or {
 		assert err is json.JsonDecodeError
 		if err is json.JsonDecodeError {
 			assert err.message == 'Data: Expected number, but got string'
@@ -30,8 +28,7 @@ fn test_strict_string_not_decoded_as_int_positive() {
 }
 
 fn test_strict_string_not_decoded_as_float() {
-	decoder := json.new_decoder(strict: true)
-	decoder.decode[f64]('"-23.6e1"') or {
+	json.decode[f64]('"-23.6e1"', strict: true) or {
 		assert err is json.JsonDecodeError
 		if err is json.JsonDecodeError {
 			assert err.message == 'Data: Expected number, but got string'
@@ -42,8 +39,7 @@ fn test_strict_string_not_decoded_as_float() {
 }
 
 fn test_strict_string_in_array_not_decoded_as_int() {
-	decoder := json.new_decoder(strict: true)
-	decoder.decode[[]int]('["100", 99, "98", 97]') or {
+	json.decode[[]int]('["100", 99, "98", 97]', strict: true) or {
 		assert err is json.JsonDecodeError
 		if err is json.JsonDecodeError {
 			assert err.message == 'Data: Expected number, but got string'
@@ -80,9 +76,9 @@ fn test_valid_unquoted_numbers() {
 	assert json.decode[f64]('-23.6e1')! == -236.0
 	assert json.decode[[]int]('[100, 99, 98, 97]')! == [100, 99, 98, 97]
 
-	decoder := json.new_decoder(strict: true)
-	assert decoder.decode[int]('0')! == 0
-	assert decoder.decode[int]('100')! == 100
+	// Strict mode also works for unquoted numbers
+	assert json.decode[int]('0', strict: true)! == 0
+	assert json.decode[int]('100', strict: true)! == 100
 }
 
 fn test_invalid_number_string_fails() {
@@ -93,8 +89,7 @@ fn test_invalid_number_string_fails() {
 fn test_leading_plus_in_string() {
 	assert json.decode[int]('"+100"')! == 100
 
-	decoder := json.new_decoder(strict: true)
-	decoder.decode[int]('"+100"') or {
+	json.decode[int]('"+100"', strict: true) or {
 		assert err is json.JsonDecodeError
 		return
 	}

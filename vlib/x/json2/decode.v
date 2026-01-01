@@ -41,7 +41,8 @@ mut:
 	is_decoded bool
 }
 
-// DecoderOptions provides a list of options for decoding.
+// DecoderOptions provides options for JSON decoding.
+// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
 @[params]
 pub struct DecoderOptions {
 pub:
@@ -49,18 +50,6 @@ pub:
 	// For example, '"123"' will fail to decode as int in strict mode,
 	// but will succeed in default mode.
 	strict bool
-}
-
-// Decoder is a JSON decoder with configurable options.
-pub struct Decoder {
-	DecoderOptions
-}
-
-// new_decoder creates a new JSON decoder with the given options.
-pub fn new_decoder(options DecoderOptions) Decoder {
-	return Decoder{
-		DecoderOptions: options
-	}
 }
 
 // DecodeContext is the internal decoding state.
@@ -294,17 +283,9 @@ fn (mut decoder DecodeContext) decode_error(message string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
-// By default, accepts quoted strings as numbers for compatibility.
-// Use `new_decoder` with `strict: true` for strict JSON spec compliance.
+// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
 @[manualfree]
-pub fn decode[T](val string) !T {
-	decoder := new_decoder()
-	return decoder.decode[T](val)
-}
-
-// decode decodes a JSON string into a specified type using the decoder's options.
-@[manualfree]
-pub fn (d &Decoder) decode[T](val string) !T {
+pub fn decode[T](val string, params DecoderOptions) !T {
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -314,7 +295,7 @@ pub fn (d &Decoder) decode[T](val string) !T {
 	}
 	mut ctx := DecodeContext{
 		json:   val
-		strict: d.strict
+		strict: params.strict
 	}
 
 	ctx.check_json_format()!
