@@ -166,22 +166,30 @@ fn test_number_boundaries() {
 	println('✓ Boundary values test passed')
 }
 
-fn test_fake_numbers() {
-	// Test quoted numbers (fake numbers)
-	fake_number_cases := [
-		'{"val1": "123", "val2": "45"}', // Fully quoted
-		'{"val1": 123, "val2": "45"}', // Mixed format
-		'{"val1": "255", "val2": 0}', // Boundary value as string
+fn test_quoted_numbers_in_strict_mode() {
+	quoted_number_cases := [
+		'{"val1": "123", "val2": "45"}',
+		'{"val1": 123, "val2": "45"}',
+		'{"val1": "255", "val2": 0}',
 	]!
 
-	for case in fake_number_cases {
-		result := json.decode[JsonU8](case) or {
-			panic('Fake number decoding failed: ${err}, input: ${case}')
-		}
-		assert result.val1 >= 0 && result.val1 <= 255
-		assert result.val2 >= 0 && result.val2 <= 255
+	for case in quoted_number_cases {
+		json.decode[JsonU8](case, strict: true) or { continue }
+		panic('Expected decoding to fail for quoted number in strict mode but succeeded: ${case}')
 	}
-	println('✓ Fake numbers (quoted numbers) test passed')
+	println('✓ Quoted numbers correctly rejected in strict mode test passed')
+}
+
+fn test_quoted_numbers_in_default_mode() {
+	assert json.decode[JsonU8]('{"val1": "123", "val2": "45"}')! == JsonU8{
+		val1: 123
+		val2: 45
+	}
+	assert json.decode[JsonU8]('{"val1": 123, "val2": "45"}')! == JsonU8{
+		val1: 123
+		val2: 45
+	}
+	println('✓ Quoted numbers accepted in default mode test passed')
 }
 
 fn test_error_conditions() {
