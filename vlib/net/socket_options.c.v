@@ -1,5 +1,6 @@
 module net
 
+// Protocol specifies the IP protocol to use with raw sockets.
 pub enum Protocol {
 	not_set = 0
 	icmp    = C.IPPROTO_ICMP
