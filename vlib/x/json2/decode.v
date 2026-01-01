@@ -52,8 +52,8 @@ pub:
 	strict bool
 }
 
-// DecodeContext is the internal decoding state.
-struct DecodeContext {
+// Decoder is the internal decoding state.
+struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
 mut:
@@ -153,7 +153,7 @@ fn (e JsonDecodeError) msg() string {
 }
 
 // checker_error generates a checker error message showing the position in the json string
-fn (mut checker DecodeContext) checker_error(message string) ! {
+fn (mut checker Decoder) checker_error(message string) ! {
 	position := checker.checker_idx
 
 	mut line_number := 0
@@ -214,7 +214,7 @@ fn (mut checker DecodeContext) checker_error(message string) ! {
 }
 
 // decode_error generates a decoding error from the decoding stage
-fn (mut decoder DecodeContext) decode_error(message string) ! {
+fn (mut decoder Decoder) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
 	if decoder.current_node != unsafe { nil } {
 		error_info = decoder.current_node.value
@@ -293,18 +293,18 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 			character: 1
 		}
 	}
-	mut ctx := DecodeContext{
+	mut decoder := Decoder{
 		json:   val
 		strict: params.strict
 	}
 
-	ctx.check_json_format()!
+	decoder.check_json_format()!
 
 	mut result := T{}
-	ctx.current_node = ctx.values_info.head
-	ctx.decode_value(mut result)!
+	decoder.current_node = decoder.values_info.head
+	decoder.decode_value(mut result)!
 	unsafe {
-		ctx.values_info.free()
+		decoder.values_info.free()
 	}
 	return result
 }
@@ -315,7 +315,7 @@ fn get_dynamic_from_element[T](t T) []T {
 
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
-fn (mut decoder DecodeContext) decode_value[T](mut val T) ! {
+fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	// Custom Decoders
 	$if val is StringDecoder {
 		struct_info := decoder.current_node.value
@@ -658,7 +658,7 @@ fn (mut decoder DecodeContext) decode_value[T](mut val T) ! {
 	}
 }
 
-fn (mut decoder DecodeContext) decode_string[T](mut val T) ! {
+fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 	string_info := decoder.current_node.value
 
 	if string_info.value_kind == .string {
@@ -760,7 +760,7 @@ fn (mut decoder DecodeContext) decode_string[T](mut val T) ! {
 	}
 }
 
-fn (mut decoder DecodeContext) decode_array[T](mut val []T) ! {
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	array_info := decoder.current_node.value
 
 	if array_info.value_kind == .array {
@@ -786,7 +786,7 @@ fn (mut decoder DecodeContext) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder DecodeContext) decode_map[K, V](mut val map[K]V) ! {
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -834,7 +834,7 @@ fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
 }
 
-fn (mut decoder DecodeContext) decode_enum[T](mut val T) ! {
+fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 	enum_info := decoder.current_node.value
 
 	if enum_info.value_kind == .number {
@@ -866,7 +866,7 @@ fn (mut decoder DecodeContext) decode_enum[T](mut val T) ! {
 
 // use pointer instead of mut so enum cast works
 @[unsafe]
-fn (mut decoder DecodeContext) decode_number[T](val &T) ! {
+fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	number_info := decoder.current_node.value
 	str := decoder.json[number_info.position..number_info.position + number_info.length]
 	$match T.unaliased_typ {
@@ -889,7 +889,7 @@ fn (mut decoder DecodeContext) decode_number[T](val &T) ! {
 
 // decode_number_from_string parses a number from a JSON string value (default mode).
 // This extracts the content between quotes and parses it as a number.
-fn (mut decoder DecodeContext) decode_number_from_string[T]() !T {
+fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	string_info := decoder.current_node.value
 	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
 	if string_info.length < 2 {

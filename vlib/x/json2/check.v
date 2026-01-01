@@ -2,7 +2,7 @@ module json2
 
 // increment checks eof and increments checker by one
 @[inline]
-fn (mut checker DecodeContext) increment(message string) ! {
+fn (mut checker Decoder) increment(message string) ! {
 	if checker.checker_idx + 1 == checker.json.len {
 		if message == '' {
 			return Error{}
@@ -14,14 +14,14 @@ fn (mut checker DecodeContext) increment(message string) ! {
 
 // skip_whitespace checks eof and increments checker until next non whitespace character
 @[inline]
-fn (mut checker DecodeContext) skip_whitespace(message string) ! {
+fn (mut checker Decoder) skip_whitespace(message string) ! {
 	for checker.json[checker.checker_idx] in whitespace_chars {
 		checker.increment(message)!
 	}
 }
 
 // check_json_format checks if the JSON string is valid and updates the decoder state.
-fn (mut checker DecodeContext) check_json_format() ! {
+fn (mut checker Decoder) check_json_format() ! {
 	checker.skip_whitespace('empty json')!
 
 	start_idx_position := checker.checker_idx
@@ -104,7 +104,7 @@ fn (mut checker DecodeContext) check_json_format() ! {
 	}
 }
 
-fn (mut checker DecodeContext) check_string() ! {
+fn (mut checker Decoder) check_string() ! {
 	checker.increment('string not closed')!
 
 	// check if the JSON string is a valid escape sequence
@@ -146,7 +146,7 @@ fn (mut checker DecodeContext) check_string() ! {
 	}
 }
 
-fn (mut checker DecodeContext) check_number() ! {
+fn (mut checker Decoder) check_number() ! {
 	// check if the JSON string is a valid float or integer
 	if checker.json[checker.checker_idx] == `-` {
 		checker.increment('expected digit')!
@@ -198,7 +198,7 @@ fn (mut checker DecodeContext) check_number() ! {
 	checker.checker_idx--
 }
 
-fn (mut checker DecodeContext) check_boolean() ! {
+fn (mut checker Decoder) check_boolean() ! {
 	// check if the JSON string is a valid boolean
 	match checker.json[checker.checker_idx] {
 		`t` {
@@ -238,7 +238,7 @@ fn (mut checker DecodeContext) check_boolean() ! {
 	}
 }
 
-fn (mut checker DecodeContext) check_null() ! {
+fn (mut checker Decoder) check_null() ! {
 	// check if the JSON string is a null value
 	if checker.json.len - checker.checker_idx <= 3 {
 		return checker.checker_error('EOF error: expecting `null`')
@@ -255,7 +255,7 @@ fn (mut checker DecodeContext) check_null() ! {
 	checker.checker_idx += 3
 }
 
-fn (mut checker DecodeContext) check_array() ! {
+fn (mut checker Decoder) check_array() ! {
 	checker.increment('expected array end')!
 
 	checker.skip_whitespace('expected array end')!
@@ -276,7 +276,7 @@ fn (mut checker DecodeContext) check_array() ! {
 	}
 }
 
-fn (mut checker DecodeContext) check_object() ! {
+fn (mut checker Decoder) check_object() ! {
 	checker.increment('expected object end')!
 
 	checker.skip_whitespace('expected object end')!
