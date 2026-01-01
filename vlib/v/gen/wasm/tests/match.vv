@@ -1,0 +1,69 @@
+enum BasicTestEnum {
+	first_element
+	second_element
+	other_element
+}
+
+fn main() {
+	a := 1
+	match a {
+		1 { println('1') }
+		else { println('other') }
+	}
+
+	b := 2
+	match b {
+		1 { println('1') }
+		2 { println('2') }
+		3 { println('3') }
+		4 { println('4') }
+		5 { println('5') }
+		6 { println('6') }
+		7 { println('7') }
+		8 { println('8') }
+		9 { println('9') }
+		else { println('other') }
+	}
+
+	c := 3
+	match c {
+		1, 2 { println('1 or 2') }
+		else { println('other') }
+	}
+
+	d := match a {
+		1 { 10 }
+		else { 30 }
+	}
+	println(d)
+
+	e := match b {
+		1 { 100 }
+		2 { 200 }
+		3, 4 { 340 }
+		else { 300 }
+	}
+	println(e)
+
+	println(match c {
+		1, 2 { i64(1000) }
+		else { i64(2000) }
+	})
+
+	f := BasicTestEnum.first_element
+	println(match f {
+		.first_element { 'First Element' }
+		.second_element { 'Second Element' }
+		else { 'Other Element' }
+	})
+
+	/*
+	// This doesn't work yet because string comparison doesn't work yet :(
+	h := 'Hello'
+	println(match h {
+		'NotHello' { 'Not Hello string' }
+		'Hello' { 'Hello string' }
+		else { 'Unknown' }
+	})
+	*/
+}

@@ -654,6 +654,9 @@ pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existin
 		ast.IfExpr {
 			g.if_expr(init, expected, existing_rvars)
 		}
+		ast.MatchExpr {
+			g.match_expr(init, expected, existing_rvars)
+		}
 		ast.CallExpr {
 			g.call_expr(init, expected, existing_rvars)
 		}
