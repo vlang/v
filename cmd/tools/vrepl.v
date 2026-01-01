@@ -48,7 +48,6 @@ const repl_folder = os.join_path(os.vtmp_dir(), 'repl')
 const possible_statement_patterns = [
 	'++',
 	'--',
-	'//',
 	'/*',
 	'assert ',
 	'fn ',
@@ -410,6 +409,54 @@ fn print_welcome_screen() {
 	}
 }
 
+fn remove_comment(oline string) string {
+	mut inside_string := false
+	mut escaped := false
+	mut maybe_comment := false
+
+	mut string_delim := 0
+
+	mut i := 0
+	for i < oline.len {
+		match oline[i] {
+			`"`, `'` {
+				if !escaped {
+					if inside_string && string_delim == oline[i] {
+						inside_string = false
+					} else if !inside_string {
+						inside_string = true
+						maybe_comment = false
+						string_delim = oline[i]
+					}
+				} else {
+					escaped = false
+				}
+			}
+			`\\` {
+				if inside_string {
+					escaped = !escaped
+				}
+			}
+			`/` {
+				if maybe_comment {
+					i--
+					break
+				} else if !inside_string {
+					maybe_comment = true
+				}
+			}
+			else {
+				escaped = false
+				maybe_comment = false
+			}
+		}
+
+		i++
+	}
+
+	return oline[..i]
+}
+
 fn run_repl(workdir string, vrepl_prefix string) int {
 	if !is_stdin_a_pipe {
 		print_welcome_screen()
@@ -440,8 +487,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		} else {
 			prompt = '... '
 		}
+
 		oline := r.get_one_line(prompt) or { break }
-		line := oline.all_before('//').trim_space()
+		line := remove_comment(oline).trim_space()
+
 		if line == '' {
 			continue
 		}
