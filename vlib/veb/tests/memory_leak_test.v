@@ -29,22 +29,8 @@ fn test_server_compiles() {
 }
 
 fn test_server_runs_in_background() {
-	mut suffix := ''
-	$if !windows {
-		suffix = ' > /dev/null &'
-	}
-	server_exec_cmd := '${os.quoted_path(serverexe)} ${sport} ${exit_after_time} ${suffix}'
-	$if windows {
-		spawn os.system(server_exec_cmd)
-	} $else {
-		res := os.system(server_exec_cmd)
-		assert res == 0
-	}
-	$if macos {
-		time.sleep(1000 * time.millisecond)
-	} $else {
-		time.sleep(100 * time.millisecond)
-	}
+	spawn os.system('${os.quoted_path(serverexe)} ${sport} ${exit_after_time}')
+	time.sleep(500 * time.millisecond)
 }
 
 fn test_large_responses_work_correctly() {
