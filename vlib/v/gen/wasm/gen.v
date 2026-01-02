@@ -1034,6 +1034,51 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			}
 			g.func.c_end(block)
 		}
+		ast.ForInStmt {
+			loop_var_type := unpack_literal_int(node.val_type)
+			block := g.func.c_block([], [])
+			{
+				mut loop_var := Var{}
+				loop_var = g.new_local(node.val_var, loop_var_type)
+
+				g.expr(node.cond, loop_var_type)
+				g.set(loop_var)
+
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break:    block
+						name:       node.label
+					}
+
+					// if loop_var < high
+					g.get(loop_var)
+					g.expr(node.high, loop_var_type)
+					wtyp := g.as_numtype(g.get_wasm_type(loop_var_type))
+					g.func.lt(wtyp, loop_var_type.is_signed())
+					g.func.eqz(.i32_t)
+					g.func.c_br_if(block)
+
+					// Body
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					// loop_var++
+					g.set_prepare(loop_var)
+					{
+						g.get(loop_var)
+						g.literalint(1, loop_var_type)
+						g.func.add(wtyp)
+					}
+					g.set(loop_var)
+
+					g.func.c_br(loop)
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
+			}
+			g.func.c_end(block)
+		}
 		ast.BranchStmt {
 			mut bp := g.loop_breakpoint_stack.last()
 			if node.label != '' {
