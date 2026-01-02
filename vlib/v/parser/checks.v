@@ -73,7 +73,7 @@ fn (p &Parser) is_array_type() bool {
 		if tok.kind in [.name, .amp] {
 			return true
 		}
-		if tok.kind in [.eof, .colon] {
+		if tok.kind in [.eof, .colon, .dot] {
 			break
 		}
 		i++
