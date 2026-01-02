@@ -104,7 +104,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // Note: For a Type, use:
 // * Table.type_to_str(typ) not TypeSymbol.name.
 // * Table.type_kind(typ) not TypeSymbol.kind.
-// Each TypeSymbol is entered into `Table.types`.
+// Each TypeSymbol is entered into `Table.type_symbols`.
 // See also: Table.sym.
 @[minify]
 pub struct TypeSymbol {
