@@ -50,7 +50,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	if node.cond_type == 0 || node.cond_type.idx() == 0 {
+	if node.cond_type == 0 {
 		return ast.void_type
 	}
 	c.check_expr_option_or_result_call(node.cond, node.cond_type)

@@ -5802,7 +5802,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 }
 
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
-	if typ == 0 || typ.idx() == 0 {
+	if typ == 0 {
 		c.error('unknown type', pos)
 		return c.pref.is_vls
 	}
