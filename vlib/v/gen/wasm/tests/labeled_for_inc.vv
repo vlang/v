@@ -1,0 +1,78 @@
+fn labeled_break_continue_with_inc() int {
+	// Should not infinite loop
+	outer: for i := 4; true; i++ {
+		for {
+			if i < 7 {
+				continue outer
+			} else {
+				break outer
+			}
+		}
+	}
+	return 0
+}
+
+fn labeled_break_with_inc() int {
+	mut sum := 0
+	outer: for i := 0; i < 10; i++ {
+		for j := 0; j < 5; j++ {
+			sum += j
+			if i == 3 && j == 2 {
+				break outer
+			}
+		}
+		if sum == 10 {
+			return i
+		}
+	}
+	return sum
+}
+
+fn triple_nested_labeled_continue() (int, int) {
+	mut val1 := 0
+	mut val2 := 0
+	outer: for i := 0; i < 5; i++ {
+		middle: for j := 0; j < 3; j++ {
+			for k := 0; k < 2; k++ {
+				if i == 1 && j == 1 {
+					continue outer
+				}
+				val2 += 1
+				if i == 2 && j == 2 {
+					continue middle
+				}
+				val1 += 1
+			}
+		}
+	}
+	return val1, val2
+}
+
+fn labeled_continue_deep_nest() int {
+	mut result := 0
+	outer: for i := 0; i < 3; i++ {
+		for j := 0; j < 2; j++ {
+			for k := 0; k < 2; k++ {
+				if k == 1 && i < 2 {
+					result++
+					continue outer
+				}
+				result++
+			}
+		}
+	}
+	return result
+}
+
+fn main() {
+	println('--- labeled_break_continue_with_inc()')
+	println(labeled_break_continue_with_inc())
+	println('--- labeled_break_with_inc()')
+	println(labeled_break_with_inc())
+	println('--- triple_nested_labeled_continue()')
+	a, b := triple_nested_labeled_continue()
+	println(a)
+	println(b)
+	println('--- labeled_continue_deep_nest()')
+	println(labeled_continue_deep_nest())
+}
