@@ -16,18 +16,14 @@ _V_atomic_thread_fence:
 
 /* ---------------------------------------------- */
 #if defined __x86_64__ && !defined _WIN32
-
 #define endbr64
-
         .text
-
-        .global _V_atomic_thread_fence
-        .type   _V_atomic_thread_fence, %function
-_V_atomic_thread_fence:
+        .global __atomic_thread_fence
+        .type   __atomic_thread_fence, %function
+__atomic_thread_fence:
         endbr64
         lock orq $0x0,(%rsp)
         ret
-
 #endif //__x86_64__ && !_WIN32
 
 /* ---------------------------------------------- */
