@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl
 import os
 import time
 import net.http
