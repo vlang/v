@@ -1959,6 +1959,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				mut cnrt := '${sym.cname}_T_'
 				mut t_generic_names := generic_names.clone()
 				mut t_to_types := to_types.clone()
+				mut has_generic := false
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
 					&& sym.generic_types != sym.info.generic_types {
 					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
@@ -1995,6 +1996,9 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 							rnrt += ', '
 							cnrt += '_'
 						}
+						if ct.has_flag(.generic) && ct != sym.info.generic_types[i] {
+							has_generic = true
+						}
 					} else {
 						return none
 					}
@@ -2008,7 +2012,64 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						idx = t.add_placeholder_type(nrt, cnrt, .v)
 					}
 				}
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				return if has_generic {
+					new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
+			}
+		}
+		UnknownTypeInfo {
+			if sym.name.contains('[') && sym.name.contains(']') {
+				base_name := sym.name.all_before('[')
+				generic_part := sym.name.all_after('[').trim_right(']')
+				mut converted_args := []string{}
+				mut has_generic := false
+				mut changed := false
+				args := generic_part.split(',').map(it.trim_space())
+				for arg in args {
+					if arg in generic_names {
+						idx := generic_names.index(arg)
+						if idx < to_types.len {
+							converted_type := to_types[idx]
+							converted_type_str := t.type_to_str(converted_type)
+							if converted_type_str != arg {
+								converted_args << converted_type_str
+								changed = true
+								if converted_type.has_flag(.generic) {
+									has_generic = true
+								}
+							} else {
+								converted_args << arg
+							}
+						} else {
+							converted_args << arg
+						}
+					} else {
+						converted_args << arg
+					}
+				}
+				if changed {
+					new_name := base_name + '[' + converted_args.join(', ') + ']'
+					mut new_idx := t.type_idxs[new_name]
+					if new_idx == 0 {
+						new_idx = t.add_placeholder_type(new_name, util.no_dots(new_name).replace_each([
+							'[',
+							'_T_',
+							']',
+							'',
+							', ',
+							'_',
+							' ',
+							'',
+						]), sym.language)
+					}
+					return if has_generic {
+						new_type(new_idx).derive_add_muls(generic_type).set_flag(.generic)
+					} else {
+						new_type(new_idx).derive_add_muls(generic_type).clear_flag(.generic)
+					}
+				}
 			}
 		}
 		else {}
