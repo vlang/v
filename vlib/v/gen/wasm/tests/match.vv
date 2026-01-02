@@ -4,6 +4,17 @@ enum BasicTestEnum {
 	other_element
 }
 
+fn function_matches(value u8) {
+	match value {
+		42 {
+			println('function_matches: OK')
+		}
+		else {
+			println('function_matches: Error')
+		}
+	}
+}
+
 fn main() {
 	a := 1
 	match a {
@@ -50,6 +61,8 @@ fn main() {
 		else { i64(2000) }
 	})
 
+	println('Enum matches -------')
+
 	f := BasicTestEnum.first_element
 	println(match f {
 		.first_element { 'First Element' }
@@ -57,8 +70,34 @@ fn main() {
 		else { 'Other Element' }
 	})
 
+	println('Bool matches -------')
+
+	println(match true {
+		true {
+			'OK'
+		}
+		else {
+			'ERROR'
+		}
+	})
+
+	g := false
+	println(match g {
+		false {
+			'OK'
+		}
+		else {
+			'ERROR'
+		}
+	})
+
+	println('Function calling matches -------')
+	function_matches(42)
+
 	/*
-	// This doesn't work yet because string comparison doesn't work yet :(
+	println("Strings matches -------")
+
+	// This doesn't work yet because string comparison is not ready (
 	h := 'Hello'
 	println(match h {
 		'NotHello' { 'Not Hello string' }
