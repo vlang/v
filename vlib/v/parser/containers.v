@@ -119,7 +119,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 					last_pos = p.tok.pos()
 					is_fixed = true
 					has_val = true
-					if p.is_array_type() {
+					if exprs.len == 1 && p.tok.line_nr == line_nr && p.is_array_type() {
 						p.error('fixed arrays do not support storing Result values')
 					} else {
 						p.next()
