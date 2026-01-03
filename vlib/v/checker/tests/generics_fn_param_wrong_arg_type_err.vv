@@ -1,0 +1,9 @@
+fn test[T, U](f fn (T) U) U {
+	return f(1)
+}
+
+fn main() {
+	println(test(fn (x string) int {
+		return x.len
+	}))
+}

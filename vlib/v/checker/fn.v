@@ -1553,10 +1553,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
 		param_i := i + nr_multi_values
-		param := if func.is_variadic && i >= func.params.len - 1 {
+		mut param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
 			func.params[param_i]
+		}
+		if node.is_fn_var && param.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+			mut unwrapped := param
+			unwrapped.typ = c.table.unwrap_generic_type(param.typ, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+			param = unwrapped
 		}
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
