@@ -1295,7 +1295,8 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	is_auto_deref_var := right.is_auto_deref_var()
 	if (is_auto_deref_var && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct] && right is ast.Ident
-		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type]) {
+		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type])
+		|| (!elem_typ.is_ptr() && right_type.is_ptr()) {
 		g.write('*')
 	}
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
@@ -1303,12 +1304,6 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	} else if right is ast.ArrayInit && g.table.final_sym(right_type).kind == .array_fixed {
 		g.fixed_array_init_with_cast(right, right_type)
 	} else {
-		// Handle auto-deref variables (e.g., from iterators that return &T)
-		// The checker may have set right_type to the dereferenced type, but the expression is still a pointer in C
-		// We need to add * if the expression's actual type (right.info.typ) is a pointer
-		if right is ast.Ident && right.info is ast.IdentVar && right.info.typ.nr_muls() > 0 {
-			g.write('*')
-		}
 		g.expr(right)
 	}
 	g.write(')')
