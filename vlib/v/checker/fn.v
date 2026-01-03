@@ -3638,13 +3638,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.bool_type
-	} else if node.kind == .index {
+	} else if node.kind in [.index, .last_index] {
 		if node_args_len != 1 {
-			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
-		} else if !left_sym.has_method('index') {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
+				node.pos)
+		} else if !left_sym.has_method(method_name) {
 			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
-				arg0) or { c.error('${err.msg()} in argument 1 to `.index()`', arg0.pos) }
+				arg0) or { c.error('${err.msg()} in argument 1 to `.${method_name}()`', arg0.pos) }
 		}
 		for i, mut arg in node.args {
 			node.args[i].typ = c.expr(mut arg.expr)
@@ -3710,14 +3711,16 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	node_args_len := node.args.len
 	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }
 	elem_typ := array_info.elem_type
-	if node.kind == .index {
+	if node.kind in [.index, .last_index] {
 		if node_args_len != 1 {
-			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
+			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
+				node.pos)
 			return ast.int_type
-		} else if !left_sym.has_method('index') {
+		} else if (node.kind == .index && !left_sym.has_method('index'))
+			|| (node.kind == .last_index && !left_sym.has_method('last_index')) {
 			arg_typ := c.expr(mut arg0.expr)
 			c.check_expected_call_arg(arg_typ, elem_typ, node.language, arg0) or {
-				c.error('${err.msg()} in argument 1 to `.index()`', arg0.pos)
+				c.error('${err.msg()} in argument 1 to `.${method_name}()`', arg0.pos)
 				return ast.int_type
 			}
 		}

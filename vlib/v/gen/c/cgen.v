@@ -196,6 +196,7 @@ mut:
 	array_sort_fn             shared []string
 	array_contains_types      []ast.Type
 	array_index_types         []ast.Type
+	array_last_index_types    []ast.Type
 	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
 	anon_fn_definitions       []string        // anon generated functions definition list
@@ -480,6 +481,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.needed_equality_fns << g.needed_equality_fns // duplicates are resolved later in gen_equality_fns
 			global_g.array_contains_types << g.array_contains_types
 			global_g.array_index_types << g.array_index_types
+			global_g.array_last_index_types << g.array_last_index_types
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
@@ -522,7 +524,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.write_chan_pop_option_fns()
 	global_g.write_chan_push_option_fns()
 	global_g.gen_array_contains_methods()
-	global_g.gen_array_index_methods()
+	global_g.gen_array_index_methods(false) // .index()
+	global_g.gen_array_index_methods(true) // .last_index()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
 	global_g.register_iface_return_types()

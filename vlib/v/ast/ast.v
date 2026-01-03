@@ -840,6 +840,7 @@ pub enum CallKind {
 	trim
 	contains
 	index
+	last_index
 	first
 	last
 	pop_left
