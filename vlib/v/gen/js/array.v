@@ -28,12 +28,11 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type, is_last_index bool) 
 
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a, v) {')
+		fn_builder.writeln('\tlet pelem = a.arr;')
 		if is_last_index {
-			fn_builder.writeln('\tif (a.arr.length == 0) return -1;')
-			fn_builder.writeln('\tlet pelem = a.arr + (a.len-1)*a.element_size;')
-			fn_builder.writeln('\tfor (let i = pelem.arr.length-1; i >=0; --i) {')
+			fn_builder.writeln('\tif (pelem.arr.length == 0) return new int(-1);')
+			fn_builder.writeln('\tfor (let i = pelem.arr.length - 1; i >=0; --i) {')
 		} else {
-			fn_builder.writeln('\tlet pelem = a.arr;')
 			fn_builder.writeln('\tfor (let i = 0; i < pelem.arr.length; ++i) {')
 		}
 		if elem_sym.kind == .string {
