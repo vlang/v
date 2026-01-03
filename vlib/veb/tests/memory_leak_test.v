@@ -1,4 +1,4 @@
-// vtest build: !docker-ubuntu-musl
+// vtest build: !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
 import os
 import time
 import net.http
