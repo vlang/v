@@ -1347,7 +1347,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 		// XTODO document
 		if typ != 0 {
-			generic_vts := c.table.final_sym(typ)
+			unwrapped_typ := if typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+				&& c.table.cur_fn.generic_names.len > 0 {
+				c.table.unwrap_generic_type(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+			} else {
+				typ
+			}
+			generic_vts := c.table.final_sym(unwrapped_typ)
 			if generic_vts.info is ast.FnType {
 				func = generic_vts.info.func
 				found = true
@@ -1551,7 +1557,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
 		param_i := i + nr_multi_values
-		param := if func.is_variadic && i >= func.params.len - 1 {
+		mut param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
 			func.params[param_i]
