@@ -25,6 +25,7 @@ $if linux {
 			$if musl ? {
 				// Alpine:
 				#flag $when_first_existing('/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')
+				#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.o
 			}
 		} $else $if arm64 {
 			// Note: Use `.so` instead of `.a`.
@@ -62,6 +63,7 @@ $if linux {
 				// Alpine:
 				#flag $when_first_existing('/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')
 			}
+			#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.o
 		}
 	}
 }
