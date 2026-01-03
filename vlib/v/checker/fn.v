@@ -3638,13 +3638,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.bool_type
-	} else if node.kind == .index {
+	} else if node.kind in [.index, .last_index] {
 		if node_args_len != 1 {
-			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
-		} else if !left_sym.has_method('index') {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
+				node.pos)
+		} else if !left_sym.has_method(method_name) {
 			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
-				arg0) or { c.error('${err.msg()} in argument 1 to `.index()`', arg0.pos) }
+				arg0) or { c.error('${err.msg()} in argument 1 to `.${method_name}()`', arg0.pos) }
 		}
 		for i, mut arg in node.args {
 			node.args[i].typ = c.expr(mut arg.expr)

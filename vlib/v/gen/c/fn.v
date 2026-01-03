@@ -1203,7 +1203,10 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
 		}
 		.index {
-			g.gen_array_index(node)
+			g.gen_array_index(node, false)
+		}
+		.last_index {
+			g.gen_array_index(node, true)
 		}
 		.wait {
 			g.gen_array_wait(node)
@@ -1308,7 +1311,10 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 			g.gen_array_filter(node)
 		}
 		.index {
-			g.gen_array_index(node)
+			g.gen_array_index(node, false)
+		}
+		.last_index {
+			g.gen_array_index(node, true)
 		}
 		.contains {
 			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)

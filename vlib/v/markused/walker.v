@@ -1046,7 +1046,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		} else {
 			match left_sym.info {
 				ast.Array, ast.ArrayFixed {
-					if !w.uses_arr_void && node.name in ['contains', 'index'] {
+					if !w.uses_arr_void && node.name in ['contains', 'index', 'last_index'] {
 						if w.table.final_sym(left_sym.info.elem_type).kind == .function {
 							w.uses_arr_void = true
 						}

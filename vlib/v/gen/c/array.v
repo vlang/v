@@ -1308,22 +1308,33 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	g.write(')')
 }
 
-fn (mut g Gen) get_array_index_method(typ ast.Type) string {
+fn (mut g Gen) get_array_index_method(typ ast.Type, is_last_index bool) string {
 	t := g.unwrap_generic(typ).set_nr_muls(0)
-	g.array_index_types << t
-	return g.styp(t) + '_index'
+	return if is_last_index {
+		g.array_last_index_types << t
+		g.styp(t) + '_last_index'
+	} else {
+		g.array_index_types << t
+		g.styp(t) + '_index'
+	}
 }
 
-fn (mut g Gen) gen_array_index_methods() {
+fn (mut g Gen) gen_array_index_methods(is_last_index bool) {
 	mut done := []ast.Type{}
-	for t in g.array_index_types {
-		if t in done || g.table.sym(t).has_method('index') {
+	indxe_types := if is_last_index { g.array_last_index_types } else { g.array_index_types }
+	for t in indxe_types {
+		if t in done || (is_last_index && g.table.sym(t).has_method('last_index'))
+			|| (!is_last_index && g.table.sym(t).has_method('index')) {
 			continue
 		}
 		done << t
 		final_left_sym := g.table.final_sym(t)
 		mut left_type_str := g.styp(t)
-		fn_name := '${left_type_str}_index'
+		fn_name := if is_last_index {
+			'${left_type_str}_last_index'
+		} else {
+			'${left_type_str}_index'
+		}
 		mut fn_builder := strings.new_builder(512)
 
 		if final_left_sym.kind == .array {
@@ -1336,8 +1347,14 @@ fn (mut g Gen) gen_array_index_methods() {
 			}
 			g.type_definitions.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
-			fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
-			fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i, ++pelem) {')
+			if is_last_index {
+				fn_builder.writeln('\tif (a.len == 0) return -1;')
+				fn_builder.writeln('\t${elem_type_str}* pelem = a.data + (a.len-1)*sizeof(${elem_type_str});')
+				fn_builder.writeln('\tfor (${ast.int_type_name} i = a.len-1; i >= 0; --i, --pelem) {')
+			} else {
+				fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
+				fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i, ++pelem) {')
+			}
 			if elem_sym.kind == .string {
 				fn_builder.writeln('\t\tif (builtin__fast_string_eq(*pelem, v)) {')
 			} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
@@ -1425,8 +1442,9 @@ fn (mut g Gen) gen_array_index_methods() {
 }
 
 // `nums.index(2)`
-fn (mut g Gen) gen_array_index(node ast.CallExpr) {
-	fn_name := g.get_array_index_method(node.left_type)
+// `nums.last_index(2)`
+fn (mut g Gen) gen_array_index(node ast.CallExpr, is_last_index bool) {
+	fn_name := g.get_array_index_method(node.left_type, is_last_index)
 	left_sym := g.table.final_sym(node.left_type)
 	g.write('${fn_name}(')
 	if node.left_type.is_ptr() {
