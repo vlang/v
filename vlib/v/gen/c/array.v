@@ -1349,7 +1349,7 @@ fn (mut g Gen) gen_array_index_methods(is_last_index bool) {
 			fn_builder.writeln('${g.static_non_parallel}${ast.int_type_name} ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			if is_last_index {
 				fn_builder.writeln('\tif (a.len == 0) return -1;')
-				fn_builder.writeln('\t${elem_type_str}* pelem = (byte*)a.data + (a.len-1)*a.element_size;')
+				fn_builder.writeln('\t${elem_type_str}* pelem = (${elem_type_str}*)((byte*)a.data + (a.len-1)*a.element_size);')
 				fn_builder.writeln('\tfor (${ast.int_type_name} i = a.len-1; i >= 0; --i, --pelem) {')
 			} else {
 				fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')

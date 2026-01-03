@@ -8,16 +8,18 @@ const special_array_methods = [
 	'insert',
 	'prepend',
 	'index',
+	'last_index',
 	'contains',
 ]
 
-fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
+fn (mut g JsGen) gen_array_index_method(left_type ast.Type, is_last_index bool) string {
 	unwrap_left_type := g.unwrap_generic(left_type)
 	mut left_sym := g.table.sym(unwrap_left_type)
 	mut left_type_str := g.styp(unwrap_left_type).trim('*')
-	fn_name := '${left_type_str}_index'
+	fn_name := if is_last_index { '${left_type_str}_last_index' } else { '${left_type_str}_index' }
 
-	if !left_sym.has_method('index') {
+	if (!is_last_index && !left_sym.has_method('index'))
+		|| (is_last_index && !left_sym.has_method('last_index')) {
 		info := left_sym.info as ast.Array
 		elem_sym := g.table.sym(info.elem_type)
 		if elem_sym.kind == .function {
@@ -26,8 +28,14 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 
 		mut fn_builder := strings.new_builder(512)
 		fn_builder.writeln('function ${fn_name}(a, v) {')
-		fn_builder.writeln('\tlet pelem = a.arr;')
-		fn_builder.writeln('\tfor (let i = 0; i < pelem.arr.length; ++i) {')
+		if is_last_index {
+			fn_builder.writeln('\tif (a.arr.length == 0) return -1;')
+			fn_builder.writeln('\tlet pelem = a.arr + (a.len-1)*a.element_size;')
+			fn_builder.writeln('\tfor (let i = pelem.arr.length-1; i >=0; --i) {')
+		} else {
+			fn_builder.writeln('\tlet pelem = a.arr;')
+			fn_builder.writeln('\tfor (let i = 0; i < pelem.arr.length; ++i) {')
+		}
 		if elem_sym.kind == .string {
 			fn_builder.writeln('\t\tif (pelem.get(new int(i)).str == v.str) {')
 		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
@@ -68,7 +76,11 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 
 	match node.name {
 		'index' {
-			g.gen_array_index(node)
+			g.gen_array_index(node, false)
+			return
+		}
+		'last_index' {
+			g.gen_array_index(node, true)
 			return
 		}
 		'contains' {
@@ -138,8 +150,8 @@ fn (mut g JsGen) gen_array_method_call(it ast.CallExpr) {
 	}
 }
 
-fn (mut g JsGen) gen_array_index(node ast.CallExpr) {
-	fn_name := g.gen_array_index_method(node.left_type)
+fn (mut g JsGen) gen_array_index(node ast.CallExpr, is_last_index bool) {
+	fn_name := g.gen_array_index_method(node.left_type, is_last_index)
 	g.write('${fn_name}(')
 	g.expr(node.left)
 	g.gen_deref_ptr(node.left_type)

@@ -182,6 +182,17 @@ pub fn (a array) index(v string) int {
 	return -1
 }
 
+pub fn (a array) last_index(v string) int {
+	for i := a.len - 1; i >= 0; i-- {
+		#if (a.arr.get(i).toString() == v.toString())
+
+		{
+			return i
+		}
+	}
+	return -1
+}
+
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
 	#let slice = a.arr.arr.slice(start,end)
