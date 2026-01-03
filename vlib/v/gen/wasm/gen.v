@@ -1093,26 +1093,31 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 
 				loop := g.func.c_loop([], [])
 				{
-					g.loop_breakpoint_stack << LoopBreakpoint{
-						c_continue: loop
-						c_break:    block
-						name:       node.label
-					}
+					continue_block := g.func.c_block([], [])
+					{
+						g.loop_breakpoint_stack << LoopBreakpoint{
+							c_continue: continue_block
+							c_break:    block
+							name:       node.label
+						}
 
-					if node.has_cond {
-						g.expr(node.cond, ast.bool_type)
-						g.func.eqz(.i32_t)
-						g.func.c_br_if(block) // !cond, goto end
-					}
+						if node.has_cond {
+							g.expr(node.cond, ast.bool_type)
+							g.func.eqz(.i32_t)
+							g.func.c_br_if(block) // !cond, goto end
+						}
 
-					g.expr_stmts(node.stmts, ast.void_type)
+						g.expr_stmts(node.stmts, ast.void_type)
+
+						g.loop_breakpoint_stack.pop()
+					}
+					g.func.c_end(continue_block)
 
 					if node.has_inc {
 						g.expr_stmt(node.inc, ast.void_type)
 					}
 
 					g.func.c_br(loop)
-					g.loop_breakpoint_stack.pop()
 				}
 				g.func.c_end(loop)
 			}
