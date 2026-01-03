@@ -1296,7 +1296,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	if (is_auto_deref_var && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct] && right is ast.Ident
 		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type])
-		|| (!elem_typ.is_ptr() && right_type.is_ptr()) {
+		|| elem_typ.nr_muls() + 1 == right_type.nr_muls() {
 		g.write('*')
 	}
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
