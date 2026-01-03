@@ -44,6 +44,10 @@ fn (mut g Gen) gen_comptime_selector(expr ast.ComptimeSelector) string {
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
+	if node.kind == .compile_error || node.kind == .compile_warn {
+		// handled by checker, this branch was not taken
+		return
+	}
 	if node.kind == .embed_file {
 		// $embed_file('/path/to/file')
 		g.gen_embed_file_init(mut node)

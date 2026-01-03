@@ -829,7 +829,18 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 			} else if c.is_generic_ident(cond.name) {
 				// generic type `T`
 				idx := c.table.cur_fn.generic_names.index(cond.name)
-				return c.table.cur_concrete_types[idx]
+				if idx >= 0 && idx < c.table.cur_concrete_types.len {
+					concrete_type := c.table.cur_concrete_types[idx]
+					if concrete_type != 0 {
+						return concrete_type
+					}
+				}
+				type_idx := c.table.find_type_idx(cond.name)
+				return if type_idx == 0 {
+					ast.void_type
+				} else {
+					ast.new_type(type_idx).set_flag(.generic)
+				}
 			} else if var := cond.scope.find_var(cond.name) {
 				// var
 				checked_type = c.unwrap_generic(var.typ)

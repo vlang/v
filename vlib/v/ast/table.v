@@ -773,9 +773,6 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
-	if idx == 0 {
-		return t.type_symbols[1]
-	}
 	// this should never happen
 	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
@@ -792,9 +789,6 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 			idx = cur_sym.info.parent_type.idx()
 		}
 		return t.type_symbols[idx]
-	}
-	if idx == 0 {
-		return t.type_symbols[1]
 	}
 	// this should never happen
 	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
