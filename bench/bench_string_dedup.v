@@ -1,10 +1,10 @@
-// Benchmark comparison of three string deduplication methods in V: array, map, and set
+// Benchmark comparison of four string deduplication methods in V: basic array, pre-allocated array, map, and set
 module main
 
 import time
 import datatypes
 
-// Method 1: Using array
+// Method 1: Using basic array (no pre-allocation)
 struct Context1 {
 mut:
 	used_str []string
@@ -16,23 +16,35 @@ fn (mut c Context1) add_used(str string) {
 	}
 }
 
-// Method 2: Using map
+// Method 2: Using pre-allocated array with capacity
 struct Context2 {
+mut:
+	used_str []string
+}
+
+fn (mut c Context2) add_used(str string) {
+	if str !in c.used_str {
+		c.used_str << str
+	}
+}
+
+// Method 3: Using map
+struct Context3 {
 mut:
 	used_str map[string]bool
 }
 
-fn (mut c Context2) add_used(str string) {
+fn (mut c Context3) add_used(str string) {
 	c.used_str[str] = true
 }
 
-// Method 3: Using set
-struct Context3 {
+// Method 4: Using set
+struct Context4 {
 mut:
 	used_str datatypes.Set[string]
 }
 
-fn (mut c Context3) add_used(str string) {
+fn (mut c Context4) add_used(str string) {
 	c.used_str.add(str)
 }
 
@@ -57,40 +69,53 @@ fn main() {
 	test_strs := generate_test_strings(num_strs, duplicate_ratio)
 	println('Generated test strings: ${test_strs.len} (approximately ${int(duplicate_ratio * 100)}% are duplicates)')
 
-	// Test method 1: array
+	// Test method 1: basic array (no pre-allocation)
 	mut ctx1 := Context1{}
 	sw1 := time.new_stopwatch()
 	for str in test_strs {
 		ctx1.add_used(str)
 	}
 	time1 := sw1.elapsed().milliseconds()
-	println('Method 1 (array) - Time: ${time1}ms, Final unique strings: ${ctx1.used_str.len}')
+	println('Method 1 (basic array) - Time: ${time1}ms, Final unique strings: ${ctx1.used_str.len}')
 
-	// Test method 2: map
-	mut ctx2 := Context2{}
+	// Test method 2: pre-allocated array
+	mut ctx2 := Context2{
+		used_str: []string{cap: num_strs} // Pre-allocate capacity to avoid reallocations
+	}
 	sw2 := time.new_stopwatch()
 	for str in test_strs {
 		ctx2.add_used(str)
 	}
 	time2 := sw2.elapsed().milliseconds()
-	println('Method 2 (map) - Time: ${time2}ms, Final unique strings: ${ctx2.used_str.len}')
+	println('Method 2 (pre-allocated array) - Time: ${time2}ms, Final unique strings: ${ctx2.used_str.len}')
 
-	// Test method 3: set
+	// Test method 3: map
 	mut ctx3 := Context3{}
 	sw3 := time.new_stopwatch()
 	for str in test_strs {
 		ctx3.add_used(str)
 	}
 	time3 := sw3.elapsed().milliseconds()
-	println('Method 3 (set) - Time: ${time3}ms, Final unique strings: ${ctx3.used_str.size()}')
+	println('Method 3 (map) - Time: ${time3}ms, Final unique strings: ${ctx3.used_str.len}')
+
+	// Test method 4: set
+	mut ctx4 := Context4{}
+	sw4 := time.new_stopwatch()
+	for str in test_strs {
+		ctx4.add_used(str)
+	}
+	time4 := sw4.elapsed().milliseconds()
+	println('Method 4 (set) - Time: ${time4}ms, Final unique strings: ${ctx4.used_str.size()}')
 
 	// Performance comparison
 	println('\nPerformance comparison:')
-	println('Method 2 (map) is ${f64(time1) / f64(time2):.2f} times faster than method 1 (array)')
-	println('Method 3 (set) is ${f64(time1) / f64(time3):.2f} times faster than method 1 (array)')
-	if time2 < time3 {
-		println('Map is slightly faster than set, difference: ${time3 - time2}ms')
+	println('Method 2 (pre-allocated array) is ${f64(time1) / f64(time2):.2f} times faster than method 1 (basic array)')
+	println('Method 3 (map) is ${f64(time1) / f64(time3):.2f} times faster than method 1 (basic array)')
+	println('Method 4 (set) is ${f64(time1) / f64(time4):.2f} times faster than method 1 (basic array)')
+
+	if time3 < time4 {
+		println('Map is slightly faster than set, difference: ${time4 - time3}ms')
 	} else {
-		println('Set is slightly faster than map, difference: ${time2 - time3}ms')
+		println('Set is slightly faster than map, difference: ${time3 - time4}ms')
 	}
 }
