@@ -2181,28 +2181,6 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			idx := t.find_or_register_map(unwrap_key_type, unwrap_value_type)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
-		FnType {
-			mut unwrapped_fn := ts.info.func
-			unwrapped_fn.params = unwrapped_fn.params.clone()
-			mut has_generic := false
-			for i, param in unwrapped_fn.params {
-				if param.typ.has_flag(.generic) {
-					unwrapped_fn.params[i].typ = t.unwrap_generic_type_ex(param.typ, generic_names,
-						concrete_types, recheck_concrete_types)
-					has_generic = true
-				}
-			}
-			if unwrapped_fn.return_type.has_flag(.generic) {
-				unwrapped_fn.return_type = t.unwrap_generic_type_ex(unwrapped_fn.return_type,
-					generic_names, concrete_types, recheck_concrete_types)
-				has_generic = true
-			}
-			if has_generic {
-				idx := t.find_or_register_fn_type(unwrapped_fn, true, false)
-				return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
-			}
-			return typ
-		}
 		Struct, Interface, SumType {
 			if !ts.info.is_generic {
 				return typ
@@ -2446,7 +2424,10 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		else {
-			if typ.has_flag(.generic) && ts.kind == .any {
+			// Only convert generic placeholders when recheck_concrete_types is true
+			// This ensures conversion happens during the recheck phase (code generation)
+			// and not during initial type checking where it causes false positives
+			if recheck_concrete_types && typ.has_flag(.generic) && ts.kind == .any {
 				if converted := t.convert_generic_type(typ, generic_names, concrete_types) {
 					converted_sym := t.sym(converted)
 					// TODO: find out why cgen fails on interfaces
