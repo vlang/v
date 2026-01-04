@@ -40,7 +40,7 @@ pub fn (s string) + (other string) string {
 }
 
 // Equality comparison: checks if two strings are identical
-pub fn (s string) == (other string) bool {
+pub fn (s string) str_eq(other string) bool {
 	if s.len != other.len {
 		return false
 	}
@@ -55,7 +55,7 @@ pub fn (s string) == (other string) bool {
 }
 
 // Less-than comparison: lexicographically compares two strings
-pub fn (s string) < (other string) bool {
+pub fn (s string) str_less_than(other string) bool {
 	// Taken from the C Backend
 	for i in 0 .. s.len {
 		if i >= other.len || s[i] > other[i] {
