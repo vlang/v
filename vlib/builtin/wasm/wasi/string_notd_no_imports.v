@@ -15,7 +15,8 @@ pub fn tos(s &u8, len int) string {
 	}
 }
 
-// Concatenation: var += str / str + str
+// Concatenation operator: var += str / str + str
+// Note: This will alloc a new string with the content of these two strings
 pub fn (s string) + (other string) string {
 	if s.len == 0 {
 		return other
@@ -38,6 +39,7 @@ pub fn (s string) + (other string) string {
 	}
 }
 
+// Equality comparison: checks if two strings are identical
 pub fn (s string) == (other string) bool {
 	if s.len != other.len {
 		return false
@@ -52,8 +54,9 @@ pub fn (s string) == (other string) bool {
 	return true
 }
 
+// Less-than comparison: lexicographically compares two strings
 pub fn (s string) < (other string) bool {
-	// Stolen from C Backend
+	// Taken from the C Backend
 	for i in 0 .. s.len {
 		if i >= other.len || s[i] > other[i] {
 			return false
