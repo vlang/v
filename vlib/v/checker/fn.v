@@ -2952,24 +2952,23 @@ fn (mut c Checker) post_process_generic_fns() ! {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.file.generic_fns.len {
-		mut node := c.file.generic_fns[i]
-		c.mod = node.mod
-		fkey := node.fkey()
+		c.mod = c.file.generic_fns[i].mod
+		fkey := c.file.generic_fns[i].fkey()
 		all_generic_fns[fkey]++
 		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
 			c.error('${fkey} generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
-				node.pos)
+				c.file.generic_fns[i].pos)
 			return error('fkey: ${fkey}')
 		}
 		gtypes := c.table.fn_generic_types[fkey]
 		$if trace_post_process_generic_fns ? {
-			eprintln('> post_process_generic_fns ${node.mod} | ${node.name} | fkey: ${fkey} | gtypes: ${gtypes} | c.file.generic_fns.len: ${c.file.generic_fns.len}')
+			eprintln('> post_process_generic_fns ${c.file.generic_fns[i].mod} | ${c.file.generic_fns[i].name} | fkey: ${fkey} | gtypes: ${gtypes} | c.file.generic_fns.len: ${c.file.generic_fns.len}')
 		}
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
-			c.fn_decl(mut node)
-			if node.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at', 'vweb.run',
-				'vweb.run_at'] {
+			c.fn_decl(mut c.file.generic_fns[i])
+			if c.file.generic_fns[i].name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at',
+				'vweb.run', 'vweb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct
@@ -2979,8 +2978,8 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		}
 		c.table.cur_concrete_types = []
 		$if trace_post_process_generic_fns ? {
-			if node.generic_names.len > 0 {
-				eprintln('       > fn_decl node.name: ${node.name} | generic_names: ${node.generic_names} | ninstances: ${node.ninstances}')
+			if c.file.generic_fns[i].generic_names.len > 0 {
+				eprintln('       > fn_decl node.name: ${c.file.generic_fns[i].name} | generic_names: ${c.file.generic_fns[i].generic_names} | ninstances: ${c.file.generic_fns[i].ninstances}')
 			}
 		}
 	}

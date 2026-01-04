@@ -801,7 +801,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					}
 					.key_match {
 						mut pos := p.tok.pos()
-						expr := p.match_expr(true)
+						expr := p.match_expr(true, false)
 						pos.update_last_line(p.prev_tok.line_nr)
 						return ast.ExprStmt{
 							expr: expr
@@ -1112,7 +1112,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.key_match {
 					mut pos := p.tok.pos()
-					expr := p.match_expr(true)
+					expr := p.match_expr(true, false)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr

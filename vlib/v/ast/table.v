@@ -1809,6 +1809,10 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 	if generic_names.len != to_types.len {
 		return none
 	}
+	type_idx := generic_type.idx()
+	if type_idx == 0 || type_idx >= t.type_symbols.len {
+		return none
+	}
 	mut sym := t.sym(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
