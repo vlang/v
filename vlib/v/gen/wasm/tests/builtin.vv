@@ -3,6 +3,22 @@ fn test() {
 	println('hello!')
 }
 
+fn str_concat() {
+    a := "Hello "
+    b := "V!"
+    d := a + b
+    println(d)
+}
+
+fn str_loop_concat() {
+    mut a := "Y"
+    for _ in 0 .. 20 {
+        a += "o"
+    }
+    a += "!"
+    println(a)
+}
+
 fn str_methods() {
 	print(128.str())
 	println(i64(-192322).str())
@@ -27,6 +43,8 @@ fn main() {
 	test()
 	str_methods()
 	str_implicit()
+	str_concat()
+    str_loop_concat()
 	assertions()
 
 	// panic('nooo!')

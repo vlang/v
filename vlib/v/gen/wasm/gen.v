@@ -411,6 +411,30 @@ pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	}
 }
 
+fn (mut g Gen) handle_string_operation(op token.Kind) {
+	match op {
+		.plus {
+			left_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.left')
+			right_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.right')
+			g.func.local_set(right_tmp)
+			g.func.local_set(left_tmp)
+
+			ret_var := g.new_local('', ast.string_type)
+			g.ref(ret_var)
+
+			// Call built-in string.+
+			g.func.local_get(left_tmp)
+			g.func.local_get(right_tmp)
+			g.func.call('string.+')
+
+			g.get(ret_var)
+		}
+		else {
+			g.w_error('unsupported string operation: `${op}`')
+		}
+	}
+}
+
 pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
 		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
