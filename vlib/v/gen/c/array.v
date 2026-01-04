@@ -282,29 +282,22 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 // cut_and_get_fixed_array_init_elements
 // for `Array_fixed_Array_fixed_Array_fixed__option_int_2_2_2 a = {{ _t1, _t2}`
 // will cut to `=` and return `{ _t1, _t2}`
+@[direct_array_access]
 fn (mut g Gen) cut_and_get_fixed_array_init_elements() string {
-	index := g.out.last_index(`=`)
-	if index == -1 {
-		return '/*this should not happend*/'
-	}
-	mut elements := g.out.after(index + 2)
-	g.out.cut_to(index + 3)
-	if elements.len == 0 {
-		return '/*this should not happend*/'
-	}
-
 	// extract the `{{},{}}` string
 	mut nested_level := 0
-	for i := elements.len - 1; i >= 0; i-- {
-		if elements[i] == `}` {
+	for i := g.out.len - 1; i >= 0; i-- {
+		if g.out[i] == `}` {
 			nested_level++
-		} else if elements[i] == `{` {
+		} else if g.out[i] == `{` {
 			nested_level--
-		} else if elements[i] == ` ` {
+		} else if g.out[i] == ` ` {
 			continue
 		}
 		if nested_level == 0 {
-			return elements[i..]
+			elements := g.out.after(i)
+			g.out.cut_to(i)
+			return elements
 		}
 	}
 	return '/*this should not happend*/'
