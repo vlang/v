@@ -16,7 +16,7 @@ pub fn tos(s &u8, len int) string {
 }
 
 // Concatenation: var += str / str + str
-pub fn (s string) +(other string) string {
+pub fn (s string) + (other string) string {
 	if s.len == 0 {
 		return other
 	}
@@ -36,4 +36,33 @@ pub fn (s string) +(other string) string {
 		str: result_ptr
 		len: total_len
 	}
+}
+
+pub fn (s string) == (other string) bool {
+	if s.len != other.len {
+		return false
+	}
+
+	for i in 0 .. s.len {
+		if s[i] != other[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+pub fn (s string) < (other string) bool {
+	// Stolen from C Backend
+	for i in 0 .. s.len {
+		if i >= other.len || s[i] > other[i] {
+			return false
+		} else if s[i] < other[i] {
+			return true
+		}
+	}
+	if s.len < other.len {
+		return true
+	}
+	return false
 }

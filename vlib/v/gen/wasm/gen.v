@@ -412,22 +412,52 @@ pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 }
 
 fn (mut g Gen) handle_string_operation(op token.Kind) {
+	left_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.left')
+	right_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.right')
+	g.func.local_set(right_tmp)
+	g.func.local_set(left_tmp)
+
 	match op {
 		.plus {
-			left_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.left')
-			right_tmp := g.func.new_local_named(.i32_t, '__tmp<string>.right')
-			g.func.local_set(right_tmp)
-			g.func.local_set(left_tmp)
-
 			ret_var := g.new_local('', ast.string_type)
 			g.ref(ret_var)
-
-			// Call built-in string.+
 			g.func.local_get(left_tmp)
 			g.func.local_get(right_tmp)
 			g.func.call('string.+')
-
 			g.get(ret_var)
+		}
+		.eq {
+			g.func.local_get(left_tmp)
+			g.func.local_get(right_tmp)
+			g.func.call('string.==')
+		}
+		.ne {
+			g.func.local_get(left_tmp)
+			g.func.local_get(right_tmp)
+			g.func.call('string.==')
+			g.func.eqz(.i32_t)
+		}
+		.lt {
+			g.func.local_get(left_tmp)
+			g.func.local_get(right_tmp)
+			g.func.call('string.<')
+		}
+		.gt {
+			g.func.local_get(right_tmp)
+			g.func.local_get(left_tmp)
+			g.func.call('string.<')
+		}
+		.le {
+			g.func.local_get(right_tmp)
+			g.func.local_get(left_tmp)
+			g.func.call('string.<')
+			g.func.eqz(.i32_t)
+		}
+		.ge {
+			g.func.local_get(left_tmp)
+			g.func.local_get(right_tmp)
+			g.func.call('string.<')
+			g.func.eqz(.i32_t)
 		}
 		else {
 			g.w_error('unsupported string operation: `${op}`')
@@ -625,20 +655,28 @@ fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacke
 	mut is_last_branch := branch_idx + 1 >= node.branches.len
 	mut is_last_expr := expr_idx + 1 >= branch.exprs.len
 
-	wasm_type := g.as_numtype(g.get_wasm_type(node.cond_type))
-
 	expr := branch.exprs[expr_idx]
 
 	if expr is ast.RangeExpr {
+		wasm_type := g.as_numtype(g.get_wasm_type(node.cond_type))
 		is_signed := node.cond_type.is_signed()
 
 		g.expr(node.cond, node.cond_type)
 		g.expr(expr.high, node.cond_type)
 		g.func.le(wasm_type, is_signed)
 	} else {
-		g.expr(node.cond, node.cond_type)
-		g.expr(expr, node.cond_type)
-		g.func.eq(wasm_type)
+		if g.is_param_type(node.cond_type) {
+			// Param types -> strings etc
+			g.expr(node.cond, node.cond_type)
+			g.expr(expr, node.cond_type)
+			g.infix_from_typ(node.cond_type, .eq)
+		} else {
+			// Numeric types -> direct comparison
+			wasm_type := g.as_numtype(g.get_wasm_type(node.cond_type))
+			g.expr(node.cond, node.cond_type)
+			g.expr(expr, node.cond_type)
+			g.func.eq(wasm_type)
+		}
 	}
 
 	blk := g.func.c_if([], unpacked_params)
