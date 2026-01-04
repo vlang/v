@@ -295,9 +295,7 @@ fn (mut g Gen) cut_and_get_fixed_array_init_elements() string {
 			continue
 		}
 		if nested_level == 0 {
-			elements := g.out.after(i)
-			g.out.cut_to(i)
-			return elements
+			return g.out.cut_to(i)
 		}
 	}
 	return '/*this should not happend*/'
