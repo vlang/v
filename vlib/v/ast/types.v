@@ -1906,6 +1906,21 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	return none
 }
 
+pub fn (t &TypeSymbol) has_method_with_sumtype_parent(name string) bool {
+	if t.has_method(name) {
+		return true
+	}
+	for s in global_table.type_symbols {
+		if s.kind == .sum_type {
+			info := s.info as SumType
+			if t.idx in info.variants {
+				return s.has_method(name)
+			}
+		}
+	}
+	return false
+}
+
 // is_js_compatible returns true if type can be converted to JS type and from JS type back to V type
 pub fn (t &TypeSymbol) is_js_compatible() bool {
 	mut table := global_table
