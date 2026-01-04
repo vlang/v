@@ -1,0 +1,2 @@
+_ := [2][3]?int{}
+println('done')

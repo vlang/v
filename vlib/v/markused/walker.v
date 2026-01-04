@@ -1247,6 +1247,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
 			}
+			if isym.info.elem_type.has_flag(.option) {
+				w.used_option++
+			}
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {

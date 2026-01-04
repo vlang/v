@@ -236,7 +236,6 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
-			before_arr_expr_pos := g.out.len
 			{
 				g.expr(ast.ArrayInit{
 					exprs:     [ast.IntegerLiteral{}]
@@ -244,7 +243,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 					elem_type: arr_info.elem_type
 				})
 			}
-			sarr_expr := g.out.cut_to(before_arr_expr_pos)
+			sarr_expr := g.cut_and_get_fixed_array_init_elements()
 			g.write_c99_elements_for_array(array_info.size, sarr_expr)
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
@@ -278,6 +277,28 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	if !is_struct && !is_none {
 		g.write('}')
 	}
+}
+
+// cut_and_get_fixed_array_init_elements
+// for `Array_fixed_Array_fixed_Array_fixed__option_int_2_2_2 a = {{ _t1, _t2}`
+// will cut to `=` and return `{ _t1, _t2}`
+@[direct_array_access]
+fn (mut g Gen) cut_and_get_fixed_array_init_elements() string {
+	// extract the `{{},{}}` string
+	mut nested_level := 0
+	for i := g.out.len - 1; i >= 0; i-- {
+		if g.out[i] == `}` {
+			nested_level++
+		} else if g.out[i] == `{` {
+			nested_level--
+		} else if g.out[i] == ` ` {
+			continue
+		}
+		if nested_level == 0 {
+			return g.out.cut_to(i)
+		}
+	}
+	return '/*this should not happend*/'
 }
 
 fn (mut g Gen) expr_with_init(node ast.ArrayInit) {
