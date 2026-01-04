@@ -52,6 +52,19 @@ fn str_cmp() {
 	println(b > a)
 	println(b <= a)
 	println(b >= a)
+
+	// If eval
+	if b == c {
+		println('B is C')
+	}
+	if a != c {
+		println('A is not C')
+		if a == c {
+			panic('A is C')
+		} else {
+			println('A is not C')
+		}
+	}
 }
 
 fn str_methods() {
