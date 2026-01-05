@@ -26,16 +26,16 @@ mut:
 	eval      eval.Eval
 	enum_vals map[string]Enum
 
-	mod                    Module
+	mod                    wasm.Module
 	pool                   serialise.Pool
-	func                   Function
+	func                   wasm.Function
 	local_vars             []Var
 	global_vars            map[string]Global
 	ret_rvars              []Var
 	ret                    ast.Type
 	ret_types              []ast.Type
-	ret_br                 LabelIndex
-	bp_idx                 LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	ret_br                 wasm.LabelIndex
+	bp_idx                 wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global              ?wasm.GlobalIndex
 	heap_base              ?wasm.GlobalIndex
 	fn_local_idx_end       int
@@ -57,8 +57,8 @@ mut:
 }
 
 pub struct LoopBreakpoint {
-	c_continue LabelIndex
-	c_break    LabelIndex
+	c_continue wasm.LabelIndex
+	c_break    wasm.LabelIndex
 	name       string
 }
 
@@ -217,7 +217,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// fn (...) !struct     | fn (_ &struct, ...) &IError
 	// fn (...) (...struct) | fn (...&struct, ...)
 
-	g.ret_rvars = []wasm.Var{}
+	g.ret_rvars = []Var{}
 	rt := node.return_type
 	rts := g.table.sym(rt)
 	g.ret = rt
@@ -288,7 +288,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	mut should_export := g.pref.os in [.browser, .wasi] && node.is_pub && node.mod == 'main'
 
-	g.func = g.mod.new_debug_function(name, FuncType{paraml, retl, none}, paramdbg)
+	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
 	if node.stmts.len > 0 {
 		g.ret_br = g.func.c_block([], retl)
@@ -318,7 +318,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// printfn is not implemented!
 }
 
-pub fn (mut g Gen) bare_function_frame(func_start PatchPos) {
+pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// Setup stack frame.
 	// If the function does not call other functions,
 	// a leaf function, the omission of setting the
@@ -516,7 +516,7 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []ValType, idx int,
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int,
 	existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
@@ -564,7 +564,7 @@ pub fn (mut g Gen) match_expr(node ast.MatchExpr, expected ast.Type, existing_rv
 	g.match_branch(node, expected, results, 0, existing_rvars)
 }
 
-fn (mut g Gen) match_branch(node ast.MatchExpr, expected ast.Type, unpacked_params []ValType, branch_idx int, existing_rvars []Var) {
+fn (mut g Gen) match_branch(node ast.MatchExpr, expected ast.Type, unpacked_params []wasm.ValType, branch_idx int, existing_rvars []Var) {
 	if branch_idx >= node.branches.len {
 		return
 	}
@@ -593,7 +593,7 @@ fn (mut g Gen) match_branch(node ast.MatchExpr, expected ast.Type, unpacked_para
 	}
 }
 
-fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacked_params []ValType, branch_idx int, expr_idx int, existing_rvars []Var, branch ast.MatchBranch) {
+fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacked_params []wasm.ValType, branch_idx int, expr_idx int, existing_rvars []Var, branch ast.MatchBranch) {
 	if expr_idx >= branch.exprs.len {
 		return
 	}
@@ -751,7 +751,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 			}
 		}
 	} else if rvars.len > 0 && existing_rvars.len == 0 {
-		mut rr_vars := []wasm.Var{cap: rts.len}
+		mut rr_vars := []Var{cap: rts.len}
 		mut r := rvars.len
 
 		for rt in rts.reverse() {
@@ -1232,7 +1232,7 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 
 				// similar code from `call_expr()`
 				// create variables or obtain them for use as rvals
-				mut rvars := []wasm.Var{cap: node.left_types.len}
+				mut rvars := []Var{cap: node.left_types.len}
 				for idx, rt in node.left_types {
 					left := node.left[idx]
 
