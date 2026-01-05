@@ -282,6 +282,7 @@ fn (mut context Context) kill_pgroup() {
 		context.child_process.signal_pgkill()
 	}
 	context.child_process.wait()
+	context.child_process.close()
 }
 
 fn (mut context Context) run_before_cmd() {
