@@ -428,18 +428,12 @@ pub fn (a BitField) == (b BitField) bool {
 pub fn (instance BitField) pop_count() int {
 	size := instance.size
 	bitnslots := zbitnslots(size)
-	tail := size % slot_size
 	mut count := 0
-	for i in 0 .. bitnslots - 1 {
+	for i in 0 .. bitnslots {
 		for j in 0 .. slot_size {
 			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
 				count++
 			}
-		}
-	}
-	for j in 0 .. tail {
-		if u32(instance.field[bitnslots - 1] >> u32(j)) & u32(1) == u32(1) {
-			count++
 		}
 	}
 	return count
