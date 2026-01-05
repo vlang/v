@@ -74,7 +74,7 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 		g.errors << errors.Error{
 			file_path: g.file_path
 			pos: pos
-			reporter: .gen			
+			reporter: .gen
 			message: s
 		}
 	}
@@ -1083,7 +1083,7 @@ pub fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 }
 
 pub fn (g &Gen) file_pos(pos token.Pos) string {
-	return '${g.file_path}:${pos.line_nr + 1}:${pos.col + 1}'
+	return '${os.to_slash(g.file_path)}:${pos.line_nr + 1}:${pos.col + 1}'
 }
 
 pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
