@@ -57,47 +57,129 @@ pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
 	return p.structs[typ.idx()]
 }
 
-pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
-	ts := p.table.sym(typ)
-	if ts.size != -1 && typ.idx() in p.structs {
-		return ts.size, ts.align
-	}
-
-	if ts.info is ast.Enum {
-		return p.table.type_size(ts.info.typ)
-	}
-
-	if ts.info !is ast.Struct {
-		return p.table.type_size(typ)
-	}
-
-	ti := ts.info as ast.Struct
-
-	// code borrowed from native, inserted in wasm, and now here!
-
-	mut strc := StructInfo{}
-	mut size := 0
-	mut align := 1
-	for f in ti.fields {
-		f_size, f_align := p.type_size(f.typ)
-		if f_size == 0 {
-			strc.offsets << 0
+pub fn (mut p Pool) calculate_all_size_align() {
+	for mut sym in p.table.type_symbols {
+		if sym.idx == 0 {
 			continue
 		}
-		padding := (f_align - size % f_align) % f_align
-		strc.offsets << size + padding
-		size += f_size + padding
-		if f_align > align {
-			align = f_align
+		_, _ := p.type_size(ast.new_type(sym.idx))
+	}
+}
+
+pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
+	if typ.has_option_or_result() {
+		return p.table.type_size(ast.error_type_idx)
+	}
+	if typ.nr_muls() > 0 {
+		return p.table.pointer_size, p.table.pointer_size
+	}
+	mut sym := p.table.sym(typ)
+	if sym.size != -1 {
+		return sym.size, sym.align
+	}
+	mut size := 0
+	mut align := 0
+	match sym.kind {
+		.placeholder, .void, .none, .generic_inst {}
+		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
+			size = p.table.pointer_size
+			align = p.table.pointer_size
+		}
+		.i8, .u8, .char, .bool {
+			size = 1
+			align = 1
+		}
+		.i16, .u16 {
+			size = 2
+			align = 2
+		}
+		.i32, .u32, .rune, .f32, .enum {
+			size = 4
+			align = 4
+		}
+		.int {
+			$if new_int ? && x64 {
+				size = 8
+				align = 8
+			} $else {
+				size = 4
+				align = 4
+			}
+		}
+		.i64, .u64, .int_literal, .f64, .float_literal {
+			size = 8
+			align = 8
+		}
+		.alias {
+			size, align = p.table.type_size((sym.info as ast.Alias).parent_type)
+		}
+		.struct, .string, .multi_return {
+			mut max_alignment := 0
+			mut total_size := 0
+			mut stri := StructInfo{}
+			types := if mut sym.info is ast.Struct {
+				sym.info.fields.map(it.typ)
+			} else {
+				(sym.info as ast.MultiReturn).types
+			}
+			for ftyp in types {
+				field_size, alignment := p.table.type_size(ftyp)
+				if alignment > max_alignment {
+					max_alignment = alignment
+				}
+				padding := (total_size + alignment - 1) / alignment * alignment
+				stri.offsets << total_size + padding
+				total_size = field_size + padding
+			}
+			p.structs[typ.idx()] = stri
+			size = (total_size + max_alignment - 1) / max_alignment * max_alignment
+			align = max_alignment
+		}
+		.sum_type, .interface, .aggregate {
+			match mut sym.info {
+				ast.SumType, ast.Aggregate {
+					size = (sym.info.fields.len + 2) * p.table.pointer_size
+					align = p.table.pointer_size
+				}
+				ast.Interface {
+					size = (sym.info.fields.len + 2) * p.table.pointer_size
+					align = p.table.pointer_size
+					for etyp in sym.info.embeds {
+						esize, _ := p.table.type_size(etyp)
+						size += esize - 2 * p.table.pointer_size
+					}
+				}
+				else {
+					// unreachable
+				}
+			}
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			elem_size, elem_align := p.table.type_size(info.elem_type)
+			size = info.size * elem_size
+			align = elem_align
+		}
+		// TODO: hardcoded:
+		.map {
+			size = if p.table.pointer_size == 8 {
+				$if new_int ? { 144 } $else { 120 }
+			} else {
+				80
+			}
+			align = p.table.pointer_size
+		}
+		.array {
+			size = if p.table.pointer_size == 8 {
+				$if new_int ? { 48 } $else { 32 }
+			} else {
+				24
+			}
+			align = p.table.pointer_size
 		}
 	}
-	size = (size + align - 1) / align * align
-	p.structs[typ.idx()] = strc
-
-	mut ts_ := p.table.sym(typ)
-	ts_.size = size
-	ts_.align = align
-
+	sym.size = size
+	sym.align = align
 	return size, align
 }
 

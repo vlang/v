@@ -1717,6 +1717,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		g.mod.enable_debug(none)
 	}
 
+	g.pool.calculate_all_size_align()
 	g.calculate_enum_fields()
 	for file in g.files {
 		g.file_path = file.path
