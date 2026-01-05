@@ -429,34 +429,34 @@ fn (mut g Gen) handle_string_operation(op token.Kind) {
 		.eq {
 			g.func.local_get(left_tmp)
 			g.func.local_get(right_tmp)
-			g.func.call('string.str_eq')
+			g.func.call('string.==')
 		}
 		.ne {
 			g.func.local_get(left_tmp)
 			g.func.local_get(right_tmp)
-			g.func.call('string.str_eq')
+			g.func.call('string.==')
 			g.func.eqz(.i32_t)
 		}
 		.lt {
 			g.func.local_get(left_tmp)
 			g.func.local_get(right_tmp)
-			g.func.call('string.str_less_than')
+			g.func.call('string.<')
 		}
 		.gt {
 			g.func.local_get(right_tmp)
 			g.func.local_get(left_tmp)
-			g.func.call('string.str_less_than')
+			g.func.call('string.<')
 		}
 		.le {
 			g.func.local_get(right_tmp)
 			g.func.local_get(left_tmp)
-			g.func.call('string.str_less_than')
+			g.func.call('string.<')
 			g.func.eqz(.i32_t)
 		}
 		.ge {
 			g.func.local_get(left_tmp)
 			g.func.local_get(right_tmp)
-			g.func.call('string.str_less_than')
+			g.func.call('string.<')
 			g.func.eqz(.i32_t)
 		}
 		else {
