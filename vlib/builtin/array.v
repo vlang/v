@@ -996,6 +996,9 @@ pub fn (a array) contains(value voidptr) bool
 // index returns the first index at which a given element can be found in the array or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
 
+// last_index returns the last index at which a given element can be found in the array or `-1` if the value is not found.
+pub fn (a array) last_index(value voidptr) int
+
 @[direct_array_access; unsafe]
 pub fn (mut a []string) free() {
 	$if prealloc {

@@ -29,12 +29,12 @@ const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 // are properly checked.
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all',
-	'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
+	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'wait',
+	'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
-pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wait', 'map', 'sort',
-	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place', 'count',
-	'filter']
+pub const fixed_array_builtin_methods = ['contains', 'index', 'last_index', 'any', 'all', 'wait',
+	'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse',
+	'reverse_in_place', 'count', 'filter']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
 pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
@@ -1439,6 +1439,9 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 
 // return the actual type of the expression, once the result or option type is handled
 fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
+	if ret_type.idx() == 0 {
+		return ret_type
+	}
 	match expr {
 		ast.CallExpr {
 			mut expr_ret_type := expr.return_type

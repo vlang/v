@@ -134,6 +134,11 @@ fn test_pop_count() {
 	assert count0 == count1
 }
 
+fn test_pop_count2() {
+	b := bitfield.from_str('011000110110110000010001000011010011011111011110101001010011011010001100001001101111111011010011')
+	assert b.pop_count() == 50
+}
+
 fn test_hamming() {
 	len := 80
 	mut count := 0

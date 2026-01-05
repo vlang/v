@@ -829,7 +829,18 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 			} else if c.is_generic_ident(cond.name) {
 				// generic type `T`
 				idx := c.table.cur_fn.generic_names.index(cond.name)
-				return c.table.cur_concrete_types[idx]
+				if idx >= 0 && idx < c.table.cur_concrete_types.len {
+					concrete_type := c.table.cur_concrete_types[idx]
+					if concrete_type != 0 {
+						return concrete_type
+					}
+				}
+				type_idx := c.table.find_type_idx(cond.name)
+				return if type_idx == 0 {
+					ast.void_type
+				} else {
+					ast.new_type(type_idx).set_flag(.generic)
+				}
 			} else if var := cond.scope.find_var(cond.name) {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
@@ -855,11 +866,29 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				// for `indirections` we also return the `typ`
 				return typ
 			}
-			if cond.gkind_field in [.typ, .indirections] {
-				// for `indirections` we also return the `typ`
-				return c.unwrap_generic(cond.name_type)
-			} else if cond.gkind_field == .unaliased_typ {
-				return c.table.unaliased_type(c.unwrap_generic(cond.name_type))
+			if cond.gkind_field in [.typ, .indirections, .unaliased_typ] {
+				if cond.expr is ast.Ident {
+					generic_name := cond.expr.name
+					if c.table.cur_fn != unsafe { nil }
+						&& generic_name in c.table.cur_fn.generic_names {
+						idx := c.table.cur_fn.generic_names.index(generic_name)
+						if idx >= 0 && idx < c.table.cur_concrete_types.len {
+							concrete_type := c.table.cur_concrete_types[idx]
+							if cond.gkind_field == .unaliased_typ {
+								return c.table.unaliased_type(concrete_type)
+							}
+							return concrete_type
+						}
+					}
+				}
+				unwrapped := c.unwrap_generic(cond.name_type)
+				if cond.gkind_field == .unaliased_typ {
+					if unwrapped.idx() == 0 || unwrapped.has_flag(.generic) {
+						return unwrapped
+					}
+					return c.table.unaliased_type(unwrapped)
+				}
+				return unwrapped
 			} else {
 				if cond.expr is ast.TypeOf {
 					return c.type_resolver.typeof_field_type(c.type_resolver.typeof_type(cond.expr.expr,

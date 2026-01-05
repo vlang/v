@@ -335,6 +335,16 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 				}
 			}
 		}
+		10 {
+			return match fn_name {
+				'last_index' {
+					.last_index
+				}
+				else {
+					.unknown
+				}
+			}
+		}
 		11 {
 			return match fn_name {
 				'delete_many' {

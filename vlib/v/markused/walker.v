@@ -1046,7 +1046,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		} else {
 			match left_sym.info {
 				ast.Array, ast.ArrayFixed {
-					if !w.uses_arr_void && node.name in ['contains', 'index'] {
+					if !w.uses_arr_void && node.name in ['contains', 'index', 'last_index'] {
 						if w.table.final_sym(left_sym.info.elem_type).kind == .function {
 							w.uses_arr_void = true
 						}
@@ -1246,6 +1246,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		ast.ArrayFixed, ast.Array {
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
+			}
+			if isym.info.elem_type.has_flag(.option) {
+				w.used_option++
 			}
 			w.mark_by_type(isym.info.elem_type)
 		}
