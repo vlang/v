@@ -195,6 +195,12 @@ fn read_32(mut rng PRNG, mut buf []u8) {
 @[direct_array_access]
 fn read_64(mut rng PRNG, mut buf []u8) {
 	p64 := unsafe { &u64(buf.data) }
+	if u64(p64) & 0xF != 0 {
+		for i in 0 .. buf.len {
+			buf[i] = rng.u8()
+		}
+		return
+	}
 	u64s := buf.len / 8
 	for i in 0 .. u64s {
 		unsafe {
