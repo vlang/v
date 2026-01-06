@@ -8,8 +8,8 @@ import time
 // netcat in separate shells, for example: `nc localhost 9001`
 
 fn main() {
-	$if !linux {
-		eprintln('This example only works on Linux')
+	$if windows {
+		eprintln('This example doe not work on Windows yet.')
 		exit(1)
 	}
 
@@ -63,8 +63,14 @@ fn main() {
 						}
 						eprintln('remote disconnected')
 					} else {
-						s, _ := os.fd_read(event.fd, 10)
-						os.fd_write(event.fd, s)
+						s, _ := os.fd_read(event.fd, 4096)
+						if s.len == 0 {
+							notifier.remove(event.fd) or {}
+							os.fd_close(event.fd)
+							continue
+						}
+
+						os.fd_write(event.fd, 'echo: ' + s)
 					}
 				}
 			}
