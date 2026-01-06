@@ -82,8 +82,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	match sym.kind {
 		.placeholder, .void, .none, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
-			size = p.table.pointer_size
-			align = p.table.pointer_size
+			size = 4
+			align = 4
 		}
 		.i8, .u8, .char, .bool {
 			size = 1
@@ -98,13 +98,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			align = 4
 		}
 		.int {
-			$if new_int ? && x64 {
-				size = 8
-				align = 8
-			} $else {
-				size = 4
-				align = 4
-			}
+			size = 4
+			align = 4
 		}
 		.i64, .u64, .int_literal, .f64, .float_literal {
 			size = 8
@@ -127,7 +122,7 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 				if alignment > max_alignment {
 					max_alignment = alignment
 				}
-				padding := (total_size + alignment - 1) / alignment * alignment
+				padding := (alignment - total_size % alignment) % alignment
 				stri.offsets << total_size + padding
 				total_size = field_size + padding
 			}
