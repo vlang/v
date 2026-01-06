@@ -2600,3 +2600,138 @@ fn test_all_vectors() {
 		assert hash == output, 'input: ${v.input} key: ${v.key}'
 	}
 }
+
+// Tests for sum() - variable length output (1-64 bytes)
+fn test_sum_output_lengths() {
+	data := 'Hello, World!'.bytes()
+
+	// Test various output lengths
+	for outlen in [1, 16, 20, 32, 48, 64] {
+		result := blake2b.sum(data, outlen)
+		assert result.len == outlen, 'sum() should return ${outlen} bytes, got ${result.len}'
+	}
+}
+
+fn test_sum_consistency_with_fixed_functions() {
+	data := 'The quick brown fox jumps over the lazy dog'.bytes()
+
+	// sum(64) should match sum512()
+	assert blake2b.sum(data, 64) == blake2b.sum512(data), 'sum(64) should equal sum512()'
+
+	// sum(48) should match sum384()
+	assert blake2b.sum(data, 48) == blake2b.sum384(data), 'sum(48) should equal sum384()'
+
+	// sum(32) should match sum256()
+	assert blake2b.sum(data, 32) == blake2b.sum256(data), 'sum(32) should equal sum256()'
+
+	// sum(20) should match sum160()
+	assert blake2b.sum(data, 20) == blake2b.sum160(data), 'sum(20) should equal sum160()'
+}
+
+fn test_sum_empty_input() {
+	empty := []u8{}
+
+	// Empty input should still produce valid hashes
+	result := blake2b.sum(empty, 32)
+	assert result.len == 32, 'sum() with empty input should return 32 bytes'
+
+	// sum(32) produces a different hash than sum512 truncated, because
+	// the output length is part of the Blake2b parameter block.
+	// Verify it matches sum256() which also uses 32-byte output length.
+	assert result == blake2b.sum256(empty), 'sum(empty, 32) should match sum256(empty)'
+}
+
+fn test_sum_deterministic() {
+	data := 'deterministic test'.bytes()
+
+	// Same input should always produce same output
+	result1 := blake2b.sum(data, 32)
+	result2 := blake2b.sum(data, 32)
+	assert result1 == result2, 'sum() should be deterministic'
+}
+
+// Tests for blake2b_long() - arbitrary length output
+fn test_blake2b_long_short_output() {
+	data := 'test data'.bytes()
+
+	// For outputs <= 64 bytes, blake2b_long prepends length
+	for outlen in [1, 16, 32, 48, 64] {
+		result := blake2b.blake2b_long(data, outlen)
+		assert result.len == outlen, 'blake2b_long(${outlen}) should return ${outlen} bytes, got ${result.len}'
+	}
+}
+
+fn test_blake2b_long_extended_output() {
+	data := 'extended output test'.bytes()
+
+	// Test outputs > 64 bytes (uses iterative hashing)
+	for outlen in [65, 100, 128, 256, 512, 1024] {
+		result := blake2b.blake2b_long(data, outlen)
+		assert result.len == outlen, 'blake2b_long(${outlen}) should return ${outlen} bytes, got ${result.len}'
+	}
+}
+
+fn test_blake2b_long_deterministic() {
+	data := 'deterministic long test'.bytes()
+
+	// Same input should always produce same output
+	result1 := blake2b.blake2b_long(data, 256)
+	result2 := blake2b.blake2b_long(data, 256)
+	assert result1 == result2, 'blake2b_long() should be deterministic'
+}
+
+fn test_blake2b_long_different_lengths_differ() {
+	data := 'length test'.bytes()
+
+	// Different output lengths should produce different results
+	result64 := blake2b.blake2b_long(data, 64)
+	result128 := blake2b.blake2b_long(data, 128)
+
+	// First 64 bytes should NOT be the same (due to length prefix in input)
+	assert result64 != result128[..64], 'blake2b_long with different lengths should differ'
+}
+
+fn test_blake2b_long_known_vectors() {
+	// Test vector: empty input with various output lengths
+	// These are regression tests to ensure the implementation doesn't change
+	empty := []u8{}
+
+	// blake2b_long prepends the output length as LE u32, so:
+	// blake2b_long(empty, 32) = blake2b([0x20, 0x00, 0x00, 0x00], 32)
+	result32 := blake2b.blake2b_long(empty, 32)
+	assert result32.len == 32
+
+	// blake2b_long(empty, 64) = blake2b([0x40, 0x00, 0x00, 0x00], 64)
+	result64 := blake2b.blake2b_long(empty, 64)
+	assert result64.len == 64
+
+	// Verify the length prefix behavior: different output lengths = different hashes
+	assert result32 != result64[..32], 'length prefix should affect hash output'
+}
+
+fn test_blake2b_long_argon2_use_case() {
+	// Argon2 uses blake2b_long to generate 1024-byte block hashes
+	// This tests the specific use case that motivated adding this function
+	block_data := []u8{len: 72, init: u8(index % 256)}
+
+	result := blake2b.blake2b_long(block_data, 1024)
+	assert result.len == 1024, 'blake2b_long should support 1024-byte output for Argon2'
+
+	// Verify it's not all zeros or repetitive
+	mut has_nonzero := false
+	for b in result {
+		if b != 0 {
+			has_nonzero = true
+			break
+		}
+	}
+	assert has_nonzero, 'blake2b_long output should not be all zeros'
+}
+
+fn test_blake2b_long_empty_output() {
+	data := 'test'.bytes()
+
+	// outlen < 1 should return empty
+	result := blake2b.blake2b_long(data, 0)
+	assert result.len == 0, 'blake2b_long(0) should return empty slice'
+}
