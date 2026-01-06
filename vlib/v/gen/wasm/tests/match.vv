@@ -94,15 +94,11 @@ fn main() {
 	println('Function calling matches -------')
 	function_matches(42)
 
-	/*
-	println("Strings matches -------")
-
-	// This doesn't work yet because string comparison is not ready (
+	println('Strings matches -------')
 	h := 'Hello'
 	println(match h {
 		'NotHello' { 'Not Hello string' }
 		'Hello' { 'Hello string' }
 		else { 'Unknown' }
 	})
-	*/
 }

@@ -3,6 +3,70 @@ fn test() {
 	println('hello!')
 }
 
+fn str_concat() {
+	a := 'Hello '
+	b := 'V!'
+	d := a + b
+	println(d)
+}
+
+fn str_loop_concat() {
+	mut a := 'Y'
+	for _ in 0 .. 20 {
+		a += 'o'
+	}
+	a += '!'
+	println(a)
+}
+
+fn str_cmp() {
+	a := 'Test???'
+	b := 'TestingMcTestface'
+	c := 'TestingMcTestface'
+
+	println(a != b)
+	println(a == b)
+	println(a == c)
+	println(c != b)
+	println(b == a)
+
+	// Duh
+	println(b == b)
+	println(a == a)
+	println(c == c)
+
+	// Dynamically Generated
+	mut d := ''
+	e := 'aaaaaaaa'
+	for _ in 0 .. 8 {
+		d += 'a'
+	}
+	println(d == e)
+	println(d != e)
+
+	// Complex expressions
+	println(d == e && d == e)
+	println(d == e && d == a)
+
+	println(b < a)
+	println(b > a)
+	println(b <= a)
+	println(b >= a)
+
+	// If eval
+	if b == c {
+		println('B is C')
+	}
+	if a != c {
+		println('A is not C')
+		if a == c {
+			panic('A is C')
+		} else {
+			println('A is not C')
+		}
+	}
+}
+
 fn str_methods() {
 	print(128.str())
 	println(i64(-192322).str())
@@ -27,6 +91,9 @@ fn main() {
 	test()
 	str_methods()
 	str_implicit()
+	str_concat()
+	str_cmp()
+	str_loop_concat()
 	assertions()
 
 	// panic('nooo!')
