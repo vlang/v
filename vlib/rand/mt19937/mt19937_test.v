@@ -24,8 +24,7 @@ fn mt19937_basic_test() {
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
 	mut randoms := []u64{len: (20)}
-	x := mt19937.MT19937RNG{}
-	mut rnd := rand.PRNG(x)
+	mut rnd := &rand.PRNG(&mt19937.MT19937RNG{})
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
 		randoms[i] = rnd.u64n(bound_u64) or { panic("Couldn't obtain random u64") }
