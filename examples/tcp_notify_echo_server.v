@@ -9,7 +9,7 @@ import time
 
 fn main() {
 	$if windows {
-		eprintln('This example doe not work on Windows yet.')
+		eprintln("This example doesn't work on Windows yet.")
 		exit(1)
 	}
 
