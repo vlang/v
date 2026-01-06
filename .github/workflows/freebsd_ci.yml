@@ -38,12 +38,11 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
-            IGNORE_OSVERSION=yes sudo pkg update -f
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
@@ -68,12 +67,11 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
-            IGNORE_OSVERSION=yes sudo pkg update -f
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
@@ -98,12 +96,11 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
-            IGNORE_OSVERSION=yes sudo pkg update -f
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
