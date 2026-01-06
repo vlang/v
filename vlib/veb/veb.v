@@ -174,7 +174,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				// no need to check the result of `validate_middleware`, since a response has to be sent
 				// anyhow. This function makes sure no further middleware is executed.
 				validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
-				validate_middleware[X](mut user_context, route.after_middlewares)
+				// skip route-specific after-middleware if global already sent a response
+				if !user_context.Context.done {
+					validate_middleware[X](mut user_context, route.after_middlewares)
+				}
 			}
 		}
 		// send only the headers, because if the response body is too big, TcpConn code will
