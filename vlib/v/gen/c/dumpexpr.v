@@ -235,8 +235,8 @@ fn (mut g Gen) dump_expr_definitions() {
 				} else {
 					deref
 				}
-				surrounder.add('\tstring value = (dump_arg == NULL) ? _S("nil") : builtin__string_clone(${to_string_fn_name}(${prefix}dump_arg));',
-					'\tbuiltin__string_free(&value);')
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _S("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
+					'')
 			}
 		} else {
 			prefix := if dump_sym.is_c_struct() {
