@@ -118,6 +118,12 @@ fn str_implicit() {
 	println(a + 10)
 }
 
+fn str_plus_assign_with_call_expr() {
+	mut str := 'a'
+	str += 1.str()
+	println(str)
+}
+
 fn assertions() {
 	assert true, 'hello'
 	assert true
@@ -133,6 +139,7 @@ fn main() {
 	str_cmp()
 	str_loop_concat()
 	str_literal()
+	str_plus_assign_with_call_expr()
 	assertions()
 
 	// panic('nooo!')
