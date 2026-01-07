@@ -134,6 +134,38 @@ pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
 
 type StmtOrExpr = ast.Expr | ast.Stmt
 
+pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
+	match expr {
+		ast.InfixExpr {
+			if expr.op == .key_is {
+				if expr.left is ast.TypeNode {
+					if expr.right is ast.ComptimeType {
+						if expr.right.kind == .array {
+							return c.table.sym(expr.left.typ).info is ast.Array
+						} else if expr.right.kind == .iface {
+							return c.table.sym(expr.left.typ).info is ast.Interface
+						} else if expr.right.kind == .map {
+							return c.table.sym(expr.left.typ).info is ast.Map
+						} else if expr.right.kind == .struct {
+							return c.table.sym(expr.left.typ).info is ast.Struct
+						}
+						// TODO do the other types
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return error('Cannot solve')
+}
+
+pub fn if_branch_to_block(b ast.IfBranch) ast.Block {
+	return ast.Block{
+		stmts: b.stmts
+		scope: b.scope
+	}
+}
+
 pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
 	match mut node {
 		ast.IfExpr {
@@ -153,13 +185,34 @@ pub fn (mut c Comptime) expr_stmt(mut node ast.Expr) StmtOrExpr {
 								// Same target OS as the conditional...
 								// => skip the #if defined ... #endif wrapper
 								// and just generate the branch statements:
-								return ast.Stmt(ast.Block{
-									stmts: node.branches[0].stmts
-									scope: node.branches[0].scope
-									pos:   node.pos
-								})
+								node.branches[0].stmts = c.stmts(mut node.branches[0].stmts)
+								return ast.Stmt(if_branch_to_block(node.branches[0]))
 							}
 						}
+					}
+				}
+				if c.pref.new_generic_solver {
+					mut has_true_branch := false
+					mut cant_solve := false
+					for mut b in node.branches {
+						if c.is_true(b.cond) or {
+							cant_solve = true
+							break
+						}
+						{
+							has_true_branch = true
+							if node.is_expr {
+								// TODO
+							} else {
+								b.stmts = c.stmts(mut b.stmts)
+								return ast.Stmt(if_branch_to_block(b))
+							}
+						}
+					}
+					if !cant_solve && !has_true_branch {
+						return ast.Stmt(ast.EmptyStmt{
+							pos: node.pos
+						})
 					}
 				}
 			}

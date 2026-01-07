@@ -3578,13 +3578,21 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				arg_type
 			}
 		}
-		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
+		if c.pref.new_generic_solver {
+			node.return_type = c.table.find_or_register_array(ret_type)
+		} else {
+			node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
+		}
 		if node.return_type.has_flag(.shared_f) {
 			node.return_type = node.return_type.clear_flag(.shared_f).deref()
 		}
 		ret_sym := c.table.sym(ret_type)
 		if ret_sym.kind == .multi_return {
 			c.error('returning multiple values is not supported in .map() calls', node.pos)
+		}
+
+		if c.pref.new_generic_solver && ret_type.has_flag(.generic) {
+			node.return_type = node.return_type.set_flag(.generic)
 		}
 	} else if node.kind == .filter {
 		// check fn
