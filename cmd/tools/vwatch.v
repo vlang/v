@@ -399,7 +399,7 @@ fn main() {
 	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
 	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
 	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
-	context.only_watch = fp.string('only-watch', `o`, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
+	context.only_watch = fp.string('only-watch', 0, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
 	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
 	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
