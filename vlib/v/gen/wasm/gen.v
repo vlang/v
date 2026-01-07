@@ -1069,6 +1069,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.Nil {
 			g.func.i32_const(0)
 		}
+		ast.EmptyExpr {}
 		ast.IfExpr {
 			g.if_expr(node, expected, [])
 		}
@@ -1102,6 +1103,27 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 }
 
 pub fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+	if node.is_range {
+		g.for_in_range(node)
+		return
+	}
+
+	cond_sym := g.table.sym(node.cond_type)
+
+	match cond_sym.kind {
+		.array_fixed {
+			g.for_in_array_fixed(node, cond_sym)
+		}
+		.string {
+			g.for_in_string(node)
+		}
+		else {
+			g.w_error('unsupported iter type: ${cond_sym.kind}')
+		}
+	}
+}
+
+fn (mut g Gen) for_in_range(node ast.ForInStmt) {
 	loop_var_type := unpack_literal_int(node.val_type)
 	block := g.func.c_block([], [])
 	{
@@ -1135,6 +1157,139 @@ pub fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.func.add(wtyp)
 			}
 			g.set(loop_var)
+
+			g.func.c_br(loop)
+			g.loop_breakpoint_stack.pop()
+		}
+		g.func.c_end(loop)
+	}
+	g.func.c_end(block)
+}
+
+fn (mut g Gen) for_in_array_fixed(node ast.ForInStmt, cond_sym &ast.TypeSymbol) {
+	info := cond_sym.info as ast.ArrayFixed
+	array_size := info.size
+
+	block := g.func.c_block([], [])
+	{
+		idx_var := g.new_local('__idx', ast.int_type)
+		g.literalint(0, ast.int_type)
+		g.set(idx_var)
+
+		array_base := g.new_local('__array_base', node.cond_type)
+		g.expr(node.cond, node.cond_type)
+		g.set(array_base)
+
+		loop := g.func.c_loop([], [])
+		{
+			g.loop_breakpoint_stack << LoopBreakpoint{
+				c_continue: loop
+				c_break:    block
+				name:       node.label
+			}
+
+			// if index >= array_size
+			g.get(idx_var)
+			g.literalint(array_size, ast.int_type)
+			g.func.ge(.i32_t, false)
+			g.func.c_br_if(block)
+
+			// _ -> No variable in the loop
+			if node.val_var != '_' {
+				element_var := g.new_local(node.val_var, node.val_type)
+
+				// array_base + idx * element_size
+				g.get(array_base)
+				g.get(idx_var)
+
+				elem_size, _ := g.pool.type_size(node.val_type)
+				if elem_size > 1 {
+					g.literalint(elem_size, ast.int_type)
+					g.func.mul(.i32_t)
+				}
+				g.func.add(.i32_t)
+
+				if g.is_pure_type(node.val_type) {
+					g.load(node.val_type, 0)
+				}
+
+				g.set(element_var)
+			}
+
+			// Inside loop
+			g.expr_stmts(node.stmts, ast.void_type)
+
+			// idx++
+			g.set_prepare(idx_var)
+			{
+				g.get(idx_var)
+				g.literalint(1, ast.int_type)
+				g.func.add(.i32_t)
+			}
+			g.set(idx_var)
+
+			g.func.c_br(loop)
+			g.loop_breakpoint_stack.pop()
+		}
+		g.func.c_end(loop)
+	}
+	g.func.c_end(block)
+}
+
+fn (mut g Gen) for_in_string(node ast.ForInStmt) {
+	block := g.func.c_block([], [])
+	{
+		idx_var := g.new_local('__idx', ast.int_type)
+		g.literalint(0, ast.int_type)
+		g.set(idx_var)
+
+		// String ptr
+		string_var := g.new_local('__string', ast.string_type)
+		g.expr(node.cond, ast.string_type)
+		g.set(string_var)
+
+		len_var := g.new_local('__len', ast.int_type)
+		g.get(string_var)
+		g.load_field(ast.string_type, ast.int_type, 'len')
+		g.set(len_var)
+
+		loop := g.func.c_loop([], [])
+		{
+			g.loop_breakpoint_stack << LoopBreakpoint{
+				c_continue: loop
+				c_break:    block
+				name:       node.label
+			}
+
+			// if index >= length
+			g.get(idx_var)
+			g.get(len_var)
+			g.func.ge(.i32_t, false)
+			g.func.c_br_if(block)
+
+			// _ -> No variable in the loop
+			if node.val_var != '_' {
+				char_var := g.new_local(node.val_var, node.val_type)
+
+				// Use string.at(idx) method to get the byte, don't reinvent the wheel
+				g.get(string_var)
+				g.get(idx_var)
+				g.func.call('string.at')
+
+				g.set(char_var)
+			}
+
+			// Inside loop
+			g.expr_stmts(node.stmts, ast.void_type)
+
+			// idx++
+			g.set_prepare(idx_var)
+			{
+				g.get(idx_var)
+				g.literalint(1, ast.int_type)
+				g.func.add(.i32_t)
+			}
+			g.set(idx_var)
 
 			g.func.c_br(loop)
 			g.loop_breakpoint_stack.pop()
