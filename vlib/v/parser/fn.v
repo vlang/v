@@ -658,7 +658,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					is_duplicate = !type_sym.info.has_method(name)
 				}
 			}
-			if is_duplicate {
+			// when formatting, methods in mutually exclusive $if/$else branches
+			// may appear as duplicates since all branches are parsed
+			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
