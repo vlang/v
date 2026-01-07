@@ -660,7 +660,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			// when formatting, methods in mutually exclusive $if/$else branches
 			// may appear as duplicates since all branches are parsed
-			if is_duplicate && !(p.pref.is_fmt && p.inside_ct_if_expr) {
+			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
