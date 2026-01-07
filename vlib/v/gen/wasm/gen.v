@@ -1498,7 +1498,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		stack_top: stack_top
 		data_base: calc_align(stack_top + 1, 16)
 	}
-	g.table.pointer_size = 4
 	g.mod.assign_memory('memory', true, 1, none)
 
 	if g.pref.is_debug {
