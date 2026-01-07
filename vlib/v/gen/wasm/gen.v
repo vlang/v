@@ -465,7 +465,7 @@ fn (mut g Gen) handle_string_operation(op token.Kind) {
 	}
 }
 
-pub fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral, expected ast.Type) {
+pub fn (mut g Gen) string_inter_literal_expr(node ast.StringInterLiteral, expected ast.Type) {
 	if node.exprs.len == 0 {
 		g.expr(ast.StringLiteral{ val: node.vals[0], pos: node.pos }, expected)
 		return
@@ -1087,7 +1087,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.StringInterLiteral {
-			g.string_inter_literal(node, expected)
+			g.string_inter_literal_expr(node, expected)
 		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
