@@ -465,6 +465,57 @@ fn (mut g Gen) handle_string_operation(op token.Kind) {
 	}
 }
 
+pub fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral, expected ast.Type) {
+	if node.exprs.len == 0 {
+		g.expr(ast.StringLiteral{ val: node.vals[0], pos: node.pos }, expected)
+		return
+	}
+
+	result_var := g.new_local('__str_inter', ast.string_type)
+
+	g.set_with_expr(ast.StringLiteral{ val: node.vals[0], pos: node.pos }, result_var)
+
+	for i, expr in node.exprs {
+		mut expr_to_concat := expr
+		typ := node.expr_types[i]
+
+		if typ != ast.string_type {
+			has_str, _, _ := g.table.sym(typ).str_method_info()
+			if !has_str {
+				g.v_error('cannot interpolate type without .str() method', node.fmt_poss[i])
+			}
+
+			expr_to_concat = ast.CallExpr{
+				name:           'str'
+				left:           expr
+				left_type:      typ
+				receiver_type:  typ
+				return_type:    ast.string_type
+				is_method:      true
+				is_return_used: true
+			}
+		}
+
+		// result = result + expr_as_string
+		{
+			g.get(result_var)
+			g.expr(expr_to_concat, ast.string_type)
+			g.handle_string_operation(.plus)
+			g.set(result_var)
+		}
+
+		// Concat the next string segment (if not empty)
+		if i + 1 < node.vals.len && node.vals[i + 1].len > 0 {
+			g.get(result_var)
+			g.expr(ast.StringLiteral{ val: node.vals[i + 1], pos: node.pos }, ast.string_type)
+			g.handle_string_operation(.plus)
+			g.set(result_var)
+		}
+	}
+
+	g.get(result_var)
+}
+
 pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
 		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
@@ -1034,6 +1085,9 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			v := g.new_local('', ast.string_type)
 			g.set_with_expr(node, v)
 			g.get(v)
+		}
+		ast.StringInterLiteral {
+			g.string_inter_literal(node, expected)
 		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
