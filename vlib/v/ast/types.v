@@ -920,7 +920,7 @@ pub enum Kind {
 
 // str returns the internal & source name of the type
 pub fn (t &TypeSymbol) str() string {
-	return t.name
+	return t.name.clone()
 }
 
 // TODO why is this needed? str() returns incorrect amount of &
