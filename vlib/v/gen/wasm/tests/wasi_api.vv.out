@@ -1,0 +1,15 @@
+args_sizes_get: ok
+args_sizes_get: argc >= 1
+args_sizes_get: argc_buf_size > 0
+args_get: ok
+wasi_args_get: ok
+random_get: ok
+random_get: has low values = true
+random_get: has high values = true
+random_get: values vary = true
+fd_write: Hello from WASI WOORLD!
+fd_write: ok
+Multiple IO vectors yay!
+fd_write_multi: ok
+fd_sync: ok on stdout
+fd_sync: ok on stderr
