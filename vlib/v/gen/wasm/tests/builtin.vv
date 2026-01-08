@@ -67,6 +67,44 @@ fn str_cmp() {
 	}
 }
 
+fn str_literal() {
+	a := 'Big test'
+	b := 'Such wow'
+	c := 'Helllo!'
+	d := '${a} and ${b}'
+	e := a + '${b}' + '${b}'
+	f := 42
+	array := ['${a}', '${b}', '${c}', '${f}']!
+
+	println('${a}')
+	println('${b}')
+	println('${c}')
+	println('${d}')
+	println('${e}')
+	println('meaning of life is ${f}')
+	println('${a}${c}')
+	println('${b}${a}')
+	println('${c}${a}${e}')
+	println('${a}${c}${c}${a}${b}${a}')
+	println('${b}${a}${b}')
+	println('${c}${a}${b}${a}${b}${a}')
+
+	// No for in array for now
+	println('---')
+	for i in 0 .. 4 {
+		println(array[i])
+	}
+
+	// Concat
+	mut concat := ''
+	for i in 0 .. 10 {
+		concat += '${i} - '
+	}
+	println('${concat}10!')
+
+	// Modifiers or dumps are not supported yet...
+}
+
 fn str_methods() {
 	print(128.str())
 	println(i64(-192322).str())
@@ -94,6 +132,7 @@ fn main() {
 	str_concat()
 	str_cmp()
 	str_loop_concat()
+	str_literal()
 	assertions()
 
 	// panic('nooo!')
