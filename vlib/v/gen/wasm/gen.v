@@ -1365,9 +1365,13 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						}
 					}
 
-					if !passed && node.op == .assign {
-						if v := g.get_var_from_expr(left) {
-							var = v
+					if !passed {
+						if node.op == .assign {
+							if v := g.get_var_from_expr(left) {
+								var = v
+							}
+						} else if node.op == .plus_assign && g.is_param_type(rt) {
+							var = g.new_local('', rt)
 						}
 					}
 
