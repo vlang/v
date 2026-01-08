@@ -62,7 +62,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	if pref_.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	table.pointer_size = if pref_.m64 { 8 } else { 4 }
+	table.pointer_size = if pref_.m64 && pref_.backend != .wasm { 8 } else { 4 }
 	mut msvc := MsvcResult{}
 	if pref_.ccompiler == 'msvc' {
 		$if windows {
