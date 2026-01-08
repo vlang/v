@@ -40,7 +40,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	unwrapped_typ := g.unwrap_generic(node.typ)
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
-		if node.typ.has_flag(.generic) && unwrapped_typ.is_ptr() {
+		if unwrapped_typ.is_ptr() {
 			// handle promotions to a sumtype for generic functions like this one: `fn (d Struct) a[T]() T { return d }`
 			// the value should be on the heap, since it is not known where it will be used:
 			sumtype_type := unwrapped_typ.set_nr_muls(0)
