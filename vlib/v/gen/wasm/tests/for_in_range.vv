@@ -54,6 +54,59 @@ fn range_dual() int {
 	return sum
 }
 
+fn for_in_item() {
+	a := ['a', 'b', 'c']!
+	b := 'This a string'
+	c := [1, 2, 3, 5]!
+	d := 42
+	hard := [[[[1, 2, 3, 4]!]!]!]!
+	hard_2 := [[[[1, d, d, 4]!]!]!]!
+
+	println('a ----')
+	for element in a {
+		println(element)
+	}
+
+	println('b ----')
+	for character in b {
+		println(character)
+	}
+
+	println('hard ----')
+	for i in hard {
+		for j in i {
+			for k in j {
+				for element in k {
+					println(element)
+				}
+			}
+		}
+	}
+
+	println('hard_2 ----')
+	for i in hard_2 {
+		for j in i {
+			for k in j {
+				for element in k {
+					println(element)
+				}
+			}
+		}
+	}
+
+	println('c ----')
+	for element in c {
+		println(element)
+	}
+
+	println('counter ----')
+	mut i := 0
+	for _ in c {
+		i++
+	}
+	println(i)
+}
+
 fn main() {
 	println('--- inverted_range()')
 	println(inverted_range())
@@ -72,6 +125,9 @@ fn main() {
 
 	println('--- range_dual()')
 	println(range_dual())
+
+	println('--- for_in_item()')
+	for_in_item()
 
 	// Currently, the backend doesn't support maps, list etc. iteration is not possible
 }
