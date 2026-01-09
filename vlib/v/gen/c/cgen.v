@@ -2986,10 +2986,17 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		is_primitive_to_interface := fname.contains('_to_Interface_') && expr is ast.Ident
 			&& g.table.sym(got).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .bool, .rune]
 
+		// Check if the expression is a function argument (local variable) that needs heap allocation
+		is_fn_arg := if expr is ast.Ident && expr.obj is ast.Var {
+			expr.obj.is_arg
+		} else {
+			false
+		}
+
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
-			|| is_primitive_to_interface) {
+			|| is_primitive_to_interface || is_fn_arg) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
