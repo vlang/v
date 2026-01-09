@@ -75,3 +75,23 @@ pub fn (s string) at(idx int) u8 {
 	}
 	return unsafe { s.str[idx] }
 }
+
+// Convert C string to V string
+pub fn cstring_to_vstring(ptr &u8) string {
+	if ptr == 0 {
+		return ''
+	}
+
+	mut len := 0
+	unsafe {
+		for ptr[len] != 0 {
+			len++
+		}
+	}
+	unsafe {
+		return string{
+			str: ptr
+			len: len
+		}
+	}
+}
