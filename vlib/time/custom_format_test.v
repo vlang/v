@@ -1,13 +1,26 @@
 import time
 
+const test_time = time.Time{
+	year:       2024
+	month:      7
+	day:        15
+	hour:       14
+	minute:     30
+	second:     45
+	nanosecond: 123456789
+}
+
 fn test_custom_format() {
-	date := time.now()
-	assert date.custom_format('YYYY-MM-DD HH:mm') == date.format()
-	assert date.custom_format('MMM') == date.smonth()
+	assert test_time.custom_format('YYYY/MM/DD HH:mm:ss') == '2024/07/15 14:30:45'
+	assert test_time.custom_format('DD-MM-YYYY hh:mm A') == '15-07-2024 02:30 PM'
+	assert test_time.custom_format('hh:mm:ss a, on dddd, MMMM Do, YYYY') == '02:30:45 pm, on Monday, July 15th, 2024'
+
+	assert test_time.custom_format('YYYY-MM-DD HH:mm') == test_time.format()
+	assert test_time.custom_format('MMM') == test_time.smonth()
 
 	test_str := 'M MM Mo MMM MMMM\nD DD DDD DDDD\nd dd ddd dddd\nYY YYYY a A\nH HH h hh k kk i ii e\nm mm s ss Z ZZ ZZZ\nDo DDDo Q Qo QQ\nN NN w wo ww\nM/D/YYYY N-HH:mm:ss Qo?a'
 
-	println(date.custom_format(test_str))
+	println(test_time.custom_format(test_str))
 }
 
 fn test_hours() {

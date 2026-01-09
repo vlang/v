@@ -15,28 +15,12 @@ fn iclamp(x int, a int, b int) int {
 	return x
 }
 
-// int_to_byte_array_no_pad fulfill buffer by part
+// int_to_ptr_byte_array_no_pad fulfill buffer by part
 // it doesn't pad with leading zeros for performance reasons
-@[direct_array_access]
-fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
-	mut num := value
-	if size <= 0 || num < 0 {
-		return
-	}
-
-	// Start from the end of the array
-	mut i := size - 1
-
-	// Convert each digit to a character and store it in the array
-	for num > 0 && i >= 0 {
-		arr[i] = (num % 10) + `0`
-		num /= 10
-		i--
-	}
-}
-
-// int_to_byte_array_no_pad fulfill buffer by part
-// it doesn't pad with leading zeros for performance reasons
+// arr_ptr - pointer to the byte array to fill with digits in the right positions
+// example: for month 07 arr_ptr points to the second position in "YYYY-MM-DD..." array
+// arr_len - length of the digit part in the array
+// example: for year 2024 arr_len=4, for month 07 arr_len=2
 @[direct_array_access; unsafe]
 fn int_to_ptr_byte_array_no_pad(value int, arr_prt &u8, arr_len int) {
 	mut num := value
@@ -58,249 +42,219 @@ fn int_to_ptr_byte_array_no_pad(value int, arr_prt &u8, arr_len int) {
 }
 
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
-@[manualfree]
 pub fn (t Time) format() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
-		`0`]
+		`0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
+		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
 	}
-
-	int_to_byte_array_no_pad(t.year, mut buf, 4)
-	int_to_byte_array_no_pad(t.month, mut buf, 7)
-	int_to_byte_array_no_pad(t.day, mut buf, 10)
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 13)
-	int_to_byte_array_no_pad(t.minute, mut buf, 16)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
-@[manualfree]
 pub fn (t Time) format_ss() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`]
+		`0`, `:`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
+		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
 	}
-
-	int_to_byte_array_no_pad(t.year, mut buf, 4)
-	int_to_byte_array_no_pad(t.month, mut buf, 7)
-	int_to_byte_array_no_pad(t.day, mut buf, 10)
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 13)
-	int_to_byte_array_no_pad(t.minute, mut buf, 16)
-	int_to_byte_array_no_pad(t.second, mut buf, 19)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
-@[manualfree]
 pub fn (t Time) format_ss_milli() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
+		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+
+		// Extract and format milliseconds
+		millis := t.nanosecond / 1_000_000
+		int_to_ptr_byte_array_no_pad(millis, &buf[20], 3)
 	}
-
-	int_to_byte_array_no_pad(t.year, mut buf, 4)
-	int_to_byte_array_no_pad(t.month, mut buf, 7)
-	int_to_byte_array_no_pad(t.day, mut buf, 10)
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 13)
-	int_to_byte_array_no_pad(t.minute, mut buf, 16)
-	int_to_byte_array_no_pad(t.second, mut buf, 19)
-
-	// Extract and format milliseconds
-	millis := t.nanosecond / 1_000_000
-	int_to_byte_array_no_pad(millis, mut buf, 23)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
-@[manualfree]
 pub fn (t Time) format_ss_micro() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
+		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+
+		// Extract and format microseconds
+		micros := t.nanosecond / 1_000
+		int_to_ptr_byte_array_no_pad(micros, &buf[20], 6)
 	}
-
-	int_to_byte_array_no_pad(t.year, mut buf, 4)
-	int_to_byte_array_no_pad(t.month, mut buf, 7)
-	int_to_byte_array_no_pad(t.day, mut buf, 10)
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 13)
-	int_to_byte_array_no_pad(t.minute, mut buf, 16)
-	int_to_byte_array_no_pad(t.second, mut buf, 19)
-
-	// Extract and format microseconds
-	micros := t.nanosecond / 1_000
-	int_to_byte_array_no_pad(micros, mut buf, 26)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
-@[manualfree]
 pub fn (t Time) format_ss_nano() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
+		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+
+		int_to_ptr_byte_array_no_pad(t.nanosecond, &buf[20], 9) // Adjusted index for 9 digits
 	}
-
-	int_to_byte_array_no_pad(t.year, mut buf, 4)
-	int_to_byte_array_no_pad(t.month, mut buf, 7)
-	int_to_byte_array_no_pad(t.day, mut buf, 10)
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 13)
-	int_to_byte_array_no_pad(t.minute, mut buf, 16)
-	int_to_byte_array_no_pad(t.second, mut buf, 19)
-
-	int_to_byte_array_no_pad(t.nanosecond, mut buf, 29) // Adjusted index for 9 digits
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
-@[manualfree]
 pub fn (t Time) format_rfc3339() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]
-
-	defer {
-		unsafe { buf.free() }
-	}
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]!
 
 	t_ := time_with_unix(t)
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
-		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
-		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
-		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
-		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
-		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
-		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
-		int_to_byte_array_no_pad(utc_time.nanosecond / 1_000_000, mut buf, 23)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.nanosecond / 1_000_000, &buf[20], 3)
+		}
 	} else {
-		int_to_byte_array_no_pad(t_.year, mut buf, 4)
-		int_to_byte_array_no_pad(t_.month, mut buf, 7)
-		int_to_byte_array_no_pad(t_.day, mut buf, 10)
-		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
-		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
-		int_to_byte_array_no_pad(t_.second, mut buf, 19)
-		int_to_byte_array_no_pad(t_.nanosecond / 1_000_000, mut buf, 23)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(t_.nanosecond / 1_000_000, &buf[20], 3)
+		}
 	}
 
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_rfc3339_micro returns a date string in "YYYY-MM-DDTHH:mm:ss.123456Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-@[manualfree]
 pub fn (t Time) format_rfc3339_micro() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
-
-	defer {
-		unsafe { buf.free() }
-	}
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]!
 
 	t_ := time_with_unix(t)
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
-		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
-		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
-		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
-		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
-		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
-		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
-		int_to_byte_array_no_pad(utc_time.nanosecond / 1000, mut buf, 26)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.nanosecond / 1000, &buf[20], 6)
+		}
 	} else {
-		int_to_byte_array_no_pad(t_.year, mut buf, 4)
-		int_to_byte_array_no_pad(t_.month, mut buf, 7)
-		int_to_byte_array_no_pad(t_.day, mut buf, 10)
-		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
-		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
-		int_to_byte_array_no_pad(t_.second, mut buf, 19)
-		int_to_byte_array_no_pad(t_.nanosecond / 1000, mut buf, 26)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(t_.nanosecond / 1000, &buf[20], 6)
+		}
 	}
 
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-@[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
-		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
-
-	defer {
-		unsafe { buf.free() }
-	}
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]!
 
 	t_ := time_with_unix(t)
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
-		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
-		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
-		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
-		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
-		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
-		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
-		int_to_byte_array_no_pad(utc_time.nanosecond, mut buf, 29)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(utc_time.nanosecond, &buf[20], 9)
+		}
 	} else {
-		int_to_byte_array_no_pad(t_.year, mut buf, 4)
-		int_to_byte_array_no_pad(t_.month, mut buf, 7)
-		int_to_byte_array_no_pad(t_.day, mut buf, 10)
-		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
-		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
-		int_to_byte_array_no_pad(t_.second, mut buf, 19)
-		int_to_byte_array_no_pad(t_.nanosecond, mut buf, 29)
+		unsafe {
+			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
+			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
+			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
+			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
+			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
+			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
+			int_to_ptr_byte_array_no_pad(t_.nanosecond, &buf[20], 9)
+		}
 	}
 
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
-@[manualfree]
+
 pub fn (t Time) hhmm() string {
-	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[0], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[3], 2)
 	}
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 2)
-	int_to_byte_array_no_pad(t.minute, mut buf, 5)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // hhmmss returns a date string in "HH:mm:ss" format (24h).
-@[manualfree]
 pub fn (t Time) hhmmss() string {
-	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
 
-	defer {
-		unsafe { buf.free() }
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t.hour, &buf[0], 2)
+		int_to_ptr_byte_array_no_pad(t.minute, &buf[3], 2)
+		int_to_ptr_byte_array_no_pad(t.second, &buf[6], 2)
 	}
-
-	int_to_byte_array_no_pad(t.hour, mut buf, 2)
-	int_to_byte_array_no_pad(t.minute, mut buf, 5)
-	int_to_byte_array_no_pad(t.second, mut buf, 8)
-
-	return buf.bytestr()
+	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
 
 // hhmm12 returns a date string in "hh:mm" format (12h).
@@ -323,32 +277,33 @@ pub fn (t Time) md() string {
 	return t.get_fmt_date_str(.space, .mmmd)
 }
 
-// TODO: test, improve performance
 // appends ordinal suffix to a number
 fn ordinal_suffix(n int) string {
+	number_as_str := n.str()
+	// Handle special cases for 11th, 12th, 13th
 	if n > 3 && n < 21 {
-		return '${n}th'
+		return number_as_str + 'th'
 	}
 	match n % 10 {
 		1 {
-			return '${n}st'
+			return number_as_str + 'st'
 		}
 		2 {
-			return '${n}nd'
+			return number_as_str + 'nd'
 		}
 		3 {
-			return '${n}rd'
+			return number_as_str + 'rd'
 		}
 		else {
-			return '${n}th'
+			return number_as_str + 'th'
 		}
 	}
 }
 
 const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ',
-	'dd', 'Qo', 'QQ', 'wo', 'ww']
-const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
-const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+	'dd', 'Qo', 'QQ', 'wo', 'ww']!
+const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']!
+const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']!
 
 // custom_format returns a date with custom format
 //
@@ -655,7 +610,7 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 	}
 }
 
-// get_fmt_time_str returns a date string with specified
+// get_fmt_date_str returns a date string with specified
 // FormatDelimiter and FormatDate type.
 pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate) string {
 	if fmt_date == .no_date {
