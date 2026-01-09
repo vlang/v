@@ -895,7 +895,14 @@ fn xdg_home_folder(ename string, lpath string) string {
 	} else {
 		join_path_single(home_dir(), lpath)
 	}
-	create_folder_when_it_does_not_exist(dir)
+	$if !silence_xdg_no_create_dir ? {
+		eprintln('Notice:')
+		eprintln('The behavior of the os.cache_dir(), os.data_dir(), os.state_dir() and os.local_bin_dir()')
+		eprintln('functions will be changed soon. These functions will NO longer create the directories.')
+		eprintln('If you rely on this behavior, create directories explicitly in your code.')
+		eprintln('Pass `-d silence_xdg_no_create_dir` to silence this notice.')
+	}
+	create_folder_when_it_does_not_exist(dir) // TODO: remove this line
 	return dir
 }
 
