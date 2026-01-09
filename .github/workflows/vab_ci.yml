@@ -40,11 +40,11 @@ jobs:
       - name: Install vab
         run: |
           v retry -- v install vab
-          v -g ~/.vmodules/vab
+          v -g -d silence_xdg_no_create_dir ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
       - name: Run tests
-        run: v -g -d silence_xdg_no_create_dir test ~/.vmodules/vab
+        run: v -g test ~/.vmodules/vab
 
       - name: Run vab --help
         run: vab --help
