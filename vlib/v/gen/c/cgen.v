@@ -7500,13 +7500,22 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
 			} else {
-				styp := g.styp(g.fn_decl.return_type)
+				mut fn_return_type := g.fn_decl.return_type
+				if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+					&& g.cur_concrete_types.len > 0 {
+					if converted_type := g.table.convert_generic_type(g.fn_decl.return_type,
+						g.cur_fn.generic_names, g.cur_concrete_types)
+					{
+						fn_return_type = converted_type
+					}
+				}
+				styp := g.styp(fn_return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t${styp} ${err_obj} = {0};')
-				if g.fn_decl.return_type.has_flag(.result) {
+				if fn_return_type.has_flag(.result) {
 					g.writeln('\t${err_obj}.is_error = true;')
 					g.writeln('\t${err_obj}.err = ${cvar_name}${tmp_op}err;')
-				} else if g.fn_decl.return_type.has_flag(.option) {
+				} else if fn_return_type.has_flag(.option) {
 					g.writeln('\t${err_obj}.state = 2;')
 				}
 				g.writeln('\treturn ${err_obj};')
