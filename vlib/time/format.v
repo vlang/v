@@ -15,14 +15,14 @@ fn iclamp(x int, a int, b int) int {
 	return x
 }
 
-// int_to_ptr_byte_array_no_pad fulfill buffer by part
+// write_int_unpadded_to_ptr fulfill buffer by part
 // it doesn't pad with leading zeros for performance reasons
 // arr_ptr - pointer to the byte array to fill with digits in the right positions
 // example: for month 07 arr_ptr points to the second position in "YYYY-MM-DD..." array
 // arr_len - length of the digit part in the array
 // example: for year 2024 arr_len=4, for month 07 arr_len=2
 @[direct_array_access; unsafe]
-fn int_to_ptr_byte_array_no_pad(value int, arr_prt &u8, arr_len int) {
+fn write_int_unpadded_to_ptr(value int, arr_prt &u8, arr_len int) {
 	mut num := value
 	if arr_len <= 0 || num < 0 {
 		return
@@ -47,12 +47,12 @@ pub fn (t Time) format() string {
 		`0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
-		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[0], 4)
+		write_int_unpadded_to_ptr(t.month, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[8], 2)
 
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[11], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[14], 2)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -63,13 +63,13 @@ pub fn (t Time) format_ss() string {
 		`0`, `:`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
-		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[0], 4)
+		write_int_unpadded_to_ptr(t.month, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[8], 2)
 
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[11], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[14], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[17], 2)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -80,17 +80,17 @@ pub fn (t Time) format_ss_milli() string {
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
-		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[0], 4)
+		write_int_unpadded_to_ptr(t.month, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[8], 2)
 
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[11], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[14], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[17], 2)
 
 		// Extract and format milliseconds
 		millis := t.nanosecond / 1_000_000
-		int_to_ptr_byte_array_no_pad(millis, &buf[20], 3)
+		write_int_unpadded_to_ptr(millis, &buf[20], 3)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -101,17 +101,17 @@ pub fn (t Time) format_ss_micro() string {
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
-		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[0], 4)
+		write_int_unpadded_to_ptr(t.month, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[8], 2)
 
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[11], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[14], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[17], 2)
 
 		// Extract and format microseconds
 		micros := t.nanosecond / 1_000
-		int_to_ptr_byte_array_no_pad(micros, &buf[20], 6)
+		write_int_unpadded_to_ptr(micros, &buf[20], 6)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -122,15 +122,15 @@ pub fn (t Time) format_ss_nano() string {
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.year, &buf[0], 4)
-		int_to_ptr_byte_array_no_pad(t.month, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.day, &buf[8], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[0], 4)
+		write_int_unpadded_to_ptr(t.month, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[8], 2)
 
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[11], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[14], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[17], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[11], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[14], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[17], 2)
 
-		int_to_ptr_byte_array_no_pad(t.nanosecond, &buf[20], 9) // Adjusted index for 9 digits
+		write_int_unpadded_to_ptr(t.nanosecond, &buf[20], 9) // Adjusted index for 9 digits
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -146,23 +146,23 @@ pub fn (t Time) format_rfc3339() string {
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
 		unsafe {
-			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.nanosecond / 1_000_000, &buf[20], 3)
+			write_int_unpadded_to_ptr(utc_time.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(utc_time.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(utc_time.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(utc_time.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(utc_time.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(utc_time.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(utc_time.nanosecond / 1_000_000, &buf[20], 3)
 		}
 	} else {
 		unsafe {
-			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(t_.nanosecond / 1_000_000, &buf[20], 3)
+			write_int_unpadded_to_ptr(t_.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(t_.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(t_.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(t_.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(t_.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(t_.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(t_.nanosecond / 1_000_000, &buf[20], 3)
 		}
 	}
 
@@ -178,23 +178,23 @@ pub fn (t Time) format_rfc3339_micro() string {
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
 		unsafe {
-			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.nanosecond / 1000, &buf[20], 6)
+			write_int_unpadded_to_ptr(utc_time.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(utc_time.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(utc_time.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(utc_time.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(utc_time.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(utc_time.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(utc_time.nanosecond / 1000, &buf[20], 6)
 		}
 	} else {
 		unsafe {
-			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(t_.nanosecond / 1000, &buf[20], 6)
+			write_int_unpadded_to_ptr(t_.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(t_.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(t_.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(t_.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(t_.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(t_.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(t_.nanosecond / 1000, &buf[20], 6)
 		}
 	}
 
@@ -210,23 +210,23 @@ pub fn (t Time) format_rfc3339_nano() string {
 	if t_.is_local {
 		utc_time := t_.local_to_utc()
 		unsafe {
-			int_to_ptr_byte_array_no_pad(utc_time.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(utc_time.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(utc_time.nanosecond, &buf[20], 9)
+			write_int_unpadded_to_ptr(utc_time.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(utc_time.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(utc_time.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(utc_time.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(utc_time.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(utc_time.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(utc_time.nanosecond, &buf[20], 9)
 		}
 	} else {
 		unsafe {
-			int_to_ptr_byte_array_no_pad(t_.year, &buf[0], 4)
-			int_to_ptr_byte_array_no_pad(t_.month, &buf[5], 2)
-			int_to_ptr_byte_array_no_pad(t_.day, &buf[8], 2)
-			int_to_ptr_byte_array_no_pad(t_.hour, &buf[11], 2)
-			int_to_ptr_byte_array_no_pad(t_.minute, &buf[14], 2)
-			int_to_ptr_byte_array_no_pad(t_.second, &buf[17], 2)
-			int_to_ptr_byte_array_no_pad(t_.nanosecond, &buf[20], 9)
+			write_int_unpadded_to_ptr(t_.year, &buf[0], 4)
+			write_int_unpadded_to_ptr(t_.month, &buf[5], 2)
+			write_int_unpadded_to_ptr(t_.day, &buf[8], 2)
+			write_int_unpadded_to_ptr(t_.hour, &buf[11], 2)
+			write_int_unpadded_to_ptr(t_.minute, &buf[14], 2)
+			write_int_unpadded_to_ptr(t_.second, &buf[17], 2)
+			write_int_unpadded_to_ptr(t_.nanosecond, &buf[20], 9)
 		}
 	}
 
@@ -239,8 +239,8 @@ pub fn (t Time) hhmm() string {
 	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[0], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[3], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[0], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[3], 2)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -250,9 +250,9 @@ pub fn (t Time) hhmmss() string {
 	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
 
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[0], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[3], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[6], 2)
+		write_int_unpadded_to_ptr(t.hour, &buf[0], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[3], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[6], 2)
 	}
 	return unsafe { tos(&buf[0], buf.len) }.clone()
 }
@@ -691,11 +691,11 @@ pub fn (t Time) push_to_http_header(mut buffer []u8) {
 		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
 		`G`, `M`, `T`]!
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
+		write_int_unpadded_to_ptr(t.day, &buf[5], 2)
+		write_int_unpadded_to_ptr(t.year, &buf[12], 4)
+		write_int_unpadded_to_ptr(t.hour, &buf[17], 2)
+		write_int_unpadded_to_ptr(t.minute, &buf[20], 2)
+		write_int_unpadded_to_ptr(t.second, &buf[23], 2)
 	}
 	unsafe {
 		buffer.push_many(&buf[0], buf.len)
