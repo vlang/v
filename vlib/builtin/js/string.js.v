@@ -1061,7 +1061,10 @@ pub fn (_rune string) utf32_code() int {
 	return res
 }
 
-pub fn tos(jsstr JS.String) string {
+pub fn tos(jsstr JS.String, len int) string {
+	if len == 0 {
+		return ''
+	}
 	res := ''
 	#res.str = jsstr
 
