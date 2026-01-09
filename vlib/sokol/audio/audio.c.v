@@ -7,6 +7,10 @@ $if linux {
 	#include <alsa/asoundlib.h> # Please install the `libasound2-dev` package
 }
 
+$if openbsd {
+	$compile_error('sokol/audio not supported on OpenBSD')
+}
+
 #flag -I @VEXEROOT/thirdparty/sokol
 // FreeBSD requires the audio/alsa-lib to be installed
 #flag freebsd -I/usr/local/include
