@@ -39,7 +39,7 @@ brew services start postgresql
 gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin/pg_config
 ```
 
-## Installing libpq-dev or its equivalent for your OS:
+## Installing libpq-dev or its equivalent for your OS
 
 **Ubuntu/Debian**: `sudo apt install libpq-dev`
 
@@ -48,6 +48,8 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 **OpenSuse**: `zypper in postgresql-devel`
 
 **ArchLinux**: `pacman -S postgresql-libs`
+
+**OpenBSD**: `pkg_add postgresql-client`
 
 **Windows**:
 
