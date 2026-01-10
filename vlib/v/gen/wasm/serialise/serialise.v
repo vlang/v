@@ -93,7 +93,7 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			size = 2
 			align = 2
 		}
-		.i32, .u32, .rune, .f32, .enum {
+		.i32, .u32, .rune, .f32 {
 			size = 4
 			align = 4
 		}
@@ -163,6 +163,9 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			elem_size, elem_align := p.table.type_size(info.elem_type)
 			size = info.size * elem_size
 			align = elem_align
+		}
+		.enum {
+		  return p.type_size((sym.info as ast.Enum).typ)
 		}
 		// TODO: hardcoded:
 		.map {
