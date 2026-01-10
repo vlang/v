@@ -5857,9 +5857,12 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				if node_typ == ast.voidptr_type && node.expr is ast.ArrayInit
 					&& (node.expr as ast.ArrayInit).is_fixed {
 					expr_styp := g.styp(node.expr_type)
-					g.write('(${expr_styp})')
+					g.write('_MOV((${expr_styp})')
+					g.expr(node.expr)
+					g.write(')')
+				} else {
+					g.expr(node.expr)
 				}
-				g.expr(node.expr)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
 				g.write('))')
 			}

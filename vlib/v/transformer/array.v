@@ -53,10 +53,17 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 		}
 		typ:  ast.int_type
 	}
+	elem_sym := t.table.sym(t.table.unwrap(node.elem_type))
+	// For function types, use voidptr size instead of function type size
+	sizeof_type := if elem_sym.kind == .function {
+		ast.voidptr_type
+	} else {
+		node.elem_type
+	}
 	sizeof_arg := ast.CallArg{
 		expr: ast.SizeOf{
 			is_type: true
-			typ:     node.elem_type
+			typ:     sizeof_type
 		}
 		typ:  ast.int_type
 	}
