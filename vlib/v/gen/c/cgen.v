@@ -17,16 +17,14 @@ import v.type_resolver
 import sync.pool
 
 // Note: some of the words in c_reserved, are not reserved in C, but are
-// in C++, or have special meaning in V, thus need escaping too. `small`
-// should not be needed, but see:
-// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
+// in C++, or have special meaning in V
 const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class',
 	'complex', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error',
 	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
-	'link', 'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
-	'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
-	'typeof', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
-	'stdout', 'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
+	'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return', 'short',
+	'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'typeof',
+	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'stdout', 'stdin',
+	'stderr', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
