@@ -5,10 +5,10 @@ import math
 
 fn main() {
 	mut context := gg.new_context(
-		width: 600
-		height: 200
+		width:        600
+		height:       200
 		window_title: 'Ellipses'
-		frame_fn: frame
+		frame_fn:     frame
 	)
 	context.run()
 }
@@ -17,9 +17,9 @@ fn frame(mut ctx gg.Context) {
 	ctx.begin()
 	ctx.draw_ellipse_filled(100, 100, 100, 50, gg.red)
 	ctx.draw_ellipse_empty(100, 100, 50, 25, gg.black)
-	ctx.draw_ellipse_filled_rotate(300, 100, 100, 50, math.pi/4, true, gg.red)
-	ctx.draw_ellipse_empty_rotate(300, 100, 50, 25, math.pi/4, true, gg.black)
-	ctx.draw_ellipse_filled_rotate(500, 100, 100, 50, math.pi/4, false, gg.red)
-	ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, math.pi/4, false, gg.black)
+	ctx.draw_ellipse_filled_rotate(300, 100, 100, 50, math.pi / 4, true, gg.red)
+	ctx.draw_ellipse_empty_rotate(300, 100, 50, 25, math.pi / 4, true, gg.black)
+	ctx.draw_ellipse_filled_rotate(500, 100, 100, 50, math.pi / 4, false, gg.red)
+	ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, math.pi / 4, false, gg.black)
 	ctx.end()
 }
