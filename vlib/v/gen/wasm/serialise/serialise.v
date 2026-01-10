@@ -125,8 +125,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			for ftyp in types {
 				field_size, alignment := p.table.type_size(ftyp)
 				if field_size == 0 {
-				  stri.offsets << 0
-				  continue
+					stri.offsets << 0
+					continue
 				}
 				if alignment > max_alignment {
 					max_alignment = alignment
@@ -165,7 +165,7 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			align = elem_align
 		}
 		.enum {
-		  return p.type_size((sym.info as ast.Enum).typ)
+			return p.type_size((sym.info as ast.Enum).typ)
 		}
 		// TODO: hardcoded:
 		.map {
