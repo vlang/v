@@ -79,7 +79,10 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 
 // write_string writes data from the string to the pipe
 pub fn (p &Pipe) write_string(s string) !int {
-	result := p.write(s.bytes())!
+	result := C.write(p.write_fd, voidptr(s.str), s.len)
+	if result == -1 {
+		return error('Write failed')
+	}
 	return result
 }
 
