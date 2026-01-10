@@ -124,12 +124,16 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			}
 			for ftyp in types {
 				field_size, alignment := p.table.type_size(ftyp)
+				if field_size == 0 {
+				  stri.offsets << 0
+				  continue
+				}
 				if alignment > max_alignment {
 					max_alignment = alignment
 				}
 				padding := (alignment - total_size % alignment) % alignment
 				stri.offsets << total_size + padding
-				total_size = field_size + padding
+				total_size += field_size + padding
 			}
 			p.structs[typ.idx()] = stri
 			size = (total_size + max_alignment - 1) / max_alignment * max_alignment
