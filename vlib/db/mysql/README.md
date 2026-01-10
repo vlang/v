@@ -1,8 +1,10 @@
-## Purpose:
+## Purpose
+
 The db.mysql module can be used to develop software that connects to the popular open source
 MySQL or MariaDB database servers.
 
-### Local setup of a development server:
+### Local setup of a development server
+
 To run the mysql module tests, or if you want to just experiment, you can use the following
 command to start a development version of MySQL using docker:
 ```sh
@@ -18,8 +20,11 @@ Use `docker container stop some-mysql` to stop the server.
 
 Use `docker container rm some-mysql` to remove it completely, after it is stopped.
 
-### Installation of development dependencies:
+### Installation of development dependencies
+
 For Linux, you need to install `MySQL development` package and `pkg-config`.
+
+For OpenBSD, you need to install the `mariadb-client` package.
 
 For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) ,
 then copy the `include` and `lib` folders to `<V install directory>\thirdparty\mysql`.
