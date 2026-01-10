@@ -3,34 +3,21 @@
 import os
 import os.notify
 
-// make a pipe and return the (read, write) file descriptors
-fn make_pipe() !(int, int) {
-	$if linux || macos {
-		pipefd := [2]int{}
-		if C.pipe(&pipefd[0]) != 0 {
-			return error('error ${C.errno}: ' + os.posix_get_error_msg(C.errno))
-		}
-		return pipefd[0], pipefd[1]
-	}
-	return -1, -1
-}
-
 fn test_level_trigger() {
 	// currently only linux and macos are supported
 	$if linux || macos {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
-			os.fd_close(writer)
+			pipe.close()
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read)!
+		notifier.add(pipe.read_fd, .read)!
 
-		os.fd_write(writer, 'foobar')
+		pipe.write_string('foobar')!
 		mut n := &notifier
-		check_read_event(mut n, reader, 'foo')
-		check_read_event(mut n, reader, 'bar')
+		check_read_event(mut n, pipe.read_fd, 'foo')
+		check_read_event(mut n, pipe.read_fd, 'bar')
 
 		assert notifier.wait(0).len == 0
 	}
@@ -40,18 +27,17 @@ fn test_edge_trigger() {
 	// currently only linux and macos are supported
 	$if linux || macos {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
-			os.fd_close(writer)
+			pipe.close()
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read, .edge_trigger)!
+		notifier.add(pipe.read_fd, .read, .edge_trigger)!
 
 		mut n := &notifier
 
-		os.fd_write(writer, 'foobar')
-		check_read_event(mut n, reader, 'foo')
+		pipe.write_string('foobar')!
+		check_read_event(mut n, pipe.read_fd, 'foo')
 
 		$if linux {
 			assert notifier.wait(0).len == 0
@@ -75,7 +61,8 @@ fn test_edge_trigger() {
 			// notifier.wait(0).len == 1 or 0
 		}
 
-		os.fd_write(writer, 'baz')
+		pipe.write_string('baz')!
+		check_read_event(mut n, pipe.read_fd, 'barbaz')
 		// we do not get an event because there is still data
 		// to be read
 		// assert notifier.wait(0).len == 0
@@ -87,25 +74,24 @@ fn test_edge_trigger() {
 fn test_one_shot() {
 	$if linux || macos {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
-			os.fd_close(writer)
+			pipe.close()
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read, .one_shot)!
+		notifier.add(pipe.read_fd, .read, .one_shot)!
 
 		mut n := &notifier
 
-		os.fd_write(writer, 'foobar')
-		check_read_event(mut n, reader, 'foo')
-		os.fd_write(writer, 'baz')
+		pipe.write_string('foobar')!
+		check_read_event(mut n, pipe.read_fd, 'foo')
+		pipe.write_string('baz')!
 
 		assert notifier.wait(0).len == 0
 
 		// rearm
-		notifier.modify(reader, .read)!
-		check_read_event(mut n, reader, 'barbaz')
+		notifier.modify(pipe.read_fd, .read)!
+		check_read_event(mut n, pipe.read_fd, 'barbaz')
 	}
 }
 
@@ -113,21 +99,21 @@ fn test_one_shot() {
 fn test_hangup() {
 	$if linux {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
+			os.fd_close(pipe.read_fd)
 			notifier.close() or {}
 		}
-		notifier.add(reader, .hangup)!
+		notifier.add(pipe.read_fd, .hangup)!
 
 		assert notifier.wait(0).len == 0
 
 		// closing on the writer end of the pipe will
 		// cause a hangup on the reader end
-		os.fd_close(writer)
+		os.fd_close(pipe.write_fd)
 		events := notifier.wait(0)
 		assert events.len == 1
-		assert events[0].fd == reader
+		assert events[0].fd == pipe.read_fd
 		assert events[0].kind.has(.hangup)
 	}
 }
@@ -135,20 +121,19 @@ fn test_hangup() {
 fn test_write() {
 	$if linux || macos {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
-			os.fd_close(writer)
+			pipe.close()
 			notifier.close() or {}
 		}
 
-		notifier.add(reader, .write)!
+		notifier.add(pipe.read_fd, .write)!
 		assert notifier.wait(0).len == 0
 
-		notifier.add(writer, .write)!
+		notifier.add(pipe.write_fd, .write)!
 		events := notifier.wait(0)
 		assert events.len == 1
-		assert events[0].fd == writer
+		assert events[0].fd == pipe.write_fd
 		assert events[0].kind.has(.write)
 	}
 }
@@ -156,21 +141,20 @@ fn test_write() {
 fn test_remove() {
 	$if linux || macos {
 		mut notifier := notify.new()!
-		reader, writer := make_pipe()!
+		mut pipe := os.pipe()!
 		defer {
-			os.fd_close(reader)
-			os.fd_close(writer)
+			pipe.close()
 			notifier.close() or {}
 		}
 
 		// level triggered - will keep getting events while
 		// there is data to read
-		notifier.add(reader, .read)!
-		os.fd_write(writer, 'foobar')
+		notifier.add(pipe.read_fd, .read)!
+		pipe.write_string('foobar')!
 		assert notifier.wait(0).len == 1
 		assert notifier.wait(0).len == 1
 
-		notifier.remove(reader)!
+		notifier.remove(pipe.read_fd)!
 		assert notifier.wait(0).len == 0
 	}
 }

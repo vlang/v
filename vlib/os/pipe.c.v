@@ -23,7 +23,7 @@ pub fn fd_dup2(fd1 int, fd2 int) int {
 // Pipe represents a bidirectional communication channel
 @[noinit]
 pub struct Pipe {
-mut:
+pub mut:
 	read_fd  int = -1
 	write_fd int = -1
 }
@@ -71,6 +71,15 @@ pub fn (p &Pipe) read(mut buffer []u8) !int {
 // write writes data from the buffer to the pipe
 pub fn (p &Pipe) write(buffer []u8) !int {
 	result := C.write(p.write_fd, buffer.data, buffer.len)
+	if result == -1 {
+		return error('Write failed')
+	}
+	return result
+}
+
+// write_string writes data from the string to the pipe
+pub fn (p &Pipe) write_string(s string) !int {
+	result := C.write(p.write_fd, voidptr(s.str), s.len)
 	if result == -1 {
 		return error('Write failed')
 	}
