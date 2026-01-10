@@ -82,8 +82,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	match sym.kind {
 		.placeholder, .void, .none, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
-			size = 4
-			align = 4
+			size = p.table.pointer_size
+			align = p.table.pointer_size
 		}
 		.i8, .u8, .char, .bool {
 			size = 1
@@ -112,6 +112,11 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			mut max_alignment := 0
 			mut total_size := 0
 			mut stri := StructInfo{}
+			if sym.info is ast.UnknownTypeInfo {
+				// TODO: this is a big fat hack to not error right here for types that are unimplemented in builtin but still get generated in the compiler
+				//         thus actually make this workable with builtin or implement builtin fully there; since the offsets are not defined for this type it will error later on... just not as nicely
+				return p.table.pointer_size, p.table.pointer_size
+			}
 			types := if mut sym.info is ast.Struct {
 				sym.info.fields.map(it.typ)
 			} else {
