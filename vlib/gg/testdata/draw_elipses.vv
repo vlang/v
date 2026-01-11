@@ -15,11 +15,12 @@ fn main() {
 
 fn frame(mut ctx gg.Context) {
 	ctx.begin()
+	drot := f32(ctx.frame) / 60
 	ctx.draw_ellipse_filled(100, 100, 100, 50, gg.red)
 	ctx.draw_ellipse_empty(100, 100, 50, 25, gg.black)
-	ctx.draw_ellipse_filled_rotate(300, 100, 100, 50, math.pi / 4, true, gg.red)
-	ctx.draw_ellipse_empty_rotate(300, 100, 50, 25, math.pi / 4, true, gg.black)
-	ctx.draw_ellipse_filled_rotate(500, 100, 100, 50, math.pi / 4, false, gg.red)
-	ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, math.pi / 4, false, gg.black)
+	ctx.draw_ellipse_filled_rotate(300, 100, 100, 50, math.pi / 4 - drot, gg.blue)
+	ctx.draw_ellipse_empty_rotate(300, 100, 50, 25, math.pi / 4 - drot, gg.black)
+	ctx.draw_ellipse_filled_rotate(500, 100, 100, 50, -math.pi / 4 + drot, gg.yellow)
+	ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, -math.pi / 4 + drot, gg.black)
 	ctx.end()
 }

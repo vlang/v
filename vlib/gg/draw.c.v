@@ -1034,17 +1034,16 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color)
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
-// `rota`  define the *rotation* of the ellipse.
-// `is_clockwise` defines in witch direction the ellipse is rotate.
+// `rota` defines the *rotation* angle of the ellipse, in radians.
 // `c` is the color of the outline.
-pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, rota f32, is_clockwise bool, c Color) {
+pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
 	cos_rot := math.cosf(rota)
-	sin_rot := if is_clockwise { math.sinf(rota) } else { -math.sinf(rota) }
+	sin_rot := math.sinf(rota)
 	sgl.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
 		x_current := math.sinf(f32(math.radians(i))) * rw
@@ -1062,17 +1061,16 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
-// `rota`  define the *rotation* of the ellipse.
-// `is_clockwise` defines in witch direction the ellipse is rotate.
+// `rota` defines the *rotation* angle of the ellipse, in radians.
 // `c` is the fill color.
-pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, rota f32, is_clockwise bool, c Color) {
+pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
 	cos_rot := math.cosf(rota)
-	sin_rot := if is_clockwise { math.sinf(rota) } else { -math.sinf(rota) }
+	sin_rot := math.sinf(rota)
 	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
 		sgl.v2f(x, y)
