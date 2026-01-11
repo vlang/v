@@ -68,9 +68,11 @@ fn test_assign_from_call_expr_with_fixed_array() {
 		assert arr_int == [1, 2, 3]
 	}
 
-	shared arr_foo := get_foo_array([Foo.new_non_ref(), Foo.new_non_ref(), Foo.new_non_ref()]!)
+	shared arr_foo := get_foo_array([Foo.new_non_ref(), Foo.new_non_ref(),
+		Foo.new_non_ref()]!)
 	lock arr_foo {
-		assert arr_foo == [Foo.new_non_ref(), Foo.new_non_ref(), Foo.new_non_ref()]
+		assert arr_foo == [Foo.new_non_ref(), Foo.new_non_ref(),
+			Foo.new_non_ref()]
 	}
 }
 
