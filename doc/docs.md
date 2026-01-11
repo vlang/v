@@ -6558,6 +6558,13 @@ fn main() {
 V can embed arbitrary files into the executable with the `$embed_file(<path>)`
 compile time call. Paths can be absolute or relative to the source file.
 
+Paths could also use the compile time pseudo variables `@VEXEROOT`,
+`@VMODROOT`, `@DIR`, `$d` and `$env`.
+
+```v ignore
+logo := $embed_file('@VEXEROOT/examples/assets/logo.png')
+```
+
 Note that by default, using `$embed_file(file)`, will always embed the whole content
 of the file, but you can modify that behaviour by passing: `-d embed_only_metadata`
 when compiling your program. In that case, the file will not be embedded. Instead,
