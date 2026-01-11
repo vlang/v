@@ -1009,6 +1009,28 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) 
 	sgl.end()
 }
 
+// draw_ellipse_empty draws the outline of an ellipse.
+// `x`,`y` defines the center of the ellipse.
+// `rw` defines the *width* radius of the ellipse.
+// `rh` defines the *height* radius of the ellipse.
+// `th` defines the *thickness* of the ellipse.
+// `c` is the color of the outline.
+pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_quads()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * (rw - th/2), y + math.cosf(f32(math.radians(i + 10))) * (rh - th/2))
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * (rw - th/2), y + math.cosf(f32(math.radians(i))) * (rh - th/2))
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * (rw + th/2), y + math.cosf(f32(math.radians(i))) * (rh + th/2))
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * (rw + th/2), y + math.cosf(f32(math.radians(i + 10))) * (rh + th/2))
+	}
+	sgl.end()
+}
+
 // draw_ellipse_filled draws an opaque ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
