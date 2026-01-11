@@ -1030,6 +1030,61 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color)
 	sgl.end()
 }
 
+// draw_ellipse_empty_rotate draws the outline of an ellipse.
+// `x`,`y` defines the center of the ellipse.
+// `rw` defines the *width* radius of the ellipse.
+// `rh` defines the *height* radius of the ellipse.
+// `rota` defines the *rotation* angle of the ellipse, in radians.
+// `c` is the color of the outline.
+pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	cos_rot := math.cosf(rota)
+	sin_rot := math.sinf(rota)
+	sgl.begin_line_strip()
+	for i := 0; i < 360; i += 10 {
+		x_current := math.sinf(f32(math.radians(i))) * rw
+		x_next := math.sinf(f32(math.radians(i + 10))) * rw
+		y_current := math.cosf(f32(math.radians(i))) * rh
+		y_next := math.cosf(f32(math.radians(i + 10))) * rh
+		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+			y_current * cos_rot)
+		sgl.v2f(x + x_next * cos_rot - y_next * sin_rot, y + x_next * sin_rot + y_next * cos_rot)
+	}
+	sgl.end()
+}
+
+// draw_ellipse_filled draws an opaque ellipse.
+// `x`,`y` defines the center of the ellipse.
+// `rw` defines the *width* radius of the ellipse.
+// `rh` defines the *height* radius of the ellipse.
+// `rota` defines the *rotation* angle of the ellipse, in radians.
+// `c` is the fill color.
+pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, rota f32, c Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	cos_rot := math.cosf(rota)
+	sin_rot := math.sinf(rota)
+	sgl.begin_triangle_strip()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x, y)
+		x_current := math.sinf(f32(math.radians(i))) * rw
+		x_next := math.sinf(f32(math.radians(i + 10))) * rw
+		y_current := math.cosf(f32(math.radians(i))) * rh
+		y_next := math.cosf(f32(math.radians(i + 10))) * rh
+		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
+			y_current * cos_rot)
+		sgl.v2f(x + x_next * cos_rot - y_next * sin_rot, y + x_next * sin_rot + y_next * cos_rot)
+	}
+	sgl.end()
+}
+
 // draw_cubic_bezier draws a cubic Bézier curve, also known as a spline, from four points.
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
