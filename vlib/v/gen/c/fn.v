@@ -874,6 +874,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	is_shared := g.is_shared
+	g.is_shared = false
+	defer {
+		g.is_shared = is_shared
+	}
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	mut tmp_anon_fn_var := ''
