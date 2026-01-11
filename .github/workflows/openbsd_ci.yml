@@ -39,6 +39,8 @@ jobs:
           sync_files: runner-to-vm
           run: |
             sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+            # Install packages needed to build examples
+            sudo pkg_add mariadb-client postgresql-client
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s openbsd-ci
             echo "### OS infos"
@@ -68,6 +70,8 @@ jobs:
           sync_files: runner-to-vm
           run: |
             sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+            # Install packages needed to build examples
+            sudo pkg_add mariadb-client postgresql-client
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s openbsd-ci
             echo "### OS infos"
