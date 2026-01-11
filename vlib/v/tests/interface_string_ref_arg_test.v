@@ -7,11 +7,10 @@ interface Value {}
 fn generate_params(s string) []Value {
 	mut params := []Value{}
 	params = arrays.concat(params, s)
-	println(params)
 	return params
 }
 
 fn test_interface_string_ref_arg() {
-	params := generate_params('info@peony.com')
-	println(params)
+	params := generate_params('any_string')
+	assert params == [Value('any_string')]
 }
