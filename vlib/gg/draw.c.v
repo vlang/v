@@ -1079,6 +1079,36 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 	sgl.end()
 }
 
+// draw_ellipse_empty draws the outline of an ellipse.
+// `x`,`y` defines the center of the ellipse.
+// `rw` defines the *width* radius of the ellipse.
+// `rh` defines the *height* radius of the ellipse.
+// `th` defines the *thickness* of the ellipse.
+// `rota` defines the *rotation* angle of the ellipse, in radians.
+// `c` is the color of the outline.
+pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th f32, rota f32, c Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	cos_rot := math.cosf(rota)
+	sin_rot := math.sinf(rota)
+	sgl.begin_quads()
+	for i := 0; i < 360; i += 10 {
+		xfactor_current := math.sinf(f32(math.radians(i)))
+		xfactor_next := math.sinf(f32(math.radians(i + 10)))
+		yfactor_current := math.cosf(f32(math.radians(i)))
+		yfactor_next := math.cosf(f32(math.radians(i + 10)))
+		
+		sgl.v2f(x + xfactor_next * (rw - th/2)* cos_rot - yfactor_next * (rh - th/2)* sin_rot, y + yfactor_next * (rh - th/2)* cos_rot+ xfactor_next * (rw - th/2)* sin_rot)
+		sgl.v2f(x + xfactor_current * (rw - th/2)* cos_rot - yfactor_current * (rh - th/2)* sin_rot , y + yfactor_current * (rh - th/2)* cos_rot+ xfactor_current * (rw - th/2)* sin_rot)
+		sgl.v2f(x + xfactor_current* (rw + th/2)* cos_rot - yfactor_current * (rh + th/2)* sin_rot , y + yfactor_current * (rh + th/2)* cos_rot+ xfactor_current* (rw + th/2)* sin_rot)
+		sgl.v2f(x + xfactor_next * (rw + th/2)* cos_rot - yfactor_next * (rh + th/2)* sin_rot , y + yfactor_next * (rh + th/2)* cos_rot+ xfactor_next * (rw + th/2)* sin_rot)
+	}
+	sgl.end()
+}
+
 // draw_ellipse_filled draws an opaque ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
