@@ -3,8 +3,6 @@ module generics
 // TODO do scopes need to be cloned?
 import v.pref
 import v.ast
-import v.util
-import token
 import arrays
 import strings
 
