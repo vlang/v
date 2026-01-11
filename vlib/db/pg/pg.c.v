@@ -31,6 +31,9 @@ $if $pkgconfig('libpq') {
 
 	#flag freebsd -I/usr/local/include
 	#flag freebsd -L/usr/local/lib
+
+	#flag openbsd -I/usr/local/include/postgresql
+	#flag openbsd -L/usr/local/lib
 }
 
 $if cross_compile ? && linux {
