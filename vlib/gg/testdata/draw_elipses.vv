@@ -1,5 +1,7 @@
 import gg
+
 const thickness = f32(5)
+
 gg.start(
 	window_title: 'Ellipses'
 	width:        600
