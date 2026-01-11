@@ -54,6 +54,26 @@ fn test_assign_from_call_expr() {
 	}
 }
 
+fn get_int_array(arr [3]int) []int {
+	return [arr[0], arr[1], arr[2]]
+}
+
+fn get_foo_array(arr [3]Foo) []Foo {
+	return [arr[0], arr[1], arr[2]]
+}
+
+fn test_assign_from_call_expr_with_fixed_array() {
+	shared arr_int := get_int_array([1, 2, 3]!)
+	lock arr_int {
+		assert arr_int == [1, 2, 3]
+	}
+
+	shared arr_foo := get_foo_array([Foo.new_non_ref(), Foo.new_non_ref(), Foo.new_non_ref()]!)
+	lock arr_foo {
+		assert arr_foo == [Foo.new_non_ref(), Foo.new_non_ref(), Foo.new_non_ref()]
+	}
+}
+
 fn test_re_assign_array() {
 	shared arr := [1, 2, 3]
 	lock arr {
