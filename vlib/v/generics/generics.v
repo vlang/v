@@ -3,6 +3,8 @@ module generics
 // TODO do scopes need to be cloned?
 import v.pref
 import v.ast
+import v.util
+import token
 import arrays
 import strings
 
@@ -18,6 +20,7 @@ pub mut:
 	cur_concrete_types  []ast.Type
 	inside_struct_init  bool
 	cur_struct_init_typ ast.Type
+	forin_types         map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
 }
 
 pub fn new_generics(pref_ &pref.Preferences) &Generics {
@@ -217,7 +220,19 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 		ast.ForInStmt {
 			if g.cur_concrete_types.len > 0 {
 				mut stmts := node.stmts.clone()
-				return ast.Stmt(ast.ForInStmt{
+				if mut node.cond is ast.Ident && node.cond.ct_expr {
+					// Solve the type for elem in `for elem in my_array` when my_array is T
+					unwrapped_typ := g.unwrap_generic(node.cond_type)
+					node.val_type = g.table.value_type(unwrapped_typ)
+					if node.val_is_mut {
+						node.val_type = node.val_type.ref()
+					}
+					g.forin_types[node.val_var] = node.val_type
+					defer(fn) {
+						g.forin_types.delete(node.val_var)
+					}
+				}
+				mut new_node := ast.ForInStmt{
 					...node
 					cond:      g.expr(mut node.cond)
 					high:      g.expr(mut node.high)
@@ -226,7 +241,8 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 					cond_type: g.unwrap_generic(node.cond_type)
 					high_type: g.unwrap_generic(node.high_type)
 					stmts:     g.stmts(mut stmts)
-				})
+				}
+				return ast.Stmt(new_node)
 			}
 			node.stmts = g.stmts(mut node.stmts)
 		}
@@ -473,15 +489,28 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		ast.CallExpr {
 			if g.cur_concrete_types.len > 0 {
 				mut args := node.args.clone()
-				for mut arg in args {
-					arg.typ = g.unwrap_generic(arg.typ)
-					arg.expr = g.expr(mut arg.expr)
-				}
 				mut all_concrete_types := node.concrete_types.clone()
 				for mut ct in all_concrete_types {
 					idx := g.cur_fn.generic_names.index(g.table.type_str(ct))
 					if idx != -1 {
 						ct = g.cur_concrete_types[idx]
+					}
+				}
+				for i, mut arg in args {
+					arg.typ = g.unwrap_generic(arg.typ)
+					arg.expr = g.expr(mut arg.expr)
+					if mut arg.expr is ast.Ident {
+						// Solve concrete_types when the type of one argument was elem in `for elem in my_array` when my_array is T
+						forin_type := g.forin_types[arg.expr.name]
+						if forin_type != 0 {
+							if func := g.table.find_fn(node.name) {
+								solved_type_generic_name := g.table.type_str(func.params[i].typ)
+								idx := func.generic_names.index(solved_type_generic_name)
+								if idx != -1 {
+									all_concrete_types[idx] = forin_type
+								}
+							}
+						}
 					}
 				}
 				return ast.Expr(ast.CallExpr{
@@ -619,10 +648,15 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					if g.cur_concrete_types.len > 0 {
 						is_ct_type_generic := node.obj.ct_type_var == .generic_param
 							|| node.obj.ct_type_var == .generic_var
-						unwrapped_typ := g.unwrap_generic(node.obj.typ)
+						is_ct_type_forin_val := node.obj.ct_type_var == .value_var // elem in `for elem in my_array` when my_array is T
+						unwrapped_typ := if is_ct_type_forin_val {
+							g.forin_types[node.name]
+						} else {
+							g.unwrap_generic(node.obj.typ)
+						}
 						return ast.Expr(ast.Ident{
 							...node
-							obj: ast.Var{
+							obj:     ast.Var{
 								...node.obj
 								typ:           unwrapped_typ
 								smartcasts:    node.obj.smartcasts.map(g.unwrap_generic(it))
@@ -630,13 +664,15 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 									|| (node.obj.typ.has_flag(.generic)
 									&& g.table.sym(unwrapped_typ).kind in [.sum_type, .interface])
 								// node.obj.orig_type = g.unwrap_generic(node.obj.orig_type)
-								ct_type_unwrapped: is_ct_type_generic || node.obj.ct_type_unwrapped
-								ct_type_var:       if is_ct_type_generic {
+								ct_type_unwrapped: is_ct_type_generic || is_ct_type_forin_val
+									|| node.obj.ct_type_unwrapped
+								ct_type_var:       if is_ct_type_generic || is_ct_type_forin_val {
 									.no_comptime
 								} else {
 									node.obj.ct_type_var
 								}
 							}
+							ct_expr: !is_ct_type_forin_val && node.ct_expr
 						})
 					}
 				}
@@ -857,6 +893,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					typ:              g.unwrap_generic(node.typ)
 					name_type:        g.unwrap_generic(node.name_type)
 					from_embed_types: node.from_embed_types.map(g.unwrap_generic(it))
+					gkind_field:      .unknown
 				})
 			}
 			node.expr = g.expr(mut node.expr)
@@ -936,7 +973,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					...node
 					typ:              g.unwrap_generic(node.typ)
 					typ_str:          g.table.type_str(g.unwrap_generic(node.typ))
-					generic_types:    node.generic_types.map(g.unwrap_generic(it))
+					generic_types:    []
 					update_expr:      g.expr(mut node.update_expr)
 					update_expr_type: g.unwrap_generic(node.update_expr_type)
 					init_fields:      init_fields
@@ -963,6 +1000,16 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				})
 			}
 			node.stmt = g.stmt(mut node.stmt)
+		}
+		ast.TypeOf {
+			if g.cur_concrete_types.len > 0 {
+				return ast.Expr(ast.TypeOf{
+					...node
+					typ:  g.unwrap_generic(node.typ)
+					expr: g.expr(mut node.expr)
+				})
+			}
+			node.expr = g.expr(mut node.expr)
 		}
 		ast.UnsafeExpr {
 			if g.cur_concrete_types.len > 0 {

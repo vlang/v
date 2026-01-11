@@ -4296,6 +4296,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
 						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						if name_type == ast.void_type_idx {
+							name_type = node.name_type
+						}
 					}
 					g.type_name(name_type)
 					return
