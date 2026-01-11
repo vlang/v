@@ -3003,47 +3003,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag == 'flag' { // Checks for empty flag
 				c.error('no argument(s) provided for #flag', node.pos)
 			}
-			if flag.contains('@VROOT') {
-				// c.note(checker.vroot_is_deprecated_message, node.pos)
-				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('@DIR') {
-				// expand `@DIR` to its absolute path
-				flag = flag.replace('@DIR', c.dir_path())
-			}
-			if flag.contains('@VEXEROOT') {
-				// expand `@VEXEROOT` to its absolute path
-				flag = flag.replace('@VEXEROOT', c.pref.vroot)
-			}
-			if flag.contains('@VMODROOT') {
-				flag = util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('\$env(') {
-				flag = util.resolve_env_value(flag, true) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('\$d(') {
-				flag = util.resolve_d_value(c.pref.compile_values, flag) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-				if flag.contains(deprecated) {
-					if !flag.contains('@VMODROOT') {
-						c.error('${deprecated} had been deprecated, use @VMODROOT instead.',
-							node.pos)
-					}
-				}
-			}
+			flag = c.resolve_pseudo_variables(flag, node.pos) or { return }
 			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg(), node.pos)
 			}
@@ -3063,6 +3023,45 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 	}
+}
+
+fn (mut c Checker) resolve_pseudo_variables(oflag string, pos token.Pos) ?string {
+	mut flag := oflag
+	if flag.contains('@VEXEROOT') {
+		// expand `@VEXEROOT` to its absolute path
+		flag = flag.replace('@VEXEROOT', c.pref.vroot)
+	}
+	if flag.contains('@VMODROOT') {
+		flag = util.resolve_vmodroot(flag, c.file.path) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	if flag.contains('@DIR') {
+		// expand `@DIR` to its absolute path
+		flag = flag.replace('@DIR', c.dir_path())
+	}
+	if flag.contains('\$env(') {
+		flag = util.resolve_env_value(flag, true) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	if flag.contains('\$d(') {
+		flag = util.resolve_d_value(c.pref.compile_values, flag) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+		if flag.contains(deprecated) {
+			if !flag.contains('@VMODROOT') {
+				c.error('${deprecated} had been deprecated, use @VMODROOT instead.', pos)
+				return none
+			}
+		}
+	}
+	return flag
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {

@@ -61,6 +61,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					node.pos)
 				return ast.string_type
 			}
+			escaped_path = c.resolve_pseudo_variables(escaped_path, node.pos) or {
+				return ast.string_type
+			}
 			abs_path := os.real_path(escaped_path)
 			// check absolute path first
 			if !os.exists(abs_path) {
