@@ -15,6 +15,7 @@ gg.start(
 		ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, drot, gg.black)
 		ctx.draw_ellipse_thick(100, 300, 100, 50, thickness, gg.green)
 		ctx.draw_ellipse_thick_rotate(300, 300, 100, 50, thickness, drot, gg.purple)
+		ctx.draw_ellipse_thick_rotate(500, 300, 100, 50, thickness, -drot, gg.indigo)
 		ctx.end()
 	}
 )
