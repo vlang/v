@@ -21,11 +21,11 @@ fn test_printing_of_channels() {
 	res := (spawn fn1(ch)).wait()
 	println(res)
 	println(ch)
-	assert res.str().contains('another: chan f64{cap: 100, closed: 0}')
-	assert ch.str() == 'chan St1{cap: 10, closed: 0}'
-	assert fch.str() == 'chan f64{cap: 100, closed: 0}'
+	assert res.str().contains('another: chan f64{\n        cap: 100, closed: false\n    }')
+	assert ch.str() == 'chan St1{\n    cap: 10, closed: false\n}'
+	assert fch.str() == 'chan f64{\n    cap: 100, closed: false\n}'
 	fch.close()
-	assert fch.str() == 'chan f64{cap: 100, closed: 1}'
+	assert fch.str() == 'chan f64{\n    cap: 100, closed: true\n}'
 }
 
 struct Aa {}

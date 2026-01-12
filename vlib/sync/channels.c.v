@@ -118,10 +118,6 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 	}
 }
 
-pub fn (ch &Channel) auto_str(typename string) string {
-	return 'chan ${typename}{cap: ${ch.cap}, closed: ${ch.closed}}'
-}
-
 pub fn (mut ch Channel) close() {
 	open_val := u16(0)
 	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
