@@ -198,25 +198,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		if node.elem_type.has_flag(.option) {
-			for i in 0 .. info.size {
-				g.expr_with_init(node)
-				g.add_commas_and_prevent_long_lines(i, info.size)
-			}
-		} else {
-			if g.table.final_sym(info.elem_type).kind in [.struct, .interface] {
-				for i in 0 .. info.size {
-					g.expr_with_init(node)
-					g.add_commas_and_prevent_long_lines(i, info.size)
-				}
-			} else {
-				before_expr_pos := g.out.len
-				{
-					g.expr_with_init(node)
-				}
-				sexpr := g.out.cut_to(before_expr_pos)
-				g.write_c99_elements_for_array(info.size, sexpr)
-			}
+		// Always loop and call expr_with_init for each element to avoid copying
+		// temporary variable declarations and initialization code
+		for i in 0 .. info.size {
+			g.expr_with_init(node)
+			g.add_commas_and_prevent_long_lines(i, info.size)
 		}
 	} else if is_amp {
 		g.write('0')
