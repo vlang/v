@@ -1,8 +1,8 @@
 module main
 
 import json
-import jsonrpc
 import net
+import net.jsonrpc
 
 fn main() {
 	addr := '127.0.0.1:42228'

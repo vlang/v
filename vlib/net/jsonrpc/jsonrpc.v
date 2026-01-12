@@ -13,14 +13,17 @@ pub mut:
 	data    string
 }
 
+// code returns `jsonrpc.ResponseError.code` field value
 pub fn (err ResponseError) code() int {
 	return err.code
 }
 
+// msg returns `jsonrpc.ResponseError.message` field value
 pub fn (err ResponseError) msg() string {
 	return err.message
 }
 
+// err returns `jsonrpc.ResponseError` casted to `IError`
 pub fn (e ResponseError) err() IError {
 	return IError(e)
 }
@@ -32,6 +35,7 @@ pub struct ResponseErrorGeneratorParams {
 	data  string
 }
 
+// response_error returns `jsonrpc.ResponseError` created from passed error and data
 @[inline]
 pub fn response_error(params ResponseErrorGeneratorParams) ResponseError {
 	return ResponseError{
@@ -41,6 +45,7 @@ pub fn response_error(params ResponseErrorGeneratorParams) ResponseError {
 	}
 }
 
+// error_with_code returns `jsonrpc.ResponseError` with empty data field
 pub fn error_with_code(message string, code int) ResponseError {
 	return ResponseError{
 		code:    code
@@ -77,6 +82,8 @@ pub const error_codes = [
 // Null represents the null value in JSON.
 pub struct Null {}
 
+// str returns string representation of json null: 'null' (can be used for 
+// `jsonrpc.Request` id and params as well as `jsonrpc.Response` result and id)
 pub fn (n Null) str() string {
 	return 'null'
 }
@@ -85,6 +92,7 @@ pub const null = Null{}
 
 pub struct Empty {}
 
+// str returns empty string: '' (can be passed to jsonrpc.new_request as id or params to omit fields on encoding)
 pub fn (e Empty) str() string {
 	return ''
 }
@@ -103,7 +111,7 @@ pub:
 }
 
 // new_request is the constructor for Request. ALWAYS use this to initialize new Request.
-// if id is emply string ('') then the Request will be notification (no id field on encode).
+// if id is empty string ('') then the Request will be notification (no id field on encode).
 // Pass jsonrpc.Empty{} as params to not generate params field on encode.
 // jsonrpc.null can be used as params to set params field to json null on encode.
 // Limitations: id is always string.
@@ -128,6 +136,8 @@ pub fn (req Request) encode() string {
 	return '{"jsonrpc":"${version}","method":"${req.method}"${params_payload}${id_payload}}'
 }
 
+// encode_batch loops through every `jsonrpc.Request` in array, calls encode() for each of them
+// and writes into json list [] splitting with ','
 pub fn (reqs []Request) encode_batch() string {
 	if reqs.len == 0 {
 		return '[]'
@@ -144,7 +154,7 @@ pub fn (req Request) decode_params[T]() !T {
 	return try_decode[T](req.params)
 }
 
-// decode_request decodes raw request into JSONRPC Request by reading after \r\n\r\n. :contentReference[oaicite:7]{index=7}
+// decode_request decodes raw request into JSONRPC Request by reading after \r\n\r\n.
 pub fn decode_request(raw string) !Request {
 	json_payload := raw.all_after('\r\n\r\n')
 	return json.decode(Request, json_payload) or { return err }
@@ -164,6 +174,11 @@ pub:
 	id      string
 }
 
+// new_response is the constructor for Response. ALWAYS use this to initialize new Response.
+// if id is empty string ('') then the Result id will be a json null.
+// Pass jsonrpc.ResponseError{} as error to not generate error field on encode.
+// jsonrpc.null can be used as result to set field to json null on encode.
+// Limitations: id is always string.
 pub fn new_response[T](result T, error ResponseError, id string) Response {
 	return Response{
 		result: if error.code != 0 { '' } else { try_encode(result) }
@@ -172,6 +187,9 @@ pub fn new_response[T](result T, error ResponseError, id string) Response {
 	}
 }
 
+// encode() returns json string representing Response.
+// In returning string result field only generates if in new_response was passed `jsonrpc.ResponseError{}` as error value.
+// In returning string id field will be json null if in new_request was passed empty string ('') as id.
 pub fn (resp Response) encode() string {
 	mut s := '{"jsonrpc":"${version}"'
 	if resp.error.code != 0 {
@@ -188,6 +206,8 @@ pub fn (resp Response) encode() string {
 	return s + '}'
 }
 
+// encode_batch loops through every `jsonrpc.Response` in array, calls encode() for each of them
+// and writes into json list [] splitting with ','
 pub fn (resps []Response) encode_batch() string {
 	if resps.len == 0 {
 		return '[]'
@@ -199,15 +219,18 @@ pub fn (resps []Response) encode_batch() string {
 	return s + ']'
 }
 
+// decode_params tries to decode Response.result into provided type
 pub fn (resp Response) decode_result[T]() !T {
 	return try_decode[T](resp.result)
 }
 
+// decode_response decodes raw response into JSONRPC Response by reading after \r\n\r\n.
 pub fn decode_response(raw string) !Response {
 	json_payload := raw.all_after('\r\n\r\n')
 	return json.decode(Response, json_payload) or { return err }
 }
 
+// decode_batch_response decodes raw batch request into []jsonrpc.Request by reading after \r\n\r\n.
 pub fn decode_batch_response(raw string) ![]Response {
 	json_payload := raw.all_after('\r\n\r\n')
 	return json.decode([]Response, json_payload) or { return err }

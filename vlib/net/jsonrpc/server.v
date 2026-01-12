@@ -21,6 +21,8 @@ mut:
 	interceptors Interceptors
 }
 
+// new_server creates new `jsonrpc.Server` with `stream` to read/write, 
+// the `jsonrpc.Handler` to handle Requests/Responses and `interceptors`
 pub fn new_server(cfg ServerConfig) Server {
 	return Server{
 		stream:       cfg.stream
@@ -201,6 +203,7 @@ pub fn (mut rw ResponseWriter) write[T](payload T) {
 	rw.close()
 }
 
+// write_empty writes `jsonrpc.null` as response
 pub fn (mut rw ResponseWriter) write_empty() {
 	rw.write[Null](null)
 }

@@ -2,7 +2,7 @@ module main
 
 import net
 import sync
-import jsonrpc
+import net.jsonrpc
 import log
 
 // ---- CRUD domain ----

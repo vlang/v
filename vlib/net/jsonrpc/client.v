@@ -14,6 +14,7 @@ mut:
 	interceptors Interceptors
 }
 
+// new_client creates new `jsonrpc.Client` with `stream` to read/write and `interceptors`
 pub fn new_client(cfg ClientConfig) Client {
 	return Client{
 		stream:       cfg.stream
