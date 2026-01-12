@@ -504,6 +504,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			node.typ = c.expected_type
 		}
 	}
+	if node.typ == 0 {
+		return ast.void_type
+	}
 	struct_sym := c.table.sym(node.typ)
 	mut old_inside_generic_struct_init := false
 	mut old_cur_struct_generic_types := []ast.Type{}

@@ -284,9 +284,12 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt is ast.GlobalDecl {
-			c.expr_level = 0
-			c.stmt(mut stmt)
+		if mut stmt is ast.GlobalDecl {
+			// Skip empty GlobalDecl (parser already reported an error)
+			if stmt.fields.len > 0 {
+				c.expr_level = 0
+				c.stmt(mut stmt)
+			}
 		}
 		if c.should_abort {
 			return
