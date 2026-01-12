@@ -508,14 +508,16 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				// an existing constant?
 				return c.eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
 			}
-			idx := c.table.cur_fn.generic_names.index(expr.name)
-			if typ := c.table.cur_concrete_types[idx] {
-				sym := c.table.sym(typ)
-				return sym.str()
+			if c.table.cur_fn != unsafe { nil } {
+				idx := c.table.cur_fn.generic_names.index(expr.name)
+				if typ := c.table.cur_concrete_types[idx] {
+					sym := c.table.sym(typ)
+					return sym.str()
+				}
 			}
 		}
 		ast.SelectorExpr {
-			if expr.expr is ast.Ident {
+			if expr.expr is ast.Ident && c.table.cur_fn != unsafe { nil } {
 				idx := c.table.cur_fn.generic_names.index(expr.expr.name)
 				if typ := c.table.cur_concrete_types[idx] {
 					sym := c.table.sym(typ)
@@ -813,7 +815,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 
 // check if `ident` is a function generic, such as `T`
 fn (mut c Checker) is_generic_ident(ident string) bool {
-	if !isnil(c.table.cur_fn) && ident in c.table.cur_fn.generic_names
+	if c.table.cur_fn != unsafe { nil } && ident in c.table.cur_fn.generic_names
 		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 		return true
 	}
@@ -831,11 +833,13 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				return c.type_resolver.get_type_from_comptime_var(cond)
 			} else if c.is_generic_ident(cond.name) {
 				// generic type `T`
-				idx := c.table.cur_fn.generic_names.index(cond.name)
-				if idx >= 0 && idx < c.table.cur_concrete_types.len {
-					concrete_type := c.table.cur_concrete_types[idx]
-					if concrete_type != 0 {
-						return concrete_type
+				if c.table.cur_fn != unsafe { nil } {
+					idx := c.table.cur_fn.generic_names.index(cond.name)
+					if idx >= 0 && idx < c.table.cur_concrete_types.len {
+						concrete_type := c.table.cur_concrete_types[idx]
+						if concrete_type != 0 {
+							return concrete_type
+						}
 					}
 				}
 				type_idx := c.table.find_type_idx(cond.name)
