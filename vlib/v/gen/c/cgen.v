@@ -1763,7 +1763,6 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array_fixed {
 				info := sym.info as ast.ArrayFixed
 				elem_sym := g.table.sym(info.elem_type)
-				if elem_sym.is_builtin() {
 				if elem_sym.is_builtin() && elem_sym.kind != .struct {
 					styp := sym.cname
 					len := info.size
