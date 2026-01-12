@@ -1022,11 +1022,11 @@ pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c
 
 	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		xfactor_current := math.sinf(f32(math.radians(i)))
-		yfactor_current := math.cosf(f32(math.radians(i)))
+		xfactor := math.sinf(f32(math.radians(i)))
+		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor_current * (rw - th / 2), y + yfactor_current * (rh - th / 2))
-		sgl.v2f(x + xfactor_current * (rw + th / 2), y + yfactor_current * (rh + th / 2))
+		sgl.v2f(x + xfactor * (rw - th / 2), y + yfactor * (rh - th / 2))
+		sgl.v2f(x + xfactor * (rw + th / 2), y + yfactor * (rh + th / 2))
 	}
 	sgl.v2f(x, y + (rh - th / 2))
 	sgl.v2f(x, y + (rh + th / 2))
@@ -1070,9 +1070,8 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 	sgl.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
 		x_current := math.sinf(f32(math.radians(i))) * rw
-		x_next := math.sinf(f32(math.radians(i + 10))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
-		y_next := math.cosf(f32(math.radians(i + 10))) * rh
+		
 		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
 	}
@@ -1097,14 +1096,14 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 	sin_rot := math.sinf(rota)
 	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		xfactor_current := math.sinf(f32(math.radians(i)))
-		yfactor_current := math.cosf(f32(math.radians(i)))
+		xfactor := math.sinf(f32(math.radians(i)))
+		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor_current * (rw - th / 2) * cos_rot - yfactor_current * (rh - th / 2) * sin_rot,
-			y + yfactor_current * (rh - th / 2) * cos_rot +
-			xfactor_current * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor_current * (rw + th / 2) * cos_rot - yfactor_current * (rh + th / 2) * sin_rot,
-			y + yfactor_current * (rh + th / 2) * cos_rot + xfactor_current * (rw +
+		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot,
+			y + yfactor * (rh - th / 2) * cos_rot +
+			xfactor * (rw - th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot,
+			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw +
 			th / 2) * sin_rot)
 	}
 	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
