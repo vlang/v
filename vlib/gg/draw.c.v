@@ -1071,7 +1071,7 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 	for i := 0; i < 360; i += 10 {
 		x_current := math.sinf(f32(math.radians(i))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
-		
+
 		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
 	}
@@ -1100,11 +1100,9 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 		yfactor := math.cosf(f32(math.radians(i)))
 
 		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot,
-			y + yfactor * (rh - th / 2) * cos_rot +
-			xfactor * (rw - th / 2) * sin_rot)
+			y + yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
 		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot,
-			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw +
-			th / 2) * sin_rot)
+			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
 	}
 	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
 	sgl.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)
