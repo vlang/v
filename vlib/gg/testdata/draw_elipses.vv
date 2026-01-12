@@ -1,9 +1,11 @@
 import gg
 
+const thickness = f32(5)
+
 gg.start(
 	window_title: 'Ellipses'
 	width:        600
-	height:       200
+	height:       400
 	frame_fn:     fn (mut ctx gg.Context) {
 		ctx.begin()
 		drot := f32(ctx.frame) / 60
@@ -13,6 +15,9 @@ gg.start(
 		ctx.draw_ellipse_empty_rotate(300, 100, 50, 25, -drot, gg.black)
 		ctx.draw_ellipse_filled_rotate(500, 100, 100, 50, drot, gg.yellow)
 		ctx.draw_ellipse_empty_rotate(500, 100, 50, 25, drot, gg.black)
+		ctx.draw_ellipse_thick(100, 300, 100, 50, thickness, gg.green)
+		ctx.draw_ellipse_thick_rotate(300, 300, 100, 50, thickness, drot, gg.purple)
+		ctx.draw_ellipse_thick_rotate(500, 300, 100, 50, thickness, -drot, gg.indigo)
 		ctx.end()
 	}
 )
