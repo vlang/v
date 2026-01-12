@@ -742,27 +742,25 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.error('unsupported operation: unable to lower expression for unsigned shift assignment.',
 						node.pos)
 				}
-
-				modified_left_type := if !left_type.is_int() {
+				mut modified_left_type := ast.void_type
+				if !left_type.is_int() {
 					c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 						node.pos)
-					ast.void_type
 				} else if left_type.is_int_literal() {
 					// int literal => i64
-					ast.u32_type
+					modified_left_type = ast.u32_type
 				} else if left_type.is_unsigned() {
-					left_type
+					modified_left_type = left_type
 				} else {
 					// signed types => unsigned types
 					unsigned_type := left_type.flip_signedness()
 					if unsigned_type == ast.void_type {
 						c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 							node.pos)
-						ast.void_type
+					} else {
+						modified_left_type = unsigned_type
 					}
-					unsigned_type
 				}
-
 				node = ast.AssignStmt{
 					op:            .assign
 					pos:           node.pos
