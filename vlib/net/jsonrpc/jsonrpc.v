@@ -13,9 +13,17 @@ pub mut:
 	data    string
 }
 
-pub fn (err ResponseError) code() int { return err.code }
-pub fn (err ResponseError) msg() string { return err.message }
-pub fn (e ResponseError) err() IError { return IError(e) }
+pub fn (err ResponseError) code() int {
+	return err.code
+}
+
+pub fn (err ResponseError) msg() string {
+	return err.message
+}
+
+pub fn (e ResponseError) err() IError {
+	return IError(e)
+}
 
 // ResponseErrorGeneratorParams & response_error are used by server.v :contentReference[oaicite:2]{index=2}
 @[params]
@@ -27,41 +35,60 @@ pub struct ResponseErrorGeneratorParams {
 @[inline]
 pub fn response_error(params ResponseErrorGeneratorParams) ResponseError {
 	return ResponseError{
-		code: params.error.code()
+		code:    params.error.code()
 		message: params.error.msg()
-		data: params.data
+		data:    params.data
 	}
 }
 
 pub fn error_with_code(message string, code int) ResponseError {
-	return ResponseError{ code: code, message: message, data: '' }
+	return ResponseError{
+		code:    code
+		message: message
+		data:    ''
+	}
 }
 
 // JSON-RPC standard-ish errors :contentReference[oaicite:3]{index=3}
 
-pub const parse_error          = error_with_code('Invalid JSON.', -32700)
-pub const invalid_request      = error_with_code('Invalid request.', -32600)
-pub const method_not_found     = error_with_code('Method not found.', -32601)
-pub const invalid_params       = error_with_code('Invalid params', -32602)
-pub const internal_error       = error_with_code('Internal error.', -32693)
-pub const server_error_start     = error_with_code('Error occurred when starting server.', -32099)
+pub const parse_error = error_with_code('Invalid JSON.', -32700)
+pub const invalid_request = error_with_code('Invalid request.', -32600)
+pub const method_not_found = error_with_code('Method not found.', -32601)
+pub const invalid_params = error_with_code('Invalid params', -32602)
+pub const internal_error = error_with_code('Internal error.', -32693)
+pub const server_error_start = error_with_code('Error occurred when starting server.',
+	-32099)
 pub const server_not_initialized = error_with_code('Server not initialized.', -32002)
-pub const unknown_error          = error_with_code('Unknown error.', -32001)
-pub const server_error_end       = error_with_code('Error occurred when stopping the server.', -32000)
+pub const unknown_error = error_with_code('Unknown error.', -32001)
+pub const server_error_end = error_with_code('Error occurred when stopping the server.',
+	-32000)
 pub const error_codes = [
-		parse_error.code(), invalid_request.code(), method_not_found.code(), invalid_params.code(),
-		internal_error.code(), server_error_start.code(), server_not_initialized.code(),
-		server_error_end.code(), unknown_error.code(),
-	]
-
+	parse_error.code(),
+	invalid_request.code(),
+	method_not_found.code(),
+	invalid_params.code(),
+	internal_error.code(),
+	server_error_start.code(),
+	server_not_initialized.code(),
+	server_error_end.code(),
+	unknown_error.code(),
+]
 
 // Null represents the null value in JSON.
 pub struct Null {}
-pub fn (n Null) str() string { return 'null' }
+
+pub fn (n Null) str() string {
+	return 'null'
+}
+
 pub const null = Null{}
 
 pub struct Empty {}
-pub fn (e Empty) str() string { return '' }
+
+pub fn (e Empty) str() string {
+	return ''
+}
+
 pub const empty = Empty{}
 
 // ---- request/response ----
@@ -72,7 +99,7 @@ pub:
 	jsonrpc string = version
 	method  string
 	params  string @[omitempty; raw] // raw JSON object/array/null
-	id      string @[omitempty] // raw JSON (e.g. 1 or "abc") if empty => notification (no id field)
+	id      string @[omitempty]      // raw JSON (e.g. 1 or "abc") if empty => notification (no id field)
 }
 
 // new_request is the constructor for Request. ALWAYS use this to initialize new Request.
@@ -80,11 +107,11 @@ pub:
 // Pass jsonrpc.Empty{} as params to not generate params field on encode.
 // jsonrpc.null can be used as params to set params field to json null on encode.
 // Limitations: id is always string.
-pub fn new_request[T] (method string, params T, id string) Request {
+pub fn new_request[T](method string, params T, id string) Request {
 	return Request{
 		method: method
 		params: try_encode(params)
-		id: id
+		id:     id
 	}
 }
 
@@ -94,7 +121,7 @@ pub fn new_request[T] (method string, params T, id string) Request {
 pub fn (req Request) encode() string {
 	params_payload := if req.params.len == 0 {
 		''
-	} else { 
+	} else {
 		',"params":${req.params}'
 	}
 	id_payload := if req.id.len != 0 { ',"id":"${req.id}"' } else { '' }
@@ -102,10 +129,12 @@ pub fn (req Request) encode() string {
 }
 
 pub fn (reqs []Request) encode_batch() string {
-	if reqs.len == 0 {return '[]'}
-	mut s :='['+ reqs[0].encode()
+	if reqs.len == 0 {
+		return '[]'
+	}
+	mut s := '[' + reqs[0].encode()
 	for req in reqs[1..] {
-		s = s + ','+ req.encode()
+		s = s + ',' + req.encode()
 	}
 	return s + ']'
 }
@@ -135,11 +164,11 @@ pub:
 	id      string
 }
 
-pub fn new_response[T] (result T, error ResponseError, id string) Response {
+pub fn new_response[T](result T, error ResponseError, id string) Response {
 	return Response{
-		result: if error.code != 0 { ''	} else { try_encode(result)	}
-		error: error
-		id: id
+		result: if error.code != 0 { '' } else { try_encode(result) }
+		error:  error
+		id:     id
 	}
 }
 
@@ -160,10 +189,12 @@ pub fn (resp Response) encode() string {
 }
 
 pub fn (resps []Response) encode_batch() string {
-	if resps.len == 0 {return '[]'}
-	mut s :='['+ resps[0].encode()
+	if resps.len == 0 {
+		return '[]'
+	}
+	mut s := '[' + resps[0].encode()
 	for resp in resps[1..] {
-		s = s + ','+ resp.encode()
+		s = s + ',' + resp.encode()
 	}
 	return s + ']'
 }
@@ -202,21 +233,33 @@ fn try_encode[T](data T) string {
 
 fn try_decode[T](s string) !T {
 	$if T is string {
-		if s[0] == `"` && s[s.len-1] == `"` { return s.find_between('"', '"\0') }
+		if s[0] == `"` && s[s.len - 1] == `"` {
+			return s.find_between('"', '"\0')
+		}
 		return error('Could not decode data=${s} into type string')
 	} $else $if T is bool {
-		if s == 'true' { return true }
-		if s == 'false' { return false }
+		if s == 'true' {
+			return true
+		}
+		if s == 'false' {
+			return false
+		}
 		return error('Could not decode data=${s} into type bool')
 	} $else $if T is int {
 		res := s.int()
-		if res == 0 && s != '0' { return error('Could not decode data=${s} into type int') }
+		if res == 0 && s != '0' {
+			return error('Could not decode data=${s} into type int')
+		}
 		return res
 	} $else $if T is Null {
-		if s != null.str() { return error('Could not decode data=${s} into type bool') }
+		if s != null.str() {
+			return error('Could not decode data=${s} into type bool')
+		}
 		return null
 	} $else $if T is Empty {
-		if s.len == 0 { return Empty{} }
+		if s.len == 0 {
+			return Empty{}
+		}
 		return error('Params not empty: data=${s}')
 	} $else {
 		return json.decode(T, s) or { return err }

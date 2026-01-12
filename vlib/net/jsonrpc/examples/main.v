@@ -80,17 +80,19 @@ fn (mut h KvHandler) handle_create(req &jsonrpc.Request, mut wr jsonrpc.Response
 		wr.write_error(jsonrpc.invalid_params)
 		return
 	}
-	log.warn("params=${p}")
+	log.warn('params=${p}')
 	if !h.store.create(p.key, p.value) {
 		wr.write_error(jsonrpc.ResponseError{ // custom app-level error code
-			code: -32010
+			code:    -32010
 			message: 'Key already exists'
-			data: p.key
+			data:    p.key
 		})
 		return
 	}
 
-	wr.write({ 'ok': true })
+	wr.write({
+		'ok': true
+	})
 }
 
 fn (mut h KvHandler) handle_get(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter) {
@@ -101,13 +103,13 @@ fn (mut h KvHandler) handle_get(req &jsonrpc.Request, mut wr jsonrpc.ResponseWri
 
 	value := h.store.get(p.key) or {
 		wr.write_error(jsonrpc.ResponseError{
-			code: -32004
+			code:    -32004
 			message: 'Not found'
-			data: p.key
+			data:    p.key
 		})
 		return
 	}
-	
+
 	wr.write(KvItem{ key: p.key, value: value })
 }
 
@@ -116,17 +118,19 @@ fn (mut h KvHandler) handle_update(req &jsonrpc.Request, mut wr jsonrpc.Response
 		wr.write_error(jsonrpc.invalid_params)
 		return
 	}
-	
+
 	if !h.store.update(p.key, p.value) {
 		wr.write_error(jsonrpc.ResponseError{
-			code: -32004
+			code:    -32004
 			message: 'Not found'
-			data: p.key
+			data:    p.key
 		})
 		return
 	}
-	
-	wr.write({ 'ok': true })
+
+	wr.write({
+		'ok': true
+	})
 }
 
 fn (mut h KvHandler) handle_delete(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter) {
@@ -137,20 +141,25 @@ fn (mut h KvHandler) handle_delete(req &jsonrpc.Request, mut wr jsonrpc.Response
 
 	if !h.store.delete(p.key) {
 		wr.write_error(jsonrpc.ResponseError{
-			code: -32004
+			code:    -32004
 			message: 'Not found'
-			data: p.key
+			data:    p.key
 		})
 		return
 	}
 
-	wr.write({ 'ok': true })
+	wr.write({
+		'ok': true
+	})
 }
 
 fn (mut h KvHandler) handle_list(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter) {
 	mut items := []KvItem{}
 	for k, v in h.store.dump() {
-		items << KvItem{ key: k, value: v }
+		items << KvItem{
+			key:   k
+			value: v
+		}
 	}
 	items.sort(a.key < b.key)
 	wr.write(items)
@@ -163,26 +172,28 @@ fn handle_conn(mut conn net.TcpConn, h jsonrpc.Handler) {
 
 	mut log_inter := jsonrpc.LoggingInterceptor{}
 	mut inters := jsonrpc.Interceptors{
-		event: [log_inter.on_event]
-		encoded_request: [log_inter.on_encoded_request]
-		request: [log_inter.on_request]
-		response: [log_inter.on_response]
+		event:            [log_inter.on_event]
+		encoded_request:  [log_inter.on_encoded_request]
+		request:          [log_inter.on_request]
+		response:         [log_inter.on_response]
 		encoded_response: [log_inter.on_encoded_response]
 	}
 
 	mut srv := jsonrpc.new_server(jsonrpc.ServerConfig{
-		stream: conn
-		handler: h
+		stream:       conn
+		handler:      h
 		interceptors: inters
 	})
 
-	jsonrpc.dispatch_event(inters.event, "start", "server started")
+	jsonrpc.dispatch_event(inters.event, 'start', 'server started')
 	srv.start()
 }
 
 fn main() {
 	mut s := KvStore{}
-	mut h := KvHandler{store: s}
+	mut h := KvHandler{
+		store: s
+	}
 	mut r := jsonrpc.Router{}
 	r.register('kv.create', h.handle_create)
 	r.register('kv.get', h.handle_get)
@@ -196,7 +207,7 @@ fn main() {
 
 	for {
 		mut c := l.accept()!
-		println("Accepted")
+		println('Accepted')
 		go handle_conn(mut c, r.handle_jsonrpc)
 	}
 }

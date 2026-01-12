@@ -37,7 +37,7 @@ pub fn (mut l LoggingInterceptor) on_response(resp &Response) {
 		msg = msg + 'error=none'
 	}
 	msg = msg + ' id=${resp.id}'
-	
+
 	l.log.send_output(msg, l.log.get_level())
 }
 

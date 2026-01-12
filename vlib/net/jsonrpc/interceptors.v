@@ -1,24 +1,27 @@
 module jsonrpc
 
 // EventInterceptor called on `jsonrpc.dispatch_event`
-pub type EventInterceptor =	fn(name string, data string)
-// EncodedRequestInterceptor called on `jsonrpc.intercept_encoded_request`
-pub type EncodedRequestInterceptor = fn(req []u8) !
-// RequestInterceptor called on `jsonrpc.intercept_request`
-pub type RequestInterceptor = fn(req &Request) !
-// ResponseInterceptor called on `jsonrpc.intercept_response`
-pub type ResponseInterceptor = fn(resp &Response)
-// EncodedResponseInterceptor called on `jsonrpc.intercept_encoded_response`
-pub type EncodedResponseInterceptor = fn(resp []u8)
+pub type EventInterceptor = fn (name string, data string)
 
+// EncodedRequestInterceptor called on `jsonrpc.intercept_encoded_request`
+pub type EncodedRequestInterceptor = fn (req []u8) !
+
+// RequestInterceptor called on `jsonrpc.intercept_request`
+pub type RequestInterceptor = fn (req &Request) !
+
+// ResponseInterceptor called on `jsonrpc.intercept_response`
+pub type ResponseInterceptor = fn (resp &Response)
+
+// EncodedResponseInterceptor called on `jsonrpc.intercept_encoded_response`
+pub type EncodedResponseInterceptor = fn (resp []u8)
 
 // Interceptors collection of all supported interceptors to be called on events
 pub struct Interceptors {
 pub mut:
-	event []EventInterceptor
-	encoded_request []EncodedRequestInterceptor
-	request []RequestInterceptor
-	response []ResponseInterceptor
+	event            []EventInterceptor
+	encoded_request  []EncodedRequestInterceptor
+	request          []RequestInterceptor
+	response         []ResponseInterceptor
 	encoded_response []EncodedResponseInterceptor
 }
 

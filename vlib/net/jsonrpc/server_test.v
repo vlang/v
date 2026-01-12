@@ -2,7 +2,6 @@ module jsonrpc
 
 import strings
 
-
 struct StringRW {
 mut:
 	buf strings.Builder = strings.new_builder(4096)
@@ -20,7 +19,7 @@ fn (mut s StringRW) write(buf []u8) !int {
 }
 
 struct KVItem {
-	key string
+	key   string
 	value string
 }
 
@@ -36,17 +35,20 @@ fn handle_test(req &Request, mut wr ResponseWriter) {
 fn test_server_request_response() {
 	mut stream := StringRW{}
 	mut srv := new_server(ServerConfig{
-		stream: stream 
+		stream:  stream
 		handler: handle_test
 	})
 
-	id := "req"
-	method := "kv.item"
-	params := KVItem{key: "foo", value: "bar"}
+	id := 'req'
+	method := 'kv.item'
+	params := KVItem{
+		key:   'foo'
+		value: 'bar'
+	}
 	stream.write(new_request(method, params, id).encode().bytes())!
-	
+
 	srv.respond()!
-	
+
 	mut enc_resp := []u8{len: 4096}
 	stream.read(mut enc_resp)!
 	resp := decode_response(enc_resp.bytestr())!
@@ -59,20 +61,23 @@ fn test_server_request_response() {
 
 fn test_server_router_request_response() {
 	mut r := Router{}
-	method := "kv.item"
+	method := 'kv.item'
 	r.register(method, handle_test)
 	mut stream := StringRW{}
 	mut srv := new_server(ServerConfig{
-		stream: stream 
+		stream:  stream
 		handler: r.handle_jsonrpc
 	})
 
-	id := "req"
-	params := KVItem{key: "foo", value: "bar"}
+	id := 'req'
+	params := KVItem{
+		key:   'foo'
+		value: 'bar'
+	}
 	stream.write(new_request(method, params, id).encode().bytes())!
-	
+
 	srv.respond()!
-	
+
 	mut enc_resp := []u8{len: 4096}
 	stream.read(mut enc_resp)!
 	mut resp := decode_response(enc_resp.bytestr())!
@@ -82,10 +87,10 @@ fn test_server_router_request_response() {
 	assert resp.error == ResponseError{}
 	assert resp.id == id
 
-	stream.write(new_request("unknown", params, id).encode().bytes())!
-	
+	stream.write(new_request('unknown', params, id).encode().bytes())!
+
 	srv.respond()!
-	
+
 	enc_resp = []u8{len: 4096}
 	stream.read(mut enc_resp)!
 	resp = decode_response(enc_resp.bytestr())!

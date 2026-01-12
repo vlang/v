@@ -6,7 +6,7 @@ import io
 
 pub struct ServerConfig {
 pub mut:
-	stream    io.ReaderWriter
+	stream       io.ReaderWriter
 	handler      Handler @[required]
 	interceptors Interceptors
 }
@@ -16,18 +16,17 @@ pub mut:
 @[heap]
 pub struct Server {
 mut:
-	stream    io.ReaderWriter
+	stream       io.ReaderWriter
 	handler      Handler @[required]
 	interceptors Interceptors
 }
 
 pub fn new_server(cfg ServerConfig) Server {
 	return Server{
-		stream: cfg.stream
-		handler: cfg.handler
+		stream:       cfg.stream
+		handler:      cfg.handler
 		interceptors: cfg.interceptors
 	}
-
 }
 
 // respond reads bytes from stream, pass them to the `interceptors.encoded_request`,
@@ -121,7 +120,7 @@ pub fn (mut s Server) start() {
 // into `jsonrpc.ResponseWriter`. Before returning from Handler
 // either `wr.write()` or `wr.write_error()` must be called
 // or the stream will stuck awaiting writing `jsonrpc.Response`
-pub type Handler = fn(req &Request, mut wr ResponseWriter)
+pub type Handler = fn (req &Request, mut wr ResponseWriter)
 
 // Router is simple map of method names and their `Handler`s
 pub struct Router {
@@ -155,7 +154,7 @@ pub struct ResponseWriter {
 mut:
 	sb       strings.Builder
 	is_batch bool
-	server &Server
+	server   &Server
 pub mut:
 	req_id string
 	writer io.ReaderWriter
@@ -186,7 +185,7 @@ pub fn (mut rw ResponseWriter) write[T](payload T) {
 		id:     rw.req_id
 		result: json.encode(payload)
 	}
-	
+
 	intercept_response(rw.server.interceptors.response, final_resp)
 
 	if rw.req_id.len == 0 {
@@ -205,7 +204,6 @@ pub fn (mut rw ResponseWriter) write[T](payload T) {
 pub fn (mut rw ResponseWriter) write_empty() {
 	rw.write[Null](null)
 }
-
 
 // write_error into the `jsonrpc.Response` of current request
 pub fn (mut rw ResponseWriter) write_error(err IError) {
