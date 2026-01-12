@@ -66,6 +66,7 @@ pub mut:
 	expected_or_type            ast.Type // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type          ast.Type // if/match is_expr: expected_type
 	mod                         string   // current module name
+	has_globals_in_module       bool     // true if the current module has @[has_globals] attribute
 	const_var                   &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                  []string
 	const_names                 []string
@@ -218,6 +219,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_interface_deref = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
+	c.has_globals_in_module = false
 	c.error_details.clear()
 }
 
@@ -284,12 +286,9 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if mut stmt is ast.GlobalDecl {
-			// Skip empty GlobalDecl (parser already reported an error)
-			if stmt.fields.len > 0 {
-				c.expr_level = 0
-				c.stmt(mut stmt)
-			}
+		if stmt is ast.GlobalDecl {
+			c.expr_level = 0
+			c.stmt(mut stmt)
 		}
 		if c.should_abort {
 			return
@@ -380,6 +379,14 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 			import_sym.mod.all_after_last('.')
 		} else {
 			import_sym.alias
+		}
+	}
+	// Check if the current module has has_globals attribute
+	c.has_globals_in_module = false
+	for attr in file.mod.attrs {
+		if attr.name == 'has_globals' {
+			c.has_globals_in_module = true
+			break
 		}
 	}
 }
@@ -2720,6 +2727,13 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 }
 
 fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	if !c.pref.enable_globals && !c.pref.is_fmt && !c.pref.is_vet && !c.pref.translated
+		&& !c.pref.is_livemain && !c.pref.building_v && !c.is_builtin_mod
+		&& !c.has_globals_in_module && !c.file.is_translated {
+		c.error('use `v -enable-globals ...` to enable globals', node.pos)
+		return
+	}
+
 	required_args_attr := ['_linker_section']
 	for attr_name in required_args_attr {
 		if attr := node.attrs.find_first(attr_name) {

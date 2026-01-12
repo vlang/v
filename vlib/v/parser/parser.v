@@ -2757,12 +2757,8 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 	}
 
-	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.is_vet
-		&& !p.pref.translated && !p.is_translated && !p.pref.is_livemain && !p.pref.building_v
-		&& !p.builtin_mod {
-		p.error('use `v -enable-globals ...` to enable globals')
-		return ast.GlobalDecl{}
-	}
+	// Parser always parses __global declarations correctly
+	// Checker will report an error if globals are not enabled
 	start_pos := p.tok.pos()
 	p.check(.key_global)
 	if p.disallow_declarations_in_script_mode() {
