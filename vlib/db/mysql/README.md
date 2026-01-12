@@ -24,6 +24,8 @@ Use `docker container rm some-mysql` to remove it completely, after it is stoppe
 
 For Linux, you need to install `MySQL development` package and `pkg-config`.
 
+For FreeBSD, you need to install the `mariadb118-client` package.
+
 For OpenBSD, you need to install the `mariadb-client` package.
 
 For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) ,
