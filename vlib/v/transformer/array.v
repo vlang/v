@@ -18,8 +18,8 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	if node.has_init {
 		node.init_expr = t.expr(mut node.init_expr)
 	}
-	if !t.pref.new_transform || t.skip_array_transform || node.is_fixed || t.inside_in
-		|| node.has_len || node.has_cap || node.exprs.len == 0 {
+	if t.pref.backend == .js_node || !t.pref.new_transform || t.skip_array_transform
+		|| node.is_fixed || t.inside_in || node.has_len || node.has_cap || node.exprs.len == 0 {
 		return node
 	}
 	// For C and native transform into a function call `builtin__new_array_from_c_array_noscan(...)` etc
@@ -44,6 +44,15 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	} else {
 		ast.new_type(fixed_array_idx)
 	}
+
+	if node.mod == 'main' {
+		_ := 1
+		_ := 1
+		_ := 1
+		_ := 1
+		_ := 1
+	}
+
 	fixed_array_arg := ast.CallArg{
 		expr: ast.CastExpr{
 			expr:      ast.ArrayInit{
@@ -52,7 +61,7 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 				typ:        fixed_array_typ
 				elem_type:  node.elem_type
 				exprs:      node.exprs
-				expr_types: node.exprs.map(it.type())
+				expr_types: node.expr_types
 			}
 			typ:       ast.voidptr_type
 			typname:   'voidptr'

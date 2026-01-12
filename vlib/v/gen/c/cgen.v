@@ -7887,8 +7887,12 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
 	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
-	node_typ := g.unwrap_generic(typ)
+	mut node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
+	if sym.kind == .function {
+		// todo fix fn type with fn name now
+		node_typ = ast.voidptr_type
+	}
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
 		g.error('unknown type `${sym.name}`', node.pos)
 	}
