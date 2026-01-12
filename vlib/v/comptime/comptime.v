@@ -148,11 +148,27 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 							return c.table.sym(expr.left.typ).info is ast.Map
 						} else if expr.right.kind == .struct {
 							return c.table.sym(expr.left.typ).info is ast.Struct
+						} else if expr.right.kind == .int {
+							return expr.left.typ.is_int()
 						}
 						// TODO do the other types
+					} else if expr.right is ast.TypeNode {
+						return expr.left.typ == expr.right.typ
+					}
+				} else if expr.left is ast.SelectorExpr {
+					if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
+						if expr.left.expr.info is ast.IdentFn {
+							if expr.right is ast.TypeNode {
+								return expr.left.expr.info.typ == expr.right.typ
+							}
+						}
 					}
 				}
 			}
+		}
+		ast.NodeError {
+			// else
+			return true
 		}
 		else {}
 	}
