@@ -1787,6 +1787,8 @@ pub fn (mut g Gen) write_typedef_types() {
 										g.typedefs.writeln('typedef struct ${styp_elem} ${styp_elem};')
 										g.type_definitions.writeln('${g.option_type_text(styp_elem,
 											elem_base)};')
+									}
+									if styp !in g.done_options {
 										g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 										g.done_options << styp
 									}
