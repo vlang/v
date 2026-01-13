@@ -82,7 +82,7 @@ pub const error_codes = [
 // Null represents the null value in JSON.
 pub struct Null {}
 
-// str returns string representation of json null: 'null' (can be used for 
+// str returns string representation of json null: 'null' (can be used for
 // `jsonrpc.Request` id and params as well as `jsonrpc.Response` result and id)
 pub fn (n Null) str() string {
 	return 'null'

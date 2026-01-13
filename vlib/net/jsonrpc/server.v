@@ -21,7 +21,7 @@ mut:
 	interceptors Interceptors
 }
 
-// new_server creates new `jsonrpc.Server` with `stream` to read/write, 
+// new_server creates new `jsonrpc.Server` with `stream` to read/write,
 // the `jsonrpc.Handler` to handle Requests/Responses and `interceptors`
 pub fn new_server(cfg ServerConfig) Server {
 	return Server{

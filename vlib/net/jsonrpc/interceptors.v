@@ -62,13 +62,13 @@ pub fn intercept_encoded_response(ints []EncodedResponseInterceptor, resp []u8) 
 	}
 }
 
-// is_interceptor_enabled checks if interceptor of provided type is enabled on `jsonrpc.Server` 
+// is_interceptor_enabled checks if interceptor of provided type is enabled on `jsonrpc.Server`
 pub fn (s &Server) is_interceptor_enabled[T]() bool {
 	s.get_interceptor[T]() or { return false }
 	return true
 }
 
-// get_interceptor tries to find and return interceptor of provided type from `jsonrpc.Interceptors` 
+// get_interceptor tries to find and return interceptor of provided type from `jsonrpc.Interceptors`
 pub fn (i Interceptors) get_interceptor[T]() ?&T {
 	for inter in i.event {
 		if inter is T {
