@@ -316,7 +316,7 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #endif
 #ifdef __TERMUX__
 #if !defined(__BIONIC_AVAILABILITY_GUARD)
-#define __BIONIC_AVAILABILITY_GUARD(api_level) 0
+	#define __BIONIC_AVAILABILITY_GUARD(api_level) 0
 #endif
 #if __BIONIC_AVAILABILITY_GUARD(28)
 #else
