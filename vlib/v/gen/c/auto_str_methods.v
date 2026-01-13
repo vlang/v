@@ -565,7 +565,27 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 	}
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return sync__Channel_auto_str(x, _S("${elem_type_name}")); }')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return indent_${str_fn_name}(x, 0);}')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) {')
+	g.auto_str_funcs.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(64);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("chan "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("${elem_type_name}"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("{\\n"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, indents);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("    cap: "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, builtin__int_str(x->cap));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S(", closed: "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, x->closed != 0 ? _S("true") : _S("false"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("\\n"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, indents);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("}"));')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\tbuiltin__string_free(&indents);')
+	g.auto_str_funcs.writeln('\treturn res;')
+	g.auto_str_funcs.writeln('}')
 }
 
 fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name string) {
@@ -1265,7 +1285,7 @@ fn data_str(x StrIntpType) string {
 }
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface, .chan]
 }
 
 fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
