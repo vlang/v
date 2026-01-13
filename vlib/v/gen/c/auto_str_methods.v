@@ -282,7 +282,6 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count) {')
 	old := g.reset_tmp_count()
 	defer { g.tmp_count = old }
-	g.auto_str_funcs.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
 	if str_method_expects_ptr {
 		it_arg := if is_c_struct { 'it' } else { '&it' }
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${it_arg});')
@@ -290,12 +289,10 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
 	}
-	g.auto_str_funcs.writeln('\tstring res = builtin__str_intp(3, _MOV((StrIntpData[]){
-		{_SLIT0, ${si_s_code}, {.d_s = indents }},
+	g.auto_str_funcs.writeln('\tstring res = builtin__str_intp(2, _MOV((StrIntpData[]){
 		{_S("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = tmp_ds }},
 		{_S(")"), 0, {.d_c = 0 }}
 	}));')
-	g.auto_str_funcs.writeln('\tbuiltin__string_free(&indents);')
 	g.auto_str_funcs.writeln('\tbuiltin__string_free(&tmp_ds);')
 	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
