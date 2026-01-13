@@ -1086,7 +1086,23 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							old_inside_assign_fn_var := g.inside_assign_fn_var
 							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
 								&& is_fn_var
-							g.expr(val)
+							mut nval := val
+							if val is ast.PrefixExpr && val.right is ast.CallExpr {
+								call_expr := val.right as ast.CallExpr
+								if call_expr.name == 'new_array_from_c_array' {
+									nval = call_expr
+									if !var_type.has_flag(.shared_f) {
+										g.write('HEAP(${g.styp(var_type.clear_ref())}, ')
+									}
+									g.expr(nval)
+									if !var_type.has_flag(.shared_f) {
+										g.write(')')
+									}
+								}
+							}
+							if nval == val {
+								g.expr(nval)
+							}
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
 						if !is_fn_var && is_auto_heap && !is_option_auto_heap

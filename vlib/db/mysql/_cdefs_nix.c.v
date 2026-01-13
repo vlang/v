@@ -10,6 +10,8 @@ $if $pkgconfig('mysqlclient') {
 	#pkgconfig mariadb
 	$if openbsd {
 		#include <mysql.h> # Please install the mariadb-client package for development headers
+	} $else $if freebsd {
+		#include <mysql.h> # Please install the mariadb118-client package for development headers
 	} $else {
 		#include <mysql.h> # Please install the libmariadb-dev development headers
 	}

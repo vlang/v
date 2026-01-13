@@ -7955,6 +7955,17 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can also use `#flag` directives, to link to static C libraries, which
+will be added last (note the .a suffix):
+```v oksyntax
+#flag /path/to/ffi.a
+```
+If you need to reverse the order (prepend the static library in the libs section of the
+C compilation line, before other libs), use:
+```v oksyntax
+#flag /path/to/ffi.a@START_LIBS
+```
+
 You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 

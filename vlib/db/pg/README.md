@@ -49,6 +49,8 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 
 **ArchLinux**: `pacman -S postgresql-libs`
 
+**FreeBSD**: `pkg install postgresql18-client`
+
 **OpenBSD**: `pkg_add postgresql-client`
 
 **Windows**:

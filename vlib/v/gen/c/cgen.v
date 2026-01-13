@@ -5864,13 +5864,16 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 						g.write('&'.repeat(ptr_cnt))
 					}
 				}
+				old_inside_cast := g.inside_cast
 				if node_typ == ast.voidptr_type && node.expr is ast.ArrayInit
 					&& (node.expr as ast.ArrayInit).is_fixed {
+					g.inside_cast = false
 					expr_styp := g.styp(node.expr_type)
 					g.write('(${expr_styp})')
 				}
 				g.expr(node.expr)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
+				g.inside_cast = old_inside_cast
 				g.write('))')
 			}
 		}
@@ -7887,8 +7890,12 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
 	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
-	node_typ := g.unwrap_generic(typ)
+	mut node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
+	if sym.kind == .function {
+		// todo fix fn type with fn name now
+		node_typ = ast.voidptr_type
+	}
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
 		g.error('unknown type `${sym.name}`', node.pos)
 	}

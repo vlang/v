@@ -39,6 +39,10 @@ jobs:
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
@@ -68,6 +72,10 @@ jobs:
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
@@ -97,6 +105,10 @@ jobs:
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
