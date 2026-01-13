@@ -82,7 +82,23 @@ fn run_defer() {
 	defer_if(false)
 }
 
+struct SelfReferential {
+pub mut:
+	output    string
+	same_kind &SelfReferential
+}
+
+fn self_referential() {
+	mut s := SelfReferential{'struct containing pointer to itself', unsafe { nil }}
+	s.same_kind = &s
+	// FIXME:
+	// println(s.same_kind.output)
+	// prints nothing
+	println(s.output)
+}
+
 fn main() {
+	self_referential()
 	println('ptr_arith')
 	ptr_arith()
 	run_defer()
