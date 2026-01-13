@@ -1003,9 +1003,8 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) 
 	sgl.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
 		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y + math.cosf(f32(math.radians(i +
-			10))) * rh)
 	}
+	sgl.v2f(x, y + rh)
 	sgl.end()
 }
 
@@ -1021,17 +1020,16 @@ pub fn (ctx &Context) draw_ellipse_thick(x f32, y f32, rw f32, rh f32, th f32, c
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_quads()
+	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * (rw - th / 2), y +
-			math.cosf(f32(math.radians(i + 10))) * (rh - th / 2))
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * (rw - th / 2), y +
-			math.cosf(f32(math.radians(i))) * (rh - th / 2))
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * (rw + th / 2), y +
-			math.cosf(f32(math.radians(i))) * (rh + th / 2))
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * (rw + th / 2), y +
-			math.cosf(f32(math.radians(i + 10))) * (rh + th / 2))
+		xfactor := math.sinf(f32(math.radians(i)))
+		yfactor := math.cosf(f32(math.radians(i)))
+
+		sgl.v2f(x + xfactor * (rw - th / 2), y + yfactor * (rh - th / 2))
+		sgl.v2f(x + xfactor * (rw + th / 2), y + yfactor * (rh + th / 2))
 	}
+	sgl.v2f(x, y + (rh - th / 2))
+	sgl.v2f(x, y + (rh + th / 2))
 	sgl.end()
 }
 
@@ -1050,9 +1048,8 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color)
 	for i := 0; i < 360; i += 10 {
 		sgl.v2f(x, y)
 		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y + math.cosf(f32(math.radians(i +
-			10))) * rh)
 	}
+	sgl.v2f(x, y + rh)
 	sgl.end()
 }
 
@@ -1073,13 +1070,12 @@ pub fn (ctx &Context) draw_ellipse_empty_rotate(x f32, y f32, rw f32, rh f32, ro
 	sgl.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
 		x_current := math.sinf(f32(math.radians(i))) * rw
-		x_next := math.sinf(f32(math.radians(i + 10))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
-		y_next := math.cosf(f32(math.radians(i + 10))) * rh
+
 		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
-		sgl.v2f(x + x_next * cos_rot - y_next * sin_rot, y + x_next * sin_rot + y_next * cos_rot)
 	}
+	sgl.v2f(x - rh * sin_rot, y + rh * cos_rot)
 	sgl.end()
 }
 
@@ -1098,24 +1094,18 @@ pub fn (ctx &Context) draw_ellipse_thick_rotate(x f32, y f32, rw f32, rh f32, th
 
 	cos_rot := math.cosf(rota)
 	sin_rot := math.sinf(rota)
-	sgl.begin_quads()
+	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
-		xfactor_current := math.sinf(f32(math.radians(i)))
-		xfactor_next := math.sinf(f32(math.radians(i + 10)))
-		yfactor_current := math.cosf(f32(math.radians(i)))
-		yfactor_next := math.cosf(f32(math.radians(i + 10)))
+		xfactor := math.sinf(f32(math.radians(i)))
+		yfactor := math.cosf(f32(math.radians(i)))
 
-		sgl.v2f(x + xfactor_next * (rw - th / 2) * cos_rot - yfactor_next * (rh - th / 2) * sin_rot,
-			y + yfactor_next * (rh - th / 2) * cos_rot + xfactor_next * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor_current * (rw - th / 2) * cos_rot - yfactor_current * (rh - th / 2) * sin_rot,
-			y + yfactor_current * (rh - th / 2) * cos_rot +
-			xfactor_current * (rw - th / 2) * sin_rot)
-		sgl.v2f(x + xfactor_current * (rw + th / 2) * cos_rot - yfactor_current * (rh + th / 2) * sin_rot,
-			y + yfactor_current * (rh + th / 2) * cos_rot + xfactor_current * (rw +
-			th / 2) * sin_rot)
-		sgl.v2f(x + xfactor_next * (rw + th / 2) * cos_rot - yfactor_next * (rh + th / 2) * sin_rot,
-			y + yfactor_next * (rh + th / 2) * cos_rot + xfactor_next * (rw + th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw - th / 2) * cos_rot - yfactor * (rh - th / 2) * sin_rot,
+			y + yfactor * (rh - th / 2) * cos_rot + xfactor * (rw - th / 2) * sin_rot)
+		sgl.v2f(x + xfactor * (rw + th / 2) * cos_rot - yfactor * (rh + th / 2) * sin_rot,
+			y + yfactor * (rh + th / 2) * cos_rot + xfactor * (rw + th / 2) * sin_rot)
 	}
+	sgl.v2f(x - (rh - th / 2) * sin_rot, y + (rh - th / 2) * cos_rot)
+	sgl.v2f(x - (rh + th / 2) * sin_rot, y + (rh + th / 2) * cos_rot)
 	sgl.end()
 }
 
@@ -1137,13 +1127,11 @@ pub fn (ctx &Context) draw_ellipse_filled_rotate(x f32, y f32, rw f32, rh f32, r
 	for i := 0; i < 360; i += 10 {
 		sgl.v2f(x, y)
 		x_current := math.sinf(f32(math.radians(i))) * rw
-		x_next := math.sinf(f32(math.radians(i + 10))) * rw
 		y_current := math.cosf(f32(math.radians(i))) * rh
-		y_next := math.cosf(f32(math.radians(i + 10))) * rh
 		sgl.v2f(x + x_current * cos_rot - y_current * sin_rot, y + x_current * sin_rot +
 			y_current * cos_rot)
-		sgl.v2f(x + x_next * cos_rot - y_next * sin_rot, y + x_next * sin_rot + y_next * cos_rot)
 	}
+	sgl.v2f(x - rh * sin_rot, y + rh * cos_rot)
 	sgl.end()
 }
 
