@@ -3,6 +3,8 @@ module fasthttp
 import net
 
 #include <sys/epoll.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
 #include <netinet/tcp.h>
 
 fn C.accept4(sockfd int, addr &net.Addr, addrlen &u32, flags int) int
@@ -12,6 +14,10 @@ fn C.epoll_create1(__flags int) int
 fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
 
 fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
+
+fn C.sendfile(out_fd int, in_fd int, offset &int, count usize) int
+
+fn C.fstat(fd int, buf &C.stat) int
 
 union C.epoll_data {
 	ptr voidptr
@@ -34,7 +40,7 @@ mut:
 	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
 	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
 	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
-	request_handler fn (HttpRequest) ![]u8 @[required]
+	request_handler fn (HttpRequest) !HttpResponse @[required]
 }
 
 // new_server creates and initializes a new Server instance.
@@ -242,20 +248,34 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					}
 					decoded_http_request.client_conn_fd = client_fd
 					decoded_http_request.user_data = server.user_data
-					response_buffer := server.request_handler(decoded_http_request) or {
+					response := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
 						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 							C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
-					// Send response
-					sent := C.send(client_fd, response_buffer.data, response_buffer.len,
-						C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
-					if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-						eprintln('ERROR: send() failed with errno=${C.errno}')
-						handle_client_closure(epoll_fd, client_fd)
-						continue
+					// Send response content (headers/body)
+					if response.content.len > 0 {
+						sent := C.send(client_fd, response.content.data, response.content.len,
+							C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
+						if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+							eprintln('ERROR: send() failed with errno=${C.errno}')
+							handle_client_closure(epoll_fd, client_fd)
+							continue
+						}
+					}
+
+					// Send file if present
+					if response.file_path != '' {
+						fd := C.open(response.file_path.str, C.O_RDONLY)
+						if fd != -1 {
+							mut st := C.stat{}
+							C.fstat(fd, &st)
+							offset := 0
+							C.sendfile(client_fd, fd, &offset, usize(st.st_size))
+							C.close(fd)
+						}
 					}
 					// Leave the connection open; closure is driven by client FIN or errors
 				} else if bytes_read == 0 {
