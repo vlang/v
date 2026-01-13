@@ -44,15 +44,6 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	} else {
 		ast.new_type(fixed_array_idx)
 	}
-
-	if node.mod == 'main' {
-		_ := 1
-		_ := 1
-		_ := 1
-		_ := 1
-		_ := 1
-	}
-
 	fixed_array_arg := ast.CallArg{
 		expr: ast.CastExpr{
 			expr:      ast.ArrayInit{

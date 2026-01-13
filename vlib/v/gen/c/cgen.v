@@ -5864,13 +5864,16 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 						g.write('&'.repeat(ptr_cnt))
 					}
 				}
+				old_inside_cast := g.inside_cast
 				if node_typ == ast.voidptr_type && node.expr is ast.ArrayInit
 					&& (node.expr as ast.ArrayInit).is_fixed {
+					g.inside_cast = false
 					expr_styp := g.styp(node.expr_type)
 					g.write('(${expr_styp})')
 				}
 				g.expr(node.expr)
 				g.inside_assign_fn_var = old_inside_assign_fn_var
+				g.inside_cast = old_inside_cast
 				g.write('))')
 			}
 		}
