@@ -625,6 +625,13 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
 			}
+			if node.stmts.len > 0 {
+				// todo fix [] => new_array_from_c_array() now
+				mut stmt := node.stmts.last()
+				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr {
+					((stmt as ast.ExprStmt).expr as ast.CallExpr).is_return_used = true
+				}
+			}
 		}
 		ast.ParExpr {
 			mut inner_expr := t.expr(mut node.expr)

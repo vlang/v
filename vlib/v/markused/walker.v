@@ -524,6 +524,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeCall {
 			w.expr(node.left)
+			for args in node.args {
+				w.expr(args.expr)
+			}
+			w.expr(node.or_block)
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
