@@ -1013,7 +1013,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						}
 					}
 				} $else {
-					println('coroutines only work on macos & linux for now')
+					eprintln_exit('coroutines only work on macOS & Linux for now')
 				}
 			}
 			'-new-generic-solver' {
