@@ -108,7 +108,6 @@ fn wasi_fd_sync() {
 	if WASM.fd_sync(1) == 0 {
 		println('fd_sync: ok on stdout')
 	}
-
 	// Flush stderr (fd 2)
 	if WASM.fd_sync(2) == 0 {
 		println('fd_sync: ok on stderr')

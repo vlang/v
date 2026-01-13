@@ -41,20 +41,16 @@ pub:
 	offset int
 }
 
-pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
+pub fn (mut p Pool) type_struct_info(typ ast.Type) !StructInfo {
 	ts := p.table.sym(typ)
 
 	if ts.info !is ast.Struct {
-		return none
+		return error('this should never happen')
 	}
 
-	if typ.idx() in p.structs {
-		return p.structs[typ.idx()]
+	return p.structs[typ.idx()] or {
+		return error('most likely no implementation for type `${ts}`. maybe it is not implemented in builtin for this backend')
 	}
-
-	// will cache inside `p.structs`
-	p.type_size(typ)
-	return p.structs[typ.idx()]
 }
 
 pub fn (mut p Pool) calculate_all_size_align() {
@@ -62,13 +58,13 @@ pub fn (mut p Pool) calculate_all_size_align() {
 		if sym.idx == 0 {
 			continue
 		}
-		_, _ := p.type_size(ast.new_type(sym.idx))
+		_, _ := p.type_size(ast.new_type(sym.idx)) or { -1, -1 } // ignore errors right here to error later on the offending code
 	}
 }
 
-pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
+pub fn (mut p Pool) type_size(typ ast.Type) !(int, int) {
 	if typ.has_option_or_result() {
-		return p.table.type_size(ast.error_type_idx)
+		return p.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
 		return p.table.pointer_size, p.table.pointer_size
@@ -106,7 +102,9 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			align = 8
 		}
 		.alias {
-			size, align = p.table.type_size((sym.info as ast.Alias).parent_type)
+			size, align = p.type_size((sym.info as ast.Alias).parent_type) or {
+				return error('type aliased by `${sym}`: ${err}')
+			}
 		}
 		.struct, .string, .multi_return {
 			mut max_alignment := 0
@@ -114,8 +112,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 			mut stri := StructInfo{}
 			if sym.info is ast.UnknownTypeInfo {
 				// TODO: this is a big fat hack to not error right here for types that are unimplemented in builtin but still get generated in the compiler
-				//         thus actually make this workable with builtin or implement builtin fully there; since the offsets are not defined for this type it will error later on... just not as nicely
-				return p.table.pointer_size, p.table.pointer_size
+				//         thus actually make this workable with builtin or implement builtin fully there; since the offsets are not defined for this type it will error later on... errors should only pop up when an such a type is actually used
+				return error('no implementation for type `${sym}`. maybe it is not implemented in builtin for this backend')
 			}
 			types := if mut sym.info is ast.Struct {
 				sym.info.fields.map(it.typ)
@@ -123,7 +121,9 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 				(sym.info as ast.MultiReturn).types
 			}
 			for ftyp in types {
-				field_size, alignment := p.table.type_size(ftyp)
+				field_size, alignment := p.type_size(ftyp) or {
+					return error('field of `${sym}`: ${err}')
+				}
 				if field_size == 0 {
 					stri.offsets << 0
 					continue
@@ -149,7 +149,9 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 					size = (sym.info.fields.len + 2) * p.table.pointer_size
 					align = p.table.pointer_size
 					for etyp in sym.info.embeds {
-						esize, _ := p.table.type_size(etyp)
+						esize, _ := p.type_size(etyp) or {
+							return error('type embedded by `${sym}`: ${err}')
+						}
 						size += esize - 2 * p.table.pointer_size
 					}
 				}
@@ -160,25 +162,24 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 		}
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			elem_size, elem_align := p.table.type_size(info.elem_type)
+			elem_size, elem_align := p.type_size(info.elem_type) or {
+				return error('element type of fixed array: ${err}')
+			}
 			size = info.size * elem_size
 			align = elem_align
 		}
 		.enum {
-			return p.type_size((sym.info as ast.Enum).typ)
+			size, align = p.type_size((sym.info as ast.Enum).typ) or {
+				return error('enum type: ${err}')
+			}
 		}
 		// TODO: hardcoded:
 		.map {
-			size = if p.table.pointer_size == 8 {
-				$if new_int ? { 144 } $else { 120 }
-			} else {
-				80
-			}
-			align = p.table.pointer_size
+			return error('maps are not implemented')
 		}
 		.array {
 			size = if p.table.pointer_size == 8 {
-				$if new_int ? { 48 } $else { 32 }
+				$if new_int ? && x64 { 48 } $else { 32 }
 			} else {
 				24
 			}
@@ -388,7 +389,7 @@ pub fn (mut p Pool) append_string(val string) int {
 	return pos
 }
 
-pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
+pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) !(int, bool) {
 	match init {
 		ast.BoolLiteral {
 			pos := p.buf.len
@@ -450,7 +451,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 				return str_pos, true
 			}
 
-			_, align := p.type_size(ast.string_type)
+			_, align := p.type_size(ast.string_type)!
 			tss := p.table.sym(ast.string_type).info as ast.Struct
 			pos := p.alignment(align)
 
@@ -474,7 +475,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 			return pos, true
 		}
 		else {
-			size, align := p.type_size(typ)
+			size, align := p.type_size(typ)!
 			pos := p.alignment(align)
 			p.zero_fill(size)
 			return pos, false

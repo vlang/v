@@ -177,7 +177,7 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	//
 	match ts.info {
 		ast.Struct, ast.ArrayFixed {
-			size, align := g.pool.type_size(typ)
+			size, align := g.pool.type_size(typ) or { g.w_error(err.str()) }
 			padding := calc_padding(g.stack_frame, align)
 			address := g.stack_frame
 			g.stack_frame += size + padding
@@ -266,7 +266,7 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 		// Isn't a literal ...
 		if is_address {
 			// ... allocate memory and append
-			pos, is_init := g.pool.append(init, typ)
+			pos, is_init := g.pool.append(init, typ) or { g.v_error(err.str(), init.pos()) }
 			if !is_init {
 				// ... AND wait for init in `_vinit`
 				init_expr = init
@@ -328,7 +328,7 @@ pub fn log2(size int) int {
 }
 
 pub fn (mut g Gen) load(typ ast.Type, offset int) {
-	size, align := g.pool.type_size(typ)
+	size, align := g.pool.type_size(typ) or { g.w_error(err.str()) }
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {
@@ -339,7 +339,7 @@ pub fn (mut g Gen) load(typ ast.Type, offset int) {
 }
 
 pub fn (mut g Gen) store(typ ast.Type, offset int) {
-	size, align := g.pool.type_size(typ)
+	size, align := g.pool.type_size(typ) or { g.w_error(err.str()) }
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {
@@ -372,7 +372,7 @@ pub fn (mut g Gen) mov(to Var, v Var) {
 		return
 	}
 
-	size, _ := g.pool.type_size(v.typ)
+	size, _ := g.pool.type_size(v.typ) or { g.w_error(err.str()) }
 
 	if size > 16 {
 		g.ref(to)
@@ -688,10 +688,10 @@ pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existin
 pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	match init {
 		ast.StructInit {
-			size, _ := g.pool.type_size(v.typ)
+			size, _ := g.pool.type_size(v.typ) or { g.v_error(err.str(), init.pos) }
 			ts := g.table.sym(v.typ)
 			ts_info := ts.info as ast.Struct
-			si := g.pool.type_struct_info(v.typ) or { panic('unreachable') }
+			si := g.pool.type_struct_info(v.typ) or { g.v_error(err.str(), init.pos) }
 
 			if init.init_fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
 				// Struct definition contains no default initialisers
@@ -707,7 +707,7 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 					offset := si.offsets[i]
 					offset_var := g.offset(v, f.typ, offset)
 
-					fsize, _ := g.pool.type_size(f.typ)
+					fsize, _ := g.pool.type_size(f.typ) or { g.v_error(err.str(), init.pos) }
 
 					if f.has_default_expr {
 						g.set_with_expr(f.default_expr, offset_var)
@@ -766,10 +766,10 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			}
 
 			elm_typ := init.elem_type
-			elm_size, _ := g.pool.type_size(elm_typ)
+			elm_size, _ := g.pool.type_size(elm_typ) or { g.v_error(err.str(), init.pos) }
 
 			if !init.has_val {
-				arr_size, _ := g.pool.type_size(v.typ)
+				arr_size, _ := g.pool.type_size(v.typ) or { g.v_error(err.str(), init.pos) }
 
 				g.zero_fill(v, arr_size)
 				return

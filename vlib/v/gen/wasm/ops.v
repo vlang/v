@@ -67,7 +67,7 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 	ts := g.table.sym(typ)
 	match ts.info {
 		ast.Struct {
-			g.pool.type_size(typ)
+			g.pool.type_size(typ) or { g.w_error(err.str()) }
 			return wasm.ValType.i32_t // pointer
 		}
 		ast.Alias {

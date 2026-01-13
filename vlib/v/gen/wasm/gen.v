@@ -405,7 +405,7 @@ pub fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected
 
 pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	if typ.is_ptr() {
-		size, _ := g.pool.type_size(typ)
+		size, _ := g.pool.type_size(typ) or { g.w_error(err.str()) }
 		g.func.i32_const(i32(size))
 		g.func.mul(.i32_t)
 	}
@@ -890,7 +890,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
-	si := g.pool.type_struct_info(typ) or { panic('unreachable') }
+	si := g.pool.type_struct_info(typ) or { g.w_error(err.str()) }
 	return si.offsets[field.i]
 }
 
@@ -964,7 +964,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				}
 			}
 
-			size, _ := g.pool.type_size(typ)
+			size, _ := g.pool.type_size(typ) or { g.v_error(err.str(), node.pos) }
 
 			g.expr(node.index, ast.int_type)
 
@@ -1066,7 +1066,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			if !g.table.known_type_idx(node.typ) {
 				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
 			}
-			size, _ := g.pool.type_size(node.typ)
+			size, _ := g.pool.type_size(node.typ) or { g.v_error(err.str(), node.pos) }
 			g.literalint(size, ast.u32_type)
 		}
 		ast.BoolLiteral {
@@ -1256,7 +1256,9 @@ fn (mut g Gen) for_in_array_fixed(node ast.ForInStmt, cond_sym &ast.TypeSymbol) 
 				g.get(array_base)
 				g.get(idx_var)
 
-				elem_size, _ := g.pool.type_size(node.val_type)
+				elem_size, _ := g.pool.type_size(node.val_type) or {
+					g.v_error(err.str(), node.pos)
+				}
 				if elem_size > 1 {
 					g.literalint(elem_size, ast.int_type)
 					g.func.mul(.i32_t)
