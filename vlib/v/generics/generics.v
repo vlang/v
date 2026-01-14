@@ -179,6 +179,10 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 				g.cur_fn = old_cur_fn
 				return ast.Stmt(ast.FnDecl{
 					...node
+					receiver:    ast.StructField{
+						...node.receiver
+						typ: g.unwrap_generic(node.receiver.typ)
+					}
 					return_type: g.unwrap_generic(node.return_type)
 					params:      params
 					stmts:       stmts
@@ -408,6 +412,7 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 		solved_fns << ast.FnDecl{
 			...new_node
 			name:          g.concrete_name(new_node.name, concrete_types)
+			ninstances:    0
 			generic_names: []
 		}
 	}
