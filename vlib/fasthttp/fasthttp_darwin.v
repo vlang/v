@@ -3,6 +3,10 @@ module fasthttp
 import net
 
 #include <sys/event.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
 
 const buf_size = max_connection_size
 const kqueue_max_events = 128
@@ -10,6 +14,10 @@ const backlog = max_connection_size
 
 fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
 fn C.kqueue() int
+fn C.fstat(fd int, buf &C.stat) int
+
+// int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
+fn C.sendfile(fd int, s int, offset i64, len &i64, hdtr voidptr, flags int) int
 
 struct C.kevent {
 	ident  u64
@@ -38,6 +46,11 @@ mut:
 	read_len  int
 	write_buf []u8
 	write_pos int
+
+	// Sendfile state
+	file_fd  int = -1
+	file_len i64
+	file_pos i64
 }
 
 pub struct Server {
@@ -46,7 +59,7 @@ pub mut:
 	socket_fd       int
 	poll_fd         int // kqueue fd
 	user_data       voidptr
-	request_handler fn (HttpRequest) ![]u8 @[required]
+	request_handler fn (HttpRequest) !HttpResponse @[required]
 }
 
 // new_server creates and initializes a new Server instance.
@@ -87,27 +100,67 @@ fn close_conn(kq int, c_ptr voidptr) {
 	if c.write_buf.len > 0 {
 		c.write_buf.clear()
 	}
+	if c.file_fd != -1 {
+		C.close(c.file_fd)
+		c.file_fd = -1
+	}
 	unsafe { free(c_ptr) }
 }
 
 fn send_pending(c_ptr voidptr) bool {
 	mut c := unsafe { &Conn(c_ptr) }
-	if c.write_buf.len == 0 {
-		return false
+
+	// 1. Send memory buffer (headers or small response)
+	if c.write_pos < c.write_buf.len {
+		remaining := c.write_buf.len - c.write_pos
+		write_ptr := unsafe { &c.write_buf[0] + c.write_pos }
+		sent := C.send(c.fd, write_ptr, remaining, 0)
+		if sent > 0 {
+			c.write_pos += int(sent)
+		}
+		if sent < 0 {
+			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+				return true
+			}
+			return false // Error
+		}
 	}
-	remaining := c.write_buf.len - c.write_pos
-	if remaining <= 0 {
-		return false
+
+	// 2. Send file if buffer is fully sent
+	if c.write_pos >= c.write_buf.len && c.file_fd != -1 {
+		mut len := i64(0) // Input 0 means send until EOF
+		ret := C.sendfile(c.file_fd, c.fd, c.file_pos, &len, unsafe { nil }, 0)
+
+		if len > 0 {
+			c.file_pos += len
+		}
+
+		if ret == -1 {
+			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+				return true
+			}
+			// Error sending file
+			C.close(c.file_fd)
+			c.file_fd = -1
+			return false
+		}
+
+		if c.file_pos >= c.file_len {
+			// Done sending file
+			C.close(c.file_fd)
+			c.file_fd = -1
+		} else {
+			// Not done yet
+			return true
+		}
 	}
-	write_ptr := unsafe { &c.write_buf[0] + c.write_pos }
-	sent := C.send(c.fd, write_ptr, remaining, 0)
-	if sent > 0 {
-		c.write_pos += int(sent)
+
+	// Check if completely done (both buffer and file)
+	if c.write_pos >= c.write_buf.len && c.file_fd == -1 {
+		return false // Done
 	}
-	if sent < 0 && (C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK) {
-		return true
-	}
-	return c.write_pos < c.write_buf.len
+
+	return true // Still pending (partial buffer write or file not done)
 }
 
 fn send_bad_request(fd int) {
@@ -169,7 +222,21 @@ fn handle_read(mut s Server, kq int, c_ptr voidptr) {
 		return
 	}
 
-	c.write_buf = resp.clone()
+	c.write_buf = resp.content.clone()
+	if resp.file_path != '' {
+		fd := C.open(resp.file_path.str, C.O_RDONLY)
+		if fd != -1 {
+			mut st := C.stat{}
+			if C.fstat(fd, &st) == 0 {
+				c.file_fd = fd
+				c.file_len = st.st_size
+				c.file_pos = 0
+			} else {
+				C.close(fd)
+			}
+		}
+	}
+
 	c.write_pos = 0
 	c.read_len = 0
 
@@ -196,6 +263,7 @@ fn accept_clients(kq int, listen_fd int) {
 		mut c := &Conn{
 			fd:        client_fd
 			user_data: unsafe { nil }
+			file_fd:   -1
 		}
 		add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
 			c)

@@ -4,7 +4,7 @@ struct Server {
 pub:
 	port int = 3000
 mut:
-	request_handler fn (HttpRequest) ![]u8 @[required]
+	request_handler fn (HttpRequest) !HttpResponse @[required]
 }
 
 // new_server creates and initializes a new Server instance.

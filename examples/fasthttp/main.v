@@ -2,24 +2,32 @@ module main
 
 import fasthttp
 
-fn handle_request(req fasthttp.HttpRequest) ![]u8 {
+fn handle_request(req fasthttp.HttpRequest) !fasthttp.HttpResponse {
 	method := req.buffer[req.method.start..req.method.start + req.method.len].bytestr()
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 
 	if method == 'GET' {
 		if path == '/' {
-			return home_controller()!
+			return fasthttp.HttpResponse{
+				content: home_controller()!
+			}
 		} else if path.starts_with('/user/') {
 			id := path[6..]
-			return get_user_controller(id)!
+			return fasthttp.HttpResponse{
+				content: get_user_controller(id)!
+			}
 		}
 	} else if method == 'POST' {
 		if path == '/user' {
-			return create_user_controller()!
+			return fasthttp.HttpResponse{
+				content: create_user_controller()!
+			}
 		}
 	}
 
-	return not_found_response()!
+	return fasthttp.HttpResponse{
+		content: not_found_response()!
+	}
 }
 
 fn main() {

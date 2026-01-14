@@ -96,8 +96,10 @@ fn test_decode_http_request() {
 }
 
 fn test_new_server() {
-	handler := fn (req HttpRequest) ![]u8 {
-		return 'HTTP/1.1 200 OK\r\n\r\nHello'.bytes()
+	handler := fn (req HttpRequest) !HttpResponse {
+		return HttpResponse{
+			content: 'HTTP/1.1 200 OK\r\n\r\nHello'.bytes()
+		}
 	}
 
 	server := new_server(ServerConfig{

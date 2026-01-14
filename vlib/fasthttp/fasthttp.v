@@ -62,11 +62,17 @@ pub mut:
 	user_data      voidptr // User-defined context data
 }
 
+pub struct HttpResponse {
+pub:
+	content   []u8
+	file_path string
+}
+
 // ServerConfig bundles the parameters needed to start a fasthttp server.
 pub struct ServerConfig {
 pub:
 	port                    int = 3000
 	max_request_buffer_size int = 8192
-	handler                 fn (HttpRequest) ![]u8 @[required]
+	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
 }

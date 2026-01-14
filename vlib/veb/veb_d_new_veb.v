@@ -51,7 +51,7 @@ pub fn run_new[A, X](mut global_app A, port int) ! {
 	server.run() or { panic(err) }
 }
 
-fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
+fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpResponse {
 	// Get parameters from user_data - copy to avoid use-after-free
 	params := unsafe { *(&RequestParams(req.user_data)) }
 	mut global_app := unsafe { &A(params.global_app) }
@@ -61,7 +61,9 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 	s := req.buffer.bytestr()
 	// Parse the raw request bytes into a standard `http.Request`.
 	req2 := http.parse_request_str(s.clone()) or {
-		return 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+		return fasthttp.HttpResponse{
+			content: 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+		}
 	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
@@ -70,8 +72,18 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) ![]u8 {
 	if completed_context.takeover {
 		eprintln('[veb] WARNING: ctx.takeover_conn() was called, but this is not supported by this server backend. The connection will be closed after this response.')
 	}
+
+	if completed_context.return_type == .file {
+		return fasthttp.HttpResponse{
+			content:   completed_context.res.bytes()
+			file_path: completed_context.return_file
+		}
+	}
+
 	// The fasthttp server expects a complete response buffer to be returned.
-	return completed_context.res.bytes()
+	return fasthttp.HttpResponse{
+		content: completed_context.res.bytes()
+	}
 } // handle_request_and_route is a unified function that creates the context,
 
 // runs middleware, and finds the correct route for a request.
