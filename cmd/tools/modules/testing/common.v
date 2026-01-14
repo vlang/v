@@ -270,9 +270,6 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
-		$if windows {
-			skip_files << 'examples/vanilla_http_server' // requires epoll // TODO: find a way to support `// vtest build:` for project folders too...
-		}
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
