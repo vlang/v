@@ -137,33 +137,46 @@ type StmtOrExpr = ast.Expr | ast.Stmt
 pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 	match expr {
 		ast.InfixExpr {
-			if expr.op == .key_is {
-				if expr.left is ast.TypeNode {
-					if expr.right is ast.ComptimeType {
-						if expr.right.kind == .array {
-							return c.table.sym(expr.left.typ).info is ast.Array
-						} else if expr.right.kind == .iface {
-							return c.table.sym(expr.left.typ).info is ast.Interface
-						} else if expr.right.kind == .map {
-							return c.table.sym(expr.left.typ).info is ast.Map
-						} else if expr.right.kind == .struct {
-							return c.table.sym(expr.left.typ).info is ast.Struct
-						} else if expr.right.kind == .int {
-							return expr.left.typ.is_int()
+			match expr.op {
+				.key_is {
+					if expr.left is ast.TypeNode {
+						if expr.right is ast.ComptimeType {
+							if expr.right.kind == .array {
+								return c.table.sym(expr.left.typ).info is ast.Array
+							} else if expr.right.kind == .iface {
+								return c.table.sym(expr.left.typ).info is ast.Interface
+							} else if expr.right.kind == .map {
+								return c.table.sym(expr.left.typ).info is ast.Map
+							} else if expr.right.kind == .struct {
+								return c.table.sym(expr.left.typ).info is ast.Struct
+							} else if expr.right.kind == .int {
+								return expr.left.typ.is_int()
+							}
+							// TODO do the other types
+						} else if expr.right is ast.TypeNode {
+							return expr.left.typ == expr.right.typ
 						}
-						// TODO do the other types
-					} else if expr.right is ast.TypeNode {
-						return expr.left.typ == expr.right.typ
-					}
-				} else if expr.left is ast.SelectorExpr {
-					if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
-						if expr.left.expr.info is ast.IdentFn {
-							if expr.right is ast.TypeNode {
-								return expr.left.expr.info.typ == expr.right.typ
+					} else if expr.left is ast.SelectorExpr {
+						if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
+							if expr.left.expr.info is ast.IdentFn {
+								if expr.right is ast.TypeNode {
+									return expr.left.expr.info.typ == expr.right.typ
+								}
 							}
 						}
 					}
 				}
+				.and {
+					left := c.is_true(expr.left)!
+					right := c.is_true(expr.right)!
+					return left && right
+				}
+				.logical_or {
+					left := c.is_true(expr.left)!
+					right := c.is_true(expr.right)!
+					return left || right
+				}
+				else {}
 			}
 		}
 		ast.NodeError {

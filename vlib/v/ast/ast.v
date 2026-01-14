@@ -365,7 +365,6 @@ pub:
 	has_default_expr bool
 	has_prev_newline bool
 	has_break_line   bool
-	attrs            []Attr
 	is_pub           bool
 	default_val      string
 	is_mut           bool
@@ -374,6 +373,7 @@ pub:
 	is_deprecated    bool
 	is_embed         bool
 pub mut:
+	attrs            []Attr
 	next_comments    []Comment
 	is_recursive     bool
 	is_part_of_union bool

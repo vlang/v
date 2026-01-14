@@ -387,65 +387,67 @@ fn table_from_struct[T]() Table {
 fn struct_meta[T]() []TableField {
 	mut meta := []TableField{}
 	$for field in T.fields {
-		mut attrs := []VAttribute{}
-		mut is_skip := false
-		for attr in field.attrs {
-			f := attr.split_any(':')
-			if f.len == 1 {
-				ff := f[0].trim_space()
-				if ff == 'skip' {
-					is_skip = true
+		if !field.is_embed {
+			mut attrs := []VAttribute{}
+			mut is_skip := false
+			for attr in field.attrs {
+				f := attr.split_any(':')
+				if f.len == 1 {
+					ff := f[0].trim_space()
+					if ff == 'skip' {
+						is_skip = true
+					}
+					attrs << VAttribute{
+						name: ff
+					}
+					continue
 				}
-				attrs << VAttribute{
-					name: ff
+				if f.len == 2 {
+					ff := f[1].trim_space()
+					if f[0].trim_space() == 'sql' && ff == '-' {
+						is_skip = true
+					}
+					mut kind := AttributeKind.plain
+					if ff == 'true' || ff == 'false' {
+						kind = .bool
+					} else if ff.starts_with('if ') {
+						kind = .comptime_define
+					} else if (ff.starts_with("'") && ff.ends_with("'"))
+						|| (ff.starts_with('"') && ff.ends_with('"')) {
+						kind = .string
+					} else if ff.contains_only('0123456789') {
+						kind = .number
+					} else if ff !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32',
+						'u64', 'f32', 'f64', 'bool', 'string'] {
+						// @[sql: data_type] need kind = .plain
+						// @[sql: column_name] need kind = .string
+						kind = .string
+					}
+					attrs << VAttribute{
+						name:    f[0].trim_space()
+						has_arg: true
+						arg:     ff
+						kind:    kind
+					}
 				}
-				continue
 			}
-			if f.len == 2 {
-				ff := f[1].trim_space()
-				if f[0].trim_space() == 'sql' && ff == '-' {
-					is_skip = true
-				}
-				mut kind := AttributeKind.plain
-				if ff == 'true' || ff == 'false' {
-					kind = .bool
-				} else if ff.starts_with('if ') {
-					kind = .comptime_define
-				} else if (ff.starts_with("'") && ff.ends_with("'"))
-					|| (ff.starts_with('"') && ff.ends_with('"')) {
-					kind = .string
-				} else if ff.contains_only('0123456789') {
-					kind = .number
-				} else if ff !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
-					'f32', 'f64', 'bool', 'string'] {
-					// @[sql: data_type] need kind = .plain
-					// @[sql: column_name] need kind = .string
-					kind = .string
-				}
-				attrs << VAttribute{
-					name:    f[0].trim_space()
-					has_arg: true
-					arg:     ff
-					kind:    kind
-				}
+
+			mut field_type := field.typ
+			if typeof(field).name.contains('time.Time') {
+				field_type = time_
+			} else if field.is_struct {
+				field_type = type_idx['int']
+			} else if field.is_enum {
+				field_type = enum_
 			}
-		}
 
-		mut field_type := field.typ
-		if typeof(field).name.contains('time.Time') {
-			field_type = time_
-		} else if field.is_struct {
-			field_type = type_idx['int']
-		} else if field.is_enum {
-			field_type = enum_
-		}
-
-		if !is_skip {
-			meta << TableField{
-				name:     field.name
-				typ:      field_type
-				nullable: field.is_option
-				attrs:    attrs
+			if !is_skip {
+				meta << TableField{
+					name:     field.name
+					typ:      field_type
+					nullable: field.is_option
+					attrs:    attrs
+				}
 			}
 		}
 	}

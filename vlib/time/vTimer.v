@@ -29,9 +29,9 @@ __global (
 	coeff_init_state i64
 )
 
-const thousandth = 1000
-const millionth = 1000000
-const billionth = 1000000000
+const thousandth = i64(1000)
+const millionth = i64(1000000)
+const billionth = i64(1000000000)
 const minuteth = i64(60000000000)
 const hourth = i64(3600000000000)
 const dayth = i64(86400000000000)
@@ -160,33 +160,33 @@ pub fn (mut t Timer) ns() i64 {
 }
 
 // ns_to_us - Return elapsed microseconds
-pub fn (mut t Timer) ns_to_us() i64 {
-	return t.ns() / thousandth
+pub fn (mut t Timer) ns_to_us(decimals int) f64 {
+	return f64(t.ns()) / thousandth
 }
 
 // ns_to_ms - Return elapsed milliseconds
-pub fn (mut t Timer) ns_to_ms() f64 {
+pub fn (mut t Timer) ns_to_ms(decimals int) f64 {
 	return f64(t.ns()) / millionth
 }
 
 // ns_to_s - Return elapsed seconds
-pub fn (mut t Timer) ns_to_s() f64 {
+pub fn (mut t Timer) ns_to_secs(decimals int) f64 {
 	return f64(t.ns()) / billionth
 }
 
 // ns_to_mins - Return elapsed minutes
-pub fn (mut t Timer) ns_to_mins() f64 {
-	return round_to(f64(t.ns()) / minuteth, 10)
+pub fn (mut t Timer) ns_to_mins(decimals int) f64 {
+	return f64(t.ns()) / minuteth
 }
 
 // ns_to_hrs - Return elapsed hours
-pub fn (mut t Timer) ns_to_hrs() f64 {
-	return round_to(f64(t.ns()) / hourth, 10)
+pub fn (mut t Timer) ns_to_hrs(decimals int) f64 {
+	return f64(t.ns()) / hourth
 }
 
 // ns_to_days - Return elapsed days
-pub fn (mut t Timer) ns_to_days() f64 {
-	return round_to(f64(t.ns()) / dayth, 10)
+pub fn (mut t Timer) ns_to_days(decimals int) f64 {
+	return f64(t.ns()) / dayth
 }
 
 pub fn now_ns() i64 {
@@ -228,15 +228,10 @@ fn init_freq_once() i64 {
 	return freq
 }
 
-fn round_to(x f64, decimals int) f64 {
-	factor := math.pow(10.0, decimals)
-	return math.round(x * factor) / factor
-}
-
 pub fn format_time[T](ns T) string {
-	mut remaining := ns
-	mut secs := remaining / billionth
-	remaining %= billionth
+	mut remaining := f64(ns)
+	mut secs := i64(remaining / billionth)
+	remaining = math.fmod(remaining, billionth)
 
 	mut mins := secs / 60
 	secs %= 60

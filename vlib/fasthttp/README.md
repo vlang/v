@@ -23,7 +23,7 @@ import fasthttp
 
 Here's a minimal HTTP server example:
 
-```v
+```v oksyntax
 import fasthttp
 
 fn handle_request(req fasthttp.HttpRequest) ![]u8 {
