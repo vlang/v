@@ -223,7 +223,8 @@ pub mut:
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different
-	fps FPSConfig
+	fps         FPSConfig
+	has_started bool
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -316,6 +317,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 		ctx.config.init_fn(ctx.user_data)
 	}
+	ctx.has_started = true
 	// Create images now that we can do that after sg is inited
 	if ctx.native_rendering {
 		return
