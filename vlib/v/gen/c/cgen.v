@@ -990,8 +990,7 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln('#include <stddef.h>')
 		} else {
 			tcc_undef_has_include := '
-#if defined(__TINYC__) && defined(__has_include)
-// tcc does not support has_include properly yet, turn it off completely
+#if defined(__TINYC__) && defined(__has_include) // tcc does not support has_include properly yet, turn it off completely
 #undef __has_include
 #endif'
 			g.preincludes.writeln(tcc_undef_has_include)
@@ -8538,13 +8537,11 @@ fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 pub fn get_guarded_include_text(iname string, imessage string) string {
 	res := '
 	|#if defined(__has_include)
-	|
 	|#if __has_include(${iname})
 	|#include ${iname}
 	|#else
 	|#error VERROR_MESSAGE ${imessage}
 	|#endif
-	|
 	|#else
 	|#include ${iname}
 	|#endif

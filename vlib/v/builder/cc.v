@@ -22,7 +22,9 @@ const c_compilation_error_title = 'C compilation error'
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
-	println(res.output.trim_space())
+	if res.output.len > 0 {
+		println(res.output.trim_space())
+	}
 	println('='.repeat(header.len))
 }
 
