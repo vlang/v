@@ -473,6 +473,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	if sym.info is ast.Struct {
 		if sym.info.fields.len == 0 {
+			// For empty struct fields, check if it's a shared field
+			if field.typ.has_flag(.shared_f) {
+				g.write('.${field_name} = ')
+				g.init_shared_field(field)
+				return true
+			}
 			return false
 		} else if !field.has_default_expr {
 			mut has_option_field := false
