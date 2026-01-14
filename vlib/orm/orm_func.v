@@ -387,6 +387,9 @@ fn table_from_struct[T]() Table {
 fn struct_meta[T]() []TableField {
 	mut meta := []TableField{}
 	$for field in T.fields {
+		if field.is_embed {
+			continue
+		}
 		mut attrs := []VAttribute{}
 		mut is_skip := false
 		for attr in field.attrs {
