@@ -58,9 +58,9 @@ pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
 }
 
 pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
-  if typ.nr_muls() > 0 {
-    return p.table.pointer_size, p.table.pointer_size
-  }
+	if typ.nr_muls() > 0 {
+		return p.table.pointer_size, p.table.pointer_size
+	}
 
 	ts := p.table.sym(typ)
 	if ts.size != -1 && typ.idx() in p.structs {
