@@ -987,19 +987,16 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	fn_name_has_dot := fn_name.contains('.')
 	if concrete_types.len > 0 {
 		mut no_exists := true
-		if fn_name_has_dot {
-			no_exists = c.table.register_fn_concrete_types(fkey, concrete_types)
-		} else {
-			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fkey, concrete_types)
-			// if the generic fn does not exist in the current fn calling module, continue
-			// to look in builtin module
-			if !no_exists {
-				no_exists = c.table.register_fn_concrete_types(fkey, concrete_types)
-			}
-		}
+		full_fkey := if fn_name_has_dot { fkey } else { c.mod + '.' + fkey }
+		no_exists = c.table.register_fn_concrete_types(full_fkey, concrete_types)
 		if no_exists {
 			c.need_recheck_generic_fns = true
 		}
+		// Record the call position for better error reporting in `$compile_error()`
+		if c.generic_call_positions.len == 0 {
+			c.generic_call_positions = map[string]token.Pos{}
+		}
+		c.generic_call_positions[c.build_generic_call_key(full_fkey, concrete_types)] = node.pos
 	}
 	args_len := node.args.len
 	if node.kind == .jsawait {
