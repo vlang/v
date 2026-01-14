@@ -8421,7 +8421,7 @@ exists the file will be overridden. If you want to rebuild each time and not kee
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
-env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox).
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox and OpenBSD).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices
