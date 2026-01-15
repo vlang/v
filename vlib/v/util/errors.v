@@ -209,6 +209,19 @@ pub fn show_compiler_message(kind string, err errors.CompilerMessage) {
 	if err.details.len > 0 {
 		eprintln(bold('Details: ') + color('details', err.details))
 	}
+	// Display call stack if available
+	if err.call_stack.len > 0 {
+		for item in err.call_stack {
+			caller_path := path_styled_for_error_messages(item.file_path)
+			eprintln(bold('called from') + ' ${caller_path}:${item.pos.line_nr +
+				1}:${int_max(1, item.pos.col + 1)}')
+			// Display code context for the caller location
+			scontext := source_file_context(kind, item.file_path, item.pos).join('\n')
+			if scontext.len > 0 {
+				eprintln(scontext)
+			}
+		}
+	}
 }
 
 pub struct JsonError {

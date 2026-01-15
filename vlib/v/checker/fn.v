@@ -1000,6 +1000,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if no_exists {
 			c.need_recheck_generic_fns = true
 		}
+		full_fkey := if fn_name_has_dot { fkey } else { c.mod + '.' + fkey }
+		c.generic_call_positions[c.build_generic_call_key(full_fkey, concrete_types)] = node.pos
 	}
 	args_len := node.args.len
 	if node.kind == .jsawait {

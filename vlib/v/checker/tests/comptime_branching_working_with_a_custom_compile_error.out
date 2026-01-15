@@ -5,3 +5,9 @@ vlib/v/checker/tests/comptime_branching_working_with_a_custom_compile_error.vv:8
       |         ~~~~~~~~~~~~~~~~~~~~
     9 |         println('not bool ${val}')
    10 |     }
+called from vlib/v/checker/tests/comptime_branching_working_with_a_custom_compile_error.vv:15:10
+   13 | 
+   14 | fn main() {
+   15 |     println(create(123))
+      |             ~~~~~~~~~~~
+   16 | }

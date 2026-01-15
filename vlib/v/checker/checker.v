@@ -140,15 +140,16 @@ mut:
 	inside_assign                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign    bool
-	comptime_call_pos  int                      // needed for correctly checking use before decl for templates
-	goto_labels        map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type     ast.Type
-	field_data_type    ast.Type
-	variant_data_type  ast.Type
-	fn_return_type     ast.Type
-	orm_table_fields   map[string][]ast.StructField // known table structs
-	short_module_names []string                     // to check for function names colliding with module functions
+	is_index_assign        bool
+	comptime_call_pos      int                      // needed for correctly checking use before decl for templates
+	generic_call_positions map[string]token.Pos     // map from generic function key to call position
+	goto_labels            map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type         ast.Type
+	field_data_type        ast.Type
+	variant_data_type      ast.Type
+	fn_return_type         ast.Type
+	orm_table_fields       map[string][]ast.StructField // known table structs
+	short_module_names     []string                     // to check for function names colliding with module functions
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -185,6 +186,15 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
 	return checker
+}
+
+// build_generic_call_key builds a key for tracking generic function call positions
+fn (c &Checker) build_generic_call_key(fkey string, concrete_types []ast.Type) string {
+	mut types_str := ''
+	for typ in concrete_types {
+		types_str += c.table.type_to_str(typ) + ','
+	}
+	return '${fkey}[${types_str}]'
 }
 
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
