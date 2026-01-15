@@ -311,7 +311,7 @@ pub fn format_time[T](ns T) string {
 		} else if ns >= thousandth {
 			return '${f64(ns_val) / thousandth:.3f} ㎲'
 		} else {
-			return '${ns_val} ns'
+			return '${i64(ns_val)} ns'
 		}
 	}
 	return parts.join(' ')
