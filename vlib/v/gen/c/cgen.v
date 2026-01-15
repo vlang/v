@@ -3447,7 +3447,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$${arg.val.str()}')
 		}
 		ast.AsmRegister {
-			if stmt.arch == .rv64 || stmt.arch == .rv32 {
+			if stmt.arch in [.rv64, .rv32] {
 				g.write('${arg.name}')
 			} else if stmt.arch == .loongarch64 {
 				g.write('$${arg.name}')
