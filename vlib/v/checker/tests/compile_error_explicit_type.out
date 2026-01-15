@@ -1,13 +1,14 @@
-vlib/v/checker/tests/compile_error_explicit_type.vv:5:3: error: son only taken int as input
+vlib/v/checker/tests/compile_error_explicit_type.vv:5:3: error: son only take `int` as input
     3 | fn son[T](val T) {
     4 |     $if T !is int {
-    5 |         $compile_error('son only taken int as input')
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 |         $compile_error('son only take `int` as input')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     6 |     }
     7 | }
-called from vlib/v/checker/tests/compile_error_explicit_type.vv:10:2
-    8 | 
+called from vlib/v/checker/tests/compile_error_explicit_type.vv:11:2
     9 | fn main() {
-   10 |     son[bool](false)
+   10 |     son[int](123)
+   11 |     son[bool](false)
       |     ~~~~~~~~~~~~~~~~
-   11 | }
+   12 |     son[int](456)
+   13 |     son[string]('hello')
