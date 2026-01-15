@@ -8,7 +8,7 @@ const ctr_drbg = C.mbedtls_ctr_drbg_context{}
 
 const entropy = C.mbedtls_entropy_context{}
 
-const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 550)
+const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
 const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
 
 fn init() {
@@ -395,8 +395,20 @@ fn (mut s SSLConn) init() ! {
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
-	}
 
+		// Enable ALPN for HTTP/1.1 (Required by strict servers like Rustls/Pijul)
+		// We allocate a small C array of strings: ["http/1.1", NULL]
+		// This memory must persist while the SSL config is active.
+		/*
+		alpn_list := &&char(C.malloc(2 * sizeof(voidptr)))
+		if alpn_list != 0 {
+			alpn_list[0] = c'http/1.1'
+			alpn_list[1] = &char(0)
+			C.mbedtls_ssl_conf_alpn_protocols(&s.conf, alpn_list)
+		}
+		TODO free alpn_list
+		*/
+	}
 	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
 		s.certs = &SSLCerts{}
 		C.mbedtls_x509_crt_init(&s.certs.cacert)

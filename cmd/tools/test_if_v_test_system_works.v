@@ -113,7 +113,7 @@ fn main() {
 	}
 	unbuffer_stdout()
 	spawn fn () {
-		time.sleep(30 * time.second)
+		time.sleep(120 * time.second)
 		eprintln('>>> exiting due to an expired watchdog timer <<<')
 		exit(1)
 	}()

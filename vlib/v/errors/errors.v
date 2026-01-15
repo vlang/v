@@ -10,13 +10,21 @@ pub enum Reporter {
 	gen
 }
 
-pub struct CompilerMessage {
+// CallStackItem represents a single location in the call stack
+pub struct CallStackItem {
 pub:
-	message   string
-	details   string
 	file_path string
 	pos       token.Pos
-	reporter  Reporter
+}
+
+pub struct CompilerMessage {
+pub:
+	message    string
+	details    string
+	file_path  string
+	pos        token.Pos
+	reporter   Reporter
+	call_stack []CallStackItem // call stack for compile-time errors
 }
 
 pub struct Error {

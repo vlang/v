@@ -44,9 +44,9 @@ fn C.localtime_s(t &C.time_t, tm &C.tm)
 
 fn C.timespec_get(t &C.timespec, base int) int
 
-// start_time is needed on Darwin and Windows because of potential overflows
+// start_time and time_coefficients are needed on Windows because of potential overflows
 const start_time = init_win_time_start()
-const freq_time = init_win_time_freq()
+const time_coefficients = init_win_time_coefficients()
 const start_local_time = local_as_unix_time()
 
 // in most systems, these are __quad_t, which is an i64
@@ -64,10 +64,24 @@ fn make_unix_time(t C.tm) i64 {
 	return portable_timegm(&t)
 }
 
-fn init_win_time_freq() u64 {
-	f := u64(0)
+struct WinTimeCoefficients {
+	numer u64
+	denom u64
+}
+
+fn init_win_time_coefficients() WinTimeCoefficients {
+	mut f := u64(0)
 	C.QueryPerformanceFrequency(voidptr(&f))
-	return f
+	mut nom := u64(1000000000)
+	for f % 10 == 0 {
+		f = f / 10
+		nom = nom / 10
+	}
+	res := WinTimeCoefficients{
+		numer: nom
+		denom: f
+	}
+	return res
 }
 
 fn init_win_time_start() u64 {
@@ -80,7 +94,7 @@ fn init_win_time_start() u64 {
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(voidptr(&tm)) // XP or later never fail
-	return (tm - start_time) * 1000000000 / freq_time
+	return (tm - start_time) * time_coefficients.numer / time_coefficients.denom
 }
 
 // Note: vpc_now is used by `v -profile` .

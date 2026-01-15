@@ -22,11 +22,6 @@ mut:
 	output []u8 = []u8{cap: 2048}
 }
 
-@[inline]
-fn workaround_cast[T](val voidptr) T {
-	return *(&T(val))
-}
-
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
@@ -40,33 +35,33 @@ pub fn encode[T](val T, config EncoderOptions) string {
 
 fn (mut encoder Encoder) encode_value[T](val T) {
 	$if T.unaliased_typ is string {
-		encoder.encode_string(workaround_cast[string](&val))
+		encoder.encode_string(string(val))
 	} $else $if T.unaliased_typ is bool {
-		encoder.encode_boolean(workaround_cast[bool](&val))
+		encoder.encode_boolean(bool(val))
 	} $else $if T.unaliased_typ is u8 {
-		encoder.encode_number(workaround_cast[u8](&val))
+		encoder.encode_number(u8(val))
 	} $else $if T.unaliased_typ is u16 {
-		encoder.encode_number(workaround_cast[u16](&val))
+		encoder.encode_number(u16(val))
 	} $else $if T.unaliased_typ is u32 {
-		encoder.encode_number(workaround_cast[u32](&val))
+		encoder.encode_number(u32(val))
 	} $else $if T.unaliased_typ is u64 {
-		encoder.encode_number(workaround_cast[u64](&val))
+		encoder.encode_number(u64(val))
 	} $else $if T.unaliased_typ is i8 {
-		encoder.encode_number(workaround_cast[i8](&val))
+		encoder.encode_number(i8(val))
 	} $else $if T.unaliased_typ is i16 {
-		encoder.encode_number(workaround_cast[i16](&val))
+		encoder.encode_number(i16(val))
 	} $else $if T.unaliased_typ is int || T.unaliased_typ is i32 {
-		encoder.encode_number(workaround_cast[int](&val))
+		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
-		encoder.encode_number(workaround_cast[i64](&val))
+		encoder.encode_number(i64(val))
 	} $else $if T.unaliased_typ is usize {
-		encoder.encode_number(workaround_cast[usize](&val))
+		encoder.encode_number(usize(val))
 	} $else $if T.unaliased_typ is isize {
-		encoder.encode_number(workaround_cast[isize](&val))
+		encoder.encode_number(isize(val))
 	} $else $if T.unaliased_typ is f32 {
-		encoder.encode_number(workaround_cast[f32](&val))
+		encoder.encode_number(f32(val))
 	} $else $if T.unaliased_typ is f64 {
-		encoder.encode_number(workaround_cast[f64](&val))
+		encoder.encode_number(f64(val))
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
@@ -217,7 +212,10 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 fn (mut encoder Encoder) encode_number[T](val T) {
 	integer_val := val.str()
 	$if T is $float {
-		if integer_val[integer_val.len - 1] == `0` { // ends in .0
+		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
+			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
+			// `2.0` = > `2`
+			// but skip float in scientific notation, `1e+10`
 			unsafe {
 				integer_val.len -= 2
 			}
@@ -290,7 +288,7 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
 	if encoder.enum_as_int {
-		encoder.encode_number(workaround_cast[int](&val))
+		encoder.encode_number(int(val))
 	} else {
 		mut enum_val := val.str()
 		$if val is $alias {

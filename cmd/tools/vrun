@@ -5,8 +5,9 @@ v run $@
 ## the `/usr/bin/env` implementation, does not yet support a `-S` option.
 ## Notes: FreeBSD's env supports it since 2006.
 ##        GNU's coreutils env supports it since 2018.
-##        However, for example BusyBox's env still does not (2025/02/04), and there may
-##        be others like it too :-| .
+##        BusyBox's env does not support it (2025/02/04).
+##        OpenBSD's env does not support it (2026/01/14).
+##        And there may be others like it too :-| .
 
 ## On such systems, you can copy this script, or symlink it, somewhere in your PATH,
 ## and then start your .vsh scripts with: `#!/usr/bin/env vrun`.

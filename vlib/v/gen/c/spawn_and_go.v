@@ -50,7 +50,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
-			fn_var := g.fn_var_signature(expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
+			fn_var := g.fn_var_signature(ast.void_type, expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
 				tmp_fn)
 			g.write('\t${fn_var} = ')
 			g.gen_anon_fn(mut expr.left)
@@ -65,7 +65,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.is_fn_var {
 			fn_sym := g.table.sym(expr.fn_var_type)
 			func := (fn_sym.info as ast.FnType).func
-			fn_var := g.fn_var_signature(func.return_type, func.params.map(it.typ), tmp_fn)
+			fn_var := g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ),
+				tmp_fn)
 			g.write('\t${fn_var} = ')
 			g.expr(expr.left)
 			g.writeln(';')
@@ -184,11 +185,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if node.call_expr.is_fn_var {
 			fn_sym := g.table.sym(node.call_expr.fn_var_type)
 			info := fn_sym.info as ast.FnType
-			fn_var = g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
+			fn_var = g.fn_var_signature(ast.void_type, info.func.return_type, info.func.params.map(it.typ),
 				'fn')
 		} else if node.call_expr.left is ast.AnonFn {
 			f := node.call_expr.left.decl
-			fn_var = g.fn_var_signature(f.return_type, f.params.map(it.typ), 'fn')
+			fn_var = g.fn_var_signature(ast.void_type, f.return_type, f.params.map(it.typ),
+				'fn')
 		} else {
 			if node.call_expr.is_method {
 				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
@@ -199,7 +201,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					mut arg_types := f.params.map(it.typ)
 					arg_types = arg_types.map(muttable.convert_generic_type(it, f.generic_names,
 						node.call_expr.concrete_types) or { it })
-					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
+					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types,
+						'fn')
 				}
 			} else {
 				if f := g.table.find_fn(node.call_expr.name) {
@@ -222,7 +225,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 							}
 						}
 					}
-					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
+					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types,
+						'fn')
 				}
 			}
 		}
@@ -237,7 +241,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		for i, arg in expr.args {
 			arg_sym := g.table.sym(arg.typ)
 			if arg_sym.info is ast.FnType {
-				sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
+				sig := g.fn_var_signature(arg.typ, arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
 					'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {

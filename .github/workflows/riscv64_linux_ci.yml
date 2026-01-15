@@ -50,4 +50,5 @@ jobs:
             file ./v
             ls -la ./v
             ./v test vlib/builtin vlib/os vlib/encoding/binary
+            ./v test vlib/v/slow_tests/assembly
             VTEST_ONLY=closure ./v test vlib/v/tests

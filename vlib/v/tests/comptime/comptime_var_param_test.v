@@ -19,7 +19,7 @@ fn test_main() {
 	aa := Aa{}
 
 	assert encode_struct(aa) == 'Aa{
-    sub:     AliasType(Bb{
+    sub: AliasType(Bb{
     a: 0
 })
 }'

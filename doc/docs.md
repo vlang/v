@@ -1347,6 +1347,10 @@ println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
 
+Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
+So without the `.clone()` call the result of the code above will be the same. Make the slice in an
+`unsafe {}` block if you want to reuse memory, otherwise use explicit cloning.
+
 ##### Slices with negative indexes
 
 V supports array and string slices with negative indexes.
@@ -6273,6 +6277,7 @@ that are substituted at compile time:
 - `@CCOMPILER` => replaced with the C compiler type, for example 'gcc' .
 - `@BACKEND` => replaced with current language backend, for example 'c' or 'golang' .
 - `@PLATFORM` => replaced with the platform type, for example 'amd64' .
+
 Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
 By default, they are based on the current time of the compilation/build. They can be overridden
 by setting the environment variable `SOURCE_DATE_EPOCH`. That is also useful while making
@@ -6552,6 +6557,13 @@ fn main() {
 
 V can embed arbitrary files into the executable with the `$embed_file(<path>)`
 compile time call. Paths can be absolute or relative to the source file.
+
+Paths could also use the compile time pseudo variables `@VEXEROOT`,
+`@VMODROOT`, `@DIR`, `$d` and `$env`.
+
+```v ignore
+logo := $embed_file('@VEXEROOT/examples/assets/logo.png')
+```
 
 Note that by default, using `$embed_file(file)`, will always embed the whole content
 of the file, but you can modify that behaviour by passing: `-d embed_only_metadata`
@@ -7943,6 +7955,17 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can also use `#flag` directives, to link to static C libraries, which
+will be added last (note the .a suffix):
+```v oksyntax
+#flag /path/to/ffi.a
+```
+If you need to reverse the order (prepend the static library in the libs section of the
+C compilation line, before other libs), use:
+```v oksyntax
+#flag /path/to/ffi.a@START_LIBS
+```
+
 You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
@@ -8398,7 +8421,7 @@ exists the file will be overridden. If you want to rebuild each time and not kee
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
-env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox).
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox and OpenBSD).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices

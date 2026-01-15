@@ -59,7 +59,6 @@ fn get_bet_nbr() int {
 		if bet_nbr < 0 || bet_nbr > 49 {
 			println('error: ${line} is not between 0 and 49.')
 			bet_nbr = -1
-			continue
 		}
 	}
 	return bet_nbr

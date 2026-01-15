@@ -8,6 +8,6 @@ struct Bar {
 
 fn test_main() {
 	assert Bar{}.str() == 'Bar{
-    Foo2:     Foo2(Foo1{})
+    Foo2: Foo2(Foo1{})
 }'
 }

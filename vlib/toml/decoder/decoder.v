@@ -156,7 +156,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 					mut slen := if is_valid_long { 10 } else { 6 }
 					if slen <= s.remaining() {
 						pos := s.state().pos
-						sequence := s.text[pos..pos + slen + 1]
+						sequence := s.text#[pos..pos + slen + 1]
 						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
 							decoded_s += escape
 							continue

@@ -10,9 +10,10 @@ import v.util
 pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
-	index &IndexState
-	table &ast.Table = unsafe { nil }
-	file  &ast.File  = unsafe { nil }
+	index                &IndexState
+	table                &ast.Table = unsafe { nil }
+	file                 &ast.File  = unsafe { nil }
+	skip_array_transform bool // is the checker transformer, set by the checker
 mut:
 	is_assert   bool
 	inside_dump bool
@@ -160,18 +161,10 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		ast.AsmStmt {}
 		ast.DebuggerStmt {}
 		ast.AssertStmt {
-			return t.assert_stmt(mut node)
+			t.assert_stmt(mut node)
 		}
 		ast.AssignStmt {
-			t.find_new_array_len(node)
-			t.find_new_range(node)
-			t.find_mut_self_assign(node)
-			for mut right in node.right {
-				right = t.expr(mut right)
-			}
-			for mut left in node.left {
-				left = t.expr(mut left)
-			}
+			t.assign_stmt(mut node)
 		}
 		ast.Block {
 			t.index.indent(false)
@@ -186,14 +179,10 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			t.index.disabled = true
 		}
 		ast.ComptimeFor {
-			for mut stmt in node.stmts {
-				stmt = t.stmt(mut stmt)
-			}
+			t.comptime_for(mut node)
 		}
 		ast.ConstDecl {
-			for mut field in node.fields {
-				field.expr = t.expr(mut field.expr)
-			}
+			t.const_decl(mut node)
 		}
 		ast.DeferStmt {
 			for mut stmt in node.stmts {
@@ -201,11 +190,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.EnumDecl {
-			for mut field in node.fields {
-				if field.has_expr {
-					field.expr = t.expr(mut field.expr)
-				}
-			}
+			t.enum_decl(mut node)
 		}
 		ast.ExprStmt {
 			// TODO: check if this can be handled in `t.expr`
@@ -225,17 +210,10 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.FnDecl {
-			if t.pref.trace_calls {
-				t.fn_decl_trace_calls(mut node)
-			}
-			t.index.indent(true)
-			for mut stmt in node.stmts {
-				stmt = t.stmt(mut stmt)
-			}
-			t.index.unindent()
+			t.fn_decl(mut node)
 		}
 		ast.ForCStmt {
-			return t.for_c_stmt(mut node)
+			t.for_c_stmt(mut node)
 		}
 		ast.ForInStmt {
 			// indexes access within the for itself are not optimised (yet)
@@ -249,9 +227,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			return t.for_stmt(mut node)
 		}
 		ast.GlobalDecl {
-			for mut field in node.fields {
-				field.expr = t.expr(mut field.expr)
-			}
+			t.global_decl(mut node)
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
@@ -265,9 +241,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			for mut field in node.fields {
-				field.default_expr = t.expr(mut field.default_expr)
-			}
+			t.interface_decl(mut node)
 		}
 		ast.Module {}
 		ast.Return {
@@ -278,20 +252,68 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
-			for mut field in node.fields {
-				field.default_expr = t.expr(mut field.default_expr)
-			}
+			t.struct_decl(mut node)
 		}
 		ast.TypeDecl {}
 	}
 	return node
 }
 
-pub fn (mut t Transformer) assert_stmt(mut node ast.AssertStmt) ast.Stmt {
+pub fn (mut t Transformer) comptime_for(mut node ast.ComptimeFor) {
+	for mut stmt in node.stmts {
+		stmt = t.stmt(mut stmt)
+	}
+}
+
+pub fn (mut t Transformer) assign_stmt(mut node ast.AssignStmt) {
+	t.find_new_array_len(node)
+	t.find_new_range(node)
+	t.find_mut_self_assign(node)
+	for mut right in node.right {
+		right = t.expr(mut right)
+	}
+	for mut left in node.left {
+		left = t.expr(mut left)
+	}
+}
+
+pub fn (mut t Transformer) const_decl(mut node ast.ConstDecl) {
+	for mut field in node.fields {
+		field.expr = t.expr(mut field.expr)
+	}
+}
+
+pub fn (mut t Transformer) enum_decl(mut node ast.EnumDecl) {
+	for mut field in node.fields {
+		if field.has_expr {
+			field.expr = t.expr(mut field.expr)
+		}
+	}
+}
+
+pub fn (mut t Transformer) global_decl(mut node ast.GlobalDecl) {
+	for mut field in node.fields {
+		field.expr = t.expr(mut field.expr)
+	}
+}
+
+pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) {
+	for mut field in node.fields {
+		field.default_expr = t.expr(mut field.default_expr)
+	}
+}
+
+pub fn (mut t Transformer) struct_decl(mut node ast.StructDecl) {
+	for mut field in node.fields {
+		field.default_expr = t.expr(mut field.default_expr)
+	}
+}
+
+pub fn (mut t Transformer) assert_stmt(mut node ast.AssertStmt) {
 	t.is_assert = true
 	node.expr = t.expr(mut node.expr)
 	if !t.pref.is_prod {
-		return node
+		return
 	}
 	if mut node.expr is ast.InfixExpr {
 		right := node.expr.right
@@ -339,9 +361,7 @@ pub fn (mut t Transformer) assert_stmt(mut node ast.AssertStmt) ast.Stmt {
 			else {}
 		}
 	}
-
 	t.is_assert = false
-	return node
 }
 
 pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
@@ -460,28 +480,23 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 	return node
 }
 
-pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) ast.Stmt {
+pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) {
 	// TODO: we do not optimise array access for multi init
 	// for a,b := 0,1; a < 10; a,b = a+b, a {...}
-
 	if node.has_init && !node.is_multi {
 		node.init = t.stmt(mut node.init)
 	}
-
 	if node.has_cond {
 		node.cond = t.expr(mut node.cond)
 	}
-
 	t.index.indent(false)
 	for mut stmt in node.stmts {
 		stmt = t.stmt(mut stmt)
 	}
 	t.index.unindent()
-
 	if node.has_inc && !node.is_multi {
 		node.inc = t.stmt(mut node.inc)
 	}
-	return node
 }
 
 pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
@@ -499,6 +514,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 					stmt = t.stmt(mut stmt)
 				}
 				t.index.unindent()
+				return node
 			}
 		}
 	}
@@ -563,7 +579,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			t.inside_dump = old_inside_dump
 		}
 		ast.GoExpr {
-			node.call_expr = t.expr(mut node.call_expr) as ast.CallExpr
+			t.expr(mut node.call_expr)
 		}
 		ast.IfExpr {
 			return t.if_expr(mut node)
@@ -608,6 +624,13 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.OrExpr {
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
+			}
+			if node.stmts.len > 0 {
+				// todo fix [] => new_array_from_c_array() now
+				mut stmt := node.stmts.last()
+				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr {
+					((stmt as ast.ExprStmt).expr as ast.CallExpr).is_return_used = true
+				}
 			}
 		}
 		ast.ParExpr {
@@ -674,31 +697,18 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.UnsafeExpr {
 			node.expr = t.expr(mut node.expr)
 		}
-		// segfaults with vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
-		/*
-		ast.Ident {
-			mut obj := node.obj
-			if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-				obj = node.scope.find(node.name) or { return node }
-			}
-
-			match mut obj {
-				ast.ConstField {
-					obj.expr = t.expr(mut obj.expr)
-				}
-				else {}
-			}
-		}*/
+		ast.AtExpr {
+			// TODO
+		}
 		else {}
 	}
 	return node
 }
 
-pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
+pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) {
 	for mut arg in node.args {
 		arg.expr = t.expr(mut arg.expr)
 	}
-	return node
 }
 
 fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
@@ -1223,6 +1233,17 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	return node
 }
 
+pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
+	if t.pref.trace_calls {
+		t.fn_decl_trace_calls(mut node)
+	}
+	t.index.indent(true)
+	for mut stmt in node.stmts {
+		stmt = t.stmt(mut stmt)
+	}
+	t.index.unindent()
+}
+
 pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 	// Prepend ast Nodes for `eprintln(...)` to the `FnDecl`'s stmts list,
 	// to let the gen backend generate the target specific code for the print.
@@ -1305,7 +1326,9 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		if val == '' {
 			// there is no point in appending empty strings
 			// so instead, just emit an empty statement, to be ignored by the backend
-			calls << ast.EmptyStmt{}
+			calls << ast.EmptyStmt{
+				pos: nexpr.pos
+			}
 			continue
 		}
 		mut ncall := ast.ExprStmt{
@@ -1321,6 +1344,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 				]
 			})
 			typ:  ntype
+			pos:  nexpr.pos
 		}
 		calls << ncall
 	}
@@ -1337,6 +1361,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					},
 				]
 			})
+			pos:  nexpr.pos
 		}
 		etype := original.expr_types[idx]
 		if etype.is_int() {
@@ -1351,6 +1376,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		*onode = ast.Stmt(ast.Block{
 			scope: ast.empty_scope
 			stmts: calls
+			pos:   nexpr.pos
 		})
 	}
 	return true

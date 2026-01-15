@@ -1,0 +1,79 @@
+name: CI Windows TCC
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**.bat'
+      - '!**/windows_ci_tcc.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**.bat'
+      - '!**/windows_ci_tcc.yml'
+      - '!**/windows-install-sqlite.bat'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tcc-windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build with make.bat -tcc
+        run: |
+          .\make.bat -tcc
+          .\v.exe symlink
+      - name: All code is formatted
+        run: v -silent test-cleancode
+      - name: Test new v.c
+        run: |
+          v -o v.c cmd/v
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
+      - name: Install dependencies
+        run: |
+          v retry -- v setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v -g self
+        run: v -g self
+      - name: v doctor
+        run: |
+          v doctor
+      - name: Verify `v test` works
+        run: |
+          v cmd/tools/test_if_v_test_system_works.v
+          .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        run: v vlib/v/gen/c/coutput_test.v
+      - name: Make sure running TCC64 instead of TCC32
+        run: v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+      - name: Test ./v doc -v clipboard *BEFORE building tools*
+        run: v doc -v clipboard
+      - name: Test v build-tools
+        run: v -silent -W build-tools
+      - name: Test pure V math module
+        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: v -silent test-self vlib
+      - name: Test v->js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
+      - name: Test v binaries
+        run: v build-vbinaries
+      - name: Build examples
+        run: v build-examples
+      - name: v2 self compilation
+        run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v

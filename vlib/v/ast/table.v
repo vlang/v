@@ -84,7 +84,7 @@ pub mut:
 	panic_npanics      int
 	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
-	cur_concrete_types []Type // current concrete types, e.g. <int, string>
+	cur_concrete_types []Type // current concrete types, e.g. [int, string]
 	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
@@ -1010,9 +1010,10 @@ pub fn (t &Table) array_name(elem_type Type) string {
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
-	mut name := elem_type_sym.name
-	if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
-		name = elem_type_sym.info.scoped_name
+	name := if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
+		elem_type_sym.info.scoped_name
+	} else {
+		elem_type_sym.name
 	}
 	return '[]${opt}${res}${ptr}${name}'
 }
@@ -1023,11 +1024,12 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
+	cname := elem_type_sym.scoped_cname()
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
+		type_name := cname.replace_each(map_cname_escape_seq)
 		return 'Array_${opt}${res}${type_name}${suffix}'
 	} else {
-		return 'Array_${opt}${res}${elem_type_sym.cname}${suffix}'
+		return 'Array_${opt}${res}${cname}${suffix}'
 	}
 }
 
@@ -1044,7 +1046,12 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) str
 	} else {
 		size_expr.str()
 	}
-	return '[${size_str}]${opt}${res}${ptr}${elem_type_sym.name}'
+	name := if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
+		elem_type_sym.info.scoped_name
+	} else {
+		elem_type_sym.name
+	}
+	return '[${size_str}]${opt}${res}${ptr}${name}'
 }
 
 @[inline]
@@ -1053,11 +1060,12 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	suffix := if elem_type.is_ptr() { '_ptr${elem_type.nr_muls()}' } else { '' }
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
+	mut cname := elem_type_sym.scoped_cname()
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
+		type_name := cname.replace_each(map_cname_escape_seq)
 		return 'Array_fixed_${opt}${res}${type_name}${suffix}_${size}'
 	} else {
-		return 'Array_fixed_${opt}${res}${elem_type_sym.cname}${suffix}_${size}'
+		return 'Array_fixed_${opt}${res}${cname}${suffix}_${size}'
 	}
 }
 
@@ -1801,6 +1809,10 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 	if generic_names.len != to_types.len {
 		return none
 	}
+	type_idx := generic_type.idx()
+	if type_idx == 0 || type_idx >= t.type_symbols.len {
+		return none
+	}
 	mut sym := t.sym(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
@@ -1951,6 +1963,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				mut cnrt := '${sym.cname}_T_'
 				mut t_generic_names := generic_names.clone()
 				mut t_to_types := to_types.clone()
+				mut has_generic := false
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
 					&& sym.generic_types != sym.info.generic_types {
 					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
@@ -1987,6 +2000,9 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 							rnrt += ', '
 							cnrt += '_'
 						}
+						if ct.has_flag(.generic) && ct != sym.info.generic_types[i] {
+							has_generic = true
+						}
 					} else {
 						return none
 					}
@@ -2000,7 +2016,64 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						idx = t.add_placeholder_type(nrt, cnrt, .v)
 					}
 				}
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				return if has_generic {
+					new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
+			}
+		}
+		UnknownTypeInfo {
+			if sym.name.contains('[') && sym.name.contains(']') {
+				base_name := sym.name.all_before('[')
+				generic_part := sym.name.all_after('[').trim_right(']')
+				mut converted_args := []string{}
+				mut has_generic := false
+				mut changed := false
+				args := generic_part.split(',').map(it.trim_space())
+				for arg in args {
+					if arg in generic_names {
+						idx := generic_names.index(arg)
+						if idx < to_types.len {
+							converted_type := to_types[idx]
+							converted_type_str := t.type_to_str(converted_type)
+							if converted_type_str != arg {
+								converted_args << converted_type_str
+								changed = true
+								if converted_type.has_flag(.generic) {
+									has_generic = true
+								}
+							} else {
+								converted_args << arg
+							}
+						} else {
+							converted_args << arg
+						}
+					} else {
+						converted_args << arg
+					}
+				}
+				if changed {
+					new_name := base_name + '[' + converted_args.join(', ') + ']'
+					mut new_idx := t.type_idxs[new_name]
+					if new_idx == 0 {
+						new_idx = t.add_placeholder_type(new_name, util.no_dots(new_name).replace_each([
+							'[',
+							'_T_',
+							']',
+							'',
+							', ',
+							'_',
+							' ',
+							'',
+						]), sym.language)
+					}
+					return if has_generic {
+						new_type(new_idx).derive_add_muls(generic_type).set_flag(.generic)
+					} else {
+						new_type(new_idx).derive_add_muls(generic_type).clear_flag(.generic)
+					}
+				}
 			}
 		}
 		else {}
@@ -2319,7 +2392,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					}
 				}
 			}
-			mut all_methods := unsafe { ts.methods }
+			mut all_methods := ts.methods.clone()
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
@@ -2344,6 +2417,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			mut ts_copy := t.sym(idx_to_type(new_idx))
 			for method in all_methods {
 				ts_copy.register_method(method)
+			}
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2477,7 +2553,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 							sym.register_method(method)
 						}
-						mut all_methods := unsafe { parent.methods }
+						mut all_methods := parent.methods.clone()
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {

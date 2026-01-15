@@ -168,3 +168,21 @@ fn test_array_of_shared() {
 	assert e == 3
 	assert f == -17
 }
+
+// Test for issue #16234: empty shared struct initialized as null causing segmentation fault
+struct EmptyStruct {}
+
+struct OwnerWithEmptyShared {
+	empty EmptyStruct
+	lck   shared EmptyStruct
+}
+
+fn test_shared_empty_struct() {
+	mut i := OwnerWithEmptyShared{}
+	dump(i)
+	// Test that we can lock the empty shared struct without segfault
+	lock i.lck {
+		// Empty struct, nothing to do
+	}
+	assert true
+}

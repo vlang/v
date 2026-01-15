@@ -120,3 +120,9 @@ pub fn (d Duration) debug() string {
 	}
 	return 'Duration: ${sign}${res.join(', ')}'
 }
+
+// times allows you to return fractional unit durations, based on an existing duration.
+// For example, you can: `half_an_hour := time.hour.times(0.5)` .
+pub fn (d Duration) times(x f64) Duration {
+	return f64(d) * x
+}

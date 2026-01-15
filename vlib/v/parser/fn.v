@@ -44,8 +44,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind in [.lt, .lsbr] {
-		// `foo<int>(10)`
+	if p.tok.kind == .lsbr {
+		// `foo[int](10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
@@ -106,6 +106,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		name_pos:           first_pos
 		args:               args
 		mod:                p.mod
+		kind:               p.call_kind(fn_name)
 		pos:                pos
 		language:           language
 		concrete_types:     concrete_types
@@ -121,6 +122,270 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		comments:           comments
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
+	}
+}
+
+fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
+	if fn_name.len < 3 || fn_name.len > 20 {
+		return .unknown
+	}
+	return match fn_name.len {
+		3 {
+			match fn_name {
+				'str' {
+					.str
+				}
+				'map' {
+					.map
+				}
+				'any' {
+					.any
+				}
+				'all' {
+					.all
+				}
+				'pop' {
+					.pop
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		4 {
+			match fn_name {
+				'wait' {
+					.wait
+				}
+				'free' {
+					.free
+				}
+				'keys' {
+					.keys
+				}
+				'sort' {
+					.sort
+				}
+				'trim' {
+					.trim
+				}
+				'last' {
+					.last
+				}
+				'drop' {
+					.drop
+				}
+				'main' {
+					.main
+				}
+				'move' {
+					.move
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		5 {
+			return match fn_name {
+				'count' {
+					.count
+				}
+				'print' {
+					.print
+				}
+				'close' {
+					.close
+				}
+				'slice' {
+					.slice
+				}
+				'clone' {
+					.clone
+				}
+				'index' {
+					.index
+				}
+				'first' {
+					.first
+				}
+				'panic' {
+					.panic
+				}
+				'clear' {
+					.clear
+				}
+				'error' {
+					.error
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		6 {
+			return match fn_name {
+				'values' {
+					.values
+				}
+				'eprint' {
+					.eprint
+				}
+				'sorted' {
+					.sorted
+				}
+				'filter' {
+					.filter
+				}
+				'insert' {
+					.insert
+				}
+				'delete' {
+					.delete
+				}
+				'repeat' {
+					.repeat
+				}
+				'__addr' {
+					.addr
+				}
+				'malloc' {
+					.malloc
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		7 {
+			return match fn_name {
+				'prepend' {
+					.prepend
+				}
+				'writeln' {
+					.writeln
+				}
+				'println' {
+					.println
+				}
+				'try_pop' {
+					.try_pop
+				}
+				'reverse' {
+					.reverse
+				}
+				'reserve' {
+					.reserve
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		8 {
+			return match fn_name {
+				'try_push' {
+					.try_push
+				}
+				'eprintln' {
+					.eprintln
+				}
+				'pointers' {
+					.pointers
+				}
+				'contains' {
+					.contains
+				}
+				'pop_left' {
+					.pop_left
+				}
+				'type_idx' {
+					.type_idx
+				}
+				'C.va_arg' {
+					.va_arg
+				}
+				'JS.await' {
+					.jsawait
+				}
+				'grow_len' {
+					.grow_len
+				}
+				'grow_cap' {
+					.grow_cap
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		9 {
+			return match fn_name {
+				'type_name' {
+					.type_name
+				}
+				'main.main' {
+					.main_main
+				}
+				'push_many' {
+					.push_many
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		10 {
+			return match fn_name {
+				'last_index' {
+					.last_index
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		11 {
+			return match fn_name {
+				'delete_many' {
+					.delete_many
+				}
+				'delete_last' {
+					.delete_last
+				}
+				'json.decode' {
+					.json_decode
+				}
+				'json.encode' {
+					.json_encode
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		else {
+			return match fn_name {
+				'sort_with_compare' {
+					.sort_with_compare
+				}
+				'sorted_with_compare' {
+					.sorted_with_compare
+				}
+				'reverse_in_place' {
+					.reverse_in_place
+				}
+				'json.encode_pretty' {
+					.json_encode_pretty
+				}
+				'clone_to_depth' {
+					.clone_to_depth
+				}
+				else {
+					.unknown
+				}
+			}
+		}
 	}
 }
 
@@ -393,7 +658,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					is_duplicate = !type_sym.info.has_method(name)
 				}
 			}
-			if is_duplicate {
+			// when formatting, methods in mutually exclusive $if/$else branches
+			// may appear as duplicates since all branches are parsed
+			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
@@ -716,6 +983,7 @@ run them via `v file.v` instead',
 		name:               name
 		short_name:         short_fn_name
 		mod:                p.mod
+		kind:               p.call_kind(name)
 		stmts:              stmts
 		return_type:        return_type
 		return_type_pos:    return_type_pos
@@ -744,8 +1012,10 @@ run them via `v file.v` instead',
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
 		receiver:              ast.StructField{
-			name: rec.name
-			typ:  rec.typ
+			name:     rec.name
+			typ:      rec.typ
+			type_pos: rec.type_pos
+			pos:      rec.pos
 		}
 		generic_names:         generic_names
 		receiver_pos:          rec.pos

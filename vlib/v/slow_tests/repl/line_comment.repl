@@ -1,5 +1,35 @@
 math.pi
 math.pi // some comment
+"a//b"
+"a \" // b"
+"a 'b' // ok"
+"http://example.com"
+"http://example.com" // comment
+"\\\\//"
+"\\\\//" // comment
+"\"//\""
+"\"\\\"//\""
+"end\"" // comment
+"end\\\"" // comment
+"π // inside"
+"π \\\" // inside"
+1 // 2 // 3
+42//comment
 ===output===
 3.141592653589793
 3.141592653589793
+a//b
+a " // b
+a 'b' // ok
+http://example.com
+http://example.com
+\\//
+\\//
+"//"
+"\"//"
+end"
+end\"
+π // inside
+π \" // inside
+1
+42

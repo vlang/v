@@ -13,9 +13,9 @@ mut:
 }
 
 // get data from all sessions, optional to implement.
-pub fn (mut s Store) all[T]() ![]T {
+pub fn (mut s Store[T]) all[T]() ![]T {
 	return []T{}
 }
 
 // clear all session data, optional to implement.
-pub fn (mut s Store) clear[T]() ! {}
+pub fn (mut s Store[T]) clear[T]() ! {}

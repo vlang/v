@@ -101,11 +101,11 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		}
 	}
 
-	if out_len >= 1 {
+	if out_len > 1 || fw_zeros > 0 {
 		buf[y - x] = `.`
-		x++
 		i++
 	}
+	x++
 
 	if y - x >= 0 {
 		buf[y - x] = `0` + u8(out % 10)

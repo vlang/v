@@ -255,6 +255,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.key_in, .not_in {
+			if left_type.has_flag(.option) || left_type.has_flag(.result) {
+				option_or_result := if left_type.has_flag(.option) { 'Option' } else { 'Result' }
+				c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
+					left_pos)
+			}
 			match right_final_sym.kind {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface] {
@@ -313,18 +318,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('`${node.op.str()}` can only be used with arrays and maps',
 							node.pos)
 					}
-				}
-			}
-			if mut node.left is ast.CallExpr {
-				if node.left.return_type.has_flag(.option)
-					|| node.left.return_type.has_flag(.result) {
-					option_or_result := if node.left.return_type.has_flag(.option) {
-						'option'
-					} else {
-						'result'
-					}
-					c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
-						left_pos)
 				}
 			}
 			node.promoted_type = ast.bool_type
@@ -648,28 +641,26 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			return node.promoted_type
 		}
 		.unsigned_right_shift {
-			modified_left_type := if !left_type.is_int() {
+			mut modified_left_type := 0
+			if !left_type.is_int() {
 				c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 					left_pos)
-				ast.void_type
+				modified_left_type = ast.void_type
 			} else if left_type.is_int_literal() {
 				// int literal => i64
-				ast.u32_type
+				modified_left_type = ast.u32_type
 			} else if left_type.is_unsigned() {
-				left_type
+				modified_left_type = left_type
 			} else {
+				// signed type can't convert to an unsigned type
 				unsigned_type := left_type.flip_signedness()
-				if unsigned_type == ast.void_type {
-					// signed type can't convert to an unsigned type
-					0
+				if unsigned_type != ast.void_type {
+					modified_left_type = unsigned_type
 				}
-				unsigned_type
 			}
-
 			if modified_left_type == 0 {
 				return ast.void_type
 			}
-
 			node = ast.InfixExpr{
 				left:        ast.CastExpr{
 					expr:      node.left
@@ -687,9 +678,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				auto_locked: node.auto_locked
 				or_block:    node.or_block
 			}
-
 			node.promoted_type = c.check_shift(mut node, left_type, right_type)
-
 			return node.promoted_type
 		}
 		.key_is, .not_is {

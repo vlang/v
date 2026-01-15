@@ -184,17 +184,18 @@ pub mut:
 // types - Types to select
 pub struct SelectConfig {
 pub mut:
-	table      Table
-	is_count   bool
-	has_where  bool
-	has_order  bool
-	order      string
-	order_type OrderType
-	has_limit  bool
-	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
-	has_offset bool
-	fields     []string
-	types      []int
+	table        Table
+	is_count     bool
+	has_where    bool
+	has_order    bool
+	order        string
+	order_type   OrderType
+	has_limit    bool
+	primary      string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
+	has_offset   bool
+	has_distinct bool
+	fields       []string
+	types        []int
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -349,6 +350,10 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
+	if cfg.has_distinct {
+		str += 'DISTINCT '
+	}
+
 	if cfg.is_count {
 		str += 'COUNT(*)'
 	} else {
@@ -473,6 +478,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut field_comments := map[string]string{}
 	mut index_fields := []string{}
 
+	valid_sql_field_names := fields.map(sql_field_name(it))
+
 	for attr in table.attrs {
 		match attr.name {
 			'comment' {
@@ -485,6 +492,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 					index_strings := attr.arg.split(',')
 					for i in index_strings {
 						x := i.trim_space()
+						if x !in valid_sql_field_names {
+							return error("table `${table.name}` has no field's name: `${x}`")
+						}
 						if x.len > 0 && x !in index_fields {
 							index_fields << x
 						}
@@ -640,6 +650,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	fs << unique_fields
+	unique_fields.clear() // ownership transferred to fs to avoid double-free under -autofree
 	str += fs.join(', ')
 	if index_fields.len > 0 && sql_dialect == .mysql {
 		str += ', INDEX `idx_${table.name}` (`'

@@ -1,0 +1,7 @@
+import os as _
+
+fn test_fn(_ int) {}
+
+fn main() {
+	test_fn(12)
+}

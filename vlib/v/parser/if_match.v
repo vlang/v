@@ -305,9 +305,10 @@ fn (mut p Parser) resolve_at_expr(expr ast.AtExpr) !string {
 	return ''
 }
 
-fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
+fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 	mut match_first_pos := p.tok.pos()
 	old_inside_ct_match := p.inside_ct_match
+	is_expr_ := p.prev_tok.kind == .key_return || is_expr
 	if is_comptime {
 		p.next() // `$`
 		match_first_pos = p.prev_tok.pos().extend(p.tok.pos())
@@ -506,6 +507,7 @@ fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.MatchExpr{
 		is_comptime: is_comptime
+		is_expr:     is_expr_
 		branches:    branches
 		cond:        cond
 		is_sum_type: is_sum_type

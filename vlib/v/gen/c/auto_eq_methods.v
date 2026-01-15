@@ -547,7 +547,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	initializer := if !(sym.info is ast.Struct && sym.info.is_empty_struct()) { '0' } else { '' }
 	if kind == .function {
 		info := value.sym.info as ast.FnType
-		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
+		sig := g.fn_var_signature(ast.void_type, info.func.return_type, info.func.params.map(it.typ),
 			'v')
 		fn_builder.writeln('\t\t${sig} = *(voidptr*)builtin__map_get(${a}, k, &(voidptr[]){ 0 });')
 	} else {

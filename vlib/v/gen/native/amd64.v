@@ -1270,7 +1270,9 @@ fn (mut c Amd64) extern_call(addr i32) {
 			c.g.println('call QWORD [rip + 0xffffffff${int(addr).hex()}]')
 		}
 		.macos {
-			eprintln('## TODO, macos, extern_call, addr: ${addr}')
+			$if trace_native_todos ? {
+				eprintln('## TODO, macos, extern_call, addr: ${addr}')
+			}
 		}
 		else {
 			c.g.n_error('${@LOCATION} extern calls not implemented for ${c.g.pref.os}')

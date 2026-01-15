@@ -53,7 +53,10 @@ fn (mut runner NormalTestRunner) free() {
 }
 
 fn normalise_fname(name string) string {
-	return 'fn ' + name.replace('__', '.').replace('main.', '')
+	nt1 := name.replace('__', '.')
+	nt2 := nt1.replace('main.', '')
+	nt3 := 'fn ' + nt2
+	return nt3
 }
 
 fn (mut runner NormalTestRunner) start(ntests int) {

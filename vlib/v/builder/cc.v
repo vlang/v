@@ -22,7 +22,9 @@ const c_compilation_error_title = 'C compilation error'
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
-	println(res.output.trim_space())
+	if res.output.len > 0 {
+		println(res.output.trim_space())
+	}
 	println('='.repeat(header.len))
 }
 
@@ -74,8 +76,16 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 				println('(note: the original output was ${original_elines.len} lines long; it was truncated to its first ${elines.len} lines + the last line)')
 			}
 			println('='.repeat(header.len))
-			println('Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.')
-			println('(Alternatively, pass `-show-c-output`, to print the full C error message).')
+			// Check for TCC cross-compilation errors
+			if ccompiler == 'tcc' && res.output.starts_with('tcc: error: could not run') {
+				println('${highlight_word('Suggestion')}: try using a different C compiler with `-cc gcc` or `-cc clang`.')
+				println('${highlight_word('Suggestion')}: or build TCC for the target architecture yourself.')
+				println('${highlight_word('Note')}: you should build an 32bit version of `${@VROOT}/thirdparty/tcc/lib/libgc.a` first or use `-gc none`.')
+				exit(1)
+			} else {
+				println('Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.')
+				println('(Alternatively, pass `-show-c-output`, to print the full C error message).')
+			}
 		}
 	}
 	if v.pref.is_quiet {
@@ -1175,24 +1185,17 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 	}
 }
 
+enum SourceKind {
+	c
+	cpp
+	asm
+	unknown
+}
+
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
-	mut cfile := '${obj_path[..obj_path.len - 2]}.c'
-	mut cpp_file := false
-	if !os.exists(cfile) {
-		// Guessed C file does not exist, so it may be a CPP file
-		cfile += 'pp'
-		cpp_file = true
-	}
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	mut rebuild_reason_message := '${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
-	if os.exists(opath) {
-		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
-			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(cfile)}, rebuilding ...'
-		} else {
-			return
-		}
-	}
 	if os.exists(obj_path) {
 		// Some .o files are distributed with no source
 		// for example thirdparty\tcc\lib\openlibm.o
@@ -1201,6 +1204,29 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
+	base := obj_path[..obj_path.len - 2]
+
+	source_kind, source_file := if os.exists(base + '.c') {
+		SourceKind.c, base + '.c'
+	} else if os.exists(base + '.cpp') {
+		SourceKind.cpp, base + '.cpp'
+	} else if os.exists(base + '.S') {
+		SourceKind.asm, base + '.S'
+	} else {
+		SourceKind.unknown, ''
+	}
+	if source_kind == .unknown {
+		eprintln('> File not found: ${base}{.c,.cpp,.S}')
+		verror('build_thirdparty_obj_file only support .c, .cpp, and .S source file.')
+	}
+	mut rebuild_reason_message := '${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
+	if os.exists(opath) {
+		if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
+			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)}, rebuilding ...'
+		} else {
+			return
+		}
+	}
 	if v.pref.is_verbose {
 		println(rebuild_reason_message)
 	}
@@ -1208,23 +1234,28 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	current_folder := os.getwd()
 	os.chdir(v.pref.vroot) or {}
 
-	mut all_options := []string{}
-	all_options << v.pref.third_party_option
-	all_options << moduleflags.c_options_before_target()
-	all_options << '-o ${v.tcc_quoted_path(opath)}'
-	all_options << '-c ${v.tcc_quoted_path(cfile)}'
-	cc_options := v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+	cc_options := if source_kind == .asm {
+		'-o ${os.quoted_path(opath)} -c ${os.quoted_path(source_file)}'
+	} else {
+		mut all_options := []string{cap: 4}
+		all_options << v.pref.third_party_option
+		all_options << moduleflags.c_options_before_target()
+		all_options << '-o ${v.tcc_quoted_path(opath)}'
+		all_options << '-c ${v.tcc_quoted_path(source_file)}'
+		cpp_file := source_kind == .cpp
+		v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+	}
 
 	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
 	mut ccompiler := v.pref.ccompiler
-	if cpp_file {
-		$if trace_thirdparty_obj_files ? {
+	if source_kind == .cpp {
+		if trace_thirdparty_obj_files {
 			println('>>> build_thirdparty_obj_files switched from compiler "${ccompiler}" to "${v.pref.cppcompiler}"')
 		}
 		ccompiler = v.pref.cppcompiler
 	}
 	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
 	res := os.execute(cmd)
@@ -1233,7 +1264,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		eprintln('> Failed build_thirdparty_obj_file cmd')
 		eprintln('>           mod: ${mod}')
 		eprintln('>          path: ${path}')
-		eprintln('>         cfile: ${cfile}')
+		eprintln('>   source_file: ${source_file}')
 		eprintln('> wd before cmd: ${current_folder}')
 		eprintln('> getwd for cmd: ${v.pref.vroot}')
 		eprintln('>           cmd: ${cmd}')
@@ -1246,7 +1277,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	if v.pref.show_cc {
 		println('>> OBJECT FILE compilation cmd: ${cmd}')
 	}
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		if res.output != '' {
 			println(res.output)
 		}

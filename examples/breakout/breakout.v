@@ -1,3 +1,4 @@
+// vtest build: !openbsd
 import gg
 import math
 import rand
