@@ -1282,10 +1282,6 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
-	// Record the call position for better error reporting in `$compile_error()`
-	if c.generic_call_positions.len == 0 {
-		c.generic_call_positions = map[string]token.Pos{}
-	}
 	c.generic_call_positions[c.build_generic_call_key(func.fkey(), inferred_types)] = node.pos
 }
 

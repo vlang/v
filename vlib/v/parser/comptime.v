@@ -377,12 +377,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
 	// Store call stack info for template errors
-	mut call_stack := []errors.CallStackItem{}
-	call_stack << errors.CallStackItem{
-		file_path: p.file_path
-		pos:       start_pos
-	}
-	file.call_stack = call_stack
+	file.call_stack = [
+		errors.CallStackItem{
+			file_path: p.file_path
+			pos:       start_pos
+		},
+	]
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
 		is_vweb:     true
