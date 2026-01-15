@@ -5,3 +5,8 @@ vlib/sync/stdatomic/atomic.c.v:85:3: error: atomic: only support number, bool, a
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    86 |     }
    87 |     return unsafe { nil }
+called from vlib/v/checker/tests/sync_stdatomic_compile_err.vv:3:6
+    1 | import sync.stdatomic {new_atomic}
+    2 | 
+    3 | _ := new_atomic(`1`)
+      |      ~~~~~~~~~~~~~~~

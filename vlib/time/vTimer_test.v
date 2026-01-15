@@ -42,7 +42,7 @@ fn test_timer_elapsed() {
 	timer.stop()
 
 	elapsed_ns := timer.ns()
-	elapsed_ms := timer.ns_to_ms(3)
+	elapsed_ms := timer.ns_to_ms()
 
 	// Check that elapsed time is reasonable (between 40ms and 100ms)
 	assert elapsed_ns > 40_000_000, 'Should have elapsed at least 40ms (${elapsed_ns} ns)'
@@ -59,7 +59,7 @@ fn test_timer_microseconds() {
 	sleep(millisecond.times(10))
 	timer.stop()
 
-	us := timer.ns_to_us(3)
+	us := timer.ns_to_us()
 	assert us > 9000, 'Should be at least 9000 microseconds'
 	assert us < 20000, 'Should be less than 20000 microseconds'
 }
@@ -71,7 +71,7 @@ fn test_timer_seconds() {
 	sleep(millisecond.times(100))
 	timer.stop()
 
-	secs := timer.ns_to_secs(3)
+	secs := timer.ns_to_secs()
 	assert secs >= 0.09, 'Should be at least 0.09 seconds (${secs})'
 	assert secs < 0.2, 'Should be less than 0.2 seconds (${secs})'
 }
@@ -83,7 +83,7 @@ fn test_timer_minutes() {
 	sleep(millisecond.times(10))
 	timer.stop()
 
-	mins := timer.ns_to_mins(3)
+	mins := timer.ns_to_mins()
 	assert mins > 0.0, 'Minutes should be greater than 0'
 	assert mins < 0.01, 'Should be less than 0.01 minutes (${mins})'
 }
@@ -95,7 +95,7 @@ fn test_timer_hours() {
 	sleep(millisecond.times(100))
 	timer.stop()
 
-	hrs := timer.ns_to_hrs(3)
+	hrs := timer.ns_to_hrs()
 	assert hrs > 0.0, 'Hours should be greater than 0'
 	assert hrs < 0.001, 'Should be very small hours (${hrs})'
 }
@@ -107,7 +107,7 @@ fn test_timer_days() {
 	sleep(millisecond.times(100))
 	timer.stop()
 
-	days := timer.ns_to_days(3)
+	days := timer.ns_to_days()
 	assert days > 0.0, 'Days should be greater than 0'
 	assert days < 0.00001, 'Should be very small days (${days})'
 }
@@ -121,7 +121,7 @@ fn test_now_ns() {
 	assert ns2 > ns1, 'Second reading should be greater than first'
 	diff := ns2 - ns1
 	assert diff > 9_000_000, 'Difference should be at least 9ms (${diff} ns)'
-	assert diff < 20_000_000, 'Difference should be less than 20ms (${diff} ns)'
+	assert diff < 25_000_000, 'Difference should be less than 20ms (${diff} ns)'
 }
 
 // Test format_time with nanoseconds

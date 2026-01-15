@@ -5,3 +5,9 @@ vlib/v/checker/tests/comptime_else_compile_error_no_return.vv:5:3: error: not an
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     6 |     }
     7 | }
+called from vlib/v/checker/tests/comptime_else_compile_error_no_return.vv:11:2
+    9 | fn main() {
+   10 |     onlyint(7)
+   11 |     onlyint([]int{})
+      |     ~~~~~~~~~~~~~~~~
+   12 | }
