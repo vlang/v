@@ -538,6 +538,9 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				arg.expr = g.expr(mut arg.expr)
 			}
 			node.or_block = g.expr(mut node.or_block) as ast.OrExpr
+			if node.receiver_type.has_flag(.generic) {
+				node.receiver_type = node.receiver_type.clear_flag(.generic)
+			}
 			if node.concrete_types.len > 0 {
 				if func := g.table.find_fn(node.name) {
 					node.expected_arg_types = node.expected_arg_types.map(g.table.convert_generic_type(it,
