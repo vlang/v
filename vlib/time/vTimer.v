@@ -4,30 +4,50 @@ module time
 import sync.stdatomic
 import math
 
+// Windows specific
 $if windows {
 	#flag windows -lKernel32
 	#include <windows.h>
 
 	fn C.QueryPerformanceCounter(lpPerformanceCount voidptr) C.BOOL
 	fn C.QueryPerformanceFrequency(lpFrequency voidptr) C.BOOL
-} $else {
-	// Unix/Linux/MacOS specific
-	#include <time.h>
-
-	struct C.timespec {
-		tv_sec  i64
-		tv_nsec i64
-	}
-
-	fn C.clock_gettime(clk_id int, tp &C.timespec) int
 }
 
-__global (
-	qpc_freq_global  i64
-	qpc_init_state   i64 // 0 = uninitialized, 1 = init in progress, 2 = done
-	coeff_global     Time_Coefficients
-	coeff_init_state i64
-)
+// Unix/Linux/MacOS specific
+$if !windows {
+	$if macos {
+		#include <mach/mach_time.h>
+
+		struct C.mach_timebase_info_data_t {
+			numer u32
+			denom u32
+		}
+
+		fn C.mach_absolute_time() u64
+		fn C.mach_timebase_info(&C.mach_timebase_info_data_t) int
+	} $else {
+		#include <time.h>
+
+		struct C.timespec {
+			tv_sec  i64
+			tv_nsec i64
+		}
+
+		fn C.clock_gettime(clk_id int, tp &C.timespec) int
+	}
+}
+
+// Global Definitions
+__global qpc_freq_global i64
+__global qpc_init_state i64
+// 0 = uninitialized, 1 = init in progress, 2 = done
+__global coeff_global Time_Coefficients
+__global coeff_init_state i64
+$if macos {
+	__global mach_timebase_numer u32
+	__global mach_timebase_denom u32
+	__global mach_timebase_initialized i64
+}
 
 const thousandth = i64(1000)
 const millionth = i64(1000000)
@@ -38,10 +58,6 @@ const dayth = i64(86400000000000)
 
 // CLOCK_MONOTONIC for Unix systems
 const clock_monotonic = 1
-
-// Windows atomic intrinsics
-fn C.InterlockedCompareExchange(target &i32, value i32, comparand i32) i32
-fn C.InterlockedExchange(target &i32, value i32) i32
 
 struct Time_Coefficients {
 	multipler u64
@@ -94,6 +110,22 @@ fn get_monotonic_time() i64 {
 		mut now := i64(0)
 		C.QueryPerformanceCounter(voidptr(&now))
 		return now
+	} $else $if macos {
+		ticks := C.mach_absolute_time()
+		// Initialize timebase if needed
+		if stdatomic.load_i64(&mach_timebase_initialized) == 0 {
+			mut info := C.mach_timebase_info_data_t{}
+			C.mach_timebase_info(&info)
+			unsafe {
+				mach_timebase_numer = info.numer
+				mach_timebase_denom = info.denom
+			}
+			stdatomic.store_i64(&mach_timebase_initialized, 1)
+		}
+		// Convert to nanoseconds: ns = ticks * numer / denom
+		numer := unsafe { mach_timebase_numer }
+		denom := unsafe { mach_timebase_denom }
+		return i64(ticks * u64(numer) / u64(denom))
 	} $else {
 		ts := C.timespec{}
 		C.clock_gettime(clock_monotonic, &ts)
@@ -139,11 +171,10 @@ pub fn new_timer() Timer {
 }
 
 fn (mut t Timer) elapsed() i64 {
-	mut now := i64(0)
-	if t.running {
-		now = get_monotonic_time()
+	now := if t.running {
+		get_monotonic_time()
 	} else {
-		now = stdatomic.load_i64(&t.end_t)
+		stdatomic.load_i64(&t.end_t)
 	}
 
 	start := stdatomic.load_i64(&t.start_t)
@@ -160,32 +191,32 @@ pub fn (mut t Timer) ns() i64 {
 }
 
 // ns_to_us - Return elapsed microseconds
-pub fn (mut t Timer) ns_to_us(decimals int) f64 {
+pub fn (mut t Timer) ns_to_us() f64 {
 	return f64(t.ns()) / thousandth
 }
 
 // ns_to_ms - Return elapsed milliseconds
-pub fn (mut t Timer) ns_to_ms(decimals int) f64 {
+pub fn (mut t Timer) ns_to_ms() f64 {
 	return f64(t.ns()) / millionth
 }
 
 // ns_to_s - Return elapsed seconds
-pub fn (mut t Timer) ns_to_secs(decimals int) f64 {
+pub fn (mut t Timer) ns_to_secs() f64 {
 	return f64(t.ns()) / billionth
 }
 
 // ns_to_mins - Return elapsed minutes
-pub fn (mut t Timer) ns_to_mins(decimals int) f64 {
+pub fn (mut t Timer) ns_to_mins() f64 {
 	return f64(t.ns()) / minuteth
 }
 
 // ns_to_hrs - Return elapsed hours
-pub fn (mut t Timer) ns_to_hrs(decimals int) f64 {
+pub fn (mut t Timer) ns_to_hrs() f64 {
 	return f64(t.ns()) / hourth
 }
 
 // ns_to_days - Return elapsed days
-pub fn (mut t Timer) ns_to_days(decimals int) f64 {
+pub fn (mut t Timer) ns_to_days() f64 {
 	return f64(t.ns()) / dayth
 }
 
@@ -195,6 +226,21 @@ pub fn now_ns() i64 {
 		mut ticks := i64(0)
 		C.QueryPerformanceCounter(voidptr(&ticks))
 		return ticks_to_ns(ticks, coeff)
+	} $else $if macos {
+		ticks := C.mach_absolute_time()
+		if stdatomic.load_i64(&mach_timebase_initialized) == 0 {
+			mut info := C.mach_timebase_info_data_t{}
+			C.mach_timebase_info(&info)
+			unsafe {
+				mach_timebase_numer = info.numer
+				mach_timebase_denom = info.denom
+			}
+			stdatomic.store_i64(&mach_timebase_initialized, 1)
+		}
+		// Convert to nanoseconds: ns = ticks * numer / denom
+		numer := unsafe { mach_timebase_numer }
+		denom := unsafe { mach_timebase_denom }
+		return i64(ticks * u64(numer) / u64(denom))
 	} $else {
 		ts := C.timespec{}
 		C.clock_gettime(clock_monotonic, &ts)
@@ -259,12 +305,13 @@ pub fn format_time[T](ns T) string {
 
 	// fallback to sub-second duration
 	if parts.len == 0 {
-		if ns >= millionth {
-			return '${f64(ns) / millionth:.3f} ms'
+		ns_val := ns
+		if ns_val >= millionth {
+			return '${f64(ns_val) / millionth:.3f} ms'
 		} else if ns >= thousandth {
-			return '${f64(ns) / thousandth:.3f} ㎲'
+			return '${f64(ns_val) / thousandth:.3f} ㎲'
 		} else {
-			return '${ns} ns'
+			return '${ns_val} ns'
 		}
 	}
 	return parts.join(' ')

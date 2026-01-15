@@ -188,8 +188,7 @@ const c_common_macros = '
 #else
 	#define _MOV
 #endif
-// tcc does not support has_include properly yet, turn it off completely
-#if defined(__TINYC__) && defined(__has_include)
+#if defined(__TINYC__) && defined(__has_include) // tcc does not support has_include properly yet, turn it off completely
 #undef __has_include
 #endif
 //likely and unlikely macros
@@ -314,15 +313,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers
 #undef __attribute__
 #endif
-#ifdef __TERMUX__
-#if !defined(__BIONIC_AVAILABILITY_GUARD)
-	#define __BIONIC_AVAILABILITY_GUARD(api_level) 0
-#endif
-#if __BIONIC_AVAILABILITY_GUARD(28)
-#else
-void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
-#endif
-#endif
 //================================== GLOBALS =================================*/
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
@@ -354,25 +344,34 @@ void _vcleanup(void);
 	#include <sys/time.h>
 	#include <unistd.h> // sleep
 	extern char **environ;
+	#include <pthread.h>
+	#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+		// musl does not have that
+		#define pthread_rwlockattr_setkind_np(a, b)
+	#endif
 #endif
-#if defined(__CYGWIN__) && !defined(_WIN32)
-	#error Cygwin is not supported, please use MinGW or Visual Studio.
-#endif
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)
 	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
+	#include <sys/wait.h> // for os__wait
 #endif
 #ifdef __OpenBSD__
-	#include <sys/types.h>
 	#include <sys/resource.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 #ifdef __FreeBSD__
 	#include <signal.h>
 	#include <execinfo.h>
 #endif
 #ifdef __NetBSD__
-	#include <sys/wait.h> // os__wait uses wait on nix
+	#include <sys/wait.h> // for os__wait
+#endif
+#ifdef __TERMUX__
+#if !defined(__BIONIC_AVAILABILITY_GUARD)
+	#define __BIONIC_AVAILABILITY_GUARD(api_level) 0
+#endif
+#if __BIONIC_AVAILABILITY_GUARD(28)
+#else
+void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
+#endif
 #endif
 #ifdef _WIN32
 	#define WINVER 0x0600
@@ -406,12 +405,9 @@ void _vcleanup(void);
 		#include <dbghelp.h>
 		#pragma comment(lib, "Dbghelp")
 	#endif
-#else
-	#include <pthread.h>
-	#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
-		// musl does not have that
-		#define pthread_rwlockattr_setkind_np(a, b)
-	#endif
+#endif
+#if defined(__CYGWIN__) && !defined(_WIN32)
+	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 #if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
 	#undef PRId64
