@@ -660,6 +660,20 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						} else {
 							g.unwrap_generic(node.obj.typ)
 						}
+						info := match node.info {
+							ast.IdentVar {
+								ast.IdentInfo(ast.IdentVar{
+									...node.info as ast.IdentVar
+									typ: g.unwrap_generic(node.info.typ)
+								})
+							}
+							ast.IdentFn {
+								ast.IdentInfo(ast.IdentFn{
+									...node.info as ast.IdentFn
+									typ: g.unwrap_generic(node.info.typ)
+								})
+							}
+						}
 						return ast.Expr(ast.Ident{
 							...node
 							obj:     ast.Var{
@@ -678,6 +692,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 									node.obj.ct_type_var
 								}
 							}
+							info:    info
 							ct_expr: !is_ct_type_forin_val && node.ct_expr
 						})
 					}
