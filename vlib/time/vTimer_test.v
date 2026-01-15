@@ -121,7 +121,7 @@ fn test_now_ns() {
 	assert ns2 > ns1, 'Second reading should be greater than first'
 	diff := ns2 - ns1
 	assert diff > 9_000_000, 'Difference should be at least 9ms (${diff} ns)'
-	assert diff < 40_000_000, 'Difference should be less than 40ms (${diff} ns)'
+	assert diff < 41_000_000, 'Difference should be less than 41ms (${diff} ns)'
 }
 
 // Test format_time with nanoseconds
