@@ -500,7 +500,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					}
 				}
 				for i, mut arg in args {
-					arg.typ = g.unwrap_generic(arg.typ)
+					if arg.typ.has_flag(.generic) {
+						arg.typ = g.unwrap_generic(arg.typ)
+						arg.ct_expr = false
+					}
 					arg.expr = g.expr(mut arg.expr)
 					if mut arg.expr is ast.Ident {
 						// Solve concrete_types when the type of one argument was elem in `for elem in my_array` when my_array is T
@@ -538,6 +541,9 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				arg.expr = g.expr(mut arg.expr)
 			}
 			node.or_block = g.expr(mut node.or_block) as ast.OrExpr
+			if node.receiver_type.has_flag(.generic) {
+				node.receiver_type = node.receiver_type.clear_flag(.generic)
+			}
 			if node.concrete_types.len > 0 {
 				if func := g.table.find_fn(node.name) {
 					node.expected_arg_types = node.expected_arg_types.map(g.table.convert_generic_type(it,
@@ -657,6 +663,20 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						} else {
 							g.unwrap_generic(node.obj.typ)
 						}
+						info := match node.info {
+							ast.IdentVar {
+								ast.IdentInfo(ast.IdentVar{
+									...node.info as ast.IdentVar
+									typ: g.unwrap_generic(node.info.typ)
+								})
+							}
+							ast.IdentFn {
+								ast.IdentInfo(ast.IdentFn{
+									...node.info as ast.IdentFn
+									typ: g.unwrap_generic(node.info.typ)
+								})
+							}
+						}
 						return ast.Expr(ast.Ident{
 							...node
 							obj:     ast.Var{
@@ -675,6 +695,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 									node.obj.ct_type_var
 								}
 							}
+							info:    info
 							ct_expr: !is_ct_type_forin_val && node.ct_expr
 						})
 					}
