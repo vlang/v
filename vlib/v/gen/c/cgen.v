@@ -2986,19 +2986,18 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 			&& g.table.sym(got).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .bool, .rune]
 
 		// Check if the expression is a function argument (local variable) that needs heap allocation
-		is_fn_arg := expr.is_fn_arg()
+		is_fn_arg := if expr is ast.Ident && expr.obj is ast.Var {
+			expr.obj.is_arg
+		} else {
+			false
+		}
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
 			|| (expr.obj is ast.Var && expr.obj.is_index_var)))
 			|| is_primitive_to_interface || is_fn_arg) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
-			// another duplicate with the HEAP macro is redundant, so use ADDR instead.
-			// However, this only applies when the expression is a simple Ident that we can
-			// easily declare a temporary variable for. For SelectorExpr and IndexExpr, we
-			// cannot use ADDR because it requires a temporary variable declaration.
-			// For sumtype casts with SelectorExpr or IndexExpr, we should not use any macro
-			// because the sumtype casting function already handles memory allocation.
+			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
 				if !got_is_ptr && expr is ast.SelectorExpr {
 					// (var as Type).field_non_ptr
@@ -3009,15 +3008,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 				defer(fn) {
 					g.inside_smartcast = old_inside_smartcast
 				}
-			} else if is_sumtype_cast && is_fn_arg && expr !is ast.Ident {
-				// For sumtype casts with SelectorExpr or IndexExpr, don't use any macro
-				// because the sumtype casting function already handles memory allocation
-				// and we cannot use ADDR for these expression types.
-				// Just take the address of the expression since the function expects a pointer.
-				g.write('&(')
-				rparen_n++
 			} else {
-				promotion_macro_name := if is_sumtype_cast && is_fn_arg { 'ADDR' } else { 'HEAP' }
+				promotion_macro_name := if is_sumtype_cast { 'ADDR' } else { 'HEAP' }
 				g.write('${promotion_macro_name}(${got_styp}, (')
 				rparen_n += 2
 			}

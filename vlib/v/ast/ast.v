@@ -2483,31 +2483,6 @@ pub fn (expr Expr) is_lvalue() bool {
 	}
 }
 
-// Helper function to check if an expression ultimately refers to a function argument
-// This handles cases like `p.s`, `p.inner.data`, etc. where `p` is a function argument
-pub fn (expr Expr) is_fn_arg() bool {
-	return match expr {
-		Ident {
-			if expr.obj is Var {
-				expr.obj.is_arg
-			} else {
-				false
-			}
-		}
-		SelectorExpr {
-			// Recursively check if the base expression is a function argument
-			expr.expr.is_fn_arg()
-		}
-		IndexExpr {
-			// Array indexing like `arr[0]` - check if `arr` is a function argument
-			expr.left.is_fn_arg()
-		}
-		else {
-			false
-		}
-	}
-}
-
 pub fn (expr Expr) is_expr() bool {
 	return match expr {
 		IfExpr, LockExpr, MatchExpr, SelectExpr { expr.is_expr }
