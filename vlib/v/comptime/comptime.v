@@ -154,7 +154,13 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 							}
 							// TODO do the other types
 						} else if expr.right is ast.TypeNode {
-							return expr.left.typ == expr.right.typ
+							sym := c.table.sym(expr.right.typ)
+							if sym.info is ast.Interface {
+								return c.table.does_type_implement_interface(expr.left.typ,
+									expr.right.typ)
+							} else {
+								return expr.left.typ == expr.right.typ
+							}
 						}
 					} else if expr.left is ast.SelectorExpr {
 						if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
@@ -386,6 +392,14 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.SelectorExpr {
+			if node.gkind_field == .name && node.field_name == 'name' {
+				if mut node.expr is ast.Ident {
+					return ast.Expr(ast.StringLiteral{
+						val: node.expr.name
+						pos: node.pos
+					})
+				}
+			}
 			node.expr = c.expr(mut node.expr)
 		}
 		ast.SizeOf {
