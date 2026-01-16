@@ -152,6 +152,7 @@ pub fn (mut t Timer) start() {
 	t.running = true
 }
 
+// stop - Atomically set end_t to current counter
 pub fn (mut t Timer) stop() {
 	now := get_monotonic_time()
 	stdatomic.store_i64(&t.end_t, now)
@@ -220,6 +221,7 @@ pub fn (mut t Timer) ns_to_days() f64 {
 	return f64(t.ns()) / dayth
 }
 
+// now_ns - Get Monotonic ns from current counter		
 pub fn now_ns() i64 {
 	$if windows {
 		coeff := get_global_coeff()
@@ -274,6 +276,7 @@ fn init_freq_once() i64 {
 	return freq
 }
 
+// format_time - Formats time to human readable format		
 pub fn format_time[T](ns T) string {
 	mut remaining := f64(ns)
 	mut secs := i64(remaining / billionth)
