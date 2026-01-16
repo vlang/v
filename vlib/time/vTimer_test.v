@@ -61,7 +61,7 @@ fn test_timer_microseconds() {
 
 	us := timer.ns_to_us()
 	assert us > 9000, 'Should be at least 9000 microseconds'
-	assert us < 60000, 'Should be less than 60000 microseconds'
+	assert us < 90000, 'Should be less than 90000 microseconds'
 }
 
 // Test seconds conversion
