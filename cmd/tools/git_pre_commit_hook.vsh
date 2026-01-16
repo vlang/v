@@ -13,6 +13,10 @@ import term
 // chmod 755 .git/hooks/pre-commit
 // ```
 //
+// You could also use `vgit-fmt-hook` tool to install/update/remove and get
+// status for this hook.
+// This tool copies the git hook VSH script in .git/hooks/pre-commit
+//
 // Note: you can use this command:
 // `git config --bool --add hooks.stopCommitOfNonVfmtedVFiles true`
 // ... to make it just *prevent* the committing of unformatted .v files,
