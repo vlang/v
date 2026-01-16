@@ -500,7 +500,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					}
 				}
 				for i, mut arg in args {
-					arg.typ = g.unwrap_generic(arg.typ)
+					if arg.typ.has_flag(.generic) {
+						arg.typ = g.unwrap_generic(arg.typ)
+						arg.ct_expr = false
+					}
 					arg.expr = g.expr(mut arg.expr)
 					if mut arg.expr is ast.Ident {
 						// Solve concrete_types when the type of one argument was elem in `for elem in my_array` when my_array is T
