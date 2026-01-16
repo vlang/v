@@ -401,8 +401,11 @@ int mbedtls_lmots_import_public_key(mbedtls_lmots_public_t *ctx,
         return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
     }
 
-    ctx->params.type = (mbedtls_lmots_algorithm_type_t)
-                       MBEDTLS_GET_UINT32_BE(key, MBEDTLS_LMOTS_SIG_TYPE_OFFSET);
+    uint32_t type = MBEDTLS_GET_UINT32_BE(key, MBEDTLS_LMOTS_SIG_TYPE_OFFSET);
+    if (type != (uint32_t) MBEDTLS_LMOTS_SHA256_N32_W8) {
+        return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
+    }
+    ctx->params.type = (mbedtls_lmots_algorithm_type_t) type;
 
     if (key_len != MBEDTLS_LMOTS_PUBLIC_KEY_LEN(ctx->params.type)) {
         return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;

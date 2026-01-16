@@ -231,8 +231,8 @@ fn test_acosh() {
 		f := acosh(a)
 		assert veryclose(acosh_[i], f)
 	}
-	vfacosh_sc_ := [inf(-1), 0.5, 1, inf(1), nan()]
-	acosh_sc_ := [nan(), nan(), 0, inf(1), nan()]
+	vfacosh_sc_ := [inf(-1), 0.5, 0.0, 1, inf(1), nan()]
+	acosh_sc_ := [nan(), nan(), nan(), 0, inf(1), nan()]
 	for i := 0; i < vfacosh_sc_.len; i++ {
 		f := acosh(vfacosh_sc_[i])
 		assert alike(acosh_sc_[i], f)
