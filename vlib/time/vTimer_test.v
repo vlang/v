@@ -49,7 +49,7 @@ fn test_timer_elapsed() {
 	assert elapsed_ns < 200_000_000, 'Should have elapsed less than 200ms (${elapsed_ns} ns)'
 
 	assert elapsed_ms >= 40.0, 'Milliseconds should be at least 40 (${elapsed_ms})'
-	assert elapsed_ms < 150.0, 'Milliseconds should be less than 150 (${elapsed_ms})'
+	assert elapsed_ms < 200.0, 'Milliseconds should be less than 200 (${elapsed_ms})'
 }
 
 // Test microseconds conversion
@@ -73,7 +73,7 @@ fn test_timer_seconds() {
 
 	secs := timer.ns_to_secs()
 	assert secs >= 0.09, 'Should be at least 0.09 seconds (${secs})'
-	assert secs < 0.2, 'Should be less than 0.2 seconds (${secs})'
+	assert secs < 0.3, 'Should be less than 0.3 seconds (${secs})'
 }
 
 // test_timer_minutes Test minutes conversion

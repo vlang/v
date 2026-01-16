@@ -1,6 +1,6 @@
 diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/check_config.h
---- mbedtls.orig/include/mbedtls/check_config.h	2025-05-30 20:08:11.693258679 +0800
-+++ mbedtls/include/mbedtls/check_config.h	2025-05-30 22:33:57.228548245 +0800
+--- mbedtls.orig/include/mbedtls/check_config.h	2026-01-15 22:33:48.318284760 +0300
++++ mbedtls/include/mbedtls/check_config.h	2026-01-15 22:34:04.062379589 +0300
 @@ -247,9 +247,10 @@
  #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
  #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
@@ -16,9 +16,9 @@ diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/che
  
  #if defined(MBEDTLS_CCM_C) && \
 diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
---- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 20:08:11.694258682 +0800
-+++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 21:57:34.966792755 +0800
-@@ -4364,3 +4364,22 @@
+--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-01-15 22:33:48.318683074 +0300
++++ mbedtls/include/mbedtls/mbedtls_config.h	2026-01-15 22:34:04.062667214 +0300
+@@ -4390,3 +4390,22 @@
  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
  
  /** \} name SECTION: Module configuration options */
@@ -42,13 +42,13 @@ diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/m
 +#undef MBEDTLS_THREADING_C
 +#endif
 diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
---- mbedtls.orig/library/entropy_poll.c	2025-05-30 20:08:21.307293058 +0800
-+++ mbedtls/library/entropy_poll.c	2025-05-30 21:57:34.979793067 +0800
+--- mbedtls.orig/library/entropy_poll.c	2026-01-15 22:33:48.325682810 +0300
++++ mbedtls/library/entropy_poll.c	2026-01-15 22:34:04.062930810 +0300
 @@ -38,35 +38,36 @@
  
  #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
  
-+// fallback to 3.3.0 implmentation, as 3.6.3.1 need a high version of Windows SDK
++// fallback to 3.3.0 implmentation, as 3.6.5 need a high version of Windows SDK
 +#if !defined(_WIN32_WINNT)
 +#define _WIN32_WINNT 0x0400
 +#endif
@@ -102,8 +102,8 @@ diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
  #else /* _WIN32 && !EFIX64 && !EFI32 */
  
 diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
---- mbedtls.orig/library/pk.c	2025-05-30 20:08:21.308293062 +0800
-+++ mbedtls/library/pk.c	2025-05-30 21:57:34.982793139 +0800
+--- mbedtls.orig/library/pk.c	2026-01-15 22:33:48.326682772 +0300
++++ mbedtls/library/pk.c	2026-01-15 22:34:04.063036079 +0300
 @@ -1237,6 +1237,7 @@
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
@@ -113,8 +113,8 @@ diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
 diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
---- mbedtls.orig/library/platform_util.c	2025-05-30 20:08:21.308293062 +0800
-+++ mbedtls/library/platform_util.c	2025-05-30 22:44:12.752658283 +0800
+--- mbedtls.orig/library/platform_util.c	2026-01-15 22:33:48.326682772 +0300
++++ mbedtls/library/platform_util.c	2026-01-15 22:34:04.063089145 +0300
 @@ -87,7 +87,7 @@
   */
  #if !defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO) && !(defined(__STDC_LIB_EXT1__) && \
@@ -135,9 +135,9 @@ diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
  #else
          memset_func(buf, 0, len);
 diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
---- mbedtls.orig/library/ssl_misc.h	2025-05-30 20:08:21.311293073 +0800
-+++ mbedtls/library/ssl_misc.h	2025-05-30 21:57:34.989793307 +0800
-@@ -1652,26 +1652,30 @@
+--- mbedtls.orig/library/ssl_misc.h	2026-01-15 22:33:48.329682659 +0300
++++ mbedtls/library/ssl_misc.h	2026-01-15 22:34:04.063263675 +0300
+@@ -1674,26 +1674,30 @@
  {
      mbedtls_ssl_key_cert *key_cert;
  
@@ -173,9 +173,9 @@ diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
  
  /*
 diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
---- mbedtls.orig/library/ssl_tls.c	2025-05-30 20:08:21.311293073 +0800
-+++ mbedtls/library/ssl_tls.c	2025-05-30 21:57:34.991793356 +0800
-@@ -4559,8 +4559,8 @@
+--- mbedtls.orig/library/ssl_tls.c	2026-01-15 22:33:48.329682659 +0300
++++ mbedtls/library/ssl_tls.c	2026-01-15 22:34:04.063744568 +0300
+@@ -4560,8 +4560,8 @@
  {
      int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
  
@@ -186,7 +186,7 @@ diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
          ssl->handshake == NULL                       ||
          ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
          return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
-@@ -4649,10 +4649,8 @@
+@@ -4650,10 +4650,8 @@
      int ret = 0;
  
      /* Sanity checks */
