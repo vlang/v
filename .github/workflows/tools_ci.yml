@@ -132,3 +132,52 @@ jobs:
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
         run: ./v -silent -W -cstrict test-self cmd
+
+  tools-freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        cc: [tcc, gcc, clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tests tools on FreeBSD with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: freebsd
+          version: '15.0'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          environment_variables: VFLAGS
+          run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            if [ "$VFLAGS" = "-cc gcc" ]; then
+              sudo pkg install -y gcc
+            fi
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s freebsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            # Build V
+            echo "### Build V"
+            printf "VFLAGS = %s\n" "$VFLAGS"
+            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
+            # Code in cmd/ is formatted
+            echo "### Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            # Check build-tools
+            echo "### Check build tools"
+            ./v -silent -N -W -check build-tools
+            # Test tools
+            echo "### Test tools"
+            ./v -silent test-self cmd
+            # Test tools (-cstrict)
+            if [ "$VFLAGS" != "-cc tcc" ]; then
+              echo "### Test tools (-cstrict)"
+              ./v -silent -W -cstrict test-self cmd
+            fi
