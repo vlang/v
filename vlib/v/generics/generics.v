@@ -382,6 +382,34 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
+pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
+	mut name := old_name
+	if receiver_type != 0 {
+		info := g.table.sym(g.unwrap_generic(receiver_type)).info
+		if info is ast.Struct {
+			fn_conc_types := concrete_types[info.generic_types.len..] // concrete types without the generic types of the struct
+
+			if fn_conc_types.len > 0 {
+				name += '_T'
+			}
+			for typ in fn_conc_types {
+				name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
+					g.styp(typ.set_nr_muls(0))
+			}
+			return name
+		} else if info is ast.Interface {
+			return name
+		}
+	}
+	if concrete_types.len > 0 {
+		name += '_T'
+	}
+	for typ in concrete_types {
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.styp(typ.set_nr_muls(0))
+	}
+	return name
+}
+
 pub fn (mut g Generics) concrete_name(old_name string, concrete_types []ast.Type) string {
 	mut name := old_name
 	if concrete_types.len > 0 {
@@ -409,12 +437,50 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 			...node
 		}
 		new_node = g.stmt(mut new_node) as ast.FnDecl
-		solved_fns << ast.FnDecl{
+		new_node = ast.FnDecl{
 			...new_node
-			name:          g.concrete_name(new_node.name, concrete_types)
+			name:          if node.is_method {
+				g.method_concrete_name(new_node.name, concrete_types, new_node.receiver.typ)
+			} else {
+				g.concrete_name(new_node.name, concrete_types)
+			}
 			ninstances:    0
 			generic_names: []
 		}
+		if new_node.is_method {
+			mut sym := g.table.sym(new_node.receiver.typ)
+			func := ast.Fn{
+				is_variadic:                    new_node.is_variadic
+				is_c_variadic:                  new_node.is_c_variadic
+				language:                       .v
+				is_pub:                         new_node.is_pub
+				is_deprecated:                  new_node.is_deprecated
+				is_noreturn:                    new_node.is_noreturn
+				is_unsafe:                      new_node.is_unsafe
+				is_must_use:                    new_node.is_must_use
+				is_keep_alive:                  new_node.is_keep_alive
+				is_method:                      new_node.is_method
+				is_static_type_method:          new_node.is_static_type_method
+				no_body:                        new_node.no_body
+				is_file_translated:             new_node.is_file_translated
+				mod:                            new_node.mod
+				file:                           new_node.file
+				file_mode:                      new_node.file_mode
+				pos:                            new_node.pos
+				return_type_pos:                new_node.return_type_pos
+				return_type:                    new_node.return_type
+				receiver_type:                  new_node.receiver.typ
+				name:                           new_node.name
+				params:                         new_node.params
+				generic_names:                  []
+				is_conditional:                 new_node.is_conditional
+				ctdefine_idx:                   new_node.ctdefine_idx
+				is_expand_simple_interpolation: new_node.is_expand_simple_interpolation
+			}
+			g.table.find_or_register_fn_type(func, false, true)
+			sym.register_method(func)
+		}
+		solved_fns << new_node
 	}
 	g.cur_concrete_types = []
 	return solved_fns
@@ -521,7 +587,11 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				}
 				return ast.Expr(ast.CallExpr{
 					...node
-					name:                g.concrete_name(node.name, all_concrete_types)
+					name:                if node.is_method {
+						g.method_concrete_name(node.name, all_concrete_types, node.receiver_type)
+					} else {
+						g.concrete_name(node.name, all_concrete_types)
+					}
 					left_type:           g.unwrap_generic(node.left_type)
 					receiver_type:       g.unwrap_generic(node.receiver_type)
 					return_type:         g.unwrap_generic(node.return_type)
@@ -550,7 +620,11 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						func.generic_names, node.concrete_types) or { it })
 				}
 			}
-			node.name = g.concrete_name(node.name, node.concrete_types)
+			node.name = if node.is_method {
+				g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
+			} else {
+				g.concrete_name(node.name, node.concrete_types)
+			}
 			return ast.Expr(ast.CallExpr{
 				...node
 				concrete_types:     []
@@ -697,6 +771,33 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 							}
 							info:    info
 							ct_expr: !is_ct_type_forin_val && node.ct_expr
+						})
+					}
+				}
+				ast.EmptyScopeObject {
+					if g.cur_concrete_types.len > 0 {
+						mut typ := node.obj.typ
+						mut name := node.name
+						if typ == 0 {
+							if g.cur_fn != unsafe { nil } {
+								idx := g.cur_fn.generic_names.index(node.name)
+								if idx != -1 {
+									typ = g.cur_concrete_types[idx]
+									name = g.table.type_str(typ)
+								}
+							}
+						} else {
+							typ = g.unwrap_generic(typ)
+							name = g.table.type_str(typ)
+						}
+						return ast.Expr(ast.Ident{
+							...node
+							obj:  ast.EmptyScopeObject{
+								...node.obj
+								typ:  typ
+								name: name
+							}
+							name: name
 						})
 					}
 				}
@@ -917,7 +1018,6 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					typ:              g.unwrap_generic(node.typ)
 					name_type:        g.unwrap_generic(node.name_type)
 					from_embed_types: node.from_embed_types.map(g.unwrap_generic(it))
-					gkind_field:      .unknown
 				})
 			}
 			node.expr = g.expr(mut node.expr)
