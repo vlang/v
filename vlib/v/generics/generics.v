@@ -16,7 +16,6 @@ pub mut:
 	styp_cache          map[ast.Type]string
 	cur_fn              &ast.FnDecl = unsafe { nil }
 	cur_concrete_types  []ast.Type
-	cur_generic_names   []string
 	inside_struct_init  bool
 	cur_struct_init_typ ast.Type
 	forin_types         map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
@@ -426,7 +425,6 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 	mut solved_fns := []ast.Stmt{}
 	nkey := node.fkey()
 	generic_types_by_fn := g.table.fn_generic_types[nkey]
-	g.cur_generic_names = node.generic_names
 	for concrete_types in generic_types_by_fn {
 		if g.pref.is_verbose {
 			syms := concrete_types.map(g.table.sym(it))
@@ -484,7 +482,6 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 		}
 		solved_fns << new_node
 	}
-	g.cur_generic_names = []
 	g.cur_concrete_types = []
 	return solved_fns
 }
@@ -783,7 +780,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						mut name := node.name
 						if typ == 0 {
 							if g.cur_fn != unsafe { nil } {
-								idx := g.cur_generic_names.index(node.name)
+								idx := g.cur_fn.generic_names.index(node.name)
 								if idx != -1 {
 									typ = g.cur_concrete_types[idx]
 									name = g.table.type_str(typ)
