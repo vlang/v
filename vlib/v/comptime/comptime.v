@@ -392,7 +392,7 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.SelectorExpr {
-			if node.gkind_field == .name && node.field_name == 'name' {
+			if c.pref.new_generic_solver && node.gkind_field == .name && node.field_name == 'name' {
 				if mut node.expr is ast.Ident {
 					return ast.Expr(ast.StringLiteral{
 						val: node.expr.name
