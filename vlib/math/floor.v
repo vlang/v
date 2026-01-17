@@ -143,8 +143,8 @@ pub fn round_to_even(x f64) f64 {
 		// number is even or odd (respectively).
 		half_minus_ulp := u64(u64(1) << (shift - 1)) - 1
 		e_ -= u64(bias)
-		bits += (half_minus_ulp + (bits >> (shift - e_)) & 1) >> e_
-		bits &= ~(frac_mask >> e_)
+		bits += safe_shift(half_minus_ulp + safe_shift(bits, shift - e_) & 1, e_)
+		bits &= ~safe_shift(frac_mask, e_)
 	} else if e_ == bias - 1 && bits & frac_mask != 0 {
 		// round 0.5 < abs(x) < 1.
 		bits = bits & sign_mask | uvone // +-1
@@ -153,4 +153,13 @@ pub fn round_to_even(x f64) f64 {
 		bits &= sign_mask // +-0
 	}
 	return f64_from_bits(bits)
+}
+
+@[inline]
+fn safe_shift(value u64, shift u64) u64 {
+	return if shift > u64(63) {
+		u64(0)
+	} else {
+		value >> shift
+	}
 }
