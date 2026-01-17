@@ -383,15 +383,15 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
-pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, fn_generic_names []string, receiver_type ast.Type) string {
+pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
 	info := g.table.sym(receiver_type).info
 	mut name := old_name
 	if info is ast.Struct {
-		struct_generic_names := g.table.get_generic_names(info.generic_types)
-		mut fn_conc_types := []ast.Type{} // concrete types without the generic types of the struct
-		for i, c in concrete_types {
-			if fn_generic_names[i] !in struct_generic_names {
-				fn_conc_types << c
+		mut fn_conc_types := concrete_types.clone() // concrete types without the generic types of the struct
+		for gt in info.generic_types {
+			idx := fn_conc_types.index(gt)
+			if idx != -1 {
+				fn_conc_types.delete(idx)
 			}
 		}
 
@@ -399,6 +399,14 @@ pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []a
 			name += '_T'
 		}
 		for typ in fn_conc_types {
+			name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
+				g.styp(typ.set_nr_muls(0))
+		}
+	} else {
+		if concrete_types.len > 0 {
+			name += '_T'
+		}
+		for typ in concrete_types {
 			name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
 				g.styp(typ.set_nr_muls(0))
 		}
@@ -437,8 +445,7 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 		new_node = ast.FnDecl{
 			...new_node
 			name:          if node.is_method {
-				g.method_concrete_name(new_node.name, concrete_types, node.generic_names,
-					node.receiver.typ)
+				g.method_concrete_name(new_node.name, concrete_types, node.receiver.typ)
 			} else {
 				g.concrete_name(new_node.name, concrete_types)
 			}
@@ -587,12 +594,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				return ast.Expr(ast.CallExpr{
 					...node
 					name:                if node.is_method {
-						if func := g.table.find_fn(node.name) {
-							g.method_concrete_name(node.name, all_concrete_types, func.generic_names,
-								node.receiver_type)
-						} else {
-							g.concrete_name(node.name, all_concrete_types)
-						}
+						g.method_concrete_name(node.name, all_concrete_types, node.receiver_type)
 					} else {
 						g.concrete_name(node.name, all_concrete_types)
 					}
@@ -625,12 +627,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				}
 			}
 			node.name = if node.is_method {
-				if func := g.table.find_fn(node.name) {
-					g.method_concrete_name(node.name, node.concrete_types, func.generic_names,
-						node.receiver_type)
-				} else {
-					g.concrete_name(node.name, node.concrete_types)
-				}
+				g.method_concrete_name(node.name, node.concrete_types, node.receiver_type)
 			} else {
 				g.concrete_name(node.name, node.concrete_types)
 			}
