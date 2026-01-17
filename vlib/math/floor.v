@@ -77,25 +77,25 @@ pub fn trunc(x f64) f64 {
 // round(±inf) = ±inf
 // round(nan) = nan
 pub fn round(x f64) f64 {
-	if x == 0 || is_nan(x) || is_inf(x, 0) {
-		return x
-	}
-	// Largest integer <= x
-	mut y := floor(x) // Fractional part
-	mut r := x - y // Round up to nearest.
-	if r > 0.5 {
-		y += 1.0
-		return y
-	}
-	// Round to even
-	if r == 0.5 {
-		r = y - 2.0 * floor(0.5 * y)
-		if r == 1.0 {
-			y += 1.0
+	mut bits := f64_bits(x)
+	mut e_ := (bits >> shift) & mask
+	if e_ < bias {
+		// Round abs(x) < 1 including denormals.
+		bits &= sign_mask // +-0
+		if e_ == bias - 1 {
+			bits |= uvone // +-1
 		}
+	} else if e_ < bias + shift {
+		// Round any abs(x) >= 1 containing a fractional component [0,1).
+		//
+		// Numbers with larger exponents are returned unchanged since they
+		// must be either an integer, infinity, or NaN.
+		half := u64(1) << (shift - 1)
+		e_ -= bias
+		bits += half >> e_
+		bits &= ~(frac_mask >> e_)
 	}
-	// Else round down.
-	return y
+	return f64_from_bits(bits)
 }
 
 // Returns the rounded float, with sig_digits of precision.
