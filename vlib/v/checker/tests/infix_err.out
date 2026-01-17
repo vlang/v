@@ -1,137 +1,168 @@
-vlib/v/checker/tests/infix_err.vv:9:5: error: mismatched types `string` and `?string`
-    7 | }
-    8 | 
-    9 | _ = '' + f()
+vlib/v/checker/tests/infix_err.vv:13:5: error: mismatched types `string` and `?string`
+   11 | }
+   12 |
+   13 | _ = '' + f()
       |     ~~~~~~~~
-   10 | _ = f() + ''
-   11 | _ = f() + f()
-vlib/v/checker/tests/infix_err.vv:9:10: error: unwrapped Option cannot be used in an infix expression
-    7 | }
-    8 | 
-    9 | _ = '' + f()
+   14 | _ = f() + ''
+   15 | _ = f() + f()
+vlib/v/checker/tests/infix_err.vv:13:10: error: `?string` cannot be used as `string`, unwrap the option first
+   11 | }
+   12 |
+   13 | _ = '' + f()
       |          ~~~
-   10 | _ = f() + ''
-   11 | _ = f() + f()
-vlib/v/checker/tests/infix_err.vv:10:5: error: mismatched types `?string` and `string`
-    8 | 
-    9 | _ = '' + f()
-   10 | _ = f() + ''
+   14 | _ = f() + ''
+   15 | _ = f() + f()
+vlib/v/checker/tests/infix_err.vv:14:5: error: mismatched types `?string` and `string`
+   12 |
+   13 | _ = '' + f()
+   14 | _ = f() + ''
       |     ~~~~~~~~
-   11 | _ = f() + f()
+   15 | _ = f() + f()
+   16 |
+vlib/v/checker/tests/infix_err.vv:14:5: error: `?string` cannot be used as `string`, unwrap the option first
    12 |
-vlib/v/checker/tests/infix_err.vv:10:5: error: unwrapped Option cannot be used in an infix expression
-    8 | 
-    9 | _ = '' + f()
-   10 | _ = f() + ''
+   13 | _ = '' + f()
+   14 | _ = f() + ''
       |     ~~~
-   11 | _ = f() + f()
-   12 |
-vlib/v/checker/tests/infix_err.vv:11:9: error: `+` cannot be used with `?string`
-    9 | _ = '' + f()
-   10 | _ = f() + ''
-   11 | _ = f() + f()
+   15 | _ = f() + f()
+   16 |
+vlib/v/checker/tests/infix_err.vv:15:9: error: `+` cannot be used with `?string`
+   13 | _ = '' + f()
+   14 | _ = f() + ''
+   15 | _ = f() + f()
       |         ^
-   12 | 
-   13 | _ = 4 + g()
-vlib/v/checker/tests/infix_err.vv:11:5: error: unwrapped Option cannot be used in an infix expression
-    9 | _ = '' + f()
-   10 | _ = f() + ''
-   11 | _ = f() + f()
+   16 |
+   17 | _ = 4 + g()
+vlib/v/checker/tests/infix_err.vv:15:5: error: `?string` cannot be used as `string`, unwrap the option first
+   13 | _ = '' + f()
+   14 | _ = f() + ''
+   15 | _ = f() + f()
       |     ~~~
-   12 | 
-   13 | _ = 4 + g()
-vlib/v/checker/tests/infix_err.vv:13:7: error: `+` cannot be used with `?int`
-   11 | _ = f() + f()
-   12 | 
-   13 | _ = 4 + g()
+   16 |
+   17 | _ = 4 + g()
+vlib/v/checker/tests/infix_err.vv:17:7: error: `+` cannot be used with `?int`
+   15 | _ = f() + f()
+   16 |
+   17 | _ = 4 + g()
       |       ^
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
-vlib/v/checker/tests/infix_err.vv:13:9: error: unwrapped Option cannot be used in an infix expression
-   11 | _ = f() + f()
-   12 | 
-   13 | _ = 4 + g()
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
+vlib/v/checker/tests/infix_err.vv:17:9: error: `?int` cannot be used as `int literal`, unwrap the option first
+   15 | _ = f() + f()
+   16 |
+   17 | _ = 4 + g()
       |         ~~~
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
-vlib/v/checker/tests/infix_err.vv:14:14: error: unwrapped Option cannot be used in an infix expression
-   12 | 
-   13 | _ = 4 + g()
-   14 | _ = int(0) + g()
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
+vlib/v/checker/tests/infix_err.vv:18:14: error: `?int` cannot be used as `int`, unwrap the option first
+   16 |
+   17 | _ = 4 + g()
+   18 | _ = int(0) + g()
       |              ~~~
-   15 | _ = g() + int(3)
-   16 | _ = g() + 3
-vlib/v/checker/tests/infix_err.vv:15:9: error: `+` cannot be used with `?int`
-   13 | _ = 4 + g()
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
+   19 | _ = g() + int(3)
+   20 | _ = g() + 3
+vlib/v/checker/tests/infix_err.vv:19:9: error: `+` cannot be used with `?int`
+   17 | _ = 4 + g()
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
       |         ^
-   16 | _ = g() + 3
-   17 |
-vlib/v/checker/tests/infix_err.vv:15:5: error: unwrapped Option cannot be used in an infix expression
-   13 | _ = 4 + g()
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
+   20 | _ = g() + 3
+   21 |
+vlib/v/checker/tests/infix_err.vv:19:5: error: `?int` cannot be used as `int`, unwrap the option first
+   17 | _ = 4 + g()
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
       |     ~~~
-   16 | _ = g() + 3
-   17 |
-vlib/v/checker/tests/infix_err.vv:16:9: error: `+` cannot be used with `?int`
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
-   16 | _ = g() + 3
+   20 | _ = g() + 3
+   21 |
+vlib/v/checker/tests/infix_err.vv:20:9: error: `+` cannot be used with `?int`
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
+   20 | _ = g() + 3
       |         ^
-   17 | 
-   18 | // binary operands
-vlib/v/checker/tests/infix_err.vv:16:5: error: unwrapped Option cannot be used in an infix expression
-   14 | _ = int(0) + g()
-   15 | _ = g() + int(3)
-   16 | _ = g() + 3
+   21 |
+   22 | // binary operands
+vlib/v/checker/tests/infix_err.vv:20:5: error: `?int` cannot be used as `int literal`, unwrap the option first
+   18 | _ = int(0) + g()
+   19 | _ = g() + int(3)
+   20 | _ = g() + 3
       |     ~~~
-   17 | 
-   18 | // binary operands
-vlib/v/checker/tests/infix_err.vv:19:5: error: left operand for `&&` is not a boolean
-   17 | 
-   18 | // binary operands
-   19 | _ = 1 && 2
+   21 |
+   22 | // binary operands
+vlib/v/checker/tests/infix_err.vv:23:5: error: left operand for `&&` is not a boolean
+   21 |
+   22 | // binary operands
+   23 | _ = 1 && 2
       |     ^
-   20 | _ = true || 2
+   24 | _ = true || 2
+   25 |
+vlib/v/checker/tests/infix_err.vv:23:10: error: right operand for `&&` is not a boolean
    21 |
-vlib/v/checker/tests/infix_err.vv:19:10: error: right operand for `&&` is not a boolean
-   17 | 
-   18 | // binary operands
-   19 | _ = 1 && 2
+   22 | // binary operands
+   23 | _ = 1 && 2
       |          ^
-   20 | _ = true || 2
-   21 |
-vlib/v/checker/tests/infix_err.vv:20:13: error: right operand for `||` is not a boolean
-   18 | // binary operands
-   19 | _ = 1 && 2
-   20 | _ = true || 2
+   24 | _ = true || 2
+   25 |
+vlib/v/checker/tests/infix_err.vv:24:13: error: right operand for `||` is not a boolean
+   22 | // binary operands
+   23 | _ = 1 && 2
+   24 | _ = true || 2
       |             ^
-   21 | 
-   22 | // boolean expressions
-vlib/v/checker/tests/infix_err.vv:20:5: error: infix expr: cannot use `int literal` (right expression) as `bool`
-   18 | // binary operands
-   19 | _ = 1 && 2
-   20 | _ = true || 2
+   25 |
+   26 | // boolean expressions
+vlib/v/checker/tests/infix_err.vv:24:5: error: infix expr: cannot use `int literal` (right expression) as `bool`
+   22 | // binary operands
+   23 | _ = 1 && 2
+   24 | _ = true || 2
       |     ~~~~~~~~~
-   21 | 
-   22 | // boolean expressions
-vlib/v/checker/tests/infix_err.vv:23:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
-   21 | 
-   22 | // boolean expressions
-   23 | _ = 1 == 1 && 2 == 2 || 3 == 3
+   25 |
+   26 | // boolean expressions
+vlib/v/checker/tests/infix_err.vv:27:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
+   25 |
+   26 | // boolean expressions
+   27 | _ = 1 == 1 && 2 == 2 || 3 == 3
       |                      ~~
-   24 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
-   25 | _ = 1 + println('')
-vlib/v/checker/tests/infix_err.vv:24:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
-   22 | // boolean expressions
-   23 | _ = 1 == 1 && 2 == 2 || 3 == 3
-   24 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
+   28 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
+   29 | _ = 1 + println('')
+vlib/v/checker/tests/infix_err.vv:28:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
+   26 | // boolean expressions
+   27 | _ = 1 == 1 && 2 == 2 || 3 == 3
+   28 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
       |                      ~~
-   25 | _ = 1 + println('')
-vlib/v/checker/tests/infix_err.vv:25:5: error: mismatched types `int literal` and `void`
-   23 | _ = 1 == 1 && 2 == 2 || 3 == 3
-   24 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
-   25 | _ = 1 + println('')
+   29 | _ = 1 + println('')
+   30 |
+vlib/v/checker/tests/infix_err.vv:29:5: error: mismatched types `int literal` and `void`
+   27 | _ = 1 == 1 && 2 == 2 || 3 == 3
+   28 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
+   29 | _ = 1 + println('')
       |     ~~~~~~~~~~~~~~~
+   30 |
+   31 | // struct members
+vlib/v/checker/tests/infix_err.vv:36:11: error: `?string` cannot be used as `string`, unwrap the option first
+   34 | }
+   35 | name := 'a name'
+   36 | _ := data.name == 'a name'
+      |           ~~~~
+   37 | _ := 'a name' == data.name
+   38 | _ := data.name == name
+vlib/v/checker/tests/infix_err.vv:37:23: error: `?string` cannot be used as `string`, unwrap the option first
+   35 | name := 'a name'
+   36 | _ := data.name == 'a name'
+   37 | _ := 'a name' == data.name
+      |                       ~~~~
+   38 | _ := data.name == name
+   39 | _ := name == data.name
+vlib/v/checker/tests/infix_err.vv:38:11: error: `?string` cannot be used as `string`, unwrap the option first
+   36 | _ := data.name == 'a name'
+   37 | _ := 'a name' == data.name
+   38 | _ := data.name == name
+      |           ~~~~
+   39 | _ := name == data.name
+   40 |
+vlib/v/checker/tests/infix_err.vv:39:19: error: `?string` cannot be used as `string`, unwrap the option first
+   37 | _ := 'a name' == data.name
+   38 | _ := data.name == name
+   39 | _ := name == data.name
+      |                   ~~~~
+   40 |
+   41 | // these should not error

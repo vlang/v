@@ -223,6 +223,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
+			c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+
 			// Do not allow comparing nil to non-pointers
 			if node.left.is_nil() {
 				mut final_type := right_type
@@ -607,11 +609,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
-				&& (left_type.has_flag(.option) || right_type.has_flag(.option)) {
-				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
-				c.error('unwrapped Option cannot be compared in an infix expression',
-					opt_comp_pos)
+			} else {
+				c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
 			}
 			if node.left.is_nil() || node.right.is_nil() {
 				c.error('cannot use `${node.op.str()}` with `nil`', node.pos)
@@ -829,15 +828,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
-	left_is_option := left_type.has_flag(.option)
-	right_is_option := right_type.has_flag(.option)
-	if left_is_option || right_is_option {
-		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		if (node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
-			|| (node.op in [.eq, .ne] && !right_is_option)
-			|| node.op in [.lt, .gt, .le, .ge]) && right_sym.kind != .none && !c.inside_sql {
-			c.error('unwrapped Option cannot be used in an infix expression', opt_infix_pos)
-		}
+	if node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
+		|| node.op in [.eq, .ne] {
+		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
 	}
 
 	left_is_result := left_type.has_flag(.result)
@@ -886,7 +879,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				node.promoted_type = return_type
 				return return_type
 			}
-			if node.right is ast.None && left_is_option {
+			left_is_option := left_type.has_flag(.option)
+			right_is_option := right_type.has_flag(.option)
+			if (node.right is ast.None && left_is_option)
+				|| (node.left is ast.None && right_is_option) {
 				return ast.bool_type
 			}
 			error_left_sym := if node.left.is_auto_deref_var() {
@@ -1090,4 +1086,32 @@ fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
 		}
 	}
 	return true
+}
+
+fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
+	if c.inside_sql {
+		return
+	}
+	left_is_option := left_type.has_flag(.option)
+	right_is_option := right_type.has_flag(.option)
+	if (node.left is ast.None && right_is_option)
+		|| (node.right is ast.None && left_is_option)
+		|| (left_sym.kind == .none || right_sym.kind == .none) {
+		return
+	}
+	if left_is_option || right_is_option {
+		pos, opt, nopt := if left_is_option {
+			node.left.pos(), left_sym.name, right_sym.name
+		} else {
+			node.right.pos(), right_sym.name, left_sym.name
+		}
+		if left_is_option && right_is_option {
+			if node.op !in [.eq, .ne] {
+				c.error('`?${opt}` cannot be used as `${nopt}`, unwrap the option first',
+					pos)
+			}
+			return
+		}
+		c.error('`?${opt}` cannot be used as `${nopt}`, unwrap the option first', pos)
+	}
 }

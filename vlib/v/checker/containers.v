@@ -798,12 +798,12 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	if !node.is_stmt {
 		c.error('array append cannot be used in an expression', node.pos)
 	}
-	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
-		c.error('unwrapped Option cannot be used in an infix expression', node.pos)
-	}
-	right_pos := node.right.pos()
 	mut right_sym := c.table.sym(right_type)
 	mut left_sym := c.table.sym(left_type)
+	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
+		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+	}
+	right_pos := node.right.pos()
 	// `array << elm`
 	c.check_expr_option_or_result_call(node.right, right_type)
 	node.auto_locked, _ = c.fail_if_immutable(mut node.left)
