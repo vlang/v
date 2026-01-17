@@ -384,32 +384,33 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 }
 
 pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
-	info := g.table.sym(receiver_type).info
 	mut name := old_name
-	if info is ast.Struct {
-		mut fn_conc_types := concrete_types.clone() // concrete types without the generic types of the struct
-		for gt in info.generic_types {
-			idx := fn_conc_types.index(gt)
-			if idx != -1 {
-				fn_conc_types.delete(idx)
+	if receiver_type != 0 {
+		info := g.table.sym(receiver_type).info
+		if info is ast.Struct {
+			mut fn_conc_types := concrete_types.clone() // concrete types without the generic types of the struct
+			for gt in info.generic_types {
+				idx := fn_conc_types.index(gt)
+				if idx != -1 {
+					fn_conc_types.delete(idx)
+				}
 			}
-		}
 
-		if fn_conc_types.len > 0 {
-			name += '_T'
+			if fn_conc_types.len > 0 {
+				name += '_T'
+			}
+			for typ in fn_conc_types {
+				name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
+					g.styp(typ.set_nr_muls(0))
+			}
+			return name
 		}
-		for typ in fn_conc_types {
-			name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
-				g.styp(typ.set_nr_muls(0))
-		}
-	} else {
-		if concrete_types.len > 0 {
-			name += '_T'
-		}
-		for typ in concrete_types {
-			name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
-				g.styp(typ.set_nr_muls(0))
-		}
+	}
+	if concrete_types.len > 0 {
+		name += '_T'
+	}
+	for typ in concrete_types {
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.styp(typ.set_nr_muls(0))
 	}
 	return name
 }
