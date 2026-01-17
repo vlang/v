@@ -8302,7 +8302,7 @@ return ${cast_shared_struct_str};
 			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {
-					if st_sym.info.parent_type.has_flag(.generic) {
+					if st_sym.info.parent_type.has_flag(.generic) && !g.pref.new_generic_solver {
 						parent_sym := g.table.sym(st_sym.info.parent_type)
 						for method in parent_sym.methods {
 							if method.name in methodidx {
