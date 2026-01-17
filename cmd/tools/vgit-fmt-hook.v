@@ -4,12 +4,59 @@ import crypto.sha256
 const vexe = os.getenv_opt('VEXE') or { panic('missing VEXE env variable') }
 const vroot = os.to_slash(os.real_path(os.dir(vexe)))
 const horiginal = os.to_slash(os.join_path(vroot, 'cmd/tools/git_pre_commit_hook.vsh'))
+const shoriginal = os.join_path(os.temp_dir(), 'git_pre_commit_hook.sh')
+
+// Escape special chars for output in shell script
+fn escape_special_chars(input string) string {
+	escape_chars := {
+		'`': '"'
+		'$': '\\$'
+	}
+
+	mut result := input
+	for c, repl in escape_chars {
+		result = result.replace(c.str(), repl)
+	}
+
+	return result
+}
+
+// On OS without support for 'env -S', parse VSH script for Git hook and
+// generate corresponding shell script (V code + exec via 'v run -')
+fn generate_shell_script() string {
+	content := os.read_file(horiginal) or {
+		eprintln('failed to open ${horiginal}')
+		exit(1)
+	}
+
+	mut ret := '#!/bin/sh\n'
+	ret += 'cat <<EOF | ' + vexe + ' run -\n'
+	for line in content.split_into_lines() {
+		match true {
+			line == '' { continue }
+			line.starts_with('#') { continue }
+			line.trim_space_left().starts_with('//') { continue }
+			else { ret = ret + escape_special_chars(line) + '\n' }
+		}
+	}
+	ret += 'EOF\n'
+
+	return ret
+}
 
 fn get_hook_target(git_folder string) string {
 	return os.to_slash(os.join_path(git_folder, 'hooks/pre-commit'))
 }
 
 fn main() {
+	// TODO: detect other OS (BusyBox) without support for 'env -S'
+	$if openbsd {
+		os.write_file(shoriginal, generate_shell_script()) or {
+			eprintln('unable to write shell script ${shoriginal}')
+			exit(1)
+		}
+		os.chmod(shoriginal, 0o755)!
+	}
 	git_folder := find_nearest_top_level_folder_with_a_git_subfolder(os.getwd()) or {
 		eprintln('This command has to be run inside a Git repository.')
 		exit(0)
@@ -41,7 +88,11 @@ fn cmd_status(htarget string) {
 fn cmd_install(htarget string) {
 	report_status(htarget, false)
 	println('> Installing the newest version of ${horiginal} over ${htarget} ...')
-	os.cp(horiginal, htarget) or { err_exit('failed to copy to ${htarget}') }
+	$if openbsd {
+		os.cp(shoriginal, htarget) or { err_exit('failed to copy to ${htarget}') }
+	} $else {
+		os.cp(horiginal, htarget) or { err_exit('failed to copy to ${htarget}') }
+	}
 	println('> Done.')
 }
 
@@ -56,17 +107,31 @@ fn cmd_remove(htarget string) {
 }
 
 fn report_status(htarget string, show_instructions bool) {
-	ostat := os.stat(horiginal) or { os.Stat{} }
+	mut ostat := os.Stat{}
+	mut ohash := ''
+
+	$if openbsd {
+		ostat = os.stat(shoriginal) or { os.Stat{} }
+		ohash = hash_file(shoriginal) or { '' }
+	} $else {
+		ostat = os.stat(horiginal) or { os.Stat{} }
+		ohash = hash_file(horiginal) or { '' }
+	}
 	tstat := os.stat(htarget) or { os.Stat{} }
-	ohash := hash_file(horiginal) or { '' }
 	thash := hash_file(htarget) or { '' }
 	if os.exists(htarget) && os.is_file(htarget) {
 		println('>   CURRENT git repo pre-commit hook: size: ${tstat.size:6} bytes, sha256: ${thash}, ${htarget}')
 	} else {
 		println('>   CURRENT git repo pre-commit hook: missing ${htarget}')
 	}
-	if os.exists(horiginal) && os.is_file(horiginal) {
-		println('> Main V repo pre-commit hook script: size: ${ostat.size:6} bytes, sha256: ${ohash}, ${horiginal}')
+	$if openbsd {
+		if os.exists(shoriginal) && os.is_file(shoriginal) {
+			println('> Main V repo pre-commit hook script: size: ${ostat.size:6} bytes, sha256: ${ohash}, ${shoriginal}')
+		}
+	} $else {
+		if os.exists(horiginal) && os.is_file(horiginal) {
+			println('> Main V repo pre-commit hook script: size: ${ostat.size:6} bytes, sha256: ${ohash}, ${horiginal}')
+		}
 	}
 	if ohash == thash {
 		println('> Both files are exactly the same.')
