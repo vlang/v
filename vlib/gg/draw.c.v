@@ -518,12 +518,12 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 
 	// Separate drawing is to prevent transparent color overlap
 	// top rectangle
-	sgl.begin_quads()
-	sgl.v2f(ltx, sy)
-	sgl.v2f(rtx, sy)
-	sgl.v2f(rtx, rty)
-	sgl.v2f(ltx, lty)
-	sgl.end()
+	// sgl.begin_quads()
+	// sgl.v2f(ltx, sy)
+	// sgl.v2f(rtx, sy)
+	// sgl.v2f(rtx, rty)
+	// sgl.v2f(ltx, lty)
+	// sgl.end()
 	// middle rectangle
 	sgl.begin_quads()
 	sgl.v2f(sx, lty)
@@ -532,12 +532,12 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	sgl.v2f(sx, lby)
 	sgl.end()
 	// bottom rectangle
-	sgl.begin_quads()
-	sgl.v2f(lbx, lby)
-	sgl.v2f(rbx, rby)
-	sgl.v2f(rbx, rby + r)
-	sgl.v2f(lbx, rby + r)
-	sgl.end()
+	// sgl.begin_quads()
+	// sgl.v2f(lbx, lby)
+	// sgl.v2f(rbx, rby)
+	// sgl.v2f(rbx, rby + r)
+	// sgl.v2f(lbx, rby + r)
+	// sgl.end()
 }
 
 // draw_triangle_empty draws the outline of a triangle.
