@@ -2,17 +2,11 @@ module main
 
 import gg
 
-fn main() {
-	mut context := gg.new_context(
+gg.start(
 		width: 325
 		height: 275
 		window_title: 'Rounded Rectangles'
-		frame_fn: frame
-	)
-	context.run()
-}
-
-fn frame(mut ctx gg.Context) {
+		frame_fn: fn (mut ctx gg.Context) {
 	ctx.begin()
 	// these should be rounded rectangles
 	ctx.draw_rounded_rect_empty(10, 10, 50, 100, 5, gg.blue)
@@ -31,3 +25,4 @@ fn frame(mut ctx gg.Context) {
 	ctx.draw_rounded_rect_empty(250, 200, 50, 50, 0, gg.cyan)
 	ctx.end()
 }
+	)
