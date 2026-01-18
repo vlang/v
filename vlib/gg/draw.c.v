@@ -466,11 +466,11 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	lbx := ltx
 	lby := rby
 
-	mut rad := f32(0)
-	mut dx := f32(0)
-	mut dy := f32(0)
 
 	if r != 0 {
+  	mut rad := f32(0)
+  	mut dx := f32(0)
+  	mut dy := f32(0)
 		// left top quarter
 		sgl.begin_triangle_strip()
 		for i in 0 .. 31 {
