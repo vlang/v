@@ -916,7 +916,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		ast.MatchExpr {
 			if g.cur_concrete_types.len > 0 {
 				mut branches := node.branches.clone()
-				for mut branch in node.branches {
+				for mut branch in branches {
 					branch.stmts = branch.stmts.clone()
 					branch.exprs = branch.exprs.clone()
 					branch.exprs = g.exprs(mut branch.exprs)
