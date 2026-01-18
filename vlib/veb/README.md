@@ -20,6 +20,11 @@ Now modifying any file in your web app (whether it's a .v file with the backend 
 or a compiled .html template file) will result in an instant refresh of your app
 in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
 
+Note: this works by injecting a small `<script>` tag before the ending `</html>` tag of the page,
+that will check periodically if the current page has to be reloaded. In other words, it works for
+template pages that have that `</html>` tag, or for ones that were produced by `ctx.html()` and that
+also have that closing tag, but not for ones produced by `ctx.text()` .
+
 ## Deploying veb apps
 
 All the code, including HTML templates, is in one binary file. That's all you need to deploy.
@@ -63,7 +68,7 @@ pub:
 
 // This is how endpoints are defined in veb. This is the index route
 pub fn (app &App) index(mut ctx Context) veb.Result {
-	return ctx.text('Hello V! The secret key is "${app.secret_key}"')
+	return ctx.html('<html><body><h1>Hello V!</h1><p>The secret key is "${app.secret_key}"</body></html>')
 }
 
 fn main() {
