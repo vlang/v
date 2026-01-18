@@ -457,7 +457,7 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	sy := y * ctx.scale
 	width := w * ctx.scale
 	height := h * ctx.scale
-	
+
 	// left x coordinate
 	lx := sx + r
 	// right x coordinate
@@ -467,12 +467,11 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	// bottom y coordinate
 	by := sy + height - r
 
-
 	if r != 0 {
-  	mut rad := f32(0)
-  	mut dx := f32(0)
-  	mut dy := f32(0)
-   
+		mut rad := f32(0)
+		mut dx := f32(0)
+		mut dy := f32(0)
+
 		// top part
 		sgl.begin_triangle_strip()
 		for i in 0 .. 31 {
