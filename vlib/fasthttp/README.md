@@ -23,17 +23,32 @@ import fasthttp
 
 Here's a minimal HTTP server example:
 
-```v
+```v oksyntax
 import fasthttp
 
 fn handle_request(req fasthttp.HttpRequest) ![]u8 {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 
+	mut body := ''
+	mut status_line := ''
+
 	if path == '/' {
-		return 'Hello, World!'.bytes()
+		body = 'Hello, World!\n'
+		status_line = 'HTTP/1.1 200 OK'
+	} else {
+		body = '${path} not found\n'
+		status_line = 'HTTP/1.1 404 Not Found'
 	}
 
-	return '404 Not Found'.bytes()
+	headers := [
+		status_line,
+		'Content-Type: text/plain',
+		'Content-Length: ${body.len}',
+		'Connection: close',
+	]
+	header_string := headers.join('\r\n')
+
+	return '${header_string}\r\n\r\n${body}'.bytes()
 }
 
 fn main() {

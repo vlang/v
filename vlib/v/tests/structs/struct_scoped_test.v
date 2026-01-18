@@ -13,6 +13,13 @@ fn test_a() {
 	for _, k in cases {
 		assert k.a == k.b
 	}
+	cases_fixed := [
+		Ak{1, 1},
+		Ak{2, 2},
+	]!
+	for _, k in cases_fixed {
+		assert k.a == k.b
+	}
 }
 
 fn test_b() {
@@ -27,6 +34,13 @@ fn test_b() {
 		Ak{2, 2, 2},
 	]
 	for _, k in cases {
+		assert k.b == k.c
+	}
+	cases_fixed := [
+		Ak{1, 2, 2},
+		Ak{2, 2, 2},
+	]!
+	for _, k in cases_fixed {
 		assert k.b == k.c
 	}
 }

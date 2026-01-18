@@ -182,7 +182,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 	} else {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
+		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var, true)
 		return tmp_out_var
 	}
 	return ''
@@ -506,8 +506,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 					if (is_decl || blank_assign) && left is ast.Ident {
-						sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
-							ident.name, 0)
+						sig := g.fn_var_signature(val.typ, val.decl.return_type, val.decl.params.map(it.typ),
+							ident.name)
 						g.write(sig + ' = ')
 					} else {
 						g.is_assign_lhs = true
@@ -950,7 +950,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write('&')
 					}
 					tmp_var := g.new_tmp_var()
-					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+					g.expr_with_tmp_var(val, val_type, var_type, tmp_var, true)
 				} else if is_fixed_array_var {
 					// TODO: Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
@@ -992,7 +992,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						is_option_unwrapped := val is ast.Ident && val.or_expr.kind != .absent
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
-						if is_auto_heap && !is_fn_var {
+						// For large structs (with large fixed arrays), avoid stack-allocated
+						// compound literals which can cause stack overflow. Use vcalloc directly.
+						mut is_large_struct_heap := false
+						if is_auto_heap && !is_fn_var && val is ast.StructInit
+							&& g.struct_has_large_fixed_array(val.typ) {
+							is_large_struct_heap = true
+						}
+						if is_auto_heap && !is_fn_var && !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
@@ -1037,14 +1044,69 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							tmp_var := g.expr_with_var(val, var_type, false)
 							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
 								unaliased_right_sym.info.size)
+						} else if is_large_struct_heap && val is ast.StructInit {
+							// For large structs, use vcalloc directly to avoid stack overflow
+							// from compound literals on the stack
+							tmp_var := g.new_tmp_var()
+							stmt_str := g.go_before_last_stmt()
+							g.empty_line = true
+							g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin__vcalloc(sizeof(${styp}));')
+							// Initialize non-zero fields
+							val_sym := g.table.final_sym(val.typ)
+							if val_sym.info is ast.Struct {
+								for init_field in val.init_fields {
+									if init_field.typ == 0 {
+										continue
+									}
+									field_name := c_name(init_field.name)
+									g.write('${tmp_var}->${field_name} = ')
+									g.expr(init_field.expr)
+									g.writeln(';')
+								}
+								// Handle fields with default values
+								for field in val_sym.info.fields {
+									mut found := false
+									for init_field in val.init_fields {
+										if init_field.name == field.name {
+											found = true
+											break
+										}
+									}
+									if !found && field.has_default_expr {
+										field_name := c_name(field.name)
+										g.write('${tmp_var}->${field_name} = ')
+										g.expr(field.default_expr)
+										g.writeln(';')
+									}
+								}
+							}
+							g.empty_line = false
+							g.write2(stmt_str, tmp_var)
 						} else {
 							old_inside_assign_fn_var := g.inside_assign_fn_var
 							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
 								&& is_fn_var
-							g.expr(val)
+							mut nval := val
+							if val is ast.PrefixExpr && val.right is ast.CallExpr {
+								call_expr := val.right as ast.CallExpr
+								if call_expr.name == 'new_array_from_c_array' {
+									nval = call_expr
+									if !var_type.has_flag(.shared_f) {
+										g.write('HEAP(${g.styp(var_type.clear_ref())}, ')
+									}
+									g.expr(nval)
+									if !var_type.has_flag(.shared_f) {
+										g.write(')')
+									}
+								}
+							}
+							if nval == val {
+								g.expr(nval)
+							}
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
-						if !is_fn_var && is_auto_heap && !is_option_auto_heap {
+						if !is_fn_var && is_auto_heap && !is_option_auto_heap
+							&& !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {

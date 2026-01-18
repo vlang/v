@@ -1265,10 +1265,10 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	return res
 }
 
-// index returns the position of the first character of the input string.
+// index_ returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
 @[direct_array_access]
-fn (s string) index_(p string) int {
+pub fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}

@@ -92,6 +92,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
@@ -125,6 +127,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
@@ -158,6 +162,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
@@ -196,6 +202,8 @@ jobs:
           echo $VFLAGS
           .\make.bat -msvc
           .\v.exe self
+      - name: V doctor
+        run: .\v.exe doctor
       - name: Ensure code is well formatted
         run: .\v.exe -silent test-cleancode
         # - name: Install dependencies
@@ -221,6 +229,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
@@ -255,6 +265,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies
@@ -290,6 +302,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
       - name: Install dependencies

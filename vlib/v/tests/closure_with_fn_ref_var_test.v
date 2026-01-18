@@ -23,3 +23,18 @@ fn test_closure_with_fn_ref_var() {
 	assert deref() == 1
 	assert handler() == 1
 }
+
+type Fun = fn () int
+
+fn test_closure_with_fn_ref_var_option() {
+	opt := ?Fun(f_a)
+
+	handler := fn [opt] () int {
+		if g := opt {
+			return g()
+		}
+		return 0
+	}
+
+	assert handler() == 1
+}

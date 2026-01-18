@@ -213,6 +213,14 @@ fn test_parse_multipart_form_empty_body() {
 	assert files.len == 0
 }
 
+fn test_parse_multipart_form_issue_26204__do_not_panic_for_small_or_partial_forms() {
+	boundary := '----01KDN6J6BKWY9WMYWRW4MG5J59'
+	body := '${boundary}\r\nContent-Disposition: form-data; name="fooz"${boundary}--\r\n'
+	form, files := http.parse_multipart_form(body, boundary)
+	assert form.len == 0
+	assert files.len == 0
+}
+
 fn test_parse_multipart_form_issue_24974_raw() {
 	body := r'------WebKiormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="michael-sum-LEpfefQf4rU-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b--\r\n'
 	boundary := r'----WebKitFormBoundaryQcBIkwnOACVsvR8b'
@@ -248,6 +256,32 @@ fn test_parse_request_head_str_post_with_headers() {
 	assert req.version == .v1_1
 	assert req.host == 'test.com'
 	assert req.header.custom_values('Content-Type') == ['application/json']
+}
+
+fn test_parse_request_head_str_post_with_headers_and_body() {
+	s := 'POST /index HTTP/1.1\r\nHost: localhost:9008\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: keep-alive\r\n\r\n{"username": "test"}'
+	req := http.parse_request_head_str(s) or {
+		assert false, 'did not parse: ${err}'
+		return
+	}
+	assert req.method == .post
+	assert req.url == '/index'
+	assert req.version == .v1_1
+	assert req.host == 'localhost:9008'
+	assert req.header.custom_values('User-Agent') == ['curl/7.68.0']
+	assert req.header.custom_values('Accept') == ['*/*']
+	assert req.header.custom_values('Content-Type') == ['application/json']
+	assert req.header.custom_values('Connection') == ['keep-alive']
+	assert req.data == ''
+}
+
+fn test_parse_request_head_post_with_headers_and_body() {
+	s := 'POST /index HTTP/1.1\r\nHost: localhost:9008\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: keep-alive\r\n\r\n{"username": "test"}'
+	req := http.parse_request_str(s) or {
+		assert false, 'did not parse: ${err}'
+		return
+	}
+	assert req.data == '{"username": "test"}'
 }
 
 fn test_parse_request_head_str_with_spaces_in_header_values() {

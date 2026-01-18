@@ -9,6 +9,8 @@ import v.ast
 import v.vmod
 import v.checker
 import v.transformer
+import v.comptime
+import v.generics
 import v.parser
 import v.markused
 import v.depgraph
@@ -23,6 +25,8 @@ pub:
 pub mut:
 	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
+	comptime            &comptime.Comptime       = unsafe { nil }
+	generics            &generics.Generics       = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
 	stats_lines         int // size of backend generated source code in lines
@@ -58,7 +62,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	if pref_.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	table.pointer_size = if pref_.m64 { 8 } else { 4 }
+	table.pointer_size = if pref_.m64 && pref_.backend != .wasm { 8 } else { 4 }
 	mut msvc := MsvcResult{}
 	if pref_.ccompiler == 'msvc' {
 		$if windows {
@@ -82,6 +86,8 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		table:             table
 		checker:           checker.new_checker(table, pref_)
 		transformer:       transformer.new_transformer_with_table(table, pref_)
+		comptime:          comptime.new_comptime_with_table(table, pref_)
+		generics:          generics.new_generics_with_table(table, pref_)
 		compiled_dir:      compiled_dir
 		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
@@ -136,6 +142,17 @@ pub fn (mut b Builder) middle_stages() ! {
 			println('> t: ${t:10} | s.mod: ${s.mod:-40} | s.name: ${'${s.name#[..30]}':-30} | s.is_builtin: ${s.is_builtin:6} | s.is_pub: ${s.is_pub}')
 		}
 	}
+
+	if b.pref.new_generic_solver {
+		util.timing_start('GENERICS')
+		b.generics.solve_files(b.parsed_files)
+		util.timing_measure('GENERICS')
+	}
+
+	util.timing_start('COMPTIME')
+	b.comptime.solve_files(b.parsed_files)
+	util.timing_measure('COMPTIME')
+
 	if b.pref.dump_defines != '' {
 		b.dump_defines()
 	}

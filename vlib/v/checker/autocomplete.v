@@ -73,6 +73,15 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 	exit(0)
 }
 
+fn (mut c Checker) name_pos_gotodef(name string) ?token.Pos {
+	idx := c.table.find_type_idx(name)
+	if idx > 0 {
+		sym := c.table.type_symbols[idx]
+		return sym.info.get_name_pos()
+	}
+	return none
+}
+
 fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 	if c.pref.linfo.method != .definition {
 		return
@@ -113,35 +122,85 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 					pos = obj.pos
 				}
 			}
-			//
+			// If not found as a variable/const, try as a type
+			if pos == token.Pos{} {
+				full_name := if node.mod != '' { '${node.mod}.${node.name}' } else { node.name }
+				if np := c.name_pos_gotodef(full_name) {
+					pos = np
+				}
+			}
 		}
 		ast.StructInit {
-			if !c.vls_is_the_node(node.name_pos) {
-				return
+			// Check if clicking on a field name in struct init
+			for field in node.init_fields {
+				if c.vls_is_the_node(field.name_pos) {
+					sym := c.table.sym(node.typ)
+					if struct_field := c.table.find_field_with_embeds(sym, field.name) {
+						pos = struct_field.pos
+						break
+					}
+				}
 			}
-			mut info := c.table.sym(node.typ).info
-			pos = match mut info {
-				ast.Struct {
-					info.name_pos
+			if pos == token.Pos{} && c.vls_is_the_node(node.name_pos) {
+				info := c.table.sym(node.typ).info
+				if np := info.get_name_pos() {
+					pos = np
 				}
-				ast.Alias {
-					info.name_pos
-				}
-				ast.SumType {
-					info.name_pos
-				}
-				else {
-					pos
-				}
+			}
+			if pos == token.Pos{} {
+				return
 			}
 		}
 		ast.SelectorExpr {
+			// Check if clicking on the field name or method
 			sym := c.table.sym(node.expr_type)
-			f := c.table.find_field(sym, node.field_name) or {
-				println('failed to find field "${node.field_name}"')
-				exit(1)
+			if field := c.table.find_field_with_embeds(sym, node.field_name) {
+				pos = field.pos
+			} else {
+				if method := c.table.find_method(sym, node.field_name) {
+					pos = method.name_pos
+				} else {
+					println('failed to find field or method "${node.field_name}"')
+					exit(1)
+				}
 			}
-			pos = f.pos
+		}
+		ast.EnumVal {
+			// Go to enum field definition
+			mut enum_name := if node.enum_name == '' && node.typ != ast.void_type && node.typ != 0 {
+				c.table.sym(node.typ).name
+			} else {
+				node.enum_name
+			}
+			if enum_decl := c.table.enum_decls[enum_name] {
+				for field in enum_decl.fields {
+					if field.name == node.val {
+						pos = field.pos
+						break
+					}
+				}
+			}
+		}
+		ast.TypeNode {
+			// Go to type definition
+			typ_str := c.table.type_to_str(node.typ)
+			if np := c.name_pos_gotodef(typ_str) {
+				pos = np
+			}
+		}
+		ast.CastExpr {
+			// Go to type definition in cast expr
+			if node.typname != '' {
+				if np := c.name_pos_gotodef(node.typname) {
+					pos = np
+				}
+			}
+			if pos == token.Pos{} && node.typ != ast.void_type {
+				typ_str := c.table.type_to_str(node.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					pos = np
+				}
+			}
 		}
 		else {}
 	}
@@ -448,7 +507,10 @@ fn (c &Checker) vls_is_the_node(pos token.Pos) bool {
 	if pos.file_idx < 0 {
 		return false
 	}
-	if c.pref.linfo.path != c.table.filelist[pos.file_idx] {
+	// Normalize paths for comparison to handle directory compilation
+	linfo_path := os.real_path(c.pref.linfo.path)
+	file_path := os.real_path(c.table.filelist[pos.file_idx])
+	if linfo_path != file_path {
 		return false
 	}
 	if c.pref.linfo.col > pos.col + pos.len || c.pref.linfo.col < pos.col {

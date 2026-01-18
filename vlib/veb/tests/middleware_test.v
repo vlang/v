@@ -75,6 +75,12 @@ pub fn (app &App) content_test(mut ctx Context) veb.Result {
 	return ctx.text('content response, ${ctx.counter}')
 }
 
+// Test route for double-send regression test
+@['/double_after']
+pub fn (app &App) double_after(mut ctx Context) veb.Result {
+	return ctx.text('handler response')
+}
+
 pub fn (app &App) app_middleware(mut ctx Context) bool {
 	ctx.counter++
 	return true
@@ -93,6 +99,23 @@ fn middleware_unreachable(mut ctx Context) bool {
 fn after_middleware(mut ctx Context) bool {
 	ctx.counter++
 	ctx.res.header.add_custom('X-AFTER', ctx.counter.str()) or { panic('bad') }
+	return true
+}
+
+// Global after-middleware that sends a response (for double-send regression test)
+// Only sends for /double_after route to avoid breaking other tests
+fn global_after_sends_response(mut ctx Context) bool {
+	if ctx.req.url.starts_with('/double_after') {
+		ctx.text('global after response')
+	}
+	return true
+}
+
+// Route after-middleware that also tries to send (should be skipped if global already sent)
+fn route_after_sends_response(mut ctx Context) bool {
+	// Add header to prove this middleware ran (for regression test)
+	ctx.res.header.add_custom('X-ROUTE-AFTER-RAN', 'true') or {}
+	ctx.text('route after response - should not appear')
 	return true
 }
 
@@ -124,6 +147,10 @@ fn testsuite_begin() {
 
 	// Auto content encoding middleware (zstd/gzip based on Accept-Encoding)
 	app.Middleware.route_use('/content', veb.encode_auto[Context]())
+
+	// Regression test: global after-middleware sends response, route after-middleware should be skipped
+	app.Middleware.use(handler: global_after_sends_response, after: true)
+	app.Middleware.route_use('/double_after', handler: route_after_sends_response, after: true)
 
 	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
@@ -245,4 +272,15 @@ fn test_encode_auto_no_compression() {
 	encoding := x.header.get(.content_encoding) or { '' }
 	assert encoding == '', 'Expected no encoding when neither gzip nor zstd is in Accept-Encoding, got: ${encoding}'
 	assert x.body == 'content response, 2'
+}
+
+// Regression test: when global after-middleware sends response, route after-middleware should be skipped
+// This tests the fix for "a response cannot be sent twice over one connection" error
+fn test_double_after_middleware_no_error() {
+	x := http.get('${localserver}/double_after')!
+	// Global after-middleware response should be received
+	assert x.body == 'global after response'
+	// Route after-middleware should NOT have run (header should be absent)
+	route_after_ran := x.header.get_custom('X-ROUTE-AFTER-RAN') or { '' }
+	assert route_after_ran == '', 'Route after-middleware should be skipped when global already sent response'
 }

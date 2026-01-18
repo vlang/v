@@ -1,3 +1,7 @@
+struct Data {
+	name ?string
+}
+
 fn f() ?string {
 	return none
 }
@@ -23,3 +27,17 @@ _ = true || 2
 _ = 1 == 1 && 2 == 2 || 3 == 3
 _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
 _ = 1 + println('')
+
+// struct members
+data := Data {
+  'a name'
+}
+name := 'a name'
+_ := data.name == 'a name'
+_ := 'a name' == data.name
+_ := data.name == name
+_ := name == data.name
+
+// these should not error
+_ := data.name == none
+_ := none == data.name

@@ -1,5 +1,5 @@
 _result_toml__scanner__Scanner_ptr toml__scanner__new_scanner(toml__scanner__Config config) {
-	_result_toml__scanner__Scanner_ptr _t3 = {0};
+	_result_toml__scanner__Scanner_ptr _t3;
 	builtin___result_ok(&(toml__scanner__Scanner*[]) { s }, (_result*)(&_t3), sizeof(toml__scanner__Scanner*));
 	return _t3;
 }

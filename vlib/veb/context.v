@@ -100,11 +100,14 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
-	ctx.res.body = response.clone()
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
 			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
+		} else {
+			ctx.res.body = response.clone()
 		}
+	} $else {
+		ctx.res.body = response.clone()
 	}
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
@@ -127,10 +130,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 		ctx.res.set_status(.ok)
 	}
 	if ctx.takeover {
-		println('calling fast send resp')
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
 	}
-	ctx.res.body = ctx.res.body.clone() // !!!! TODO memory bug
 	// result is send in `veb.v`, `handle_route`
 	return Result{}
 }

@@ -245,7 +245,13 @@ pub fn get_file_options(file string) FileOptions {
 	return res
 }
 
+const github_job = os.getenv('GITHUB_JOB')
+
 fn should_skip(relpath string) bool {
+	if github_job == 'docker-ubuntu-musl' && relpath.ends_with('autofree_sql_or_block.vv') {
+		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
+		return true
+	}
 	if user_os == 'windows' {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')

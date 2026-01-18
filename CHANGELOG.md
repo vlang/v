@@ -1,3 +1,415 @@
+## V 0.5.0
+*31 Dec 2025*
+
+#### Improvements in the language
+- Add comptime `if is shared` support (fix #25600) (#25602)
+- Make `defer{}` scoped by default, use `defer(fn){}` to get the old behavior #25639) (#25665)
+- Add gotodef support for nested struct members, fn return types, etc (#26131)
+- Add a new v.comptime stage `COMPTIME`, that runs after the checker (`CHECK`), and before the transformer (`TRANSFORM`), to simplify the work that later stages do #26068 (#26161)
+
+#### Checker improvements/fixes
+- Correctly detect variadic arg passed to struct fn (fix #25504) (#25509)
+- Fix $(field.name) access on closure fn (fix #25513) (#25514)
+- vls: skip unrelated files (#25531)
+- Fix mutability in `for in` loops with pointer values (fix #25520) (#25536)
+- Fix type inference, when pushing an empty array to a 2D array (fix #23854) (#25508)
+- Prevent array.insert for array of references when non-reference is passed (fix #25511) (#25557)
+- Add more support for mod autocomplete, allow for .vv files too (#25562)
+- Fix cast from an empty struct to option (fix #25566) (#25581)
+- Ensure ?Struct is not parsed as ??Struct when param is ?T (fix #25559) (#25564)
+- Fix if branch type nr_muls mismatch (fix #25556) (fix #25555) (#25571)
+- Fix comptime else branch handling (fix #25586) (#25589)
+- Smart detect `or {}` inside loop when using `c <-val` (fix #24550) (#25435)
+- Vls fix goto definition (#25595)
+- Fix generic resolve for external module generic static method call (fix #21476) (#25634)
+- Correctly detect type, when prepending to generic array (fix #25585) (#25645)
+- Allow cast from voidptr to sumtype in unsafe block (fix #25652) (#25657)
+- Disallow calls to a shared receiver method, on a non-shared var (fix #25577) (#25656)
+- Fix or block endwiths expr (fix #25329) (#25667)
+- Set ast file fallbacks for vls (fix #25678) (#25679)
+- Error/warn when using `defer(fn)` inside function-scope and `lock` stmts (#25681)
+- Maintain correct ref level in generic fn (fix #25676) (#25687)
+- In vls mode, make ensure_type_exists return true (#25695)
+- Only collect/hoist inner vars, when `defer` is function-scoped (#25693)
+- Improve type checking for sumtypes with generics (fix #25690) (#25699)
+- Unwrap for base type if ft.typ and inferred_typ are both opt (fix #25517) (#25728)
+- Disallow deference of nil (fix #25740) (#25746)
+- Fix comptime main fn (#25747)
+- Parser,fmt,checker: use a trie for matching the generic array methods `all`, `any`, `count`, `filter`, `map`, `sort` and `sorted` (#25759)
+- Fix array fixed unresolved return check and resolver (fix #25774) (#25790)
+- Allow explicit sumtype to option casts (fix #25796) (#25812)
+- Fix possible race on expected arg types unwrapping on cgen (#25815)
+- Skip init check for options (fix #25798) (#25830)
+- Fix module var set at change_current_file() (fix #25845) (#25846)
+- Improve handling of array decompose for dynamic arrays and array init (fix #25838) (#25843)
+- Force all fn declarations to follow after all other top level statements (fix #25889) (#25890)
+- Fix used features tracking when printing pointer values (fix #25899) (#25901)
+- Match type when auto deref occurs (fix #25913) (#25916)
+- Relax the redundant () check to a notice, to enable a future `v -W test vlib/builtin` job on the CI
+-  remove () from match branch exprs (fix #25950) (#25952)
+- Fix array map anon fn return fixed array (fix #25928) (#25977)
+- Cleanup the output of `v new --web abcd` after feedback from https://youtu.be/IuE6Bo1klK0?t=555
+- Allow assign to a shared int var (fix #25986) (#25988)
+- Ensure type of global exists (fix #25910) (#25998)
+- Ensure fn pointer cannot be used as non-fn argument (fix #26017) (#26022)
+- Make sure  `$for` eval body statements at least once to set types and avoid markused issues later (fix #26058) (#26063)
+- Fix return static method name (fix #26105) (#26110)
+- Support gotodef for struct init and sumtype rhs (#26157)
+- Detect circular type references in sumtype declarations (fix #24511) (#26162)
+- Add interface type handling and new testcase (fix #24116) (#26165)
+- Allow enum fields to reference previously declared fields (fix #25241) (#26173)
+- Clear all ref from autostr receiver_type (needed by #25857) (#26202)
+- Allow for `_` being used as both `import x as _` and `fn f(_ int) {` (fix (#26219) #26230
+
+#### Parser improvements
+- Fix vls mode strut mut keyword (fix #25548) (#25551)
+- Fix vfmt comment in struct init after the update expr (fix #24361) (#25668)
+- Fix infix expr comment in middle (fix #24183) (#25671)
+- Disallow using generic functions as a field type name inside struct decl (fix #25452) (#25705)
+- Warn on `@[deprecated_after]` used without a corresponding `@[deprecated]` attribute (#25712)
+- Fix last stmt is fn call in or_expr (fix #25732) (#25739)
+- Allow for `|mut x, y|expr` (fix #25734) (#25735)
+- Allow using `a`, `b` and `it` as var names, when using the builtin array methods (fix #25729) (#25755)
+- Disallow generic function to be exported (fix #25794) (#25806)
+- Support `-d trace_parse` to ease diagnosing problems related to the order of parsing of .v files in modules
+- Fix the language support for a nested anonymous C.struct (fix #25807) (#25789)
+- Disallow untyped `chan` used as a fn parameter type (fix #25818) (#25854)
+- Improve the unused import warning message (add fixing alternatives) (#25880)
+- checker,parser,ast: make `type MyBuilder = strings.Builder` work (part 1); add `mod` fields to ast.SumTypeDecl and ast.AliasTypeDecl (#25943)
+- Remove dead code in Parser.is_array_type/0 (#26080)
+- Check invalid struct name in struct_init() (fix #26030) (#26093)
+- Remove the support for the obsolete generic fn call syntax f<T>() (first deprecated in 2022/11) (#26126)
+- Fix comptime for lock shared field (fix #26143) (#26146)
+- checker,parser: add multifile gotodef support for -line-info (#26167)
+- Optmize Parser.call_kind (#26196)
+
+#### Compiler internals
+- markused: fix markused struct heap (#25542)
+- markused: fix array.prepend C code dependency (fix #25573) (#25582)
+- markused: fix fn marked as used when variable and fn uses same name (fix #25649) (#25650)
+- checker,transformer: add always true/false branch detection for the `if` and `match` constructs (#25674)
+- v.util: measure more precisely how long a new tool recompilation lasts in launch_tool, when using `v -d trace_launch_tool self`
+- transformer: fix struct init comparison turning into boolean (#25724)
+- v.builder: support V_NO_RM_CLEANUP_FILES=1, to ease debugging of -usecache issues
+- v.builder: make it easier to reproduce the exact specific stages of -usecache module compilation by logging the full CLI options for each
+- v.builder: fix `.vsh` mode doing an implicit `import os`, now only for .vsh file itself (fix issue spotted in #25736) (#25745)
+- v.builder: improve diagnostic information for a failed build_thirdparty_obj_file
+- transformer: transform ArrayInit into a function call for C and native backends (part 1)
+- builder,pref: add  `-file-list` support (implement feature #25707) (#25749)
+- pref: for -usecache, set .parallel_cc = false and .no_parallel = true to make compilations more deterministic and ease CI diagnostics
+- markused: fix missing builtin__memdup definition, when an option struct field is used (fix #25801) (#25802)
+- transformer: move array logic to array.v
+- v.builder: improve the error message for failing cgen; suggest `-g` and `-show-c-output`
+- v.pref: fix GitHub download URL for the photonwrapper .so file (fix #25708) (#25831)
+- v.pref: use `v download` for downloading the prebuilt `photonwrapper` shared library (#25849)
+- markused: fix const as fn mark as used (fix #25888) (#25895)
+- transformer: disable generic str_intp opt (fix #25896) (#25897)
+- v.scanner: remove obsolete .is_crlf and .is_vh fields (#25918)
+- v.scanner: use a named return for decode_XXX_escape_single methods, to reduce the generated C diff churn, during scanner code updates
+- markused: add new auto_str() used funcs for bootstrap (#25938)
+- v.builder: provide more detailed error message, on `msvc: failed to build a thirdparty object`, not just the failed command
+- v.builder: improve formatting of the `failed to build a thirdparty object` message for msvc
+- scanner: remove old generic check logic (fix #25959) (#25997)
+- transformer: fix the setting of a generic flag for fixed array type with `-new-transformer` (#26009)
+- transformer: add file/line info for fn with `expand_simple_interpolation` (#26135)
+- transformer: add early return to avoid transform getting applied twice for a `for x < y {` body (#26153)
+- markused: fix option none markused (fix #26147) (#26151)
+- v.builder: enable gc back with msvc, build separate `.debug.obj` thirdparty files when -g is passed, to prevent linking issues (#26215)
+- v.builder: support compiling asm .S files to .o files, mentioned in #flag directives (needed for #26185) (#26211)
+- v.builder: fix compile asm file, followup of PR #26211 (#26227)
+
+#### Standard library
+- arrays: fix rotate_left() and rotate_right(), add test (#25539)
+- encoding.base58: fix encoding, add test (#25538)
+- x.crypto.chacha20poly1305: move up responsibility for allocs into higher caller (#25574)
+- crypto.cipher: fix decryption in CBC mode, add test (#25584)
+- os: use `@[noinline]` on os.create/1 to workaround a `-cc gcc -prod` panic (fix #25549)
+- time: fix non-digit checks for parse_rfc3339() (#25597)
+- gg: add explicit bounds checking for image caching methods in gg (fix #25590) (#25591)
+- time: fix quarter calculation in custom_format() (#25608)
+- rand: fix randomness in shuffle() (#25617)
+- gg: destroy unused GPU resources before replacing cached images (#25615)
+- encoding.binary: fix serialize skip struct shared fields (related to issue #25600) (#25613)
+- x.crypto.chacha20poly1305: make implementation use fixed sized arrays more (#25627)
+- builtin: make result string end with null in `u8(x).repeat(y)` (fix regression after #22100) (#25625)
+- gg: fix address of const warnings for `v -experimental program_using_gg.v`
+- builtin: add .hex() methods to the `rune` and `char` types too (#25635)
+- datatypes: fix insert() and delete() for items in second half of DoubleLinkedList[T]{}, add test (#25647)
+- builtin: use an explicit loop to determine min_common_indent in string.trim_indent/0 to reduce allocations and reduce the reasons for misfires of the closure detection heuristic
+- vlib: use `defer(fn) {` syntax where appropriate (part 2 of #25639) (#25653)
+- x.json2: fix decode_number not initializing value to zero (fix #25641) (#25675)
+- crypto.hmac: optimize hmac.new, support calculations with a blocksize > 256 (#25686)
+- math.unsigned: fix put_bytes(), add test (#25718)
+- builtin: reset .len and .cap to 0 too, in the array.free() method (#25717)
+- os: add pipe and stdio_capture support (implement #25714) (#25716)
+- encoding.utf8.validate: fix validation, add test (#25748)
+- crypto.blake2b,crypto.blake2s: add `@[direct_array_access]` to hot functions (#25750)
+- strconv: fix handling of subnormal numbers like `'1.23e-308'.f64()` (fix #25751) (#25752)
+- crypto.sha3: remove `import math` (just for int_max), to improve compilation time and complexity for code that uses sha3
+- builtin: add declarations for C.GetCurrentThreadId(), C.gettid() and C.pthread_self()
+- builtin: add pid: and tid: fields to the panic reports (part 2 of #25808) (#25809)
+- gg: add doc comments for the FN** types (#25814)
+- rand: add missing i8() utility function (#25819)
+- builtin: fix C.SYSTEM_INFO (fix #25788) (#25823)
+- builtin: support `-d no_getpid` and `-d no_gettid` for systems that lack proper process management APIs
+- math: fix vec2,3,4 project not using the right formulas (fix #25811) (#25813)
+- math.vec: swap u and v in the .project() method of Vec2,Vec3,Vec4 (#25841)
+- crypto.cipher: fix xor_key_stream() for OFB mode, add test (#25844)
+- encoding.binary: use unions for small speed increase and readability (#25867)
+- math.complex: replace `==` with eq_epsilon() in equals() (#25873)
+- crypto.cipher: fix xor_key_stream() for CTR mode, add test vector created with OpenSSL (#25866)
+- os: enhance os.cp() to mimic Python's shutil.copy2() (#25893)
+- io.util: use correct TempDirOptions parameter type name in temp_dir() (#25904)
+- builtin,sync: eliminate calls to _us32_lt in new_map/6, and in the spinloops in Channel.try_push_priv, Channel.try_pop (#25912)
+- rand: restore error margin in dist_test.v back to 0.05 (the updated seeds were found by @tankf33er in #25907)
+- builtin: reduce the max size of string representations of integers (#25919)
+- builtin: remove commented code, improve comments
+- x.crypto.chacha20: fix deprecation warning during compilation of Cipher.rekey/2
+- math.easing: fix in_out_expo(), add test (#25944)
+- builtin: split builtin.v and builtin.c.v into smaller, and more focused .v files, to ease working on unrelated subsystems (#25965)
+- transformer: fix `v -new-transformer vlib/strconv/atoi_test.v` (#26021)
+- gg: add more documentation for color substraction (fix #21549) (#26023)
+- toml: fix for single `\r` occurence in multi-line `"""` strings (`\r\n` is still allowed) (#26029)
+- toml: remove workarounds + `TODO`s for fixed issue #9507 (#26037)
+- x.json2: fix decode_number for u8 (fix #26027) (#26033)
+- rand.wyrand: switch to using the original C._wymix() as a performance optimisation (#26051)
+- strconv: fix float scientific notation (fix #26045) (#26046)
+- x.json2: fix decoding of float values in scientific notation (fix #26043) (fix #26062) (#26060)
+- builtin: add a declaration for C.memchr too (#26054)
+- toml: add compliance up until official toml-lang/toml-test@c6a78f1 (#26067)
+- builtin: fix some C fn parameter types (#26069)
+- toml: add compliance to official toml-lang/toml-test@8bb8d9c (#26070)
+- toml: remove special cases for `jq` normalization (#26092)
+- toml: fix remaining valid `key/*` exceptions (#26125)
+- builtin: make string.index_ public, to simplify code using a redundant `x := s.index(sub) or { -1 }` pattern (#26123)
+- builtin: add declarations for C.memmem and C.mempcpy (#26129)
+- builtin: speed up, fix and test impl_utf8_to_utf32 (#26109)
+- toml: fix remaining valid `array/*` exception (#26138)
+- toml: fix unicode decoding panic on invalid TOML `key/duplicate-keys-06.toml` (#26140)
+- toml: allow `true` and `false` as keys when parsing root table (#26144)
+- toml: allow dotted key lengths > 2 within nested arrays of arrays (#26145)
+- flag: fix `v vet -W vlib/flag/` (fix remaining doc comments)
+- x.json2: fix memory access error, when decoding string enum values (fix #26176) (fix #26179) (#26178)
+- toml: fix invalid exception by erroring on duplicate keys in inline table (#26177)
+- time: implement faster and simpler `push_http_header` (#26155)
+- toml: fix remaining invalid exceptions for `table/*` (#26189)
+- toml: reach 100% TOML v1.0.0 compliance with the official test suite (#26203)
+- x.json2: remove workaround_cast(), add isize usize decode support (#26210)
+
+#### Web
+- net: fix cookie parsing when `;` is used (fix #25544) (#25561)
+- veb: new fasthttp module with -d new_veb (multithreaded, epoll/kqueue): makes veb multithreaded and fixes frequent hangs
+- veb: fix gzip middleware decode/encode (fix #20865) (fix #25753) (#25754)
+- veb: gzip support for StaticHandler (fix #20859) (#25758)
+- veb: support markdown content negotiation, compliant with https://llmstxt.org/ (#25782)
+- fasthttp: move kqueue related code to a separate file
+- veb: add zstd compression support (#25816)
+- veb: remove println('send_file ct=...') leftover (#25834)
+- ci: reduce false positives for veb_should_listen_on_both_ipv4_and_ipv6_by_default_test.v by retrying it 3 times (since sometimes binding to the port it listens to fails)
+- veb: add an early startup panic error message, when the result type of route handler methods *is not* `veb.Result` (fix #25970) (#25973)
+- net.mbedtls: make errors more verbose, to ease remote diagnosis of issues
+- net.openssl: make errors more verbose, to ease remote diagnosis of issues
+- veb: improve the before_request documentation
+- veb: add method.location too, to the invalid return type error, to ease diagnosing problems while prototyping
+- wasm: fix const reference another const (fix #25722) (#26010)
+- fasthttp: fixes and improvements (#25906)
+- wasm: export pub fns in main module when targeting wasi (#26041)
+- net.http: use error_with_code in download_file() (fix #26056) (#26057)
+- net.http,veb: fix detection of the headers/body boundary in parse_request_head_str (fix #26091) (#26112)
+- fasthttp: expand http request parser (related to #26091 part1) (#26104)
+- net.ftp: fix get() command conversation, add test (fix #18858) (#26194)
+- x.sessions: verify HMAC signatures when extracting sessions IDs from cookies (#26199)
+- net.http: fix a panic in parse_multipart_form, for small/incomplete form data (fix #26204)
+- net.http: support keep-alive connections in server (fix #26136) (#26218)
+
+#### ORM
+- Mark orm_where_in_test.v to be skipped in the sanitize-memory-clang job
+- Fix fkey insert as assigment expr (fix #25568) (#25575)
+- Fix double fkey insert and update (fix #25593) (#25606)
+- Add index attr support (#25604)
+- Fix autofree detection for is_or with block style (fix #25969) (#26089)
+- Allow multiple set() in one update() call (fix #26116) (#26117)
+- Add check for invalid index field name (#26142)
+- Supoprt DISTINCT keyword (#26163)
+
+#### Database drivers
+- db.sqlite: fix orm f32 field retrieval for sqlite (fix #25583) (#25592)
+- db.pg: support returning `Result` type with column names (#25737)
+- db.sqlite: allow for `mut db := sqlite.connect_full(":memory:", [.readwrite, .create, .fullmutex], "")!` defaulting to unix/win32 depending on the platform
+- db.pg: support LISTEN/NOTIFY (implement feature #23983) (#26133)
+- db.pg: fix `v check-md vlib/db/pg/README.md`
+- Revert "db.sqlite: support calling exec_param_many with [][]string or []string (it now accepts a sumtype of both) (#26100)"
+- Reapply "db.sqlite: support calling exec_param_many with [][]string or []string (it now accepts a sumtype of both) (#26100)"
+
+#### Native backend
+- Fixed array, `-new-transformer` dynamic array (#25817)
+- Add `$if trace_native_todos ? {` to reduce noise in `v test-all`
+
+#### C backend
+- Fix resolution type Map[string]T  when T is AliasToMap (fix #25494) (#25510)
+- Fix markused for option generic param (fix #25501) (#25525)
+- Fix empty struct initializer for clang (fix #25467) (#25526)
+- Fix match codegen for option match case (fix #25533) (#25537)
+- Fix codegen for alias for array fixed initialization (fix #25512) (#25540)
+- Ensure option none/ok state is also compared (#25532)
+- Fix match codegen for option expr on case (fix #25545) (#25553)
+- Add `-no-closures` option to detect closure usage earlier (for emscripten or for less well supported platforms) (#25565)
+- Create ctemp before lockexpr gen (fix #25576) (#25612)
+- Fix if expr with condition that requires temporary variable (fix #19584) (fix #23903) (#25621)
+- Fix multi return of a fixed array (fix #25626) (#25628)
+- Fix generic multiple indirections on print (fix #22793) (#25633)
+- Fix `fn (d Struct) a[T]() T { return d }` when T is a sumtype (#25644)
+- Minimize code generated for asserts (generate the common parts for the pass/fail case once) (#25642)
+- Handle pointers in json map decode/encode (fix #25632) (#25646)
+- Fix `defer` stmts with `if` exprs and `or` blocks that return a value (#25651)
+- Fix infix expr ComptimeSelector type (fix #25659) (#25662)
+- Fix passing sumtype child to generic function taking sumtype parent (fix #25660) (#25664)
+- Fix multi generics fn name (fix #23886) (#25673)
+- Fix `defer` generation within comptime `$if`/`$match`/`$for` (#25677)
+- Fix codegen for if comptime and array fixed (fix #25691) (#25697)
+- Correct function definitions for callbacks in imported modules (fix #25700) (#25719)
+- Improve codegen for array fixed init for g++ compiler (fix #25723) (#25725)
+- Fix codegen for operator overload method_name on alias to builtin types (fix #25709) (#25726)
+- Fix missing cast if fixed array is surrounded in brackets (fix #25629) (#25741)
+- Fix comptime for types not being recognized with maps correctly (fix #25742) (#25743)
+- Fix dump(ptr_to_fixed_array_value) - it now returns the argument directly (thanks @tankf33der) (#25764)
+- Cast member variables to correct types in comptime $for (fix #25771) (#25773)
+- Include `ast.ComptimeSelector` in fixed array checks (fix #25767) (#25777)
+- Checker,cgen,type_resolver: prevent stale type cast on comptime `$for`, handle in dumpexpr (fix #25781) (#25784)
+- Reduce the nested expr level complexity of Gen.ident
+- Fix tcc __attribute__, fix os.notify (followup to #25779) (#25804)
+- Ensure array of string is not cloned with depth 0 (fix #25783) (#25793)
+- Support `-d trace_check` and `-d trace_cgen` to help diagnose checker and cgen ordering issues
+- Support `-d trace_cgen_fn_decl` and `-d trace_cgen_gen_fn_decl` too
+- Show the v_gettid() hex with `-d trace_cgen_fn_decl` and `-d trace_cgen_gen_fn_decl`
+- Use variadic_count == 1 when passing variadic to call of same array type (fix #25827) (#25837)
+- Fix nested or in assign decl (fix #25864) (#25865)
+- Fix variadic on translated (fix #25862) (#25876)
+- Allow @[cinit] for const variables (#25881)
+- Fallback to field type when default_expr_typ is 0 (fix #25891) (#25903)
+- Fix map value init with array fixed const (fix #25887) (#25902)
+- Fix cast type changed before last stmt in `stmts_with_tmp_var` (#25915)
+- Update wyhash to version 4.2 (#25907)
+- Use final_sym for elem_sym in index_of_array (fix #25960) (#25961)
+- Fix variadic call on sumtype with array of itself (fix #25898) (#25964)
+- Correct T{} init for []Type aliases (fix #25962) (#25963)
+- Fix array init with fixed array from return call (fix #25954) (#25971)
+- Fix fntype unwrap on ifguard (fix #25911) (#25914)
+- Add a source .location field to `$for method in Type.methods {` (#25976)
+- Fix iterator on alias to fn ptr (fix #25911) (#25978)
+- Fix shared int string intp (fix #25984) (#25989)
+- Allow init shared field with default value (fix #25990) (#25991)
+- Allow init of struct from struct with array of optional values (fix #26000) (#26005)
+- Fix default value in if/else or block (fix #26002) (#26020)
+- Fix fnptr indirections declaration (fix #25940) (#25987)
+- Fix bool cast from value (fix #26028) (#26031)
+- Fix cast() generic type bug (fix #26065) (#26066)
+- Fix fn_var_signature() support nr_muls (fix #26049) (#26075)
+- Fix cast_expr() for alias (fix #26076) (#26079)
+- Handle CallExpr in dumpexpr (fix #26084) (#26087)
+- Clean code in return stmt (fix #25968) (#26118)
+- Fix cast to array (fix #26099) (#26102)
+- Fix fn_var_signature() allow option type (fix #26088) (#26120)
+- Fix scoped struct array fixed generation (fix #26111) (#26114)
+- Fix option array init with non option values (fix #26148) (#26170)
+- Fix heap fixed array assign (fix #26149) (#26169)
+- Fix stack overflow for `@[heap]` structs with large fixed arrays (fix #22690) (#26183)
+- Fix print interface when arg0 is function call (fix #26184) (#26188)
+- Checker,table,cgen: fix generic interface confusion (fix #25478) (#26181)
+
+#### vfmt
+- Force conversion of []Type{init: it} -> []Type{init: index} (#26201)
+
+#### Tools
+- ci: run `v doc` with VJOBS=1 on the CI, to make remote diagnosing of failures easier
+- Remove unused `sw := time.new_stopwatch()` call
+- Add support for VTEST_SHOW_CMD=1 in `v test .` too
+- ci: use VJOBS=1 for the `v test cmd/tools/vdoc` step too, to ease diagnosing remote CI failures
+- ci: bump cross-platform-actions/action from 0.29.0 to 0.30.0 (#25666)
+- Fix showing the *failed* compilation output with `v -silent test .`
+- ci: bump all `timeout-minutes: 15` to `timeout-minutes: 20` to reduce false positives due to network timeouts (mostly for the Termux job)
+- Note about `v help check-md` when `v check-md .` fails
+- ci: skip invalid_utf8_string.vv in compiler_errors_test.v for msvc
+- ci: reduce annotation noise, remove dead code
+- ci: skip the multistage v->v2->v3 -usecache checks for now (reduce false positives on the CI for unrelated PRs, until the root cause is fixed)
+- ci: add new job `sanitize-address-clang-without-gc` that passes `-gc none` through VFLAGS (#25780)
+- Support `VTEST_SHOW_LONGEST_BY_RUNTIME=5 VTEST_SHOW_LONGEST_BY_COMPTIME=5 VTEST_SHOW_LONGEST_BY_TOTALTIME=5 v test .`
+- Print total time at the *end* of the `v test-all` output to ease visual comparisons in separate shells, without scrolling
+- Use unbuffer_stdout in TestSession.test, to ensure consistent output on the CI jobs
+- v.builder: remove the obsolete check for V_NO_C_ERROR_INFO (VQUIET=1 replaced it in 2023); add VQUIET to the `-q` description
+- Make `v search` failures easier to diagnose (on the CI)
+- Support `v download -o some/folder/local.toml TOML_URL`, in addition to --target-folder
+- Add `--sha3-256` support for checksumming the content that `v download` saves
+- Add a watchdog timer in test_if_v_test_system_works.v to speedup the failure of stuck CI jobs
+- Use local `vtest build:` tags to eliminate the need for the skip_fsanitize_too_slow list in vtest-self.v
+- ci,vpm: make dependency_test.v more robust, and easier to diagnose remotely
+- ci: set VTMP too in set_test_env/1, to avoid cloning conflicts during parallel test executions
+- v.builder: do not produce `If the code is in a folder with multiple .v files` for temp V REPL files, to improve messages for `'asdas'.starts_wiz('xyz')`
+- Add a `-new-transformer` task to `v test-all`. Remove `-skip-unused` flags (it is the default for ~1 year).
+- Improve development experience for `v -W -silent test-self vlib` (especially on CIs); *always* show compilation errors for failures
+- Support `VTEST_KEEP_SESSION=1 ./v test vlib/math`
+- vet: use new annotation syntax ([] -> @[]) (#26026)
+- ci: bump cross-platform-actions/action from 0.31.0 to 0.32.0 (#26074)
+- Make the `is_sqlite3_present` check more robust (work with the system packaged sqlite library again too)
+
+#### Operating System support
+- ci: fix gcc-windows -std=c99 (#25534)
+- os: add windows stdin_write() support (#25546)
+- ci: use `macos-14` instead of `macos-13` (the older runner is being deprecated) (#25670)
+- v.builder: fix json-errors with a windows path separator (#25680)
+- ci: fix unsetting of VFLAGS in `v run ci/linux_ci.vsh v_self_compilation_usecache_clang`
+- ci: stop unsetting VFLAGS completely in ci/linux_ci.vsh and ci/macos_ci.vsh
+- builtin,os: fix windows execute ANSI encoding result, make msvc error messages readable in a Chinese locale (fix #25727) (#25736)
+- db.sqlite: update windows version to https://sqlite.org/2025/sqlite-amalgamation-3510000.zip (#25766)
+- os.notify: fix struct epoll_event alignment on ARM64/Linux (fix #25778) (#25779)
+- fasthttp: Linux/epoll support
+- math: reduce the nested level of expressions, to reduce the chances of stack overflows on windows
+- net.http,ci,db.sqlite: rewrite .github/workflows/windows-install-sqlite.bat in .vsh, fix vschannel on windows downloading content > 32KB (#25792)
+- v.builder: bump the default stack size for executables, when compiling with msvc on windows, to 32MB (#25824)
+- ci: reduce the chances of false positives due to hangs of use_net_and_net_unix_together_test.v on windows
+- doc: add subsections about using SQLite on windows and about installing the self contained `sqlite` module.
+- v.builder: switch to using `-std=c99`, instead of `-std=gnu99` to avoid name colisions with C `linux` macros defined by gcc/clang (#25848)
+- gg: set more sensible and user friendly defaults for the width, height and the title of new windows
+- thirdparty: update thirdparty-openbsd-amd64_tcc.sh (#25945)
+- ci: install plain gcc on the OpenBSD jobs
+- ci: use `gcc` as the name of the compiler instead of `egcc` on OpenBSD
+- ci: remove the gcc-openbsd job, until OpenBSD people fix their broken conventions on 7.8
+- ci: run `v -W -silent test-self vlib` on linux, so deprecations/warnings introduced in PRs, can fail (and be fixed) earlier (#25955)
+- ci: use VTEST_SHOW_LONGEST_BY_* vars on OpenBSD (#25958)
+- ci: update to use FreeBSD version 15.0 (#25985)
+- crypto.ecdsa: update to test and use OpenSSL 3.5 on OpenBSD (#25995)
+- x.crypto.slhdsa: add support on OpenBSD using OpenSSL 3.5 (#25996)
+- ci: reduce failure rate for the gcc-windows job, in test_if_v_test_system_works.v
+- ci: skip use_net_and_net_unix_together_test.v on gcc-windows (many weird timeouts on unrelated PRs)
+- db.sqlite: fix exec_param_many on linux for the case of a [][]string parameter
+- v.util: add `-d max_suggestions_limit=140` for v itself, to improve handling of large .v files with many thousands of lines on windows
+- v.util: bump max_suggestions_limit to 200, to account for windows
+- ci: extract windows_ci_msvc.yml from windows_ci.yml to enable finer grained workflow/job control
+- ci: extract and split windows_ci_tcc.yml and windows_ci_gcc.yml from windows_ci.yml for improved job control
+
+#### Examples
+- Handle closing of the window in the event manager in examples/viewer (#25522)
+- ci: add a report-wrong-examples-in-doc-comments job, that runs `./v doc -check-examples -f none vlib/` (#25554)
+- Make reproduction of failed examples easier (make sure that all the checked sources have an ending \n)
+- Use math.vec in path_tracing.v and in vyper.v
+- Support `v -d trace_execution run examples/brainvuck.v mandlebrot.bf`
+- ci: do not use `-silent` for the `v build-examples` task on windows, to make it easier to diagnose recent gcc-windows timeouts
+- doc: add an example for reading from a non empty buffered channel, after closing it
+- Fix and improve vanilla_http_server (#25905)
+- ci: remove `-silent` from the macos build_examples task too, to make remote diagnosing of CI timeouts easier
+- Add optional `update_fn: fn (dt f32, ctx &gg.Context)` to gg.Context and gg.Config . Pass consistently the current GG context to *all* callback functions, instead of nil.
+- Add expanding_rect.v (modeled after the example from https://love2d.org/wiki/love), add generic helpers gg.frgb/3 gg.frgba/4
+- tools,examples,veb: fix `v -d trace_before_request run examples/veb/veb_example.v` after feedback from https://youtu.be/IuE6Bo1klK0?t=2100
+- Move flag/ .v files 1 level up, to prevent module lookup confusion for unrelated examples
+- Add a Lorem Ipsum Generator (#26036)
+- examples,net.ftp,v.builder: remove remaining matches of `rg --multiline --multiline-dotall "continue\n\t+\}\n\t+\}\n\t+return" -B3 -A3 `
+- Update lorem.v with a Markov algorithm for better text generation (#26085)
+- fasthttp: fix the correctness of the minimal server example, when tested with curl (#26072)
+- v.gen.native: fix `v -os macos -experimental -b native -o hw.macos examples/hello_world.v` on linux
+- tutorials: remove newline in the example for c2v's cc compilation to `doomv` (#26200)
+- Make all the labels fit in the default window size header in minesweeper.v
+
+
 ## V 0.4.12
 *19 Sep 2025*
 
@@ -460,6 +872,9 @@
 - Reduce memory usage of ast.ScopeObject and ast.Ident instances (#24704)
 
 #### Comptime
+- comptime: fix comptime parameter resolve for `unsafe { nil }` to be `voidptr` (fix #25558) (#25570)
+- comptime: fix codegen ptr field reading from comptimeselector (fix #25616) (#25620)
+- comptime: dont emit empty blocks (#26171)
 - comptime: support type interpolation in the msg argument of `$compile_warn(msg)` and `$compile_error(msg)` (#24992)
 - comptime: fix $match with fn type (#25271)
 - Support `$if T is $pointer {` and `$if T is $voidptr {`, to make it easier to implement a pure V dump(), without cgen specific code (#24628)

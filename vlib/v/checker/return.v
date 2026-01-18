@@ -321,7 +321,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		expr0 := node.exprs[0]
 		if expr0 is ast.CallExpr {
 			if expr0.or_block.kind == .propagate_option && node.exprs.len == 1 {
-				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
+				v_name := if expr0.is_static_method {
+					expr0.name.all_before('__static__') + '.' + expr0.name.all_after('__static__')
+				} else {
+					expr0.name
+				}
+				c.error('`?` is not needed, use `return ${v_name}()`', expr0.pos)
 			}
 		}
 	}

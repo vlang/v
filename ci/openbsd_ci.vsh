@@ -47,6 +47,14 @@ fn run_essential_tests() {
 	}
 }
 
+fn build_examples() {
+	if common.is_github_job {
+		exec('v -W build-examples')
+	} else {
+		exec('v -progress build-examples')
+	}
+}
+
 const all_tasks = {
 	'v_doctor':            Task{v_doctor, 'Run v doctor'}
 	'verify_v_test_works': Task{verify_v_test_works, 'Verify that v test works'}
@@ -54,6 +62,7 @@ const all_tasks = {
 	'check_math':          Task{check_math, 'Check the `math` module works'}
 	'check_compress':      Task{check_compress, 'Check the `compress` module works'}
 	'run_essential_tests': Task{run_essential_tests, 'Run only the essential tests'}
+	'build_examples':      Task{build_examples, 'Build examples'}
 }
 
 common.run(all_tasks)

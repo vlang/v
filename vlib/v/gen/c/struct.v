@@ -40,7 +40,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	unwrapped_typ := g.unwrap_generic(node.typ)
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
-		if node.typ.has_flag(.generic) && unwrapped_typ.is_ptr() {
+		if unwrapped_typ.is_ptr() {
 			// handle promotions to a sumtype for generic functions like this one: `fn (d Struct) a[T]() T { return d }`
 			// the value should be on the heap, since it is not known where it will be used:
 			sumtype_type := unwrapped_typ.set_nr_muls(0)
@@ -473,6 +473,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	if sym.info is ast.Struct {
 		if sym.info.fields.len == 0 {
+			// For empty struct fields, check if it's a shared field
+			if field.typ.has_flag(.shared_f) {
+				g.write('.${field_name} = ')
+				g.init_shared_field(field)
+				return true
+			}
 			return false
 		} else if !field.has_default_expr {
 			mut has_option_field := false
@@ -498,7 +504,8 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 					} else {
 						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var,
+							true)
 					}
 				} else {
 					g.struct_init(default_init)
@@ -532,12 +539,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var)
+				tmp_var, true)
 			return true
 		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
-				tmp_var)
+				tmp_var, true)
 			return true
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			old_inside_memset := g.inside_memset
@@ -813,9 +820,32 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if field_unwrap_sym.kind == .function && sfield.expected_type.has_flag(.option) {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var)
+		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var,
+			true)
 	} else {
 		g.left_is_opt = true
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	}
+}
+
+// struct_has_large_fixed_array returns true if the struct type contains
+// fixed arrays whose total size exceeds the threshold (64KB).
+// This is used to determine whether to avoid stack-allocated compound literals
+// which can cause stack overflow for large structs.
+fn (g &Gen) struct_has_large_fixed_array(typ ast.Type) bool {
+	sym := g.table.final_sym(typ)
+	if sym.info is ast.Struct {
+		for field in sym.info.fields {
+			field_sym := g.table.final_sym(field.typ)
+			if field_sym.info is ast.ArrayFixed {
+				// Check if this fixed array is large (> 64KB)
+				// Conservative estimate: 8 bytes per element
+				size := i64(field_sym.info.size) * 8
+				if size > 65536 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

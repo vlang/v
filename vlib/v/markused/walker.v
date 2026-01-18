@@ -524,6 +524,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeCall {
 			w.expr(node.left)
+			for args in node.args {
+				w.expr(args.expr)
+			}
+			w.expr(node.or_block)
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
@@ -1046,7 +1050,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		} else {
 			match left_sym.info {
 				ast.Array, ast.ArrayFixed {
-					if !w.uses_arr_void && node.name in ['contains', 'index'] {
+					if !w.uses_arr_void && node.name in ['contains', 'index', 'last_index'] {
 						if w.table.final_sym(left_sym.info.elem_type).kind == .function {
 							w.uses_arr_void = true
 						}
@@ -1247,6 +1251,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
 			}
+			if isym.info.elem_type.has_flag(.option) {
+				w.used_option++
+			}
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {
@@ -1436,7 +1443,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_memdup || w.used_none > 0 {
+	if w.uses_memdup || w.used_none > 0 || w.used_option > 0 {
+		// used_option => used_none => use memdup
 		w.fn_by_name('memdup')
 	}
 	if w.uses_debugger {
@@ -1701,6 +1709,11 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if w.uses_type_name {
 		charptr_idx_str := ast.charptr_type_idx.str()
 		w.fn_by_name(charptr_idx_str + '.vstring_literal')
+	}
+	if w.used_arr_method['map'] || w.used_arr_method['filter'] {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()

@@ -56,7 +56,7 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 		return error('Could not execute: ${rcmd}')
 	}
 	result := r.output.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
-		wd + os.path_separator, '', vexec_folder, '', '\\', '/']).trim_right('\n\r')
+		wd + os.path_separator, '', vexec_folder, '']).trim_right('\n\r')
 	$if windows {
 		dump(rcmd)
 		dump(r.output)

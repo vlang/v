@@ -101,6 +101,9 @@ static int create_merkle_leaf_value(const mbedtls_lms_parameters_t *params,
     size_t output_hash_len;
     unsigned char r_node_idx_bytes[4];
 
+    /* Always zeroize the output buffer because it may contain data from the previous invocation */
+    memset(out, 0, MBEDTLS_LMS_M_NODE_BYTES(params->type));
+
     op = psa_hash_operation_init();
     status = psa_hash_setup(&op, PSA_ALG_SHA_256);
     if (status != PSA_SUCCESS) {
@@ -239,25 +242,25 @@ void mbedtls_lms_public_free(mbedtls_lms_public_t *ctx)
 int mbedtls_lms_import_public_key(mbedtls_lms_public_t *ctx,
                                   const unsigned char *key, size_t key_size)
 {
-    mbedtls_lms_algorithm_type_t type;
-    mbedtls_lmots_algorithm_type_t otstype;
-
-    type = (mbedtls_lms_algorithm_type_t) MBEDTLS_GET_UINT32_BE(key, PUBLIC_KEY_TYPE_OFFSET);
-    if (type != MBEDTLS_LMS_SHA256_M32_H10) {
+    if (key_size < 4) {
         return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
     }
-    ctx->params.type = type;
+
+    uint32_t type = MBEDTLS_GET_UINT32_BE(key, PUBLIC_KEY_TYPE_OFFSET);
+    if (type != (uint32_t) MBEDTLS_LMS_SHA256_M32_H10) {
+        return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
+    }
+    ctx->params.type = (mbedtls_lms_algorithm_type_t) type;
 
     if (key_size != MBEDTLS_LMS_PUBLIC_KEY_LEN(ctx->params.type)) {
         return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
     }
 
-    otstype = (mbedtls_lmots_algorithm_type_t)
-              MBEDTLS_GET_UINT32_BE(key, PUBLIC_KEY_OTSTYPE_OFFSET);
-    if (otstype != MBEDTLS_LMOTS_SHA256_N32_W8) {
+    uint32_t otstype = MBEDTLS_GET_UINT32_BE(key, PUBLIC_KEY_OTSTYPE_OFFSET);
+    if (otstype != (uint32_t) MBEDTLS_LMOTS_SHA256_N32_W8) {
         return MBEDTLS_ERR_LMS_BAD_INPUT_DATA;
     }
-    ctx->params.otstype = otstype;
+    ctx->params.otstype = (mbedtls_lmots_algorithm_type_t) otstype;
 
     memcpy(ctx->params.I_key_identifier,
            key + PUBLIC_KEY_I_KEY_ID_OFFSET,
@@ -374,11 +377,15 @@ int mbedtls_lms_verify(const mbedtls_lms_public_t *ctx,
         return MBEDTLS_ERR_LMS_VERIFY_FAILED;
     }
 
-    create_merkle_leaf_value(
+    ret = create_merkle_leaf_value(
         &ctx->params,
         Kc_candidate_ots_pub_key,
         MERKLE_TREE_INTERNAL_NODE_AM(ctx->params.type) + q_leaf_identifier,
         Tc_candidate_root_node);
+
+    if (ret != 0) {
+        return MBEDTLS_ERR_LMS_VERIFY_FAILED;
+    }
 
     curr_node_id = MERKLE_TREE_INTERNAL_NODE_AM(ctx->params.type) +
                    q_leaf_identifier;
@@ -398,9 +405,11 @@ int mbedtls_lms_verify(const mbedtls_lms_public_t *ctx,
                          height * MBEDTLS_LMS_M_NODE_BYTES(ctx->params.type);
         }
 
-        create_merkle_internal_value(&ctx->params, left_node, right_node,
-                                     parent_node_id, Tc_candidate_root_node);
-
+        ret = create_merkle_internal_value(&ctx->params, left_node, right_node,
+                                           parent_node_id, Tc_candidate_root_node);
+        if (ret != 0) {
+            return MBEDTLS_ERR_LMS_VERIFY_FAILED;
+        }
         curr_node_id /= 2;
     }
 

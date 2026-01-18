@@ -82,7 +82,24 @@ fn run_defer() {
 	defer_if(false)
 }
 
+struct HasPointers {
+	a   int
+	msg &string
+pub mut:
+	same &HasPointers
+}
+
+fn ptr_in_struct() {
+	msg := 'pointer in struct'
+	mut s := HasPointers{1234, &msg, unsafe { nil }}
+	println(*s.msg)
+	s.same = &s
+	println(*&int(voidptr(s.same.a))) // FIXME: wont work without casts
+}
+
 fn main() {
+	println('ptr_in_struct')
+	ptr_in_struct()
 	println('ptr_arith')
 	ptr_arith()
 	run_defer()

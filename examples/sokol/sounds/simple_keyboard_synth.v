@@ -1,3 +1,4 @@
+// vtest build: !openbsd
 import time
 import math
 import term

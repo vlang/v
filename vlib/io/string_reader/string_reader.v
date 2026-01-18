@@ -1,3 +1,5 @@
+@[deprecated: 'If you use it, create a local module named `string_reader`, and copy https://github.com/vlang/v/blob/f24d49259db5d2d7211e79bcf6b6f507d22847f3/vlib/io/string_reader/string_reader.v there.']
+@[deprecated_after: '2026-01-06']
 module string_reader
 
 import io

@@ -94,6 +94,51 @@ fn infcfor() int {
 	return 0
 }
 
+fn continuecfor() int {
+	mut val := 0
+
+	for i := 0; i < 10; i += 2 {
+		if i == 6 {
+			continue
+		}
+		val += i
+	}
+	return val
+}
+
+fn continuecfor_multiple() int {
+	mut val := 0
+
+	for i := 0; i < 10; i += 2 {
+		if i == 6 {
+			continue
+		}
+		// Two continues
+		if i == 2 {
+			continue
+		}
+		val += i
+	}
+	return val
+}
+
+fn continuec_twofor_multiple() int {
+	mut val := 0
+
+	for i := 0; i < 10; i += 2 {
+		if i == 6 {
+			continue
+		}
+		for j := -12; j < 10; j += 1 {
+			if j == 6 {
+				continue
+			}
+			val += i
+		}
+	}
+	return val
+}
+
 fn main() {
 	println('--- func()')
 	println(func(10, true))
@@ -121,4 +166,13 @@ fn main() {
 
 	println('--- infcfor()')
 	println(infcfor())
+
+	println('--- continuecfor()')
+	println(continuecfor())
+
+	println('--- continuecfor_multiple()')
+	println(continuecfor_multiple())
+
+	println('--- continuec_twofor_multiple()')
+	println(continuec_twofor_multiple())
 }

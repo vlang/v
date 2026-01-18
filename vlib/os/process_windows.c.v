@@ -108,7 +108,7 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
-	cmd := '${p.filename} ' + p.args.join(' ')
+	cmd := '${p.filename} ' + requote_args(p.args)
 	cmd_wide_ptr := cmd.to_wide()
 	to_be_freed << cmd_wide_ptr
 	C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
@@ -366,4 +366,24 @@ fn (mut p Process) unix_wait() {
 
 fn (mut p Process) unix_is_alive() bool {
 	return false
+}
+
+@[manualfree]
+fn requote_args(cargs []string) string {
+	mut sb := strings.new_builder(128)
+	defer { unsafe { sb.free() } }
+	for idx, a in cargs {
+		if idx > 0 {
+			sb.write_rune(` `)
+		}
+		if !a.starts_with('"') {
+			sb.write_string('"')
+			sb.write_string(a)
+			sb.write_string('"')
+		} else {
+			sb.write_string(a)
+		}
+	}
+	res := sb.str()
+	return res
 }

@@ -170,15 +170,19 @@ pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 }
 
 // get_session_id retrieves the current session id, if it is set.
+// The HMAC signature is verified when extracting from cookies.
 pub fn (s &Sessions[T]) get_session_id[X](ctx X) ?string {
 	// first check session id from `ctx`
 	sid_from_ctx := ctx.CurrentSession.session_id
 	if sid_from_ctx != '' {
 		return sid_from_ctx
 	} else if cookie := ctx.get_cookie(s.cookie_options.cookie_name) {
-		// check request headers for the session_id cookie
-		a := cookie.split('.')
-		return a[0]
+		// check request headers for the session_id cookie and verify HMAC signature
+		sid, valid := verify_session_id(cookie, s.secret)
+		if valid {
+			return sid
+		}
+		return none
 	} else {
 		// check the Set-Cookie headers on the response for a session id
 		for cookie in ctx.res.cookies() {

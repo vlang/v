@@ -38,7 +38,7 @@
 
 #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
 
-// fallback to 3.3.0 implmentation, as 3.6.3.1 need a high version of Windows SDK
+// fallback to 3.3.0 implmentation, as 3.6.5 need a high version of Windows SDK
 #if !defined(_WIN32_WINNT)
 #define _WIN32_WINNT 0x0400
 #endif

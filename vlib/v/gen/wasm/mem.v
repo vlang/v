@@ -72,6 +72,12 @@ pub fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 		ast.ParExpr {
 			return g.get_var_from_expr(node.expr)
 		}
+		ast.CastExpr {
+			// For cast expressions like &u32(), we need to look through
+			// the cast to get the underlying variable because WASM don't have
+			// really pointers like in C
+			return g.get_var_from_expr(node.expr)
+		}
 		ast.SelectorExpr {
 			mut addr := g.get_var_from_expr(node.expr) or {
 				// if place {
@@ -653,6 +659,9 @@ pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existin
 		}
 		ast.IfExpr {
 			g.if_expr(init, expected, existing_rvars)
+		}
+		ast.MatchExpr {
+			g.match_expr(init, expected, existing_rvars)
 		}
 		ast.CallExpr {
 			g.call_expr(init, expected, existing_rvars)

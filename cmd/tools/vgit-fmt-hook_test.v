@@ -42,8 +42,10 @@ fn testsuite_end() {
 	reset_to_start_state()
 	show_git_status()
 	os.chdir(os.wd_at_startup)!
-	full_remove(tfolder)!
-	eprintln('>>>>>> deleted ${tfolder}')
+	if os.getenv('VTEST_KEEP_TFOLDER') != '1' {
+		full_remove(tfolder)!
+		eprintln('>>>>>> deleted ${tfolder} . Use VTEST_KEEP_TFOLDER=1 to keep it to ease diagnosing platform issues.')
+	}
 	assert true
 }
 

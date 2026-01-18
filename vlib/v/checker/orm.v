@@ -413,6 +413,40 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 		if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
 			continue
 		}
+		// Skip embedded fields, as their fields are already flattened into the struct
+		if field.is_embed {
+			embed_sym := c.table.sym(field.typ)
+			if embed_sym.info is ast.Struct {
+				// fields << c.fetch_and_check_orm_fields(embed_sym.info, pos, embed_sym.name)
+				embedded_fields := c.fetch_and_check_orm_fields(embed_sym.info, pos, embed_sym.name)
+				for ef in embedded_fields {
+					mut new_field := ef
+					// Update name for correct C generation (e.g. msg.Payload.field)
+					new_field.name = '${field.name}.${ef.name}'
+					// Clone attributes to avoid modifying the original struct definition
+					new_field.attrs = ef.attrs.clone()
+
+					// Ensure SQL column name matches the original field name
+					mut has_sql := false
+					for attr in new_field.attrs {
+						if attr.name == 'sql' {
+							has_sql = true
+							break
+						}
+					}
+					if !has_sql {
+						new_field.attrs << ast.Attr{
+							name:    'sql'
+							arg:     ef.name
+							has_arg: true
+							kind:    .string
+						}
+					}
+					fields << new_field
+				}
+			}
+			continue
+		}
 		field_sym := c.table.sym(field.typ)
 		final_field_typ := c.table.final_type(field.typ)
 		is_primitive := final_field_typ.is_string() || final_field_typ.is_bool()

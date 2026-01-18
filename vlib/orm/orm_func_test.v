@@ -498,12 +498,22 @@ fn test_orm_func_stmts() {
 	assert only_names[0].score == 0
 	assert only_names[0].created_at == none
 
-	// update
+	// update with single `set()`
 	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?', 'John')!.update()!
 	john := qb.where('name = ?', 'John')!.query()!
 	assert john[0].name == 'John'
 	assert john[0].age == 71
 	assert john[0].title == 'boss'
+
+	// update with multiple `set()`
+
+	qb.set('age = ?', 51)!
+		.set('title = ?', 'employee')!
+		.where('name = ?', 'John')!.update()!
+	john2 := qb.where('name = ?', 'John')!.query()!
+	assert john2[0].name == 'John'
+	assert john2[0].age == 51
+	assert john2[0].title == 'employee'
 
 	// delete
 	qb.where('name = ?', 'John')!.delete()!
@@ -572,4 +582,50 @@ fn test_orm_func_f32_f64() {
 
 	assert data.age_f32 == p.age_f32
 	assert data.age_f64 == p.age_f64
+}
+
+@[index: 'age_f33, age_f64']
+struct InvalidIndexFieldName1 {
+	age_f32 f32
+	age_f64 f64
+}
+
+fn test_orm_func_invalid_index_field_name1() {
+	p := InvalidIndexFieldName1{
+		age_f32: 10.33
+		age_f64: 10.343
+	}
+
+	db := sqlite.connect(':memory:')!
+
+	mut qb := orm.new_query[InvalidIndexFieldName1](db)
+
+	qb.create() or {
+		assert err.msg() == "table `InvalidIndexFieldName1` has no field's name: `age_f33`"
+		return
+	}
+	assert false, 'should not be here'
+}
+
+@[index: 'age_f32, age_f64']
+struct InvalidIndexFieldName2 {
+	age_f32 f32 @[sql: abc]
+	age_f64 f64
+}
+
+fn test_orm_func_invalid_index_field_name2() {
+	p := InvalidIndexFieldName2{
+		age_f32: 10.33
+		age_f64: 10.343
+	}
+
+	db := sqlite.connect(':memory:')!
+
+	mut qb := orm.new_query[InvalidIndexFieldName2](db)
+
+	qb.create() or {
+		assert err.msg() == "table `InvalidIndexFieldName2` has no field's name: `age_f32`"
+		return
+	}
+	assert false, 'should not be here'
 }

@@ -258,10 +258,11 @@ pub mut:
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem     Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls        bool
-	json_errors   bool // -json-errors, for VLS and other tools
-	new_transform bool // temporary for the new transformer
+	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls             bool
+	json_errors        bool // -json-errors, for VLS and other tools
+	new_transform      bool // temporary for the new transformer
+	new_generic_solver bool
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -1012,8 +1013,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						}
 					}
 				} $else {
-					println('coroutines only work on macos & linux for now')
+					eprintln_exit('coroutines only work on macOS & Linux for now')
 				}
+			}
+			'-new-generic-solver' {
+				res.new_generic_solver = true
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {

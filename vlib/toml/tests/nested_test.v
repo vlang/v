@@ -17,11 +17,11 @@ enabled = true
   [servers.alpha.tricky]
   ip = "10.0.0.100"
 
-[firewall.rules.limit]
-	ip = "10.0.0.101"
-
-	[firewall.rules]
+[firewall.rules]
 	block = true
+
+	[firewall.rules.limit]
+	ip = "10.0.0.101"
 '
 
 fn test_parse() {

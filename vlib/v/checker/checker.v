@@ -29,12 +29,12 @@ const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 // are properly checked.
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all',
-	'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
+	'sort_with_compare', 'sorted', 'sorted_with_compare', 'contains', 'index', 'last_index', 'wait',
+	'any', 'all', 'first', 'last', 'pop_left', 'pop', 'delete', 'insert', 'prepend', 'count']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
-pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wait', 'map', 'sort',
-	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place', 'count',
-	'filter']
+pub const fixed_array_builtin_methods = ['contains', 'index', 'last_index', 'any', 'all', 'wait',
+	'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse',
+	'reverse_in_place', 'count', 'filter']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
 pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
@@ -66,6 +66,7 @@ pub mut:
 	expected_or_type            ast.Type // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type          ast.Type // if/match is_expr: expected_type
 	mod                         string   // current module name
+	has_globals_in_module       bool     // true if the current module has @[has_globals] attribute
 	const_var                   &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                  []string
 	const_names                 []string
@@ -139,15 +140,16 @@ mut:
 	inside_assign                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign    bool
-	comptime_call_pos  int                      // needed for correctly checking use before decl for templates
-	goto_labels        map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type     ast.Type
-	field_data_type    ast.Type
-	variant_data_type  ast.Type
-	fn_return_type     ast.Type
-	orm_table_fields   map[string][]ast.StructField // known table structs
-	short_module_names []string                     // to check for function names colliding with module functions
+	is_index_assign        bool
+	comptime_call_pos      int                      // needed for correctly checking use before decl for templates
+	generic_call_positions map[string]token.Pos     // map from generic function key to call position
+	goto_labels            map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type         ast.Type
+	field_data_type        ast.Type
+	variant_data_type      ast.Type
+	fn_return_type         ast.Type
+	orm_table_fields       map[string][]ast.StructField // known table structs
+	short_module_names     []string                     // to check for function names colliding with module functions
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -180,9 +182,19 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		v_current_commit_hash:         v_current_commit_hash
 		checker_transformer:           transformer.new_transformer_with_table(table, pref_)
 	}
+	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
 	return checker
+}
+
+// build_generic_call_key builds a key for tracking generic function call positions
+fn (c &Checker) build_generic_call_key(fkey string, concrete_types []ast.Type) string {
+	mut types_str := ''
+	for typ in concrete_types {
+		types_str += c.table.type_to_str(typ) + ','
+	}
+	return '${fkey}[${types_str}]'
 }
 
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
@@ -217,6 +229,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_interface_deref = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
+	c.has_globals_in_module = false
 	c.error_details.clear()
 }
 
@@ -378,6 +391,14 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 			import_sym.alias
 		}
 	}
+	// Check if the current module has has_globals attribute
+	c.has_globals_in_module = false
+	for attr in file.mod.attrs {
+		if attr.name == 'has_globals' {
+			c.has_globals_in_module = true
+			break
+		}
+	}
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
@@ -386,13 +407,26 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_no_main_mod_file := false
 	mut has_main_fn := false
+	// Determine the project directory when using -line-info
+	mut project_dir := ''
+	if c.pref.is_vls && c.pref.line_info != '' {
+		project_dir = if os.is_dir(c.pref.path) {
+			os.real_path(c.pref.path)
+		} else {
+			os.real_path(os.dir(c.pref.linfo.path))
+		}
+	}
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
-			if c.pref.is_vls && file.path != c.pref.path {
-				// in `vls` mode, only check the user file
+			if c.pref.is_vls && c.pref.line_info == '' && file.path != c.pref.path {
 				continue
+			}
+			if c.pref.is_vls && c.pref.line_info != '' && project_dir != '' {
+				if !os.real_path(file.path).starts_with(project_dir) {
+					continue
+				}
 			}
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
@@ -607,6 +641,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		if c.vls_is_the_node(node.type_pos) {
+			typ_str := c.table.type_to_str(node.parent_type)
+			if np := c.name_pos_gotodef(typ_str) {
+				if np.file_idx != -1 {
+					println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+					exit(0)
+				}
+			}
+		}
+	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
@@ -772,6 +817,19 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	if c.pref.is_vls && c.pref.linfo.method == .definition {
+		for variant in node.variants {
+			if c.vls_is_the_node(variant.pos) {
+				typ_str := c.table.type_to_str(variant.typ)
+				if np := c.name_pos_gotodef(typ_str) {
+					if np.file_idx != -1 {
+						println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+						exit(0)
+					}
+				}
+			}
+		}
+	}
 	mut names_used := []string{}
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
@@ -846,9 +904,42 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
+		} else if sym.kind == .sum_type && sym.info is ast.SumType {
+			// Check for circular references through other sum types
+			mut visited := map[int]bool{}
+			visited[node.typ.idx()] = true
+			if c.sumtype_has_circular_ref(variant.typ, node.typ, mut visited) {
+				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
+			}
 		}
 		names_used << variant_name
 	}
+}
+
+// Checks if the sum type `sum_typ` contains `target_typ` in its variants (directly or indirectly through other sum types)
+fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Type, mut visited map[int]bool) bool {
+	sum_sym := c.table.sym(sum_typ)
+	if sum_sym.kind != .sum_type || sum_sym.info !is ast.SumType {
+		return false
+	}
+	sum_info := sum_sym.info as ast.SumType
+	for variant in sum_info.variants {
+		if variant.idx() == target_typ.idx() {
+			return true
+		}
+		// Avoid infinite recursion by tracking visited types
+		if variant.idx() in visited {
+			continue
+		}
+		variant_sym := c.table.sym(variant)
+		if variant_sym.kind == .sum_type {
+			visited[variant.idx()] = true
+			if c.sumtype_has_circular_ref(variant, target_typ, mut visited) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
@@ -1368,6 +1459,9 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 
 // return the actual type of the expression, once the result or option type is handled
 fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
+	if ret_type.idx() == 0 {
+		return ret_type
+	}
 	match expr {
 		ast.CallExpr {
 			mut expr_ret_type := expr.return_type
@@ -2191,6 +2285,74 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							iseen, enum_imin, enum_imax)
 					}
 				}
+				ast.EnumVal {
+					// Handle `.a` shorthand syntax to reference another field from same enum
+					ref_name := if field.expr.enum_name == '' {
+						node.name
+					} else {
+						field.expr.enum_name
+					}
+					if ref_name == node.name {
+						if field.expr.val !in seen_enum_field_names {
+							c.error('`${node.name}.${field.expr.val}` should be declared before using it',
+								field.expr.pos)
+						} else {
+							// Get the index of the referenced field
+							ref_idx := seen_enum_field_names[field.expr.val]
+							// Use the value from the previously seen values and transform to IntegerLiteral
+							if signed {
+								mut was_seen := true
+								ref_val := iseen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in iseen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								iseen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							} else {
+								mut was_seen := true
+								ref_val := useen[ref_idx] or {
+									was_seen = false
+									-1
+								}
+								if !c.pref.translated && !c.file.is_translated
+									&& !node.is_multi_allowed && ref_val in useen {
+									c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when needed')
+									if was_seen {
+										c.error('enum value `${ref_val}` already exists',
+											field.expr.pos)
+									} else {
+										c.error('enum value `${field.expr.val}` is not allowed to reference itself',
+											field.expr.pos)
+									}
+								}
+								useen << ref_val
+								// Transform to IntegerLiteral for code generation
+								field.expr = ast.IntegerLiteral{
+									val: ref_val.str()
+									pos: field.expr.pos
+								}
+							}
+						}
+					} else {
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
+					}
+				}
 				ast.CastExpr {
 					fe_type := c.cast_expr(mut field.expr)
 					if node.typ != fe_type {
@@ -2444,7 +2606,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.interface_decl(mut node)
 		}
 		ast.Module {
-			c.check_valid_snake_case(node.name, 'module name', node.pos)
+			module_name := node.name.all_after_last('.')
+			c.check_valid_snake_case(module_name, 'module name', node.pos)
 		}
 		ast.Return {
 			// c.returns = true
@@ -2574,6 +2737,13 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 }
 
 fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	if !c.pref.enable_globals && !c.pref.is_fmt && !c.pref.is_vet && !c.pref.translated
+		&& !c.pref.is_livemain && !c.pref.building_v && !c.is_builtin_mod
+		&& !c.has_globals_in_module && !c.file.is_translated {
+		c.error('use `v -enable-globals ...` to enable globals', node.pos)
+		return
+	}
+
 	required_args_attr := ['_linker_section']
 	for attr_name in required_args_attr {
 		if attr := node.attrs.find_first(attr_name) {
@@ -2860,47 +3030,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag == 'flag' { // Checks for empty flag
 				c.error('no argument(s) provided for #flag', node.pos)
 			}
-			if flag.contains('@VROOT') {
-				// c.note(checker.vroot_is_deprecated_message, node.pos)
-				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('@DIR') {
-				// expand `@DIR` to its absolute path
-				flag = flag.replace('@DIR', c.dir_path())
-			}
-			if flag.contains('@VEXEROOT') {
-				// expand `@VEXEROOT` to its absolute path
-				flag = flag.replace('@VEXEROOT', c.pref.vroot)
-			}
-			if flag.contains('@VMODROOT') {
-				flag = util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('\$env(') {
-				flag = util.resolve_env_value(flag, true) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			if flag.contains('\$d(') {
-				flag = util.resolve_d_value(c.pref.compile_values, flag) or {
-					c.error(err.msg(), node.pos)
-					return
-				}
-			}
-			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-				if flag.contains(deprecated) {
-					if !flag.contains('@VMODROOT') {
-						c.error('${deprecated} had been deprecated, use @VMODROOT instead.',
-							node.pos)
-					}
-				}
-			}
+			flag = c.resolve_pseudo_variables(flag, node.pos) or { return }
 			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg(), node.pos)
 			}
@@ -2920,6 +3050,45 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 	}
+}
+
+fn (mut c Checker) resolve_pseudo_variables(oflag string, pos token.Pos) ?string {
+	mut flag := oflag
+	if flag.contains('@VEXEROOT') {
+		// expand `@VEXEROOT` to its absolute path
+		flag = flag.replace('@VEXEROOT', c.pref.vroot)
+	}
+	if flag.contains('@VMODROOT') {
+		flag = util.resolve_vmodroot(flag, c.file.path) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	if flag.contains('@DIR') {
+		// expand `@DIR` to its absolute path
+		flag = flag.replace('@DIR', c.dir_path())
+	}
+	if flag.contains('\$env(') {
+		flag = util.resolve_env_value(flag, true) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	if flag.contains('\$d(') {
+		flag = util.resolve_d_value(c.pref.compile_values, flag) or {
+			c.error(err.msg(), pos)
+			return none
+		}
+	}
+	for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+		if flag.contains(deprecated) {
+			if !flag.contains('@VMODROOT') {
+				c.error('${deprecated} had been deprecated, use @VMODROOT instead.', pos)
+				return none
+			}
+		}
+	}
+	return flag
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
@@ -3539,6 +3708,13 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else {
 		to_type
 	}
+
+	if final_to_sym == final_from_sym && final_to_type.flags() == from_type.flags()
+		&& to_type.flags() == from_type.flags() {
+		// type alias, and flags are same, e.g. option, result, nr_muls...
+		return node.typ
+	}
+
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
 	c.markused_castexpr(mut node, to_type, mut final_to_sym)
 	if to_type.has_flag(.result) {
@@ -5926,6 +6102,9 @@ fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guess
 }
 
 fn (c &Checker) check_import_sym_conflict(ident string) bool {
+	if ident == '_' {
+		return false
+	}
 	for import_sym in c.file.imports {
 		// Check if alias exists or not
 		if !import_sym.alias.is_blank() {

@@ -153,6 +153,12 @@ pub fn (mut s Scanner) scan() !token.Token {
 				if c == `\n` {
 					s.inc_line_number()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'incremented line nr to ${s.line_nr}')
+				} else if c == `\r` {
+					// CR should always be followed by a `\n`
+					if s.at() != `\n` {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' missing newline/linefeed character after "\\c" carriage return at (${s.line_nr},${s.col}) "${ascii}" near ...${s.excerpt(s.pos, 5)}...')
+					}
 				}
 				// Date-Time in RFC 3339 is allowed to have a space between the date and time in supplement to the 'T'
 				// so we allow space characters to slip through to the parser if the space is between two digits...

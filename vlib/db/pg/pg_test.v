@@ -80,3 +80,60 @@ fn test_transaction() {
 		dump(row.str())
 	}
 }
+
+fn test_listen_notify() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
+
+	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
+	defer {
+		db.close() or {}
+	}
+
+	// Test listen
+	db.listen('test_channel')!
+
+	// Test notify with payload
+	db.notify('test_channel', 'hello world')!
+
+	// Consume input to process the notification
+	db.consume_input()!
+
+	// Get the notification
+	if notification := db.get_notification() {
+		assert notification.channel == 'test_channel'
+		assert notification.payload == 'hello world'
+		assert notification.pid > 0
+	} else {
+		assert false, 'Expected a notification but got none'
+	}
+
+	// Test notify without payload
+	db.notify('test_channel', '')!
+	db.consume_input()!
+
+	if notification := db.get_notification() {
+		assert notification.channel == 'test_channel'
+		assert notification.payload == ''
+	} else {
+		assert false, 'Expected a notification but got none'
+	}
+
+	// Test that no more notifications are pending
+	assert db.get_notification() == none
+
+	// Test unlisten
+	db.unlisten('test_channel')!
+
+	// Test unlisten_all
+	db.listen('channel1')!
+	db.listen('channel2')!
+	db.unlisten_all()!
+
+	// Test socket (should return valid fd)
+	socket_fd := db.socket()
+	assert socket_fd >= 0
+}

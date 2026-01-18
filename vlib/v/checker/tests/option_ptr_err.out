@@ -4,7 +4,7 @@ vlib/v/checker/tests/option_ptr_err.vv:3:10: error: type `?int` is an Option, it
     3 |     assert *var == 0
       |             ~~~
     4 | }
-vlib/v/checker/tests/option_ptr_err.vv:3:9: error: unwrapped Option cannot be used in an infix expression
+vlib/v/checker/tests/option_ptr_err.vv:3:9: error: `?int` cannot be used as `int literal`, unwrap the option first
     1 | fn main() {
     2 |     mut var := unsafe { ?&int(none) }
     3 |     assert *var == 0
