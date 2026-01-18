@@ -134,34 +134,38 @@ pub fn (mut c Comptime) stmt(mut node ast.Stmt) ast.Stmt {
 
 type StmtOrExpr = ast.Expr | ast.Stmt
 
+pub fn (mut c Comptime) check_type_equality(left_type ast.Type, right ast.Expr) !bool {
+	if right is ast.ComptimeType {
+		if right.kind == .array {
+			return c.table.sym(left_type).info is ast.Array
+		} else if right.kind == .iface {
+			return c.table.sym(left_type).info is ast.Interface
+		} else if right.kind == .map {
+			return c.table.sym(left_type).info is ast.Map
+		} else if right.kind == .struct {
+			return c.table.sym(left_type).info is ast.Struct
+		} else if right.kind == .int {
+			return left_type.is_int()
+		}
+		// TODO do the other types
+	} else if right is ast.TypeNode {
+		sym := c.table.sym(right.typ)
+		if sym.info is ast.Interface {
+			return c.table.does_type_implement_interface(left_type, right.typ)
+		} else {
+			return left_type == right.typ
+		}
+	}
+	return error('Cannot solve')
+}
+
 pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 	match expr {
 		ast.InfixExpr {
 			match expr.op {
 				.key_is {
 					if expr.left is ast.TypeNode {
-						if expr.right is ast.ComptimeType {
-							if expr.right.kind == .array {
-								return c.table.sym(expr.left.typ).info is ast.Array
-							} else if expr.right.kind == .iface {
-								return c.table.sym(expr.left.typ).info is ast.Interface
-							} else if expr.right.kind == .map {
-								return c.table.sym(expr.left.typ).info is ast.Map
-							} else if expr.right.kind == .struct {
-								return c.table.sym(expr.left.typ).info is ast.Struct
-							} else if expr.right.kind == .int {
-								return expr.left.typ.is_int()
-							}
-							// TODO do the other types
-						} else if expr.right is ast.TypeNode {
-							sym := c.table.sym(expr.right.typ)
-							if sym.info is ast.Interface {
-								return c.table.does_type_implement_interface(expr.left.typ,
-									expr.right.typ)
-							} else {
-								return expr.left.typ == expr.right.typ
-							}
-						}
+						return c.check_type_equality(expr.left.typ, expr.right)!
 					} else if expr.left is ast.SelectorExpr {
 						if expr.left.field_name == 'typ' && expr.left.expr is ast.Ident {
 							if expr.left.expr.info is ast.IdentFn {
@@ -169,6 +173,10 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 									return expr.left.expr.info.typ == expr.right.typ
 								}
 							}
+						} else if expr.left.field_name == 'unaliased_typ'
+							&& expr.left.expr is ast.Ident {
+							unaliased_type := c.table.unaliased_type(expr.left.expr.obj.typ)
+							return c.check_type_equality(unaliased_type, expr.right)!
 						}
 					}
 				}

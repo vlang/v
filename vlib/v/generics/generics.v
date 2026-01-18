@@ -8,6 +8,9 @@ import strings
 
 // Stage for solving generics
 
+const result_name = ast.result_name
+const option_name = ast.option_name
+
 pub struct Generics {
 	pref &pref.Preferences
 pub mut:
@@ -328,8 +331,19 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 	return node
 }
 
+pub fn (mut g Generics) styp(t ast.Type) string {
+	if !t.has_option_or_result() {
+		return g.base_type(t)
+	} else if t.has_flag(.option) {
+		// Register an optional if it's not registered yet
+		return g.register_option(t)
+	} else {
+		return g.register_result(t)
+	}
+}
+
 // incomplete implementation: TODO
-pub fn (mut g Generics) styp(_t ast.Type) string {
+fn (mut g Generics) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
 	if styp := g.styp_cache[t] {
 		return styp
@@ -349,6 +363,62 @@ pub fn (mut g Generics) styp(_t ast.Type) string {
 	}
 	g.styp_cache[t] = styp
 	return styp
+}
+
+// incomplete implementation: TODO
+fn (mut g Generics) register_option(t ast.Type) string {
+	styp, _ := g.option_type_name(t)
+	return if !t.has_flag(.option_mut_param_t) { styp } else { '${styp}*' }
+}
+
+// incomplete implementation: TODO
+fn (mut g Generics) register_result(t ast.Type) string {
+	styp, _ := g.result_type_name(t)
+	return styp
+}
+
+// TODO: this really shouldn't be separate from typ
+// but I(emily) would rather have this generation
+// all unified in one place so that it doesn't break
+// if one location changes
+fn (mut g Generics) option_type_name(t ast.Type) (string, string) {
+	mut base := g.base_type(t)
+	mut styp := ''
+	sym := g.table.sym(t)
+	if sym.info is ast.FnType {
+		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+	}
+	if sym.language == .c && sym.kind == .struct {
+		styp = '${option_name}_${base.replace(' ', '_')}'
+	} else {
+		styp = '${option_name}_${base}'
+	}
+	if t.has_flag(.generic) || t.is_ptr() {
+		styp = styp.replace('*', '_ptr')
+	}
+	return styp, base
+}
+
+fn (mut g Generics) result_type_name(t ast.Type) (string, string) {
+	mut base := g.base_type(t)
+	if t.has_flag(.option) {
+		g.register_option(t)
+		base = '_option_' + base
+	}
+	mut styp := ''
+	sym := g.table.sym(t)
+	if sym.info is ast.FnType {
+		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+	}
+	if sym.language == .c && sym.kind == .struct {
+		styp = '${result_name}_${base.replace(' ', '_')}'
+	} else {
+		styp = '${result_name}_${base}'
+	}
+	if t.has_flag(.generic) || t.is_ptr() {
+		styp = styp.replace('*', '_ptr')
+	}
+	return styp, base
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
