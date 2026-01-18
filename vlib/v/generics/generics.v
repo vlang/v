@@ -655,6 +655,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						}
 					}
 				}
+				mut receiver_type := g.unwrap_generic(node.receiver_type)
+				if receiver_type.has_flag(.generic) {
+					receiver_type = receiver_type.clear_flag(.generic)
+				}
 				return ast.Expr(ast.CallExpr{
 					...node
 					name:                if node.is_method {
@@ -663,7 +667,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						g.concrete_name(node.name, all_concrete_types)
 					}
 					left_type:           g.unwrap_generic(node.left_type)
-					receiver_type:       g.unwrap_generic(node.receiver_type)
+					receiver_type:       receiver_type
 					return_type:         g.unwrap_generic(node.return_type)
 					return_type_generic: ast.no_type
 					fn_var_type:         g.unwrap_generic(node.fn_var_type)
