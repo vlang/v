@@ -50,7 +50,9 @@ fn cmd_status(htarget string) {
 }
 
 fn cmd_install(htarget string) {
-	report_status(htarget, false)
+	if report_status(htarget, false) {
+		return
+	}
 	println('> Installing the newest version of ${horiginal} over ${htarget} ...')
 	$if openbsd {
 		os.cp(shoriginal, htarget) or { err_exit('failed to copy to ${htarget}') }
@@ -70,7 +72,8 @@ fn cmd_remove(htarget string) {
 	println('> Done.')
 }
 
-fn report_status(htarget string, show_instructions bool) {
+// Returns true if pre-commit Git hook already exists and identical to VSH script
+fn report_status(htarget string, show_instructions bool) bool {
 	mut original := ''
 	$if openbsd {
 		original = shoriginal
@@ -94,7 +97,7 @@ fn report_status(htarget string, show_instructions bool) {
 		if show_instructions {
 			show_msg_about_removing(htarget)
 		}
-		return
+		return true
 	}
 	println('> Files have different hashes.')
 	if ohash != '' && thash != '' {
@@ -109,6 +112,7 @@ fn report_status(htarget string, show_instructions bool) {
 		println('> with the newest pre-commit formatting script from the main V repo.')
 		show_msg_about_removing(htarget)
 	}
+	return false
 }
 
 fn show_msg_about_removing(htarget string) {
