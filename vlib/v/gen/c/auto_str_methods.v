@@ -1070,7 +1070,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				left_fn_name := util.no_dots(left_cc_type)
 				'${left_fn_name}_str'
 			}
-			if sym.info is ast.Struct {
+			if sym.info is ast.Struct && !g.pref.new_generic_solver {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
