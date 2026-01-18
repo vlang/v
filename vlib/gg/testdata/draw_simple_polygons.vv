@@ -5,8 +5,8 @@ import gg
 struct App {
 mut:
 	gg       &gg.Context = unsafe { nil }
-	rotation f32 = f32(0)
-	edge     int = 3
+	rotation f32         = f32(0)
+	edge     int         = 3
 }
 
 fn main() {
@@ -17,12 +17,12 @@ fn main() {
 
 	app.gg = gg.new_context(
 		window_title: 'Simple Polygons'
-		width: 500
-		height: 500
-		bg_color: gg.black
-		event_fn: event
-		frame_fn: render
-		user_data: app
+		width:        500
+		height:       500
+		bg_color:     gg.black
+		event_fn:     event
+		frame_fn:     render
+		user_data:    app
 	)
 
 	app.gg.run()
