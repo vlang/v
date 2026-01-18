@@ -1,7 +1,7 @@
-module strings
+module lorem
 
 fn test_lorem_generate_basic() {
-	output := lorum(LoremCfg{
+	output := generate(LoremCfg{
 		paragraphs:              2
 		sentences_per_paragraph: 3
 		words_per_sentence:      5
@@ -16,8 +16,8 @@ fn test_lorem_generate_deterministic() {
 		rng_seed:   12345
 		paragraphs: 1
 	}
-	out1 := lorum(cfg)
-	out2 := lorum(cfg)
+	out1 := generate(cfg)
+	out2 := generate(cfg)
 	assert out1 == out2
 }
 
@@ -25,7 +25,7 @@ fn test_lorem_generate_counts() {
 	cfg := LoremCfg{
 		paragraphs: 3
 	}
-	output := lorum(cfg)
+	output := generate(cfg)
 	// There should be 2 separators for 3 paragraphs
 	assert output.count('\n\n') == 2
 }
@@ -37,7 +37,7 @@ fn test_lorem_custom_corpus() {
 		rng_seed:    999
 		paragraphs:  1
 	}
-	output := lorum(cfg)
+	output := generate(cfg)
 	assert output.len > 0
 	// Hard to check exact content due to randomness, but it should not crash
 }

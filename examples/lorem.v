@@ -14,7 +14,7 @@ Example:
 
     ./lorem -order 2 -words 12 -sentences 4 -paragraphs 3 -corpus poe
 */
-import strings
+import strings.lorem
 import flag
 import os
 import rand
@@ -45,7 +45,7 @@ fn main() {
 		rng_seed = rand.int()
 	}
 
-	cfg := strings.LoremCfg{
+	text := lorem.generate(
 		markov_order:            order
 		words_per_sentence:      words_per_sentence
 		sentences_per_paragraph: sentences_per_paragraph
@@ -53,8 +53,7 @@ fn main() {
 		corpus_name:             corpus_name
 		seed_text:               seed_text
 		rng_seed:                rng_seed
-	}
+	)
 
-	text := strings.lorum(cfg)
 	println(text)
 }

@@ -1,4 +1,4 @@
-module strings
+module lorem
 
 const lorem_corpora = {
 	'lorem':  lorem_corpus
@@ -88,7 +88,7 @@ pub:
 // - Optional seed phrases and RNG seed
 // - Optional corpus selection
 //
-pub fn lorum(cfg LoremCfg) string {
+pub fn generate(cfg LoremCfg) string {
 	// Initialize LCG with provided seed or default
 	// If rng_seed is 0, we use a default seed (making it deterministic by default)
 	initial_seed := if cfg.rng_seed != 0 { u32(cfg.rng_seed) } else { u32(123456789) }
