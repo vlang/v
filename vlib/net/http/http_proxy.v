@@ -96,7 +96,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 
 	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }
 
-	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}')
+	s := req.build_request_headers(req.method, host_name, port, path)
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host.host}:443')!
 
@@ -140,7 +140,7 @@ fn (pr &HttpProxy) dial(host string) !&net.TcpConn {
 		tcp.write(pr.build_proxy_headers(host).bytes())!
 		mut bf := []u8{len: 4096}
 
-		tcp.read(mut bf)!
+		for { mut small_buf := []u8{len: 1}; tcp.read(mut small_buf)!; bf << small_buf[0]; if bf.bytestr().contains("\r\n\r\n") { break } }
 		return tcp
 	} else if pr.scheme == 'socks5' {
 		return socks.socks5_dial(pr.host, host, pr.username, pr.password)!
@@ -154,7 +154,7 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 		mut tcp := net.dial_tcp(pr.host)!
 		tcp.write(pr.build_proxy_headers(host).bytes())!
 		mut bf := []u8{len: 4096}
-		tcp.read(mut bf)!
+		for { mut small_buf := []u8{len: 1}; tcp.read(mut small_buf)!; bf << small_buf[0]; if bf.bytestr().contains("\r\n\r\n") { break } }
 		if !bf.bytestr().contains('HTTP/1.1 200') {
 			return error('ssl dial error: ${bf.bytestr()}')
 		}

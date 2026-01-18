@@ -341,7 +341,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 					}
 				}
 			}
-			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+			if body_pos > 0 { req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)! }
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
