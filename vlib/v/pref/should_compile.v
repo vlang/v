@@ -69,6 +69,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
 			continue
 		}
+		if prefs.backend == .wasm && !prefs.should_compile_wasm(file) {
+			continue
+		}
 		if file.starts_with('.#') {
 			continue
 		}
@@ -282,6 +285,14 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 pub fn (prefs &Preferences) should_compile_js(file string) bool {
 	if !file.ends_with('.js.v') && file.split('.').len > 2 {
 		// Probably something like `a.c.v`.
+		return false
+	}
+	return true
+}
+
+pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
+	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
+		// not .wasm.v not just .v something else like .c.v
 		return false
 	}
 	return true
