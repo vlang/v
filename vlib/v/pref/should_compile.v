@@ -292,7 +292,7 @@ pub fn (prefs &Preferences) should_compile_js(file string) bool {
 
 pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
 	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
-		// not .wasm.v not .v.v something else like .c.v
+		// not .wasm.v not just .v something else like .c.v
 		return false
 	}
 	return true
