@@ -2,17 +2,11 @@ module main
 
 import gg
 
-fn main() {
-	mut context := gg.new_context(
+gg.start(
 		width: 300
 		height: 300
 		window_title: 'Circles'
-		frame_fn: frame
-	)
-	context.run()
-}
-
-fn frame(mut ctx gg.Context) {
+		frame_fn: fn (mut ctx gg.Context) {
 	ctx.begin()
 	ctx.draw_circle_empty(150, 150, 80, gg.blue)
 	ctx.draw_circle_filled(150, 150, 40, gg.yellow)
@@ -21,3 +15,4 @@ fn frame(mut ctx gg.Context) {
 	ctx.draw_circle_line(150, 150, 150, 8, gg.white)
 	ctx.end()
 }
+)
