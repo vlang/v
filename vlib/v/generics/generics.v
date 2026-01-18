@@ -457,7 +457,7 @@ pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []a
 	if receiver_type != 0 {
 		info := g.table.sym(g.unwrap_generic(receiver_type)).info
 		if info is ast.Struct {
-			fn_conc_types := concrete_types[info.generic_types.len..] // concrete types without the generic types of the struct
+			fn_conc_types := concrete_types#[info.generic_types.len..] // concrete types without the generic types of the struct
 
 			if fn_conc_types.len > 0 {
 				name += '_T'

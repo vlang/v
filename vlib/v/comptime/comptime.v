@@ -138,14 +138,29 @@ pub fn (mut c Comptime) check_type_equality(left_type ast.Type, right ast.Expr) 
 	if right is ast.ComptimeType {
 		if right.kind == .array {
 			return c.table.sym(left_type).info is ast.Array
+				|| c.table.sym(left_type).info is ast.ArrayFixed
+		} else if right.kind == .array_dynamic {
+			return c.table.sym(left_type).info is ast.Array
+		} else if right.kind == .array_fixed {
+			return c.table.sym(left_type).info is ast.ArrayFixed
 		} else if right.kind == .iface {
 			return c.table.sym(left_type).info is ast.Interface
 		} else if right.kind == .map {
 			return c.table.sym(left_type).info is ast.Map
 		} else if right.kind == .struct {
 			return c.table.sym(left_type).info is ast.Struct
+		} else if right.kind == .enum {
+			return c.table.sym(left_type).info is ast.Enum
+		} else if right.kind == .sum_type {
+			return c.table.sym(left_type).info is ast.SumType
+		} else if right.kind == .alias {
+			return c.table.sym(left_type).info is ast.Alias
 		} else if right.kind == .int {
 			return left_type.is_int()
+		} else if right.kind == .string {
+			return left_type.is_string()
+		} else if right.kind == .float {
+			return left_type.is_float()
 		}
 		// TODO do the other types
 	} else if right is ast.TypeNode {
@@ -173,11 +188,14 @@ pub fn (mut c Comptime) is_true(expr ast.Expr) !bool {
 									return expr.left.expr.info.typ == expr.right.typ
 								}
 							}
-						} else if expr.left.field_name == 'unaliased_typ'
-							&& expr.left.expr is ast.Ident {
-							unaliased_type := c.table.unaliased_type(expr.left.expr.obj.typ)
-							return c.check_type_equality(unaliased_type, expr.right)!
+						} else if expr.left.field_name == 'unaliased_typ' {
+							if expr.left.expr is ast.Ident {
+								unaliased_type := c.table.unaliased_type(expr.left.expr.obj.typ)
+								return c.check_type_equality(unaliased_type, expr.right)!
+							}
 						}
+					} else if expr.left is ast.Ident {
+						return c.check_type_equality(expr.left.obj.typ, expr.right)!
 					}
 				}
 				.and {
