@@ -48,6 +48,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -81,6 +82,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -114,6 +116,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
