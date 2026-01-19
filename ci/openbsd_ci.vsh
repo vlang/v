@@ -19,6 +19,16 @@ fn v_doctor() {
 	}
 }
 
+fn build_v_with_prealloc() {
+	println('### Build v with prealloc')
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec('./vstrict1 -o vprealloc -prealloc cmd/v')
+	exec('./vprealloc run examples/hello_world.v')
+	exec('./vprealloc -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
+	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+}
+
 fn verify_v_test_works() {
 	println('### Verify v test')
 	exec('echo \$VFLAGS')
@@ -63,13 +73,14 @@ fn build_examples() {
 }
 
 const all_tasks = {
-	'v_doctor':            Task{v_doctor, 'Run v doctor'}
-	'verify_v_test_works': Task{verify_v_test_works, 'Verify that v test works'}
-	'build_fast_script':   Task{build_fast_script, 'Check that building fast.v works'}
-	'check_math':          Task{check_math, 'Check the `math` module works'}
-	'check_compress':      Task{check_compress, 'Check the `compress` module works'}
-	'run_essential_tests': Task{run_essential_tests, 'Run only the essential tests'}
-	'build_examples':      Task{build_examples, 'Build examples'}
+	'v_doctor':              Task{v_doctor, 'Run v doctor'}
+	'build_v_with_prealloc': Task{build_v_with_prealloc, 'Build V with prealloc'}
+	'verify_v_test_works':   Task{verify_v_test_works, 'Verify that v test works'}
+	'build_fast_script':     Task{build_fast_script, 'Check that building fast.v works'}
+	'check_math':            Task{check_math, 'Check the `math` module works'}
+	'check_compress':        Task{check_compress, 'Check the `compress` module works'}
+	'run_essential_tests':   Task{run_essential_tests, 'Run only the essential tests'}
+	'build_examples':        Task{build_examples, 'Build examples'}
 }
 
 common.run(all_tasks)
