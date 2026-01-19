@@ -1177,7 +1177,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					...node
 					typ:              g.unwrap_generic(node.typ)
 					typ_str:          g.table.type_str(g.unwrap_generic(node.typ))
-					generic_types:    []
+					generic_types:    node.generic_types.map(g.unwrap_generic(it))
 					update_expr:      g.expr(mut node.update_expr)
 					update_expr_type: g.unwrap_generic(node.update_expr_type)
 					init_fields:      init_fields
