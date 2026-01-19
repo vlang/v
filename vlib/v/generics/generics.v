@@ -377,10 +377,6 @@ fn (mut g Generics) register_result(t ast.Type) string {
 	return styp
 }
 
-// TODO: this really shouldn't be separate from typ
-// but I(emily) would rather have this generation
-// all unified in one place so that it doesn't break
-// if one location changes
 fn (mut g Generics) option_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
 	mut styp := ''
@@ -452,12 +448,12 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
-pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, _receiver_type ast.Type) string {
+pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
 	mut name := old_name
 	if _receiver_type != 0 {
-		mut info := g.table.sym(g.unwrap_generic(_receiver_type)).info
+		mut info := g.table.sym(g.unwrap_generic(receiver_type)).info
 		if mut info is ast.Alias {
-			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(_receiver_type))).info
+			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(receiver_type))).info
 		}
 		if mut info is ast.Struct {
 			fn_conc_types := concrete_types#[info.generic_types.len..] // concrete types without the generic types of the struct
