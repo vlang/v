@@ -450,7 +450,7 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 
 pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
 	mut name := old_name
-	if _receiver_type != 0 {
+	if receiver_type != 0 {
 		mut info := g.table.sym(g.unwrap_generic(receiver_type)).info
 		if mut info is ast.Alias {
 			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(receiver_type))).info
