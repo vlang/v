@@ -452,11 +452,14 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
-pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
+pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, _receiver_type ast.Type) string {
 	mut name := old_name
-	if receiver_type != 0 {
-		info := g.table.sym(g.unwrap_generic(receiver_type)).info
-		if info is ast.Struct {
+	if _receiver_type != 0 {
+		mut info := g.table.sym(g.unwrap_generic(_receiver_type)).info
+		if mut info is ast.Alias {
+			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(_receiver_type))).info
+		}
+		if mut info is ast.Struct {
 			fn_conc_types := concrete_types#[info.generic_types.len..] // concrete types without the generic types of the struct
 
 			if fn_conc_types.len > 0 {
@@ -467,7 +470,7 @@ pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []a
 					g.styp(typ.set_nr_muls(0))
 			}
 			return name
-		} else if info is ast.Interface {
+		} else if mut info is ast.Interface {
 			return name
 		}
 	}
@@ -685,6 +688,13 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				arg.expr = g.expr(mut arg.expr)
 			}
 			node.or_block = g.expr(mut node.or_block) as ast.OrExpr
+			if node.is_method && g.table.sym(node.receiver_type).info is ast.Alias {
+				// Workaround needed for markused
+				unaliased_type := g.table.unaliased_type(g.unwrap_generic(node.receiver_type))
+				if g.table.sym(unaliased_type).has_method(node.name) {
+					node.receiver_type = unaliased_type
+				}
+			}
 			if node.receiver_type.has_flag(.generic) {
 				node.receiver_type = node.receiver_type.clear_flag(.generic)
 			}
