@@ -95,6 +95,7 @@ const auto_complete_commands = [
 	'download',
 	'fmt',
 	'gret',
+	'git-fmt-hook',
 	'ls',
 	'retry',
 	'reduce',
