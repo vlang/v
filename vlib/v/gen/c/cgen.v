@@ -4716,7 +4716,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 	mut method_name := m.name
 	rec_sym := g.table.sym(receiver.typ)
 	if rec_sym.info is ast.Struct {
-		if rec_sym.info.concrete_types.len > 0 {
+		if rec_sym.info.concrete_types.len > 0 && !g.pref.new_generic_solver {
 			method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
 		}
 	}

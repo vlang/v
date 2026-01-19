@@ -78,7 +78,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.is_builtin() && !str_fn_name.starts_with('builtin__') {
 		str_fn_name = 'builtin__${str_fn_name}'
 	}
-	if sym.has_method_with_generic_parent('str') {
+	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
 		match mut sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
 				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
@@ -1070,7 +1070,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				left_fn_name := util.no_dots(left_cc_type)
 				'${left_fn_name}_str'
 			}
-			if sym.info is ast.Struct {
+			if sym.info is ast.Struct && !g.pref.new_generic_solver {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
