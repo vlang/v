@@ -435,7 +435,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 // `w` is the width, `h` is the height .
 // `radius` is the radius of the corner-rounding in pixels.
 // `c` is the color of the filled.
-// it divides the rounded rectangle into 3 shapes, the top part, the midle and the bottom part.
+// it divides the rounded rectangle into 2 shapes, the top rounded part and the bottom rounded part which are connected at both extremes.
 pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	if w <= 0 || h <= 0 || radius < 0 {
 		return
