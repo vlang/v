@@ -97,6 +97,6 @@ fn string_to_i64(s string) ?i64 {
 }
 
 fn test_match_expr_with_auto_promote_number() {
-	assert string_to_i64('19P')! == 19 * peta
-	assert string_to_i64('18T')! == 18 * terra
+	assert string_to_i64('19P')? == 19 * peta
+	assert string_to_i64('18T')? == 18 * terra
 }
