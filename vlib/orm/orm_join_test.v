@@ -107,8 +107,7 @@ fn test_inner_join_with_where() {
 	// Test INNER JOIN with WHERE clause - use simple field name (not Table.field)
 	engineering_users := sql db {
 		select from User
-		join Department on User.department_id == Department.dept_id
-		where department_id == 1
+		join Department on User.department_id == Department.dept_id where department_id == 1
 	}!
 
 	assert engineering_users.len == 2
