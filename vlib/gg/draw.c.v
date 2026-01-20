@@ -435,7 +435,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 // `w` is the width, `h` is the height .
 // `radius` is the radius of the corner-rounding in pixels.
 // `c` is the color of the filled.
-// it divides the rounded rectangle into 3 shapes, the top part, the midle and the bottom part.
+// it divides the rounded rectangle into 2 shapes, the top rounded part and the bottom rounded part which are connected at both extremes.
 pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	if w <= 0 || h <= 0 || radius < 0 {
 		return
@@ -467,24 +467,32 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	// bottom y coordinate
 	by := sy + height - r
 
-	if r != 0 {
+	if r == 0 {
+		// No radius means juste a rectangle
+		sgl.begin_quads()
+		sgl.v2f(sx, ty)
+		sgl.v2f(rx + r, ty)
+		sgl.v2f(rx + r, by)
+		sgl.v2f(sx, by)
+		sgl.end()
+	} else {
+		// draw the top then the bottom and link them with 2 triangle
 		mut rad := f32(0)
 		mut dx := f32(0)
 		mut dy := f32(0)
 
 		// top part
+		// starting at -30 then multiplying it by -1 makes you ends with the angle closer to the side which is needed to link both parts
 		sgl.begin_triangle_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
+		for i in -30 .. 1 {
+			rad = f32(math.radians(-i * 3))
 			dx = r * math.cosf(rad)
 			dy = r * math.sinf(rad)
 			sgl.v2f(rx + dx, ty - dy)
 			sgl.v2f(lx - dx, ty - dy)
 		}
-		sgl.end()
 
 		// bottom part
-		sgl.begin_triangle_strip()
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = r * math.cosf(rad)
@@ -494,14 +502,6 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 		}
 		sgl.end()
 	}
-
-	// Draw the iner rectangle
-	sgl.begin_quads()
-	sgl.v2f(sx, ty)
-	sgl.v2f(rx + r, ty)
-	sgl.v2f(rx + r, by)
-	sgl.v2f(sx, by)
-	sgl.end()
 }
 
 // draw_triangle_empty draws the outline of a triangle.
