@@ -15,11 +15,12 @@ fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
 
 fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
 
-fn C.sendfile(out_fd int, in_fd int, offset &int, count usize) int
+fn C.sendfile(out_fd int, in_fd int, offset &i64, count usize) int
 
 fn C.fstat(fd int, buf &C.stat) int
 
-union C.epoll_data {
+@[typedef]
+union C.epoll_data_t {
 	ptr voidptr
 	fd  int
 	u32 u32
@@ -28,7 +29,7 @@ union C.epoll_data {
 
 struct C.epoll_event {
 	events u32
-	data   C.epoll_data
+	data   C.epoll_data_t
 }
 
 struct Server {
@@ -201,14 +202,14 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 	for {
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
 		for i := 0; i < num_events; i++ {
+			client_fd := unsafe { events[i].data.fd }
 			// Accept new connections when the listening socket is readable
-			if unsafe { events[i].data.fd } == listen_fd {
+			if client_fd == listen_fd {
 				handle_accept_loop(epoll_fd, listen_fd)
 				continue
 			}
 
 			if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
-				client_fd := unsafe { events[i].data.fd }
 				if client_fd == listen_fd {
 					eprintln('ERROR: listen fd had HUP/ERR')
 					continue
@@ -224,7 +225,6 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				continue
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
-				client_fd := unsafe { events[i].data.fd }
 				bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
 					0)
 				if bytes_read > 0 {
@@ -257,10 +257,19 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					}
 					// Send response content (headers/body)
 					if response.content.len > 0 {
-						sent := C.send(client_fd, response.content.data, response.content.len,
-							C.MSG_NOSIGNAL | C.MSG_DONTWAIT)
-						if sent < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
-							eprintln('ERROR: send() failed with errno=${C.errno}')
+						mut send_error := false
+						mut pos := 0
+						for pos < response.content.len {
+							sent := C.send(client_fd, unsafe { &response.content[pos] },
+								response.content.len - pos, C.MSG_NOSIGNAL)
+							if sent <= 0 {
+								eprintln('ERROR: send() failed with errno=${C.errno}')
+								send_error = true
+								break
+							}
+							pos += sent
+						}
+						if send_error {
 							handle_client_closure(epoll_fd, client_fd)
 							continue
 						}
@@ -269,13 +278,66 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 					// Send file if present
 					if response.file_path != '' {
 						fd := C.open(response.file_path.str, C.O_RDONLY)
-						if fd != -1 {
-							mut st := C.stat{}
-							C.fstat(fd, &st)
-							offset := 0
-							C.sendfile(client_fd, fd, &offset, usize(st.st_size))
-							C.close(fd)
+						if fd == -1 {
+							eprintln('ERROR: open file failed')
+							handle_client_closure(epoll_fd, client_fd)
+							continue
 						}
+						mut st := C.stat{}
+						if C.fstat(fd, &st) != 0 {
+							eprintln('ERROR: fstat failed')
+							handle_client_closure(epoll_fd, client_fd)
+							continue
+						}
+						mut offset := i64(0)
+						mut remaining := i64(st.st_size)
+						mut sf_retries := 0
+						for remaining > 0 {
+							ssize := C.sendfile(client_fd, fd, &offset, usize(remaining))
+							if ssize > 0 {
+								remaining -= i64(ssize)
+								sf_retries = 0
+								continue
+							}
+							errno_val := C.errno
+							match errno_val {
+								C.EAGAIN, C.EWOULDBLOCK, C.EINTR {
+									if sf_retries < 3 {
+										sf_retries++
+										continue
+									}
+									eprintln('ERROR: sendfile() transient failure after ${sf_retries} retries (errno=${errno_val})')
+								}
+								C.EBADF {
+									eprintln('ERROR: sendfile() EBADF: input fd or socket not open for required access (errno=${errno_val})')
+								}
+								C.EFAULT {
+									eprintln('ERROR: sendfile() EFAULT: bad address for offset (errno=${errno_val})')
+								}
+								C.EINVAL {
+									eprintln('ERROR: sendfile() EINVAL: invalid descriptor state or non-seekable input (errno=${errno_val})')
+								}
+								C.EIO {
+									eprintln('ERROR: sendfile() EIO: I/O error while reading input file (errno=${errno_val})')
+								}
+								C.ENOMEM {
+									eprintln('ERROR: sendfile() ENOMEM: insufficient kernel memory (errno=${errno_val})')
+								}
+								C.EOVERFLOW {
+									eprintln('ERROR: sendfile() EOVERFLOW: count exceeds file/socket limits (errno=${errno_val})')
+								}
+								C.ESPIPE {
+									eprintln('ERROR: sendfile() ESPIPE: input file not seekable with offset (errno=${errno_val})')
+								}
+								else {
+									eprintln('ERROR: sendfile() failed with errno=${errno_val}')
+								}
+							}
+							handle_client_closure(epoll_fd, client_fd)
+							break
+						}
+
+						C.close(fd)
 					}
 					// Leave the connection open; closure is driven by client FIN or errors
 				} else if bytes_read == 0 {
