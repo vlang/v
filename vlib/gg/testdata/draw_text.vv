@@ -36,6 +36,10 @@ gg.start(
 			color: gg.blue
 			size:  20
 		})
+		ctx.draw_text(10, 240, 'This text is at x: 10, y: 240 and green', gg.TextCfg{
+			color: gg.green
+			size:  20
+		})
 		ctx.end()
 	}
 )
