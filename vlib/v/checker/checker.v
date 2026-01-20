@@ -1582,6 +1582,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		ast.ParExpr {
 			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
+		ast.InfixExpr {
+			c.check_expr_option_or_result_call(expr.left, ret_type)
+			c.check_expr_option_or_result_call(expr.right, ret_type)
+		}
 		else {}
 	}
 	return ret_type
@@ -1711,6 +1715,9 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 					if ret_type.has_flag(.generic) {
+						return
+					}
+					if ret_type.clear_option_and_result() != expr_return_type {
 						return
 					}
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
