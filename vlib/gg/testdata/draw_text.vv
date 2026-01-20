@@ -1,0 +1,41 @@
+module main
+
+import gg
+
+gg.start(
+	width:        300
+	height:       300
+	window_title: 'Circles'
+	frame_fn:     fn (mut ctx gg.Context) {
+		ctx.begin()
+		ctx.draw_text(10, 10, 'This text is at x: 10, y: 10', gg.TextCfg{ color: gg.white, size: 20 })
+		ctx.draw_text(10, 40, 'This text is at x: 10, y: 40 and bold', gg.TextCfg{
+			color: gg.white
+			bold:  true
+			size:  20
+		})
+		ctx.draw_text(10, 70, 'This text is at x: 10, y: 70 and italic', gg.TextCfg{
+			color:  gg.white
+			size:   20
+			italic: true
+		})
+		ctx.draw_text(10, 100, 'This text is at x: 10, y: 110 and mono', gg.TextCfg{
+			color: gg.white
+			size:  20
+			mono:  true
+		})
+		ctx.draw_text(10, 130, 'This text is at x: 10, y: 130 and twice as big', gg.TextCfg{
+			color: gg.white
+			size:  40
+		})
+		ctx.draw_text(10, 180, 'This text is at x: 10, y: 180 and red', gg.TextCfg{
+			color: gg.red
+			size:  20
+		})
+		ctx.draw_text(10, 210, 'This text is at x: 10, y: 210 and blue', gg.TextCfg{
+			color: gg.blue
+			size:  20
+		})
+		ctx.end()
+	}
+)
