@@ -203,6 +203,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
 		for i := 0; i < num_events; i++ {
 			client_fd := unsafe { events[i].data.fd }
+			// Accept new connections when the listening socket is readable
 			if client_fd == listen_fd {
 				handle_accept_loop(epoll_fd, listen_fd)
 				continue
@@ -338,6 +339,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 
 						C.close(fd)
 					}
+					// Leave the connection open; closure is driven by client FIN or errors
 				} else if bytes_read == 0 {
 					// Normal client closure (FIN received)
 					handle_client_closure(epoll_fd, client_fd)
