@@ -7967,7 +7967,7 @@ C compilation line, before other libs), use:
 ```
 
 You can (optionally) use different flags for different targets.
-Every OS listed in [Compile time code](#if-condition) is supported as flags.
+Every OS listed in [Compile time code](#compile-time-code) is supported as flags.
 
 > [!NOTE]
 > Each flag must go on its own line (for now)
