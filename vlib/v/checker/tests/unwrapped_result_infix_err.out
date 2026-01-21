@@ -5,3 +5,10 @@ vlib/v/checker/tests/unwrapped_result_infix_err.vv:7:9: error: unwrapped Result 
       |            ~~~~~~
     8 | }
     9 |
+vlib/v/checker/tests/unwrapped_result_infix_err.vv:7:9: error: f() returns `!bool`, so it should have either an `or {}` block, or `!` at the end
+    5 | fn g() ! {
+    6 |     assert f('1')! == true
+    7 |     assert f('1') == true
+      |            ~~~~~~
+    8 | }
+    9 |
