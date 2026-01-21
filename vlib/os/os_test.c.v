@@ -615,6 +615,25 @@ fn test_symlink() {
 	}
 }
 
+fn test_readlink() {
+	$if windows {
+		eprintln('skipping ${@METHOD} on windows, api not supported')
+		return
+	}
+	os.symlink('target string', 'symlink')!
+	defer { os.rm('symlink') or { panic(err) } }
+	assert os.readlink('symlink')! == 'target string'
+}
+
+fn test_exists_symlink_dangling() {
+	os.symlink('nonexistent', 'dangling_symlink') or { handle_privilege_error(err) or { return } }
+	// sanity check that the symlink truly does exist.  the lack of error alone is the check.
+	// (on linux, `.get_filetype() == os.FileType.symbolic_link` is true, but on windows, a dangling symlink is reported as a regular file.)
+	os.lstat('dangling_symlink')!
+	// the exists function says false in this scenario.
+	assert os.exists('dangling_symlink') == false
+}
+
 fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	create_file(file_name)!
