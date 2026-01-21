@@ -907,6 +907,7 @@ fn xdg_home_folder(ename string, lpath string) string {
 // `$XDG_CACHE_HOME` defines the base directory relative to which user specific
 // non-essential data files should be stored. If `$XDG_CACHE_HOME` is either not set
 // or empty, a default equal to `$HOME/.cache` should be used.
+// Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn cache_dir() string {
 	return xdg_home_folder('XDG_CACHE_HOME', '.cache')
 }
@@ -917,6 +918,7 @@ pub fn cache_dir() string {
 // This directory is defined by the environment variable `$XDG_DATA_HOME`.
 // If `$XDG_DATA_HOME` is either not set or empty, a default equal to
 // `$HOME/.local/share` should be used.
+// Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn data_dir() string {
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
 }
@@ -931,6 +933,7 @@ pub fn data_dir() string {
 // It may contain:
 // * actions history (logs, history, recently used files, …)
 // * current state of the application that can be reused on a restart (view, layout, open files, undo history, …)
+// Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn state_dir() string {
 	return xdg_home_folder('XDG_STATE_HOME', '.local/state')
 }
@@ -939,6 +942,7 @@ pub fn state_dir() string {
 // It is compatible with stributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
 // > User-specific executable files may be stored in `$HOME/.local/bin`.
 // > Distributions should ensure this directory shows up in the UNIX $PATH environment variable, at an appropriate place.
+// Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn local_bin_dir() string {
 	return xdg_home_folder('LOCAL_BIN_DIR', '.local/bin') // provides a way to test by setting an env variable
 }
@@ -982,6 +986,7 @@ pub fn temp_dir() string {
 
 // vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific to the OS user.
 // It can be overridden by setting the env variable `VTMP`.
+// Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
