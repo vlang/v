@@ -3,7 +3,7 @@ module main
 import gg
 
 gg.start(
-	width:        300
+	width:        640
 	height:       300
 	window_title: 'Circles'
 	frame_fn:     fn (mut ctx gg.Context) {
