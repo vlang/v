@@ -658,10 +658,11 @@ fn test_hypot() {
 		[inf(1), inf(-1)], [inf(1), 0], [inf(1), inf(1)], [inf(1),
 			nan()],
 		[nan(), inf(-1)], [nan(), 0], [nan(), inf(1)], [nan(),
-			nan()]]
+			nan()],
+		[-0.0, max_f64]]
 	hypot_sc_ := [inf(1), inf(1), inf(1), inf(1), 0, 0, 0, 0, inf(1),
 		inf(1), nan(), inf(1), inf(1), inf(1), inf(1), inf(1),
-		nan(), inf(1), nan()]
+		nan(), inf(1), nan(), max_f64]
 	for i := 0; i < vfhypot_sc_.len; i++ {
 		f := hypot(vfhypot_sc_[i][0], vfhypot_sc_[i][1])
 		assert alike(hypot_sc_[i], f)
