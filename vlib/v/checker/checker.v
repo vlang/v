@@ -167,7 +167,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		timers_should_print = true
 	}
 	v_current_commit_hash := if pref_.building_v {
-		version.githash(pref_.vroot) or { vcurrent_hash() }
+		version.githash(pref_.vroot) or { '' }
 	} else {
 		vcurrent_hash()
 	}
