@@ -27,4 +27,7 @@ fn test_main() {
 		c += color(123)
 	}
 	println(c)
+	assert c.x == 4.0
+	assert c.y == 8.0
+	assert c.z == 12.0
 }
