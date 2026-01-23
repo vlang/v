@@ -704,6 +704,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				pos := g.out.len
 				g.expr(left)
+				struct_info := g.table.final_sym(var_type)
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
@@ -725,19 +726,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write(';')
 					}
 					return
-				} else if left_sym.kind == .alias && g.table.final_sym(var_type).kind == .struct {
-					struct_info := g.table.final_sym(var_type)
-					if struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
-						mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
-						method_name = g.generic_fn_name(struct_info.info.concrete_types,
-							method_name)
-						g.write(' = ${method_name}(')
-						g.expr(left)
-						g.write(', ')
-						g.expr(val)
-						g.writeln(');')
-						return
-					}
+				} else if left_sym.kind == .alias && struct_info.kind == .struct
+					&& struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
+					mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
+					method_name = g.generic_fn_name(struct_info.info.concrete_types, method_name)
+					g.write(' = ${method_name}(')
+					g.expr(left)
+					g.write(', ')
+					g.expr(val)
+					g.writeln(');')
+					return
 				} else {
 					if g.table.final_sym(g.unwrap_generic(var_type)).kind == .array_fixed {
 						g.go_back_to(pos)
