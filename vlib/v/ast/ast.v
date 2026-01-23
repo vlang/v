@@ -2288,6 +2288,24 @@ pub mut:
 	end_comments    []Comment
 }
 
+// JoinKind represents the type of SQL JOIN operation
+pub enum JoinKind {
+	inner      // INNER JOIN - returns only matching rows
+	left       // LEFT JOIN - returns all left rows, NULL for non-matching right
+	right      // RIGHT JOIN - returns all right rows, NULL for non-matching left
+	full_outer // FULL OUTER JOIN - returns all rows from both tables
+}
+
+// JoinClause represents a JOIN clause in an SQL SELECT query
+pub struct JoinClause {
+pub:
+	kind JoinKind
+	pos  token.Pos
+pub mut:
+	table_expr TypeNode // The table being joined (e.g., Department in `join Department`)
+	on_expr    Expr     // The ON condition (e.g., `User.dept_id == Department.id`)
+}
+
 pub struct SqlExpr {
 pub:
 	is_count     bool
@@ -2315,6 +2333,7 @@ pub mut:
 	fields      []StructField
 	sub_structs map[int]SqlExpr
 	or_expr     OrExpr
+	joins       []JoinClause // JOIN clauses for this query
 }
 
 pub struct NodeError {

@@ -3106,6 +3106,24 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	} else {
 		f.write('from ${table_name}')
 	}
+	// Format JOIN clauses
+	for join in node.joins {
+		f.writeln('')
+		f.write('\t')
+		match join.kind {
+			.inner { f.write('join ') }
+			.left { f.write('left join ') }
+			.right { f.write('right join ') }
+			.full_outer { f.write('full outer join ') }
+		}
+		join_sym := f.table.sym(join.table_expr.typ)
+		mut join_table_name := join_sym.name
+		if !join_table_name.starts_with('C.') && !join_table_name.starts_with('JS.') {
+			join_table_name = f.no_cur_mod(f.short_module(join_sym.name))
+		}
+		f.write('${join_table_name} on ')
+		f.expr(join.on_expr)
+	}
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)

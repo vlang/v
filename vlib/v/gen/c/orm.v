@@ -1027,6 +1027,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	}
 	g.indent--
 	g.writeln('),')
+	// Generate JOIN clauses array
+	g.write_orm_joins(node.joins)
 	g.indent--
 	g.writeln('},')
 
@@ -1388,4 +1390,76 @@ fn get_auto_field_idxs(fields []ast.StructField) []int {
 		}
 	}
 	return ret
+}
+
+// write_orm_joins writes C code for the joins array in SelectConfig
+fn (mut g Gen) write_orm_joins(joins []ast.JoinClause) {
+	if joins.len == 0 {
+		g.writeln('.joins = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__JoinConfig), 0),')
+		return
+	}
+
+	g.writeln('.joins = builtin__new_array_from_c_array(${joins.len}, ${joins.len}, sizeof(orm__JoinConfig),')
+	g.indent++
+	g.writeln('_MOV((orm__JoinConfig[${joins.len}]){')
+	g.indent++
+
+	for join in joins {
+		g.writeln('(orm__JoinConfig){')
+		g.indent++
+
+		// Write join kind
+		kind_str := match join.kind {
+			.inner { 'orm__JoinType__inner' }
+			.left { 'orm__JoinType__left' }
+			.right { 'orm__JoinType__right' }
+			.full_outer { 'orm__JoinType__full_outer' }
+		}
+		g.writeln('.kind = ${kind_str},')
+
+		// Write joined table info
+		g.write('.table = ')
+		g.write_orm_table_struct(join.table_expr.typ)
+		g.writeln(',')
+
+		// Extract column names from the ON expression (should be an InfixExpr)
+		left_col, right_col := g.extract_join_columns(join.on_expr)
+		g.writeln('.on_left_col = _S("${left_col}"),')
+		g.writeln('.on_right_col = _S("${right_col}"),')
+
+		g.indent--
+		g.writeln('},')
+	}
+
+	g.indent--
+	g.writeln('})')
+	g.indent--
+	g.writeln('),')
+}
+
+// extract_join_columns extracts the left and right column names from a JOIN ON expression.
+// The ON expression is expected to be an InfixExpr like: User.dept_id == Department.id
+// Returns (left_col, right_col) where left_col is from the main table, right_col is from the joined table.
+fn (g &Gen) extract_join_columns(on_expr ast.Expr) (string, string) {
+	if on_expr is ast.InfixExpr {
+		left_col := g.extract_join_field_name(on_expr.left)
+		right_col := g.extract_join_field_name(on_expr.right)
+		return left_col, right_col
+	}
+
+	// Fallback: return empty strings if the expression is not the expected format
+	return '', ''
+}
+
+// extract_join_field_name extracts a field name from a JOIN ON expression operand.
+// Handles both SelectorExpr (Table.field) and EnumVal (when parser interprets Type.field as enum).
+fn (g &Gen) extract_join_field_name(expr ast.Expr) string {
+	if expr is ast.SelectorExpr {
+		return expr.field_name
+	}
+	if expr is ast.EnumVal {
+		// EnumVal.val contains the field name (e.g., "department_id" from "User.department_id")
+		return expr.val
+	}
+	return ''
 }

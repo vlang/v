@@ -161,6 +161,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.check_where_expr_has_no_pointless_exprs(table_sym, field_names, &node.where_expr)
 	}
 
+	// Check JOIN clauses
+	for mut join in node.joins {
+		if !c.check_orm_join_clause(mut join, table_sym) {
+			return ast.void_type
+		}
+	}
+
 	if node.has_order {
 		if mut node.order_expr is ast.Ident {
 			order_ident_name := node.order_expr.name
@@ -796,4 +803,148 @@ fn (mut c Checker) get_non_array_type(typ_ ast.Type) (ast.Type, &ast.TypeSymbol)
 		}
 	}
 	return typ, sym
+}
+
+// check_orm_join_clause validates a JOIN clause in an ORM query.
+// It checks that the joined table type exists and is a struct,
+// and validates the ON expression.
+fn (mut c Checker) check_orm_join_clause(mut join ast.JoinClause, main_table_sym &ast.TypeSymbol) bool {
+	// Check that the joined table type exists
+	if !c.ensure_type_exists(join.table_expr.typ, join.pos) {
+		return false
+	}
+
+	join_table_sym := c.table.sym(join.table_expr.typ)
+
+	// Check that the joined table is a struct
+	if join_table_sym.info !is ast.Struct {
+		c.orm_error('JOIN table `${join_table_sym.name}` must be a struct type', join.pos)
+		return false
+	}
+
+	// Validate the ON expression structure without running full expression checking
+	// (since Table.field syntax is special in ORM context)
+	return c.check_orm_join_on_expr(join.on_expr, main_table_sym, join_table_sym)
+}
+
+// check_orm_join_on_expr validates the ON expression of a JOIN clause.
+// It expects the form: TableA.fieldA == TableB.fieldB
+// where TableA is either the main table or the joined table.
+fn (mut c Checker) check_orm_join_on_expr(on_expr ast.Expr, main_table_sym &ast.TypeSymbol, join_table_sym &ast.TypeSymbol) bool {
+	// The ON expression should be an infix expression (e.g., Table1.field == Table2.field)
+	if on_expr is ast.InfixExpr {
+		// Check that the operator is a comparison operator
+		if on_expr.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
+			c.orm_error('JOIN ON condition must use a comparison operator (==, !=, <, >, <=, >=)',
+				on_expr.pos)
+			return false
+		}
+
+		// Check left side (should be Table.field format)
+		if !c.check_orm_join_field_ref(on_expr.left, main_table_sym, join_table_sym) {
+			return false
+		}
+
+		// Check right side (should be Table.field format)
+		if !c.check_orm_join_field_ref(on_expr.right, main_table_sym, join_table_sym) {
+			return false
+		}
+
+		return true
+	} else if on_expr !is ast.EmptyExpr {
+		c.orm_error('JOIN ON condition must be a comparison expression (e.g., Table1.field == Table2.field)',
+			on_expr.pos())
+		return false
+	}
+
+	return true
+}
+
+// check_orm_join_field_ref validates that an expression is a valid Table.field reference
+// for a JOIN ON condition. The table must be either the main table or the joined table.
+fn (mut c Checker) check_orm_join_field_ref(expr ast.Expr, main_table_sym &ast.TypeSymbol, join_table_sym &ast.TypeSymbol) bool {
+	// Handle SelectorExpr (e.g., User.department_id)
+	if expr is ast.SelectorExpr {
+		// Get the table name from the selector's left side
+		mut table_name := ''
+		if expr.expr is ast.Ident {
+			table_name = expr.expr.name
+		} else if expr.expr is ast.TypeNode {
+			table_name = c.table.sym(expr.expr.typ).name
+		}
+
+		// Check if the table name matches either the main table or the joined table
+		main_table_name := util.strip_mod_name(main_table_sym.name)
+		join_table_name := util.strip_mod_name(join_table_sym.name)
+
+		// Determine which table to check the field against
+		is_main_table := table_name == main_table_name
+		is_join_table := table_name == join_table_name
+
+		if !is_main_table && !is_join_table {
+			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`',
+				expr.pos)
+			return false
+		}
+
+		// Check if the field exists in the target table
+		field_name := expr.field_name
+		if is_main_table {
+			if !main_table_sym.has_field(field_name) {
+				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`',
+					expr.pos)
+				return false
+			}
+		} else {
+			if !join_table_sym.has_field(field_name) {
+				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`',
+					expr.pos)
+				return false
+			}
+		}
+
+		return true
+	}
+
+	// Handle EnumVal - this happens when the parser sees Type.field as an enum access
+	// In ORM context, we need to reinterpret this as a table field reference
+	if expr is ast.EnumVal {
+		// The enum_name is the table name (e.g., "User")
+		// The val is the field name (e.g., "department_id")
+		table_name := util.strip_mod_name(expr.enum_name)
+		field_name := expr.val
+
+		main_table_name := util.strip_mod_name(main_table_sym.name)
+		join_table_name := util.strip_mod_name(join_table_sym.name)
+
+		is_main_table := table_name == main_table_name
+		is_join_table := table_name == join_table_name
+
+		if !is_main_table && !is_join_table {
+			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`',
+				expr.pos)
+			return false
+		}
+
+		// Check if the field exists in the target table
+		if is_main_table {
+			if !main_table_sym.has_field(field_name) {
+				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`',
+					expr.pos)
+				return false
+			}
+		} else {
+			if !join_table_sym.has_field(field_name) {
+				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`',
+					expr.pos)
+				return false
+			}
+		}
+
+		return true
+	}
+
+	c.orm_error('JOIN ON condition expects Table.field format (got ${typeof(expr).name})',
+		expr.pos())
+	return false
 }
