@@ -6,7 +6,10 @@ if ! test -f vlib/v/compiler_errors_test.v; then
   echo "this script should be run in V's main repo folder!"
   exit 1
 fi
-  
+
+## ensure all output is in English, independent from the current user's local:
+export LANG=C
+
 export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export CC="${CC:-gcc}"
