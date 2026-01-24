@@ -48,7 +48,7 @@ CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOP
 	--enable-gc-debug \
 	--enable-large-config \
 	--enable-cplusplus \
-	--with-libatomic-ops=yes \
+	--with-libatomic-ops=none \
 	--enable-sigrt-signals
 
 make
