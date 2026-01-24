@@ -297,6 +297,17 @@ fn test_host() {
 	assert x.status() == .ok
 }
 
+fn test_empty_response_body_has_content_length() {
+	req := http.Request{
+		url:    'http://${localserver}/empty_response_body'
+		method: .get
+	}
+
+	mut x := req.do()!
+	assert x.status() == .ok
+	assert x.header.get(.content_length)! == '0'
+}
+
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://${localserver}/shutdown') or {
 		assert err.msg() == ''

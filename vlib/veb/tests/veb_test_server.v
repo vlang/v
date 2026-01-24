@@ -136,6 +136,11 @@ pub fn (mut app ServerApp) with_host(mut ctx ServerContext) veb.Result {
 	return ctx.ok('')
 }
 
+@['/empty_response_body']
+pub fn (mut app ServerApp) empty_response_body(mut ctx ServerContext) veb.Result {
+	return ctx.ok('')
+}
+
 pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) veb.Result {
 	session_key := ctx.get_cookie('skey') or { return ctx.not_found() }
 	if session_key != 'superman' {

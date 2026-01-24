@@ -115,7 +115,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if ctx.res.body != '' {
+	if !ctx.res.header.contains(.content_length) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
