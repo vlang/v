@@ -42,8 +42,8 @@ echo "AOPS_LFLAGS=${AOPS_LFLAGS}"
 CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOPS_LFLAGS}" ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
-	--enable-static \
-	--enable-shared=no \
+	--enable-static=yes \
+	--enable-shared=yes \
 	--enable-single-obj-compilation \
 	--enable-gc-debug \
 	--enable-large-config \
@@ -53,13 +53,22 @@ CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOP
 
 make
 
+cd .libs/
+for dname in *.dylib; do
+   echo "Post processing ${dname} ..."
+   install_name_tool -id "@rpath/${dname}" $dname;
+   otool -D $dname;
+done
+
 popd
 
-cp bdwgc/.libs/libgc.a         $TCC_FOLDER/lib/libgc.a
-
+################################################################################################
 date                         > $TCC_FOLDER/lib/libgc_build_on_date.txt
 echo $LIBGC_COMMIT_FULL_HASH > $TCC_FOLDER/lib/libgc_build_source_hash.txt
 uname -a                     > $TCC_FOLDER/lib/libgc_build_machine_uname.txt
+echo "$0"                    > $TCC_FOLDER/lib/libgc_build_cmd.txt
 
-ls -la $TCC_FOLDER/lib/libgc.a
+rsync -a bdwgc/.libs/         $TCC_FOLDER/lib/
+ls -lad $TCC_FOLDER/lib/*
+
 echo "Done compiling libgc, at commit $LIBGC_COMMIT , full hash: $LIBGC_COMMIT_FULL_HASH . The static library is in $TCC_FOLDER/lib/libgc.a "

@@ -51,7 +51,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			$if !use_bundled_libgc ? {
-				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+				#flag -L@VEXEROOT/thirdparty/tcc/lib
+				#flag -lgc
+				#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
 			}
 		}
 		$if macos {
