@@ -14,14 +14,14 @@ const option_name = ast.option_name
 pub struct Generics {
 	pref &pref.Preferences
 pub mut:
-	table               &ast.Table = unsafe { nil }
-	file                &ast.File  = unsafe { nil }
-	styp_cache          map[ast.Type]string
-	cur_fn              &ast.FnDecl = unsafe { nil }
-	cur_concrete_types  []ast.Type
-	inside_struct_init  bool
-	cur_struct_init_typ ast.Type
-	forin_types         map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
+	table                &ast.Table = unsafe { nil }
+	file                 &ast.File  = unsafe { nil }
+	styp_cache           map[ast.Type]string
+	cur_fn               &ast.FnDecl = unsafe { nil }
+	cur_concrete_types   []ast.Type
+	inside_struct_init   bool
+	cur_struct_init_node &ast.StructInit = unsafe { nil }
+	forin_types          map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
 }
 
 pub fn new_generics(pref_ &pref.Preferences) &Generics {
@@ -377,10 +377,6 @@ fn (mut g Generics) register_result(t ast.Type) string {
 	return styp
 }
 
-// TODO: this really shouldn't be separate from typ
-// but I(emily) would rather have this generation
-// all unified in one place so that it doesn't break
-// if one location changes
 fn (mut g Generics) option_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
 	mut styp := ''
@@ -452,12 +448,12 @@ fn (mut g Generics) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
-pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, _receiver_type ast.Type) string {
+pub fn (mut g Generics) method_concrete_name(old_name string, concrete_types []ast.Type, receiver_type ast.Type) string {
 	mut name := old_name
-	if _receiver_type != 0 {
-		mut info := g.table.sym(g.unwrap_generic(_receiver_type)).info
+	if receiver_type != 0 {
+		mut info := g.table.sym(g.unwrap_generic(receiver_type)).info
 		if mut info is ast.Alias {
-			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(_receiver_type))).info
+			info = g.table.sym(g.table.unaliased_type(g.unwrap_generic(receiver_type))).info
 		}
 		if mut info is ast.Struct {
 			fn_conc_types := concrete_types#[info.generic_types.len..] // concrete types without the generic types of the struct
@@ -1171,33 +1167,40 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.StructInit {
 			if g.cur_concrete_types.len > 0 {
+				old_inside_struct_init := g.inside_struct_init
 				g.inside_struct_init = true
-				g.cur_struct_init_typ = node.typ
+				old_cur_struct_init_node := g.cur_struct_init_node
+				g.cur_struct_init_node = unsafe { &node }
+
 				mut init_fields := node.init_fields.clone()
 				for mut init_field in init_fields {
 					init_field.expr = g.expr(mut init_field.expr)
+					init_field.typ = g.unwrap_generic(init_field.typ)
+					init_field.expected_type = g.unwrap_generic(init_field.expected_type)
+					init_field.parent_type = g.unwrap_generic(init_field.parent_type)
 				}
+
 				out := ast.Expr(ast.StructInit{
 					...node
 					typ:              g.unwrap_generic(node.typ)
 					typ_str:          g.table.type_str(g.unwrap_generic(node.typ))
-					generic_types:    []
+					generic_types:    node.generic_types.map(g.unwrap_generic(it))
 					update_expr:      g.expr(mut node.update_expr)
 					update_expr_type: g.unwrap_generic(node.update_expr_type)
 					init_fields:      init_fields
 				})
-				g.cur_struct_init_typ = 0
-				g.inside_struct_init = false
+
+				g.cur_struct_init_node = old_cur_struct_init_node
+				g.inside_struct_init = old_inside_struct_init
 				return out
 			}
+			old_inside_struct_init := g.inside_struct_init
 			g.inside_struct_init = true
-			g.cur_struct_init_typ = node.typ
 			node.update_expr = g.expr(mut node.update_expr)
 			for mut init_field in node.init_fields {
 				init_field.expr = g.expr(mut init_field.expr)
 			}
-			g.cur_struct_init_typ = 0
-			g.inside_struct_init = false
+			g.inside_struct_init = old_inside_struct_init
 		}
 		ast.TypeNode {
 			if g.cur_concrete_types.len > 0 {
@@ -1239,13 +1242,14 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
 				return t_typ
 			}
-		} else if g.inside_struct_init {
-			if g.cur_struct_init_typ != 0 {
-				sym := g.table.sym(g.cur_struct_init_typ)
+		}
+		if g.inside_struct_init && g.cur_struct_init_node != unsafe { nil } {
+			if g.cur_struct_init_node.typ != 0 {
+				sym := g.table.sym(g.cur_struct_init_node.typ)
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
+						if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_struct_init_node.generic_types.map(g.unwrap_generic(it))) {
 							return t_typ
 						}
 					}
