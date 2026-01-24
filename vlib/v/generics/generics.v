@@ -14,14 +14,14 @@ const option_name = ast.option_name
 pub struct Generics {
 	pref &pref.Preferences
 pub mut:
-	table                     &ast.Table = unsafe { nil }
-	file                      &ast.File  = unsafe { nil }
-	styp_cache                map[ast.Type]string
-	cur_fn                    &ast.FnDecl = unsafe { nil }
-	cur_concrete_types        []ast.Type
-	inside_struct_init        bool
-	cur_struct_init_node      &ast.StructInit = unsafe { nil }
-	forin_types               map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
+	table                &ast.Table = unsafe { nil }
+	file                 &ast.File  = unsafe { nil }
+	styp_cache           map[ast.Type]string
+	cur_fn               &ast.FnDecl = unsafe { nil }
+	cur_concrete_types   []ast.Type
+	inside_struct_init   bool
+	cur_struct_init_node &ast.StructInit = unsafe { nil }
+	forin_types          map[string]ast.Type // maps the name of the elem variable (`for elem in my_array`) to the solved type
 }
 
 pub fn new_generics(pref_ &pref.Preferences) &Generics {
@@ -1169,6 +1169,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			if g.cur_concrete_types.len > 0 {
 				old_inside_struct_init := g.inside_struct_init
 				g.inside_struct_init = true
+				old_cur_struct_init_node := g.cur_struct_init_node
 				g.cur_struct_init_node = unsafe { &node }
 
 				mut init_fields := node.init_fields.clone()
@@ -1183,7 +1184,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					...node
 					typ:              g.unwrap_generic(node.typ)
 					typ_str:          g.table.type_str(g.unwrap_generic(node.typ))
-					generic_types:    node.generic_types.map(g.unwrap_generic(it)
+					generic_types:    node.generic_types.map(g.unwrap_generic(it))
 					update_expr:      g.expr(mut node.update_expr)
 					update_expr_type: g.unwrap_generic(node.update_expr_type)
 					init_fields:      init_fields
@@ -1242,7 +1243,7 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 				return t_typ
 			}
 		}
-		if g.inside_struct_init && g.cur_struct_init_node != unsafe {nil} {
+		if g.inside_struct_init && g.cur_struct_init_node != unsafe { nil } {
 			if g.cur_struct_init_node.typ != 0 {
 				sym := g.table.sym(g.cur_struct_init_node.typ)
 				if sym.info is ast.Struct {
