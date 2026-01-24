@@ -31,15 +31,11 @@ cd bdwgc/
 git checkout $LIBGC_COMMIT
 export LIBGC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 
+git clone https://github.com/bdwgc/libatomic_ops
+
 ./autogen.sh
 
-export AOPS_CFLAGS=$(pkg-config atomic_ops --cflags)
-export AOPS_LFLAGS=$(pkg-config atomic_ops --libs)
-
-echo "AOPS_CFLAGS=${AOPS_CFLAGS}"
-echo "AOPS_LFLAGS=${AOPS_LFLAGS}"
-
-CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOPS_LFLAGS}" ./configure \
+CC=$CC CFLAGS="-Os -mtune=generic -fPIC" LDFLAGS="-Os -fPIC" ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
 	--enable-static=yes \
@@ -48,7 +44,7 @@ CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOP
 	--enable-gc-debug \
 	--enable-large-config \
 	--enable-cplusplus \
-	--with-libatomic-ops=none \
+	--with-libatomic-ops=check \
 	--enable-sigrt-signals
 
 make
