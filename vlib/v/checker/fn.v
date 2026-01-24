@@ -2176,7 +2176,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 	method_name := node.name
 	if left_type.has_flag(.option) {
-		c.error('Option type cannot be called directly, you should unwrap it first', node.left.pos())
+		c.error('Option type `${left_sym.name}` cannot be called directly, you should unwrap it first',
+			node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
 		c.error('Result type cannot be called directly', node.left.pos())

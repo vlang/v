@@ -6,6 +6,7 @@ import json
 import net
 import net.http
 import os
+import time
 
 enum ContextReturnType {
 	normal
@@ -442,4 +443,12 @@ pub fn (ctx &Context) ip() string {
 		ip = ctx.conn.peer_ip() or { '' }
 	}
 	return ip
+}
+
+// time_to_render returns the time in milliseconds that it took to render the page
+pub fn (ctx &Context) time_to_render() i64 {
+	if ctx.page_gen_start == 0 {
+		return 0
+	}
+	return time.ticks() - ctx.page_gen_start
 }

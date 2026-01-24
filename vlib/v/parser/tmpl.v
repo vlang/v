@@ -429,17 +429,33 @@ fn veb_tmpl_${fn_name}() string {
 
 		if pos := line.index('%') {
 			// %translation_key => ${tr('translation_key')}
+			is_raw := line.contains('%raw ')
 			mut line_ := line
-			if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
-				mut end := pos + 1
+			if is_raw {
+				// Start reading the key after "raw " (pos + 1 + 4)
+				mut end := pos + 5
+				// valid variable characters
 				for end < line.len && (line[end].is_letter() || line[end] == `_`) {
 					end++
 				}
-				key := line[pos + 1..end]
-				// println('GOT tr key line="${line}" key="${key}"')
-				// source.writeln('\${tr("${key}")}')
-				line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
-				// i += key.len
+				// Extract the key
+				key := line[pos + 5..end]
+				// Replace '%raw key' with just '${key}'
+				// We escape it as \${key} so the generated V code performs the interpolation
+				// line_ = line.replace('%raw ${key}', '\${${key}}')
+				line_ = line.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+			} else {
+				if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
+					mut end := pos + 1
+					for end < line.len && (line[end].is_letter() || line[end] == `_`) {
+						end++
+					}
+					key := line[pos + 1..end]
+					// println('GOT tr key line="${line}" key="${key}"')
+					// source.writeln('\${tr("${key}")}')
+					line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
+					// i += key.len
+				}
 			}
 			// println(source.str())
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line_))
