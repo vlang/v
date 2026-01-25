@@ -387,7 +387,7 @@ pub fn readlink(path string) !string {
 	// readlink returns the number of bytes written into buf, or -1 for errors.
 	res := C.readlink(&char(path.str), &char(&buf[0]), max_path_buffer_size)
 	if res < 0 {
-		return error(posix_get_error_msg(C.errno))
+		return last_error()
 	}
 	// Common case: we got a complete read into our buffer on the stack.
 	// In this case, copy the data into a new heap-allocated string that's right-sized
@@ -406,7 +406,7 @@ pub fn readlink(path string) !string {
 		mut buf2 := unsafe { &char(malloc_noscan(size)) }
 		res2 := C.readlink(&char(path.str), buf2, size)
 		if res2 < 0 {
-			return error(posix_get_error_msg(C.errno))
+			return last_error()
 		}
 		if res2 < size {
 			return unsafe { tos(&u8(&buf2[0]), res2) }
