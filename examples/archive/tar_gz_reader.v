@@ -65,9 +65,9 @@ fn new_downloader(url string) !&Downloader {
 	return downloader
 }
 
-fn (mut d Downloader) on_start(mut request http.Request, path string) ! {}
+fn (mut d Downloader) on_start(mut _request http.Request, _path string) ! {}
 
-fn (mut d Downloader) on_chunk(request &http.Request, chunk []u8, already_received u64, expected u64) ! {
+fn (mut d Downloader) on_chunk(_request &http.Request, chunk []u8, _already_received u64, expected u64) ! {
 	if expected == 0 {
 		return
 	}
@@ -75,7 +75,7 @@ fn (mut d Downloader) on_chunk(request &http.Request, chunk []u8, already_receiv
 	d.data << chunk
 }
 
-fn (mut d Downloader) on_finish(request &http.Request, response &http.Response) ! {}
+fn (mut d Downloader) on_finish(_request &http.Request, _response &http.Response) ! {}
 
 struct FileReader implements tar.Reader {
 	ctx &Context

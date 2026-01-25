@@ -13,7 +13,7 @@ fn main() {
 	ctx.run()
 }
 
-fn init(mut ctx gg.Context) {
+fn init(mut _ctx gg.Context) {
 	sapp.set_mouse_cursor(.ibeam)
 }
 

@@ -15,7 +15,7 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	}
 }
 
-fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
+fn draw_line(mut context JS.CanvasRenderingContext2D, _x1 int, _y1 int, _x2 int, _y2 int) {
 	context.beginPath()
 	context.strokeStyle = 'black'.str
 	context.lineWidth = JS.Number(1)

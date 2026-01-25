@@ -26,7 +26,7 @@ mut:
 	certs map[string]&mbedtls.SSLCerts
 }
 
-fn (mut cm CertManager) get_cert(mut l mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
+fn (mut cm CertManager) get_cert(mut _l mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
 	println('${host}')
 
 	if c := cm.certs[host] {

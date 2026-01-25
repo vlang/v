@@ -21,7 +21,7 @@ mut:
 	direction int    = 1
 }
 
-fn event(e &tui.Event, mut app App) {
+fn event(e &tui.Event, mut _app App) {
 	match e.typ {
 		.mouse_down {}
 		.mouse_drag {}

@@ -24,7 +24,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(user_data voidptr) {
+fn init(_user_data voidptr) {
 	desc := sapp.create_desc() // gfx.Desc{
 	gfx.setup(&desc)
 	sgl_desc := sgl.Desc{}

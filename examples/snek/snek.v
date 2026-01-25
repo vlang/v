@@ -143,7 +143,7 @@ fn on_frame(mut app App) {
 }
 
 // events
-fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
+fn on_keydown(key gg.KeyCode, _mod gg.Modifier, mut app App) {
 	app.dir_queue << match key {
 		.w, .up {
 			Vec{0, -1}

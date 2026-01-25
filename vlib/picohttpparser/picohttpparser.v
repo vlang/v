@@ -464,7 +464,7 @@ fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 
 // advance_token2 is a less safe version of advance_token
 @[inline]
-fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
+fn advance_token2(tok_start &u8, _tok_end &u8, mut pret Pret) string {
 	mut len := 0
 	mut i := 0
 	for {
