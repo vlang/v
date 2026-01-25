@@ -287,6 +287,14 @@ fn (mut encoder Encoder) encode_map[T](val map[string]T) {
 }
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
+	mut attr_value := ''
+	$for member in T.values {
+		if member.value == val {
+			for attr in member.attrs {
+				attr_value = attr.all_after('json: ')
+			}
+		}
+	}
 	if encoder.enum_as_int {
 		encoder.encode_number(int(val))
 	} else {
@@ -298,6 +306,9 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 			}
 
 			enum_val = enum_val[i + 1..enum_val.len - 1]
+		}
+		if attr_value != '' {
+			enum_val = attr_value
 		}
 		encoder.output << `"`
 		unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }

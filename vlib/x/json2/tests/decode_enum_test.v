@@ -2,7 +2,7 @@ import x.json2 as json
 
 enum Bar {
 	a
-	b
+	b  @[json: 'BBB']
 	c = 10
 }
 
@@ -42,11 +42,11 @@ fn test_number_decode_fails() {
 
 fn test_string_decode() {
 	assert json.decode[Bar]('"a"')! == Bar.a
-	assert json.decode[Bar]('"b"')! == Bar.b
+	assert json.decode[Bar]('"BBB"')! == Bar.b
 	assert json.decode[Bar]('"c"')! == Bar.c
 
 	assert json.decode[BarAlias]('"a"')! == Bar.a
-	assert json.decode[BarAlias]('"b"')! == Bar.b
+	assert json.decode[BarAlias]('"BBB"')! == Bar.b
 	assert json.decode[BarAlias]('"c"')! == Bar.c
 }
 

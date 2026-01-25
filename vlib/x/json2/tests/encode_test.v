@@ -9,7 +9,7 @@ type FloatAlias = f64
 
 enum TestEnum {
 	a
-	b
+	b  @[json: 'BBB']
 	c = 10
 }
 
@@ -122,6 +122,8 @@ fn test_enums() {
 	assert json.encode(EnumAlias(TestEnum.c)) == '"c"'
 	assert json.encode(TestEnum.c, enum_as_int: true) == '10'
 	assert json.encode(EnumAlias(TestEnum.c), enum_as_int: true) == '10'
+	assert json.encode(TestEnum.b) == '"BBB"'
+	assert json.encode(EnumAlias(TestEnum.b)) == '"BBB"'
 }
 
 fn test_sumtypes() {
