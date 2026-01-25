@@ -615,6 +615,34 @@ fn test_symlink() {
 	}
 }
 
+fn test_readlink() {
+	$if windows {
+		eprintln('skipping ${@METHOD} on windows, api not supported')
+		return
+	}
+	os.symlink('some_target_string', 'some_symlink')!
+	defer { os.rm('some_symlink') or { panic(err) } }
+	assert os.readlink('some_symlink')! == 'some_target_string'
+}
+
+fn test_exists_symlink_dangling() {
+	$if msvc {
+		eprintln('skipping ${@METHOD} on windows + msvc; TODO: investigate why os.lstat/1 behaves differently than for gcc/clang')
+		return
+	}
+	os.symlink('nonexistent', 'dangling_symlink') or { handle_privilege_error(err) or { return } }
+	// sanity check that the symlink truly does exist.  the lack of error alone is the check.
+	// (on linux, `.get_filetype() == os.FileType.symbolic_link` is true, but on windows, a dangling symlink is reported as a regular file.)
+	os.lstat('dangling_symlink')!
+	// the exists function says false in this scenario... on linux and linux-like systems.
+	// it says true on windows!
+	$if windows {
+		assert os.exists('dangling_symlink') == true
+	} $else {
+		assert os.exists('dangling_symlink') == false
+	}
+}
+
 fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	create_file(file_name)!
@@ -1026,7 +1054,6 @@ fn test_execute_fc_get_output() {
 		return
 	}
 	result := os.execute('c:\\windows\\system32\\fc.exe /?')
-	dump(result)
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
 }

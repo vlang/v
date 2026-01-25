@@ -51,6 +51,8 @@ fn C.uname(name &C.utsname) int
 
 fn C.symlink(&char, &char) int
 
+fn C.readlink(&char, &char, int) int
+
 fn C.link(&char, &char) int
 
 fn C.gethostname(&char, int) int
@@ -362,14 +364,56 @@ pub fn raw_execute(cmd string) Result {
 	return execute(cmd)
 }
 
-// symlink creates a symbolic link named target, which points to origin.
+// symlink creates a symbolic link named link_name, which points to target.
 // It returns a POSIX error message, if it can not do so.
-pub fn symlink(origin string, target string) ! {
-	res := C.symlink(&char(origin.str), &char(target.str))
+pub fn symlink(target string, link_name string) ! {
+	res := C.symlink(&char(target.str), &char(link_name.str))
 	if res == 0 {
 		return
 	}
 	return error(posix_get_error_msg(C.errno))
+}
+
+// readlink reads the target of a symbolic link.
+// It returns a POSIX error message if it can not do so.
+//
+// Note that the target of a symbolic link can be any string:
+// it is often used to point to another path, but the target is not guaranteed
+// to resolve as a path, nor to point to a path that exists.
+@[manualfree]
+pub fn readlink(path string) !string {
+	// Use a region of stack to get information into; we'll return new memory of more precise size later.
+	mut buf := [max_path_buffer_size]u8{}
+	// readlink returns the number of bytes written into buf, or -1 for errors.
+	res := C.readlink(&char(path.str), &char(&buf[0]), max_path_buffer_size)
+	if res < 0 {
+		return last_error()
+	}
+	// Common case: we got a complete read into our buffer on the stack.
+	// In this case, copy the data into a new heap-allocated string that's right-sized
+	// (we can't return memory from our stack).
+	if res < max_path_buffer_size {
+		return unsafe { (&buf[0]).vstring_with_len(res).clone() }
+	}
+	// If the number of bytes read wasn't less than as many as we said we'd accept: that means we might not have gotten a complete read.
+	// In this case, we have to start doing heap allocations, increasingly large, and simply check until we get a complete one.
+	// Whenever we do succeed: we'll return a string that refers to a subset of that possibly excessively sized buffer,
+	// because we're already on the heap and returning it is valid; and because allocating a new buffer just
+	// to save some resident memory is usually a poor trade of spending of time just to reclaim a very minor amount of space.
+	mut size := max_path_buffer_size
+	for {
+		size *= 2
+		mut buf2 := unsafe { &char(malloc_noscan(size)) }
+		res2 := C.readlink(&char(path.str), buf2, size)
+		if res2 < 0 {
+			return last_error()
+		}
+		if res2 < size {
+			return unsafe { tos(&u8(&buf2[0]), res2) }
+		}
+		unsafe { free(buf2) } // and then loop around to try again with a larger one.
+	}
+	return error('${@METHOD} unreachable code')
 }
 
 // link creates a new link (also known as a hard link) to an existing file.

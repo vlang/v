@@ -431,6 +431,16 @@ pub fn system(cmd string) int {
 }
 
 // exists returns true if `path` (file or directory) exists.
+//
+// Note that when used on symlinks, if the target of the symlink does not exist, the behavior of this function is complex.
+// On linux, mac, and similar systems, on such a symlink, this function returns false.
+// (This may make sense, in the sense that such a path does not contain anything readable.
+// It is also the same as the libc 'access' function, and may be familiar from that regard.
+// On the other hand, this case may be surprising, since it means this function can return "false" for a path that exists enough
+// that trying to create a new file or dir there subsequently (even aside from TOCTOU issues) will fail with EEXIST.)
+// On windows systems, a symlink with a target that does not exist, this function returns true.
+// Consider using lstat() for a less ambiguous result about whether a path is occupied or not;
+// whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')

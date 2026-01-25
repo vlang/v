@@ -431,6 +431,12 @@ pub fn symlink(origin string, target string) ! {
 	return error('could not symlink')
 }
 
+// readlink reads the target of a symbolic link.
+// TODO: implement this for windows too.
+pub fn readlink(path string) !string {
+	return error('${@METHOD} not yet supported on windows')
+}
+
 pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
