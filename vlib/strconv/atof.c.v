@@ -247,6 +247,9 @@ fn converter(mut pn PrepNumber) u64 {
 	s0 = u32(pn.mantissa & u64(0x00000000FFFFFFFF))
 	s1 = u32(pn.mantissa >> 32)
 	s2 = u32(0)
+	if pn.mantissa == 0 && pn.exponent <= 0 {
+		return if pn.negative { double_minus_zero } else { double_plus_zero }
+	}
 	// so we take the decimal exponent off
 	for pn.exponent > 0 {
 		q2, q1, q0 = lsl96(s2, s1, s0) // q = s * 2
