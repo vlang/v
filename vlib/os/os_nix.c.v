@@ -413,7 +413,7 @@ pub fn readlink(path string) !string {
 		}
 		unsafe { free(buf2) } // and then loop around to try again with a larger one.
 	}
-	panic('unreachable')
+	return error('${@METHOD} unreachable code')
 }
 
 // link creates a new link (also known as a hard link) to an existing file.

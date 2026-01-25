@@ -620,9 +620,9 @@ fn test_readlink() {
 		eprintln('skipping ${@METHOD} on windows, api not supported')
 		return
 	}
-	os.symlink('target string', 'symlink')!
-	defer { os.rm('symlink') or { panic(err) } }
-	assert os.readlink('symlink')! == 'target string'
+	os.symlink('some_target_string', 'some_symlink')!
+	defer { os.rm('some_symlink') or { panic(err) } }
+	assert os.readlink('some_symlink')! == 'some_target_string'
 }
 
 fn test_exists_symlink_dangling() {
@@ -1050,7 +1050,6 @@ fn test_execute_fc_get_output() {
 		return
 	}
 	result := os.execute('c:\\windows\\system32\\fc.exe /?')
-	dump(result)
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
 }

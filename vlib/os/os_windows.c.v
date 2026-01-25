@@ -431,8 +431,10 @@ pub fn symlink(origin string, target string) ! {
 	return error('could not symlink')
 }
 
+// readlink reads the target of a symbolic link.
+// TODO: implement this for windows too.
 pub fn readlink(path string) !string {
-	panic('${@METHOD} not yet supported on windows')
+	return error('${@METHOD} not yet supported on windows')
 }
 
 pub fn link(origin string, target string) ! {
