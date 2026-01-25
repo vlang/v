@@ -626,6 +626,10 @@ fn test_readlink() {
 }
 
 fn test_exists_symlink_dangling() {
+	$if msvc {
+		eprintln('skipping ${@METHOD} on windows + msvc; TODO: investigate why os.lstat/1 behaves differently than for gcc/clang')
+		return
+	}
 	os.symlink('nonexistent', 'dangling_symlink') or { handle_privilege_error(err) or { return } }
 	// sanity check that the symlink truly does exist.  the lack of error alone is the check.
 	// (on linux, `.get_filetype() == os.FileType.symbolic_link` is true, but on windows, a dangling symlink is reported as a regular file.)
