@@ -1,4 +1,4 @@
-// Copyright (c) 2022, 2024 blackshirt All rights reserved.
+// Copyright (c) 2022, 2026 blackshirt All rights reserved.
 // Use of this source code is governed by a MIT License
 // that can be found in the LICENSE file.
 module asn1

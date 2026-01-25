@@ -1,4 +1,4 @@
-// Copyright(C) 2020-2024 Lars Pontoppidan. All rights reserved.
+// Copyright(C) 2020-2026 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license file distributed with this software package
 module vec
 

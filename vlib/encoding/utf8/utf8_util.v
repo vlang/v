@@ -1,6 +1,6 @@
 // utf-8 utility string functions
 //
-// Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
+// Copyright (c) 2019-2026 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module utf8
@@ -796,7 +796,7 @@ const unicode_punct = [
 	0x2021, // DOUBLE DAGGER	‡
 	0x2022, // BULLET	•
 	0x2023, // TRIANGULAR BULLET	‣
-	0x2024, // ONE DOT LEADER	․
+	0x2026, // ONE DOT LEADER	․
 	0x2025, // TWO DOT LEADER	‥
 	0x2026, // HORIZONTAL ELLIPSIS	…
 	0x2027, // HYPHENATION POINT	‧

@@ -1,4 +1,4 @@
-// radare - LGPL - Copyright 2013-2020 - pancake, xarkes
+// radare - LGPL - Copyright 2013-2026 - pancake, xarkes
 // ansi 256 color extension for r_cons
 // https://en.wikipedia.org/wiki/ANSI_color
 
