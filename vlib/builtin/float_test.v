@@ -1,3 +1,5 @@
+import math
+
 fn test_float_decl() {
 	// z := 1f
 	// assert z > 0
@@ -235,4 +237,60 @@ fn test_float_zero_str() {
 	assert '${f1}' == '0.0'
 	assert f2.str() == '0.0'
 	assert '${f2}' == '0.0'
+}
+
+fn test_f32_zero_chars() {
+	bits := math.f32_bits('-0.0'.f32())
+	assert math.f32_bits('-0 ms'.f32()) == bits
+	assert math.f32_bits('-0.0 ms'.f32()) == bits
+	assert math.f32_bits('-0.000 ms'.f32()) == bits
+	assert math.f32_bits('0 ms'.f32()) == 0
+	assert math.f32_bits('0.0 ms'.f32()) == 0
+	assert math.f32_bits('0.000 ms'.f32()) == 0
+	assert math.f32_bits('-0'.f32()) == bits
+	assert math.f32_bits('-0.0'.f32()) == bits
+	assert math.f32_bits('-0.000'.f32()) == bits
+	assert math.f32_bits('0'.f32()) == 0
+	assert math.f32_bits('0.0'.f32()) == 0
+	assert math.f32_bits('0.000'.f32()) == 0
+	assert '-0 ms'.f32().str() == '-0.0'
+	assert '-0.0 ms'.f32().str() == '-0.0'
+	assert '-0.000 ms'.f32().str() == '-0.0'
+	assert '0 ms'.f32().str() == '0.0'
+	assert '0.0 ms'.f32().str() == '0.0'
+	assert '0.000 ms'.f32().str() == '0.0'
+	assert '-0'.f32().str() == '-0.0'
+	assert '-0.0'.f32().str() == '-0.0'
+	assert '-0.000'.f32().str() == '-0.0'
+	assert '0'.f32().str() == '0.0'
+	assert '0.0'.f32().str() == '0.0'
+	assert '0.00'.f32().str() == '0.0'
+}
+
+fn test_f64_zero_chars() {
+	bits := math.f64_bits('-0.0'.f64())
+	assert math.f64_bits('-0 ms'.f64()) == bits
+	assert math.f64_bits('-0.0 ms'.f64()) == bits
+	assert math.f64_bits('-0.000 ms'.f64()) == bits
+	assert math.f64_bits('0 ms'.f64()) == 0
+	assert math.f64_bits('0.0 ms'.f64()) == 0
+	assert math.f64_bits('0.000 ms'.f64()) == 0
+	assert math.f64_bits('-0'.f64()) == bits
+	assert math.f64_bits('-0.0'.f64()) == bits
+	assert math.f64_bits('-0.000'.f64()) == bits
+	assert math.f64_bits('0'.f64()) == 0
+	assert math.f64_bits('0.0'.f64()) == 0
+	assert math.f64_bits('0.000'.f64()) == 0
+	assert '-0 ms'.f64().str() == '-0.0'
+	assert '-0.0 ms'.f64().str() == '-0.0'
+	assert '-0.000 ms'.f64().str() == '-0.0'
+	assert '0 ms'.f64().str() == '0.0'
+	assert '0.0 ms'.f64().str() == '0.0'
+	assert '0.000 ms'.f64().str() == '0.0'
+	assert '-0'.f64().str() == '-0.0'
+	assert '-0.0'.f64().str() == '-0.0'
+	assert '-0.000'.f64().str() == '-0.0'
+	assert '0'.f64().str() == '0.0'
+	assert '0.0'.f64().str() == '0.0'
+	assert '0.00'.f64().str() == '0.0'
 }
