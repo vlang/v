@@ -1,3 +1,4 @@
+// vtest build: !msvc
 fn test_empty_asm_statements() {
 	asm amd64 {
 	}
