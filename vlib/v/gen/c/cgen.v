@@ -7404,7 +7404,19 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						g.write('${cvar_name} = ')
 					}
 					if is_array_fixed {
-						g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
+						// For fixed arrays, we need memcpy. Use compound literal cast only for
+						// expressions that generate brace-enclosed initializers (which need
+						// to become compound literals), not for constants/variables where
+						// casting to array type is invalid C.
+						is_array_init := expr_stmt.expr is ast.ArrayInit
+							|| expr_stmt.expr is ast.StructInit
+							|| (expr_stmt.expr is ast.CastExpr
+							&& (expr_stmt.expr as ast.CastExpr).expr is ast.ArrayInit)
+						if is_array_init {
+							g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
+						} else {
+							g.write('memcpy(${cvar_name}${tmp_op}data, ')
+						}
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
