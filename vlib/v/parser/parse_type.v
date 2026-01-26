@@ -1031,7 +1031,7 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 			kind:  .generic_inst
 			name:  bs_name
 			cname: util.no_dots(bs_cname)
-			mod:   p.mod
+			mod:   name.all_before_last('.')
 			info:  ast.GenericInst{
 				parent_idx:     parent_idx
 				concrete_types: concrete_types

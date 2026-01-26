@@ -1065,7 +1065,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
 	mut fields := c.table.struct_fields(type_sym)
 	mut checked_types := []ast.Type{}
-
 	for i, mut field in fields {
 		if field.name in inited_fields {
 			if c.mod != type_sym.mod {
@@ -1078,7 +1077,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 							} else {
 								parts.last()
 							}
-							if !c.inside_unsafe {
+							if !c.inside_unsafe && !(c.pref.backend.is_js()
+								&& mod_type.starts_with('Promise')) {
 								c.error('cannot access private field `${field.name}` on `${mod_type}`',
 									init_field.pos)
 
