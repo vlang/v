@@ -93,6 +93,7 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			#flag -L/usr/local/lib
 			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 			#flag -lgc
