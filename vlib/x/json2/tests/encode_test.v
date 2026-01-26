@@ -11,6 +11,7 @@ enum TestEnum {
 	a
 	b  @[json: 'BBB']
 	c = 10
+	d  @[badattr: 'bad'; foobar]
 }
 
 type EnumAlias = TestEnum
@@ -124,6 +125,9 @@ fn test_enums() {
 	assert json.encode(EnumAlias(TestEnum.c), enum_as_int: true) == '10'
 	assert json.encode(TestEnum.b) == '"BBB"'
 	assert json.encode(EnumAlias(TestEnum.b)) == '"BBB"'
+	// Ensure that only `json: ` attrs is applied
+	assert json.encode(TestEnum.d) == '"d"'
+	assert json.encode(EnumAlias(TestEnum.d)) == '"d"'
 }
 
 fn test_sumtypes() {

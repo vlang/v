@@ -4,6 +4,7 @@ enum Bar {
 	a
 	b  @[json: 'BBB']
 	c = 10
+	e  @[badattr: 'bad'; foobar]
 }
 
 type BarAlias = Bar
@@ -48,6 +49,23 @@ fn test_string_decode() {
 	assert json.decode[BarAlias]('"a"')! == Bar.a
 	assert json.decode[BarAlias]('"BBB"')! == Bar.b
 	assert json.decode[BarAlias]('"c"')! == Bar.c
+}
+
+fn test_string_decode_uses_only_json_attr() {
+	assert json.decode[Bar]('"e"')! == Bar.e
+	assert json.decode[BarAlias]('"e"')! == Bar.e
+	for badval in ['"badattr: bad"', '"bad"', '"foobar"'] {
+		if _ := json.decode[Bar](badval) {
+			assert false, '${badval} must not be decoded to Bar'
+		} else {
+			assert true
+		}
+		if _ := json.decode[BarAlias](badval) {
+			assert false, '${badval} must not be decoded to BarAlias'
+		} else {
+			assert true
+		}
+	}
 }
 
 fn test_string_decode_fails() {
