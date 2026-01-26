@@ -5,6 +5,23 @@ module c
 import v.ast
 import v.util
 
+// orm_field_access_name converts an ORM field name to proper C struct member access.
+// For embedded struct fields like "Payload.some_field", this returns "Payload.some_field"
+// (keeping the dot for C member access). For regular fields, it uses c_name().
+fn orm_field_access_name(field_name string) string {
+	if field_name.contains('.') {
+		// Embedded struct field - keep the dots for proper C struct member access
+		// e.g., "Payload.some_field" -> "Payload.some_field"
+		parts := field_name.split('.')
+		mut result := []string{}
+		for part in parts {
+			result << c_name(part)
+		}
+		return result.join('.')
+	}
+	return c_name(field_name)
+}
+
 enum SqlExprSide {
 	left
 	right
@@ -490,12 +507,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				typ = g.table.sym(final_field_typ).cname
 			}
 			typ = vint2int(typ)
-			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
+			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
-				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${c_name(field.name)}'
+				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
 				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
@@ -543,7 +560,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				typ = 'time'
 			}
 			typ = vint2int(typ)
-			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${c_name(primary_field.name)});')
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${orm_field_access_name(primary_field.name)});')
 		}
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
@@ -1137,7 +1154,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			array_get_call_code := '(*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, ${idx})), ${fields_idx}))'
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
-			field_var := '${tmp}.${c_name(field.name)}'
+			field_var := '${tmp}.${orm_field_access_name(field.name)}'
 			field_c_typ := g.styp(final_field_typ)
 			if sym.kind == .struct && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(final_field_typ)] or { continue }
@@ -1239,7 +1256,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				fields_idx++
 			} else if sym.kind == .enum {
 				mut typ := sym.cname
-				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
+				g.writeln('${tmp}.${orm_field_access_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
 				fields_idx++
 			} else {
 				g.writeln('${field_var} = *(${array_get_call_code}._${sym.cname});')

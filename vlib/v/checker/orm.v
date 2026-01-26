@@ -427,6 +427,12 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 				// fields << c.fetch_and_check_orm_fields(embed_sym.info, pos, embed_sym.name)
 				embedded_fields := c.fetch_and_check_orm_fields(embed_sym.info, pos, embed_sym.name)
 				for ef in embedded_fields {
+					// Ensure the embedded field type is valid (not 0/unresolved)
+					if ef.typ == 0 {
+						c.orm_error('embedded struct `${embed_sym.name}` has unresolved field type for `${ef.name}`',
+							pos)
+						continue
+					}
 					mut new_field := ef
 					// Update name for correct C generation (e.g. msg.Payload.field)
 					new_field.name = '${field.name}.${ef.name}'
