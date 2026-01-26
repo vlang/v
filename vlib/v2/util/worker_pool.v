@@ -8,10 +8,11 @@ pub mut:
 
 pub struct WorkerPool[T, Y] {
 mut:
-	workers   []thread
-	queue_len shared SharedIntWorkaround
-	ch_in     chan T
-	ch_out    chan Y
+	workers        []thread
+	queue_len      shared SharedIntWorkaround // jobs queued but not yet completed
+	total_expected shared SharedIntWorkaround // total results expected
+	ch_in          chan T
+	ch_out         chan Y
 }
 
 pub fn WorkerPool.new[T, Y]() &WorkerPool[T, Y] {
@@ -47,10 +48,13 @@ pub fn (mut wp WorkerPool[T, Y]) job_done() {
 }
 
 pub fn (mut wp WorkerPool[T, Y]) queue_job(job T) {
-	wp.ch_in <- job
 	lock wp.queue_len {
 		wp.queue_len.value++
 	}
+	lock wp.total_expected {
+		wp.total_expected.value++
+	}
+	wp.ch_in <- job
 }
 
 pub fn (mut wp WorkerPool[T, Y]) queue_jobs(jobs []T) {
@@ -61,9 +65,17 @@ pub fn (mut wp WorkerPool[T, Y]) queue_jobs(jobs []T) {
 
 pub fn (mut wp WorkerPool[T, Y]) wait_for_results() []Y {
 	mut results := []Y{}
-	for wp.active_jobs() > 0 {
+	// Wait for total_expected results
+	mut expected := lock wp.total_expected {
+		wp.total_expected.value
+	}
+	for results.len < expected {
 		result := <-wp.ch_out
 		results << result
+		// Re-check expected in case more jobs were queued
+		expected = lock wp.total_expected {
+			wp.total_expected.value
+		}
 	}
 
 	wp.ch_in.close()

@@ -25,7 +25,7 @@ fn main() {
 	prefs := &pref.Preferences{}
 	mut file_set := token.FileSet.new()
 	mut p := parser.Parser.new(prefs)
-	// Parse File
+	//  Parse File
 	input_file := 'test.v'
 	if !os.exists(input_file) {
 		eprintln('Error: ${input_file} not found')
@@ -38,7 +38,7 @@ fn main() {
 	}
 	// Initialize SSA Module
 	mut mod := ssa.Module.new('main')
-	// Build SSA from AST
+	//  Build SSA from AST
 	println('[*] Building SSA...')
 	mut builder := ssa.Builder.new(mod)
 	builder.build(file)
@@ -70,6 +70,7 @@ fn main() {
 			x64_gen.gen()
 			x64_gen.write_file('main.o')
 		}
+
 		println('generating main.o took ${time.since(t0)}')
 		// Link
 		println('[*] Linking...')
@@ -101,10 +102,8 @@ fn main() {
 		println('[*] Generating SSA C Backend...')
 		mut c_gen := c.Gen.new(mod)
 		c_source := c_gen.gen()
-
 		os.write_file('out.c', c_source) or { panic(err) }
 		println('[*] Done. Wrote out.c')
-
 		// Compile C Code
 		println('[*] Compiling out.c...')
 		cc_res := os.system('cc out.c -o out_bin -w')

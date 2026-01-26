@@ -257,6 +257,11 @@ fn (mut p Parser) stmt() ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
+		.key_import {
+			import_stmt := p.import_stmt()
+			p.expect(.semicolon)
+			return import_stmt
+		}
 		.key_return {
 			// p.log('ast.ReturnStmt')
 			p.next()
@@ -281,6 +286,11 @@ fn (mut p Parser) stmt() ast.Stmt {
 			return ast.BlockStmt{
 				stmts: stmts
 			}
+		}
+		.semicolon {
+			// empty statement (e.g., auto-inserted semicolon after asm block)
+			p.next()
+			return ast.empty_stmt
 		}
 		else {
 			expr := p.expr(.lowest)
@@ -1430,13 +1440,11 @@ fn (mut p Parser) comptime_stmt() ast.Stmt {
 				stmt: p.for_stmt()
 			}
 		}
-		// don't expect semi, if_expr eats the final `;` because of
-		// comptime if, and I don't want to peek ahead an extra token.
-		// If the `$` in each branch is removed from IfExpr then this
-		// can be handled the same as all other cases
 		.key_if {
+			expr := p.comptime_expr()
+			p.expect_semi()
 			return ast.ExprStmt{
-				expr: p.comptime_expr()
+				expr: expr
 			}
 		}
 		else {
@@ -1582,7 +1590,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	}
 	stmts := p.block()
 	// this is because semis get inserted after branches (same in Go)
-	if p.tok == .semicolon {
+	// only consume semicolon if there's a non-comptime else following
+	// (for comptime $else, there should be no semicolon between } and $)
+	if p.tok == .semicolon && p.peek() == .key_else {
 		p.next()
 	}
 	// else

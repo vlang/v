@@ -386,7 +386,6 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .rpar
 		}
 		`[` {
-			s.insert_semi = true
 			return .lsbr
 		}
 		`]` {

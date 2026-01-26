@@ -212,6 +212,44 @@ fn nested_return(x int) int {
 	}
 }
 
+// ===================== IF-EXPRESSION HELPERS =====================
+
+fn int_abs(a int) int {
+	return if a < 0 { -a } else { a }
+}
+
+fn int_max2(a int, b int) int {
+	return if a > b { a } else { b }
+}
+
+fn int_min2(a int, b int) int {
+	return if a < b { a } else { b }
+}
+
+fn sign(x int) int {
+	return if x < 0 {
+		-1
+	} else {
+		if x > 0 {
+			1
+		} else {
+			0
+		}
+	}
+}
+
+fn clamp(x int, lo int, hi int) int {
+	return if x < lo {
+		lo
+	} else {
+		if x > hi {
+			hi
+		} else {
+			x
+		}
+	}
+}
+
 // ===================== MAIN TEST FUNCTION =====================
 
 fn main() {
@@ -1539,5 +1577,84 @@ fn main() {
 	print_int(m8.sum()) // 9
 	print_int(m8.product()) // 20
 
+	// ==================== 32. IF-EXPRESSIONS ====================
+	print_str('--- 32. If-Expressions ---')
+
+	// 32.1 Basic if-expression (abs)
+	print_int(int_abs(-5)) // 5
+	print_int(int_abs(7)) // 7
+	print_int(int_abs(0)) // 0
+
+	// 32.2 If-expression for max
+	print_int(int_max2(10, 20)) // 20
+	print_int(int_max2(30, 15)) // 30
+	print_int(int_max2(5, 5)) // 5
+
+	// 32.3 If-expression for min
+	print_int(int_min2(10, 20)) // 10
+	print_int(int_min2(30, 15)) // 15
+	print_int(int_min2(8, 8)) // 8
+
+	// 32.4 Nested if-expression (sign)
+	print_int(sign(-100)) // -1
+	print_int(sign(100)) // 1
+	print_int(sign(0)) // 0
+
+	// 32.5 Double nested if-expression (clamp)
+	print_int(clamp(5, 0, 10)) // 5 (in range)
+	print_int(clamp(-5, 0, 10)) // 0 (below lo)
+	print_int(clamp(15, 0, 10)) // 10 (above hi)
+
+	// 32.6 If-expression in local variable
+	val2 := 25
+	result := if val2 > 20 { val2 * 2 } else { val2 }
+	print_int(result) // 50
+
+	// 32.7 If-expression with complex condition
+	a := 10
+	b := 20
+	c := if a < b && b < 30 { a + b } else { 0 }
+	print_int(c) // 30
+
 	print_str('=== All tests completed ===')
 }
+
+/*
+fn test_string_inter_literal() {
+       // Test basic integer interpolation
+       x := 42
+       s1 := 'The answer is ${x}'
+       print_str(s1)
+
+       // Test multiple interpolations
+       a := 10
+       b := 20
+       s2 := '${a} + ${b} = ${a + b}'
+
+       // Test with format specifiers
+       val := 255
+       s3 := 'hex: ${val:x}, dec: ${val:d}'
+
+       // Test float formatting
+       f := 3.14159
+       s4 := 'pi is approximately ${f:.2f}'
+
+       // Test with width specifier
+       n := 42
+       s5 := 'padded: ${n:5d}'
+
+       // Test string at beginning and end
+       name := 'world'
+       s6 := 'Hello, ${name}!'
+
+       // Test consecutive interpolations
+       x1 := 1
+       x2 := 2
+       x3 := 3
+       s7 := '${x1}${x2}${x3}'
+
+       // Test empty string parts
+       v := 100
+       s8 := '${v}'
+}
+*/

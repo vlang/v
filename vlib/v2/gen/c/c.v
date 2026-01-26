@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
 module c
 
 import v2.ssa
@@ -29,12 +30,29 @@ pub fn (mut g Gen) gen() string {
 
 	g.gen_struct_decls()
 	g.gen_globals()
+	g.gen_func_decls()
 
 	for func in g.mod.funcs {
 		g.gen_func(func)
 	}
 
 	return g.sb.str()
+}
+
+fn (mut g Gen) gen_func_decls() {
+	// Forward declarations for all functions
+	for func in g.mod.funcs {
+		ret_type := g.type_name(func.typ)
+		mut params := []string{}
+		for pid in func.params {
+			val := g.mod.values[pid]
+			tname := g.type_name(val.typ)
+			params << '${tname} ${val.name}'
+		}
+		param_str := params.join(', ')
+		g.sb.writeln('${ret_type} ${func.name}(${param_str});')
+	}
+	g.sb.writeln('')
 }
 
 fn (mut g Gen) gen_struct_decls() {
@@ -258,6 +276,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 			def_name := g.get_block_name(def_blk_val_id)
 			g.sb.writeln('\tdefault: goto ${def_name};')
 			g.sb.writeln('\t}')
+		}
+		.phi {
+			// Phi node: operands are pairs of (value, block)
+			// For C, we emit assignments before jumps in predecessors
+			// Here we just declare the variable (already done above)
+			// The actual assignments are handled by .assign opcodes
+		}
+		.select {
+			// select cond, true_val, false_val
+			cond := g.val_str(instr.operands[0])
+			true_val := g.val_str(instr.operands[1])
+			false_val := g.val_str(instr.operands[2])
+			g.sb.writeln('\t${res} = ${cond} ? ${true_val} : ${false_val};')
 		}
 		else {
 			g.sb.writeln('\t// Unhandled C op: ${instr.op}')

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
 module ssa
 
 import v2.ast
@@ -625,56 +626,104 @@ fn (mut b Builder) expr_infix(node ast.InfixExpr) ValueID {
 fn (mut b Builder) expr_if(node ast.IfExpr) ValueID {
 	// If cond is empty, it's a plain 'else' block from a parent IfExpr
 	if node.cond is ast.EmptyExpr {
-		b.stmts(node.stmts)
-		return 0
+		return b.stmts_with_value(node.stmts)
 	}
+
+	// Check if this is an if-expression (has else and branches have values)
+	has_else := node.else_expr !is ast.EmptyExpr
+	is_expr := has_else && b.branch_has_value(node.stmts)
 
 	// 1. Evaluate Condition
 	cond_val := b.expr(node.cond)
 
 	// 2. Create Blocks
-	// We create a merge block even if there is no else,
-	// because we need somewhere to jump to after 'then'.
 	then_blk := b.mod.add_block(b.cur_func, 'if.then')
 	merge_blk := b.mod.add_block(b.cur_func, 'if.end')
 	mut else_blk := merge_blk
 
-	// If there is an else expression/block, create a specific block for it
-	has_else := node.else_expr !is ast.EmptyExpr
 	if has_else {
 		else_blk = b.mod.add_block(b.cur_func, 'if.else')
 	}
 
-	// 3. Emit Branch
-	// Retrieve ValueIDs for the blocks to use as operands
+	// 3. For if-expressions, allocate result storage
+	i32_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i32_t)
+	mut result_ptr := ValueID(0)
+	if is_expr {
+		result_ptr = b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	}
+
+	// 4. Emit Branch
 	then_val := b.mod.blocks[then_blk].val_id
 	else_val := b.mod.blocks[else_blk].val_id
-
-	// br cond, then, else (or merge if no else)
 	b.mod.add_instr(.br, b.cur_block, 0, [cond_val, then_val, else_val])
 
-	// 4. Build Then Block
+	// 5. Build Then Block
 	b.cur_block = then_blk
-	b.stmts(node.stmts)
-	// Jump to merge if not terminated (e.g. by return)
+	then_result := b.stmts_with_value(node.stmts)
+	if is_expr && then_result != 0 && !b.is_block_terminated(b.cur_block) {
+		b.mod.add_instr(.store, b.cur_block, 0, [then_result, result_ptr])
+	}
 	if !b.is_block_terminated(b.cur_block) {
 		merge_val := b.mod.blocks[merge_blk].val_id
 		b.mod.add_instr(.jmp, b.cur_block, 0, [merge_val])
 	}
 
-	// 5. Build Else Block (if any)
+	// 6. Build Else Block (if any)
 	if has_else {
 		b.cur_block = else_blk
-		b.expr(node.else_expr)
-		// The recursive call might have changed b.cur_block (nested ifs)
+		else_result := b.expr_if_else(node.else_expr)
+		if is_expr && else_result != 0 && !b.is_block_terminated(b.cur_block) {
+			b.mod.add_instr(.store, b.cur_block, 0, [else_result, result_ptr])
+		}
 		if !b.is_block_terminated(b.cur_block) {
 			merge_val := b.mod.blocks[merge_blk].val_id
 			b.mod.add_instr(.jmp, b.cur_block, 0, [merge_val])
 		}
 	}
 
-	// 6. Continue generation at Merge Block
+	// 7. Continue generation at Merge Block
 	b.cur_block = merge_blk
+
+	// 8. Load result for if-expressions
+	if is_expr && result_ptr != 0 {
+		return b.mod.add_instr(.load, b.cur_block, i32_t, [result_ptr])
+	}
+	return 0
+}
+
+// Helper to check if a branch has a value (last stmt is an expression)
+fn (b Builder) branch_has_value(stmts []ast.Stmt) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last := stmts[stmts.len - 1]
+	return last is ast.ExprStmt
+}
+
+// Process else expression which can be another IfExpr or statements
+fn (mut b Builder) expr_if_else(else_expr ast.Expr) ValueID {
+	if else_expr is ast.IfExpr {
+		return b.expr_if(else_expr)
+	}
+	return 0
+}
+
+// Process statements and return the value of the last expression if any
+fn (mut b Builder) stmts_with_value(stmts []ast.Stmt) ValueID {
+	if stmts.len == 0 {
+		return 0
+	}
+	// Process all but the last statement
+	for i := 0; i < stmts.len - 1; i++ {
+		b.stmt(stmts[i])
+	}
+	// Process the last statement and return its value if it's an expression
+	last := stmts[stmts.len - 1]
+	if last is ast.ExprStmt {
+		return b.expr(last.expr)
+	}
+	b.stmt(last)
 	return 0
 }
 

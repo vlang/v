@@ -5,6 +5,20 @@ module pref
 
 import os
 
+pub enum Backend {
+	v      // V source output (default)
+	cleanc // Clean C backend (AST -> C)
+	c      // SSA -> C backend
+	x64    // Native x64/AMD64 backend
+	arm64  // Native ARM64 backend
+}
+
+pub enum Arch {
+	auto // Auto-detect based on OS
+	x64
+	arm64
+}
+
 pub struct Preferences {
 pub mut:
 	debug        bool
@@ -13,6 +27,9 @@ pub mut:
 	skip_builtin bool
 	skip_imports bool
 	no_parallel  bool
+	backend      Backend = .x64
+	arch         Arch    = .auto
+	output_file  string
 pub:
 	vroot         string = os.dir(@VEXE)
 	vmodules_path string = os.vmodules_dir()
@@ -23,6 +40,24 @@ pub fn new_preferences() Preferences {
 }
 
 pub fn new_preferences_using_options(options []string) Preferences {
+	mut backend := Backend.x64
+	if '--cleanc' in options || 'cleanc' in options {
+		backend = .cleanc
+	} else if '--v' in options || 'v' in options {
+		backend = .v
+	} else if '--c' in options || 'c' in options {
+		backend = .c
+	} else if '--arm64' in options || 'arm64' in options {
+		backend = .arm64
+	}
+
+	mut arch := Arch.auto
+	if '--arch-x64' in options {
+		arch = .x64
+	} else if '--arch-arm64' in options {
+		arch = .arm64
+	}
+
 	return Preferences{
 		// config flags
 		debug:        '--debug' in options || '-d' in options
@@ -31,5 +66,16 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		skip_builtin: '--skip-builtin' in options
 		skip_imports: '--skip-imports' in options
 		no_parallel:  '--no-parallel' in options
+		backend:      backend
+		arch:         arch
 	}
+}
+
+// get_effective_arch returns the architecture to use based on preferences and OS
+pub fn (p &Preferences) get_effective_arch() Arch {
+	if p.arch != .auto {
+		return p.arch
+	}
+	// Auto-detect: macOS defaults to arm64, others to x64
+	return if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
 }
