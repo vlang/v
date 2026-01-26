@@ -3481,8 +3481,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				.base {
 					if stmt.arch == .arm64 {
 						g.write('[')
-					}
-					if stmt.arch == .loongarch64 {
+					} else if stmt.arch == .loongarch64 {
 						g.write('')
 					} else {
 						g.write('(')
@@ -3490,8 +3489,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 					g.asm_arg(base, stmt)
 					if stmt.arch == .arm64 {
 						g.write(']')
-					}
-					if stmt.arch == .loongarch64 {
+					} else if stmt.arch == .loongarch64 {
 						g.write('')
 					} else {
 						g.write(')')
