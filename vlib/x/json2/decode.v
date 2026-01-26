@@ -853,6 +853,12 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 		decoder.decode_string(mut result)!
 
 		$for value in T.values {
+			for attr in value.attrs {
+				if attr.starts_with('json: ') && attr[6..] == result {
+					val = value.value
+					return
+				}
+			}
 			if value.name == result {
 				val = value.value
 				return
