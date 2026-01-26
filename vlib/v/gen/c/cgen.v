@@ -3337,6 +3337,10 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 }
 
 fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
+	if stmt.templates.len == 0 && stmt.input.len == 0 && stmt.output.len == 0
+		&& stmt.global_labels.len == 0 && !stmt.is_goto && !stmt.is_volatile {
+		return
+	}
 	g.write('__asm__')
 	if stmt.is_volatile {
 		g.write(' volatile')
