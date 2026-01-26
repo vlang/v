@@ -303,7 +303,9 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 		$for member in T.values {
 			if member.value == val {
 				for attr in member.attrs {
-					attr_value = attr.all_after('json: ')
+					if attr.starts_with('json: ') {
+						attr_value = attr[6..]
+					}
 				}
 			}
 		}
