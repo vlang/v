@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest build: present_sqlite3? && !windows && !sanitize-memory-clang
 import db.sqlite
 
 // Basic embedded struct
