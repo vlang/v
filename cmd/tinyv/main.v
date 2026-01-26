@@ -1,0 +1,191 @@
+// Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module main
+
+import os
+import v2.parser
+import v2.token
+import v2.pref
+import v2.ssa
+import v2.gen.x64
+import v2.gen.arm64
+import v2.gen.cleanc
+import v2.gen.c
+import time
+
+enum Arch {
+	arm64
+	x64
+}
+
+fn main() {
+	// Setup Parser
+	t0 := time.now()
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	mut p := parser.Parser.new(prefs)
+	// Parse File
+	input_file := 'test.v'
+	if !os.exists(input_file) {
+		eprintln('Error: ${input_file} not found')
+		return
+	}
+	println('[*] Parsing ${input_file}...')
+	file := p.parse_file(input_file, mut file_set)
+	if file.stmts.len == 0 {
+		println('Warning: No statements found in ${input_file}')
+	}
+	// Initialize SSA Module
+	mut mod := ssa.Module.new('main')
+	// Build SSA from AST
+	println('[*] Building SSA...')
+	mut builder := ssa.Builder.new(mod)
+	builder.build(file)
+	// Optimize
+	println('[*] Optimizing SSA...')
+	mod.optimize()
+	// Backend selection: default to native, use 'cleanc' or 'c' arg to switch
+	use_cleanc := os.args.contains('cleanc')
+	use_ssa_c := os.args.contains('c') && !use_cleanc
+	native := !use_cleanc && !use_ssa_c
+	// Default architecture based on OS
+	mut arch := if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
+	// Allow override via command line
+	if os.args.contains('x64') {
+		arch = .x64
+	} else if os.args.contains('arm64') {
+		arch = .arm64
+	}
+	if native {
+		if arch == .arm64 {
+			// Generate Mach-O Object
+			println('[*] Generating Mach-O ARM64 Object...')
+			mut arm_gen := arm64.Gen.new(mod)
+			arm_gen.gen()
+			arm_gen.write_file('main.o')
+		} else if arch == .x64 {
+			println('[*] Generating ELF AMD64 Object...')
+			mut x64_gen := x64.Gen.new(mod)
+			x64_gen.gen()
+			x64_gen.write_file('main.o')
+		}
+		println('generating main.o took ${time.since(t0)}')
+		// Link
+		println('[*] Linking...')
+		t := time.now()
+		if os.user_os() == 'macos' {
+			// macOS Linking (Mach-O)
+			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
+			sdk_path := sdk_res.output.trim_space()
+			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
+			// -lSystem links standard libc (printf)
+			link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+			if os.system(link_cmd) != 0 {
+				eprintln('Link failed')
+				return
+			}
+		} else {
+			// Linux Linking (ELF)
+			// Using 'cc' is easier than 'ld' because it handles libc paths and crt objects automatically.
+			// main.o is relocatable, so cc will link it properly.
+			link_cmd := 'cc main.o -o out_bin -no-pie'
+			if os.system(link_cmd) != 0 {
+				eprintln('Link failed')
+				return
+			}
+		}
+		println('linking took ${time.since(t)}')
+	} else if use_ssa_c {
+		// SSA -> C Backend
+		println('[*] Generating SSA C Backend...')
+		mut c_gen := c.Gen.new(mod)
+		c_source := c_gen.gen()
+
+		os.write_file('out.c', c_source) or { panic(err) }
+		println('[*] Done. Wrote out.c')
+
+		// Compile C Code
+		println('[*] Compiling out.c...')
+		cc_res := os.system('cc out.c -o out_bin -w')
+		if cc_res != 0 {
+			eprintln('Error: C compilation failed with code ${cc_res}')
+			return
+		}
+	} else {
+		// Clean C Backend (AST -> C)
+		println('[*] Generating Clean C Backend...')
+		// We use the file AST directly instead of SSA for readable C
+		mut c_gen := cleanc.Gen.new(file)
+		c_source := c_gen.gen()
+		os.write_file('out.c', c_source) or { panic(err) }
+		println('[*] Done. Wrote out.c')
+		// Compile C Code
+		println('[*] Compiling out.c...')
+		cc_res := os.system('cc out.c -o out_bin -w')
+		if cc_res != 0 {
+			eprintln('Error: C compilation failed with code ${cc_res}')
+			return
+		}
+	}
+	// Run Reference (v run test.v)
+	println('[*] Running reference: v -enable-globals run ${input_file}...')
+	ref_res := os.execute('v -n -enable-globals run ${input_file}')
+	if ref_res.exit_code != 0 {
+		eprintln('Error: Reference run failed')
+		eprintln(ref_res.output)
+		return
+	}
+	// Normalize newlines
+	expected_out := ref_res.output.trim_space().replace('\r\n', '\n')
+	// Run Generated Binary
+	println('[*] Running generated binary (with 2s timeout)...')
+	// Prepare command with timeout
+	// On macOS/Linux, use perl as a portable timeout mechanism since 'timeout' isn't always available on macOS
+	mut cmd := "perl -e 'alarm 2; exec @ARGV' ./out_bin"
+	if os.user_os() == 'windows' {
+		// No easy one-liner for timeout on Windows cmd without PowerShell, running directly
+		cmd = 'out_bin.exe'
+	}
+	gen_res := os.execute(cmd)
+	// Perl alarm usually kills with SIGALRM (14), exit code might vary (e.g. 142)
+	// If it was killed by signal, we assume timeout.
+	if gen_res.exit_code != 0 {
+		// Check for timeout symptoms
+		// Standard SIGALRM is 14. Bash reports 128+14=142.
+		if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
+			eprintln('Error: Execution timed out (infinite loop detected)')
+			return
+		}
+		// It might just be a crash or non-zero return (our main returns 0 usually)
+		if gen_res.exit_code != 0 {
+			// In the current builder, main returns 0. If it returns something else, it might be an error.
+			// However, perl exec propagation might change codes.
+			// Let's proceed to compare output, but warn.
+			println('Warning: Binary exited with code ${gen_res.exit_code}')
+		}
+	}
+	actual_out := gen_res.output.trim_space().replace('\r\n', '\n')
+	// Compare
+	if expected_out == actual_out {
+		println('\n[SUCCESS] Outputs match!')
+	} else {
+		println('\n[FAILURE] Outputs differ')
+		expected_lines := expected_out.split('\n')
+		actual_lines := actual_out.split('\n')
+		max_lines := if expected_lines.len > actual_lines.len {
+			expected_lines.len
+		} else {
+			actual_lines.len
+		}
+		for i in 0 .. max_lines {
+			exp := if i < expected_lines.len { expected_lines[i] } else { '<missing>' }
+			act := if i < actual_lines.len { actual_lines[i] } else { '<missing>' }
+			if exp != act {
+				println('line ${i + 1}:')
+				println('  expected: ${exp}')
+				println('       got: ${act}')
+			}
+		}
+	}
+}
