@@ -68,7 +68,7 @@ language, very similar to the way it is right now.
 
 ## Installing V from source
 
---> **_(this is the preferred method)_**
+**This is the preferred method.**
 
 ### Linux, macOS, Windows, \*BSD, Solaris, WSL, etc.
 
