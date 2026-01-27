@@ -26,6 +26,27 @@ fn main() {
 	prefs := &pref.Preferences{}
 	mut file_set := token.FileSet.new()
 	mut p := parser.Parser.new(prefs)
+	mut transformer := transform.Transformer.new()
+
+	// Get the directory where this script is located
+	exe_dir := os.dir(os.executable())
+
+	// Initialize SSA Module
+	mut mod := ssa.Module.new('main')
+	mut builder := ssa.Builder.new(mod)
+
+	// Parse and build builtin string.v first
+	builtin_file := os.join_path(exe_dir, 'builtin', 'string.v')
+	if os.exists(builtin_file) {
+		println('[*] Parsing builtin/string.v...')
+		parsed_builtin := p.parse_file(builtin_file, mut file_set)
+		if parsed_builtin.stmts.len > 0 {
+			println('    Found ${parsed_builtin.stmts.len} statements in builtin')
+			builtin_transformed := transformer.transform(parsed_builtin)
+			builder.build(builtin_transformed)
+		}
+	}
+
 	//  Parse File
 	input_file := 'test.v'
 	if !os.exists(input_file) {
@@ -39,13 +60,9 @@ fn main() {
 	}
 	// Transform AST (lower complex constructs like ArrayInitExpr)
 	println('[*] Transforming AST...')
-	mut transformer := transform.Transformer.new()
 	file := transformer.transform(parsed_file)
-	// Initialize SSA Module
-	mut mod := ssa.Module.new('main')
 	//  Build SSA from AST
 	println('[*] Building SSA...')
-	mut builder := ssa.Builder.new(mod)
 	builder.build(file)
 	// Optimize
 	println('[*] Optimizing SSA...')

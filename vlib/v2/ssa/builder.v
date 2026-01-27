@@ -45,7 +45,7 @@ struct LoopInfo {
 }
 
 pub fn Builder.new(mod &Module) &Builder {
-	mut b := &Builder{
+	return &Builder{
 		mod:              mod
 		vars:             map[string]ValueID{}
 		var_struct_types: map[string]string{}
@@ -54,30 +54,6 @@ pub fn Builder.new(mod &Module) &Builder {
 		enum_values:      map[string]int{}
 		var_array_sizes:  map[string]int{}
 	}
-	// Register builtin string struct type: { str &u8, len int, is_lit int }
-	b.register_string_type()
-	return b
-}
-
-fn (mut b Builder) register_string_type() {
-	// Get string struct definition from v2.types (defined in universe.v)
-	string_struct := types.get_string_struct()
-
-	// Convert types.Struct to SSA type
-	mut ssa_fields := []TypeID{}
-	mut ssa_field_names := []string{}
-
-	for field in string_struct.fields {
-		ssa_fields << b.type_to_ssa(field.typ)
-		ssa_field_names << field.name
-	}
-
-	string_type_id := b.mod.type_store.register(Type{
-		kind:        .struct_t
-		fields:      ssa_fields
-		field_names: ssa_field_names
-	})
-	b.struct_types['string'] = string_type_id
 }
 
 // Convert v2.types.Type to SSA TypeID
