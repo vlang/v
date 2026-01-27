@@ -24,6 +24,9 @@ mut:
 
 	// Maps struct name to TypeID
 	struct_types map[string]TypeID
+
+	// Deferred statements for current function (executed in reverse order at return)
+	defer_stmts [][]ast.Stmt
 }
 
 struct LoopInfo {
@@ -107,6 +110,7 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 	b.cur_func = fn_id
 	b.vars.clear()
 	b.var_struct_types.clear()
+	b.defer_stmts.clear()
 
 	// Create Entry Block
 	entry := b.mod.add_block(fn_id, 'entry')
@@ -193,6 +197,9 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 	b.stmts(decl.stmts)
 	// FIX: Ensure the function ends with a return to prevent fallthrough
 	if !b.is_block_terminated(b.cur_block) {
+		// Emit deferred statements before implicit return
+		b.emit_deferred_stmts()
+
 		ret_type := b.mod.funcs[fn_id].typ
 		if ret_type != 0 {
 			// Return 0 for non-void functions (satisfy C signature)
@@ -374,12 +381,24 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ReturnStmt {
+			// In V/Go semantics: evaluate return value FIRST, then run defer
+			// 1. Evaluate return expression (if any)
+			mut ret_val := ValueID(0)
 			if node.exprs.len > 0 {
-				val := b.expr(node.exprs[0])
-				b.mod.add_instr(.ret, b.cur_block, 0, [val])
+				ret_val = b.expr(node.exprs[0])
+			}
+			// 2. Execute deferred statements in reverse order
+			b.emit_deferred_stmts()
+			// 3. Return the pre-computed value
+			if node.exprs.len > 0 {
+				b.mod.add_instr(.ret, b.cur_block, 0, [ret_val])
 			} else {
 				b.mod.add_instr(.ret, b.cur_block, 0, [])
 			}
+		}
+		ast.DeferStmt {
+			// Collect deferred statements to be executed before return
+			b.defer_stmts << node.stmts
 		}
 		ast.ExprStmt {
 			b.expr(node.expr)
@@ -1705,5 +1724,13 @@ fn (mut b Builder) addr(node ast.Expr) ValueID {
 		else {
 			return 0
 		}
+	}
+}
+
+// emit_deferred_stmts emits all deferred statements in reverse order
+fn (mut b Builder) emit_deferred_stmts() {
+	// Execute deferred statements in LIFO order (last defer first)
+	for i := b.defer_stmts.len - 1; i >= 0; i-- {
+		b.stmts(b.defer_stmts[i])
 	}
 }

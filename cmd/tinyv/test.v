@@ -212,6 +212,28 @@ fn nested_return(x int) int {
 	}
 }
 
+// Helper function to test defer with explicit return
+fn defer_test() int {
+	mut x := 0
+	defer {
+		x = 42
+	};
+	return x + 42 // Return 42, but x is modified by defer before return
+}
+
+// Helper function to test defer order (LIFO)
+fn defer_order_test() {
+	defer {
+		print_str('First')
+	};
+	defer {
+		print_str('Second')
+	};
+	defer {
+		print_str('Third')
+	};
+}
+
 // ===================== IF-GUARD HELPERS =====================
 
 // Returns the value if positive, none otherwise
@@ -1869,6 +1891,41 @@ fn main() {
 		forin_sum5 += i
 	}
 	print_int(forin_sum5) // 1+3+5+7+9 = 25
+
+	// ==================== 38. DEFER STATEMENTS ====================
+	print_str('--- 38. Defer Statements ---')
+
+	// 38.1 Basic defer (should print after the other prints)
+	g_val = 0
+	defer {
+		g_val += 100
+	};
+	g_val += 1
+	print_int(g_val) // 1 (defer not executed yet, will be 101 at function end)
+
+	// 38.2 Multiple defers execute in reverse order (LIFO)
+	g_count = 0
+	defer {
+		g_count += 1
+	};
+	defer {
+		g_count += 10
+	};
+	defer {
+		g_count += 100
+	};
+	// At end of function: g_count = 0 + 100 + 10 + 1 = 111
+
+	// 38.3 Defer with function call
+	defer {
+		print_str('Defer 38.3 executed')
+	};
+
+	// 38.4 Test defer_test function with explicit return
+	print_int(defer_test()) // Should print 42
+
+	// 38.5 Test defer order in function
+	defer_order_test() // Should print: Third, Second, First
 
 	print_str('=== All tests completed ===')
 }

@@ -15,6 +15,7 @@ mut:
 	fn_types      map[string]string
 	var_types     map[string]string
 	mut_receivers map[string]bool // Track which methods have mutable receivers
+	defer_stmts   [][]ast.Stmt    // Deferred statements for current function
 }
 
 pub fn Gen.new(file ast.File) &Gen {
@@ -389,6 +390,7 @@ fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 
 fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	g.var_types = map[string]string{}
+	g.defer_stmts.clear()
 
 	// Register receiver for methods
 	if node.is_method {
@@ -414,6 +416,9 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	g.sb.writeln(' {')
 	g.indent++
 	g.gen_stmts(node.stmts)
+
+	// Emit deferred statements before implicit return (for all functions)
+	g.emit_deferred_stmts()
 
 	if node.name == 'main' {
 		g.write_indent()
@@ -479,13 +484,34 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln(';')
 		}
 		ast.ReturnStmt {
-			g.write_indent()
-			g.sb.write_string('return')
-			if node.exprs.len > 0 {
-				g.sb.write_string(' ')
+			// In V/Go semantics: evaluate return value FIRST, then run defer
+			if node.exprs.len > 0 && g.defer_stmts.len > 0 {
+				// Store return value in temp variable before running defers
+				ret_type := g.infer_type(node.exprs[0])
+				g.write_indent()
+				g.sb.write_string('${ret_type} __ret_val = ')
 				g.gen_expr(node.exprs[0])
+				g.sb.writeln(';')
+				// Emit deferred statements
+				g.emit_deferred_stmts()
+				// Return the stored value
+				g.write_indent()
+				g.sb.writeln('return __ret_val;')
+			} else {
+				// Emit deferred statements (if any)
+				g.emit_deferred_stmts()
+				g.write_indent()
+				g.sb.write_string('return')
+				if node.exprs.len > 0 {
+					g.sb.write_string(' ')
+					g.gen_expr(node.exprs[0])
+				}
+				g.sb.writeln(';')
 			}
-			g.sb.writeln(';')
+		}
+		ast.DeferStmt {
+			// Collect deferred statements to be executed before return
+			g.defer_stmts << node.stmts
 		}
 		ast.BlockStmt {
 			g.write_indent()
@@ -1311,4 +1337,12 @@ fn (g Gen) get_printf_format(inter ast.StringInter) string {
 		return '%.${inter.precision}' + base_fmt[1..]
 	}
 	return base_fmt
+}
+
+// emit_deferred_stmts emits all deferred statements in reverse order
+fn (mut g Gen) emit_deferred_stmts() {
+	// Execute deferred statements in LIFO order (last defer first)
+	for i := g.defer_stmts.len - 1; i >= 0; i-- {
+		g.gen_stmts(g.defer_stmts[i])
+	}
 }
