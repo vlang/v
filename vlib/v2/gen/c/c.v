@@ -79,7 +79,11 @@ fn (mut g Gen) gen_struct_decls() {
 fn (mut g Gen) gen_globals() {
 	for gvar in g.mod.globals {
 		tname := g.type_name(gvar.typ)
-		g.sb.writeln('${tname} ${gvar.name};')
+		if gvar.is_constant {
+			g.sb.writeln('const ${tname} ${gvar.name};')
+		} else {
+			g.sb.writeln('${tname} ${gvar.name};')
+		}
 	}
 }
 

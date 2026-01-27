@@ -518,6 +518,14 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				b.mod.add_global(field.name, field_type, false)
 			}
 		}
+		ast.ConstDecl {
+			for field in node.fields {
+				// Constants infer type from their value - default to int64
+				field_type := b.mod.type_store.get_int(64)
+				// Register constant (is_const = true)
+				b.mod.add_global(field.name, field_type, true)
+			}
+		}
 		else {
 			// println('Builder: Unhandled stmt ${node.type_name()}')
 		}

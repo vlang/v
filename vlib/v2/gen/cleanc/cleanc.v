@@ -104,6 +104,14 @@ pub fn (mut g Gen) gen() string {
 		}
 	}
 
+	// 3.5. Constants
+	for stmt in g.file.stmts {
+		if stmt is ast.ConstDecl {
+			g.gen_const_decl(stmt)
+			g.sb.writeln('')
+		}
+	}
+
 	// 4. Function Prototypes
 	for stmt in g.file.stmts {
 		if stmt is ast.FnDecl {
@@ -332,6 +340,15 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
 		t := g.expr_type_to_c(field.typ)
 		g.sb.writeln('${t} ${field.name};')
+	}
+}
+
+fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
+	for field in node.fields {
+		t := g.infer_type(field.value)
+		g.sb.write_string('const ${t} ${field.name} = ')
+		g.gen_expr(field.value)
+		g.sb.writeln(';')
 	}
 }
 
