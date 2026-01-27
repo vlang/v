@@ -18,6 +18,19 @@ mut:
 	right int
 }
 
+enum Color {
+	red
+	green
+	blue
+	yellow
+}
+
+enum Status {
+	pending = 0
+	active = 1
+	done = 2
+}
+
 __global (
 	g_val   int
 	g_count int
@@ -1926,6 +1939,94 @@ fn main() {
 
 	// 38.5 Test defer order in function
 	defer_order_test() // Should print: Third, Second, First
+
+	// ==================== 39. ENUMS ====================
+	print_str('--- 39. Enums ---')
+
+	// 39.1 Basic enum value
+	color1 := Color.red
+	print_int(int(color1)) // 0
+
+	// 39.2 Other enum values
+	color2 := Color.green
+	color3 := Color.blue
+	print_int(int(color2)) // 1
+	print_int(int(color3)) // 2
+
+	// 39.3 Enum with explicit values
+	status1 := Status.pending
+	status2 := Status.active
+	status3 := Status.done
+	print_int(int(status1)) // 0
+	print_int(int(status2)) // 1
+	print_int(int(status3)) // 2
+
+	// 39.4 Enum in match
+	match color1 {
+		.red { print_int(100) } // 100
+		.green { print_int(200) }
+		.blue { print_int(300) }
+		else { print_int(0) }
+	}
+
+	// 39.5 Enum comparison
+	if color1 == Color.red {
+		print_int(1) // 1
+	} else {
+		print_int(0)
+	}
+
+	// ==================== 40. FOR-IN ARRAY ====================
+	print_str('--- 40. For-In Array ---')
+
+	// 40.1 Basic for-in array iteration
+	arr_iter1 := [10, 20, 30]
+	mut sum_iter1 := 0
+	for elem in arr_iter1 {
+		sum_iter1 += elem
+	}
+	print_int(sum_iter1) // 60
+
+	// 40.2 For-in with index
+	arr_iter2 := [5, 10, 15]
+	mut weighted_sum2 := 0
+	for i, elem in arr_iter2 {
+		weighted_sum2 += (i + 1) * elem
+	}
+	print_int(weighted_sum2) // 1*5 + 2*10 + 3*15 = 70
+
+	// 40.3 For-in with break
+	arr_iter3 := [1, 2, 3, 4, 5]
+	mut sum_iter3 := 0
+	for elem in arr_iter3 {
+		if elem > 3 {
+			break
+		}
+		sum_iter3 += elem
+	}
+	print_int(sum_iter3) // 1+2+3 = 6
+
+	// 40.4 For-in with continue
+	arr_iter4 := [1, 2, 3, 4, 5]
+	mut sum_iter4 := 0
+	for elem in arr_iter4 {
+		if elem % 2 == 0 {
+			continue
+		}
+		sum_iter4 += elem
+	}
+	print_int(sum_iter4) // 1+3+5 = 9
+
+	// 40.5 Nested for-in
+	arr_outer := [1, 2, 3]
+	arr_inner := [10, 20]
+	mut nested_sum := 0
+	for outer in arr_outer {
+		for inner in arr_inner {
+			nested_sum += outer * inner
+		}
+	}
+	print_int(nested_sum) // (1*10+1*20) + (2*10+2*20) + (3*10+3*20) = 30+60+90 = 180
 
 	print_str('=== All tests completed ===')
 }

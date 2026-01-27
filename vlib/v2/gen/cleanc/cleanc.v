@@ -10,12 +10,14 @@ import strings
 pub struct Gen {
 	file ast.File
 mut:
-	sb            strings.Builder
-	indent        int
-	fn_types      map[string]string
-	var_types     map[string]string
-	mut_receivers map[string]bool // Track which methods have mutable receivers
-	defer_stmts   [][]ast.Stmt    // Deferred statements for current function
+	sb             strings.Builder
+	indent         int
+	fn_types       map[string]string
+	var_types      map[string]string
+	mut_receivers  map[string]bool // Track which methods have mutable receivers
+	defer_stmts    [][]ast.Stmt    // Deferred statements for current function
+	enum_names     map[string]bool // Track enum type names
+	cur_match_type string          // Current match expression type for enum shorthand
 }
 
 pub fn Gen.new(file ast.File) &Gen {
@@ -25,9 +27,13 @@ pub fn Gen.new(file ast.File) &Gen {
 		fn_types:      map[string]string{}
 		var_types:     map[string]string{}
 		mut_receivers: map[string]bool{}
+		enum_names:    map[string]bool{}
 	}
-	// Pass 0: Register function return types and mutable receivers
+	// Pass 0: Register function return types, mutable receivers, and enum names
 	for stmt in file.stmts {
+		if stmt is ast.EnumDecl {
+			g.enum_names[stmt.name] = true
+		}
 		if stmt is ast.FnDecl {
 			mut ret := 'void'
 			ret_expr := stmt.typ.return_type
@@ -92,6 +98,14 @@ pub fn (mut g Gen) gen() string {
 	for stmt in g.file.stmts {
 		if stmt is ast.StructDecl {
 			g.gen_struct_decl(stmt)
+			g.sb.writeln('')
+		}
+	}
+
+	// 2.5. Enum Declarations
+	for stmt in g.file.stmts {
+		if stmt is ast.EnumDecl {
+			g.gen_enum_decl(stmt)
 			g.sb.writeln('')
 		}
 	}
@@ -294,6 +308,12 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			return g.infer_type(node.lhs)
 		}
 		ast.SelectorExpr {
+			// Check if this is an enum value access (EnumName.value)
+			if node.lhs is ast.Ident {
+				if node.lhs.name in g.enum_names {
+					return node.lhs.name
+				}
+			}
 			// For selector expressions, we return the field type
 			// Since struct fields in this test are mostly int, we return int
 			// TODO: Implement proper field type lookup
@@ -350,6 +370,24 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 		g.gen_expr(field.value)
 		g.sb.writeln(';')
 	}
+}
+
+fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
+	// Generate C enum declaration
+	g.sb.writeln('typedef enum {')
+	for i, field in node.fields {
+		g.sb.write_string('\t${node.name}__${field.name}')
+		if field.value !is ast.EmptyExpr {
+			g.sb.write_string(' = ')
+			g.gen_expr(field.value)
+		}
+		if i < node.fields.len - 1 {
+			g.sb.writeln(',')
+		} else {
+			g.sb.writeln('')
+		}
+	}
+	g.sb.writeln('} ${node.name};')
 }
 
 fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
@@ -540,9 +578,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln('}')
 		}
 		ast.ForStmt {
-			// Check for for-in with range: `for i in 1..10`
+			// Check for for-in: `for i in 1..10` or `for elem in array`
 			if node.init is ast.ForInStmt {
-				g.gen_for_in_range(node, node.init)
+				g.gen_for_in(node, node.init)
 				return
 			}
 
@@ -788,6 +826,10 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string('switch (')
 			g.gen_expr(node.expr)
 			g.sb.writeln(') {')
+			// Set match type context for enum shorthand (.value syntax)
+			match_type := g.infer_type(node.expr)
+			old_match_type := g.cur_match_type
+			g.cur_match_type = match_type
 			for branch in node.branches {
 				if branch.cond.len == 0 {
 					g.write_indent()
@@ -806,6 +848,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.sb.writeln('break;')
 				g.indent--
 			}
+			g.cur_match_type = old_match_type
 			g.write_indent()
 			g.sb.writeln('}')
 		}
@@ -932,10 +975,18 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string(')')
 		}
 		ast.CallOrCastExpr {
-			// This is a call that looks like a cast, e.g., fib(n-1)
+			// This is a call that looks like a cast, e.g., fib(n-1) or int(color)
 			mut name := ''
 			if node.lhs is ast.Ident {
 				name = node.lhs.name
+				// Check if this is a primitive type cast (int, i64, etc.)
+				// For enums, int(enum_val) just returns the value since C enums are ints
+				if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64'] {
+					g.sb.write_string('((${name})(')
+					g.gen_expr(node.expr)
+					g.sb.write_string('))')
+					return
+				}
 			} else if node.lhs is ast.SelectorExpr {
 				// Check for C library call (C.putchar, etc.)
 				if node.lhs.lhs is ast.Ident && node.lhs.lhs.name == 'C' {
@@ -973,6 +1024,25 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string('}')
 		}
 		ast.SelectorExpr {
+			// Check if this is an enum value access (EnumName.value)
+			if node.lhs is ast.Ident {
+				if node.lhs.name in g.enum_names {
+					// Enum value access: generate EnumName__field
+					g.sb.write_string('${node.lhs.name}__${node.rhs.name}')
+					return
+				}
+			}
+			// Check for enum shorthand (.value) - LHS is EmptyExpr
+			if node.lhs is ast.EmptyExpr {
+				// Use the match expression type context
+				if g.cur_match_type in g.enum_names {
+					g.sb.write_string('${g.cur_match_type}__${node.rhs.name}')
+					return
+				}
+				// Fallback: just output the field name (might not be valid C)
+				g.sb.write_string('${node.rhs.name}')
+				return
+			}
 			// Check if we need to use -> for pointers
 			lhs_type := g.infer_type(node.lhs)
 			g.gen_expr(node.lhs)
@@ -1263,6 +1333,15 @@ fn (mut g Gen) gen_if_guard(node ast.IfExpr, guard ast.IfGuardExpr) {
 	g.sb.writeln('}')
 }
 
+// Generate for-in loop: dispatches to range or array handling
+fn (mut g Gen) gen_for_in(node ast.ForStmt, for_in ast.ForInStmt) {
+	if for_in.expr is ast.RangeExpr {
+		g.gen_for_in_range(node, for_in)
+	} else {
+		g.gen_for_in_array(node, for_in)
+	}
+}
+
 // Generate for-in loop with range: `for i in start..end { ... }`
 fn (mut g Gen) gen_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
 	// Get loop variable name
@@ -1275,10 +1354,6 @@ fn (mut g Gen) gen_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
 		}
 	}
 
-	// Check if expr is a RangeExpr
-	if for_in.expr !is ast.RangeExpr {
-		return
-	}
 	range_expr := for_in.expr as ast.RangeExpr
 
 	// Register loop variable type
@@ -1293,6 +1368,66 @@ fn (mut g Gen) gen_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
 	g.sb.write_string('; ${var_name}++')
 	g.sb.writeln(') {')
 	g.indent++
+	g.gen_stmts(node.stmts)
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+}
+
+// Generate for-in loop over array: `for elem in array { ... }` or `for i, elem in array { ... }`
+fn (mut g Gen) gen_for_in_array(node ast.ForStmt, for_in ast.ForInStmt) {
+	// Get key variable name (index)
+	mut key_name := ''
+	if for_in.key !is ast.EmptyExpr {
+		if for_in.key is ast.Ident {
+			key_name = for_in.key.name
+		} else if for_in.key is ast.ModifierExpr {
+			if for_in.key.expr is ast.Ident {
+				key_name = for_in.key.expr.name
+			}
+		}
+	}
+
+	// Get value variable name
+	mut value_name := ''
+	if for_in.value is ast.Ident {
+		value_name = for_in.value.name
+	} else if for_in.value is ast.ModifierExpr {
+		if for_in.value.expr is ast.Ident {
+			value_name = for_in.value.expr.name
+		}
+	}
+
+	// Infer array type
+	arr_type := g.infer_type(for_in.expr)
+
+	// Determine element type
+	mut elem_type := 'int'
+	if arr_type.starts_with('Array_') {
+		elem_type = arr_type['Array_'.len..]
+	}
+
+	// Register variable types
+	g.var_types[value_name] = elem_type
+	if key_name != '' {
+		g.var_types[key_name] = 'int'
+	}
+
+	// Use a hidden index if no key specified
+	idx_var := if key_name != '' { key_name } else { '_idx_${value_name}' }
+
+	g.write_indent()
+	g.sb.write_string('for (int ${idx_var} = 0; ${idx_var} < ')
+	g.gen_expr(for_in.expr)
+	g.sb.writeln('.len; ${idx_var}++) {')
+	g.indent++
+
+	// Declare and assign value variable
+	g.write_indent()
+	g.sb.write_string('${elem_type} ${value_name} = ((${elem_type}*)')
+	g.gen_expr(for_in.expr)
+	g.sb.writeln('.data)[${idx_var}];')
+
 	g.gen_stmts(node.stmts)
 	g.indent--
 	g.write_indent()

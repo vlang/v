@@ -114,11 +114,16 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 }
 
 pub fn (mut m Module) add_global(name string, typ TypeID, is_const bool) int {
+	return m.add_global_with_value(name, typ, is_const, 0)
+}
+
+pub fn (mut m Module) add_global_with_value(name string, typ TypeID, is_const bool, initial_value i64) int {
 	id := m.globals.len
 	g := GlobalVar{
-		name:        name
-		typ:         typ
-		is_constant: is_const
+		name:          name
+		typ:           typ
+		is_constant:   is_const
+		initial_value: initial_value
 	}
 	m.globals << g
 

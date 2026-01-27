@@ -80,7 +80,7 @@ fn (mut g Gen) gen_globals() {
 	for gvar in g.mod.globals {
 		tname := g.type_name(gvar.typ)
 		if gvar.is_constant {
-			g.sb.writeln('const ${tname} ${gvar.name};')
+			g.sb.writeln('const ${tname} ${gvar.name} = ${gvar.initial_value};')
 		} else {
 			g.sb.writeln('${tname} ${gvar.name};')
 		}

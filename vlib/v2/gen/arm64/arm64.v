@@ -47,8 +47,18 @@ pub fn (mut g Gen) gen() {
 		g.macho.add_symbol('_' + gvar.name, addr, true, 3)
 		// Calculate actual size of the global variable based on its type
 		size := g.type_size(gvar.typ)
-		for _ in 0 .. size {
-			g.macho.data_data << 0
+		if gvar.is_constant && size == 8 {
+			// For constants, write the initial value
+			mut bytes := []u8{len: 8}
+			binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+			for b in bytes {
+				g.macho.data_data << b
+			}
+		} else {
+			// For regular globals, initialize with zeros
+			for _ in 0 .. size {
+				g.macho.data_data << 0
+			}
 		}
 	}
 

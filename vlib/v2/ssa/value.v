@@ -36,9 +36,10 @@ pub:
 
 pub struct GlobalVar {
 pub:
-	name        string
-	typ         TypeID
-	linkage     Linkage
-	alignment   int
-	is_constant bool
+	name          string
+	typ           TypeID
+	linkage       Linkage
+	alignment     int
+	is_constant   bool
+	initial_value i64 // For constants/enums, the initial integer value
 }

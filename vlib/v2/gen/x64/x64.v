@@ -52,9 +52,18 @@ pub fn (mut g Gen) gen() {
 		}
 		addr := u64(g.elf.data_data.len)
 		g.elf.add_symbol(gvar.name, addr, false, 2)
-		// Allocate 8 bytes
-		for _ in 0 .. 8 {
-			g.elf.data_data << 0
+		if gvar.is_constant {
+			// For constants, write the initial value
+			mut bytes := []u8{len: 8}
+			binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+			for b in bytes {
+				g.elf.data_data << b
+			}
+		} else {
+			// For regular globals, initialize with zeros
+			for _ in 0 .. 8 {
+				g.elf.data_data << 0
+			}
 		}
 	}
 }

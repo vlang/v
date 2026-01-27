@@ -25,8 +25,17 @@ mut:
 	// Maps struct name to TypeID
 	struct_types map[string]TypeID
 
+	// Current match expression type for enum shorthand
+	cur_match_type string
+
 	// Deferred statements for current function (executed in reverse order at return)
 	defer_stmts [][]ast.Stmt
+
+	// Maps enum value (EnumName__field) to integer value
+	enum_values map[string]int
+
+	// Maps variable name to array length (for fixed-size arrays)
+	var_array_sizes map[string]int
 }
 
 struct LoopInfo {
@@ -41,16 +50,19 @@ pub fn Builder.new(mod &Module) &Builder {
 		var_struct_types: map[string]string{}
 		loop_stack:       []LoopInfo{}
 		struct_types:     map[string]TypeID{}
+		enum_values:      map[string]int{}
+		var_array_sizes:  map[string]int{}
 	}
 }
 
 pub fn (mut b Builder) build(file ast.File) {
-	// 0. Pre-pass: Register Types (Structs) and Globals
+	// 0. Pre-pass: Register Types (Structs), Globals, and Enums
 	// We must process these first so types exist when we compile functions.
 	for stmt in file.stmts {
 		match stmt {
 			ast.StructDecl { b.stmt(stmt) }
 			ast.GlobalDecl { b.stmt(stmt) }
+			ast.EnumDecl { b.stmt(stmt) }
 			else {}
 		}
 	}
@@ -218,26 +230,42 @@ fn (mut b Builder) stmts(stmts []ast.Stmt) {
 	}
 }
 
-// stmt_for_in_range handles `for i in start..end { ... }`
-fn (mut b Builder) stmt_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
-	i64_t := b.mod.type_store.get_int(64)
-
-	// Get loop variable name
-	mut var_name := ''
+// stmt_for_in handles `for i in start..end { ... }` and `for elem in array { ... }`
+fn (mut b Builder) stmt_for_in(node ast.ForStmt, for_in ast.ForInStmt) {
+	// Get loop variable name(s)
+	mut key_name := ''
+	mut value_name := ''
+	if for_in.key !is ast.EmptyExpr {
+		if for_in.key is ast.Ident {
+			key_name = for_in.key.name
+		} else if for_in.key is ast.ModifierExpr {
+			if for_in.key.expr is ast.Ident {
+				key_name = for_in.key.expr.name
+			}
+		}
+	}
 	if for_in.value is ast.Ident {
-		var_name = for_in.value.name
+		value_name = for_in.value.name
 	} else if for_in.value is ast.ModifierExpr {
-		// Handle `mut i`
 		if for_in.value.expr is ast.Ident {
-			var_name = for_in.value.expr.name
+			value_name = for_in.value.expr.name
 		}
 	}
 
-	// Get range bounds
-	if for_in.expr !is ast.RangeExpr {
-		// Not a range expression, fall back to regular handling
-		return
+	// Check if this is a range expression or array iteration
+	if for_in.expr is ast.RangeExpr {
+		// Range iteration: for i in start..end
+		b.stmt_for_in_range(node, for_in, value_name)
+	} else {
+		// Array iteration: for elem in array or for i, elem in array
+		b.stmt_for_in_array(node, for_in, key_name, value_name)
 	}
+}
+
+// stmt_for_in_range handles `for i in start..end { ... }`
+fn (mut b Builder) stmt_for_in_range(node ast.ForStmt, for_in ast.ForInStmt, var_name string) {
+	i64_t := b.mod.type_store.get_int(64)
+
 	range_expr := for_in.expr as ast.RangeExpr
 	start_val := b.expr(range_expr.start)
 	end_val := b.expr(range_expr.end)
@@ -299,6 +327,101 @@ fn (mut b Builder) stmt_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
 	b.loop_stack.pop()
 }
 
+// stmt_for_in_array handles `for elem in array { ... }` and `for i, elem in array { ... }`
+fn (mut b Builder) stmt_for_in_array(node ast.ForStmt, for_in ast.ForInStmt, key_name string, value_name string) {
+	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
+	elem_ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Get the array pointer - addr returns pointer to where array ptr is stored
+	array_ptr_ptr := b.addr(for_in.expr)
+	// Load the actual array pointer
+	array_ptr := b.mod.add_instr(.load, b.cur_block, ptr_t, [array_ptr_ptr])
+
+	// For simplicity, we assume arrays have a fixed known length or we get it from context
+	// In V's Array struct, length is typically in a .len field
+	// For now, we'll need the array length - this is a simplified implementation
+	// that assumes arrays are pointers to contiguous memory with a known length
+
+	// Allocate index variable on stack (always need index for array access)
+	idx_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, idx_ptr])
+
+	// If key variable is specified, register it
+	if key_name != '' {
+		b.vars[key_name] = idx_ptr
+	}
+
+	// Allocate value variable on stack
+	value_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	b.vars[value_name] = value_ptr
+
+	// Create control flow blocks
+	head_blk := b.mod.add_block(b.cur_func, 'for_in_arr.head')
+	body_blk := b.mod.add_block(b.cur_func, 'for_in_arr.body')
+	post_blk := b.mod.add_block(b.cur_func, 'for_in_arr.post')
+	exit_blk := b.mod.add_block(b.cur_func, 'for_in_arr.exit')
+
+	b.loop_stack << LoopInfo{
+		head: post_blk // continue jumps here (to increment)
+		exit: exit_blk // break jumps here
+	}
+
+	// Jump to head
+	head_val := b.mod.blocks[head_blk].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Head: check idx < array.len
+	b.cur_block = head_blk
+	cur_idx := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+
+	// Get array length from tracked sizes or the expression
+	mut arr_len_val := 0
+	if for_in.expr is ast.Ident {
+		if size := b.var_array_sizes[for_in.expr.name] {
+			arr_len_val = size
+		}
+	} else if for_in.expr is ast.ArrayInitExpr {
+		arr_len_val = for_in.expr.exprs.len
+	}
+	if arr_len_val == 0 {
+		arr_len_val = 100 // Fallback
+	}
+	arr_len := b.mod.add_value_node(.constant, i64_t, '${arr_len_val}', 0)
+
+	cond := b.mod.add_instr(.lt, b.cur_block, i64_t, [cur_idx, arr_len])
+	body_val := b.mod.blocks[body_blk].val_id
+	exit_val := b.mod.blocks[exit_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cond, body_val, exit_val])
+
+	// Body: load array element into value variable
+	b.cur_block = body_blk
+	cur_idx2 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [array_ptr, cur_idx2])
+	elem_val := b.mod.add_instr(.load, b.cur_block, i64_t, [elem_addr])
+	b.mod.add_instr(.store, b.cur_block, 0, [elem_val, value_ptr])
+
+	b.stmts(node.stmts)
+
+	if !b.is_block_terminated(b.cur_block) {
+		post_val := b.mod.blocks[post_blk].val_id
+		b.mod.add_instr(.jmp, b.cur_block, 0, [post_val])
+	}
+
+	// Post: increment index and jump back to head
+	b.cur_block = post_blk
+	cur_idx3 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	new_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [cur_idx3, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [new_idx, idx_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Exit
+	b.cur_block = exit_blk
+	b.loop_stack.pop()
+}
+
 fn (mut b Builder) stmt(node ast.Stmt) {
 	// println('stmt ${node}')
 	match node {
@@ -344,7 +467,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, stack_ptr])
 				b.vars[name] = stack_ptr
 
-				// Track struct type for method resolution
+				// Track struct/enum type for method resolution and match shorthand
 				rhs_expr := node.rhs[0]
 				if rhs_expr is ast.InitExpr {
 					if rhs_expr.typ is ast.Ident {
@@ -357,6 +480,27 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 						if init_expr.typ is ast.Ident {
 							b.var_struct_types[name] = init_expr.typ.name
 						}
+					}
+				} else if rhs_expr is ast.SelectorExpr {
+					// Track enum type for variables assigned enum values (e.g., color1 := Color.red)
+					if rhs_expr.lhs is ast.Ident {
+						enum_name := '${rhs_expr.lhs.name}__${rhs_expr.rhs.name}'
+						if enum_name in b.enum_values {
+							b.var_struct_types[name] = rhs_expr.lhs.name
+						}
+					}
+				} else if rhs_expr is ast.ArrayInitExpr {
+					// Track array size for for-in loops
+					mut arr_size := rhs_expr.exprs.len
+					if rhs_expr.len !is ast.EmptyExpr {
+						if rhs_expr.len is ast.BasicLiteral {
+							if rhs_expr.len.kind == .number {
+								arr_size = rhs_expr.len.value.int()
+							}
+						}
+					}
+					if arr_size > 0 {
+						b.var_array_sizes[name] = arr_size
 					}
 				}
 			} else if node.op in [.plus_assign, .minus_assign, .mul_assign, .div_assign] {
@@ -407,9 +551,9 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			b.stmts(node.stmts)
 		}
 		ast.ForStmt {
-			// Check if this is a for-in loop with range: `for i in 1..10`
+			// Check if this is a for-in loop: `for i in 1..10` or `for elem in array`
 			if node.init is ast.ForInStmt {
-				b.stmt_for_in_range(node, node.init)
+				b.stmt_for_in(node, node.init)
 				return
 			}
 
@@ -522,8 +666,30 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			for field in node.fields {
 				// Constants infer type from their value - default to int64
 				field_type := b.mod.type_store.get_int(64)
-				// Register constant (is_const = true)
-				b.mod.add_global(field.name, field_type, true)
+				// Evaluate initial value
+				initial_value := b.eval_const_expr(field.value)
+				// Register constant with initial value
+				b.mod.add_global_with_value(field.name, field_type, true, initial_value)
+			}
+		}
+		ast.EnumDecl {
+			// Enums are lowered to integer constants
+			// Each field gets an incrementing value starting from 0 (or explicit value)
+			field_type := b.mod.type_store.get_int(64)
+			mut next_value := 0
+			for field in node.fields {
+				// If field has explicit value, use it
+				if field.value is ast.BasicLiteral {
+					if field.value.kind == .number {
+						next_value = field.value.value.int()
+					}
+				}
+				// Register enum value with its integer value
+				const_name := '${node.name}__${field.name}'
+				b.enum_values[const_name] = next_value
+				// Also register as global for native backends
+				b.mod.add_global_with_value(const_name, field_type, true, i64(next_value))
+				next_value++
 			}
 		}
 		else {
@@ -544,6 +710,24 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 			return b.expr_init(node)
 		}
 		ast.SelectorExpr {
+			// Check if this is an enum value access (EnumName.value)
+			if node.lhs is ast.Ident {
+				enum_name := '${node.lhs.name}__${node.rhs.name}'
+				if enum_val := b.enum_values[enum_name] {
+					i64_t := b.mod.type_store.get_int(64)
+					return b.mod.add_value_node(.constant, i64_t, '${enum_val}', 0)
+				}
+			}
+			// Check for enum shorthand (.value) - LHS is EmptyExpr
+			if node.lhs is ast.EmptyExpr {
+				if b.cur_match_type != '' {
+					enum_name := '${b.cur_match_type}__${node.rhs.name}'
+					if enum_val := b.enum_values[enum_name] {
+						i64_t := b.mod.type_store.get_int(64)
+						return b.mod.add_value_node(.constant, i64_t, '${enum_val}', 0)
+					}
+				}
+			}
 			return b.expr_selector(node)
 		}
 		ast.IndexExpr {
@@ -1103,6 +1287,26 @@ fn (mut b Builder) expr_match(node ast.MatchExpr) ValueID {
 	// 1. Eval Cond
 	cond_val := b.expr(node.expr)
 
+	// Try to infer the match expression type for enum shorthand
+	old_match_type := b.cur_match_type
+	if node.expr is ast.Ident {
+		// Check if this variable has an enum type
+		if var_type := b.var_struct_types[node.expr.name] {
+			// If it's an enum type, set the context
+			b.cur_match_type = var_type
+		}
+	} else if node.expr is ast.SelectorExpr {
+		if node.expr.lhs is ast.Ident {
+			// Check if LHS is an enum name
+			for key, _ in b.enum_values {
+				if key.starts_with('${node.expr.lhs.name}__') {
+					b.cur_match_type = node.expr.lhs.name
+					break
+				}
+			}
+		}
+	}
+
 	// 2. Setup Blocks
 	merge_blk := b.mod.add_block(b.cur_func, 'match.merge')
 	mut default_blk := merge_blk
@@ -1152,6 +1356,7 @@ fn (mut b Builder) expr_match(node ast.MatchExpr) ValueID {
 	}
 
 	b.cur_block = merge_blk
+	b.cur_match_type = old_match_type
 	return 0
 }
 
@@ -1312,6 +1517,16 @@ fn (b Builder) get_printf_format(inter ast.StringInter) string {
 }
 
 fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
+	// Check if this is a primitive type cast (int, i64, etc.)
+	// These are not function calls - just return the expression value
+	if node.lhs is ast.Ident {
+		cast_name := node.lhs.name
+		if cast_name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64'] {
+			// Type cast: just evaluate the expression (enums are already ints in SSA)
+			return b.expr(node.expr)
+		}
+	}
+
 	// Handle ambiguous calls like print_int(1111)
 	mut args := []ValueID{}
 	args << b.expr(node.expr)
@@ -1745,4 +1960,37 @@ fn (mut b Builder) emit_deferred_stmts() {
 	for i := b.defer_stmts.len - 1; i >= 0; i-- {
 		b.stmts(b.defer_stmts[i])
 	}
+}
+
+// eval_const_expr evaluates a constant expression at compile time
+fn (mut b Builder) eval_const_expr(expr ast.Expr) i64 {
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .number {
+				return expr.value.i64()
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .minus {
+				return -b.eval_const_expr(expr.expr)
+			}
+		}
+		ast.InfixExpr {
+			lhs := b.eval_const_expr(expr.lhs)
+			rhs := b.eval_const_expr(expr.rhs)
+			return match expr.op {
+				.plus { lhs + rhs }
+				.minus { lhs - rhs }
+				.mul { lhs * rhs }
+				.div { lhs / rhs }
+				.mod { lhs % rhs }
+				else { 0 }
+			}
+		}
+		ast.ParenExpr {
+			return b.eval_const_expr(expr.expr)
+		}
+		else {}
+	}
+	return 0
 }
