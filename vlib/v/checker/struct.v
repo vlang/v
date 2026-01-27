@@ -1077,7 +1077,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 							} else {
 								parts.last()
 							}
-							if !c.inside_unsafe && !(c.pref.backend.is_js()
+							if !c.inside_unsafe && !(c.is_js_backend
 								&& mod_type.starts_with('Promise')) {
 								c.error('cannot access private field `${field.name}` on `${mod_type}`',
 									init_field.pos)

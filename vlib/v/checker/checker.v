@@ -138,6 +138,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	is_js_backend                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign        bool
@@ -185,6 +186,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
+	checker.is_js_backend = checker.pref.backend.is_js()
 	return checker
 }
 
@@ -2815,7 +2817,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 		c.warn('inline assembly goto is not supported, it will most likely not work',
 			stmt.pos)
 	}
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
@@ -2914,7 +2916,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() || c.pref.backend == .golang {
+	if c.pref.backend == .golang || c.is_js_backend {
 		// consider the best way to handle the .go.vv files
 		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
 			&& !c.file.path.ends_with('.go.vv') {
@@ -3729,7 +3731,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	c.check_any_type(to_type, to_sym, node.pos)
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		if (to_sym.is_number() && from_sym.name == 'JS.Number')
 			|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
 			|| (to_sym.is_string() && from_sym.name == 'JS.String')

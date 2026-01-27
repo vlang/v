@@ -842,7 +842,7 @@ run them via `v file.v` instead',
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
 		}
-		if is_non_local && !type_sym.mod.starts_with('Promise') {
+		if is_non_local && !(p.file_backend_mode == .js && type_sym.mod.starts_with('Promise')) {
 			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}. Define an alias and use that instead like `type AliasName = ${type_sym.name}` ',
 				rec.type_pos)
 			return ast.FnDecl{
