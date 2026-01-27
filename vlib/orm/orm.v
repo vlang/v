@@ -556,6 +556,10 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		mut field_comment := ''
 		mut field_name := sql_field_name(field)
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
+			// Struct fields are treated as foreign key references, which requires a primary key
+			if primary_typ == 0 {
+				return error('struct field `${field_name}` in table `${table.name}` requires a primary key field for foreign key reference - add a field with [primary] attribute or use [sql: \'-\'] to skip this field')
+			}
 			field_name = '${field_name}_id'
 			sql_from_v(primary_typ)!
 		}

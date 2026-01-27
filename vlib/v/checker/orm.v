@@ -460,6 +460,12 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 			}
 			continue
 		}
+		// Validate field type is resolved (not 0 and not still generic)
+		if field.typ == 0 || field.typ.has_flag(.generic) {
+			c.orm_error('field `${field.name}` has unresolved type in generic struct `${table_name}` - use a concrete type instantiation',
+				field.pos)
+			continue
+		}
 		field_sym := c.table.sym(field.typ)
 		final_field_typ := c.table.final_type(field.typ)
 		is_primitive := final_field_typ.is_string() || final_field_typ.is_bool()

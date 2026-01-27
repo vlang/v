@@ -226,6 +226,10 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 
 		for field in node.fields {
 			g.writeln('// `${table_name}`.`${field.name}`')
+			// Safety check: ensure field type is valid (not 0 and not still generic)
+			if field.typ == 0 || field.typ.has_flag(.generic) {
+				verror('ORM: field `${field.name}` in table `${table_name}` has unresolved type - this may be due to using a generic struct that was not properly instantiated')
+			}
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
 			typ := match true {

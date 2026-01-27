@@ -447,6 +447,23 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 
 @[inline]
 pub fn strip_mod_name(name string) string {
+	// For generic types like main.Message[main.Payload], strip module prefixes
+	// from both the type name and the generic parameters
+	if bracket_pos := name.index('[') {
+		prefix := name[..bracket_pos]
+		suffix := name[bracket_pos..]
+		// Also strip module names from generic parameters inside brackets
+		// e.g., [main.Payload, main.Foo] -> [Payload, Foo]
+		mut result := prefix.all_after_last('.') + '['
+		params := suffix[1..suffix.len - 1] // Remove [ and ]
+		mut param_parts := []string{}
+		for param in params.split(', ') {
+			param_parts << param.all_after_last('.')
+		}
+		result += param_parts.join(', ')
+		result += ']'
+		return result
+	}
 	return name.all_after_last('.')
 }
 
