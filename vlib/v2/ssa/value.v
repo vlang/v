@@ -13,6 +13,7 @@ pub enum ValueKind {
 	global
 	instruction
 	basic_block
+	string_literal // V string struct literal (by value)
 }
 
 pub struct Value {

@@ -24,6 +24,9 @@ pub mut:
 	reg_map   map[int]int
 	used_regs []int
 	next_blk  int
+
+	// Track which string literals have been materialized (value_id -> str_data offset)
+	string_literal_offsets map[int]int
 }
 
 pub fn Gen.new(mod &ssa.Module) &Gen {
@@ -84,6 +87,7 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.pending_labels = map[int][]int{}
 	g.reg_map = map[int]int{}
 	g.used_regs = []int{}
+	g.string_literal_offsets = map[int]int{}
 	g.allocate_registers(func)
 
 	// Stack Frame
@@ -92,6 +96,16 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	for pid in func.params {
 		g.stack_map[pid] = -slot_offset
 		slot_offset += 8
+	}
+
+	// Pre-pass: allocate stack slots for string_literal values
+	for val in g.mod.values {
+		if val.kind == .string_literal {
+			// String struct needs 24 bytes (str ptr + len + is_lit)
+			slot_offset = (slot_offset + 15) & ~0xF
+			slot_offset += 24
+			g.stack_map[val.id] = -slot_offset
+		}
 	}
 
 	for i, blk_id in func.blocks {
@@ -131,6 +145,14 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				// Ensure the next instruction does not use the slot
 				// overlapping with the base of the alloca data.
 				slot_offset += 8
+			}
+
+			if instr.op == .inline_string_init {
+				// String struct needs 24 bytes (str ptr + len + is_lit)
+				slot_offset = (slot_offset + 15) & ~0xF
+				slot_offset += 24
+				g.stack_map[val_id] = -slot_offset
+				continue // Don't allocate another 8 bytes below
 			}
 
 			if val_id in g.reg_map {
@@ -593,6 +615,34 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// This is used after code that should never be reached (e.g., after exit() in assert)
 			g.emit(0x00000000)
 		}
+		.inline_string_init {
+			// Create string struct by value: { str, len, is_lit }
+			// operands: [str_ptr, len, is_lit]
+			// This instruction creates a string struct on the stack
+			// The result is a pointer to the struct
+			str_ptr_id := instr.operands[0]
+			len_id := instr.operands[1]
+			is_lit_id := instr.operands[2]
+
+			// Get base pointer for this value's stack slot
+			base_offset := g.stack_map[val_id]
+
+			// Store str field (offset 0)
+			g.load_val_to_reg(8, str_ptr_id)
+			g.emit_str_reg_offset(8, 29, base_offset)
+
+			// Store len field (offset 8)
+			g.load_val_to_reg(9, len_id)
+			g.emit_str_reg_offset(9, 29, base_offset + 8)
+
+			// Store is_lit field (offset 16)
+			g.load_val_to_reg(10, is_lit_id)
+			g.emit_str_reg_offset(10, 29, base_offset + 16)
+
+			// Return pointer to struct (base address)
+			g.emit_add_fp_imm(8, base_offset) // x8 = fp + offset
+			g.store_reg_to_val(8, val_id)
+		}
 		else {
 			eprintln('arm64: unknown instruction ${instr}')
 			exit(1)
@@ -659,6 +709,50 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		g.emit(0x90000000 | u32(reg))
 		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 		g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
+	} else if val.kind == .string_literal {
+		// String literal: create string struct { str, len, is_lit } on stack
+		// val.name contains the string content, val.index contains the length
+
+		// Get stack slot for this string struct (24 bytes: str ptr + len + is_lit)
+		base_offset := g.stack_map[val_id]
+
+		// Check if we've already materialized this string literal
+		if _ := g.string_literal_offsets[val_id] {
+			// Already materialized - just load pointer to the struct
+			g.emit_add_fp_imm(reg, base_offset)
+		} else {
+			// First time - create string data and initialize struct
+			str_content := val.name
+			str_len := val.index
+
+			// Create the string data in cstring section
+			str_offset2 := g.macho.str_data.len
+			g.macho.str_data << str_content.bytes()
+			g.macho.str_data << 0 // null terminator
+
+			// Track that we've materialized this string literal
+			g.string_literal_offsets[val_id] = str_offset2
+
+			// Store str pointer (offset 0): load address of string data
+			sym_idx := g.macho.add_symbol('L_str_${str_offset2}', u64(str_offset2), false,
+				2)
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
+			g.emit(0x90000000 | u32(reg))
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
+			g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
+			g.emit_str_reg_offset(reg, 29, base_offset)
+
+			// Store len (offset 8)
+			g.emit_mov_imm64(9, str_len)
+			g.emit_str_reg_offset(9, 29, base_offset + 8)
+
+			// Store is_lit = 1 (offset 16)
+			g.emit_mov_imm64(10, 1)
+			g.emit_str_reg_offset(10, 29, base_offset + 16)
+
+			// Load pointer to string struct into reg
+			g.emit_add_fp_imm(reg, base_offset)
+		}
 	} else {
 		// Handles .instruction, .argument, etc.
 		if reg_idx := g.reg_map[val_id] {

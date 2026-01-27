@@ -62,7 +62,8 @@ pub enum OpCode {
 	phi
 	call
 	select
-	assign // copy for phi elimination
+	assign             // copy for phi elimination
+	inline_string_init // Create string struct by value: (string){str, len, is_lit}
 }
 
 pub enum AtomicOrdering {

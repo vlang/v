@@ -33,7 +33,7 @@ pub type Type = Alias
 	| Void
 
 @[flag]
-enum Properties {
+pub enum Properties {
 	boolean
 	float
 	integer
@@ -58,19 +58,22 @@ enum Properties {
 // 	untyped_float
 // }
 
-struct Primitive {
+pub struct Primitive {
+pub:
 	// kind  PrimitiveKind
 	props Properties
 	size  u8
 }
 
-struct Alias {
+pub struct Alias {
+pub:
 	name string
-mut:
+pub mut:
 	base_type Type
 }
 
-struct Array {
+pub struct Array {
+pub:
 	elem_type Type
 }
 
@@ -153,7 +156,8 @@ struct Map {
 	value_type Type
 }
 
-struct Pointer {
+pub struct Pointer {
+pub:
 	base_type Type
 }
 
@@ -167,7 +171,8 @@ type NamedType = string
 // 	name string
 // }
 
-struct Field {
+pub struct Field {
+pub:
 	name string
 	typ  Type
 }
@@ -177,10 +182,11 @@ struct Field {
 // 	typ  FnType
 // }
 
-struct Struct {
+pub struct Struct {
+pub:
 	name           string
 	generic_params []string
-mut:
+pub mut:
 	embedded []Struct
 	// embedded       []Type
 	fields []Field

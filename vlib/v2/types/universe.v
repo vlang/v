@@ -63,6 +63,27 @@ const f64_ = Primitive{
 	size:  64
 }
 // complex / non primitives
+// String struct as defined in builtin/string.v:
+// pub struct string { str &u8, len int, is_lit int }
+const string_struct_ = Struct{
+	name:   'string'
+	fields: [
+		Field{
+			name: 'str'
+			typ:  Pointer{
+				base_type: u8_
+			}
+		},
+		Field{
+			name: 'len'
+			typ:  int_
+		},
+		Field{
+			name: 'is_lit'
+			typ:  int_
+		},
+	]
+}
 const string_ = String(0)
 const chan_ = Channel{}
 const char_ = Char(0)
@@ -100,6 +121,11 @@ const float_literal_ = Primitive{
 // float_literal_ = FloatLiteral(0)
 // TODO: is this what thread should be?
 const thread_ = Thread{}
+
+// Returns the string struct type definition (for SSA builder)
+pub fn get_string_struct() Struct {
+	return string_struct_
+}
 
 pub fn init_universe() &Scope {
 	// universe scope

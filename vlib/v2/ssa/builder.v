@@ -5,6 +5,7 @@
 module ssa
 
 import v2.ast
+import v2.types
 // import v2.token
 
 pub struct Builder {
@@ -44,7 +45,7 @@ struct LoopInfo {
 }
 
 pub fn Builder.new(mod &Module) &Builder {
-	return &Builder{
+	mut b := &Builder{
 		mod:              mod
 		vars:             map[string]ValueID{}
 		var_struct_types: map[string]string{}
@@ -52,6 +53,96 @@ pub fn Builder.new(mod &Module) &Builder {
 		struct_types:     map[string]TypeID{}
 		enum_values:      map[string]int{}
 		var_array_sizes:  map[string]int{}
+	}
+	// Register builtin string struct type: { str &u8, len int, is_lit int }
+	b.register_string_type()
+	return b
+}
+
+fn (mut b Builder) register_string_type() {
+	// Get string struct definition from v2.types (defined in universe.v)
+	string_struct := types.get_string_struct()
+
+	// Convert types.Struct to SSA type
+	mut ssa_fields := []TypeID{}
+	mut ssa_field_names := []string{}
+
+	for field in string_struct.fields {
+		ssa_fields << b.type_to_ssa(field.typ)
+		ssa_field_names << field.name
+	}
+
+	string_type_id := b.mod.type_store.register(Type{
+		kind:        .struct_t
+		fields:      ssa_fields
+		field_names: ssa_field_names
+	})
+	b.struct_types['string'] = string_type_id
+}
+
+// Convert v2.types.Type to SSA TypeID
+fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
+	match t {
+		types.Primitive {
+			if t.props.has(.integer) {
+				size := if t.size == 0 { 64 } else { int(t.size) } // int defaults to 64-bit
+				return b.mod.type_store.get_int(size)
+			} else if t.props.has(.float) {
+				return b.mod.type_store.get_float(int(t.size))
+			} else if t.props.has(.boolean) {
+				return b.mod.type_store.get_int(8) // bool as i8
+			}
+			return b.mod.type_store.get_int(64) // fallback
+		}
+		types.Pointer {
+			elem_type := b.type_to_ssa(t.base_type)
+			return b.mod.type_store.get_ptr(elem_type)
+		}
+		types.Array {
+			elem_type := b.type_to_ssa(t.elem_type)
+			return b.mod.type_store.get_ptr(elem_type) // arrays are pointers in SSA
+		}
+		types.Struct {
+			// Check if already registered
+			if struct_id := b.struct_types[t.name] {
+				return struct_id
+			}
+			// Convert and register
+			mut ssa_fields := []TypeID{}
+			mut ssa_field_names := []string{}
+			for field in t.fields {
+				ssa_fields << b.type_to_ssa(field.typ)
+				ssa_field_names << field.name
+			}
+			struct_id := b.mod.type_store.register(Type{
+				kind:        .struct_t
+				fields:      ssa_fields
+				field_names: ssa_field_names
+			})
+			b.struct_types[t.name] = struct_id
+			return struct_id
+		}
+		types.String {
+			// String is a special type - return the string struct
+			if struct_id := b.struct_types['string'] {
+				return struct_id
+			}
+			// Should not happen if register_string_type() was called
+			return 0
+		}
+		types.Alias {
+			return b.type_to_ssa(t.base_type)
+		}
+		types.Char {
+			return b.mod.type_store.get_int(8)
+		}
+		types.Void {
+			return 0 // void type
+		}
+		else {
+			// Fallback for unhandled types
+			return b.mod.type_store.get_int(64)
+		}
 	}
 }
 
@@ -176,8 +267,11 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 		if param.typ is ast.Ident {
 			if struct_t := b.struct_types[param.typ.name] {
 				struct_type_name = param.typ.name
-				// For mut params, it's a pointer to the struct
-				if param.is_mut {
+				// For mut params or large structs (>16 bytes), use pointer
+				// This matches ARM64 ABI where structs > 16 bytes are passed by reference
+				struct_type := b.mod.type_store.types[struct_t]
+				struct_size := struct_type.fields.len * 8 // Approximate size
+				if param.is_mut || struct_size > 16 {
 					param_type = b.mod.type_store.get_ptr(struct_t)
 				} else {
 					param_type = struct_t
@@ -997,8 +1091,11 @@ fn (mut b Builder) expr_init(node ast.InitExpr) ValueID {
 fn (mut b Builder) expr_selector(node ast.SelectorExpr) ValueID {
 	// Load value from field
 	ptr := b.addr(node)
-	i32_t := b.mod.type_store.get_int(64) // Assume i32
-	return b.mod.add_instr(.load, b.cur_block, i32_t, [ptr])
+	// Get the actual field type from the pointer type
+	ptr_val := b.mod.values[ptr]
+	ptr_typ := b.mod.type_store.types[ptr_val.typ]
+	field_typ := ptr_typ.elem_type // Dereference the pointer type to get field type
+	return b.mod.add_instr(.load, b.cur_block, field_typ, [ptr])
 }
 
 fn (mut b Builder) expr_index(node ast.IndexExpr) ValueID {
@@ -1680,18 +1777,29 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 }
 
 fn (mut b Builder) expr_string_literal(node ast.StringLiteral) ValueID {
-	// Treat as char* (i8*) constant
-	i8_t := b.mod.type_store.get_int(8)
-	ptr_t := b.mod.type_store.get_ptr(i8_t)
-	// Note: We wrap in quotes for the C backend to interpret as string literal
-	// return b.mod.add_value_node(.constant, ptr_t, '"${node.value}"', 0)
+	// Strip quotes from value (the parser includes them)
 	val := node.value.trim("'").trim('"')
-	return b.mod.add_value_node(.constant, ptr_t, '"${val}"', 0)
+
+	// Check for C-string literal using the kind field
+	if node.kind == .c {
+		// C string: just return char* pointer
+		i8_t := b.mod.type_store.get_int(8)
+		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		return b.mod.add_value_node(.constant, ptr_t, '"${val}"', 0)
+	}
+
+	// V string: create a string struct literal
+	// The string_literal value represents a pointer to a stack-allocated string struct
+	// (ARM64 backend creates the struct on stack and returns the pointer)
+	string_type_id := b.struct_types['string']
+	string_ptr_t := b.mod.type_store.get_ptr(string_type_id)
+	return b.mod.add_value_node(.string_literal, string_ptr_t, val, val.len)
 }
 
 fn (mut b Builder) expr_string_inter_literal(node ast.StringInterLiteral) ValueID {
 	// String interpolation: 'prefix${a}middle${b}suffix'
 	// Lower to: sprintf(buf, "prefix%lldmiddle%lldsuffix", a, b)
+	// Then wrap in a string struct using statement expression
 	//
 	// For now, use libc sprintf. Later this can use strconv functions.
 
@@ -1746,8 +1854,21 @@ fn (mut b Builder) expr_string_inter_literal(node ast.StringInterLiteral) ValueI
 	}
 	b.mod.add_instr(.call, b.cur_block, i64_t, call_args)
 
-	// 5. Return buffer pointer (it's a char*)
-	return buf_ptr
+	// 5. Call strlen to get the length
+	strlen_fn := b.mod.add_value_node(.unknown, 0, 'strlen', 0)
+	strlen_result := b.mod.add_instr(.call, b.cur_block, i64_t, [strlen_fn, buf_ptr])
+
+	// 6. Create string struct by value using inline_string_init instruction
+	// This will generate: (string){buf, strlen_result, 0}
+	// Return pointer type (like string_literal) so ARM64 backend handles it correctly
+	string_type_id := b.struct_types['string']
+	string_ptr_t := b.mod.type_store.get_ptr(string_type_id)
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	return b.mod.add_instr(.inline_string_init, b.cur_block, string_ptr_t, [
+		buf_ptr,
+		strlen_result,
+		zero,
+	])
 }
 
 fn (b Builder) get_printf_format(inter ast.StringInter) string {

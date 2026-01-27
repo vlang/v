@@ -82,7 +82,7 @@ pub fn (mut ts TypeStore) get_array(elem TypeID, length int) TypeID {
 	return id
 }
 
-fn (mut ts TypeStore) register(t Type) TypeID {
+pub fn (mut ts TypeStore) register(t Type) TypeID {
 	id := ts.types.len
 	ts.types << t
 	return id

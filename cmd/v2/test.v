@@ -2210,5 +2210,29 @@ fn main() {
 	// 44.5 Comptime in function call
 	print_int(get_comptime_value())
 
+	// ==================== 45. STRING STRUCT FIELDS ====================
+	print_str('--- 45. String Struct Fields ---')
+
+	// 45.1 String literal .str field
+	s45_1 := 'Hello'
+	print_str(s45_1) // Hello
+
+	// 45.2 String literal .len field
+	s45_2 := 'World'
+	print_int(s45_2.len) // 5
+
+	// 45.3 Interpolated string .len field
+	val45 := 123
+	s45_3 := 'Val: ${val45}'
+	print_int(s45_3.len) // 8
+
+	// 45.4 Multiple string operations
+	a45 := 'AB'
+	b45 := 'CDE'
+	print_int(a45.len + b45.len) // 5
+
+	// 45.5 String in function parameter
+	print_str('Passed directly') // Passed directly
+
 	print_str('=== All tests completed ===')
 }

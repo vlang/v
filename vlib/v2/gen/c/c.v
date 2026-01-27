@@ -26,6 +26,11 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <stdbool.h>')
 	g.sb.writeln('#include <stddef.h>')
 	g.sb.writeln('#include <stdio.h>')
+	g.sb.writeln('#include <stdlib.h>')
+	g.sb.writeln('#include <string.h>')
+	g.sb.writeln('')
+	// Builtin string type
+	g.sb.writeln('typedef struct { int8_t* str; int64_t len; int64_t is_lit; } string;')
 	g.sb.writeln('')
 
 	g.gen_struct_decls()
@@ -58,6 +63,10 @@ fn (mut g Gen) gen_func_decls() {
 fn (mut g Gen) gen_struct_decls() {
 	for i, t in g.mod.type_store.types {
 		if t.kind == .struct_t {
+			// Skip builtin string type (already defined)
+			if g.is_string_type(i) {
+				continue
+			}
 			g.sb.writeln('typedef struct Struct_${i} Struct_${i};')
 		}
 	}
@@ -65,15 +74,34 @@ fn (mut g Gen) gen_struct_decls() {
 
 	for i, t in g.mod.type_store.types {
 		if t.kind == .struct_t {
+			// Skip builtin string type (already defined)
+			if g.is_string_type(i) {
+				continue
+			}
 			g.sb.writeln('struct Struct_${i} {')
 			for idx, field_id in t.fields {
 				type_name := g.type_name(field_id)
-				g.sb.writeln('\t${type_name} field_${idx};')
+				// Use named fields if available
+				field_name := if idx < t.field_names.len {
+					t.field_names[idx]
+				} else {
+					'field_${idx}'
+				}
+				g.sb.writeln('\t${type_name} ${field_name};')
 			}
 			g.sb.writeln('};')
 		}
 	}
 	g.sb.writeln('')
+}
+
+fn (g Gen) is_string_type(type_id int) bool {
+	t := g.mod.type_store.types[type_id]
+	if t.kind == .struct_t && t.field_names.len == 3 {
+		return t.field_names[0] == 'str' && t.field_names[1] == 'len'
+			&& t.field_names[2] == 'is_lit'
+	}
+	return false
 }
 
 fn (mut g Gen) gen_globals() {
@@ -265,11 +293,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 			elem_type := g.mod.type_store.types[elem_type_id]
 
 			if elem_type.kind == .struct_t {
+				// Get field name - use named field if available, otherwise fall back to field_N
+				idx := idx_val.name.int()
+				field_name := if idx < elem_type.field_names.len {
+					elem_type.field_names[idx]
+				} else {
+					'field_${idx_val.name}'
+				}
 				// For globals, the C declaration is not a pointer, so use '.' instead of '->'
 				if base_val.kind == .global {
-					g.sb.writeln('\t${res} = &${base}.field_${idx_val.name};')
+					g.sb.writeln('\t${res} = &${base}.${field_name};')
 				} else {
-					g.sb.writeln('\t${res} = &${base}->field_${idx_val.name};')
+					g.sb.writeln('\t${res} = &${base}->${field_name};')
 				}
 			} else {
 				idx := g.val_str(instr.operands[1])
@@ -308,6 +343,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Unreachable code - typically after abort/exit
 			g.sb.writeln('\t__builtin_unreachable();')
 		}
+		.inline_string_init {
+			// Create string struct by value: (string){str, len, is_lit}
+			str_ptr := g.val_str(instr.operands[0])
+			len_val := g.val_str(instr.operands[1])
+			is_lit := g.val_str(instr.operands[2])
+			g.sb.writeln('\t${res} = (string){(int8_t*)${str_ptr}, ${len_val}, ${is_lit}};')
+		}
 		else {
 			g.sb.writeln('\t// Unhandled C op: ${instr.op}')
 		}
@@ -333,12 +375,20 @@ fn (g Gen) type_name(id int) string {
 			if elem_t.kind == .array_t {
 				return g.type_name(elem_t.elem_type) + '*'
 			}
+			// Check if pointing to string struct
+			if g.is_string_type(t.elem_type) {
+				return 'string*'
+			}
 			return g.type_name(t.elem_type) + '*'
 		}
 		.array_t {
 			return g.type_name(t.elem_type) + '*'
 		} // Arrays decay to pointers
 		.struct_t {
+			// Check for builtin string type
+			if g.is_string_type(id) {
+				return 'string'
+			}
 			return 'Struct_${id}'
 		}
 		else {
@@ -355,6 +405,10 @@ fn (g Gen) val_str(id int) string {
 		return val.name
 	} else if val.kind == .global {
 		return val.name
+	} else if val.kind == .string_literal {
+		// String literal: generate inline struct literal
+		// val.name contains the string content, val.index contains length
+		return '(string){"${val.name}", ${val.index}, 1}'
 	}
 	return '_v${val.id}'
 }
