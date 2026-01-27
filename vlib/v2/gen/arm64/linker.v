@@ -5,6 +5,8 @@
 module arm64
 
 import os
+import time
+import crypto.sha256
 
 // Mach-O executable constants
 const mh_execute = 2
@@ -16,6 +18,21 @@ const lc_dysymtab = 0xb
 const lc_uuid = 0x1b
 const lc_build_version = 0x32
 const lc_source_version = 0x2a
+const lc_code_signature = 0x1d
+
+// Code signing constants (big-endian magic numbers)
+const csmagic_embedded_signature = u32(0xfade0cc0)
+const csmagic_codedirectory = u32(0xfade0c02)
+const csmagic_requirements = u32(0xfade0c01)
+const csmagic_blobwrapper = u32(0xfade0b01)
+const csslot_codedirectory = u32(0)
+const csslot_requirements = u32(2)
+const csslot_cms_signature = u32(0x10000)
+const cs_adhoc = u32(0x2)                       // Ad-hoc signing flag
+const cs_hashtype_sha256 = u8(2)
+const cs_hash_size = 32                         // SHA256 = 32 bytes
+const cs_page_size_arm64 = 16384                // Code signing page size for ARM64 macOS
+const cs_page_shift_arm64 = 14                  // log2(16384)
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
@@ -76,6 +93,12 @@ pub fn Linker.new(macho &MachOObject) &Linker {
 }
 
 pub fn (mut l Linker) link(output_path string, entry_name string) {
+	// Pre-allocate buffer with estimated size to avoid reallocations
+	estimated_size := l.macho.text_data.len + l.macho.str_data.len + l.macho.data_data.len + 0x10000
+	l.buf = []u8{cap: estimated_size}
+	mut t := time.now()
+	mut t_total := time.now()
+
 	// First pass: collect all defined symbols
 	mut defined_syms := map[string]bool{}
 	for sym in l.macho.symbols {
@@ -102,7 +125,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Calculate layout
 	// On macOS, __TEXT segment MUST start at fileoff 0
 	// The header and load commands are inside the __TEXT segment
-	n_load_cmds := 13
+	n_load_cmds := 14 // Including LC_CODE_SIGNATURE
 	pagezero_cmd_size := 72
 	text_cmd_size := 72 + (80 * 2) // __text + __stubs
 	data_cmd_size := 72 + (80 * 2) // __data + __got
@@ -116,19 +139,23 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	uuid_cmd_size := 24
 	build_version_cmd_size := 24
 	source_version_cmd_size := 16
+	code_signature_cmd_size := 16
 
 	load_cmds_size := pagezero_cmd_size + text_cmd_size + data_cmd_size + linkedit_cmd_size +
 		dyld_info_cmd_size + symtab_cmd_size + dysymtab_cmd_size + dylinker_cmd_size +
 		dylib_cmd_size + main_cmd_size + uuid_cmd_size + build_version_cmd_size +
-		source_version_cmd_size
+		source_version_cmd_size + code_signature_cmd_size
 
 	// __TEXT starts at file offset 0 and vmaddr base_addr
 	l.text_fileoff = 0
 	l.text_vmaddr = base_addr
 
-	// Code starts at page boundary to avoid issues with codesign modifications
-	// This gives plenty of room for load commands to expand (codesign adds LC_CODE_SIGNATURE)
-	l.code_start = page_size
+	// Code starts after header + load commands, aligned to 16 bytes
+	// Leave ~600 bytes extra for codesign to add LC_CODE_SIGNATURE
+	// Header (32) + load_cmds (~700) + codesign reserve (600) ≈ 1332, align to 2048
+	header_size := 32
+	code_start_min := header_size + load_cmds_size + 600 // Reserve for codesign
+	l.code_start = (code_start_min + 15) & ~15           // Align to 16 bytes
 
 	// Calculate where stubs will be (after code and cstrings)
 	l.stubs_offset = l.code_start + l.macho.text_data.len + l.macho.str_data.len
@@ -180,8 +207,16 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	strtab_off := symtab_off + (n_syms * 16)
 	strtab_size := 1 // Just null byte
 
+	// Code signature follows string table (will be calculated later)
+	// code_limit is where the signature starts (everything before is hashed)
+	code_limit := strtab_off + strtab_size
+	// Signature size: SuperBlob(12) + 2*BlobIndex(8) + CodeDirectory header + identifier + hashes + Requirements blob
+	ident := output_path.all_after_last('/') // Use filename as identifier
+	cs_size := l.estimate_signature_size(code_limit, ident)
+	cs_off := code_limit
+
 	l.linkedit_off = bind_off
-	l.linkedit_size = bind_size + strtab_size
+	l.linkedit_size = bind_size + strtab_size + cs_size
 
 	l.write_dyld_info(bind_off, bind_size)
 	l.write_symtab(symtab_off, n_syms, strtab_off, strtab_size)
@@ -197,48 +232,44 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	l.write_build_version()
 	l.write_source_version()
 
-	// Patch LINKEDIT segment with actual values
+	// Write LC_CODE_SIGNATURE (will be at cs_off with size cs_size)
+	codesig_cmd_start := l.buf.len
+	l.write_code_signature_cmd(cs_off, cs_size)
+
+	// Patch LINKEDIT segment with actual values (including signature)
 	l.patch_linkedit(linkedit_start, bind_off, l.linkedit_size)
 
+	println('  headers+cmds: ${time.since(t)}')
+	t = time.now()
+
 	// Pad to code start (after header + load commands)
-	for l.buf.len < l.code_start {
-		l.buf << 0
-	}
+	l.pad_to(l.code_start)
 
 	// Write text section with relocations applied
 	l.write_text_with_relocations()
+
+	println('  text+relocs: ${time.since(t)}')
+	t = time.now()
 
 	// Write cstring section
 	l.buf << l.macho.str_data
 
 	// Pad and write stubs
-	for l.buf.len < l.stubs_offset {
-		l.buf << 0
-	}
+	l.pad_to(l.stubs_offset)
 	l.write_stubs()
 
 	// Pad to data start
-	for l.buf.len < l.data_fileoff {
-		l.buf << 0
-	}
+	l.pad_to(l.data_fileoff)
 
 	// Write data section
 	l.buf << l.macho.data_data
 
 	// Pad to GOT offset and write GOT (initially zeros, dyld will fill)
-	for l.buf.len < l.data_fileoff + l.got_offset {
-		l.buf << 0
-	}
-	for _ in 0 .. l.extern_syms.len {
-		for _ in 0 .. 8 {
-			l.buf << 0
-		}
-	}
+	l.pad_to(l.data_fileoff + l.got_offset)
+	l.write_zeros(l.extern_syms.len * 8)
 
 	// Pad data segment
-	for l.buf.len < l.data_fileoff + l.data_size {
-		l.buf << 0
-	}
+	l.pad_to(l.data_fileoff + l.data_size)
 
 	// Write LINKEDIT content
 	l.buf << bind_info
@@ -246,13 +277,31 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Write string table (just null byte)
 	l.buf << 0
 
+	println('  padding+data: ${time.since(t)}')
+	t = time.now()
+
+	// Generate and write code signature (ad-hoc signing)
+	signature := l.generate_code_signature(ident)
+	l.buf << signature
+
+	// Patch LC_CODE_SIGNATURE if size differs from estimate
+	actual_cs_size := signature.len
+	if actual_cs_size != cs_size {
+		// Patch datasize in LC_CODE_SIGNATURE command
+		write_u32_le_at(mut l.buf, codesig_cmd_start + 12, u32(actual_cs_size))
+	}
+
+	println('  codesign: ${time.since(t)}')
+	t = time.now()
+
 	os.write_file_array(output_path, l.buf) or { panic(err) }
+
+	println('  file write: ${time.since(t)}')
 
 	// Make executable
 	os.chmod(output_path, 0o755) or {}
 
-	// Sign the binary (required on Apple Silicon macOS)
-	os.execute('codesign -s - "${output_path}"')
+	println('  TOTAL linker: ${time.since(t_total)}')
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
@@ -471,6 +520,169 @@ fn (mut l Linker) write_source_version() {
 	write_u32_le(mut l.buf, u32(lc_source_version))
 	write_u32_le(mut l.buf, 16)
 	write_u64_le(mut l.buf, 0) // version
+}
+
+fn (mut l Linker) write_code_signature_cmd(dataoff int, datasize int) {
+	write_u32_le(mut l.buf, u32(lc_code_signature))
+	write_u32_le(mut l.buf, 16) // cmdsize
+	write_u32_le(mut l.buf, u32(dataoff))
+	write_u32_le(mut l.buf, u32(datasize))
+}
+
+fn (l Linker) estimate_signature_size(code_limit int, ident string) int {
+	// Calculate pages using ARM64 16KB page size
+	n_pages := (code_limit + cs_page_size_arm64 - 1) / cs_page_size_arm64
+
+	// SuperBlob header (12) + 3 BlobIndex entries (24)
+	// + CodeDirectory + Requirements blob + CMS blob
+	ident_len := ident.len + 1 // null terminated
+	n_special_slots := 2
+	special_hashes_size := n_special_slots * cs_hash_size
+	// CodeDirectory: header (88 for version 0x20400) + ident + special hashes + code hashes
+	cd_size := 88 + ident_len + special_hashes_size + (n_pages * cs_hash_size)
+	// Round up to 4-byte alignment
+	cd_size_aligned := (cd_size + 3) & ~3
+	// Requirements blob: minimal empty requirements (12 bytes)
+	req_size := 12
+	// CMS blob: empty wrapper (8 bytes)
+	cms_size := 8
+	// Total: SuperBlob(12) + 3*BlobIndex(8) + CodeDirectory + Requirements + CMS
+	return 12 + 24 + cd_size_aligned + req_size + cms_size
+}
+
+fn (l Linker) generate_code_signature(ident string) []u8 {
+	mut sig := []u8{}
+
+	// Calculate sizes using ARM64 16KB pages
+	code_limit := l.buf.len // Current buffer is the code to hash
+	n_pages := (code_limit + cs_page_size_arm64 - 1) / cs_page_size_arm64
+	ident_bytes := ident.bytes()
+	ident_len := ident_bytes.len + 1 // null terminated
+
+	// Special slots: we need at least slot for requirements (-2)
+	n_special_slots := 2 // Slots -1 (info.plist) and -2 (requirements)
+	special_hashes_size := n_special_slots * cs_hash_size
+
+	// CodeDirectory layout for version 0x20400:
+	// - Base header (44 bytes): magic, length, version, flags, hashOffset, identOffset,
+	//   nSpecialSlots, nCodeSlots, codeLimit, hashSize, hashType, platform, pageSize, spare2
+	// - scatterOffset (4 bytes)
+	// - teamOffset (4 bytes)
+	// - spare3 (4 bytes)
+	// - codeLimit64 (8 bytes)
+	// - execSegBase (8 bytes)
+	// - execSegLimit (8 bytes)
+	// - execSegFlags (8 bytes)
+	// Total header: 88 bytes
+	cd_header_size := 88
+	ident_offset := cd_header_size
+	hash_offset := ident_offset + ident_len + special_hashes_size
+	cd_size := hash_offset + (n_pages * cs_hash_size)
+	cd_size_aligned := (cd_size + 3) & ~3
+
+	// Requirements blob (empty)
+	req_size := 12
+	// CMS signature blob (empty wrapper for ad-hoc)
+	cms_size := 8
+
+	// SuperBlob layout with 3 blobs
+	blob_count := 3 // CodeDirectory + Requirements + CMS
+	super_blob_header := 12
+	blob_index_size := blob_count * 8
+
+	cd_blob_offset := super_blob_header + blob_index_size
+	req_blob_offset := cd_blob_offset + cd_size_aligned
+	cms_blob_offset := req_blob_offset + req_size
+	total_size := cms_blob_offset + cms_size
+
+	// Write SuperBlob header (big-endian)
+	write_u32_be(mut sig, csmagic_embedded_signature)
+	write_u32_be(mut sig, u32(total_size))
+	write_u32_be(mut sig, u32(blob_count))
+
+	// BlobIndex for CodeDirectory (type = 0 = CSSLOT_CODEDIRECTORY)
+	write_u32_be(mut sig, csslot_codedirectory)
+	write_u32_be(mut sig, u32(cd_blob_offset))
+
+	// BlobIndex for Requirements (type = 2 = CSSLOT_REQUIREMENTS)
+	write_u32_be(mut sig, csslot_requirements)
+	write_u32_be(mut sig, u32(req_blob_offset))
+
+	// BlobIndex for CMS signature (type = 0x10000)
+	write_u32_be(mut sig, csslot_cms_signature)
+	write_u32_be(mut sig, u32(cms_blob_offset))
+
+	// Write CodeDirectory (big-endian) - version 0x20400
+	write_u32_be(mut sig, csmagic_codedirectory)
+	write_u32_be(mut sig, u32(cd_size))
+	write_u32_be(mut sig, 0x20400) // version
+	write_u32_be(mut sig, cs_adhoc) // flags (ad-hoc)
+	write_u32_be(mut sig, u32(hash_offset)) // hashOffset
+	write_u32_be(mut sig, u32(ident_offset)) // identOffset
+	write_u32_be(mut sig, u32(n_special_slots)) // nSpecialSlots
+	write_u32_be(mut sig, u32(n_pages)) // nCodeSlots
+	write_u32_be(mut sig, u32(code_limit)) // codeLimit
+	sig << cs_hash_size // hashSize
+	sig << cs_hashtype_sha256 // hashType
+	sig << 0 // platform
+	sig << cs_page_shift_arm64 // pageSize (log2 of 16384 = 14)
+	write_u32_be(mut sig, 0) // spare2
+	// Version 0x20400 additional fields:
+	write_u32_be(mut sig, 0) // scatterOffset (0 = none)
+	write_u32_be(mut sig, 0) // teamOffset (0 = none)
+	write_u32_be(mut sig, 0) // spare3
+	write_u64_be(mut sig, 0) // codeLimit64 (0 = use codeLimit)
+	write_u64_be(mut sig, 0) // execSegBase (0 = __TEXT starts at 0)
+	write_u64_be(mut sig, u64(l.text_size)) // execSegLimit (size of __TEXT segment)
+	write_u64_be(mut sig, 1) // execSegFlags (CS_EXECSEG_MAIN_BINARY = 1)
+
+	// Write identifier (null-terminated)
+	sig << ident_bytes
+	sig << 0
+
+	// Write special slot hashes (slots -2, -1 in that order)
+	// Slot -2: Requirements hash (we'll compute it from our empty requirements blob)
+	// Slot -1: Info.plist hash (zeros for no Info.plist)
+
+	// First, create the requirements blob to hash it
+	mut req_blob := []u8{}
+	write_u32_be(mut req_blob, csmagic_requirements)
+	write_u32_be(mut req_blob, u32(req_size))
+	write_u32_be(mut req_blob, 0) // count = 0
+
+	// Slot -2: Hash of requirements blob
+	req_hash := sha256.sum(req_blob)
+	sig << req_hash
+
+	// Slot -1: Info.plist (zeros = no Info.plist)
+	for _ in 0 .. cs_hash_size {
+		sig << 0
+	}
+
+	// Compute and write page hashes (16KB pages)
+	for page := 0; page < n_pages; page++ {
+		start := page * cs_page_size_arm64
+		mut end := start + cs_page_size_arm64
+		if end > code_limit {
+			end = code_limit
+		}
+		hash := sha256.sum(l.buf[start..end])
+		sig << hash
+	}
+
+	// Pad CodeDirectory to alignment
+	for sig.len < cd_blob_offset + cd_size_aligned {
+		sig << 0
+	}
+
+	// Write Requirements blob
+	sig << req_blob
+
+	// Write empty CMS signature blob (for ad-hoc signing)
+	write_u32_be(mut sig, csmagic_blobwrapper)
+	write_u32_be(mut sig, u32(cms_size))
+
+	return sig
 }
 
 fn (mut l Linker) find_entry_offset(entry_name string) int {
@@ -693,6 +905,32 @@ fn write_u32_le_at_arr(mut data []u8, off int, v u32) {
 	data[off + 3] = u8(v >> 24)
 }
 
+fn write_u32_le_at(mut data []u8, off int, v u32) {
+	data[off] = u8(v)
+	data[off + 1] = u8(v >> 8)
+	data[off + 2] = u8(v >> 16)
+	data[off + 3] = u8(v >> 24)
+}
+
+// Big-endian write for code signature (Mach-O signatures use big-endian)
+fn write_u32_be(mut b []u8, v u32) {
+	b << u8(v >> 24)
+	b << u8(v >> 16)
+	b << u8(v >> 8)
+	b << u8(v)
+}
+
+fn write_u64_be(mut b []u8, v u64) {
+	b << u8(v >> 56)
+	b << u8(v >> 48)
+	b << u8(v >> 40)
+	b << u8(v >> 32)
+	b << u8(v >> 24)
+	b << u8(v >> 16)
+	b << u8(v >> 8)
+	b << u8(v)
+}
+
 fn write_u64_le_at(mut b []u8, off int, v u64) {
 	b[off] = u8(v)
 	b[off + 1] = u8(v >> 8)
@@ -702,4 +940,21 @@ fn write_u64_le_at(mut b []u8, off int, v u64) {
 	b[off + 5] = u8(v >> 40)
 	b[off + 6] = u8(v >> 48)
 	b[off + 7] = u8(v >> 56)
+}
+
+// Pad buffer to target size with zeros (efficient bulk write)
+fn (mut l Linker) pad_to(target int) {
+	if l.buf.len >= target {
+		return
+	}
+	count := target - l.buf.len
+	unsafe { l.buf.grow_len(count) }
+}
+
+// Write n zero bytes (efficient)
+fn (mut l Linker) write_zeros(n int) {
+	if n <= 0 {
+		return
+	}
+	unsafe { l.buf.grow_len(n) }
 }
