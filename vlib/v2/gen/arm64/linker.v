@@ -28,11 +28,11 @@ const csmagic_blobwrapper = u32(0xfade0b01)
 const csslot_codedirectory = u32(0)
 const csslot_requirements = u32(2)
 const csslot_cms_signature = u32(0x10000)
-const cs_adhoc = u32(0x2)                       // Ad-hoc signing flag
+const cs_adhoc = u32(0x2) // Ad-hoc signing flag
 const cs_hashtype_sha256 = u8(2)
-const cs_hash_size = 32                         // SHA256 = 32 bytes
-const cs_page_size_arm64 = 16384                // Code signing page size for ARM64 macOS
-const cs_page_shift_arm64 = 14                  // log2(16384)
+const cs_hash_size = 32 // SHA256 = 32 bytes
+const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
+const cs_page_shift_arm64 = 14 // log2(16384)
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
@@ -155,7 +155,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Header (32) + load_cmds (~700) + codesign reserve (600) ≈ 1332, align to 2048
 	header_size := 32
 	code_start_min := header_size + load_cmds_size + 600 // Reserve for codesign
-	l.code_start = (code_start_min + 15) & ~15           // Align to 16 bytes
+	l.code_start = (code_start_min + 15) & ~15 // Align to 16 bytes
 
 	// Calculate where stubs will be (after code and cstrings)
 	l.stubs_offset = l.code_start + l.macho.text_data.len + l.macho.str_data.len
@@ -815,7 +815,6 @@ fn (mut l Linker) write_text_with_relocations() {
 		}
 	}
 
-
 	// Apply relocations
 	for r in l.macho.relocs {
 		sym_addr := sym_addrs[r.sym_idx]
@@ -895,7 +894,8 @@ fn (mut l Linker) write_stubs() {
 }
 
 fn read_u32_le(data []u8, off int) u32 {
-	return u32(data[off]) | (u32(data[off + 1]) << 8) | (u32(data[off + 2]) << 16) | (u32(data[off + 3]) << 24)
+	return u32(data[off]) | (u32(data[off + 1]) << 8) | (u32(data[off + 2]) << 16) | (u32(data[
+		off + 3]) << 24)
 }
 
 fn write_u32_le_at_arr(mut data []u8, off int, v u32) {

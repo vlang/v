@@ -11,7 +11,6 @@ pub struct Gen {
 	mod &ssa.Module
 mut:
 	macho &MachOObject
-
 pub mut:
 	stack_map      map[int]int
 	alloca_offsets map[int]int
@@ -414,7 +413,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 				// Call function
 				sym_idx := g.macho.add_undefined('_' + fn_name)
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
+					true)
 				g.emit(0x94000000)
 
 				// Restore stack
@@ -437,7 +437,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 
 				sym_idx := g.macho.add_undefined('_' + fn_name)
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
+					true)
 				g.emit(0x94000000)
 			}
 
@@ -834,10 +835,18 @@ fn (g Gen) type_size(typ_id ssa.TypeID) int {
 	}
 	typ := g.mod.type_store.types[typ_id]
 	match typ.kind {
-		.void_t { return 0 }
-		.int_t { return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
-		.float_t { return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
-		.ptr_t { return 8 } // 64-bit pointers on arm64
+		.void_t {
+			return 0
+		}
+		.int_t {
+			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+		}
+		.float_t {
+			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+		}
+		.ptr_t {
+			return 8
+		} // 64-bit pointers on arm64
 		.array_t {
 			elem_size := g.type_size(typ.elem_type)
 			return typ.len * elem_size
@@ -857,9 +866,15 @@ fn (g Gen) type_size(typ_id ssa.TypeID) int {
 			}
 			return if total > 0 { total } else { 8 }
 		}
-		.func_t { return 8 } // function pointer
-		.label_t { return 0 }
-		.metadata_t { return 0 }
+		.func_t {
+			return 8
+		} // function pointer
+		.label_t {
+			return 0
+		}
+		.metadata_t {
+			return 0
+		}
 	}
 }
 

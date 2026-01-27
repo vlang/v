@@ -748,7 +748,8 @@ fn (mut b Builder) expr_slice(base ast.Expr, range_expr ast.RangeExpr) ValueID {
 	exit_blk := b.mod.add_block(b.cur_func, 'slice.exit')
 
 	// Allocate loop counter on stack
-	counter_ptr := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(i64_t), [])
+	counter_ptr := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(i64_t),
+		[])
 	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
 	b.mod.add_instr(.store, b.cur_block, 0, [zero, counter_ptr])
 
@@ -770,7 +771,10 @@ fn (mut b Builder) expr_slice(base ast.Expr, range_expr ast.RangeExpr) ValueID {
 
 	// Source: base[start + counter]
 	src_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [start_val, counter2])
-	src_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [actual_base, src_idx])
+	src_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+		actual_base,
+		src_idx,
+	])
 	elem_val := b.mod.add_instr(.load, b.cur_block, i64_t, [src_ptr])
 
 	// Dest: slice[counter]
