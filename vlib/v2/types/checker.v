@@ -866,8 +866,14 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 				}
 				ast.ArrayFixedType {
-					// TODO:
-					return Array{
+					mut len := 0
+					if expr.len is ast.BasicLiteral {
+						if expr.len.kind == .number {
+							len = expr.len.value.int()
+						}
+					}
+					return ArrayFixed{
+						len:       len
 						elem_type: c.expr(expr.elem_type)
 					}
 				}

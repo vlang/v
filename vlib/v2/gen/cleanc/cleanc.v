@@ -92,6 +92,20 @@ pub fn (mut g Gen) gen() string {
 			g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
 		}
 	}
+	// Also forward-declare interfaces
+	for stmt in g.file.stmts {
+		if stmt is ast.InterfaceDecl {
+			g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+		}
+	}
+	// Forward-declare sum types
+	for stmt in g.file.stmts {
+		if stmt is ast.TypeDecl {
+			if stmt.variants.len > 0 {
+				g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+			}
+		}
+	}
 	g.sb.writeln('')
 
 	// 2. Struct Definitions
@@ -106,6 +120,22 @@ pub fn (mut g Gen) gen() string {
 	for stmt in g.file.stmts {
 		if stmt is ast.EnumDecl {
 			g.gen_enum_decl(stmt)
+			g.sb.writeln('')
+		}
+	}
+
+	// 2.6. Interface Declarations
+	for stmt in g.file.stmts {
+		if stmt is ast.InterfaceDecl {
+			g.gen_interface_decl(stmt)
+			g.sb.writeln('')
+		}
+	}
+
+	// 2.7. Type Declarations
+	for stmt in g.file.stmts {
+		if stmt is ast.TypeDecl {
+			g.gen_type_decl(stmt)
 			g.sb.writeln('')
 		}
 	}
@@ -390,6 +420,72 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 	g.sb.writeln('} ${node.name};')
 }
 
+fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
+	// Generate C struct for interface (vtable-style)
+	// Note: typedef forward declaration is already generated above
+	g.sb.writeln('struct ${node.name} {')
+	g.sb.writeln('\tvoid* _object;  // Pointer to concrete object')
+	g.sb.writeln('\tint _type_id;   // Type identifier')
+	// Generate function pointers for each method
+	for field in node.fields {
+		g.write_indent()
+		g.sb.write_string('\t')
+		// Interface fields can be method signatures or regular fields
+		// FnType is wrapped: Expr -> Type -> FnType
+		if field.typ is ast.Type {
+			if field.typ is ast.FnType {
+				// Method signature - generate function pointer
+				fn_type := field.typ as ast.FnType
+				mut ret := 'void'
+				if fn_type.return_type !is ast.EmptyExpr {
+					ret = g.expr_type_to_c(fn_type.return_type)
+				}
+				g.sb.write_string('${ret} (*${field.name})(void*')
+				for param in fn_type.params {
+					g.sb.write_string(', ')
+					t := g.expr_type_to_c(param.typ)
+					g.sb.write_string(t)
+				}
+				g.sb.writeln(');')
+			} else {
+				// Other type expression
+				t := g.expr_type_to_c(field.typ)
+				g.sb.writeln('${t} ${field.name};')
+			}
+		} else {
+			// Regular field
+			t := g.expr_type_to_c(field.typ)
+			g.sb.writeln('${t} ${field.name};')
+		}
+	}
+	g.sb.writeln('};')
+}
+
+fn (mut g Gen) gen_type_decl(node ast.TypeDecl) {
+	if node.variants.len > 0 {
+		// Sum type: generate a tagged union
+		// Note: typedef forward declaration is already generated above
+		g.sb.writeln('struct ${node.name} {')
+		g.sb.writeln('\tint _tag;')
+		g.sb.writeln('\tunion {')
+		for i, variant in node.variants {
+			// Use a safe name for union fields (prefix with underscore to avoid reserved words)
+			variant_name := if variant is ast.Ident {
+				'_${variant.name}'
+			} else {
+				'_v${i}'
+			}
+			g.sb.writeln('\t\tvoid* ${variant_name};')
+		}
+		g.sb.writeln('\t} _data;')
+		g.sb.writeln('};')
+	} else if node.base_type !is ast.EmptyExpr {
+		// Type alias: generate typedef
+		base_type := g.expr_type_to_c(node.base_type)
+		g.sb.writeln('typedef ${base_type} ${node.name};')
+	}
+}
+
 fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 	mut ret := 'void'
 	ret_expr := node.typ.return_type
@@ -626,6 +722,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.write_string('if (!(')
 			g.gen_expr(node.expr)
 			g.sb.writeln(')) { fprintf(stderr, "Assertion failed\\n"); exit(1); }')
+		}
+		ast.LabelStmt {
+			// Labels for labeled loops (break/continue targets)
+			// Generate: label_name: stmt
+			g.write_indent()
+			g.sb.write_string('${node.name}:')
+			if node.stmt !is ast.EmptyStmt {
+				g.sb.writeln('')
+				g.gen_stmt(node.stmt)
+			} else {
+				g.sb.writeln(';')
+			}
 		}
 		else {
 			g.sb.writeln('// Unhandled stmt: ${node.type_name()}')

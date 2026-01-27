@@ -31,6 +31,23 @@ enum Status {
 	done = 2
 }
 
+// Interface declaration
+interface Drawable {
+	draw() int
+}
+
+// Another interface with multiple methods
+interface Shape {
+	area() int
+	perimeter() int
+}
+
+// Type alias
+type MyInt = int
+
+// Sum type
+type Number = int | Point
+
 __global (
 	g_val   int
 	g_count int
@@ -42,6 +59,12 @@ __global (
 
 fn (p Point) sum() int {
 	return p.x + p.y
+}
+
+// Implements Drawable interface
+fn (p Point) draw() int {
+	// Return a unique identifier for drawing
+	return p.x * 1000 + p.y
 }
 
 fn (p Point) product() int {
@@ -223,6 +246,11 @@ fn nested_return(x int) int {
 			return 300
 		}
 	}
+}
+
+// Function using type alias (type alias is same as base type in C)
+fn add_my_ints(a int, b int) int {
+	return a + b
 }
 
 // Helper function to test defer with explicit return
@@ -2027,6 +2055,114 @@ fn main() {
 		}
 	}
 	print_int(nested_sum) // (1*10+1*20) + (2*10+2*20) + (3*10+3*20) = 30+60+90 = 180
+
+	// ==================== 41. FIXED SIZE ARRAYS ====================
+	print_str('--- 41. Fixed Size Arrays ---')
+
+	// 41.1 Fixed array with literal initialization
+	fixed_arr1 := [5, 10, 15]
+	print_int(fixed_arr1[0]) // 5
+	print_int(fixed_arr1[1]) // 10
+	print_int(fixed_arr1[2]) // 15
+
+	// 41.2 Fixed array with computed index
+	idx := 1
+	print_int(fixed_arr1[idx]) // 10
+
+	// 41.3 Fixed array sum
+	mut fixed_sum := 0
+	for elem in fixed_arr1 {
+		fixed_sum += elem
+	}
+	print_int(fixed_sum) // 30
+
+	// 41.4 Fixed array with larger size
+	fixed_arr2 := [1, 2, 3, 4, 5]
+	mut fixed_product := 1
+	for elem in fixed_arr2 {
+		fixed_product *= elem
+	}
+	print_int(fixed_product) // 120
+
+	// 41.5 Nested fixed arrays access
+	fixed_outer := [100, 200, 300]
+	fixed_inner := [1, 2, 3]
+	print_int(fixed_outer[0] + fixed_inner[2]) // 103
+
+	// ==================== 42. INTERFACE IMPLEMENTATION ====================
+	print_str('--- 42. Interface Implementation ---')
+
+	// 42.1 Call draw() method directly on Point (implements Drawable)
+	draw_pt1 := Point{
+		x: 5
+		y: 10
+	}
+	print_int(draw_pt1.draw()) // 5*1000 + 10 = 5010
+
+	// 42.2 Another point with draw
+	draw_pt2 := Point{
+		x: 12
+		y: 34
+	}
+	print_int(draw_pt2.draw()) // 12*1000 + 34 = 12034
+
+	// 42.3 Interface method on zero-init struct
+	draw_pt3 := Point{}
+	print_int(draw_pt3.draw()) // 0*1000 + 0 = 0
+
+	// 42.4 Interface method with heap-allocated struct
+	draw_pt4 := &Point{
+		x: 100
+		y: 200
+	}
+	print_int(draw_pt4.draw()) // 100*1000 + 200 = 100200
+
+	// 42.5 Multiple interface method calls
+	mut draw_total := 0
+	draw_a := Point{
+		x: 1
+		y: 2
+	}
+	draw_b := Point{
+		x: 3
+		y: 4
+	}
+	draw_total += draw_a.draw() // 1002
+	draw_total += draw_b.draw() // 3004
+	print_int(draw_total) // 4006
+
+	// ==================== 43. TYPE ALIAS USAGE ====================
+	print_str('--- 43. Type Alias Usage ---')
+
+	// 43.1 Basic type alias (MyInt is typedef'd to int)
+	my_a := 10
+	my_b := 20
+	print_int(my_a + my_b) // 30
+
+	// 43.2 Type alias in function
+	my_result := add_my_ints(15, 25)
+	print_int(my_result) // 40
+
+	// 43.3 Type alias with arithmetic
+	my_c := 100
+	my_d := my_c * 3
+	print_int(my_d) // 300
+
+	// 43.4 Type alias comparison
+	my_e := 50
+	my_f := 50
+	if my_e == my_f {
+		print_int(1) // 1
+	} else {
+		print_int(0)
+	}
+
+	// 43.5 Type alias in loop
+	mut my_sum := 0
+	for i in 1 .. 6 {
+		my_sum += i
+	}
+	print_int(my_sum) // 1+2+3+4+5 = 15
 
 	print_str('=== All tests completed ===')
 }

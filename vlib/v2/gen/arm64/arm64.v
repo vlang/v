@@ -588,6 +588,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_val_to_reg(8, src_id)
 			g.store_reg_to_val(8, dest_id)
 		}
+		.unreachable {
+			// Emit UDF #0 instruction (undefined trap)
+			// This is used after code that should never be reached (e.g., after exit() in assert)
+			g.emit(0x00000000)
+		}
 		else {
 			eprintln('arm64: unknown instruction ${instr}')
 			exit(1)

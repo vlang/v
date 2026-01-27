@@ -304,6 +304,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			false_val := g.val_str(instr.operands[2])
 			g.sb.writeln('\t${res} = ${cond} ? ${true_val} : ${false_val};')
 		}
+		.unreachable {
+			// Unreachable code - typically after abort/exit
+			g.sb.writeln('\t__builtin_unreachable();')
+		}
 		else {
 			g.sb.writeln('\t// Unhandled C op: ${instr.op}')
 		}

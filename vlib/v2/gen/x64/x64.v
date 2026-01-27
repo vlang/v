@@ -519,6 +519,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Phi nodes are eliminated by optimization (converted to assignments)
 			// but the instructions remain in the block. We ignore them here.
 		}
+		.unreachable {
+			// Emit UD2 instruction (undefined trap)
+			// This is used after code that should never be reached (e.g., after exit() in assert)
+			g.emit(0x0F)
+			g.emit(0x0B)
+		}
 		else {
 			eprintln('x64: unknown op ${instr.op}')
 		}

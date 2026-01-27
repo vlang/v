@@ -692,6 +692,96 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				next_value++
 			}
 		}
+		ast.LabelStmt {
+			// Labels are used for labeled loops (break/continue targets)
+			// For now, we just process the associated statement if any
+			// TODO: Track labels for labeled break/continue support
+			if node.stmt !is ast.EmptyStmt {
+				b.stmt(node.stmt)
+			}
+		}
+		ast.InterfaceDecl {
+			// Interfaces are similar to structs but define a vtable
+			// For SSA purposes, register as a struct type with method pointers
+			mut field_types := []TypeID{}
+			mut field_names := []string{}
+			for field in node.fields {
+				// Interface fields are method signatures (FnType) or regular fields
+				field_type := b.mod.type_store.get_int(64) // Default to int64 for now
+				field_types << field_type
+				field_names << field.name
+			}
+			// Register interface as a struct type
+			t := Type{
+				kind:        .struct_t
+				fields:      field_types
+				field_names: field_names
+				width:       0
+			}
+			type_id := b.mod.type_store.register(t)
+			b.struct_types[node.name] = type_id
+		}
+		ast.TypeDecl {
+			// Type declarations: type aliases or sum types
+			if node.variants.len > 0 {
+				// Sum type: register as a tagged union
+				// For now, treat as an integer (the tag)
+				field_type := b.mod.type_store.get_int(64)
+				t := Type{
+					kind:        .struct_t
+					fields:      [field_type, field_type] // tag + data
+					field_names: ['_tag', '_data']
+					width:       0
+				}
+				type_id := b.mod.type_store.register(t)
+				b.struct_types[node.name] = type_id
+			} else if node.base_type !is ast.EmptyExpr {
+				// Type alias: look up the base type
+				if node.base_type is ast.Ident {
+					base_name := node.base_type.name
+					if st := b.struct_types[base_name] {
+						// Alias to existing struct type
+						b.struct_types[node.name] = st
+					} else {
+						// Alias to primitive type - register as int64
+						t := Type{
+							kind:  .int_t
+							width: 64
+						}
+						type_id := b.mod.type_store.register(t)
+						b.struct_types[node.name] = type_id
+					}
+				}
+			}
+		}
+		ast.AssertStmt {
+			// Assert: if condition is false, abort/exit
+			// Generate: if (!cond) { unreachable/abort }
+			i64_t := b.mod.type_store.get_int(64)
+
+			// Evaluate the assertion condition
+			cond_val := b.expr(node.expr)
+
+			// Create blocks for pass and fail paths
+			pass_blk := b.mod.add_block(b.cur_func, 'assert.pass')
+			fail_blk := b.mod.add_block(b.cur_func, 'assert.fail')
+
+			// Branch: if cond is true, go to pass; else go to fail
+			pass_val := b.mod.blocks[pass_blk].val_id
+			fail_val := b.mod.blocks[fail_blk].val_id
+			b.mod.add_instr(.br, b.cur_block, 0, [cond_val, pass_val, fail_val])
+
+			// Fail block: call abort() or exit(1) then unreachable
+			b.cur_block = fail_blk
+			// Call C.exit(1) to terminate
+			exit_fn := b.mod.add_value_node(.unknown, 0, 'exit', 0)
+			one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+			b.mod.add_instr(.call, b.cur_block, i64_t, [exit_fn, one])
+			b.mod.add_instr(.unreachable, b.cur_block, 0, [])
+
+			// Continue in pass block
+			b.cur_block = pass_blk
+		}
 		else {
 			// println('Builder: Unhandled stmt ${node.type_name()}')
 		}
@@ -778,6 +868,30 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		}
 		ast.RangeExpr {
 			return b.expr_range(node)
+		}
+		ast.Type {
+			// Handle type expressions (none, nil, etc.)
+			// For none/nil, return 0 (null/false value)
+			i64_t := b.mod.type_store.get_int(64)
+			return b.mod.add_value_node(.constant, i64_t, '0', 0)
+		}
+		ast.Keyword {
+			// Handle keywords like none, true, false
+			i64_t := b.mod.type_store.get_int(64)
+			match node.tok {
+				.key_none, .key_nil {
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+				.key_true {
+					return b.mod.add_value_node(.constant, i64_t, '1', 0)
+				}
+				.key_false {
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+				else {
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+			}
 		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
