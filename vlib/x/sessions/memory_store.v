@@ -10,7 +10,7 @@ pub mut:
 
 // MemoryStore stores sessions in a `map` in memory only.
 pub struct MemoryStore[T] {
-mut:
+pub mut:
 	data map[string]MemoryStoreSessions[T]
 }
 
