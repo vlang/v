@@ -165,8 +165,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 			}
 		}
 	} else {
-		// TODO: better check this case
-		fmt_type = .si_p
+		// For unknown types (like C structs), use string format
+		// so that their str() method will be called
+		fmt_type = .si_s
 	}
 
 	/*

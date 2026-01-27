@@ -72,6 +72,16 @@ pub fn (mut ts TypeStore) get_ptr(elem TypeID) TypeID {
 	return id
 }
 
+pub fn (mut ts TypeStore) get_array(elem TypeID, length int) TypeID {
+	key := 'a${elem}_${length}'
+	if id := ts.cache[key] {
+		return id
+	}
+	id := ts.register(Type{ kind: .array_t, elem_type: elem, len: length })
+	ts.cache[key] = id
+	return id
+}
+
 fn (mut ts TypeStore) register(t Type) TypeID {
 	id := ts.types.len
 	ts.types << t

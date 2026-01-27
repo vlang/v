@@ -8,6 +8,7 @@ import v2.parser
 import v2.token
 import v2.pref
 import v2.ssa
+import v2.transform
 import v2.gen.x64
 import v2.gen.arm64
 import v2.gen.cleanc
@@ -32,10 +33,14 @@ fn main() {
 		return
 	}
 	println('[*] Parsing ${input_file}...')
-	file := p.parse_file(input_file, mut file_set)
-	if file.stmts.len == 0 {
+	parsed_file := p.parse_file(input_file, mut file_set)
+	if parsed_file.stmts.len == 0 {
 		println('Warning: No statements found in ${input_file}')
 	}
+	// Transform AST (lower complex constructs like ArrayInitExpr)
+	println('[*] Transforming AST...')
+	mut transformer := transform.Transformer.new()
+	file := transformer.transform(parsed_file)
 	// Initialize SSA Module
 	mut mod := ssa.Module.new('main')
 	//  Build SSA from AST

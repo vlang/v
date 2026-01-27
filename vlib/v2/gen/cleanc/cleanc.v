@@ -59,6 +59,23 @@ pub fn (mut g Gen) gen() string {
 
 	g.sb.writeln('typedef struct { char* str; int len; } string;')
 	g.sb.writeln('')
+	// Array type and builtin function
+	g.sb.writeln('typedef struct { void* data; int len; int cap; } Array;')
+	g.sb.writeln('typedef Array Array_int;')
+	g.sb.writeln('')
+	g.sb.writeln('static inline Array __new_array_from_c_array(int len, int cap, int elem_size, void* data) {')
+	g.sb.writeln('\tArray a;')
+	g.sb.writeln('\ta.len = len;')
+	g.sb.writeln('\ta.cap = cap;')
+	g.sb.writeln('\ta.data = malloc(cap * elem_size);')
+	g.sb.writeln('\tif (data && len > 0) {')
+	g.sb.writeln('\t\tfor (int i = 0; i < len * elem_size; i++) {')
+	g.sb.writeln('\t\t\t((char*)a.data)[i] = ((char*)data)[i];')
+	g.sb.writeln('\t\t}')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn a;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
 
 	// 1. Struct Declarations (Typedefs)
 	for stmt in g.file.stmts {
@@ -172,6 +189,14 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 				return 'char*'
 			}
 			return 'string'
+		}
+		ast.ArrayInitExpr {
+			// For array literals, infer element type from first expr
+			if node.exprs.len > 0 {
+				elem_type := g.infer_type(node.exprs[0])
+				return 'Array_${elem_type}'
+			}
+			return 'Array_int'
 		}
 		ast.InitExpr {
 			return g.expr_type_to_c(node.typ)
@@ -579,6 +604,20 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_expr(node.expr)
 		}
 		ast.IfExpr {
+			// Check if this if-expression can be converted to a ternary operator
+			// (i.e., used as a value rather than a statement)
+			if g.can_be_ternary(node) {
+				// Generate C ternary: (cond) ? true_val : false_val
+				g.sb.write_string('(')
+				g.gen_expr(node.cond)
+				g.sb.write_string(') ? (')
+				g.gen_if_value(node.stmts)
+				g.sb.write_string(') : (')
+				g.gen_else_value(node.else_expr)
+				g.sb.write_string(')')
+				return
+			}
+
 			// Statement IF
 			// First check if this is just an else block (no condition)
 			if node.cond is ast.EmptyExpr {
@@ -827,10 +866,23 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string(node.rhs.name)
 		}
 		ast.IndexExpr {
-			g.gen_expr(node.lhs)
-			g.sb.write_string('[')
-			g.gen_expr(node.expr)
-			g.sb.write_string(']')
+			// Check if this is an array access (Array struct type)
+			lhs_type := g.infer_type(node.lhs)
+			if lhs_type.starts_with('Array_') {
+				// For Array types, access via ((elem_type*)arr.data)[index]
+				elem_type := lhs_type['Array_'.len..]
+				g.sb.write_string('((${elem_type}*)')
+				g.gen_expr(node.lhs)
+				g.sb.write_string('.data)[')
+				g.gen_expr(node.expr)
+				g.sb.write_string(']')
+			} else {
+				// Regular C array access
+				g.gen_expr(node.lhs)
+				g.sb.write_string('[')
+				g.gen_expr(node.expr)
+				g.sb.write_string(']')
+			}
 		}
 		ast.PostfixExpr {
 			g.gen_expr(node.expr)
@@ -844,6 +896,20 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			// Handle mut, shared, etc.
 			g.gen_expr(node.expr)
 		}
+		ast.ArrayInitExpr {
+			// Generate array using __new_array_from_c_array builtin
+			len := node.exprs.len
+			elem_type := if len > 0 { g.infer_type(node.exprs[0]) } else { 'int' }
+			// __new_array_from_c_array(len, len, sizeof(elem), (elem_type[len]){values})
+			g.sb.write_string('__new_array_from_c_array(${len}, ${len}, sizeof(${elem_type}), (${elem_type}[${len}]){')
+			for i, expr in node.exprs {
+				if i > 0 {
+					g.sb.write_string(', ')
+				}
+				g.gen_expr(expr)
+			}
+			g.sb.write_string('})')
+		}
 		else {
 			g.sb.write_string('/* expr: ${node.type_name()} */')
 		}
@@ -853,5 +919,92 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 fn (mut g Gen) write_indent() {
 	for _ in 0 .. g.indent {
 		g.sb.write_string('\t')
+	}
+}
+
+// Check if an IfExpr can be converted to a C ternary operator
+// This is true when the branches contain simple value expressions (single ExprStmt)
+fn (g Gen) can_be_ternary(node ast.IfExpr) bool {
+	// Must have both branches
+	if node.else_expr is ast.EmptyExpr {
+		return false
+	}
+	// Check if true branch has exactly one ExprStmt with a simple expression
+	if node.stmts.len != 1 {
+		return false
+	}
+	stmt := node.stmts[0]
+	if stmt !is ast.ExprStmt {
+		return false
+	}
+	// Exclude complex expressions that can't be used in ternary (MatchExpr, IfExpr as statement)
+	expr_stmt := stmt as ast.ExprStmt
+	if expr_stmt.expr is ast.MatchExpr {
+		return false
+	}
+	if expr_stmt.expr is ast.IfExpr {
+		// If nested, check if it's also a value expression
+		nested_if := expr_stmt.expr as ast.IfExpr
+		if !g.can_be_ternary(nested_if) {
+			return false
+		}
+	}
+	// Check else branch
+	if node.else_expr is ast.IfExpr {
+		// Could be else-if chain or pure else
+		else_if := node.else_expr
+		if else_if.cond is ast.EmptyExpr {
+			// Pure else: check its statements
+			if else_if.stmts.len != 1 {
+				return false
+			}
+			else_stmt := else_if.stmts[0]
+			if else_stmt !is ast.ExprStmt {
+				return false
+			}
+			else_expr_stmt := else_stmt as ast.ExprStmt
+			if else_expr_stmt.expr is ast.MatchExpr {
+				return false
+			}
+		} else {
+			// Nested if-expression (else if) - can be ternary if nested can
+			return g.can_be_ternary(else_if)
+		}
+	}
+	return true
+}
+
+// Generate the value from the if-branch statements
+fn (mut g Gen) gen_if_value(stmts []ast.Stmt) {
+	if stmts.len == 1 {
+		stmt := stmts[0]
+		if stmt is ast.ExprStmt {
+			g.gen_expr(stmt.expr)
+			return
+		}
+	}
+	g.sb.write_string('0')
+}
+
+// Generate the value from the else-branch expression
+fn (mut g Gen) gen_else_value(else_expr ast.Expr) {
+	if else_expr is ast.IfExpr {
+		if else_expr.cond is ast.EmptyExpr {
+			// Pure else: extract value from its statements
+			g.gen_if_value(else_expr.stmts)
+		} else {
+			// Nested if-expression (else if) - recurse with ternary
+			g.sb.write_string('(')
+			g.gen_expr(else_expr.cond)
+			g.sb.write_string(') ? (')
+			g.gen_if_value(else_expr.stmts)
+			g.sb.write_string(') : (')
+			g.gen_else_value(else_expr.else_expr)
+			g.sb.write_string(')')
+		}
+	} else if else_expr is ast.EmptyExpr {
+		g.sb.write_string('0')
+	} else {
+		g.gen_expr(else_expr)
 	}
 }

@@ -1616,6 +1616,37 @@ fn main() {
 	c := if a < b && b < 30 { a + b } else { 0 }
 	print_int(c) // 30
 
+	// ==================== 33. ARRAY INITIALIZATION ====================
+	print_str('--- 33. Array Initialization ---')
+
+	// 33.1 Basic array literal
+	arr1 := [10, 20, 30]
+	print_int(arr1[0]) // 10
+	print_int(arr1[1]) // 20
+	print_int(arr1[2]) // 30
+
+	// 33.2 Array element sum
+	arr2 := [5, 10, 15]
+	arr2_sum := arr2[0] + arr2[1] + arr2[2]
+	print_int(arr2_sum) // 30
+
+	// 33.3 Array with computed values
+	base_val := 7
+	arr3 := [base_val, base_val * 2, base_val * 3]
+	print_int(arr3[0]) // 7
+	print_int(arr3[1]) // 14
+	print_int(arr3[2]) // 21
+
+	// 33.4 Array element in expression
+	arr4 := [100, 200, 300]
+	result4 := arr4[0] * 2 + arr4[1]
+	print_int(result4) // 400
+
+	// 33.5 Array with function call on elements
+	arr5 := [3, 4, 5]
+	print_int(add(arr5[0], arr5[1])) // 7
+	print_int(mul(arr5[1], arr5[2])) // 20
+
 	print_str('=== All tests completed ===')
 }
 

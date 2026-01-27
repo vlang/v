@@ -88,9 +88,21 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 			instr := g.mod.instrs[val.index]
 
 			if instr.op == .alloca {
-				// Reserve 64 bytes for data, align to 16
+				// Calculate allocation size based on the type
+				// The alloca result type is ptr(T), so get the element type
+				ptr_type := g.mod.type_store.types[val.typ]
+				elem_type := g.mod.type_store.types[ptr_type.elem_type]
+
+				// Calculate size: arrays use elem_count * 8, others use fixed 64 bytes
+				alloc_size := if elem_type.kind == .array_t {
+					elem_type.len * 8 // array length * element size (assuming 64-bit)
+				} else {
+					64 // Default for non-array types
+				}
+
+				// Align to 16 bytes
 				slot_offset = (slot_offset + 15) & ~0xF
-				slot_offset += 64
+				slot_offset += alloc_size
 				g.alloca_offsets[val_id] = -slot_offset
 				slot_offset += 8 // Slot for the pointer
 			}

@@ -93,23 +93,25 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 			instr := g.mod.instrs[val.index]
 
 			if instr.op == .alloca {
-				// Reserve 64 bytes for data.
+				// Calculate allocation size based on the type
+				// The alloca result type is ptr(T), so get the element type
+				ptr_type := g.mod.type_store.types[val.typ]
+				elem_type := g.mod.type_store.types[ptr_type.elem_type]
+
+				// Calculate size: arrays use elem_count * 8, others use fixed 64 bytes
+				alloc_size := if elem_type.kind == .array_t {
+					elem_type.len * 8 // array length * element size (assuming 64-bit)
+				} else {
+					64 // Default for non-array types
+				}
+
 				// Align to 16 bytes.
 				slot_offset = (slot_offset + 15) & ~0xF
-				slot_offset += 64
+				slot_offset += alloc_size
 				g.alloca_offsets[val_id] = -slot_offset
 
-				// CRITICAL FIX: Ensure the next instruction does not use the slot
+				// Ensure the next instruction does not use the slot
 				// overlapping with the base of the alloca data.
-				// alloca_offsets points to the bottom of the block.
-				// The next instruction would get -slot_offset (which is the bottom).
-				// We advance slot_offset to skip the block completely.
-				// Note: slot_offset is already at the bottom.
-				// But we need to ensure the *next* usage doesn't pick this address.
-				// Since stack_map assignment comes *before* this increment, the next instr
-				// will use the current slot_offset.
-				// If slot_offset is 96, next gets -96. Data is -96..-32.
-				// So we need to bump it so next gets -104.
 				slot_offset += 8
 			}
 

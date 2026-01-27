@@ -163,9 +163,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.sb.writeln('\t${dest} = ${src};')
 		}
 		.alloca {
-			elem_type := g.type_name(g.mod.type_store.types[val.typ].elem_type)
-			g.sb.writeln('\t${elem_type} _stack_${val.id};')
-			g.sb.writeln('\t${res} = &_stack_${val.id};')
+			elem_type_id := g.mod.type_store.types[val.typ].elem_type
+			elem_type_info := g.mod.type_store.types[elem_type_id]
+			if elem_type_info.kind == .array_t {
+				// Array allocation: int64_t arr[N]
+				arr_elem_type := g.type_name(elem_type_info.elem_type)
+				g.sb.writeln('\t${arr_elem_type} _stack_${val.id}[${elem_type_info.len}];')
+				g.sb.writeln('\t${res} = _stack_${val.id};')
+			} else {
+				// Regular allocation
+				elem_type := g.type_name(elem_type_id)
+				g.sb.writeln('\t${elem_type} _stack_${val.id};')
+				g.sb.writeln('\t${res} = &_stack_${val.id};')
+			}
 		}
 		.load {
 			ptr_id := instr.operands[0]
@@ -300,12 +310,32 @@ fn (mut g Gen) gen_instr(val_id int) {
 fn (g Gen) type_name(id int) string {
 	t := g.mod.type_store.types[id]
 	match t.kind {
-		.void_t { return 'void' }
-		.int_t { return 'int${t.width}_t' }
-		.float_t { return if t.width == 32 { 'float' } else { 'double' } }
-		.ptr_t { return g.type_name(t.elem_type) + '*' }
-		.struct_t { return 'Struct_${id}' }
-		else { return 'void' }
+		.void_t {
+			return 'void'
+		}
+		.int_t {
+			return 'int${t.width}_t'
+		}
+		.float_t {
+			return if t.width == 32 { 'float' } else { 'double' }
+		}
+		.ptr_t {
+			// Check if pointing to an array - if so, just use pointer to element type
+			elem_t := g.mod.type_store.types[t.elem_type]
+			if elem_t.kind == .array_t {
+				return g.type_name(elem_t.elem_type) + '*'
+			}
+			return g.type_name(t.elem_type) + '*'
+		}
+		.array_t {
+			return g.type_name(t.elem_type) + '*'
+		} // Arrays decay to pointers
+		.struct_t {
+			return 'Struct_${id}'
+		}
+		else {
+			return 'void'
+		}
 	}
 }
 

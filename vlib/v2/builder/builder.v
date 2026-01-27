@@ -13,6 +13,7 @@ import v2.gen.x64
 import v2.pref
 import v2.ssa
 import v2.token
+import v2.transform
 import time
 
 struct Builder {
@@ -106,9 +107,13 @@ fn (mut b Builder) gen_cleanc() {
 fn (mut b Builder) gen_ssa_c() {
 	// SSA -> C Backend
 	for file in b.files {
+		// Run AST transformations before SSA generation
+		mut t := transform.Transformer.new()
+		transformed_file := t.transform(file)
+
 		mut mod := ssa.Module.new('main')
 		mut ssa_builder := ssa.Builder.new(mod)
-		ssa_builder.build(file)
+		ssa_builder.build(transformed_file)
 		mod.optimize()
 
 		mut gen := c.Gen.new(mod)
@@ -145,9 +150,13 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 
 	for file in b.files {
+		// Run AST transformations before SSA generation
+		mut t := transform.Transformer.new()
+		transformed_file := t.transform(file)
+
 		mut mod := ssa.Module.new('main')
 		mut ssa_builder := ssa.Builder.new(mod)
-		ssa_builder.build(file)
+		ssa_builder.build(transformed_file)
 		mod.optimize()
 
 		obj_file := 'main.o'

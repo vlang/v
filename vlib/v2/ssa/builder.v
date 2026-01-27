@@ -469,6 +469,9 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 			// Handle 'mut x' - just unwrap and process the inner expression
 			return b.expr(node.expr)
 		}
+		ast.ArrayInitExpr {
+			return b.expr_array_init(node)
+		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
 			// Return constant 0 (i32) to prevent cascading void errors
@@ -921,6 +924,84 @@ fn (mut b Builder) expr_prefix(node ast.PrefixExpr) ValueID {
 			return 0
 		}
 	}
+}
+
+fn (mut b Builder) expr_array_init(node ast.ArrayInitExpr) ValueID {
+	// Array Init: [1, 2, 3] or []int{len: 10, cap: 20, init: 0}
+	i64_t := b.mod.type_store.get_int(64)
+
+	// Determine element count
+	mut elem_count := node.exprs.len
+
+	// Check if this is a sized array initialization (len: expr)
+	if node.len !is ast.EmptyExpr {
+		// For []T{len: n}, we need to evaluate the length expression
+		len_val := b.expr(node.len)
+		// For now, only support constant lengths
+		if b.mod.values[len_val].kind == .constant {
+			elem_count = b.mod.values[len_val].name.int()
+		}
+	}
+
+	if elem_count == 0 {
+		// Empty array - return null pointer for now
+		return b.mod.add_value_node(.constant, b.mod.type_store.get_ptr(i64_t), '0', 0)
+	}
+
+	// Create array type
+	array_type := b.mod.type_store.get_array(i64_t, elem_count)
+	array_ptr_t := b.mod.type_store.get_ptr(array_type)
+	elem_ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Allocate array on stack
+	array_ptr := b.mod.add_instr(.alloca, b.cur_block, array_ptr_t, [])
+
+	// Initialize elements
+	if node.exprs.len > 0 {
+		// Literal array: [1, 2, 3]
+		for i, elem_expr in node.exprs {
+			// Evaluate element expression
+			elem_val := b.expr(elem_expr)
+
+			// Compute element address using GEP
+			idx_val := b.mod.add_value_node(.constant, i64_t, i.str(), 0)
+			elem_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+				array_ptr,
+				idx_val,
+			])
+
+			// Store element value
+			b.mod.add_instr(.store, b.cur_block, 0, [elem_val, elem_ptr])
+		}
+	} else if node.init !is ast.EmptyExpr {
+		// Sized array with init value: []int{len: 10, init: 0}
+		init_val := b.expr(node.init)
+
+		// Initialize all elements with the init value
+		for i in 0 .. elem_count {
+			idx_val := b.mod.add_value_node(.constant, i64_t, i.str(), 0)
+			elem_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+				array_ptr,
+				idx_val,
+			])
+			b.mod.add_instr(.store, b.cur_block, 0, [init_val, elem_ptr])
+		}
+	} else {
+		// Sized array without init: zero-initialize
+		zero_val := b.mod.add_value_node(.constant, i64_t, '0', 0)
+
+		for i in 0 .. elem_count {
+			idx_val := b.mod.add_value_node(.constant, i64_t, i.str(), 0)
+			elem_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+				array_ptr,
+				idx_val,
+			])
+			b.mod.add_instr(.store, b.cur_block, 0, [zero_val, elem_ptr])
+		}
+	}
+
+	// Return the array pointer
+	return array_ptr
 }
 
 fn (mut b Builder) expr_heap_alloc(node ast.InitExpr) ValueID {
