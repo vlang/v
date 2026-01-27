@@ -273,13 +273,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 fn detect_musl(mut res Preferences) {
 	res.is_glibc = true
 	res.is_musl = false
-	if os.exists('/etc/alpine-release') {
-		res.is_musl = true
-		res.is_glibc = false
-		return
-	}
-	my_libs := os.walk_ext('/proc/self/map_files/', '').map(os.real_path(it))
-	if my_libs.any(it.contains('musl')) {
+	musl := os.execute('ldd --version').contains('musl') or { false }
+	if musl {
 		res.is_musl = true
 		res.is_glibc = false
 	}
