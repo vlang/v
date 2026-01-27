@@ -1647,45 +1647,36 @@ fn main() {
 	print_int(add(arr5[0], arr5[1])) // 7
 	print_int(mul(arr5[1], arr5[2])) // 20
 
+	// ==================== 34. STRING INTERPOLATION ====================
+	print_str('--- 34. String Interpolation ---')
+
+	// 34.1 Basic integer interpolation
+	interp_x := 42
+	s1 := 'The answer is ${interp_x}'
+	print_str(s1) // The answer is 42
+
+	// 34.2 Multiple interpolations
+	interp_a := 10
+	interp_b := 20
+	s2 := '${interp_a} + ${interp_b} = ${interp_a + interp_b}'
+	print_str(s2) // 10 + 20 = 30
+
+	// 34.3 String at beginning and end
+	interp_val := 100
+	s3 := 'Value: ${interp_val}!'
+	print_str(s3) // Value: 100!
+
+	// 34.4 Just interpolation (no literal parts)
+	interp_num := 999
+	s4 := '${interp_num}'
+	print_str(s4) // 999
+
+	// 34.5 Multiple consecutive values
+	interp_v1 := 1
+	interp_v2 := 2
+	interp_v3 := 3
+	s5 := '${interp_v1}-${interp_v2}-${interp_v3}'
+	print_str(s5) // 1-2-3
+
 	print_str('=== All tests completed ===')
 }
-
-/*
-fn test_string_inter_literal() {
-       // Test basic integer interpolation
-       x := 42
-       s1 := 'The answer is ${x}'
-       print_str(s1)
-
-       // Test multiple interpolations
-       a := 10
-       b := 20
-       s2 := '${a} + ${b} = ${a + b}'
-
-       // Test with format specifiers
-       val := 255
-       s3 := 'hex: ${val:x}, dec: ${val:d}'
-
-       // Test float formatting
-       f := 3.14159
-       s4 := 'pi is approximately ${f:.2f}'
-
-       // Test with width specifier
-       n := 42
-       s5 := 'padded: ${n:5d}'
-
-       // Test string at beginning and end
-       name := 'world'
-       s6 := 'Hello, ${name}!'
-
-       // Test consecutive interpolations
-       x1 := 1
-       x2 := 2
-       x3 := 3
-       s7 := '${x1}${x2}${x3}'
-
-       // Test empty string parts
-       v := 100
-       s8 := '${v}'
-}
-*/

@@ -93,11 +93,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				ptr_type := g.mod.type_store.types[val.typ]
 				elem_type := g.mod.type_store.types[ptr_type.elem_type]
 
-				// Calculate size: arrays use elem_count * 8, others use fixed 64 bytes
-				alloc_size := if elem_type.kind == .array_t {
-					elem_type.len * 8 // array length * element size (assuming 64-bit)
-				} else {
-					64 // Default for non-array types
+				// Calculate size based on element type
+				mut alloc_size := 64 // Default for non-array types
+				if elem_type.kind == .array_t {
+					// Get the array element type to determine element size
+					arr_elem_type := g.mod.type_store.types[elem_type.elem_type]
+					elem_size := if arr_elem_type.width > 0 {
+						(arr_elem_type.width + 7) / 8 // bits to bytes, rounded up
+					} else {
+						8 // default to 64-bit
+					}
+					alloc_size = elem_type.len * elem_size
 				}
 
 				// Align to 16 bytes

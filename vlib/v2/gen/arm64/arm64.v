@@ -12,6 +12,7 @@ pub struct Gen {
 mut:
 	macho &MachOObject
 
+pub mut:
 	stack_map      map[int]int
 	alloca_offsets map[int]int
 	stack_size     int
@@ -98,11 +99,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				ptr_type := g.mod.type_store.types[val.typ]
 				elem_type := g.mod.type_store.types[ptr_type.elem_type]
 
-				// Calculate size: arrays use elem_count * 8, others use fixed 64 bytes
-				alloc_size := if elem_type.kind == .array_t {
-					elem_type.len * 8 // array length * element size (assuming 64-bit)
-				} else {
-					64 // Default for non-array types
+				// Calculate size based on element type
+				mut alloc_size := 64 // Default for non-array types
+				if elem_type.kind == .array_t {
+					// Get the array element type to determine element size
+					arr_elem_type := g.mod.type_store.types[elem_type.elem_type]
+					elem_size := if arr_elem_type.width > 0 {
+						(arr_elem_type.width + 7) / 8 // bits to bytes, rounded up
+					} else {
+						8 // default to 64-bit
+					}
+					alloc_size = elem_type.len * elem_size
 				}
 
 				// Align to 16 bytes.
@@ -354,18 +361,83 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.store_reg_to_val(8, val_id)
 		}
 		.call {
-			// Load arguments in reverse order to avoid clobbering
-			// If arg2 is in x0, loading arg1 to x0 first would clobber it
+			fn_val := g.mod.values[instr.operands[0]]
+			fn_name := fn_val.name
+
+			// Check if this is a variadic function (like sprintf)
+			// On ARM64 macOS, variadic args must be passed on the stack
+			is_variadic := fn_name in ['sprintf', 'printf', 'snprintf', 'fprintf', 'sscanf']
+			num_fixed_args := if fn_name == 'sprintf' {
+				2 // buffer, format
+			} else if fn_name == 'printf' {
+				1 // format
+			} else if fn_name in ['snprintf', 'fprintf'] {
+				3 // buffer/file, size, format
+			} else if fn_name == 'sscanf' {
+				2 // string, format
+			} else {
+				8 // default: all in registers
+			}
+
 			num_args := instr.operands.len - 1
-			for i := num_args; i >= 1; i-- {
-				if i - 1 < 8 {
+
+			if is_variadic && num_args > num_fixed_args {
+				// Variadic call: push variadic args to stack, fixed args to registers
+				num_variadic := num_args - num_fixed_args
+
+				// Allocate stack space for variadic args (8 bytes each, 16-byte aligned)
+				stack_space := ((num_variadic * 8) + 15) & ~0xF
+				if stack_space > 0 {
+					g.emit_sub_sp(stack_space)
+				}
+
+				// Store variadic arguments to stack (in order)
+				for i := 0; i < num_variadic; i++ {
+					arg_idx := num_fixed_args + 1 + i // +1 because operands[0] is the function
+					g.load_val_to_reg(8, instr.operands[arg_idx])
+					// STR x8, [sp, #offset]
+					offset := i * 8
+					if offset == 0 {
+						g.emit(0xF9000000 | (31 << 5) | 8) // STR x8, [sp]
+					} else {
+						imm12 := u32(offset / 8)
+						g.emit(0xF9000000 | (imm12 << 10) | (31 << 5) | 8) // STR x8, [sp, #offset]
+					}
+				}
+
+				// Load fixed arguments to registers (in reverse order to avoid clobbering)
+				for i := num_fixed_args; i >= 1; i-- {
 					g.load_val_to_reg(i - 1, instr.operands[i])
 				}
+
+				// Call function
+				sym_idx := g.macho.add_undefined('_' + fn_name)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+				g.emit(0x94000000)
+
+				// Restore stack
+				if stack_space > 0 {
+					// ADD sp, sp, #stack_space
+					if stack_space <= 0xFFF {
+						g.emit(0x910003FF | (u32(stack_space) << 10))
+					} else {
+						g.emit_mov_imm(10, u64(stack_space))
+						g.emit(0x8B0A03FF) // ADD sp, sp, x10
+					}
+				}
+			} else {
+				// Non-variadic call: all args in registers
+				// Load arguments in reverse order to avoid clobbering
+				for i := num_args; i >= 1; i-- {
+					if i - 1 < 8 {
+						g.load_val_to_reg(i - 1, instr.operands[i])
+					}
+				}
+
+				sym_idx := g.macho.add_undefined('_' + fn_name)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+				g.emit(0x94000000)
 			}
-			fn_val := g.mod.values[instr.operands[0]]
-			sym_idx := g.macho.add_undefined('_' + fn_val.name)
-			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
-			g.emit(0x94000000)
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
 				g.store_reg_to_val(0, val_id)

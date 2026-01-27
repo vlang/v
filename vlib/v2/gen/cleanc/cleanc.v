@@ -55,6 +55,7 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <stdlib.h>')
 	g.sb.writeln('#include <stdbool.h>')
 	g.sb.writeln('#include <stdint.h>')
+	g.sb.writeln('#include <string.h>')
 	g.sb.writeln('')
 
 	g.sb.writeln('typedef struct { char* str; int len; } string;')
@@ -188,6 +189,9 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			if node.value.starts_with("c'") {
 				return 'char*'
 			}
+			return 'string'
+		}
+		ast.StringInterLiteral {
 			return 'string'
 		}
 		ast.ArrayInitExpr {
@@ -565,6 +569,36 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				val := node.value.trim("'").trim('"')
 				g.sb.write_string('(string){"${val}", ${val.len}}')
 			}
+		}
+		ast.StringInterLiteral {
+			// String interpolation: 'prefix${a}middle${b}suffix'
+			// Generate: ({ char buf[256]; sprintf(buf, "prefix%lldmiddle%lldsuffix", a, b); (string){buf, strlen(buf)}; })
+			g.sb.write_string('({ char _buf[256]; sprintf(_buf, "')
+			// Build format string
+			for i, val in node.values {
+				// Strip quotes from the first and last value parts
+				mut clean_val := val
+				if i == 0 {
+					// First part: strip leading quote
+					clean_val = clean_val.trim_left("'").trim_left('"')
+				}
+				if i == node.values.len - 1 {
+					// Last part: strip trailing quote
+					clean_val = clean_val.trim_right("'").trim_right('"')
+				}
+				g.sb.write_string(clean_val)
+				if i < node.inters.len {
+					inter := node.inters[i]
+					g.sb.write_string(g.get_printf_format(inter))
+				}
+			}
+			g.sb.write_string('"')
+			// Add arguments
+			for inter in node.inters {
+				g.sb.write_string(', ')
+				g.gen_expr(inter.expr)
+			}
+			g.sb.write_string('); (string){_buf, strlen(_buf)}; })')
 		}
 		ast.Ident {
 			g.sb.write_string(node.name)
@@ -1007,4 +1041,31 @@ fn (mut g Gen) gen_else_value(else_expr ast.Expr) {
 	} else {
 		g.gen_expr(else_expr)
 	}
+}
+
+// Convert V string interpolation format to C printf format specifier
+fn (g Gen) get_printf_format(inter ast.StringInter) string {
+	base_fmt := match inter.format {
+		.unformatted { '%lld' } // Default: assume integer
+		.decimal { '%lld' }
+		.hex { '%llx' }
+		.octal { '%llo' }
+		.binary { '%lld' } // C doesn't have binary, use decimal
+		.float { '%f' }
+		.exponent { '%e' }
+		.exponent_short { '%g' }
+		.character { '%c' }
+		.string { '%s' }
+		.pointer_address { '%p' }
+	}
+
+	// Handle width and precision if specified
+	if inter.width > 0 && inter.precision > 0 {
+		return '%${inter.width}.${inter.precision}' + base_fmt[1..]
+	} else if inter.width > 0 {
+		return '%${inter.width}' + base_fmt[1..]
+	} else if inter.precision > 0 {
+		return '%.${inter.precision}' + base_fmt[1..]
+	}
+	return base_fmt
 }

@@ -456,6 +456,9 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		ast.StringLiteral {
 			return b.expr_string_literal(node)
 		}
+		ast.StringInterLiteral {
+			return b.expr_string_inter_literal(node)
+		}
 		ast.CallOrCastExpr {
 			return b.expr_call_or_cast(node)
 		}
@@ -850,6 +853,96 @@ fn (mut b Builder) expr_string_literal(node ast.StringLiteral) ValueID {
 	// return b.mod.add_value_node(.constant, ptr_t, '"${node.value}"', 0)
 	val := node.value.trim("'").trim('"')
 	return b.mod.add_value_node(.constant, ptr_t, '"${val}"', 0)
+}
+
+fn (mut b Builder) expr_string_inter_literal(node ast.StringInterLiteral) ValueID {
+	// String interpolation: 'prefix${a}middle${b}suffix'
+	// Lower to: sprintf(buf, "prefix%lldmiddle%lldsuffix", a, b)
+	//
+	// For now, use libc sprintf. Later this can use strconv functions.
+
+	i8_t := b.mod.type_store.get_int(8)
+	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i8_t)
+
+	// 1. Build the format string and collect argument values
+	mut format_str := ''
+	mut args := []ValueID{}
+
+	for i, val in node.values {
+		// Add the literal string part (strip quotes from first/last parts)
+		mut clean_val := val
+		if i == 0 {
+			clean_val = clean_val.trim_left("'").trim_left('"')
+		}
+		if i == node.values.len - 1 {
+			clean_val = clean_val.trim_right("'").trim_right('"')
+		}
+		format_str += clean_val
+
+		// Add format specifier and argument for interpolation
+		if i < node.inters.len {
+			inter := node.inters[i]
+			// Evaluate the interpolated expression
+			arg_val := b.expr(inter.expr)
+			args << arg_val
+
+			// Determine format specifier based on format type
+			format_str += b.get_printf_format(inter)
+		}
+	}
+
+	// 2. Allocate buffer on stack (256 bytes should be enough for most strings)
+	buf_size := 256
+	array_type := b.mod.type_store.get_array(i8_t, buf_size)
+	array_ptr_t := b.mod.type_store.get_ptr(array_type)
+	buf_ptr := b.mod.add_instr(.alloca, b.cur_block, array_ptr_t, [])
+
+	// 3. Create format string constant
+	format_val := b.mod.add_value_node(.constant, ptr_t, '"${format_str}"', 0)
+
+	// 4. Call sprintf(buf, format, args...)
+	sprintf_fn := b.mod.add_value_node(.unknown, 0, 'sprintf', 0)
+	mut call_args := []ValueID{}
+	call_args << sprintf_fn
+	call_args << buf_ptr
+	call_args << format_val
+	for arg in args {
+		call_args << arg
+	}
+	b.mod.add_instr(.call, b.cur_block, i64_t, call_args)
+
+	// 5. Return buffer pointer (it's a char*)
+	return buf_ptr
+}
+
+fn (b Builder) get_printf_format(inter ast.StringInter) string {
+	// Convert V format specifier to printf format specifier
+	// For now, default to %lld for integers (64-bit)
+	base_fmt := match inter.format {
+		.unformatted { '%lld' } // Default: assume integer
+		.decimal { '%lld' }
+		.hex { '%llx' }
+		.octal { '%llo' }
+		.binary { '%lld' } // C doesn't have binary, use decimal
+		.float { '%f' }
+		.exponent { '%e' }
+		.exponent_short { '%g' }
+		.character { '%c' }
+		.string { '%s' }
+		.pointer_address { '%p' }
+	}
+
+	// Handle width and precision if specified
+	if inter.width > 0 && inter.precision > 0 {
+		// Both width and precision specified
+		return '%${inter.width}.${inter.precision}' + base_fmt[1..]
+	} else if inter.width > 0 {
+		return '%${inter.width}' + base_fmt[1..]
+	} else if inter.precision > 0 {
+		return '%.${inter.precision}' + base_fmt[1..]
+	}
+	return base_fmt
 }
 
 fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
