@@ -28,22 +28,24 @@ fn main() {
 	mut p := parser.Parser.new(prefs)
 	mut transformer := transform.Transformer.new()
 
-	// Get the directory where this script is located
-	exe_dir := os.dir(os.executable())
-
 	// Initialize SSA Module
 	mut mod := ssa.Module.new('main')
 	mut builder := ssa.Builder.new(mod)
 
-	// Parse and build builtin string.v first
-	builtin_file := os.join_path(exe_dir, 'builtin', 'string.v')
-	if os.exists(builtin_file) {
-		println('[*] Parsing builtin/string.v...')
-		parsed_builtin := p.parse_file(builtin_file, mut file_set)
-		if parsed_builtin.stmts.len > 0 {
-			println('    Found ${parsed_builtin.stmts.len} statements in builtin')
-			builtin_transformed := transformer.transform(parsed_builtin)
-			builder.build(builtin_transformed)
+	// Get the directory where this script is located
+	exe_dir := os.dir(os.executable())
+
+	// Parse and build builtin files first (local stubs for now)
+	// Full builtin support requires type checking in the SSA builder
+	for builtin_name in ['string', 'array'] {
+		builtin_file := os.join_path(exe_dir, 'builtin', '${builtin_name}.v')
+		if os.exists(builtin_file) {
+			println('[*] Parsing builtin/${builtin_name}.v...')
+			parsed := p.parse_file(builtin_file, mut file_set)
+			if parsed.stmts.len > 0 {
+				println('    Found ${parsed.stmts.len} statements in builtin/${builtin_name}.v')
+				builder.build(transformer.transform(parsed))
+			}
 		}
 	}
 
@@ -103,8 +105,10 @@ fn main() {
 					sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
 					sdk_path := sdk_res.output.trim_space()
 					link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch arm64 -platform_version macos 11.0.0 11.0.0'
-					if os.system(link_cmd) != 0 {
-						eprintln('Link failed')
+					link_result := os.execute(link_cmd)
+					if link_result.exit_code != 0 {
+						eprintln('Link failed:')
+						eprintln(link_result.output)
 						return
 					}
 				}

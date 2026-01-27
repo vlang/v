@@ -4,6 +4,7 @@
 module pref
 
 import os
+import os.cmdline
 
 pub enum Backend {
 	v      // V source output (default)
@@ -37,6 +38,40 @@ pub:
 
 pub fn new_preferences() Preferences {
 	return Preferences{}
+}
+
+// new_preferences_from_args parses full args list including option values
+pub fn new_preferences_from_args(args []string) Preferences {
+	backend_str := cmdline.option(args, '-backend', 'x64')
+	mut backend := Backend.x64
+	match backend_str {
+		'cleanc' { backend = .cleanc }
+		'v' { backend = .v }
+		'c' { backend = .c }
+		'arm64' { backend = .arm64 }
+		'x64' { backend = .x64 }
+		else {}
+	}
+
+	arch_str := cmdline.option(args, '-arch', 'auto')
+	mut arch := Arch.auto
+	match arch_str {
+		'x64' { arch = .x64 }
+		'arm64' { arch = .arm64 }
+		else {}
+	}
+
+	options := cmdline.only_options(args)
+	return Preferences{
+		debug:        '--debug' in options || '-d' in options
+		verbose:      '--verbose' in options || '-v' in options
+		skip_genv:    '--skip-genv' in options
+		skip_builtin: '--skip-builtin' in options
+		skip_imports: '--skip-imports' in options
+		no_parallel:  '--no-parallel' in options
+		backend:      backend
+		arch:         arch
+	}
 }
 
 pub fn new_preferences_using_options(options []string) Preferences {

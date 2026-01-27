@@ -105,123 +105,126 @@ fn (mut b Builder) gen_cleanc() {
 }
 
 fn (mut b Builder) gen_ssa_c() {
-	// SSA -> C Backend
+	// SSA -> C Backend - build all files into a single module
+	mut mod := ssa.Module.new('main')
+	mut ssa_builder := ssa.Builder.new(mod)
+	mut t := transform.Transformer.new()
+
 	for file in b.files {
-		// Run AST transformations before SSA generation
-		mut t := transform.Transformer.new()
 		transformed_file := t.transform(file)
-
-		mut mod := ssa.Module.new('main')
-		mut ssa_builder := ssa.Builder.new(mod)
 		ssa_builder.build(transformed_file)
-		mod.optimize()
+	}
+	mod.optimize()
 
-		mut gen := c.Gen.new(mod)
-		c_source := gen.gen()
+	mut gen := c.Gen.new(mod)
+	c_source := gen.gen()
 
-		c_file := 'out.c'
-		os.write_file(c_file, c_source) or { panic(err) }
+	c_file := 'out.c'
+	os.write_file(c_file, c_source) or { panic(err) }
 
-		if b.pref.verbose {
-			println('[*] Wrote ${c_file}')
-		}
+	if b.pref.verbose {
+		println('[*] Wrote ${c_file}')
+	}
 
-		// Compile C to binary
-		output_binary := if b.pref.output_file != '' {
-			b.pref.output_file
-		} else {
-			os.file_name(file.name).all_before_last('.v')
-		}
+	// Compile C to binary
+	output_binary := if b.pref.output_file != '' {
+		b.pref.output_file
+	} else if b.files.len > 0 {
+		os.file_name(b.files.last().name).all_before_last('.v')
+	} else {
+		'out'
+	}
 
-		cc_result := os.execute('cc -o ${output_binary} ${c_file}')
-		if cc_result.exit_code != 0 {
-			eprintln('C compilation failed:')
-			eprintln(cc_result.output)
-			exit(1)
-		}
+	cc_result := os.execute('cc -o ${output_binary} ${c_file}')
+	if cc_result.exit_code != 0 {
+		eprintln('C compilation failed:')
+		eprintln(cc_result.output)
+		exit(1)
+	}
 
-		if b.pref.verbose {
-			println('[*] Compiled ${output_binary}')
-		}
+	if b.pref.verbose {
+		println('[*] Compiled ${output_binary}')
 	}
 }
 
 fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 
+	// Build all files into a single SSA module
+	mut mod := ssa.Module.new('main')
+	mut ssa_builder := ssa.Builder.new(mod)
+	mut t := transform.Transformer.new()
+
 	for file in b.files {
-		// Run AST transformations before SSA generation
-		mut t := transform.Transformer.new()
 		transformed_file := t.transform(file)
-
-		mut mod := ssa.Module.new('main')
-		mut ssa_builder := ssa.Builder.new(mod)
 		ssa_builder.build(transformed_file)
-		mod.optimize()
+	}
+	mod.optimize()
 
-		// Determine output binary name
-		output_binary := if b.pref.output_file != '' {
-			b.pref.output_file
-		} else {
-			os.file_name(file.name).all_before_last('.v')
+	// Determine output binary name from the last user file
+	output_binary := if b.pref.output_file != '' {
+		b.pref.output_file
+	} else if b.files.len > 0 {
+		os.file_name(b.files.last().name).all_before_last('.v')
+	} else {
+		'out'
+	}
+
+	if arch == .arm64 && os.user_os() == 'macos' {
+		// Use built-in linker for ARM64 macOS
+		mut gen := arm64.Gen.new(mod)
+		gen.gen()
+		gen.link_executable(output_binary)
+
+		if b.pref.verbose {
+			println('[*] Linked ${output_binary} (built-in linker)')
 		}
+	} else {
+		// Generate object file and use external linker
+		obj_file := 'main.o'
 
-		if arch == .arm64 && os.user_os() == 'macos' {
-			// Use built-in linker for ARM64 macOS
+		if arch == .arm64 {
 			mut gen := arm64.Gen.new(mod)
 			gen.gen()
-			gen.link_executable(output_binary)
+			gen.write_file(obj_file)
+		} else {
+			mut gen := x64.Gen.new(mod)
+			gen.gen()
+			gen.write_file(obj_file)
+		}
 
-			if b.pref.verbose {
-				println('[*] Linked ${output_binary} (built-in linker)')
+		if b.pref.verbose {
+			println('[*] Wrote ${obj_file}')
+		}
+
+		// Link the object file into an executable
+		if os.user_os() == 'macos' {
+			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
+			sdk_path := sdk_res.output.trim_space()
+			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
+			link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+			link_result := os.execute(link_cmd)
+			if link_result.exit_code != 0 {
+				eprintln('Link failed:')
+				eprintln(link_result.output)
+				exit(1)
 			}
 		} else {
-			// Generate object file and use external linker
-			obj_file := 'main.o'
-
-			if arch == .arm64 {
-				mut gen := arm64.Gen.new(mod)
-				gen.gen()
-				gen.write_file(obj_file)
-			} else {
-				mut gen := x64.Gen.new(mod)
-				gen.gen()
-				gen.write_file(obj_file)
+			// Linux linking
+			link_result := os.execute('cc ${obj_file} -o ${output_binary} -no-pie')
+			if link_result.exit_code != 0 {
+				eprintln('Link failed:')
+				eprintln(link_result.output)
+				exit(1)
 			}
-
-			if b.pref.verbose {
-				println('[*] Wrote ${obj_file}')
-			}
-
-			// Link the object file into an executable
-			if os.user_os() == 'macos' {
-				sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-				sdk_path := sdk_res.output.trim_space()
-				arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
-				link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
-				link_result := os.execute(link_cmd)
-				if link_result.exit_code != 0 {
-					eprintln('Link failed:')
-					eprintln(link_result.output)
-					exit(1)
-				}
-			} else {
-				// Linux linking
-				link_result := os.execute('cc ${obj_file} -o ${output_binary} -no-pie')
-				if link_result.exit_code != 0 {
-					eprintln('Link failed:')
-					eprintln(link_result.output)
-					exit(1)
-				}
-			}
-
-			if b.pref.verbose {
-				println('[*] Linked ${output_binary}')
-			}
-
-			// Clean up object file
-			os.rm(obj_file) or {}
 		}
+
+		if b.pref.verbose {
+			println('[*] Linked ${output_binary}')
+		}
+
+		// Clean up object file
+		os.rm(obj_file) or {}
 	}
 }
 

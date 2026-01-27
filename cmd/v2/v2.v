@@ -4,17 +4,15 @@
 module main
 
 import os
-import os.cmdline
 import v2.pref
 import v2.builder
 
 fn main() {
 	args := os.args[1..]
 
-	options := cmdline.only_options(args)
-	prefs := pref.new_preferences_using_options(options)
+	prefs := pref.new_preferences_from_args(args)
 
-	files := cmdline.only_non_options(args)
+	files := get_files(args)
 	if files.len == 0 {
 		eprintln('At least 1 .v file expected')
 		exit(1)
@@ -25,4 +23,25 @@ fn main() {
 
 	mut b := builder.new_builder(prefs)
 	b.build(files)
+}
+
+// get_files extracts source files from args, excluding options and their values
+fn get_files(args []string) []string {
+	options_with_values := ['-backend', '-o', '-output', '-arch']
+	mut files := []string{}
+	mut skip_next := false
+	for arg in args {
+		if skip_next {
+			skip_next = false
+			continue
+		}
+		if arg.starts_with('-') {
+			if arg in options_with_values {
+				skip_next = true
+			}
+			continue
+		}
+		files << arg
+	}
+	return files
 }

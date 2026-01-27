@@ -2234,5 +2234,41 @@ fn main() {
 	// 45.5 String in function parameter
 	print_str('Passed directly') // Passed directly
 
+	// ==================== 46. UNSAFE EXPRESSIONS ====================
+	print_str('--- 46. Unsafe Expressions ---')
+
+	// 46.1 Basic unsafe block returning value
+	unsafe_val1 := unsafe {
+		42
+	}
+	print_int(unsafe_val1) // 42
+
+	// 46.2 Unsafe block with computation
+	unsafe_val2 := unsafe {
+		10 + 20 + 30
+	}
+	print_int(unsafe_val2) // 60
+
+	// 46.3 Unsafe block with variable access
+	base_for_unsafe := 100
+	unsafe_val3 := unsafe {
+		base_for_unsafe * 2
+	}
+	print_int(unsafe_val3) // 200
+
+	// 46.4 Unsafe block in expression context
+	result_unsafe := unsafe { 7 } * unsafe { 8 }
+	print_int(result_unsafe) // 56
+
+	// 46.5 Unsafe with struct field access
+	unsafe_pt := Point{
+		x: 15
+		y: 25
+	}
+	unsafe_sum := unsafe {
+		unsafe_pt.x + unsafe_pt.y
+	}
+	print_int(unsafe_sum) // 40
+
 	print_str('=== All tests completed ===')
 }

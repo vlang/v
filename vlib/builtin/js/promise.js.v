@@ -14,7 +14,7 @@ pub fn JS.Promise.race(JS.Array) JS.Promise
 
 // Promise represents the eventual completion (or failure) of an asynchronous operation and its resulting value.
 pub struct Promise[T] {
-mut:
+pub mut:
 	promise JS.Promise @[noinit]
 }
 

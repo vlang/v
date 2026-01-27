@@ -1255,6 +1255,40 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			// Handle comptime expressions like $if macos { ... } $else { ... }
 			g.gen_comptime_expr(node)
 		}
+		ast.UnsafeExpr {
+			// Unsafe block - generate as GCC compound expression
+			if node.stmts.len == 0 {
+				g.sb.write_string('0')
+			} else {
+				g.sb.write_string('({ ')
+				// Generate all but last statement
+				for i, stmt in node.stmts {
+					if i < node.stmts.len - 1 {
+						g.gen_stmt(stmt)
+					}
+				}
+				// Generate last statement - if it's an ExprStmt, we need its value
+				last := node.stmts[node.stmts.len - 1]
+				if last is ast.ExprStmt {
+					g.gen_expr(last.expr)
+					g.sb.write_string('; ')
+				} else {
+					g.gen_stmt(last)
+					g.sb.write_string('0; ')
+				}
+				g.sb.write_string('})')
+			}
+		}
+		ast.EmptyExpr {
+			// Empty expression - output nothing or 0
+			g.sb.write_string('0')
+		}
+		ast.OrExpr {
+			// Or expression: expr or { fallback }
+			// For now, just generate the main expression
+			// TODO: Add proper optional/error handling
+			g.gen_expr(node.expr)
+		}
 		else {
 			g.sb.write_string('/* expr: ${node.type_name()} */')
 		}

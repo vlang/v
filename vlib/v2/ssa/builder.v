@@ -122,6 +122,20 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 	}
 }
 
+// get_receiver_type_name extracts the base type name from a receiver type expression.
+// For both `T` and `&T` receivers, returns just `T` since they share method namespaces in V.
+fn (b Builder) get_receiver_type_name(typ ast.Expr) string {
+	if typ is ast.Ident {
+		return typ.name
+	} else if typ is ast.PrefixExpr {
+		// Pointer type like &DenseArray - extract base type name
+		if typ.expr is ast.Ident {
+			return typ.expr.name
+		}
+	}
+	return ''
+}
+
 pub fn (mut b Builder) build(file ast.File) {
 	// 0. Pre-pass: Register Types (Structs), Globals, and Enums
 	// We must process these first so types exist when we compile functions.
@@ -137,6 +151,10 @@ pub fn (mut b Builder) build(file ast.File) {
 	// 1. First pass: Register all functions (so calls work)
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
+			// Skip operator overloads (parsed with empty name)
+			if stmt.name == '' {
+				continue
+			}
 			// For MVP, assume (i32, i32) -> i32
 			i32_t := b.mod.type_store.get_int(64)
 
@@ -165,8 +183,9 @@ pub fn (mut b Builder) build(file ast.File) {
 			// For methods, use mangled name: TypeName_methodName
 			mut fn_name := stmt.name
 			if stmt.is_method {
-				if stmt.receiver.typ is ast.Ident {
-					fn_name = '${stmt.receiver.typ.name}_${stmt.name}'
+				receiver_type_name := b.get_receiver_type_name(stmt.receiver.typ)
+				if receiver_type_name != '' {
+					fn_name = '${receiver_type_name}_${stmt.name}'
 				}
 			}
 			// We discard the returned ID because we assume linear order in the next pass
@@ -175,14 +194,60 @@ pub fn (mut b Builder) build(file ast.File) {
 	}
 
 	// 2. Second pass: Generate Body
-	// We rely on index matching for simplicity in this demo.
-	mut fn_idx := 0
+	// Look up functions by name to handle deduplication across multiple files
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
+			// Skip operator overloads (parsed with empty name)
+			if stmt.name == '' {
+				continue
+			}
+			// Get mangled function name (same logic as first pass)
+			mut fn_name := stmt.name
+			if stmt.is_method {
+				receiver_type_name := b.get_receiver_type_name(stmt.receiver.typ)
+				if receiver_type_name != '' {
+					fn_name = '${receiver_type_name}_${stmt.name}'
+				}
+			}
+			// Find function by name
+			fn_idx := b.find_function(fn_name)
+			if fn_idx < 0 {
+				continue // Should not happen
+			}
+			// Skip if already built (has blocks)
+			if b.mod.funcs[fn_idx].blocks.len > 0 {
+				continue
+			}
 			b.build_fn(stmt, fn_idx)
-			fn_idx++
 		}
 	}
+}
+
+// find_function looks up a function by name, returns -1 if not found
+fn (b &Builder) find_function(name string) int {
+	for i, f in b.mod.funcs {
+		if f.name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// infer_receiver_type attempts to find the receiver type for a method call
+// by looking at registered functions to see which type defines this method
+fn (b &Builder) infer_receiver_type(method_name string) string {
+	// Search registered functions for a matching method
+	for f in b.mod.funcs {
+		// Check if function name matches pattern: TypeName_methodName
+		if f.name.ends_with('_${method_name}') {
+			// Extract type name (everything before _methodName)
+			type_name := f.name.all_before_last('_${method_name}')
+			if type_name != '' {
+				return type_name
+			}
+		}
+	}
+	return ''
 }
 
 fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
@@ -936,6 +1001,9 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		ast.ArrayInitExpr {
 			return b.expr_array_init(node)
 		}
+		ast.MapInitExpr {
+			return b.expr_map_init(node)
+		}
 		ast.IfGuardExpr {
 			return b.expr_if_guard(node)
 		}
@@ -969,6 +1037,61 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		ast.ComptimeExpr {
 			// Handle comptime expressions like $if macos { ... } $else { ... }
 			return b.expr_comptime(node)
+		}
+		ast.UnsafeExpr {
+			// Process statements in unsafe block and return value of last expr
+			return b.stmts_with_value(node.stmts)
+		}
+		ast.EmptyExpr {
+			// Empty expression - return 0 as sentinel value
+			i64_t := b.mod.type_store.get_int(64)
+			return b.mod.add_value_node(.constant, i64_t, '0', 0)
+		}
+		ast.OrExpr {
+			// Or expression: expr or { fallback }
+			// For now, evaluate the main expression
+			// TODO: Add proper optional/error handling with branches
+			main_val := b.expr(node.expr)
+			// For now, just return main value - full implementation would check for error
+			// and branch to fallback block if needed
+			return main_val
+		}
+		ast.FieldInit {
+			// Named argument in function call: name: value
+			// Just evaluate the value expression
+			return b.expr(node.value)
+		}
+		ast.KeywordOperator {
+			// Handle keyword operators: sizeof, typeof, isreftype, go, spawn, __offsetof
+			i64_t := b.mod.type_store.get_int(64)
+			match node.op {
+				.key_sizeof {
+					// sizeof(type) - return 8 for 64-bit systems as default
+					// TODO: compute actual size based on type
+					return b.mod.add_value_node(.constant, i64_t, '8', 0)
+				}
+				.key_typeof {
+					// typeof(expr) - return 0 for now
+					// TODO: return actual type info
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+				.key_isreftype {
+					// isreftype(type) - return 0 for now
+					// TODO: return actual isreftype value
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+				.key_go, .key_spawn {
+					// go/spawn - evaluate the expression (function call)
+					if node.exprs.len > 0 {
+						return b.expr(node.exprs[0])
+					}
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+				else {
+					// __offsetof or other - return 0 as default
+					return b.mod.add_value_node(.constant, i64_t, '0', 0)
+				}
+			}
 		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
@@ -1729,12 +1852,23 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 				elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 				receiver_val = b.mod.add_instr(.load, b.cur_block, elem_typ, [var_ptr])
 			} else {
-				// Unknown - just use method name
-				name = method_name
+				// Unknown receiver type - try to infer from registered functions
+				inferred_type := b.infer_receiver_type(method_name)
+				if inferred_type != '' {
+					name = '${inferred_type}_${method_name}'
+				} else {
+					name = method_name
+				}
 			}
 		} else {
-			// Complex expression as receiver - try to evaluate
-			name = method_name
+			// Complex expression as receiver - try to infer type from method name
+			mname := lhs.rhs.name
+			inferred_type := b.infer_receiver_type(mname)
+			if inferred_type != '' {
+				name = '${inferred_type}_${mname}'
+			} else {
+				name = mname
+			}
 		}
 	}
 
@@ -1877,11 +2011,12 @@ fn (b Builder) get_printf_format(inter ast.StringInter) string {
 }
 
 fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
-	// Check if this is a primitive type cast (int, i64, etc.)
+	// Check if this is a primitive type cast (int, i64, voidptr, etc.)
 	// These are not function calls - just return the expression value
 	if node.lhs is ast.Ident {
 		cast_name := node.lhs.name
-		if cast_name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64'] {
+		if cast_name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64',
+			'voidptr', 'charptr', 'byteptr', 'usize', 'isize', 'rune', 'bool'] {
 			// Type cast: just evaluate the expression (enums are already ints in SSA)
 			return b.expr(node.expr)
 		}
@@ -2083,6 +2218,52 @@ fn (mut b Builder) expr_array_init(node ast.ArrayInitExpr) ValueID {
 
 	// Return the array pointer
 	return array_ptr
+}
+
+fn (mut b Builder) expr_map_init(node ast.MapInitExpr) ValueID {
+	// Map Init: map[string]int{} or {'key': 'value'}
+	// For now, maps are represented as structs with key/value arrays
+	i64_t := b.mod.type_store.get_int(64)
+
+	// If empty map or just type declaration, return null placeholder
+	if node.keys.len == 0 {
+		return b.mod.add_value_node(.constant, b.mod.type_store.get_ptr(i64_t), '0', 0)
+	}
+
+	// For map literals with initial values, allocate a simple key-value structure
+	// This is a simplified implementation - real maps need hash table support
+	elem_count := node.keys.len
+	array_type := b.mod.type_store.get_array(i64_t, elem_count * 2) // interleaved key-value
+	array_ptr_t := b.mod.type_store.get_ptr(array_type)
+	elem_ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Allocate map storage on stack
+	map_ptr := b.mod.add_instr(.alloca, b.cur_block, array_ptr_t, [])
+
+	// Initialize key-value pairs
+	for i, key_expr in node.keys {
+		key_val := b.expr(key_expr)
+		val_expr := node.vals[i]
+		val_val := b.expr(val_expr)
+
+		// Store key at index i*2
+		key_idx := b.mod.add_value_node(.constant, i64_t, '${i * 2}', 0)
+		key_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+			map_ptr,
+			key_idx,
+		])
+		b.mod.add_instr(.store, b.cur_block, 0, [key_val, key_ptr])
+
+		// Store value at index i*2+1
+		val_idx := b.mod.add_value_node(.constant, i64_t, '${i * 2 + 1}', 0)
+		val_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+			map_ptr,
+			val_idx,
+		])
+		b.mod.add_instr(.store, b.cur_block, 0, [val_val, val_ptr])
+	}
+
+	return map_ptr
 }
 
 fn (mut b Builder) expr_heap_alloc(node ast.InitExpr) ValueID {

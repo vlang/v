@@ -1536,7 +1536,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	c.set_node_expected_arg_types(mut node, func)
-	if !c.pref.backend.is_js() && args_len > 0 && func.params.len == 0 {
+	if !c.is_js_backend && args_len > 0 && func.params.len == 0 {
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
@@ -1925,7 +1925,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				&& arg_typ !in [ast.voidptr_type, ast.nil_type] && arg_typ.nr_muls() == 0
 				&& func.name !in ['isnil', 'ptr_str'] && !func.name.starts_with('json.')
 				&& arg_typ_sym.kind !in [.float_literal, .int_literal, .charptr, .function]
-				&& !c.pref.backend.is_js() {
+				&& !c.is_js_backend {
 				c.warn('automatic ${arg_typ_sym.name} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`',
 					call_arg.pos)
 			}
@@ -2209,7 +2209,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		unaliased_left_type := c.table.unaliased_type(left_type)
 		return c.map_builtin_method_call(mut node, unaliased_left_type)
-	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[') && node.kind == .wait {
+	} else if c.is_js_backend && left_sym.name.starts_with('Promise[') && node.kind == .wait {
 		info := left_sym.info as ast.Struct
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
@@ -2903,7 +2903,7 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 			node.call_expr.left.pos())
 	}
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
 		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))
@@ -2930,7 +2930,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 			node.call_expr.left.pos())
 	}
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
 		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))
