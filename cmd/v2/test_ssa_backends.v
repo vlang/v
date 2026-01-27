@@ -192,7 +192,8 @@ fn main() {
 	}
 	// Strip terminal control characters that script command may prepend
 	// This includes: ^D (literal), ctrl-D (0x04), backspace (0x08), carriage return, etc.
-	mut cleaned := gen_res.output.replace('\r\n', '\n').replace('\x04', '').replace('\x08', '')
+	mut cleaned := gen_res.output.replace('\r\n', '\n').replace('\x04', '').replace('\x08',
+		'')
 	// Remove "^D" literal string that macOS script may add
 	if cleaned.starts_with('^D') {
 		cleaned = cleaned[2..]

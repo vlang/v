@@ -1089,7 +1089,8 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				name = node.lhs.name
 				// Check if this is a primitive type cast (int, i64, etc.)
 				// For enums, int(enum_val) just returns the value since C enums are ints
-				if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64'] {
+				if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32',
+					'f64'] {
 					g.sb.write_string('((${name})(')
 					g.gen_expr(node.expr)
 					g.sb.write_string('))')
@@ -1250,8 +1251,152 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_expr(node.end)
 			g.sb.write_string('}')
 		}
+		ast.ComptimeExpr {
+			// Handle comptime expressions like $if macos { ... } $else { ... }
+			g.gen_comptime_expr(node)
+		}
 		else {
 			g.sb.write_string('/* expr: ${node.type_name()} */')
+		}
+	}
+}
+
+// gen_comptime_expr handles compile-time conditionals like $if macos { ... } $else { ... }
+fn (mut g Gen) gen_comptime_expr(node ast.ComptimeExpr) {
+	// The inner expression should be an IfExpr
+	if node.expr is ast.IfExpr {
+		g.gen_comptime_if(node.expr)
+	} else {
+		// For other comptime expressions, just emit them
+		g.gen_expr(node.expr)
+	}
+}
+
+// gen_comptime_if handles $if/$else compile-time conditionals
+fn (mut g Gen) gen_comptime_if(node ast.IfExpr) {
+	// Evaluate the comptime condition
+	cond_result := g.eval_comptime_cond(node.cond)
+
+	if cond_result {
+		// Condition is true - emit then branch
+		g.gen_stmts(node.stmts)
+	} else {
+		// Condition is false - emit else branch if present
+		if node.else_expr !is ast.EmptyExpr {
+			if node.else_expr is ast.IfExpr {
+				// Could be $else if or plain $else
+				if node.else_expr.cond is ast.EmptyExpr {
+					// Plain $else block
+					g.gen_stmts(node.else_expr.stmts)
+				} else {
+					// $else $if - recursive comptime evaluation
+					g.gen_comptime_if(node.else_expr)
+				}
+			}
+		}
+	}
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression
+fn (g Gen) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			// Platform and feature flags
+			return g.eval_comptime_flag(cond.name)
+		}
+		ast.PrefixExpr {
+			// Handle negation: !macos
+			if cond.op == .not {
+				return !g.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			// Handle && and ||
+			if cond.op == .and {
+				return g.eval_comptime_cond(cond.lhs) && g.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return g.eval_comptime_cond(cond.lhs) || g.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			// Handle optional feature check: feature?
+			if cond.op == .question {
+				if cond.expr is ast.Ident {
+					return g.eval_comptime_flag(cond.expr.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return g.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+	return false
+}
+
+// eval_comptime_flag evaluates a single comptime flag/identifier
+fn (g Gen) eval_comptime_flag(name string) bool {
+	// OS checks - use comptime conditionals with direct returns
+	match name {
+		'macos', 'darwin' {
+			$if macos {
+				return true
+			}
+			return false
+		}
+		'linux' {
+			$if linux {
+				return true
+			}
+			return false
+		}
+		'windows' {
+			$if windows {
+				return true
+			}
+			return false
+		}
+		'freebsd' {
+			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'posix', 'unix' {
+			$if macos {
+				return true
+			} $else $if linux {
+				return true
+			} $else $if freebsd {
+				return true
+			}
+			return false
+		}
+		// Architecture checks
+		'amd64', 'x86_64' {
+			$if amd64 {
+				return true
+			}
+			return false
+		}
+		'arm64', 'aarch64' {
+			$if arm64 {
+				return true
+			}
+			return false
+		}
+		'x86' {
+			// x86 (32-bit) is rarely used in modern systems
+			return false
+		}
+		// Common feature flags (typically false in simple compilers)
+		'freestanding', 'ios', 'android', 'termux', 'debug', 'test' {
+			return false
+		}
+		else {
+			// Unknown flag - default to false
+			return false
 		}
 	}
 }

@@ -27,8 +27,8 @@ enum Color {
 
 enum Status {
 	pending = 0
-	active = 1
-	done = 2
+	active  = 1
+	done    = 2
 }
 
 // Interface declaration
@@ -248,6 +248,19 @@ fn nested_return(x int) int {
 	}
 }
 
+// Helper for comptime test
+fn get_comptime_value() int {
+	$if macos {
+		return 50
+	} $else $if linux {
+		return 51
+	} $else $if windows {
+		return 52
+	} $else {
+		return 59
+	}
+}
+
 // Function using type alias (type alias is same as base type in C)
 fn add_my_ints(a int, b int) int {
 	return a + b
@@ -258,7 +271,7 @@ fn defer_test() int {
 	mut x := 0
 	defer {
 		x = 42
-	};
+	}
 	return x + 42 // Return 42, but x is modified by defer before return
 }
 
@@ -266,13 +279,13 @@ fn defer_test() int {
 fn defer_order_test() {
 	defer {
 		print_str('First')
-	};
+	}
 	defer {
 		print_str('Second')
-	};
+	}
 	defer {
 		print_str('Third')
-	};
+	}
 }
 
 // ===================== IF-GUARD HELPERS =====================
@@ -1940,7 +1953,7 @@ fn main() {
 	g_val = 0
 	defer {
 		g_val += 100
-	};
+	}
 	g_val += 1
 	print_int(g_val) // 1 (defer not executed yet, will be 101 at function end)
 
@@ -1948,20 +1961,19 @@ fn main() {
 	g_count = 0
 	defer {
 		g_count += 1
-	};
+	}
 	defer {
 		g_count += 10
-	};
+	}
 	defer {
 		g_count += 100
-	};
+	}
 	// At end of function: g_count = 0 + 100 + 10 + 1 = 111
 
 	// 38.3 Defer with function call
 	defer {
 		print_str('Defer 38.3 executed')
-	};
-
+	}
 	// 38.4 Test defer_test function with explicit return
 	print_int(defer_test()) // Should print 42
 
@@ -2163,6 +2175,40 @@ fn main() {
 		my_sum += i
 	}
 	print_int(my_sum) // 1+2+3+4+5 = 15
+
+	// ==================== 44. COMPTIME ====================
+	print_str('--- 44. Comptime ---')
+
+	// 44.1 Basic $if macos/$else
+	$if macos {
+		print_int(1) // 1 on macOS
+	} $else {
+		print_int(0) // 0 on other platforms
+	}
+
+	// 44.2 $if linux
+	$if linux {
+		print_int(2) // 2 on Linux
+	} $else {
+		print_int(20) // 20 on non-Linux
+	}
+
+	// 44.3 $if windows
+	$if windows {
+		print_int(3) // 3 on Windows
+	} $else {
+		print_int(30) // 30 on non-Windows
+	}
+
+	// 44.4 Negation: $if !windows
+	$if !windows {
+		print_int(4) // 4 on non-Windows
+	} $else {
+		print_int(40) // 40 on Windows
+	}
+
+	// 44.5 Comptime in function call
+	print_int(get_comptime_value())
 
 	print_str('=== All tests completed ===')
 }

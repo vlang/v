@@ -398,7 +398,10 @@ fn (mut b Builder) stmt_for_in_array(node ast.ForStmt, for_in ast.ForInStmt, key
 	// Body: load array element into value variable
 	b.cur_block = body_blk
 	cur_idx2 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
-	elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [array_ptr, cur_idx2])
+	elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
+		array_ptr,
+		cur_idx2,
+	])
 	elem_val := b.mod.add_instr(.load, b.cur_block, i64_t, [elem_addr])
 	b.mod.add_instr(.store, b.cur_block, 0, [elem_val, value_ptr])
 
@@ -893,6 +896,10 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 				}
 			}
 		}
+		ast.ComptimeExpr {
+			// Handle comptime expressions like $if macos { ... } $else { ... }
+			return b.expr_comptime(node)
+		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
 			// Return constant 0 (i32) to prevent cascading void errors
@@ -1138,6 +1145,148 @@ fn (mut b Builder) expr_infix(node ast.InfixExpr) ValueID {
 	}
 
 	return b.mod.add_instr(op, b.cur_block, i32_t, [left, right])
+}
+
+// expr_comptime handles compile-time conditionals like $if macos { ... } $else { ... }
+fn (mut b Builder) expr_comptime(node ast.ComptimeExpr) ValueID {
+	// The inner expression should be an IfExpr
+	if node.expr is ast.IfExpr {
+		return b.expr_comptime_if(node.expr)
+	}
+	// For other comptime expressions, just evaluate them (e.g., $embed_file)
+	return b.expr(node.expr)
+}
+
+// expr_comptime_if handles $if/$else compile-time conditionals
+fn (mut b Builder) expr_comptime_if(node ast.IfExpr) ValueID {
+	// Evaluate the comptime condition
+	cond_result := b.eval_comptime_cond(node.cond)
+
+	if cond_result {
+		// Condition is true - emit then branch
+		return b.stmts_with_value(node.stmts)
+	} else {
+		// Condition is false - emit else branch if present
+		if node.else_expr !is ast.EmptyExpr {
+			if node.else_expr is ast.IfExpr {
+				// Could be $else if or plain $else
+				if node.else_expr.cond is ast.EmptyExpr {
+					// Plain $else block
+					return b.stmts_with_value(node.else_expr.stmts)
+				} else {
+					// $else $if - recursive comptime evaluation
+					return b.expr_comptime_if(node.else_expr)
+				}
+			}
+		}
+	}
+	// No branch taken - return 0
+	i64_t := b.mod.type_store.get_int(64)
+	return b.mod.add_value_node(.constant, i64_t, '0', 0)
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression
+fn (b Builder) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			// Platform and feature flags
+			return b.eval_comptime_flag(cond.name)
+		}
+		ast.PrefixExpr {
+			// Handle negation: !macos
+			if cond.op == .not {
+				return !b.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			// Handle && and ||
+			if cond.op == .and {
+				return b.eval_comptime_cond(cond.lhs) && b.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return b.eval_comptime_cond(cond.lhs) || b.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			// Handle optional feature check: feature?
+			if cond.op == .question {
+				if cond.expr is ast.Ident {
+					return b.eval_comptime_flag(cond.expr.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return b.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+	return false
+}
+
+// eval_comptime_flag evaluates a single comptime flag/identifier
+fn (b Builder) eval_comptime_flag(name string) bool {
+	// OS checks - use comptime conditionals with direct returns
+	match name {
+		'macos', 'darwin' {
+			$if macos {
+				return true
+			}
+			return false
+		}
+		'linux' {
+			$if linux {
+				return true
+			}
+			return false
+		}
+		'windows' {
+			$if windows {
+				return true
+			}
+			return false
+		}
+		'freebsd' {
+			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'posix', 'unix' {
+			$if macos {
+				return true
+			} $else $if linux {
+				return true
+			} $else $if freebsd {
+				return true
+			}
+			return false
+		}
+		// Architecture checks
+		'amd64', 'x86_64' {
+			$if amd64 {
+				return true
+			}
+			return false
+		}
+		'arm64', 'aarch64' {
+			$if arm64 {
+				return true
+			}
+			return false
+		}
+		'x86' {
+			// x86 (32-bit) is rarely used in modern systems
+			return false
+		}
+		// Common feature flags (typically false in simple compilers)
+		'freestanding', 'ios', 'android', 'termux', 'debug', 'test' {
+			return false
+		}
+		else {
+			// Unknown flag - default to false
+			return false
+		}
+	}
 }
 
 fn (mut b Builder) expr_if(node ast.IfExpr) ValueID {
