@@ -475,6 +475,9 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		ast.ArrayInitExpr {
 			return b.expr_array_init(node)
 		}
+		ast.IfGuardExpr {
+			return b.expr_if_guard(node)
+		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
 			// Return constant 0 (i32) to prevent cascading void errors
@@ -635,6 +638,11 @@ fn (mut b Builder) expr_if(node ast.IfExpr) ValueID {
 		return b.stmts_with_value(node.stmts)
 	}
 
+	// Check if this is an if-guard expression
+	if node.cond is ast.IfGuardExpr {
+		return b.expr_if_with_guard(node, node.cond)
+	}
+
 	// Check if this is an if-expression (has else and branches have values)
 	has_else := node.else_expr !is ast.EmptyExpr
 	is_expr := has_else && b.branch_has_value(node.stmts)
@@ -696,6 +704,154 @@ fn (mut b Builder) expr_if(node ast.IfExpr) ValueID {
 		return b.mod.add_instr(.load, b.cur_block, i32_t, [result_ptr])
 	}
 	return 0
+}
+
+// expr_if_with_guard handles if statements with guard expressions
+// `if x := opt() { ... } else { ... }`
+fn (mut b Builder) expr_if_with_guard(node ast.IfExpr, guard ast.IfGuardExpr) ValueID {
+	has_else := node.else_expr !is ast.EmptyExpr
+	is_expr := has_else && b.branch_has_value(node.stmts)
+
+	i32_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i32_t)
+
+	// 1. Evaluate the RHS of the guard (the optional expression)
+	stmt := guard.stmt
+	mut rhs_val := ValueID(0)
+	if stmt.rhs.len > 0 {
+		rhs_val = b.expr(stmt.rhs[0])
+	}
+
+	// 2. For now, use the value directly as condition
+	// In a full optional implementation, we'd check the error flag
+	// For simplicity, we treat non-zero as success
+	cond_val := rhs_val
+
+	// 3. Create Blocks
+	then_blk := b.mod.add_block(b.cur_func, 'if.then')
+	merge_blk := b.mod.add_block(b.cur_func, 'if.end')
+	mut else_blk := merge_blk
+
+	if has_else {
+		else_blk = b.mod.add_block(b.cur_func, 'if.else')
+	}
+
+	// 4. For if-expressions, allocate result storage
+	mut result_ptr := ValueID(0)
+	if is_expr {
+		result_ptr = b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	}
+
+	// 5. Emit Branch
+	then_val := b.mod.blocks[then_blk].val_id
+	else_val := b.mod.blocks[else_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cond_val, then_val, else_val])
+
+	// 6. Build Then Block - bind guard variables here
+	b.cur_block = then_blk
+
+	// Bind the guard variables (x := ... binds x)
+	b.expr_if_guard_bind(guard, rhs_val)
+
+	then_result := b.stmts_with_value(node.stmts)
+	if is_expr && then_result != 0 && !b.is_block_terminated(b.cur_block) {
+		b.mod.add_instr(.store, b.cur_block, 0, [then_result, result_ptr])
+	}
+	if !b.is_block_terminated(b.cur_block) {
+		merge_val := b.mod.blocks[merge_blk].val_id
+		b.mod.add_instr(.jmp, b.cur_block, 0, [merge_val])
+	}
+
+	// 7. Build Else Block (if any)
+	if has_else {
+		b.cur_block = else_blk
+		else_result := b.expr_if_else(node.else_expr)
+		if is_expr && else_result != 0 && !b.is_block_terminated(b.cur_block) {
+			b.mod.add_instr(.store, b.cur_block, 0, [else_result, result_ptr])
+		}
+		if !b.is_block_terminated(b.cur_block) {
+			merge_val := b.mod.blocks[merge_blk].val_id
+			b.mod.add_instr(.jmp, b.cur_block, 0, [merge_val])
+		}
+	}
+
+	// 8. Continue generation at Merge Block
+	b.cur_block = merge_blk
+
+	// 9. Load result for if-expressions
+	if is_expr && result_ptr != 0 {
+		return b.mod.add_instr(.load, b.cur_block, i32_t, [result_ptr])
+	}
+	return 0
+}
+
+// expr_if_guard handles if-guard expressions: `if x := opt() {`
+// When used as a condition, it evaluates the RHS and checks for success
+// Returns a boolean value (0 = failure/none, 1 = success)
+fn (mut b Builder) expr_if_guard(node ast.IfGuardExpr) ValueID {
+	i32_t := b.mod.type_store.get_int(64)
+
+	// Get the assignment statement
+	stmt := node.stmt
+
+	// For if-guard, we evaluate the RHS expression
+	// In V, the RHS returns an optional type that we need to unwrap
+	// For now, we assume any non-zero/non-none value is success
+	if stmt.rhs.len == 0 {
+		// No RHS - always false
+		return b.mod.add_value_node(.constant, i32_t, '0', 0)
+	}
+
+	rhs_val := b.expr(stmt.rhs[0])
+
+	// For the condition check, we need to determine if the optional succeeded
+	// In a full implementation, this would check the error flag of the optional
+	// For now, we'll assume the value itself indicates success (non-zero = success)
+	// TODO: Proper optional type handling with error flags
+
+	// Return the condition value (will be used in branch)
+	// For now, return 1 (true) - actual unwrapping happens in expr_if when
+	// the condition is an IfGuardExpr
+	return rhs_val
+}
+
+// expr_if_guard_bind binds the variables from an if-guard expression
+// This is called after the condition check succeeds
+fn (mut b Builder) expr_if_guard_bind(node ast.IfGuardExpr, rhs_val ValueID) {
+	stmt := node.stmt
+
+	// Bind each LHS variable to the unwrapped value
+	for i, lhs_expr in stmt.lhs {
+		mut ident := ast.Ident{}
+
+		// Unwrap 'mut x' if present
+		if lhs_expr is ast.ModifierExpr {
+			mod := lhs_expr as ast.ModifierExpr
+			ident = mod.expr as ast.Ident
+		} else if lhs_expr is ast.Ident {
+			ident = lhs_expr
+		} else {
+			continue
+		}
+
+		name := ident.name
+
+		// Get type from RHS value
+		rhs_type := b.mod.values[rhs_val].typ
+		ptr_t := b.mod.type_store.get_ptr(rhs_type)
+
+		// Allocate stack slot for the variable
+		stack_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+
+		// For single-value assignment, use the rhs_val directly
+		// For multi-value (like tuple unpacking), we'd need to extract individual values
+		if i == 0 {
+			b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, stack_ptr])
+		}
+
+		// Register the variable
+		b.vars[name] = stack_ptr
+	}
 }
 
 // Helper to check if a branch has a value (last stmt is an expression)

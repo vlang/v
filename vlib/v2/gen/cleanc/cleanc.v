@@ -169,6 +169,18 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 		ast.EmptyExpr {
 			return 'void'
 		}
+		ast.Type {
+			// Handle Option and Result types
+			if e is ast.OptionType {
+				// For ?T, we use the base type (simplified - no proper optional handling)
+				return g.expr_type_to_c(e.base_type)
+			}
+			if e is ast.ResultType {
+				// For !T, we use the base type (simplified - no proper result handling)
+				return g.expr_type_to_c(e.base_type)
+			}
+			return 'int'
+		}
 		else {
 			return 'int'
 		}
@@ -665,6 +677,12 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				return
 			}
 
+			// Check if condition is an if-guard expression
+			if node.cond is ast.IfGuardExpr {
+				g.gen_if_guard(node, node.cond)
+				return
+			}
+
 			g.write_indent()
 			g.sb.write_string('if (')
 			g.gen_expr(node.cond)
@@ -944,6 +962,36 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 			g.sb.write_string('})')
 		}
+		ast.IfGuardExpr {
+			// If-guard expression: `if x := opt() { ... }`
+			// For cleanc, we generate the RHS expression and use it as condition
+			// The variable binding is handled in the if-statement context
+			if node.stmt.rhs.len > 0 {
+				g.gen_expr(node.stmt.rhs[0])
+			} else {
+				g.sb.write_string('0')
+			}
+		}
+		ast.Keyword {
+			// Handle keywords like 'none'
+			if node.tok == .key_none {
+				g.sb.write_string('0') // none is represented as 0/NULL
+			} else if node.tok == .key_true {
+				g.sb.write_string('true')
+			} else if node.tok == .key_false {
+				g.sb.write_string('false')
+			} else {
+				g.sb.write_string('/* keyword: ${node.tok} */')
+			}
+		}
+		ast.Type {
+			// Handle type expressions (e.g., in return statements)
+			if node is ast.NoneType {
+				g.sb.write_string('0') // none
+			} else {
+				g.sb.write_string('/* type expr */')
+			}
+		}
 		else {
 			g.sb.write_string('/* expr: ${node.type_name()} */')
 		}
@@ -959,6 +1007,10 @@ fn (mut g Gen) write_indent() {
 // Check if an IfExpr can be converted to a C ternary operator
 // This is true when the branches contain simple value expressions (single ExprStmt)
 fn (g Gen) can_be_ternary(node ast.IfExpr) bool {
+	// If-guard expressions cannot be ternary (they need variable declarations)
+	if node.cond is ast.IfGuardExpr {
+		return false
+	}
 	// Must have both branches
 	if node.else_expr is ast.EmptyExpr {
 		return false
@@ -1041,6 +1093,94 @@ fn (mut g Gen) gen_else_value(else_expr ast.Expr) {
 	} else {
 		g.gen_expr(else_expr)
 	}
+}
+
+// Generate if-guard statement: `if x := opt() { ... } else { ... }`
+fn (mut g Gen) gen_if_guard(node ast.IfExpr, guard ast.IfGuardExpr) {
+	// For if-guard, we:
+	// 1. Declare the guard variable(s)
+	// 2. Assign the RHS to the variable(s)
+	// 3. Use the value as condition (non-zero = success)
+
+	// Get the variable name(s) from LHS
+	mut var_names := []string{}
+	for lhs_expr in guard.stmt.lhs {
+		if lhs_expr is ast.Ident {
+			var_names << lhs_expr.name
+		} else if lhs_expr is ast.ModifierExpr {
+			// Handle 'mut x'
+			if lhs_expr.expr is ast.Ident {
+				var_names << lhs_expr.expr.name
+			}
+		}
+	}
+
+	// Infer type from RHS
+	mut rhs_type := 'int'
+	if guard.stmt.rhs.len > 0 {
+		rhs_type = g.infer_type(guard.stmt.rhs[0])
+	}
+
+	// Generate: { type var = rhs; if (var) { ... } else { ... } }
+	g.sb.writeln('{')
+	g.indent++
+
+	// Declare and assign guard variable(s)
+	for i, var_name in var_names {
+		g.write_indent()
+		g.var_types[var_name] = rhs_type
+		g.sb.write_string('${rhs_type} ${var_name} = ')
+		if i < guard.stmt.rhs.len {
+			g.gen_expr(guard.stmt.rhs[i])
+		} else if guard.stmt.rhs.len > 0 {
+			g.gen_expr(guard.stmt.rhs[0])
+		} else {
+			g.sb.write_string('0')
+		}
+		g.sb.writeln(';')
+	}
+
+	// Generate the if statement using the first variable as condition
+	g.write_indent()
+	if var_names.len > 0 {
+		g.sb.write_string('if (${var_names[0]})')
+	} else {
+		g.sb.write_string('if (0)')
+	}
+	g.sb.writeln(' {')
+	g.indent++
+	g.gen_stmts(node.stmts)
+	g.indent--
+	g.write_indent()
+	g.sb.write_string('}')
+
+	// Handle else branch
+	if node.else_expr !is ast.EmptyExpr {
+		if node.else_expr is ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				// Pure else block
+				g.sb.writeln(' else {')
+				g.indent++
+				g.gen_stmts(node.else_expr.stmts)
+				g.indent--
+				g.write_indent()
+				g.sb.writeln('}')
+			} else {
+				// Else-if chain
+				g.sb.write_string(' else ')
+				g.gen_expr(node.else_expr)
+			}
+		} else {
+			g.sb.write_string(' else ')
+			g.gen_expr(node.else_expr)
+		}
+	} else {
+		g.sb.writeln('')
+	}
+
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
 }
 
 // Convert V string interpolation format to C printf format specifier

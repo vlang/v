@@ -212,6 +212,32 @@ fn nested_return(x int) int {
 	}
 }
 
+// ===================== IF-GUARD HELPERS =====================
+
+// Returns the value if positive, none otherwise
+fn maybe_positive(x int) ?int {
+	if x > 0 {
+		return x
+	}
+	return none
+}
+
+// Returns the doubled value if in range, none otherwise
+fn maybe_double(x int) ?int {
+	if x >= 0 && x <= 50 {
+		return x * 2
+	}
+	return none
+}
+
+// Returns sum if both positive, none otherwise
+fn maybe_sum(a int, b int) ?int {
+	if a > 0 && b > 0 {
+		return a + b
+	}
+	return none
+}
+
 // ===================== IF-EXPRESSION HELPERS =====================
 
 fn int_abs(a int) int {
@@ -1677,6 +1703,72 @@ fn main() {
 	interp_v3 := 3
 	s5 := '${interp_v1}-${interp_v2}-${interp_v3}'
 	print_str(s5) // 1-2-3
+
+	// ==================== 35. IF-GUARD EXPRESSIONS ====================
+	print_str('--- 35. If-Guard Expressions ---')
+
+	// 35.1 Basic if-guard with success (positive value)
+	if g1_val := maybe_positive(42) {
+		print_int(g1_val) // 42
+	} else {
+		print_int(0)
+	}
+
+	// 35.2 If-guard with failure (non-positive value)
+	if g2_val := maybe_positive(-5) {
+		print_int(g2_val)
+	} else {
+		print_int(999) // 999 (else branch taken)
+	}
+
+	// 35.3 If-guard with computation in then branch
+	if g3_val := maybe_double(25) {
+		print_int(g3_val + 10) // 50 + 10 = 60
+	} else {
+		print_int(0)
+	}
+
+	// 35.4 If-guard with function call
+	if g4_result := maybe_sum(10, 20) {
+		print_int(g4_result) // 30
+	} else {
+		print_int(0)
+	}
+
+	// 35.5 Nested if with if-guard
+	g5_outer := 5
+	if g5_outer > 0 {
+		if g5_inner := maybe_positive(g5_outer * 10) {
+			print_int(g5_inner) // 50
+		} else {
+			print_int(0)
+		}
+	}
+
+	// 35.6 If-guard in sequence
+	mut g6_sum := 0
+	if g6_a := maybe_positive(10) {
+		g6_sum += g6_a
+	}
+	if g6_b := maybe_positive(20) {
+		g6_sum += g6_b
+	}
+	if g6_c := maybe_positive(-5) {
+		g6_sum += g6_c
+	}
+	print_int(g6_sum) // 10 + 20 + 0 = 30
+
+	// 35.7 If-guard with else-if chain
+	g7_test := 100
+	if g7_val := maybe_positive(-g7_test) {
+		print_int(g7_val)
+	} else {
+		if g7_val2 := maybe_positive(g7_test) {
+			print_int(g7_val2) // 100
+		} else {
+			print_int(0)
+		}
+	}
 
 	print_str('=== All tests completed ===')
 }

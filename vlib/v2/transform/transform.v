@@ -165,6 +165,9 @@ fn (mut t Transformer) expr(node ast.Expr) ast.Expr {
 		ast.IfExpr {
 			return t.if_expr(node)
 		}
+		ast.IfGuardExpr {
+			return t.if_guard_expr(node)
+		}
 		else {
 			return node
 		}
@@ -192,6 +195,22 @@ fn (mut t Transformer) if_expr(node ast.IfExpr) ast.Expr {
 		cond:      t.expr(node.cond)
 		stmts:     new_stmts
 		else_expr: t.expr(node.else_expr)
+	}
+}
+
+fn (mut t Transformer) if_guard_expr(node ast.IfGuardExpr) ast.Expr {
+	// Transform the RHS expressions in the guard's assignment statement
+	mut new_rhs := []ast.Expr{cap: node.stmt.rhs.len}
+	for rhs_expr in node.stmt.rhs {
+		new_rhs << t.expr(rhs_expr)
+	}
+	return ast.IfGuardExpr{
+		stmt: ast.AssignStmt{
+			op:  node.stmt.op
+			lhs: node.stmt.lhs
+			rhs: new_rhs
+			pos: node.stmt.pos
+		}
 	}
 }
 
