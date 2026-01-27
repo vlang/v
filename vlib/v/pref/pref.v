@@ -271,12 +271,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 
 @[if linux]
 fn detect_musl(mut res Preferences) {
-	res.is_glibc = true
+	res.is_glibc = false
 	res.is_musl = false
-	musl := os.execute('ldd --version').contains('musl') or { false }
-	if musl {
+	if os.execute('ldd /bin/ls | grep -qi musl').exit_code == 0  {
 		res.is_musl = true
-		res.is_glibc = false
+	}else{
+		res.is_glibc = true
 	}
 }
 
