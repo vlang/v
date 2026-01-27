@@ -126,6 +126,11 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.elf.add_symbol(func.name, u64(g.curr_offset), true, 1)
 
 	// Prologue
+	// endbr64 - required for CET/IBT (Indirect Branch Tracking)
+	g.emit(0xF3)
+	g.emit(0x0F)
+	g.emit(0x1E)
+	g.emit(0xFA)
 	g.emit(0x55) // push rbp
 	g.emit(0x48)
 	g.emit(0x89)
