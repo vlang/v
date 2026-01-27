@@ -62,46 +62,65 @@ fn main() {
 	} else if os.args.contains('arm64') {
 		arch = .arm64
 	}
+	use_builtin_linker := os.args.contains('builtin-linker')
+
 	if native {
 		if arch == .arm64 {
-			// Generate Mach-O Object
-			println('[*] Generating Mach-O ARM64 Object...')
+			// Generate Mach-O ARM64
+			println('[*] Generating Mach-O ARM64...')
 			mut arm_gen := arm64.Gen.new(mod)
 			arm_gen.gen()
-			arm_gen.write_file('main.o')
+
+			if use_builtin_linker && os.user_os() == 'macos' {
+				// Use built-in linker
+				println('[*] Using built-in linker...')
+				arm_gen.link_executable('out_bin')
+				println('generation + linking took ${time.since(t0)}')
+			} else {
+				arm_gen.write_file('main.o')
+				println('generating main.o took ${time.since(t0)}')
+				// Link with external linker
+				println('[*] Linking with external linker...')
+				t := time.now()
+				if os.user_os() == 'macos' {
+					sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
+					sdk_path := sdk_res.output.trim_space()
+					link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch arm64 -platform_version macos 11.0.0 11.0.0'
+					if os.system(link_cmd) != 0 {
+						eprintln('Link failed')
+						return
+					}
+				}
+				println('linking took ${time.since(t)}')
+			}
 		} else if arch == .x64 {
 			println('[*] Generating ELF AMD64 Object...')
 			mut x64_gen := x64.Gen.new(mod)
 			x64_gen.gen()
 			x64_gen.write_file('main.o')
-		}
-
-		println('generating main.o took ${time.since(t0)}')
-		// Link
-		println('[*] Linking...')
-		t := time.now()
-		if os.user_os() == 'macos' {
-			// macOS Linking (Mach-O)
-			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-			sdk_path := sdk_res.output.trim_space()
-			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
-			// -lSystem links standard libc (printf)
-			link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
-			if os.system(link_cmd) != 0 {
-				eprintln('Link failed')
-				return
+			println('generating main.o took ${time.since(t0)}')
+			// Link
+			println('[*] Linking...')
+			t := time.now()
+			if os.user_os() == 'macos' {
+				// macOS Linking (Mach-O)
+				sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
+				sdk_path := sdk_res.output.trim_space()
+				link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
+				if os.system(link_cmd) != 0 {
+					eprintln('Link failed')
+					return
+				}
+			} else {
+				// Linux Linking (ELF)
+				link_cmd := 'cc main.o -o out_bin -no-pie'
+				if os.system(link_cmd) != 0 {
+					eprintln('Link failed')
+					return
+				}
 			}
-		} else {
-			// Linux Linking (ELF)
-			// Using 'cc' is easier than 'ld' because it handles libc paths and crt objects automatically.
-			// main.o is relocatable, so cc will link it properly.
-			link_cmd := 'cc main.o -o out_bin -no-pie'
-			if os.system(link_cmd) != 0 {
-				eprintln('Link failed')
-				return
-			}
+			println('linking took ${time.since(t)}')
 		}
-		println('linking took ${time.since(t)}')
 	} else if use_ssa_c {
 		// SSA -> C Backend
 		println('[*] Generating SSA C Backend...')
@@ -144,12 +163,14 @@ fn main() {
 	expected_out := ref_res.output.trim_space().replace('\r\n', '\n')
 	// Run Generated Binary
 	println('[*] Running generated binary (with 2s timeout)...')
-	// Prepare command with timeout
-	// On macOS/Linux, use perl as a portable timeout mechanism since 'timeout' isn't always available on macOS
-	mut cmd := "perl -e 'alarm 2; exec @ARGV' ./out_bin"
+	// Use script command to create a pty (fixes output buffering issues with printf)
+	// The -q flag suppresses "Script started" messages, /dev/null discards the typescript file
+	mut cmd := 'script -q /dev/null ./out_bin'
 	if os.user_os() == 'windows' {
-		// No easy one-liner for timeout on Windows cmd without PowerShell, running directly
 		cmd = 'out_bin.exe'
+	} else if os.user_os() != 'macos' {
+		// Linux version of script has different syntax
+		cmd = 'script -q -c ./out_bin /dev/null'
 	}
 	gen_res := os.execute(cmd)
 	// Perl alarm usually kills with SIGALRM (14), exit code might vary (e.g. 142)
@@ -169,7 +190,14 @@ fn main() {
 			println('Warning: Binary exited with code ${gen_res.exit_code}')
 		}
 	}
-	actual_out := gen_res.output.trim_space().replace('\r\n', '\n')
+	// Strip terminal control characters that script command may prepend
+	// This includes: ^D (literal), ctrl-D (0x04), backspace (0x08), carriage return, etc.
+	mut cleaned := gen_res.output.replace('\r\n', '\n').replace('\x04', '').replace('\x08', '')
+	// Remove "^D" literal string that macOS script may add
+	if cleaned.starts_with('^D') {
+		cleaned = cleaned[2..]
+	}
+	actual_out := cleaned.trim_space()
 	// Compare
 	if expected_out == actual_out {
 		println('\n[SUCCESS] Outputs match!')

@@ -122,7 +122,7 @@ fn (mut m Module) compute_dominators() {
 		mut ctx := LTContext{
 			parent:   []int{len: max_id, init: -1}
 			semi:     []int{len: max_id, init: -1}
-			vertex:   []int{len: max_id, init: -1} // we only need size = func.blocks.len + 1 actually
+			vertex:   []int{len: max_id + 1, init: -1} // +1 because n is 1-indexed
 			bucket:   [][]int{len: max_id}
 			dfnum:    []int{len: max_id, init: 0}
 			ancestor: []int{len: max_id, init: -1}

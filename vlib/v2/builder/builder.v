@@ -159,22 +159,6 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		ssa_builder.build(transformed_file)
 		mod.optimize()
 
-		obj_file := 'main.o'
-
-		if arch == .arm64 {
-			mut gen := arm64.Gen.new(mod)
-			gen.gen()
-			gen.write_file(obj_file)
-		} else {
-			mut gen := x64.Gen.new(mod)
-			gen.gen()
-			gen.write_file(obj_file)
-		}
-
-		if b.pref.verbose {
-			println('[*] Wrote ${obj_file}')
-		}
-
 		// Determine output binary name
 		output_binary := if b.pref.output_file != '' {
 			b.pref.output_file
@@ -182,34 +166,62 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			os.file_name(file.name).all_before_last('.v')
 		}
 
-		// Link the object file into an executable
-		if os.user_os() == 'macos' {
-			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-			sdk_path := sdk_res.output.trim_space()
-			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
-			link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
-			link_result := os.execute(link_cmd)
-			if link_result.exit_code != 0 {
-				eprintln('Link failed:')
-				eprintln(link_result.output)
-				exit(1)
+		if arch == .arm64 && os.user_os() == 'macos' {
+			// Use built-in linker for ARM64 macOS
+			mut gen := arm64.Gen.new(mod)
+			gen.gen()
+			gen.link_executable(output_binary)
+
+			if b.pref.verbose {
+				println('[*] Linked ${output_binary} (built-in linker)')
 			}
 		} else {
-			// Linux linking
-			link_result := os.execute('cc ${obj_file} -o ${output_binary} -no-pie')
-			if link_result.exit_code != 0 {
-				eprintln('Link failed:')
-				eprintln(link_result.output)
-				exit(1)
+			// Generate object file and use external linker
+			obj_file := 'main.o'
+
+			if arch == .arm64 {
+				mut gen := arm64.Gen.new(mod)
+				gen.gen()
+				gen.write_file(obj_file)
+			} else {
+				mut gen := x64.Gen.new(mod)
+				gen.gen()
+				gen.write_file(obj_file)
 			}
-		}
 
-		if b.pref.verbose {
-			println('[*] Linked ${output_binary}')
-		}
+			if b.pref.verbose {
+				println('[*] Wrote ${obj_file}')
+			}
 
-		// Clean up object file
-		os.rm(obj_file) or {}
+			// Link the object file into an executable
+			if os.user_os() == 'macos' {
+				sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
+				sdk_path := sdk_res.output.trim_space()
+				arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
+				link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+				link_result := os.execute(link_cmd)
+				if link_result.exit_code != 0 {
+					eprintln('Link failed:')
+					eprintln(link_result.output)
+					exit(1)
+				}
+			} else {
+				// Linux linking
+				link_result := os.execute('cc ${obj_file} -o ${output_binary} -no-pie')
+				if link_result.exit_code != 0 {
+					eprintln('Link failed:')
+					eprintln(link_result.output)
+					exit(1)
+				}
+			}
+
+			if b.pref.verbose {
+				println('[*] Linked ${output_binary}')
+			}
+
+			// Clean up object file
+			os.rm(obj_file) or {}
+		}
 	}
 }
 

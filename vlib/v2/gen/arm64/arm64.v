@@ -46,7 +46,9 @@ pub fn (mut g Gen) gen() {
 		}
 		addr := u64(g.macho.data_data.len)
 		g.macho.add_symbol('_' + gvar.name, addr, true, 3)
-		for _ in 0 .. 8 {
+		// Calculate actual size of the global variable based on its type
+		size := g.type_size(gvar.typ)
+		for _ in 0 .. size {
 			g.macho.data_data << 0
 		}
 	}
@@ -759,6 +761,11 @@ pub fn (mut g Gen) write_file(path string) {
 	g.macho.write(path)
 }
 
+pub fn (mut g Gen) link_executable(output_path string) {
+	mut linker := Linker.new(g.macho)
+	linker.link(output_path, '_main')
+}
+
 fn (mut g Gen) emit_mov_imm(rd int, imm u64) {
 	// Assume imm < 65536; use MOVZ xd, #imm
 	g.emit(0xD2800000 | (u32(imm & 0xFFFF) << 5) | u32(rd))
@@ -818,6 +825,42 @@ mut:
 	start    int
 	end      int
 	has_call bool
+}
+
+// Calculate the size of a type in bytes
+fn (g Gen) type_size(typ_id ssa.TypeID) int {
+	if typ_id == 0 {
+		return 0 // void
+	}
+	typ := g.mod.type_store.types[typ_id]
+	match typ.kind {
+		.void_t { return 0 }
+		.int_t { return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
+		.float_t { return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 } }
+		.ptr_t { return 8 } // 64-bit pointers on arm64
+		.array_t {
+			elem_size := g.type_size(typ.elem_type)
+			return typ.len * elem_size
+		}
+		.struct_t {
+			mut total := 0
+			for field_typ in typ.fields {
+				// Align each field to its natural alignment (simplified: 8 bytes)
+				if total % 8 != 0 {
+					total = (total + 7) & ~7
+				}
+				total += g.type_size(field_typ)
+			}
+			// Align struct size to 8 bytes
+			if total % 8 != 0 {
+				total = (total + 7) & ~7
+			}
+			return if total > 0 { total } else { 8 }
+		}
+		.func_t { return 8 } // function pointer
+		.label_t { return 0 }
+		.metadata_t { return 0 }
+	}
 }
 
 fn (mut g Gen) allocate_registers(func ssa.Function) {
