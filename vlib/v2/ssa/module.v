@@ -40,6 +40,12 @@ pub fn Module.new(name string) &Module {
 }
 
 pub fn (mut m Module) new_function(name string, ret TypeID, params []TypeID) int {
+	// Check if function already exists (avoid duplicates from multiple files)
+	for i, f in m.funcs {
+		if f.name == name {
+			return i
+		}
+	}
 	id := m.funcs.len
 	m.funcs << Function{
 		id:   id

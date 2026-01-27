@@ -37,8 +37,7 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 		filename := wp.get_job() or { break }
 		ast_file := p.parse_file(filename, mut pstate.file_set)
 		// Queue new jobs for imports before pushing result
-		// Skip imports for native backends which don't yet support the full stdlib
-		skip_imports := prefs.skip_imports || prefs.backend in [.x64, .arm64]
+		skip_imports := prefs.skip_imports
 		if !skip_imports {
 			for mod in ast_file.imports {
 				if pstate.already_parsed_module(mod.name) {
@@ -64,8 +63,7 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	for _ in 0 .. runtime.nr_jobs() {
 		worker_pool.add_worker(spawn worker(mut worker_pool, mut pstate, b.pref))
 	}
-	// parse builtin (skip for native backends which don't yet support the full stdlib)
-	skip_builtin := b.pref.skip_builtin || b.pref.backend in [.x64, .arm64]
+	skip_builtin := b.pref.skip_builtin
 	if !skip_builtin {
 		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('builtin')))
 	}
