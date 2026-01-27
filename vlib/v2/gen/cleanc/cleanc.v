@@ -59,6 +59,7 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('')
 
 	g.sb.writeln('typedef struct { char* str; int len; } string;')
+	g.sb.writeln('typedef struct { int start; int end; } Range_;')
 	g.sb.writeln('')
 	// Array type and builtin function
 	g.sb.writeln('typedef struct { void* data; int len; int cap; } Array;')
@@ -289,8 +290,24 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			// TODO: Implement proper field type lookup
 			return 'int'
 		}
+		ast.IndexExpr {
+			// Check if this is a slice (range) operation
+			if node.expr is ast.RangeExpr {
+				// Slice returns same type as the base array
+				return g.infer_type(node.lhs)
+			}
+			// For regular array indexing, get the element type
+			base_type := g.infer_type(node.lhs)
+			if base_type.starts_with('Array_') {
+				return base_type['Array_'.len..]
+			}
+			return 'int'
+		}
 		ast.ModifierExpr {
 			return g.infer_type(node.expr)
+		}
+		ast.RangeExpr {
+			return 'Range_'
 		}
 		else {
 			return 'int'
@@ -480,6 +497,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln('}')
 		}
 		ast.ForStmt {
+			// Check for for-in with range: `for i in 1..10`
+			if node.init is ast.ForInStmt {
+				g.gen_for_in_range(node, node.init)
+				return
+			}
+
 			g.write_indent()
 			if node.init is ast.EmptyStmt && node.cond is ast.EmptyExpr
 				&& node.post is ast.EmptyStmt {
@@ -918,6 +941,11 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string(node.rhs.name)
 		}
 		ast.IndexExpr {
+			// Check if this is a slice operation (arr[start..end])
+			if node.expr is ast.RangeExpr {
+				g.gen_slice_expr(node.lhs, node.expr)
+				return
+			}
 			// Check if this is an array access (Array struct type)
 			lhs_type := g.infer_type(node.lhs)
 			if lhs_type.starts_with('Array_') {
@@ -991,6 +1019,15 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			} else {
 				g.sb.write_string('/* type expr */')
 			}
+		}
+		ast.RangeExpr {
+			// RangeExpr: start..end or start...end
+			// Generate a compound literal for the range struct
+			g.sb.write_string('(Range_){')
+			g.gen_expr(node.start)
+			g.sb.write_string(', ')
+			g.gen_expr(node.end)
+			g.sb.write_string('}')
 		}
 		else {
 			g.sb.write_string('/* expr: ${node.type_name()} */')
@@ -1181,6 +1218,72 @@ fn (mut g Gen) gen_if_guard(node ast.IfExpr, guard ast.IfGuardExpr) {
 	g.indent--
 	g.write_indent()
 	g.sb.writeln('}')
+}
+
+// Generate for-in loop with range: `for i in start..end { ... }`
+fn (mut g Gen) gen_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
+	// Get loop variable name
+	mut var_name := ''
+	if for_in.value is ast.Ident {
+		var_name = for_in.value.name
+	} else if for_in.value is ast.ModifierExpr {
+		if for_in.value.expr is ast.Ident {
+			var_name = for_in.value.expr.name
+		}
+	}
+
+	// Check if expr is a RangeExpr
+	if for_in.expr !is ast.RangeExpr {
+		return
+	}
+	range_expr := for_in.expr as ast.RangeExpr
+
+	// Register loop variable type
+	g.var_types[var_name] = 'int'
+
+	// Generate: for (int i = start; i < end; i++) { ... }
+	g.write_indent()
+	g.sb.write_string('for (int ${var_name} = ')
+	g.gen_expr(range_expr.start)
+	g.sb.write_string('; ${var_name} < ')
+	g.gen_expr(range_expr.end)
+	g.sb.write_string('; ${var_name}++')
+	g.sb.writeln(') {')
+	g.indent++
+	g.gen_stmts(node.stmts)
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+}
+
+// Generate array slice expression: arr[start..end]
+fn (mut g Gen) gen_slice_expr(base ast.Expr, range_expr ast.RangeExpr) {
+	// Get the base array type
+	lhs_type := g.infer_type(base)
+
+	if lhs_type.starts_with('Array_') {
+		// For Array struct types
+		elem_type := lhs_type['Array_'.len..]
+		// Generate: __slice_array(arr, start, end, sizeof(elem_type))
+		// For simplicity, generate inline slice creation
+		g.sb.write_string('({ ')
+		g.sb.write_string('int _start = ')
+		g.gen_expr(range_expr.start)
+		g.sb.write_string('; int _end = ')
+		g.gen_expr(range_expr.end)
+		g.sb.write_string('; int _len = _end - _start; ')
+		g.sb.write_string('Array _slice = __new_array_from_c_array(_len, _len, sizeof(${elem_type}), ')
+		g.sb.write_string('((${elem_type}*)')
+		g.gen_expr(base)
+		g.sb.write_string('.data) + _start); _slice; })')
+	} else {
+		// For C-style arrays, return pointer to start
+		g.sb.write_string('(&(')
+		g.gen_expr(base)
+		g.sb.write_string(')[')
+		g.gen_expr(range_expr.start)
+		g.sb.write_string('])')
+	}
 }
 
 // Convert V string interpolation format to C printf format specifier

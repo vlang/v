@@ -1770,5 +1770,105 @@ fn main() {
 		}
 	}
 
+	// ==================== 36. RANGE EXPRESSIONS ====================
+	print_str('--- 36. Range Expressions ---')
+
+	// 36.1 Basic array slicing with range
+	rng_arr1 := [10, 20, 30, 40, 50]
+	rng_slice1 := rng_arr1[1..4]
+	print_int(rng_slice1[0]) // 20
+	print_int(rng_slice1[1]) // 30
+	print_int(rng_slice1[2]) // 40
+
+	// 36.2 Range from start
+	rng_arr2 := [100, 200, 300, 400]
+	rng_slice2 := rng_arr2[0..2]
+	print_int(rng_slice2[0]) // 100
+	print_int(rng_slice2[1]) // 200
+
+	// 36.3 Range with variable indices
+	rng_start := 1
+	rng_end := 3
+	rng_arr3 := [5, 10, 15, 20, 25]
+	rng_slice3 := rng_arr3[rng_start..rng_end]
+	print_int(rng_slice3[0]) // 10
+	print_int(rng_slice3[1]) // 15
+
+	// 36.4 Consecutive slicing
+	rng_arr4 := [1, 2, 3, 4, 5, 6, 7, 8]
+	rng_first_half := rng_arr4[0..4]
+	rng_second_half := rng_arr4[4..8]
+	print_int(rng_first_half[0]) // 1
+	print_int(rng_first_half[3]) // 4
+	print_int(rng_second_half[0]) // 5
+	print_int(rng_second_half[3]) // 8
+
+	// 36.5 Single element range
+	rng_arr5 := [42, 84, 126]
+	rng_single := rng_arr5[1..2]
+	print_int(rng_single[0]) // 84
+
+	// ==================== 37. FOR-IN RANGE ====================
+	print_str('--- 37. For-In Range ---')
+
+	// 37.1 Basic for-in range
+	mut forin_sum1 := 0
+	for i in 0 .. 5 {
+		forin_sum1 += i
+	}
+	print_int(forin_sum1) // 0+1+2+3+4 = 10
+
+	// 37.2 For-in range with non-zero start
+	mut forin_sum2 := 0
+	for i in 5 .. 10 {
+		forin_sum2 += i
+	}
+	print_int(forin_sum2) // 5+6+7+8+9 = 35
+
+	// 37.3 For-in range with expressions
+	forin_start := 2
+	forin_end := 6
+	mut forin_sum3 := 0
+	for i in forin_start .. forin_end {
+		forin_sum3 += i
+	}
+	print_int(forin_sum3) // 2+3+4+5 = 14
+
+	// 37.4 Nested for-in ranges
+	mut forin_count := 0
+	for i in 0 .. 3 {
+		for j in 0 .. 4 {
+			forin_count += i + j + 1
+		}
+	}
+	print_int(forin_count) // sum of (i+j+1) for i in 0..3, j in 0..4 = 42
+
+	// 37.5 For-in range with computation in body
+	mut forin_product := 1
+	for i in 1 .. 6 {
+		forin_product *= i
+	}
+	print_int(forin_product) // 1*2*3*4*5 = 120
+
+	// 37.6 For-in range with break
+	mut forin_sum4 := 0
+	for i in 0 .. 100 {
+		if i >= 5 {
+			break
+		}
+		forin_sum4 += i
+	}
+	print_int(forin_sum4) // 0+1+2+3+4 = 10
+
+	// 37.7 For-in range with continue
+	mut forin_sum5 := 0
+	for i in 0 .. 10 {
+		if i % 2 == 0 {
+			continue
+		}
+		forin_sum5 += i
+	}
+	print_int(forin_sum5) // 1+3+5+7+9 = 25
+
 	print_str('=== All tests completed ===')
 }

@@ -211,6 +211,87 @@ fn (mut b Builder) stmts(stmts []ast.Stmt) {
 	}
 }
 
+// stmt_for_in_range handles `for i in start..end { ... }`
+fn (mut b Builder) stmt_for_in_range(node ast.ForStmt, for_in ast.ForInStmt) {
+	i64_t := b.mod.type_store.get_int(64)
+
+	// Get loop variable name
+	mut var_name := ''
+	if for_in.value is ast.Ident {
+		var_name = for_in.value.name
+	} else if for_in.value is ast.ModifierExpr {
+		// Handle `mut i`
+		if for_in.value.expr is ast.Ident {
+			var_name = for_in.value.expr.name
+		}
+	}
+
+	// Get range bounds
+	if for_in.expr !is ast.RangeExpr {
+		// Not a range expression, fall back to regular handling
+		return
+	}
+	range_expr := for_in.expr as ast.RangeExpr
+	start_val := b.expr(range_expr.start)
+	end_val := b.expr(range_expr.end)
+
+	// Allocate loop variable on stack
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
+	var_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	b.vars[var_name] = var_ptr
+
+	// Initialize loop variable to start
+	b.mod.add_instr(.store, b.cur_block, 0, [start_val, var_ptr])
+
+	// Create control flow blocks
+	// We use a post block so that continue jumps to the increment, not the condition
+	head_blk := b.mod.add_block(b.cur_func, 'for_in.head')
+	body_blk := b.mod.add_block(b.cur_func, 'for_in.body')
+	post_blk := b.mod.add_block(b.cur_func, 'for_in.post')
+	exit_blk := b.mod.add_block(b.cur_func, 'for_in.exit')
+
+	// For continue, we want to jump to post (which increments then goes to head)
+	// For break, we want to jump to exit
+	b.loop_stack << LoopInfo{
+		head: post_blk // continue jumps here (to increment)
+		exit: exit_blk // break jumps here
+	}
+
+	// Jump to head
+	head_val := b.mod.blocks[head_blk].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Head: check i < end
+	b.cur_block = head_blk
+	cur_val := b.mod.add_instr(.load, b.cur_block, i64_t, [var_ptr])
+	cond := b.mod.add_instr(.lt, b.cur_block, i64_t, [cur_val, end_val])
+	body_val := b.mod.blocks[body_blk].val_id
+	exit_val := b.mod.blocks[exit_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cond, body_val, exit_val])
+
+	// Body
+	b.cur_block = body_blk
+	b.stmts(node.stmts)
+
+	// Jump to post at end of body (if not already terminated by break/continue/return)
+	if !b.is_block_terminated(b.cur_block) {
+		post_val := b.mod.blocks[post_blk].val_id
+		b.mod.add_instr(.jmp, b.cur_block, 0, [post_val])
+	}
+
+	// Post: increment i and jump back to head
+	b.cur_block = post_blk
+	cur_val2 := b.mod.add_instr(.load, b.cur_block, i64_t, [var_ptr])
+	one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	new_val := b.mod.add_instr(.add, b.cur_block, i64_t, [cur_val2, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [new_val, var_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Exit
+	b.cur_block = exit_blk
+	b.loop_stack.pop()
+}
+
 fn (mut b Builder) stmt(node ast.Stmt) {
 	// println('stmt ${node}')
 	match node {
@@ -307,6 +388,12 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			b.stmts(node.stmts)
 		}
 		ast.ForStmt {
+			// Check if this is a for-in loop with range: `for i in 1..10`
+			if node.init is ast.ForInStmt {
+				b.stmt_for_in_range(node, node.init)
+				return
+			}
+
 			// 1. Init
 			if node.init !is ast.EmptyStmt {
 				b.stmt(node.init)
@@ -478,6 +565,9 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 		ast.IfGuardExpr {
 			return b.expr_if_guard(node)
 		}
+		ast.RangeExpr {
+			return b.expr_range(node)
+		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')
 			// Return constant 0 (i32) to prevent cascading void errors
@@ -580,10 +670,99 @@ fn (mut b Builder) expr_selector(node ast.SelectorExpr) ValueID {
 }
 
 fn (mut b Builder) expr_index(node ast.IndexExpr) ValueID {
+	// Check if this is a range-based slice (arr[start..end])
+	if node.expr is ast.RangeExpr {
+		return b.expr_slice(node.lhs, node.expr)
+	}
 	// Load value from index
 	ptr := b.addr(node)
 	i32_t := b.mod.type_store.get_int(64) // Assume i32
 	return b.mod.add_instr(.load, b.cur_block, i32_t, [ptr])
+}
+
+fn (mut b Builder) expr_slice(base ast.Expr, range_expr ast.RangeExpr) ValueID {
+	// Array slicing: arr[start..end]
+	// Returns a new heap-allocated array containing elements from start to end-1
+	i64_t := b.mod.type_store.get_int(64)
+	elem_ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Get base array pointer
+	base_ptr := b.addr(base)
+
+	// Auto-dereference if it's a pointer-to-pointer
+	base_val := b.mod.values[base_ptr]
+	ptr_typ := b.mod.type_store.types[base_val.typ]
+	elem_typ_id := ptr_typ.elem_type
+	elem_typ := b.mod.type_store.types[elem_typ_id]
+
+	mut actual_base := base_ptr
+	if elem_typ.kind == .ptr_t {
+		actual_base = b.mod.add_instr(.load, b.cur_block, elem_typ_id, [base_ptr])
+	}
+
+	// Evaluate start and end indices
+	start_val := b.expr(range_expr.start)
+	end_val := b.expr(range_expr.end)
+
+	// Calculate slice length: end - start
+	slice_len := b.mod.add_instr(.sub, b.cur_block, i64_t, [end_val, start_val])
+
+	// Calculate allocation size: len * 8 (sizeof int64)
+	elem_size := b.mod.add_value_node(.constant, i64_t, '8', 0)
+	alloc_size := b.mod.add_instr(.mul, b.cur_block, i64_t, [slice_len, elem_size])
+
+	// Call malloc to allocate heap memory
+	malloc_fn := b.mod.add_value_node(.unknown, 0, 'malloc', 0)
+	slice_ptr := b.mod.add_instr(.call, b.cur_block, elem_ptr_t, [malloc_fn, alloc_size])
+
+	// Copy elements in a loop: for i = 0; i < len; i++ { slice[i] = base[start + i] }
+	head_blk := b.mod.add_block(b.cur_func, 'slice.head')
+	body_blk := b.mod.add_block(b.cur_func, 'slice.body')
+	exit_blk := b.mod.add_block(b.cur_func, 'slice.exit')
+
+	// Allocate loop counter on stack
+	counter_ptr := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(i64_t), [])
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, counter_ptr])
+
+	// Jump to loop head
+	head_val := b.mod.blocks[head_blk].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Loop head: check counter < slice_len
+	b.cur_block = head_blk
+	counter := b.mod.add_instr(.load, b.cur_block, i64_t, [counter_ptr])
+	cond := b.mod.add_instr(.lt, b.cur_block, i64_t, [counter, slice_len])
+	body_val := b.mod.blocks[body_blk].val_id
+	exit_val := b.mod.blocks[exit_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cond, body_val, exit_val])
+
+	// Loop body: copy one element
+	b.cur_block = body_blk
+	counter2 := b.mod.add_instr(.load, b.cur_block, i64_t, [counter_ptr])
+
+	// Source: base[start + counter]
+	src_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [start_val, counter2])
+	src_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [actual_base, src_idx])
+	elem_val := b.mod.add_instr(.load, b.cur_block, i64_t, [src_ptr])
+
+	// Dest: slice[counter]
+	dst_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [slice_ptr, counter2])
+	b.mod.add_instr(.store, b.cur_block, 0, [elem_val, dst_ptr])
+
+	// Increment counter
+	one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	counter3 := b.mod.add_instr(.load, b.cur_block, i64_t, [counter_ptr])
+	new_counter := b.mod.add_instr(.add, b.cur_block, i64_t, [counter3, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [new_counter, counter_ptr])
+
+	// Jump back to loop head
+	b.mod.add_instr(.jmp, b.cur_block, 0, [head_val])
+
+	// Continue at exit block
+	b.cur_block = exit_blk
+
+	return slice_ptr
 }
 
 fn (mut b Builder) expr_infix(node ast.InfixExpr) ValueID {
@@ -1173,6 +1352,53 @@ fn (mut b Builder) expr_prefix(node ast.PrefixExpr) ValueID {
 			return 0
 		}
 	}
+}
+
+fn (mut b Builder) expr_range(node ast.RangeExpr) ValueID {
+	// RangeExpr represents a range like 0..10 or 0...10
+	// We create a small struct with (start, end) values
+	i64_t := b.mod.type_store.get_int(64)
+
+	// Evaluate start and end expressions
+	start_val := b.expr(node.start)
+	end_val := b.expr(node.end)
+
+	// Create a range type (struct with 2 int64 fields)
+	// Check if we already have a range type registered
+	mut range_t := TypeID(0)
+	for i, t in b.mod.type_store.types {
+		if t.kind == .struct_t && t.field_names.len == 2 && t.field_names[0] == '_range_start' {
+			range_t = i
+			break
+		}
+	}
+	if range_t == 0 {
+		// Register new range type
+		t := Type{
+			kind:        .struct_t
+			fields:      [i64_t, i64_t]
+			field_names: ['_range_start', '_range_end']
+			width:       0
+		}
+		range_t = b.mod.type_store.register(t)
+	}
+
+	ptr_t := b.mod.type_store.get_ptr(range_t)
+	range_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+
+	// Store start value at field 0
+	idx0 := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	start_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(i64_t),
+		[range_ptr, idx0])
+	b.mod.add_instr(.store, b.cur_block, 0, [start_val, start_ptr])
+
+	// Store end value at field 1
+	idx1 := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	end_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(i64_t),
+		[range_ptr, idx1])
+	b.mod.add_instr(.store, b.cur_block, 0, [end_val, end_ptr])
+
+	return range_ptr
 }
 
 fn (mut b Builder) expr_array_init(node ast.ArrayInitExpr) ValueID {
