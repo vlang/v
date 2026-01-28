@@ -4,6 +4,7 @@
 module main
 
 import os
+import v2.ast
 import v2.parser
 import v2.token
 import v2.pref
@@ -32,24 +33,66 @@ fn main() {
 	mut mod := ssa.Module.new('main')
 	mut builder := ssa.Builder.new(mod)
 
-	// Get the directory where this script is located
-	exe_dir := os.dir(os.executable())
-
-	// Parse and build builtin files first (local stubs for now)
-	// Full builtin support requires type checking in the SSA builder
-	for builtin_name in ['string', 'array'] {
-		builtin_file := os.join_path(exe_dir, 'builtin', '${builtin_name}.v')
-		if os.exists(builtin_file) {
-			println('[*] Parsing builtin/${builtin_name}.v...')
+	// Parse builtin files from vlib/builtin and dependent modules
+	skip_builtin := os.args.contains('--skip-builtin')
+	vroot := os.dir(@VEXE)
+	mut all_files := []ast.File{}
+	if skip_builtin {
+		println('[*] Skipping builtin files')
+	} else {
+		// Parse builtin
+		builtin_dir := os.join_path(vroot, 'vlib', 'builtin')
+		builtin_files := get_v_files_from_dir(builtin_dir)
+		println('[*] Parsing ${builtin_files.len} builtin files...')
+		for builtin_file in builtin_files {
 			parsed := p.parse_file(builtin_file, mut file_set)
 			if parsed.stmts.len > 0 {
-				println('    Found ${parsed.stmts.len} statements in builtin/${builtin_name}.v')
-				builder.build(transformer.transform(parsed))
+				all_files << transformer.transform(parsed)
+			}
+		}
+		// Parse strconv (used by builtin for string formatting)
+		strconv_dir := os.join_path(vroot, 'vlib', 'strconv')
+		strconv_files := get_v_files_from_dir(strconv_dir)
+		println('[*] Parsing ${strconv_files.len} strconv files...')
+		for strconv_file in strconv_files {
+			parsed := p.parse_file(strconv_file, mut file_set)
+			if parsed.stmts.len > 0 {
+				all_files << transformer.transform(parsed)
+			}
+		}
+		// Parse strings (used by builtin for string building)
+		strings_dir := os.join_path(vroot, 'vlib', 'strings')
+		strings_files := get_v_files_from_dir(strings_dir)
+		println('[*] Parsing ${strings_files.len} strings files...')
+		for strings_file in strings_files {
+			parsed := p.parse_file(strings_file, mut file_set)
+			if parsed.stmts.len > 0 {
+				all_files << transformer.transform(parsed)
+			}
+		}
+		// Parse hash (used by maps for wyhash)
+		hash_dir := os.join_path(vroot, 'vlib', 'hash')
+		hash_files := get_v_files_from_dir(hash_dir)
+		println('[*] Parsing ${hash_files.len} hash files...')
+		for hash_file in hash_files {
+			parsed := p.parse_file(hash_file, mut file_set)
+			if parsed.stmts.len > 0 {
+				all_files << transformer.transform(parsed)
+			}
+		}
+		// Parse math.bits (used by strconv for bit operations)
+		bits_dir := os.join_path(vroot, 'vlib', 'math', 'bits')
+		bits_files := get_v_files_from_dir(bits_dir)
+		println('[*] Parsing ${bits_files.len} math.bits files...')
+		for bits_file in bits_files {
+			parsed := p.parse_file(bits_file, mut file_set)
+			if parsed.stmts.len > 0 {
+				all_files << transformer.transform(parsed)
 			}
 		}
 	}
 
-	//  Parse File
+	// Parse File
 	input_file := 'test.v'
 	if !os.exists(input_file) {
 		eprintln('Error: ${input_file} not found')
@@ -63,9 +106,10 @@ fn main() {
 	// Transform AST (lower complex constructs like ArrayInitExpr)
 	println('[*] Transforming AST...')
 	file := transformer.transform(parsed_file)
-	//  Build SSA from AST
+	all_files << file
+	//  Build SSA from all files with proper multi-file ordering
 	println('[*] Building SSA...')
-	builder.build(file)
+	builder.build_all(all_files)
 	// Optimize
 	println('[*] Optimizing SSA...')
 	mod.optimize()
@@ -81,7 +125,7 @@ fn main() {
 	} else if os.args.contains('arm64') {
 		arch = .arm64
 	}
-	use_builtin_linker := os.args.contains('builtin-linker')
+	use_external_linker := os.args.contains('external-linker')
 
 	if native {
 		if arch == .arm64 {
@@ -90,9 +134,11 @@ fn main() {
 			mut arm_gen := arm64.Gen.new(mod)
 			arm_gen.gen()
 
-			if use_builtin_linker && os.user_os() == 'macos' {
+			// Use built-in linker by default on macOS (required for force_external_syms fix)
+			// Use --external-linker flag to use the system linker instead
+			if os.user_os() == 'macos' && !use_external_linker {
 				// Use built-in linker
-				println('[*] Using built-in linker...')
+				println('[*] Linking...')
 				arm_gen.link_executable('out_bin')
 				println('generation + linking took ${time.since(t0)}')
 			} else {
@@ -242,4 +288,40 @@ fn main() {
 			}
 		}
 	}
+}
+
+fn get_v_files_from_dir(dir string) []string {
+	mod_files := os.ls(dir) or { panic('error getting ls from ${dir}') }
+	mut v_files := []string{}
+	for file in mod_files {
+		// Include .v files (including .c.v), exclude .js.v and test files
+		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
+			continue
+		}
+		// skip platform-specific files
+		if file.contains('.arm64.') || file.contains('.arm32.') || file.contains('.amd64.') {
+			continue
+		}
+		// skip OS-specific files for other platforms
+		// Note: _nix files are for Unix-like systems including macOS and Linux
+		$if macos {
+			if file.contains('_windows.') || file.contains('_linux.') {
+				continue
+			}
+		} $else $if linux {
+			if file.contains('_windows.') || file.contains('_macos.') {
+				continue
+			}
+		} $else $if windows {
+			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.') {
+				continue
+			}
+		}
+		// skip mutually exclusive conditional compilation files
+		if file.contains('_d_') {
+			continue
+		}
+		v_files << os.join_path(dir, file)
+	}
+	return v_files
 }

@@ -14,7 +14,7 @@ pub enum OpCode {
 	switch_
 	unreachable
 
-	// Binary
+	// Binary (integer)
 	add
 	sub
 	mul
@@ -22,6 +22,13 @@ pub enum OpCode {
 	udiv
 	srem
 	urem
+
+	// Binary (float)
+	fadd
+	fsub
+	fmul
+	fdiv
+	frem
 
 	// Bitwise
 	shl
@@ -61,6 +68,7 @@ pub enum OpCode {
 	// Other
 	phi
 	call
+	call_indirect // Indirect call through function pointer
 	select
 	assign             // copy for phi elimination
 	inline_string_init // Create string struct by value: (string){str, len, is_lit}

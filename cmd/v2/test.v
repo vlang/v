@@ -2270,5 +2270,177 @@ fn main() {
 	}
 	print_int(unsafe_sum) // 40
 
+	// ==================== 47. INTERFACE VTABLE ====================
+	print_str('--- 47. Interface Vtable ---')
+
+	// 47.1 Basic interface assignment and method call
+	vtable_pt1 := Point{
+		x: 7
+		y: 3
+	}
+	d1 := Drawable(vtable_pt1)
+	print_int(d1.draw()) // 7*1000 + 3 = 7003
+
+	// 47.2 Interface with different values
+	vtable_pt2 := Point{
+		x: 15
+		y: 25
+	}
+	d2 := Drawable(vtable_pt2)
+	print_int(d2.draw()) // 15*1000 + 25 = 15025
+
+	// 47.3 Multiple interface calls
+	vtable_pt3 := Point{
+		x: 1
+		y: 1
+	}
+	d3 := Drawable(vtable_pt3)
+	print_int(d3.draw() + d3.draw()) // 1001 + 1001 = 2002
+
+	// 47.4 Shape interface with multiple methods
+	shape_rect := Rectangle{
+		width:  10
+		height: 5
+		origin: Point{
+			x: 0
+			y: 0
+		}
+	}
+	shape1 := Shape(shape_rect)
+	print_int(shape1.area()) // 10 * 5 = 50
+	print_int(shape1.perimeter()) // 2 * (10 + 5) = 30
+
+	// 47.5 Sum of interface method results
+	vtable_pt4 := Point{
+		x: 2
+		y: 3
+	}
+	d4 := Drawable(vtable_pt4)
+	vtable_pt5 := Point{
+		x: 4
+		y: 5
+	}
+	d5 := Drawable(vtable_pt5)
+	print_int(d4.draw() + d5.draw()) // 2003 + 4005 = 6008
+
+	// ==================== 48. STRUCT FIELD OPERATIONS ====================
+	print_str('--- 48. Struct Field Operations ---')
+
+	// 48.1 Basic field assignment with arithmetic
+	mut sf1 := Point{
+		x: 10
+		y: 20
+	}
+	sf1.x = sf1.x + 5
+	sf1.y = sf1.y - 3
+	print_int(sf1.x) // 15
+	print_int(sf1.y) // 17
+
+	// 48.2 Field multiplication and division
+	mut sf2 := Point{
+		x: 6
+		y: 100
+	}
+	sf2.x = sf2.x * 7
+	sf2.y = sf2.y / 4
+	print_int(sf2.x) // 42
+	print_int(sf2.y) // 25
+
+	// 48.3 Compound assignment on fields
+	mut sf3 := Point{
+		x: 50
+		y: 30
+	}
+	sf3.x += 25
+	sf3.y -= 10
+	print_int(sf3.x) // 75
+	print_int(sf3.y) // 20
+
+	// 48.4 Compound multiply/divide on fields
+	mut sf4 := Point{
+		x: 8
+		y: 64
+	}
+	sf4.x *= 5
+	sf4.y /= 8
+	print_int(sf4.x) // 40
+	print_int(sf4.y) // 8
+
+	// 48.5 Field used in expression with other field
+	mut sf5 := Point{
+		x: 3
+		y: 4
+	}
+	sf5.x = sf5.x + sf5.y
+	sf5.y = sf5.x * sf5.y
+	print_int(sf5.x) // 7 (3+4)
+	print_int(sf5.y) // 28 (7*4)
+
+	// 48.6 Chained field operations
+	mut sf6 := Point{
+		x: 2
+		y: 3
+	}
+	sf6.x = sf6.x * 2
+	sf6.x = sf6.x + 1
+	sf6.x = sf6.x * 3
+	sf6.y = sf6.y + sf6.x
+	print_int(sf6.x) // 15 ((2*2+1)*3)
+	print_int(sf6.y) // 18 (3+15)
+
+	// 48.7 Field modulo operation
+	mut sf7 := Point{
+		x: 17
+		y: 23
+	}
+	sf7.x = sf7.x % 5
+	sf7.y = sf7.y % 7
+	print_int(sf7.x) // 2
+	print_int(sf7.y) // 2
+
+	// 48.8 Field bitwise operations
+	mut sf8 := Point{
+		x: 0b1100
+		y: 0b1010
+	}
+	sf8.x = sf8.x & sf8.y
+	sf8.y = sf8.x | 0b0101
+	print_int(sf8.x) // 8 (0b1000)
+	print_int(sf8.y) // 13 (0b1101)
+
+	// 48.9 Field with function call result
+	mut sf9 := Point{
+		x: 5
+		y: 10
+	}
+	sf9.x = add(sf9.x, sf9.y)
+	sf9.y = mul(sf9.x, 2)
+	print_int(sf9.x) // 15
+	print_int(sf9.y) // 30
+
+	// 48.10 Nested struct field modification
+	mut rect_mod := Rectangle{
+		width:  10
+		height: 20
+		origin: Point{
+			x: 0
+			y: 0
+		}
+	}
+	rect_mod.width = rect_mod.width * 2
+	rect_mod.height += 5
+	rect_mod.origin.x = 100
+	rect_mod.origin.y = rect_mod.origin.x / 2
+	print_int(rect_mod.width) // 20
+	print_int(rect_mod.height) // 25
+	print_int(rect_mod.origin.x) // 100
+	print_int(rect_mod.origin.y) // 50
+
+	// ==================== 49. PRINTLN ====================
+	print_str('--- 49. Println ---')
+
+	// 49.1 Test println
+	println('hello world')
+
 	print_str('=== All tests completed ===')
 }

@@ -50,6 +50,13 @@ const bind_opcode_do_bind = 0x90
 const bind_type_pointer = 1
 const bind_symbol_flags_weak_import = 0x01
 
+// Libc symbols that should ALWAYS resolve to the external system library,
+// never to local V wrappers. This prevents infinite recursion where
+// V's malloc() wrapper calls C.malloc() which would otherwise resolve
+// back to the V wrapper.
+const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy',
+	'_memmove', '_memset', '_memcmp']
+
 pub struct Linker {
 	macho &MachOObject
 mut:
@@ -99,12 +106,15 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	mut t := time.now()
 	mut t_total := time.now()
 
-	// First pass: collect all defined symbols
+	// First pass: collect all defined symbols (except force_external_syms)
 	mut defined_syms := map[string]bool{}
 	for sym in l.macho.symbols {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
-			defined_syms[sym.name] = true
+			// Don't track force_external symbols as defined - they should come from libc
+			if sym.name !in force_external_syms {
+				defined_syms[sym.name] = true
+			}
 		}
 	}
 
@@ -116,6 +126,15 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 				l.extern_syms << sym.name
 				l.sym_to_got[sym.name] = l.extern_syms.len - 1
 			}
+		}
+	}
+
+	// Add force_external symbols that are referenced (either as undefined OR defined locally)
+	// These need stubs so that internal calls go to libc, not to local V wrappers
+	for sym in l.macho.symbols {
+		if sym.name in force_external_syms && sym.name !in l.extern_syms {
+			l.extern_syms << sym.name
+			l.sym_to_got[sym.name] = l.extern_syms.len - 1
 		}
 	}
 
@@ -777,26 +796,34 @@ fn (mut l Linker) write_text_with_relocations() {
 	// Map symbol names to their defined addresses (for resolving undefined references)
 	mut sym_name_to_addr := map[string]u64{}
 
-	// First pass: collect all defined symbol addresses
+	// First pass: collect all defined symbol addresses (except force_external_syms)
 	for i, sym in l.macho.symbols {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
+			// Skip force_external symbols - they should always resolve to libc
+			is_force_external := sym.name in force_external_syms
 			if sym.sect == 1 {
 				// Text section symbol (code)
 				addr := code_vmaddr + sym.value
 				sym_addrs[i] = addr
-				sym_name_to_addr[sym.name] = addr
+				if !is_force_external {
+					sym_name_to_addr[sym.name] = addr
+				}
 			} else if sym.sect == 2 {
 				// Cstring section symbol
 				addr := code_vmaddr + sym.value
 				sym_addrs[i] = addr
-				sym_name_to_addr[sym.name] = addr
+				if !is_force_external {
+					sym_name_to_addr[sym.name] = addr
+				}
 			} else if sym.sect == 3 {
 				// Data section symbol
 				// Subtract data base address to get offset within data_data array
 				addr := l.data_vmaddr + (sym.value - data_base_addr)
 				sym_addrs[i] = addr
-				sym_name_to_addr[sym.name] = addr
+				if !is_force_external {
+					sym_name_to_addr[sym.name] = addr
+				}
 			}
 		}
 	}
@@ -817,7 +844,16 @@ fn (mut l Linker) write_text_with_relocations() {
 
 	// Apply relocations
 	for r in l.macho.relocs {
-		sym_addr := sym_addrs[r.sym_idx]
+		// Check if this relocation references a force_external symbol
+		// If so, redirect it to use the stub instead of the local definition
+		sym_name := l.macho.symbols[r.sym_idx].name
+		mut sym_addr := sym_addrs[r.sym_idx]
+		if sym_name in force_external_syms {
+			// Use stub address for force_external symbols
+			if got_idx := l.sym_to_got[sym_name] {
+				sym_addr = stubs_vmaddr + u64(got_idx * 12)
+			}
+		}
 		pc := code_vmaddr + u64(r.addr)
 
 		match r.type_ {

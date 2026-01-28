@@ -235,6 +235,98 @@ fn (mut g Gen) gen_instr(val_id int) {
 	instr := g.mod.instrs[g.mod.values[val_id].index]
 
 	match instr.op {
+		.fadd, .fsub, .fmul, .fdiv, .frem {
+			// Float operations using scalar SIMD instructions (d0-d7)
+			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+
+			// For now, load operands as float constants or from memory
+			// Load LHS to d0
+			g.load_float_operand(instr.operands[0], 0) // d0
+			// Load RHS to d1
+			g.load_float_operand(instr.operands[1], 1) // d1
+
+			// Perform float operation: result in d0
+			match instr.op {
+				.fadd {
+					// FADD d0, d0, d1 -> 0x1E612800
+					g.emit(0x1E612800)
+				}
+				.fsub {
+					// FSUB d0, d0, d1 -> 0x1E613800
+					g.emit(0x1E613800)
+				}
+				.fmul {
+					// FMUL d0, d0, d1 -> 0x1E610800
+					g.emit(0x1E610800)
+				}
+				.fdiv {
+					// FDIV d0, d0, d1 -> 0x1E611800
+					g.emit(0x1E611800)
+				}
+				.frem {
+					// No single instruction for frem on ARM64
+					// Use integer modulo on the result (approximate for now)
+					// FDIV d2, d0, d1 -> 0x1E611802 (result in d2)
+					g.emit(0x1E611802)
+					// FRINTZ d2, d2 (truncate to integer) -> 0x1E65C042
+					g.emit(0x1E65C042)
+					// FNMSUB d0, d2, d1, d0 (d0 = d0 - d2*d1) -> 0x1F618000
+					g.emit(0x1F618000)
+				}
+				else {}
+			}
+
+			// Convert d0 result back to integer register for storage
+			// Store the float bits in the result (for later int() conversion)
+			// FMOV Xd, Dn (copy bit pattern) -> 0x9E660000 | (Dn << 5) | Xd
+			g.emit(0x9E660000 | u32(dest_reg))
+
+			if val_id !in g.reg_map {
+				g.store_reg_to_val(dest_reg, val_id)
+			}
+		}
+		.fptosi {
+			// Float to signed integer conversion
+			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+
+			// Load float operand to d0
+			g.load_float_operand(instr.operands[0], 0)
+
+			// FCVTZS Xd, Dn (convert to signed int, truncate toward zero)
+			// Encoding: 0x9E780000 | (Dn << 5) | Xd
+			g.emit(0x9E780000 | u32(dest_reg))
+
+			if val_id !in g.reg_map {
+				g.store_reg_to_val(dest_reg, val_id)
+			}
+		}
+		.sitofp {
+			// Signed integer to float conversion
+			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+
+			// Load integer operand to x8
+			src_reg := g.get_operand_reg(instr.operands[0], 8)
+
+			// SCVTF Dd, Xn (convert signed int to double)
+			// Encoding: 0x9E620000 | (Xn << 5) | Dd
+			g.emit(0x9E620000 | (u32(src_reg) << 5))
+
+			// FMOV Xd, D0 (copy back bit pattern to integer reg for storage)
+			g.emit(0x9E660000 | u32(dest_reg))
+
+			if val_id !in g.reg_map {
+				g.store_reg_to_val(dest_reg, val_id)
+			}
+		}
+		.fptoui, .uitofp {
+			// For now, handle same as signed versions
+			// TODO: Add proper unsigned conversion support
+			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+			g.load_val_to_reg(dest_reg, instr.operands[0])
+			if val_id !in g.reg_map {
+				g.store_reg_to_val(dest_reg, val_id)
+			}
+		}
 		.add, .sub, .mul, .sdiv, .srem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq, .ne, .lt, .gt,
 		.le, .ge {
 			// Optimization: Use actual registers if allocated, avoid shuffling to x8/x9
@@ -397,82 +489,107 @@ fn (mut g Gen) gen_instr(val_id int) {
 			fn_val := g.mod.values[instr.operands[0]]
 			fn_name := fn_val.name
 
-			// Check if this is a variadic function (like sprintf)
-			// On ARM64 macOS, variadic args must be passed on the stack
-			is_variadic := fn_name in ['sprintf', 'printf', 'snprintf', 'fprintf', 'sscanf']
-			num_fixed_args := if fn_name == 'sprintf' {
-				2 // buffer, format
-			} else if fn_name == 'printf' {
-				1 // format
-			} else if fn_name in ['snprintf', 'fprintf'] {
-				3 // buffer/file, size, format
-			} else if fn_name == 'sscanf' {
-				2 // string, format
-			} else {
-				8 // default: all in registers
-			}
-
-			num_args := instr.operands.len - 1
-
-			if is_variadic && num_args > num_fixed_args {
-				// Variadic call: push variadic args to stack, fixed args to registers
-				num_variadic := num_args - num_fixed_args
-
-				// Allocate stack space for variadic args (8 bytes each, 16-byte aligned)
-				stack_space := ((num_variadic * 8) + 15) & ~0xF
-				if stack_space > 0 {
-					g.emit_sub_sp(stack_space)
+			// Skip calls with empty function names (shouldn't happen, but safety check)
+			if fn_name != '' {
+				// Check if this is a variadic function (like sprintf)
+				// On ARM64 macOS, variadic args must be passed on the stack
+				is_variadic := fn_name in ['sprintf', 'printf', 'snprintf', 'fprintf', 'sscanf']
+				num_fixed_args := if fn_name == 'sprintf' {
+					2 // buffer, format
+				} else if fn_name == 'printf' {
+					1 // format
+				} else if fn_name in ['snprintf', 'fprintf'] {
+					3 // buffer/file, size, format
+				} else if fn_name == 'sscanf' {
+					2 // string, format
+				} else {
+					8 // default: all in registers
 				}
 
-				// Store variadic arguments to stack (in order)
-				for i := 0; i < num_variadic; i++ {
-					arg_idx := num_fixed_args + 1 + i // +1 because operands[0] is the function
-					g.load_val_to_reg(8, instr.operands[arg_idx])
-					// STR x8, [sp, #offset]
-					offset := i * 8
-					if offset == 0 {
-						g.emit(0xF9000000 | (31 << 5) | 8) // STR x8, [sp]
-					} else {
-						imm12 := u32(offset / 8)
-						g.emit(0xF9000000 | (imm12 << 10) | (31 << 5) | 8) // STR x8, [sp, #offset]
+				num_args := instr.operands.len - 1
+
+				if is_variadic && num_args > num_fixed_args {
+					// Variadic call: push variadic args to stack, fixed args to registers
+					num_variadic := num_args - num_fixed_args
+
+					// Allocate stack space for variadic args (8 bytes each, 16-byte aligned)
+					stack_space := ((num_variadic * 8) + 15) & ~0xF
+					if stack_space > 0 {
+						g.emit_sub_sp(stack_space)
 					}
-				}
 
-				// Load fixed arguments to registers (in reverse order to avoid clobbering)
-				for i := num_fixed_args; i >= 1; i-- {
-					g.load_val_to_reg(i - 1, instr.operands[i])
-				}
-
-				// Call function
-				sym_idx := g.macho.add_undefined('_' + fn_name)
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-					true)
-				g.emit(0x94000000)
-
-				// Restore stack
-				if stack_space > 0 {
-					// ADD sp, sp, #stack_space
-					if stack_space <= 0xFFF {
-						g.emit(0x910003FF | (u32(stack_space) << 10))
-					} else {
-						g.emit_mov_imm(10, u64(stack_space))
-						g.emit(0x8B0A03FF) // ADD sp, sp, x10
+					// Store variadic arguments to stack (in order)
+					for i := 0; i < num_variadic; i++ {
+						arg_idx := num_fixed_args + 1 + i // +1 because operands[0] is the function
+						g.load_val_to_reg(8, instr.operands[arg_idx])
+						// STR x8, [sp, #offset]
+						offset := i * 8
+						if offset == 0 {
+							g.emit(0xF9000000 | (31 << 5) | 8) // STR x8, [sp]
+						} else {
+							imm12 := u32(offset / 8)
+							g.emit(0xF9000000 | (imm12 << 10) | (31 << 5) | 8) // STR x8, [sp, #offset]
+						}
 					}
-				}
-			} else {
-				// Non-variadic call: all args in registers
-				// Load arguments in reverse order to avoid clobbering
-				for i := num_args; i >= 1; i-- {
-					if i - 1 < 8 {
+
+					// Load fixed arguments to registers (in reverse order to avoid clobbering)
+					for i := num_fixed_args; i >= 1; i-- {
 						g.load_val_to_reg(i - 1, instr.operands[i])
 					}
+
+					// Call function
+					sym_idx := g.macho.add_undefined('_' + fn_name)
+					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
+						true)
+					g.emit(0x94000000)
+
+					// Restore stack
+					if stack_space > 0 {
+						// ADD sp, sp, #stack_space
+						if stack_space <= 0xFFF {
+							g.emit(0x910003FF | (u32(stack_space) << 10))
+						} else {
+							g.emit_mov_imm(10, u64(stack_space))
+							g.emit(0x8B0A03FF) // ADD sp, sp, x10
+						}
+					}
+				} else {
+					// Non-variadic call: all args in registers
+					// Load arguments in reverse order to avoid clobbering
+					for i := num_args; i >= 1; i-- {
+						if i - 1 < 8 {
+							g.load_val_to_reg(i - 1, instr.operands[i])
+						}
+					}
+
+					sym_idx := g.macho.add_undefined('_' + fn_name)
+					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
+						true)
+					g.emit(0x94000000)
 				}
 
-				sym_idx := g.macho.add_undefined('_' + fn_name)
-				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
-					true)
-				g.emit(0x94000000)
+				if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
+					g.store_reg_to_val(0, val_id)
+				}
 			}
+		}
+		.call_indirect {
+			// Indirect call through function pointer
+			// operands[0] is the function pointer, rest are arguments
+			num_args := instr.operands.len - 1
+
+			// Load arguments in reverse order to avoid clobbering
+			for i := num_args; i >= 1; i-- {
+				if i - 1 < 8 {
+					g.load_val_to_reg(i - 1, instr.operands[i])
+				}
+			}
+
+			// Load function pointer to x9 (scratch register)
+			g.load_val_to_reg(9, instr.operands[0])
+
+			// BLR x9 - branch and link to register
+			g.emit(0xD63F0120) // BLR x9
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
 				g.store_reg_to_val(0, val_id)
@@ -658,6 +775,30 @@ fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 	// Otherwise load it into fallback
 	g.load_val_to_reg(fallback, val_id)
 	return fallback
+}
+
+// load_float_operand loads a value into a float register (d0-d7).
+// For constants, parses the float value and loads via literal pool or immediate.
+// For memory values, loads from stack into integer reg then moves to float reg.
+fn (mut g Gen) load_float_operand(val_id int, dreg int) {
+	val := g.mod.values[val_id]
+	if val.kind == .constant {
+		// Parse float constant and load into float register
+		// For now, use FMOV from integer register
+		// First load the bit pattern into an integer register
+		f_val := val.name.f64()
+		bits := *unsafe { &u64(&f_val) }
+
+		// Load the 64-bit bits into x8
+		g.emit_mov_imm64(8, i64(bits))
+		// FMOV Dd, Xn -> 0x9E670000 | (Xn << 5) | Dd
+		g.emit(0x9E670000 | (8 << 5) | u32(dreg))
+	} else {
+		// Load from stack into integer register then move to float
+		g.load_val_to_reg(8, val_id)
+		// FMOV Dd, Xn -> 0x9E670000 | (Xn << 5) | Dd
+		g.emit(0x9E670000 | (8 << 5) | u32(dreg))
+	}
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {

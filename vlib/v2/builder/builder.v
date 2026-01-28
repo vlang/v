@@ -110,10 +110,13 @@ fn (mut b Builder) gen_ssa_c() {
 	mut ssa_builder := ssa.Builder.new(mod)
 	mut t := transform.Transformer.new()
 
+	// Transform all files first
+	mut transformed_files := []ast.File{}
 	for file in b.files {
-		transformed_file := t.transform(file)
-		ssa_builder.build(transformed_file)
+		transformed_files << t.transform(file)
 	}
+	// Build all files together with proper multi-file ordering
+	ssa_builder.build_all(transformed_files)
 	mod.optimize()
 
 	mut gen := c.Gen.new(mod)
@@ -155,10 +158,13 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	mut ssa_builder := ssa.Builder.new(mod)
 	mut t := transform.Transformer.new()
 
+	// Transform all files first
+	mut transformed_files := []ast.File{}
 	for file in b.files {
-		transformed_file := t.transform(file)
-		ssa_builder.build(transformed_file)
+		transformed_files << t.transform(file)
 	}
+	// Build all files together with proper multi-file ordering
+	ssa_builder.build_all(transformed_files)
 	mod.optimize()
 
 	// Determine output binary name from the last user file

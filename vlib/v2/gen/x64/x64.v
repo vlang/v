@@ -423,6 +423,64 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.store_reg_to_val(0, val_id)
 			}
 		}
+		.call_indirect {
+			// Indirect call through function pointer
+			// operands[0] is the function pointer, rest are arguments
+			abi_regs := [7, 6, 2, 1, 8, 9]
+			num_args := instr.operands.len - 1
+
+			// Push stack arguments in reverse order (args 7+)
+			mut stack_args := 0
+			if num_args > 6 {
+				stack_args = num_args - 6
+				// Align stack to 16 bytes if odd number of stack args
+				if stack_args % 2 == 1 {
+					g.emit(0x50) // push rax
+				}
+				for i := num_args; i > 6; i-- {
+					g.load_val_to_reg(0, instr.operands[i])
+					g.emit(0x50) // push rax
+				}
+			}
+
+			// Load register arguments
+			for i in 1 .. instr.operands.len {
+				if i - 1 < 6 {
+					g.load_val_to_reg(abi_regs[i - 1], instr.operands[i])
+				}
+			}
+
+			// Load function pointer to r10 (caller-saved, not used for args)
+			g.load_val_to_reg(10, instr.operands[0])
+
+			// xor eax, eax (Clear AL for variadic function calls)
+			g.emit(0x31)
+			g.emit(0xC0)
+
+			// call *r10 (FF /2 with REX.W prefix for r10)
+			g.emit(0x41) // REX.B for r10
+			g.emit(0xFF) // call opcode
+			g.emit(0xD2) // ModRM: call *r10
+
+			// Clean up stack arguments
+			if stack_args > 0 {
+				cleanup := (stack_args + (stack_args % 2)) * 8
+				g.emit(0x48)
+				if cleanup <= 127 {
+					g.emit(0x83)
+					g.emit(0xC4)
+					g.emit(u8(cleanup))
+				} else {
+					g.emit(0x81)
+					g.emit(0xC4)
+					g.emit_u32(u32(cleanup))
+				}
+			}
+
+			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
+				g.store_reg_to_val(0, val_id)
+			}
+		}
 		.ret {
 			if instr.operands.len > 0 {
 				g.load_val_to_reg(0, instr.operands[0])

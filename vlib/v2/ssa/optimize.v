@@ -1140,8 +1140,8 @@ fn (mut m Module) dead_code_elimination() bool {
 					// If instruction, check uses and side effects
 					if val.kind == .instruction {
 						instr := m.instrs[val.index]
-						side_effects := instr.op in [.store, .call, .ret, .br, .jmp, .switch_,
-							.unreachable, .assign, .fence, .atomicrmw]
+						side_effects := instr.op in [.store, .call, .call_indirect, .ret, .br,
+							.jmp, .switch_, .unreachable, .assign, .fence, .atomicrmw]
 						if !side_effects && val.uses.len == 0 {
 							// Kill
 							for op_id in instr.operands {

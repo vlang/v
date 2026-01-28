@@ -32,6 +32,22 @@ pub fn (mut g Gen) gen() string {
 	// Builtin string type
 	g.sb.writeln('typedef struct { int8_t* str; int64_t len; int64_t is_lit; } string;')
 	g.sb.writeln('')
+	// Minimal builtin stubs for standalone compilation
+	g.sb.writeln('// Minimal builtin stubs')
+	g.sb.writeln('static inline int64_t println(string s) { printf("%.*s\\n", (int)s.len, (char*)s.str); return 0; }')
+	g.sb.writeln('static inline int64_t print(string s) { printf("%.*s", (int)s.len, (char*)s.str); return 0; }')
+	g.sb.writeln('static inline int64_t eprintln(string s) { fprintf(stderr, "%.*s\\n", (int)s.len, (char*)s.str); return 0; }')
+	g.sb.writeln('static inline void* malloc_noscan(int64_t size) { return malloc(size); }')
+	g.sb.writeln('static inline void* v__malloc(int64_t size) { return malloc(size); }')
+	g.sb.writeln('static inline void* vcalloc(int64_t size) { return calloc(1, size); }')
+	g.sb.writeln('static inline void* vcalloc_noscan(int64_t size) { return calloc(1, size); }')
+	g.sb.writeln('static inline int64_t __at_least_one(int64_t n) { return n > 0 ? n : 1; }')
+	g.sb.writeln('static inline void* vmemcpy(void* dest, const void* src, int64_t n) { return memcpy(dest, src, n); }')
+	g.sb.writeln('static inline void* vmemset(void* dest, int c, int64_t n) { return memset(dest, c, n); }')
+	g.sb.writeln('static inline void* vmemmove(void* dest, const void* src, int64_t n) { return memmove(dest, src, n); }')
+	g.sb.writeln('static inline int64_t v__puts(int8_t* s) { return puts((char*)s); }')
+	g.sb.writeln('#define v__sprintf sprintf')
+	g.sb.writeln('')
 
 	g.gen_struct_decls()
 	g.gen_globals()
@@ -47,7 +63,8 @@ pub fn (mut g Gen) gen() string {
 fn (mut g Gen) gen_func_decls() {
 	// Forward declarations for all functions
 	for func in g.mod.funcs {
-		ret_type := g.type_name(func.typ)
+		c_name := g.mangle_fn_name(func.name)
+		ret_type := if func.name == 'main' { 'int' } else { g.type_name(func.typ) }
 		mut params := []string{}
 		for pid in func.params {
 			val := g.mod.values[pid]
@@ -55,9 +72,25 @@ fn (mut g Gen) gen_func_decls() {
 			params << '${tname} ${val.name}'
 		}
 		param_str := params.join(', ')
-		g.sb.writeln('${ret_type} ${func.name}(${param_str});')
+		g.sb.writeln('${ret_type} ${c_name}(${param_str});')
 	}
 	g.sb.writeln('')
+}
+
+// mangle_fn_name converts V function names to valid C names that don't conflict
+fn (g Gen) mangle_fn_name(name string) string {
+	// main is special - keep as is for C entry point
+	if name == 'main' {
+		return 'main'
+	}
+	// These names conflict with C standard library or keywords
+	reserved := ['string', 'free', 'malloc', 'realloc', 'calloc', 'atoi', 'atol', 'atof', 'exit',
+		'abort', 'printf', 'sprintf', 'fprintf', 'scanf', 'puts', 'gets', 'strlen', 'strcpy',
+		'strcat', 'strcmp', 'memcpy', 'memset', 'memmove', 'memcmp']
+	if name in reserved {
+		return 'v__${name}'
+	}
+	return name
 }
 
 fn (mut g Gen) gen_struct_decls() {
@@ -116,7 +149,8 @@ fn (mut g Gen) gen_globals() {
 }
 
 fn (mut g Gen) gen_func(func ssa.Function) {
-	ret_type := g.type_name(func.typ)
+	c_name := g.mangle_fn_name(func.name)
+	ret_type := if func.name == 'main' { 'int' } else { g.type_name(func.typ) }
 
 	mut params := []string{}
 	for pid in func.params {
@@ -126,13 +160,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	}
 	param_str := params.join(', ')
 
-	g.sb.writeln('${ret_type} ${func.name}(${param_str}) {')
+	g.sb.writeln('${ret_type} ${c_name}(${param_str}) {')
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
 		for instr_val_id in blk.instrs {
 			val := g.mod.values[instr_val_id]
-			if g.mod.type_store.types[val.typ].kind != .void_t {
+			typ_kind := g.mod.type_store.types[val.typ].kind
+			if typ_kind == .void_t {
+				// Void-typed values are declared as void* to allow pointer operations
+				g.sb.writeln('\tvoid* _v${val.id};')
+			} else {
 				tname := g.type_name(val.typ)
 				g.sb.writeln('\t${tname} _v${val.id};')
 			}
@@ -158,7 +196,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 	res := '_v${val.id}'
 
 	match instr.op {
-		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem {
+		.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .fadd, .fsub, .fmul, .fdiv, .frem {
 			op := g.op_sym(instr.op)
 			lhs := g.val_str(instr.operands[0])
 			rhs := g.val_str(instr.operands[1])
@@ -197,7 +235,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.alloca {
 			elem_type_id := g.mod.type_store.types[val.typ].elem_type
 			elem_type_info := g.mod.type_store.types[elem_type_id]
-			if elem_type_info.kind == .array_t {
+			// For void type allocations, allocate a small buffer for optional/result handling
+			if elem_type_info.kind == .void_t {
+				g.sb.writeln('\tint64_t _stack_${val.id};')
+				g.sb.writeln('\t${res} = &_stack_${val.id};')
+			} else if elem_type_info.kind == .array_t {
 				// Array allocation: int64_t arr[N]
 				arr_elem_type := g.type_name(elem_type_info.elem_type)
 				g.sb.writeln('\t${arr_elem_type} _stack_${val.id}[${elem_type_info.len}];')
@@ -213,30 +255,39 @@ fn (mut g Gen) gen_instr(val_id int) {
 			ptr_id := instr.operands[0]
 			ptr := g.val_str(ptr_id)
 
-			// FIX: specific handling for globals (no dereference needed in C)
-			if g.mod.values[ptr_id].kind == .global {
+			// Skip loading void type - just assign NULL
+			if g.mod.type_store.types[val.typ].kind == .void_t {
+				g.sb.writeln('\t${res} = NULL;')
+			} else if g.mod.values[ptr_id].kind == .global {
+				// FIX: specific handling for globals (no dereference needed in C)
 				g.sb.writeln('\t${res} = ${ptr};')
 			} else {
 				g.sb.writeln('\t${res} = *${ptr};')
 			}
 		}
 		.store {
-			val_op := g.val_str(instr.operands[0])
-			ptr_id := instr.operands[1]
-			ptr_op := g.val_str(ptr_id)
-
-			// FIX: specific handling for globals
-			if g.mod.values[ptr_id].kind == .global {
-				g.sb.writeln('\t${ptr_op} = ${val_op};')
+			src_val_id := instr.operands[0]
+			// Skip storing void sentinel (value ID 0)
+			if src_val_id == 0 {
+				g.sb.writeln('\t// skipped store of void sentinel')
 			} else {
-				g.sb.writeln('\t*${ptr_op} = ${val_op};')
+				val_op := g.val_str(src_val_id)
+				ptr_id := instr.operands[1]
+				ptr_op := g.val_str(ptr_id)
+
+				// FIX: specific handling for globals
+				if g.mod.values[ptr_id].kind == .global {
+					g.sb.writeln('\t${ptr_op} = ${val_op};')
+				} else {
+					g.sb.writeln('\t*${ptr_op} = ${val_op};')
+				}
 			}
 		}
 		.call {
 			// Operand 0: Function Name Value
 			// Operands 1..N: Arguments
 			fn_val_id := instr.operands[0]
-			fn_name := g.mod.values[fn_val_id].name
+			fn_name := g.mangle_fn_name(g.mod.values[fn_val_id].name)
 
 			mut args_str := []string{}
 			for i := 1; i < instr.operands.len; i++ {
@@ -248,6 +299,24 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.sb.writeln('\t${res} = ${fn_name}(${args_c});')
 			} else {
 				g.sb.writeln('\t${fn_name}(${args_c});')
+			}
+		}
+		.call_indirect {
+			// Indirect call through function pointer
+			// Operand 0: Function Pointer Value
+			// Operands 1..N: Arguments
+			fn_ptr := g.val_str(instr.operands[0])
+
+			mut args_str := []string{}
+			for i := 1; i < instr.operands.len; i++ {
+				args_str << g.val_str(instr.operands[i])
+			}
+			args_c := args_str.join(', ')
+
+			if g.mod.type_store.types[val.typ].kind != .void_t {
+				g.sb.writeln('\t${res} = ((void*(*)(void*, void*))${fn_ptr})(${args_c});')
+			} else {
+				g.sb.writeln('\t((void(*)(void*, void*))${fn_ptr})(${args_c});')
 			}
 		}
 		.eq, .ne, .lt, .gt, .le, .ge {
@@ -264,6 +333,26 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			g.sb.writeln('\t${res} = (${lhs} ${op_str} ${rhs});')
 		}
+		.fptosi {
+			// Float to signed integer conversion
+			src := g.val_str(instr.operands[0])
+			g.sb.writeln('\t${res} = (int64_t)${src};')
+		}
+		.sitofp {
+			// Signed integer to float conversion
+			src := g.val_str(instr.operands[0])
+			g.sb.writeln('\t${res} = (double)${src};')
+		}
+		.fptoui {
+			// Float to unsigned integer conversion
+			src := g.val_str(instr.operands[0])
+			g.sb.writeln('\t${res} = (uint64_t)${src};')
+		}
+		.uitofp {
+			// Unsigned integer to float conversion
+			src := g.val_str(instr.operands[0])
+			g.sb.writeln('\t${res} = (double)${src};')
+		}
 		.br {
 			cond := g.val_str(instr.operands[0])
 			true_blk := g.get_block_name(instr.operands[1])
@@ -276,8 +365,24 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.ret {
 			if instr.operands.len > 0 {
-				v := g.val_str(instr.operands[0])
-				g.sb.writeln('\treturn ${v};')
+				ret_val_id := instr.operands[0]
+				ret_val := g.mod.values[ret_val_id]
+				ret_val_typ := g.mod.type_store.types[ret_val.typ]
+				v := g.val_str(ret_val_id)
+
+				// Check if we're returning a pointer to a struct but the function returns struct by value
+				// This happens when the return value is a pointer and the pointed-to type is a struct
+				if ret_val_typ.kind == .ptr_t {
+					elem_typ := g.mod.type_store.types[ret_val_typ.elem_type]
+					if elem_typ.kind == .struct_t {
+						// Dereference the pointer to return struct by value
+						g.sb.writeln('\treturn *${v};')
+					} else {
+						g.sb.writeln('\treturn ${v};')
+					}
+				} else {
+					g.sb.writeln('\treturn ${v};')
+				}
 			} else {
 				g.sb.writeln('\treturn;')
 			}
@@ -422,11 +527,12 @@ fn (g Gen) get_block_name(val_id int) string {
 
 fn (g Gen) op_sym(op ssa.OpCode) string {
 	return match op {
-		.add { '+' }
-		.sub { '-' }
-		.mul { '*' }
-		.sdiv, .udiv { '/' }
+		.add, .fadd { '+' }
+		.sub, .fsub { '-' }
+		.mul, .fmul { '*' }
+		.sdiv, .udiv, .fdiv { '/' }
 		.srem, .urem { '%' }
+		.frem { '%' } // Note: C uses fmod() for float modulo, but % works for simple cases
 		else { '?' }
 	}
 }

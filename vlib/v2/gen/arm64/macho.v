@@ -59,12 +59,24 @@ pub fn MachOObject.new() &MachOObject {
 }
 
 pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u8) int {
+	typ := if is_ext { u8(0x0f) } else { u8(0x0e) } // N_SECT | N_EXT : N_SECT
+
+	// Check if symbol already exists (e.g., was added as undefined earlier)
+	for i, mut s in m.symbols {
+		if s.name == name {
+			// Update the existing symbol to be defined
+			s.type_ = typ
+			s.sect = sect
+			s.value = addr
+			return i
+		}
+	}
+
+	// Add new symbol
 	idx := m.symbols.len
 	name_off := m.str_table.len
 	m.str_table << name.bytes()
 	m.str_table << 0
-
-	typ := if is_ext { u8(0x0f) } else { u8(0x0e) } // N_SECT | N_EXT : N_SECT
 
 	m.symbols << Symbol{
 		name:     name
@@ -78,8 +90,9 @@ pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u
 }
 
 pub fn (mut m MachOObject) add_undefined(name string) int {
+	// Check for any existing symbol with this name (defined or undefined)
 	for i, s in m.symbols {
-		if s.name == name && s.type_ == 0x01 {
+		if s.name == name {
 			return i
 		}
 	}

@@ -10,29 +10,44 @@ import strings
 pub struct Gen {
 	file ast.File
 mut:
-	sb             strings.Builder
-	indent         int
-	fn_types       map[string]string
-	var_types      map[string]string
-	mut_receivers  map[string]bool // Track which methods have mutable receivers
-	defer_stmts    [][]ast.Stmt    // Deferred statements for current function
-	enum_names     map[string]bool // Track enum type names
-	cur_match_type string          // Current match expression type for enum shorthand
+	sb              strings.Builder
+	indent          int
+	fn_types        map[string]string
+	var_types       map[string]string
+	mut_receivers   map[string]bool     // Track which methods have mutable receivers
+	defer_stmts     [][]ast.Stmt        // Deferred statements for current function
+	enum_names      map[string]bool     // Track enum type names
+	interface_names map[string]bool     // Track interface type names
+	interface_meths map[string][]string // Interface name -> method names
+	type_methods    map[string][]string // Type name -> method names (for vtable generation)
+	cur_match_type  string              // Current match expression type for enum shorthand
 }
 
 pub fn Gen.new(file ast.File) &Gen {
 	mut g := &Gen{
-		file:          file
-		sb:            strings.new_builder(4096)
-		fn_types:      map[string]string{}
-		var_types:     map[string]string{}
-		mut_receivers: map[string]bool{}
-		enum_names:    map[string]bool{}
+		file:            file
+		sb:              strings.new_builder(4096)
+		fn_types:        map[string]string{}
+		var_types:       map[string]string{}
+		mut_receivers:   map[string]bool{}
+		enum_names:      map[string]bool{}
+		interface_names: map[string]bool{}
+		interface_meths: map[string][]string{}
+		type_methods:    map[string][]string{}
 	}
-	// Pass 0: Register function return types, mutable receivers, and enum names
+	// Pass 0: Register function return types, mutable receivers, enum names, and interfaces
 	for stmt in file.stmts {
 		if stmt is ast.EnumDecl {
 			g.enum_names[stmt.name] = true
+		}
+		if stmt is ast.InterfaceDecl {
+			g.interface_names[stmt.name] = true
+			// Collect method names for this interface
+			mut methods := []string{}
+			for field in stmt.fields {
+				methods << field.name
+			}
+			g.interface_meths[stmt.name] = methods
 		}
 		if stmt is ast.FnDecl {
 			mut ret := 'void'
@@ -48,6 +63,11 @@ pub fn Gen.new(file ast.File) &Gen {
 				g.fn_types[mangled] = ret
 				// Track if receiver is mutable
 				g.mut_receivers[mangled] = stmt.receiver.is_mut
+				// Track methods per type for vtable generation
+				if receiver_type !in g.type_methods {
+					g.type_methods[receiver_type] = []string{}
+				}
+				g.type_methods[receiver_type] << stmt.name
 			} else {
 				g.fn_types[stmt.name] = ret
 			}
@@ -165,6 +185,10 @@ pub fn (mut g Gen) gen() string {
 	}
 	g.sb.writeln('')
 
+	// 4.5. Interface vtable wrapper functions (after prototypes so methods are declared)
+	// These cast void* to the concrete type and call the real method
+	g.gen_interface_wrappers()
+
 	// 5. Functions
 	for stmt in g.file.stmts {
 		if stmt is ast.FnDecl {
@@ -245,6 +269,10 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 	match node {
 		ast.BasicLiteral {
 			if node.kind == .number {
+				// Check if it's a float literal (contains decimal point or exponent)
+				if node.value.contains('.') || node.value.contains('e') || node.value.contains('E') {
+					return 'double'
+				}
 				return 'int'
 			}
 			if node.kind in [.key_true, .key_false] {
@@ -319,6 +347,10 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			mut name := ''
 			if node.lhs is ast.Ident {
 				name = node.lhs.name
+				// Check if this is interface boxing - return the interface type
+				if name in g.interface_names {
+					return name
+				}
 			}
 			if t := g.fn_types[name] {
 				return t
@@ -459,6 +491,46 @@ fn (mut g Gen) gen_interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 	g.sb.writeln('};')
+}
+
+// gen_interface_wrappers generates wrapper functions for interface vtables
+// Each wrapper casts void* to the concrete type and calls the actual method
+fn (mut g Gen) gen_interface_wrappers() {
+	// For each interface
+	for iface_name, methods in g.interface_meths {
+		// For each concrete type that has these methods
+		for type_name, type_meths in g.type_methods {
+			// Check if this type implements all interface methods
+			if !g.type_implements_interface(methods, type_meths) {
+				continue
+			}
+
+			// Generate wrapper functions for this type implementing this interface
+			for meth in methods {
+				// Get return type from the registered function
+				mangled := '${type_name}__${meth}'
+				ret_type := g.fn_types[mangled] or { 'int' }
+
+				// Generate: RetType InterfaceName_TypeName_method_wrapper(void* _obj) {
+				//     return TypeName__method(*(TypeName*)_obj);
+				// }
+				g.sb.writeln('static ${ret_type} ${iface_name}_${type_name}_${meth}_wrapper(void* _obj) {')
+				g.sb.writeln('\treturn ${type_name}__${meth}(*(${type_name}*)_obj);')
+				g.sb.writeln('}')
+				g.sb.writeln('')
+			}
+		}
+	}
+}
+
+// type_implements_interface checks if a type has all the interface methods
+fn (g Gen) type_implements_interface(iface_methods []string, type_methods []string) bool {
+	for meth in iface_methods {
+		if meth !in type_methods {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut g Gen) gen_type_decl(node ast.TypeDecl) {
@@ -1030,6 +1102,37 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				} else {
 					receiver_type
 				}
+
+				// Check if receiver is an interface type - call through vtable
+				if clean_type in g.interface_names {
+					// Interface method call: iface.method(args)
+					// Generate: iface.method(iface._object, args)
+					g.gen_expr(receiver_expr)
+					g.sb.write_string('.${name}(')
+					g.gen_expr(receiver_expr)
+					g.sb.write_string('._object')
+					if node.args.len > 0 {
+						g.sb.write_string(', ')
+					}
+					for i, arg in node.args {
+						if i > 0 {
+							g.sb.write_string(', ')
+						}
+						if arg is ast.ModifierExpr {
+							if arg.kind == .key_mut {
+								g.sb.write_string('&')
+								g.gen_expr(arg.expr)
+							} else {
+								g.gen_expr(arg)
+							}
+						} else {
+							g.gen_expr(arg)
+						}
+					}
+					g.sb.write_string(')')
+					return
+				}
+
 				mangled := '${clean_type}__${name}'
 				method_wants_mut := g.mut_receivers[mangled] or { false }
 
@@ -1094,6 +1197,28 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					g.sb.write_string('((${name})(')
 					g.gen_expr(node.expr)
 					g.sb.write_string('))')
+					return
+				}
+				// Check if this is interface boxing: Drawable(point)
+				if name in g.interface_names {
+					// Get the concrete type being boxed
+					concrete_type := g.infer_type(node.expr)
+					// Generate interface struct initialization with vtable
+					g.sb.write_string('({ ')
+					// Allocate heap memory for the object
+					g.sb.write_string('${concrete_type}* _iface_obj = (${concrete_type}*)malloc(sizeof(${concrete_type})); ')
+					g.sb.write_string('*_iface_obj = ')
+					g.gen_expr(node.expr)
+					g.sb.write_string('; ')
+					// Create interface struct with function pointers
+					g.sb.write_string('(${name}){._object = _iface_obj, ._type_id = 0')
+					// Add function pointers for each interface method
+					if methods := g.interface_meths[name] {
+						for meth in methods {
+							g.sb.write_string(', .${meth} = ${name}_${concrete_type}_${meth}_wrapper')
+						}
+					}
+					g.sb.write_string('}; })')
 					return
 				}
 			} else if node.lhs is ast.SelectorExpr {
