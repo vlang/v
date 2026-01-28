@@ -121,6 +121,9 @@ fn (mut b Builder) gen_ssa_c() {
 	// Build all files together with proper multi-file ordering
 	ssa_builder.build_all(transformed_files)
 	optimize.optimize(mut mod)
+	$if debug {
+		optimize.verify_and_panic(mod, 'full optimization')
+	}
 
 	mut gen := c.Gen.new(mod)
 	c_source := gen.gen()
@@ -169,6 +172,9 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	// Build all files together with proper multi-file ordering
 	ssa_builder.build_all(transformed_files)
 	optimize.optimize(mut mod)
+	$if debug {
+		optimize.verify_and_panic(mod, 'full optimization')
+	}
 
 	// Determine output binary name from the last user file
 	output_binary := if b.pref.output_file != '' {

@@ -173,19 +173,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.macho.add_symbol('_' + func.name, u64(g.curr_offset), true, 1)
 
 	// Prologue
-	g.emit(0xA9BF7BFD) // stp fp, lr, [sp, -16]!
-	g.emit(0x910003FD) // mov fp, sp
+	g.emit(asm_stp_fp_lr_pre())
+	g.emit(asm_mov_fp_sp())
 
 	// Save callee-saved regs
 	for i := 0; i < g.used_regs.len; i += 2 {
 		r1 := g.used_regs[i]
-		mut r2 := 31 // xzr // r1 // dummy
+		mut r2 := 31 // xzr
 		if i + 1 < g.used_regs.len {
 			r2 = g.used_regs[i + 1]
 		}
-		// code := 0xA9BF0000 | (u32(r2) << 10) | (31 << 5) | u32(r1)
-		code := 0xA9BF0000 | (u32(r2) << 10) | (31 << 5) | u32(r1)
-		g.emit(code)
+		g.emit(asm_stp_pair_pre(Reg(r1), Reg(r2)))
 	}
 
 	g.emit_sub_sp(g.stack_size)
@@ -252,38 +250,30 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Perform float operation: result in d0
 			match instr.op {
 				.fadd {
-					// FADD d0, d0, d1 -> 0x1E612800
-					g.emit(0x1E612800)
+					g.emit(asm_fadd_d0_d0_d1())
 				}
 				.fsub {
-					// FSUB d0, d0, d1 -> 0x1E613800
-					g.emit(0x1E613800)
+					g.emit(asm_fsub_d0_d0_d1())
 				}
 				.fmul {
-					// FMUL d0, d0, d1 -> 0x1E610800
-					g.emit(0x1E610800)
+					g.emit(asm_fmul_d0_d0_d1())
 				}
 				.fdiv {
-					// FDIV d0, d0, d1 -> 0x1E611800
-					g.emit(0x1E611800)
+					g.emit(asm_fdiv_d0_d0_d1())
 				}
 				.frem {
 					// No single instruction for frem on ARM64
-					// Use integer modulo on the result (approximate for now)
-					// FDIV d2, d0, d1 -> 0x1E611802 (result in d2)
-					g.emit(0x1E611802)
-					// FRINTZ d2, d2 (truncate to integer) -> 0x1E65C042
-					g.emit(0x1E65C042)
-					// FNMSUB d0, d2, d1, d0 (d0 = d0 - d2*d1) -> 0x1F618000
-					g.emit(0x1F618000)
+					// Use: d0 = d0 - trunc(d0/d1) * d1
+					g.emit(asm_fdiv_d2_d0_d1())
+					g.emit(asm_frintz_d2())
+					g.emit(asm_fnmsub_d0_d2_d1_d0())
 				}
 				else {}
 			}
 
 			// Convert d0 result back to integer register for storage
 			// Store the float bits in the result (for later int() conversion)
-			// FMOV Xd, Dn (copy bit pattern) -> 0x9E660000 | (Dn << 5) | Xd
-			g.emit(0x9E660000 | u32(dest_reg))
+			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -297,8 +287,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_float_operand(instr.operands[0], 0)
 
 			// FCVTZS Xd, Dn (convert to signed int, truncate toward zero)
-			// Encoding: 0x9E780000 | (Dn << 5) | Xd
-			g.emit(0x9E780000 | u32(dest_reg))
+			g.emit(asm_fcvtzs_x_d(Reg(dest_reg), 0))
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -312,11 +301,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			src_reg := g.get_operand_reg(instr.operands[0], 8)
 
 			// SCVTF Dd, Xn (convert signed int to double)
-			// Encoding: 0x9E620000 | (Xn << 5) | Dd
-			g.emit(0x9E620000 | (u32(src_reg) << 5))
+			g.emit(asm_scvtf_d_x(0, Reg(src_reg)))
 
 			// FMOV Xd, D0 (copy back bit pattern to integer reg for storage)
-			g.emit(0x9E660000 | u32(dest_reg))
+			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -363,29 +351,23 @@ fn (mut g Gen) gen_instr(val_id int) {
 			match instr.op {
 				.add {
 					if is_imm {
-						// ADD Rd, Rn, #imm
-						g.emit(0x91000000 | (u32(imm_val) << 10) | (u32(lhs_reg) << 5) | u32(dest_reg))
+						g.emit(asm_add_imm(Reg(dest_reg), Reg(lhs_reg), u32(imm_val)))
 					} else {
-						// ADD Rd, Rn, Rm
-						g.emit(0x8B000000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+						g.emit(asm_add_reg(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 					}
 				}
 				.sub {
 					if is_imm {
-						// SUB Rd, Rn, #imm
-						g.emit(0xD1000000 | (u32(imm_val) << 10) | (u32(lhs_reg) << 5) | u32(dest_reg))
+						g.emit(asm_sub_imm(Reg(dest_reg), Reg(lhs_reg), u32(imm_val)))
 					} else {
-						// SUB Rd, Rn, Rm
-						g.emit(0xCB000000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+						g.emit(asm_sub_reg(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 					}
 				}
 				.mul {
-					// MADD Rd, Rn, Rm, xzr (Ra=31) -> 0x9B007C00
-					g.emit(0x9B007C00 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_mul(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.sdiv {
-					// SDIV Rd, Rn, Rm -> 0x9AC00C00
-					g.emit(0x9AC00C00 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_sdiv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.srem {
 					// Signed modulo: a % b = a - (a / b) * b
@@ -397,50 +379,40 @@ fn (mut g Gen) gen_instr(val_id int) {
 							temp_reg = 12
 						}
 					}
-					// SDIV temp, lhs, rhs
-					g.emit(0x9AC00C00 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(temp_reg))
-					// MSUB dest, temp, rhs, lhs  (dest = lhs - temp * rhs)
-					g.emit(0x9B008000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 10) | (u32(temp_reg) << 5) | u32(dest_reg))
+					g.emit(asm_sdiv(Reg(temp_reg), Reg(lhs_reg), Reg(rhs_reg)))
+					g.emit(asm_msub(Reg(dest_reg), Reg(temp_reg), Reg(rhs_reg), Reg(lhs_reg)))
 				}
 				.and_ {
-					// AND Rd, Rn, Rm -> 0x8A000000
-					g.emit(0x8A000000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_and(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.or_ {
-					// ORR Rd, Rn, Rm -> 0xAA000000
-					g.emit(0xAA000000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_orr(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.xor {
-					// EOR Rd, Rn, Rm -> 0xCA000000
-					g.emit(0xCA000000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_eor(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.shl {
-					// LSLV Rd, Rn, Rm -> 0x9AC02000
-					g.emit(0x9AC02000 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_lslv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.ashr {
-					// ASRV Rd, Rn, Rm -> 0x9AC02800
-					g.emit(0x9AC02800 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_asrv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.lshr {
-					// LSRV Rd, Rn, Rm -> 0x9AC02400
-					g.emit(0x9AC02400 | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5) | u32(dest_reg))
+					g.emit(asm_lsrv(Reg(dest_reg), Reg(lhs_reg), Reg(rhs_reg)))
 				}
 				.eq, .ne, .lt, .gt, .le, .ge {
-					// CMP Rn, Rm (SUBS xzr, Rn, Rm) -> 0xEB00001F
-					g.emit(0xEB00001F | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 5))
+					g.emit(asm_cmp_reg(Reg(lhs_reg), Reg(rhs_reg)))
 
 					// CSET Rd, cond
-					code := match instr.op {
-						.eq { 0x9A9F17E0 } // EQ
-						.ne { 0x9A9F07E0 } // NE
-						.lt { 0x9A9FA7E0 } // LT
-						.gt { 0x9A9FD7E0 } // GT
-						.le { 0x9A9FC7E0 } // LE
-						.ge { 0x9A9FB7E0 } // GE
-						else { 0 }
+					match instr.op {
+						.eq { g.emit(asm_cset_eq(Reg(dest_reg))) }
+						.ne { g.emit(asm_cset_ne(Reg(dest_reg))) }
+						.lt { g.emit(asm_cset_lt(Reg(dest_reg))) }
+						.gt { g.emit(asm_cset_gt(Reg(dest_reg))) }
+						.le { g.emit(asm_cset_le(Reg(dest_reg))) }
+						.ge { g.emit(asm_cset_ge(Reg(dest_reg))) }
+						else {}
 					}
-					g.emit(u32(code) | u32(dest_reg))
 				}
 				else {}
 			}
@@ -454,15 +426,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 			val_reg := g.get_operand_reg(instr.operands[0], 8)
 			ptr_reg := g.get_operand_reg(instr.operands[1], 9)
 
-			// STR Rt, [Rn] -> 0xF9000000 | Rn<<5 | Rt
-			g.emit(0xF9000000 | (u32(ptr_reg) << 5) | u32(val_reg))
+			g.emit(asm_str(Reg(val_reg), Reg(ptr_reg)))
 		}
 		.load {
 			ptr_reg := g.get_operand_reg(instr.operands[0], 9)
 			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
 
-			// LDR Rd, [Rn] -> 0xF9400000
-			g.emit(0xF9400000 | (u32(ptr_reg) << 5) | u32(dest_reg))
+			g.emit(asm_ldr(Reg(dest_reg), Reg(ptr_reg)))
 
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
@@ -481,11 +451,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			idx_scratch := if base_reg == 8 { 9 } else { 8 }
 			idx_reg := g.get_operand_reg(instr.operands[1], idx_scratch)
 
-			// ADD Rd, Rn, Rm, LSL #3  (Shifted Register Add)
-			// Encoding 64-bit: 0x8B200000 | (Rm<<16) | (imm6<<10) | (Rn<<5) | Rd
-			// shift=3 -> imm6=000011 -> 0xC00
-			// Dest is 8 (scratch)
-			g.emit(0x8B200C00 | (u32(idx_reg) << 16) | (u32(base_reg) << 5) | 8)
+			// ADD Rd, Rn, Rm, LSL #3 (Dest is 8 - scratch)
+			g.emit(asm_add_reg_lsl3(Reg(8), Reg(base_reg), Reg(idx_reg)))
 
 			g.store_reg_to_val(8, val_id)
 		}
@@ -528,12 +495,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val_to_reg(8, instr.operands[arg_idx])
 						// STR x8, [sp, #offset]
 						offset := i * 8
-						if offset == 0 {
-							g.emit(0xF9000000 | (31 << 5) | 8) // STR x8, [sp]
-						} else {
-							imm12 := u32(offset / 8)
-							g.emit(0xF9000000 | (imm12 << 10) | (31 << 5) | 8) // STR x8, [sp, #offset]
-						}
+						imm12 := u32(offset / 8)
+						g.emit(asm_str_imm(Reg(8), sp, imm12))
 					}
 
 					// Load fixed arguments to registers (in reverse order to avoid clobbering)
@@ -545,16 +508,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 					sym_idx := g.macho.add_undefined('_' + fn_name)
 					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
 						true)
-					g.emit(0x94000000)
+					g.emit(asm_bl_reloc())
 
 					// Restore stack
 					if stack_space > 0 {
-						// ADD sp, sp, #stack_space
 						if stack_space <= 0xFFF {
-							g.emit(0x910003FF | (u32(stack_space) << 10))
+							g.emit(asm_add_imm(sp, sp, u32(stack_space)))
 						} else {
 							g.emit_mov_imm(10, u64(stack_space))
-							g.emit(0x8B0A03FF) // ADD sp, sp, x10
+							g.emit(asm_add_sp_reg(Reg(10)))
 						}
 					}
 				} else {
@@ -569,7 +531,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					sym_idx := g.macho.add_undefined('_' + fn_name)
 					g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
 						true)
-					g.emit(0x94000000)
+					g.emit(asm_bl_reloc())
 				}
 
 				if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
@@ -593,7 +555,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_val_to_reg(9, instr.operands[0])
 
 			// BLR x9 - branch and link to register
-			g.emit(0xD63F0120) // BLR x9
+			g.emit(asm_blr(Reg(9)))
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
 				g.store_reg_to_val(0, val_id)
@@ -606,7 +568,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Reset SP to the bottom of the callee-saved registers area
 			// SP = FP - callee_saved_size
 			callee_size := ((g.used_regs.len + 1) / 2) * 16
-			g.emit(0xD1000000 | (u32(callee_size) << 10) | (29 << 5) | 31)
+			g.emit(asm_sub_imm(sp, fp, u32(callee_size)))
 			// Restore callee-saved regs
 			mut j := g.used_regs.len
 			if j % 2 != 0 {
@@ -615,19 +577,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 			for j > 0 {
 				base := j - 2
 				r1 := g.used_regs[base]
-				// mut r2 := r1
-				mut r2 := 31 // xzr // r1 // dummy
+				mut r2 := 31 // xzr
 				if base + 1 < g.used_regs.len {
 					r2 = g.used_regs[base + 1]
 				}
-				// ldp r1, r2, [sp], 16
-				// code := 0xA8C10000 | (u32(r2) << 10) | (31 << 5) | u32(r1)
-				code := 0xA8C10000 | (u32(r2) << 10) | (31 << 5) | u32(r1)
-				g.emit(code)
+				g.emit(asm_ldp_pair_post(Reg(r1), Reg(r2)))
 				j -= 2
 			}
-			g.emit(0xA8C17BFD)
-			g.emit(0xD65F03C0)
+			g.emit(asm_ldp_fp_lr_post())
+			g.emit(asm_ret())
 		}
 		.jmp {
 			target_blk := instr.operands[0]
@@ -640,15 +598,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if off := g.block_offsets[target_idx] {
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				g.emit(0x14000000 | (u32(rel) & 0x3FFFFFF))
+				g.emit(asm_b(rel))
 			} else {
 				g.record_pending_label(target_idx)
-				g.emit(0x14000000)
+				g.emit(asm_b(0))
 			}
 		}
 		.br {
 			g.load_val_to_reg(8, instr.operands[0])
-			// Replaced CMP x8, #0; B.NE with CBNZ x8
 
 			true_blk := g.mod.values[instr.operands[1]].index
 			false_blk := g.mod.values[instr.operands[2]].index
@@ -658,11 +615,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if off := g.block_offsets[true_blk] {
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				// CBNZ x8, offset (0xB5...)
-				g.emit(0xB5000008 | ((u32(rel) & 0x7FFFF) << 5))
+				g.emit(asm_cbnz(Reg(8), rel))
 			} else {
 				g.record_pending_label(true_blk)
-				g.emit(0xB5000008)
+				g.emit(asm_cbnz(Reg(8), 0))
 			}
 
 			if false_blk == g.next_blk {
@@ -671,10 +627,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if off := g.block_offsets[false_blk] {
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				g.emit(0x14000000 | (u32(rel) & 0x3FFFFFF))
+				g.emit(asm_b(rel))
 			} else {
 				g.record_pending_label(false_blk)
-				g.emit(0x14000000)
+				g.emit(asm_b(0))
 			}
 		}
 		.switch_ {
@@ -684,20 +640,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 			for i := 2; i < instr.operands.len; i += 2 {
 				// We need val in a register. x9.
 				g.load_val_to_reg(9, instr.operands[i])
-				g.emit(0xEB09011F) // cmp x8, x9
+				g.emit(asm_cmp_reg(Reg(8), Reg(9)))
 
 				// b.eq target
 				target_blk_val := instr.operands[i + 1]
 				target_blk_idx := g.mod.values[target_blk_val].index
 
-				// Emit branch EQ (cond = 0)
-				// B.cond: 01010100 [imm19] 0[cond4] -> 0x54...0
 				if off := g.block_offsets[target_blk_idx] {
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-					g.emit(0x54000000 | ((u32(rel) & 0x7FFFF) << 5))
+					g.emit(asm_b_cond(cond_eq, rel))
 				} else {
 					g.record_pending_label(target_blk_idx)
-					g.emit(0x54000000)
+					g.emit(asm_b_cond(cond_eq, 0))
 				}
 			}
 
@@ -706,10 +660,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			def_idx := g.mod.values[def_blk_val].index
 			if off := g.block_offsets[def_idx] {
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				g.emit(0x14000000 | (u32(rel) & 0x3FFFFFF))
+				g.emit(asm_b(rel))
 			} else {
 				g.record_pending_label(def_idx)
-				g.emit(0x14000000)
+				g.emit(asm_b(0))
 			}
 		}
 		.bitcast {
@@ -733,8 +687,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.unreachable {
 			// Emit UDF #0 instruction (undefined trap)
-			// This is used after code that should never be reached (e.g., after exit() in assert)
-			g.emit(0x00000000)
+			g.emit(asm_udf())
 		}
 		.inline_string_init {
 			// Create string struct by value: { str, len, is_lit }
@@ -788,20 +741,17 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 	val := g.mod.values[val_id]
 	if val.kind == .constant {
 		// Parse float constant and load into float register
-		// For now, use FMOV from integer register
 		// First load the bit pattern into an integer register
 		f_val := val.name.f64()
 		bits := *unsafe { &u64(&f_val) }
 
 		// Load the 64-bit bits into x8
 		g.emit_mov_imm64(8, i64(bits))
-		// FMOV Dd, Xn -> 0x9E670000 | (Xn << 5) | Dd
-		g.emit(0x9E670000 | (8 << 5) | u32(dreg))
+		g.emit(asm_fmov_d_x(dreg, Reg(8)))
 	} else {
 		// Load from stack into integer register then move to float
 		g.load_val_to_reg(8, val_id)
-		// FMOV Dd, Xn -> 0x9E670000 | (Xn << 5) | Dd
-		g.emit(0x9E670000 | (8 << 5) | u32(dreg))
+		g.emit(asm_fmov_d_x(dreg, Reg(8)))
 	}
 }
 
@@ -850,9 +800,9 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			sym_idx := g.macho.add_symbol('L_str_${str_offset}', u64(str_offset), false,
 				2)
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
-			g.emit(0x90000000 | u32(reg))
+			g.emit(asm_adrp(Reg(reg)))
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
-			g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
+			g.emit(asm_add_pageoff(Reg(reg)))
 		} else {
 			int_val := g.get_const_int(val_id)
 			g.emit_mov_imm64(reg, int_val)
@@ -860,9 +810,9 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 	} else if val.kind == .global {
 		sym_idx := g.macho.add_undefined('_' + val.name)
 		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
-		g.emit(0x90000000 | u32(reg))
+		g.emit(asm_adrp(Reg(reg)))
 		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
-		g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
+		g.emit(asm_add_pageoff(Reg(reg)))
 	} else if val.kind == .string_literal {
 		// String literal: create string struct { str, len, is_lit } on stack
 		// val.name contains the string content, val.index contains the length
@@ -891,9 +841,9 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			sym_idx := g.macho.add_symbol('L_str_${str_offset2}', u64(str_offset2), false,
 				2)
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
-			g.emit(0x90000000 | u32(reg))
+			g.emit(asm_adrp(Reg(reg)))
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
-			g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
+			g.emit(asm_add_pageoff(Reg(reg)))
 			g.emit_str_reg_offset(reg, 29, base_offset)
 
 			// Store len (offset 8)
@@ -933,74 +883,64 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 
 fn (mut g Gen) emit_sub_sp(imm int) {
 	if imm <= 0xFFF {
-		// SUB SP, SP, #imm (unshifted)
-		g.emit(0xD1000000 | (u32(imm) << 10) | (31 << 5) | 31)
+		g.emit(asm_sub_imm(sp, sp, u32(imm)))
 	} else if imm <= 0xFFFFFF {
 		// Split into high (shifted by 12) and low parts
 		high := (imm >> 12) & 0xFFF
 		low := imm & 0xFFF
 		if high > 0 {
-			// SUB SP, SP, #high, LSL #12
-			g.emit(0xD1400000 | (u32(high) << 10) | (31 << 5) | 31)
+			g.emit(asm_sub_imm_lsl12(sp, sp, u32(high)))
 		}
 		if low > 0 {
-			// SUB SP, SP, #low
-			g.emit(0xD1000000 | (u32(low) << 10) | (31 << 5) | 31)
+			g.emit(asm_sub_imm(sp, sp, u32(low)))
 		}
 	} else {
 		// Very large stack: use register
 		g.emit_mov_imm(10, u64(imm))
-		// SUB SP, SP, X10
-		g.emit(0xCB0A03FF)
+		g.emit(asm_sub_sp_reg(Reg(10)))
 	}
 }
 
 fn (mut g Gen) emit_add_fp_imm(rd int, imm int) {
 	val := -imm
 	if val <= 0xFFF {
-		// SUB Rd, FP, #val
-		g.emit(0xD1000000 | (u32(val) << 10) | (29 << 5) | u32(rd))
+		g.emit(asm_sub_imm(Reg(rd), fp, u32(val)))
 	} else if val <= 0xFFFFFF {
-		// Split into high (shifted by 12) and low parts using x10 as temp
+		// Split into high (shifted by 12) and low parts
 		high := (val >> 12) & 0xFFF
 		low := val & 0xFFF
-		// SUB Rd, FP, #high, LSL #12
-		g.emit(0xD1400000 | (u32(high) << 10) | (29 << 5) | u32(rd))
+		g.emit(asm_sub_imm_lsl12(Reg(rd), fp, u32(high)))
 		if low > 0 {
-			// SUB Rd, Rd, #low
-			g.emit(0xD1000000 | (u32(low) << 10) | (u32(rd) << 5) | u32(rd))
+			g.emit(asm_sub_imm(Reg(rd), Reg(rd), u32(low)))
 		}
 	} else {
 		// Very large offset: use register
 		g.emit_mov_imm(10, u64(val))
-		// SUB Rd, FP, X10
-		g.emit(0xCB0003A0 | (10 << 16) | u32(rd))
+		g.emit(asm_sub_fp_to_reg(Reg(rd), Reg(10)))
 	}
 }
 
 fn (mut g Gen) emit_str_reg_offset(rt int, rn int, offset int) {
 	if offset >= -255 && offset <= 255 {
-		imm9 := u32(offset & 0x1FF)
-		g.emit(0xF8000000 | (imm9 << 12) | (u32(rn) << 5) | u32(rt))
+		g.emit(asm_stur(Reg(rt), Reg(rn), offset))
 	} else {
 		// Large negative offset; use temp x10 for address
 		imm := u64(-offset) // Positive imm
 		g.emit_mov_imm(10, imm)
-		g.emit(0xCB0A03AA) // sub x10, x29, x10
-		g.emit(0xF9000140 | u32(rt)) // str xrt, [x10]
+		g.emit(asm_sub_fp_to_reg(Reg(10), Reg(10)))
+		g.emit(asm_str(Reg(rt), Reg(10)))
 	}
 }
 
 fn (mut g Gen) emit_ldr_reg_offset(rt int, rn int, offset int) {
 	if offset >= -255 && offset <= 255 {
-		imm9 := u32(offset & 0x1FF)
-		g.emit(0xF8400000 | (imm9 << 12) | (u32(rn) << 5) | u32(rt))
+		g.emit(asm_ldur(Reg(rt), Reg(rn), offset))
 	} else {
 		// Large negative offset; use temp x10 for address
 		imm := u64(-offset) // Positive imm
 		g.emit_mov_imm(10, imm)
-		g.emit(0xCB0A03AA) // sub x10, x29, x10
-		g.emit(0xF9400140 | u32(rt)) // ldr xrt, [x10]
+		g.emit(asm_sub_fp_to_reg(Reg(10), Reg(10)))
+		g.emit(asm_ldr(Reg(rt), Reg(10)))
 	}
 }
 
@@ -1032,7 +972,7 @@ pub fn (mut g Gen) link_executable(output_path string) {
 
 fn (mut g Gen) emit_mov_imm(rd int, imm u64) {
 	// Assume imm < 65536; use MOVZ xd, #imm
-	g.emit(0xD2800000 | (u32(imm & 0xFFFF) << 5) | u32(rd))
+	g.emit(asm_movz(Reg(rd), u32(imm & 0xFFFF)))
 	// For larger imm, add MOVK(s), but not needed for stack sizes.
 }
 
@@ -1045,8 +985,7 @@ fn (mut g Gen) emit_mov_imm64(rd int, val i64) {
 
 	// For small positive values (0 to 65535), use MOVZ
 	if val > 0 && val <= 0xFFFF {
-		// MOVZ xd, #imm16
-		g.emit(0xD2800000 | (u32(val) << 5) | u32(rd))
+		g.emit(asm_movz(Reg(rd), u32(val)))
 		return
 	}
 
@@ -1056,8 +995,7 @@ fn (mut g Gen) emit_mov_imm64(rd int, val i64) {
 	// For -42: MOVN xd, #41 -> ~41 = -42
 	if val >= -65536 && val < 0 {
 		not_val := u32(~val) // ~(-42) = 41
-		// MOVN xd, #imm16 (64-bit): 0x92800000
-		g.emit(0x92800000 | (not_val << 5) | u32(rd))
+		g.emit(asm_movn(Reg(rd), not_val))
 		return
 	}
 
@@ -1066,21 +1004,19 @@ fn (mut g Gen) emit_mov_imm64(rd int, val i64) {
 
 	// Emit MOVZ for first chunk (always at shift 0)
 	chunk0 := u32(uval & 0xFFFF)
-	g.emit(0xD2800000 | (chunk0 << 5) | u32(rd))
+	g.emit(asm_movz(Reg(rd), chunk0))
 
 	// Emit MOVK for remaining non-zero chunks
 	for shift := 16; shift < 64; shift += 16 {
 		chunk := u32((uval >> shift) & 0xFFFF)
 		if chunk != 0 {
-			hw := u32(shift / 16)
-			g.emit(0xF2800000 | (hw << 21) | (chunk << 5) | u32(rd))
+			g.emit(asm_movk(Reg(rd), chunk, shift))
 		}
 	}
 }
 
 fn (mut g Gen) emit_mov_reg(rd int, rm int) {
-	// ORR xd, xzr, xm
-	g.emit(0xAA0003E0 | (u32(rm) << 16) | u32(rd))
+	g.emit(asm_mov_reg(Reg(rd), Reg(rm)))
 }
 
 struct Interval {

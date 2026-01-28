@@ -135,33 +135,21 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.elf.add_symbol(func.name, u64(g.curr_offset), true, 1)
 
 	// Prologue
-	// endbr64 - required for CET/IBT (Indirect Branch Tracking)
-	g.emit(0xF3)
-	g.emit(0x0F)
-	g.emit(0x1E)
-	g.emit(0xFA)
-	g.emit(0x55) // push rbp
-	g.emit(0x48)
-	g.emit(0x89)
-	g.emit(0xE5) // mov rbp, rsp
+	asm_endbr64(mut g)
+	asm_push_rbp(mut g)
+	asm_mov_rbp_rsp(mut g)
 
 	// Push callee-saved regs
-	// RBX(3), R12(12), R13(13), R14(14), R15(15)
 	for r in g.used_regs {
-		g.emit_push_reg(r)
+		asm_push(mut g, Reg(r))
 	}
 
 	// sub rsp, stack_size
 	if g.stack_size > 0 {
-		g.emit(0x48)
 		if g.stack_size <= 127 {
-			g.emit(0x83) // sub r/m64, imm8
-			g.emit(0xEC)
-			g.emit(u8(g.stack_size))
+			asm_sub_rsp_imm8(mut g, u8(g.stack_size))
 		} else {
-			g.emit(0x81) // sub r/m64, imm32
-			g.emit(0xEC)
-			g.emit_u32(u32(g.stack_size))
+			asm_sub_rsp_imm32(mut g, u32(g.stack_size))
 		}
 	}
 
@@ -172,21 +160,21 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		if i < 6 {
 			src := abi_regs[i]
 			if reg := g.reg_map[pid] {
-				g.emit_mov_reg_reg(reg, src)
+				asm_mov_reg_reg(mut g, Reg(reg), Reg(src))
 			} else {
 				offset := g.stack_map[pid]
-				g.emit_store_reg_mem(src, offset)
+				asm_store_rbp_disp_reg(mut g, offset, Reg(src))
 			}
 		} else {
 			// Stack parameters: [rbp+16] is 7th param, [rbp+24] is 8th, etc.
 			stack_param_offset := 16 + (i - 6) * 8
 			// Load from stack into RAX, then store to our slot
-			g.emit_load_reg_mem(0, stack_param_offset)
+			asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
 			if reg := g.reg_map[pid] {
-				g.emit_mov_reg_reg(reg, 0)
+				asm_mov_reg_reg(mut g, Reg(reg), rax)
 			} else {
 				offset := g.stack_map[pid]
-				g.emit_store_reg_mem(0, offset)
+				asm_store_rbp_disp_reg(mut g, offset, rax)
 			}
 		}
 	}
@@ -223,96 +211,53 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			match instr.op {
 				.add {
-					g.emit(0x48)
-					g.emit(0x01)
-					g.emit(0xC8) // add rax, rcx
+					asm_add_rax_rcx(mut g)
 				}
 				.sub {
-					g.emit(0x48)
-					g.emit(0x29)
-					g.emit(0xC8) // sub rax, rcx
+					asm_sub_rax_rcx(mut g)
 				}
 				.mul {
-					g.emit(0x48)
-					g.emit(0x0F)
-					g.emit(0xAF)
-					g.emit(0xC1) // imul rax, rcx
+					asm_imul_rax_rcx(mut g)
 				}
 				.sdiv {
-					// cqo: sign-extend rax to rdx:rax
-					g.emit(0x48)
-					g.emit(0x99)
-					// idiv rcx
-					g.emit(0x48)
-					g.emit(0xF7)
-					g.emit(0xF9)
+					asm_cqo(mut g)
+					asm_idiv_rcx(mut g)
 				}
 				.srem {
-					// cqo: sign-extend rax to rdx:rax
-					g.emit(0x48)
-					g.emit(0x99)
-					// idiv rcx (quotient in rax, remainder in rdx)
-					g.emit(0x48)
-					g.emit(0xF7)
-					g.emit(0xF9)
-					// mov rax, rdx (move remainder to rax)
-					g.emit(0x48)
-					g.emit(0x89)
-					g.emit(0xD0)
+					asm_cqo(mut g)
+					asm_idiv_rcx(mut g)
+					asm_mov_rax_rdx(mut g)
 				}
 				.and_ {
-					g.emit(0x48)
-					g.emit(0x21)
-					g.emit(0xC8) // and rax, rcx
+					asm_and_rax_rcx(mut g)
 				}
 				.or_ {
-					g.emit(0x48)
-					g.emit(0x09)
-					g.emit(0xC8) // or rax, rcx
+					asm_or_rax_rcx(mut g)
 				}
 				.xor {
-					g.emit(0x48)
-					g.emit(0x31)
-					g.emit(0xC8) // xor rax, rcx
+					asm_xor_rax_rcx(mut g)
 				}
 				.shl {
-					// shl rax, cl (shift by low 8 bits of rcx)
-					g.emit(0x48)
-					g.emit(0xD3)
-					g.emit(0xE0)
+					asm_shl_rax_cl(mut g)
 				}
 				.ashr {
-					// sar rax, cl (arithmetic shift right)
-					g.emit(0x48)
-					g.emit(0xD3)
-					g.emit(0xF8)
+					asm_sar_rax_cl(mut g)
 				}
 				.lshr {
-					// shr rax, cl (logical shift right)
-					g.emit(0x48)
-					g.emit(0xD3)
-					g.emit(0xE8)
+					asm_shr_rax_cl(mut g)
 				}
 				.eq, .ne, .lt, .gt, .le, .ge {
-					g.emit(0x48)
-					g.emit(0x39)
-					g.emit(0xC8) // cmp rax, rcx
-					code := match instr.op {
-						.eq { 0x94 }
-						.ne { 0x95 }
-						.lt { 0x9C }
-						.gt { 0x9F }
-						.le { 0x9E }
-						.ge { 0x9D }
-						else { 0x94 }
+					asm_cmp_rax_rcx(mut g)
+					cc := match instr.op {
+						.eq { cc_e }
+						.ne { cc_ne }
+						.lt { cc_l }
+						.gt { cc_g }
+						.le { cc_le }
+						.ge { cc_ge }
+						else { cc_e }
 					}
-					g.emit(0x0F)
-					g.emit(u8(code))
-					g.emit(0xC0) // setcc al
-					g.emit(0x48)
-					g.emit(0x0F)
-					g.emit(0xB6)
-					g.emit(0xC0) // movzx rax, al
+					asm_setcc_al_movzx(mut g, cc)
 				}
 				else {}
 			}
@@ -321,46 +266,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.store {
 			g.load_val_to_reg(0, instr.operands[0]) // Val -> RAX
 			g.load_val_to_reg(1, instr.operands[1]) // Ptr -> RCX
-			// mov [rcx], rax
-			g.emit(0x48)
-			g.emit(0x89)
-			g.emit(0x01)
+			asm_mov_mem_rcx_rax(mut g)
 		}
 		.load {
 			g.load_val_to_reg(1, instr.operands[0]) // Ptr -> RCX
-			// mov rax, [rcx]
-			g.emit(0x48)
-			g.emit(0x8B)
-			g.emit(0x01)
+			asm_mov_rax_mem_rcx(mut g)
 			g.store_reg_to_val(0, val_id)
 		}
 		.alloca {
 			off := g.alloca_offsets[val_id]
 			// lea rax, [rbp + off]
-			g.emit(0x48)
-			g.emit(0x8D)
 			if off >= -128 && off <= 127 {
-				g.emit(0x45) // ModRM 01 = disp8
-				g.emit(u8(off))
+				asm_lea_rax_rbp_disp8(mut g, i8(off))
 			} else {
-				g.emit(0x85) // ModRM 10 = disp32
-				g.emit_u32(u32(off))
+				asm_lea_rax_rbp_disp32(mut g, off)
 			}
 			g.store_reg_to_val(0, val_id)
 		}
 		.get_element_ptr {
 			g.load_val_to_reg(0, instr.operands[0]) // Base -> RAX
 			g.load_val_to_reg(1, instr.operands[1]) // Index -> RCX
-			// Mimic arm64 logic: add rax, (rcx << 3)
-			// shl rcx, 3
-			g.emit(0x48)
-			g.emit(0xC1)
-			g.emit(0xE1)
-			g.emit(0x03)
-			// add rax, rcx
-			g.emit(0x48)
-			g.emit(0x01)
-			g.emit(0xC8)
+			// add rax, (rcx << 3)
+			asm_shl_rcx_3(mut g)
+			asm_add_rax_rcx(mut g)
 			g.store_reg_to_val(0, val_id)
 		}
 		.call {
@@ -373,14 +301,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 				stack_args = num_args - 6
 				// Align stack to 16 bytes if odd number of stack args
 				if stack_args % 2 == 1 {
-					// push rax (shorter than sub rsp, 8)
-					g.emit(0x50)
+					asm_push(mut g, rax)
 				}
 				// Push in reverse order
 				for i := num_args; i > 6; i-- {
 					g.load_val_to_reg(0, instr.operands[i]) // RAX
-					// push rax
-					g.emit(0x50)
+					asm_push(mut g, rax)
 				}
 			}
 
@@ -393,10 +319,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			fn_val := g.mod.values[instr.operands[0]]
 
 			// xor eax, eax (Clear AL for variadic function calls)
-			g.emit(0x31)
-			g.emit(0xC0)
+			asm_xor_eax_eax(mut g)
 
-			g.emit(0xE8) // call rel32
+			asm_call_rel32(mut g)
 			sym_idx := g.elf.add_undefined(fn_val.name)
 
 			// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
@@ -406,16 +331,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Clean up stack arguments
 			if stack_args > 0 {
 				cleanup := (stack_args + (stack_args % 2)) * 8
-				// add rsp, cleanup
-				g.emit(0x48)
 				if cleanup <= 127 {
-					g.emit(0x83)
-					g.emit(0xC4)
-					g.emit(u8(cleanup))
+					asm_add_rsp_imm8(mut g, u8(cleanup))
 				} else {
-					g.emit(0x81)
-					g.emit(0xC4)
-					g.emit_u32(u32(cleanup))
+					asm_add_rsp_imm32(mut g, u32(cleanup))
 				}
 			}
 
@@ -435,11 +354,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 				stack_args = num_args - 6
 				// Align stack to 16 bytes if odd number of stack args
 				if stack_args % 2 == 1 {
-					g.emit(0x50) // push rax
+					asm_push(mut g, rax)
 				}
 				for i := num_args; i > 6; i-- {
 					g.load_val_to_reg(0, instr.operands[i])
-					g.emit(0x50) // push rax
+					asm_push(mut g, rax)
 				}
 			}
 
@@ -454,26 +373,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_val_to_reg(10, instr.operands[0])
 
 			// xor eax, eax (Clear AL for variadic function calls)
-			g.emit(0x31)
-			g.emit(0xC0)
+			asm_xor_eax_eax(mut g)
 
-			// call *r10 (FF /2 with REX.W prefix for r10)
-			g.emit(0x41) // REX.B for r10
-			g.emit(0xFF) // call opcode
-			g.emit(0xD2) // ModRM: call *r10
+			// call *r10
+			asm_call_r10(mut g)
 
 			// Clean up stack arguments
 			if stack_args > 0 {
 				cleanup := (stack_args + (stack_args % 2)) * 8
-				g.emit(0x48)
 				if cleanup <= 127 {
-					g.emit(0x83)
-					g.emit(0xC4)
-					g.emit(u8(cleanup))
+					asm_add_rsp_imm8(mut g, u8(cleanup))
 				} else {
-					g.emit(0x81)
-					g.emit(0xC4)
-					g.emit_u32(u32(cleanup))
+					asm_add_rsp_imm32(mut g, u32(cleanup))
 				}
 			}
 
@@ -487,24 +398,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			// Cleanup Stack
 			if g.stack_size > 0 {
-				g.emit(0x48)
 				if g.stack_size <= 127 {
-					g.emit(0x83) // add r/m64, imm8
-					g.emit(0xC4)
-					g.emit(u8(g.stack_size))
+					asm_add_rsp_imm8(mut g, u8(g.stack_size))
 				} else {
-					g.emit(0x81) // add r/m64, imm32
-					g.emit(0xC4)
-					g.emit_u32(u32(g.stack_size))
+					asm_add_rsp_imm32(mut g, u32(g.stack_size))
 				}
 			}
 			// Pop callee-saved regs (reverse order)
 			for i := g.used_regs.len - 1; i >= 0; i-- {
-				g.emit_pop_reg(g.used_regs[i])
+				asm_pop(mut g, Reg(g.used_regs[i]))
 			}
-			// pop rbp; ret
-			g.emit(0x5D)
-			g.emit(0xC3)
+			asm_pop_rbp(mut g)
+			asm_ret(mut g)
 		}
 		.jmp {
 			target_idx := g.mod.values[instr.operands[0]].index
@@ -517,24 +422,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Test condition register directly if register-allocated
 			if reg := g.reg_map[cond_id] {
-				hw_reg := g.map_reg(reg)
-				mut rex := u8(0x48)
-				if hw_reg >= 8 {
-					rex |= 5 // REX.RB
-				}
-				g.emit(rex)
-				g.emit(0x85)
-				g.emit(0xC0 | ((hw_reg & 7) << 3) | (hw_reg & 7))
+				asm_test_reg_reg(mut g, Reg(reg))
 			} else {
 				g.load_val_to_reg(0, cond_id)
-				g.emit(0x48)
-				g.emit(0x85)
-				g.emit(0xC0) // test rax, rax
+				asm_test_rax_rax(mut g)
 			}
 
 			// Emit je false_blk (jump if zero/false)
-			g.emit(0x0F)
-			g.emit(0x84) // je rel32
+			asm_je_rel32(mut g)
 			g.record_pending_label(false_blk)
 			g.emit_u32(0)
 			// Jump to true block (can't assume it's the next block)
@@ -544,11 +439,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.load_val_to_reg(0, instr.operands[0]) // RAX
 			for i := 2; i < instr.operands.len; i += 2 {
 				g.load_val_to_reg(1, instr.operands[i])
-				g.emit(0x48)
-				g.emit(0x39)
-				g.emit(0xC8) // cmp rax, rcx
-				g.emit(0x0F)
-				g.emit(0x84) // je
+				asm_cmp_rax_rcx(mut g)
+				asm_je_rel32(mut g)
 				target_idx := g.mod.values[instr.operands[i + 1]].index
 				if off := g.block_offsets[target_idx] {
 					rel := off - (g.elf.text_data.len - g.curr_offset + 4)
@@ -579,9 +471,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.unreachable {
 			// Emit UD2 instruction (undefined trap)
-			// This is used after code that should never be reached (e.g., after exit() in assert)
-			g.emit(0x0F)
-			g.emit(0x0B)
+			asm_ud2(mut g)
 		}
 		else {
 			eprintln('x64: unknown op ${instr.op}')
@@ -590,7 +480,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 }
 
 fn (mut g Gen) emit_jmp(target_idx int) {
-	g.emit(0xE9)
+	asm_jmp_rel32(mut g)
 	if off := g.block_offsets[target_idx] {
 		rel := off - (g.elf.text_data.len - g.curr_offset + 4)
 		g.emit_u32(u32(rel))
@@ -633,67 +523,32 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
 
 			// lea reg, [rip + disp]
-			hw_reg := g.map_reg(reg)
-			mut rex := u8(0x48)
-			if hw_reg >= 8 {
-				rex |= 4
-			}
-			g.emit(rex)
-			g.emit(0x8D)
-			g.emit(0x05 | ((hw_reg & 7) << 3))
+			asm_lea_reg_rip(mut g, Reg(reg))
 			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
 			g.emit_u32(0)
 		} else {
 			int_val := val.name.i64()
-			hw_reg := g.map_reg(reg)
 			if int_val == 0 {
-				// xor reg, reg (2-3 bytes)
-				if hw_reg >= 8 {
-					g.emit(0x45) // REX.RB
-					g.emit(0x31)
-					g.emit(0xC0 | ((hw_reg & 7) << 3) | (hw_reg & 7))
-				} else {
-					g.emit(0x31)
-					g.emit(0xC0 | (hw_reg << 3) | hw_reg)
-				}
+				asm_xor_reg_reg(mut g, Reg(reg))
 			} else if int_val > 0 && int_val <= 0x7FFFFFFF {
-				// mov $imm32, %reg (5-6 bytes, zero-extends to 64-bit)
-				if hw_reg >= 8 {
-					g.emit(0x41) // REX.B
-				}
-				g.emit(0xB8 | (hw_reg & 7))
-				g.emit_u32(u32(int_val))
+				asm_mov_reg_imm32(mut g, Reg(reg), u32(int_val))
 			} else {
-				// movabs $imm64, %reg (10 bytes)
-				mut rex := u8(0x48)
-				if hw_reg >= 8 {
-					rex |= 1
-				}
-				g.emit(rex)
-				g.emit(0xB8 | (hw_reg & 7))
-				g.emit_u64(u64(int_val))
+				asm_mov_reg_imm64(mut g, Reg(reg), u64(int_val))
 			}
 		}
 	} else if val.kind == .global {
-		hw_reg := g.map_reg(reg)
-		mut rex := u8(0x48)
-		if hw_reg >= 8 {
-			rex |= 4
-		}
-		g.emit(rex)
-		g.emit(0x8D)
-		g.emit(0x05 | ((hw_reg & 7) << 3))
+		asm_lea_reg_rip(mut g, Reg(reg))
 		sym_idx := g.elf.add_undefined(val.name)
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
 		g.emit_u32(0)
 	} else {
 		if reg_idx := g.reg_map[val_id] {
 			if reg_idx != reg {
-				g.emit_mov_reg_reg(reg, reg_idx)
+				asm_mov_reg_reg(mut g, Reg(reg), Reg(reg_idx))
 			}
 		} else {
 			offset := g.stack_map[val_id]
-			g.emit_load_reg_mem(reg, offset)
+			asm_load_reg_rbp_disp(mut g, Reg(reg), offset)
 		}
 	}
 }
@@ -701,80 +556,11 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	if reg_idx := g.reg_map[val_id] {
 		if reg_idx != reg {
-			g.emit_mov_reg_reg(reg_idx, reg)
+			asm_mov_reg_reg(mut g, Reg(reg_idx), Reg(reg))
 		}
 	} else {
 		offset := g.stack_map[val_id]
-		g.emit_store_reg_mem(reg, offset)
-	}
-}
-
-fn (mut g Gen) emit_push_reg(reg int) {
-	hw_reg := g.map_reg(reg)
-	if hw_reg >= 8 {
-		g.emit(0x41)
-		g.emit(0x50 | (hw_reg & 7))
-	} else {
-		g.emit(0x50 | hw_reg)
-	}
-}
-
-fn (mut g Gen) emit_pop_reg(reg int) {
-	hw_reg := g.map_reg(reg)
-	if hw_reg >= 8 {
-		g.emit(0x41)
-		g.emit(0x58 | (hw_reg & 7))
-	} else {
-		g.emit(0x58 | hw_reg)
-	}
-}
-
-fn (mut g Gen) emit_mov_reg_reg(dst int, src int) {
-	dst_hw := g.map_reg(dst)
-	src_hw := g.map_reg(src)
-	mut rex := u8(0x48)
-	if src_hw >= 8 {
-		rex |= 4
-	}
-	if dst_hw >= 8 {
-		rex |= 1
-	}
-	g.emit(rex)
-	g.emit(0x89)
-	g.emit(0xC0 | ((src_hw & 7) << 3) | (dst_hw & 7))
-}
-
-fn (mut g Gen) emit_load_reg_mem(reg int, disp int) {
-	hw_reg := g.map_reg(reg)
-	mut rex := u8(0x48)
-	if hw_reg >= 8 {
-		rex |= 4
-	}
-	g.emit(rex)
-	g.emit(0x8B)
-	if disp >= -128 && disp <= 127 {
-		g.emit(0x45 | ((hw_reg & 7) << 3)) // ModRM 01 = disp8
-		g.emit(u8(disp))
-	} else {
-		g.emit(0x85 | ((hw_reg & 7) << 3)) // ModRM 10 = disp32
-		g.emit_u32(u32(disp))
-	}
-}
-
-fn (mut g Gen) emit_store_reg_mem(reg int, disp int) {
-	hw_reg := g.map_reg(reg)
-	mut rex := u8(0x48)
-	if hw_reg >= 8 {
-		rex |= 4
-	}
-	g.emit(rex)
-	g.emit(0x89)
-	if disp >= -128 && disp <= 127 {
-		g.emit(0x45 | ((hw_reg & 7) << 3)) // ModRM 01 = disp8
-		g.emit(u8(disp))
-	} else {
-		g.emit(0x85 | ((hw_reg & 7) << 3)) // ModRM 10 = disp32
-		g.emit_u32(u32(disp))
+		asm_store_rbp_disp_reg(mut g, offset, Reg(reg))
 	}
 }
 
