@@ -329,6 +329,12 @@ fn maybe_sum(a int, b int) ?int {
 	return none
 }
 
+// Uses `or { return }` pattern to propagate none
+fn maybe_triple(x int) ?int {
+	val := maybe_positive(x) or { return none }
+	return val * 3
+}
+
 // ===================== IF-EXPRESSION HELPERS =====================
 
 fn int_abs(a int) int {
@@ -1861,6 +1867,20 @@ fn main() {
 		}
 	}
 
+	// 35.8 or { return } pattern with value
+	if or_val := maybe_triple(5) {
+		print_int(or_val) // 15 (5 * 3)
+	} else {
+		print_int(-1)
+	}
+
+	// 35.9 or { return } pattern with negative (returns none)
+	if or_val2 := maybe_triple(-5) {
+		print_int(or_val2)
+	} else {
+		print_int(0) // 0 (none case)
+	}
+
 	// ==================== 36. RANGE EXPRESSIONS ====================
 	print_str('--- 36. Range Expressions ---')
 
@@ -2489,6 +2509,205 @@ fn main() {
 	opt_c := opt_a | opt_a // Should be 10
 	print_int(opt_b) // 0
 	print_int(opt_c) // 10
+
+	// 50.7 2 * x = x << 1 (commutative)
+	opt_mul2_comm := 13
+	print_int(2 * opt_mul2_comm) // 26
+
+	// 50.8 Algebraic opts in expressions
+	opt_expr := 7
+	print_int((opt_expr ^ opt_expr) + 5) // 0 + 5 = 5
+	print_int((opt_expr & opt_expr) * 2) // 7 * 2 = 14
+
+	// 50.9 Algebraic opts with different values
+	opt_large := 12345
+	print_int(opt_large - opt_large) // 0
+	print_int(opt_large ^ opt_large) // 0
+	print_int(opt_large & opt_large) // 12345
+	print_int(opt_large | opt_large) // 12345
+
+	// 50.10 Algebraic opts in loop
+	mut opt_loop_sum := 0
+	for i in 1 .. 5 {
+		opt_loop_sum += i - i // Should add 0 each iteration
+		opt_loop_sum += i & i // Should add i each iteration
+	}
+	print_int(opt_loop_sum) // 0+1 + 0+2 + 0+3 + 0+4 = 10
+
+	// ==================== 51. DEAD STORE ELIMINATION ====================
+	print_str('--- 51. Dead Store Elimination ---')
+
+	// 51.1 Basic dead store - local var never read
+	// The optimizer should remove stores to variables that are never used
+	{
+		mut dead_var := 100
+		dead_var = 200 // dead store, never read
+		_ = dead_var
+	}
+	print_int(1) // 1 - verify execution continues
+
+	// 51.2 Dead store with live store after
+	mut dse_var := 10
+	dse_var = 20 // dead store (overwritten before read)
+	dse_var = 30 // this is the live store
+	print_int(dse_var) // 30
+
+	// 51.3 Multiple dead stores
+	mut dse_multi := 1
+	dse_multi = 2 // dead
+	dse_multi = 3 // dead
+	dse_multi = 4 // dead
+	dse_multi = 5 // live
+	print_int(dse_multi) // 5
+
+	// 51.4 Dead store in branch not taken
+	mut dse_branch := 100
+	if false {
+		dse_branch = 999 // dead (branch never taken)
+	}
+	print_int(dse_branch) // 100
+
+	// 51.5 Live store in taken branch
+	mut dse_live := 50
+	if true {
+		dse_live = 75
+	}
+	print_int(dse_live) // 75
+
+	// ==================== 52. DEAD PHI ELIMINATION ====================
+	print_str('--- 52. Dead Phi Elimination ---')
+
+	// 52.1 Phi from if-else where result is unused
+	// The phi node should be eliminated if not used
+	mut phi_unused := 0
+	if true {
+		phi_unused = 10
+	} else {
+		phi_unused = 20
+	}
+	// phi_unused is reassigned, so previous phi is dead
+	phi_unused = 99
+	print_int(phi_unused) // 99
+
+	// 52.2 Multiple phi nodes, some dead
+	mut phi_a := 0
+	mut phi_b := 0
+	if true {
+		phi_a = 1
+		phi_b = 2
+	} else {
+		phi_a = 3
+		phi_b = 4
+	}
+	// phi_b is dead (overwritten), phi_a is live
+	phi_b = 100
+	print_int(phi_a) // 1
+	print_int(phi_b) // 100
+
+	// 52.3 Loop phi - variable assigned in loop body
+	mut phi_loop := 0
+	for i in 0 .. 3 {
+		phi_loop = i // intermediate values are dead, only final matters
+	}
+	print_int(phi_loop) // 2 (last iteration value)
+
+	// 52.4 Nested if with dead phi
+	mut phi_nested := 0
+	if true {
+		if true {
+			phi_nested = 10
+		} else {
+			phi_nested = 20
+		}
+		phi_nested = 30 // overwrites inner phi result
+	}
+	print_int(phi_nested) // 30
+
+	// 52.5 Complex phi scenario with loop and conditionals
+	mut phi_complex := 1
+	for i in 0 .. 4 {
+		if i % 2 == 0 {
+			phi_complex = phi_complex + 1
+		} else {
+			phi_complex = phi_complex * 2
+		}
+	}
+	print_int(phi_complex) // 1 -> 2 -> 4 -> 5 -> 10
+
+	// ==================== 53. CONSTANT DEDUPLICATION ====================
+	print_str('--- 53. Constant Deduplication ---')
+
+	// 53.1 Same constant used multiple times
+	const_a := 42
+	const_b := 42
+	const_c := 42
+	print_int(const_a + const_b + const_c) // 126
+
+	// 53.2 Zero constant deduplication
+	zero1 := 0
+	zero2 := 0
+	zero3 := 0
+	print_int(zero1 + zero2 + zero3) // 0
+
+	// 53.3 Constant from algebraic opts should be deduplicated
+	dedup_x := 50
+	result1 := dedup_x - dedup_x // creates zero
+	dedup_y := 60
+	result2 := dedup_y - dedup_y // should reuse same zero
+	print_int(result1 + result2) // 0
+
+	// 53.4 Multiple shifts with same constant
+	shift_a := 1
+	shift_b := 2
+	shift_c := 4
+	// All these use constant 1 for the shift amount when x*2 is optimized
+	print_int(shift_a * 2 + shift_b * 2 + shift_c * 2) // 2 + 4 + 8 = 14
+
+	// 53.5 Constants in expressions
+	expr_const := (10 + 10) * (5 + 5) // Both 10s and 5s should be deduplicated
+	print_int(expr_const) // 200
+
+	// ==================== 54. HASHMAPS ====================
+	print_str('--- 54. Hashmaps ---')
+
+	// 54.1 Basic map initialization and assignment
+	mut hm1 := map[int]int{}
+	hm1[1] = 10
+	hm1[2] = 20
+	hm1[3] = 30
+	print_int(hm1[1]) // 10
+	print_int(hm1[2]) // 20
+	print_int(hm1[3]) // 30
+
+	// 54.2 Map len
+	print_int(hm1.len) // 3
+
+	// 54.3 Map with different keys
+	mut hm2 := map[int]int{}
+	hm2[100] = 1000
+	hm2[200] = 2000
+	print_int(hm2[100]) // 1000
+	print_int(hm2[200]) // 2000
+	print_int(hm2.len) // 2
+
+	// 54.4 Map value update
+	mut hm3 := map[int]int{}
+	hm3[5] = 50
+	print_int(hm3[5]) // 50
+	hm3[5] = 500
+	print_int(hm3[5]) // 500
+	print_int(hm3.len) // 1 (still 1, not 2)
+
+	// 54.5 Map with computed values
+	mut hm4 := map[int]int{}
+	for i in 0 .. 5 {
+		hm4[i] = i * i
+	}
+	print_int(hm4[0]) // 0
+	print_int(hm4[1]) // 1
+	print_int(hm4[2]) // 4
+	print_int(hm4[3]) // 9
+	print_int(hm4[4]) // 16
 
 	print_str('=== All tests completed ===')
 }

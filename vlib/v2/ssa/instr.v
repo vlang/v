@@ -69,6 +69,7 @@ pub enum OpCode {
 	phi
 	call
 	call_indirect // Indirect call through function pointer
+	call_sret     // Call with struct return (x8 indirect return on ARM64)
 	select
 	assign             // copy for phi elimination
 	inline_string_init // Create string struct by value: (string){str, len, is_lit}

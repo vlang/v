@@ -14,6 +14,7 @@ pub enum ValueKind {
 	instruction
 	basic_block
 	string_literal // V string struct literal (by value)
+	func_ref       // Function pointer reference (for map hash/eq/clone/free functions)
 }
 
 pub struct Value {

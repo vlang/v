@@ -308,9 +308,17 @@ fn resolve_parallel_copies_briggs(mut m ssa.Module, blk_id int, copies []Paralle
 	// These can be safely copied without overwriting needed values
 	mut ready := []int{}
 
+	// Build a set of values used as sources by pending copies
+	mut used_as_src := map[int]bool{}
 	for copy in worklist {
-		// A copy is ready if its source is not a destination of another copy
-		if !to_do[copy.src] {
+		used_as_src[copy.src] = true
+	}
+
+	for copy in worklist {
+		// A copy is ready if:
+		// 1. Its source is not a destination of another copy (won't be overwritten)
+		// 2. Its destination is not used as a source by another copy (safe to overwrite)
+		if !to_do[copy.src] && !used_as_src[copy.dest] {
 			ready << copy.dest
 		}
 	}
@@ -336,14 +344,25 @@ fn resolve_parallel_copies_briggs(mut m ssa.Module, blk_id int, copies []Paralle
 			loc[a] = b
 			to_do.delete(b)
 
-			// Check if this makes another copy ready
-			// If 'a' was a destination waiting for its source, check if it's now ready
-			if to_do[a] {
-				// 'a' is ready if its source's current location is not a pending destination
-				src_of_a := pred[a]
-				loc_of_src := if l := loc[src_of_a] { l } else { src_of_a }
-				if !to_do[loc_of_src] {
-					ready << a
+			// Check if this makes other copies ready
+			// A copy becomes ready when its source is no longer in to_do
+			for dest, _ in to_do {
+				if dest in ready {
+					continue
+				}
+				src := pred[dest]
+				loc_of_src := if l := loc[src] { l } else { src }
+				// Ready if source location is not a pending destination
+				// AND destination is not used as source by another pending copy
+				mut dest_used_as_src := false
+				for other_dest, _ in to_do {
+					if other_dest != dest && pred[other_dest] == dest {
+						dest_used_as_src = true
+						break
+					}
+				}
+				if !to_do[loc_of_src] && !dest_used_as_src {
+					ready << dest
 				}
 			}
 		} else {

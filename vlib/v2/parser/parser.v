@@ -279,8 +279,11 @@ fn (mut p Parser) stmt() ast.Stmt {
 			// p.log('ast.ReturnStmt')
 			p.next()
 			// TODO: clean up semi stuff (use expr list)
-			if p.tok == .semicolon {
-				p.next()
+			// empty return: `return;` or `return }` (e.g., `or { return }`)
+			if p.tok in [.semicolon, .rcbr] {
+				if p.tok == .semicolon {
+					p.next()
+				}
 				return ast.ReturnStmt{}
 			}
 			rs := ast.ReturnStmt{
@@ -1106,11 +1109,30 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		else if p.tok == .dot {
 			p.next()
 			// p.log('ast.SelectorExpr')
-			lhs = ast.SelectorExpr{
-				lhs: lhs
-				// rhs: p.expr(.lowest)
-				rhs: p.ident()
-				pos: p.pos
+			// Allow keywords after `.` for:
+			// - enum values like `.select`
+			// - method calls like `mutex.lock()`
+			// Handle comptime field access: `obj.$(field.name)`
+			if p.tok == .dollar {
+				p.next()
+				// TODO: properly handle comptime selector
+				// For now, consume the expression and use a placeholder
+				_ = p.expr(.lowest)
+				lhs = ast.SelectorExpr{
+					lhs: lhs
+					rhs: ast.Ident{
+						name: '__comptime_selector__'
+						pos:  p.pos
+					}
+					pos: p.pos
+				}
+			} else {
+				lhs = ast.SelectorExpr{
+					lhs: lhs
+					// rhs: p.expr(.lowest)
+					rhs: p.ident_or_keyword()
+					pos: p.pos
+				}
 			}
 		}
 		// doing this here since it can be
@@ -1147,7 +1169,16 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		}
 	}
 	// pratt
-	for int(min_bp) <= int(p.tok.left_binding_power()) {
+	// For multi-line expressions with infix op at start of next line:
+	// Only continue if the op is PURELY infix (not also a prefix like *, &, -)
+	// Otherwise `x\n*y` would parse as `x * y` instead of `x; *y` (dereference)
+	for int(min_bp) <= int(p.tok.left_binding_power())
+		|| (p.tok == .semicolon && p.peek().is_infix() && !p.peek().is_prefix()
+		&& int(min_bp) <= int(p.peek().left_binding_power())) {
+		// handle multi-line expressions where infix op is at start of next line
+		if p.tok == .semicolon && p.peek().is_infix() && !p.peek().is_prefix() {
+			p.next() // skip semicolon
+		}
 		if p.tok.is_infix() {
 			pos := p.pos
 			op := p.tok()
@@ -1158,8 +1189,8 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				rhs: if op == .key_in {
 					p.range_expr(p.expr(op.right_binding_power()))
 				}
-				// `x is Type`
-				else if op == .key_is {
+				// `x is Type` | `x !is Type`
+				else if op in [.key_is, .not_is] {
 					p.expect_type()
 				} else {
 					p.expr(op.right_binding_power())
@@ -1608,10 +1639,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 	}
 	p.exp_lcbr = exp_lcbr
-	// TODO: this is to error on if with `{` on next line
-	if p.tok == .semicolon {
-		// p.next()
-		p.error('unexpected newline, expecting `{` after if clause')
+	// Allow `{` on next line after if condition (skip semicolon)
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
 	}
 	stmts := p.block()
 	// this is because semis get inserted after branches (same in Go)
@@ -1803,8 +1833,8 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 		}
 	}
 	language := p.decl_language()
-	// use ident_or_keyword() for C/JS functions to allow keywords as names (e.g. `C.select`)
-	name_ident := if language == .v { p.ident() } else { p.ident_or_keyword() }
+	// Allow keywords as function/method names (e.g. `lock`, `select`)
+	name_ident := p.ident_or_keyword()
 	mut name := name_ident.name
 	mut is_static := false
 	if p.tok == .dot {
@@ -1966,7 +1996,8 @@ fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.Enum
 	p.expect(.lcbr)
 	mut fields := []ast.FieldDecl{}
 	for p.tok != .rcbr {
-		field_name := p.expect_name()
+		// Allow keywords as enum field names (e.g., `select`)
+		field_name := p.expect_name_or_keyword()
 		mut value := ast.empty_expr
 		if p.tok == .assign {
 			p.next()
@@ -2381,7 +2412,8 @@ fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
 	typ := p.expect_type()
 
 	// alias `type MyType = int`
-	if p.tok != .pipe {
+	// check for multi-line sum type: semicolon followed by pipe
+	if p.tok != .pipe && !(p.tok == .semicolon && p.peek() == .pipe) {
 		p.expect(.semicolon)
 		return ast.TypeDecl{
 			is_public:      is_public
@@ -2392,10 +2424,17 @@ fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
 		}
 	}
 	// sum type `type MyType = int | string`
-	p.next()
-	mut variants := [typ, p.expect_type()]
-	for p.tok == .pipe {
+	// skip semicolon if present (multi-line case)
+	if p.tok == .semicolon {
 		p.next()
+	}
+	p.next() // skip pipe
+	mut variants := [typ, p.expect_type()]
+	for p.tok == .pipe || (p.tok == .semicolon && p.peek() == .pipe) {
+		if p.tok == .semicolon {
+			p.next()
+		}
+		p.next() // skip pipe
 		variants << p.expect_type()
 	}
 	p.expect(.semicolon)
@@ -2443,12 +2482,11 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 				pos: p.pos
 			}
 		}
-		// for C/JS calls, allow keywords as names (e.g. `C.select`)
-		rhs := if ident.name == 'C' || ident.name == 'JS' {
-			p.ident_or_keyword()
-		} else {
-			p.ident()
-		}
+		// Allow keywords as names for:
+		// - C/JS calls (e.g. `C.select`)
+		// - method calls (e.g. `mutex.lock()`)
+		// - enum values (e.g. `.select`)
+		rhs := p.ident_or_keyword()
 		return ast.SelectorExpr{
 			lhs: ident
 			rhs: rhs

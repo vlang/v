@@ -561,6 +561,44 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.store_reg_to_val(0, val_id)
 			}
 		}
+		.call_sret {
+			// Call with struct return - uses x8 for indirect return destination
+			// operands: [fn, arg1, arg2, ..., dest_ptr]
+			// Last operand is the destination pointer for struct return
+			fn_val := g.mod.values[instr.operands[0]]
+			fn_name := fn_val.name
+
+			if fn_name != '' {
+				num_operands := instr.operands.len
+				dest_ptr_id := instr.operands[num_operands - 1]
+				num_args := num_operands - 2 // exclude fn and dest_ptr
+
+				// Set x8 to the destination address (sret pointer)
+				if dest_offset := g.alloca_offsets[dest_ptr_id] {
+					g.emit_add_fp_imm(8, dest_offset)
+				} else {
+					// Load the destination pointer value
+					g.load_val_to_reg(8, dest_ptr_id)
+				}
+
+				// Load arguments in reverse order (excluding dest_ptr)
+				for i := num_args; i >= 1; i-- {
+					if i - 1 < 8 {
+						g.load_val_to_reg(i - 1, instr.operands[i])
+					}
+				}
+
+				// Call function
+				sym_idx := g.macho.add_undefined('_' + fn_name)
+				g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26,
+					true)
+				g.emit(asm_bl_reloc())
+
+				// Store x8 (dest addr) as the result value
+				// On ARM64 AAPCS, x8 is preserved across calls when used for sret
+				g.store_reg_to_val(8, val_id)
+			}
+		}
 		.ret {
 			if instr.operands.len > 0 {
 				g.load_val_to_reg(0, instr.operands[0])
@@ -857,6 +895,14 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			// Load pointer to string struct into reg
 			g.emit_add_fp_imm(reg, base_offset)
 		}
+	} else if val.kind == .func_ref {
+		// Function pointer reference - load address of the function
+		// Add symbol and use ADRP + ADD to get the address
+		sym_idx := g.macho.add_undefined('_' + val.name)
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
+		g.emit(asm_adrp(Reg(reg)))
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
+		g.emit(asm_add_pageoff(Reg(reg)))
 	} else {
 		// Handles .instruction, .argument, etc.
 		if reg_idx := g.reg_map[val_id] {

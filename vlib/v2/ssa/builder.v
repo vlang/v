@@ -38,6 +38,9 @@ mut:
 	// Maps variable name to array length (for fixed-size arrays)
 	var_array_sizes map[string]int
 
+	// Maps variable name to map type info (key_bytes, value_bytes)
+	var_map_types map[string][2]int // Variable name -> [key_bytes, value_bytes]
+
 	// Interface support
 	interface_names      map[string]bool     // Track interface type names
 	interface_meths      map[string][]string // Interface name -> method names
@@ -73,6 +76,7 @@ pub fn Builder.new(mod &Module) &Builder {
 		struct_types:         map[string]TypeID{}
 		enum_values:          map[string]int{}
 		var_array_sizes:      map[string]int{}
+		var_map_types:        map[string][2]int{}
 		interface_names:      map[string]bool{}
 		interface_meths:      map[string][]string{}
 		type_methods:         map[string][]string{}
@@ -904,63 +908,85 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				}
 				// ident := ident_node as ast.Ident
 				name := ident.name
-				// Alloca
-
-				// Get type from RHS or default to i32
-				rhs_type := b.mod.values[rhs_val].typ
-				ptr_t := b.mod.type_store.get_ptr(rhs_type)
-
-				stack_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
-
-				// Store
-				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, stack_ptr])
-				b.vars[name] = stack_ptr
 
 				// Track struct/enum type for method resolution and match shorthand
 				rhs_expr := node.rhs[0]
-				if rhs_expr is ast.InitExpr {
-					if rhs_expr.typ is ast.Ident {
-						b.var_struct_types[name] = rhs_expr.typ.name
-					}
-				} else if rhs_expr is ast.PrefixExpr {
-					// Handle &Point{} heap allocation
-					if rhs_expr.expr is ast.InitExpr {
-						init_expr := rhs_expr.expr as ast.InitExpr
-						if init_expr.typ is ast.Ident {
-							b.var_struct_types[name] = init_expr.typ.name
+
+				// Special handling for map initialization - can be MapInitExpr or InitExpr with MapType
+				mut is_map := false
+				if rhs_expr is ast.MapInitExpr {
+					is_map = true
+				} else if rhs_expr is ast.InitExpr {
+					// Check if it's a map init: map[K]V{}
+					if rhs_expr.typ is ast.Type {
+						if rhs_expr.typ is ast.MapType {
+							is_map = true
 						}
 					}
-				} else if rhs_expr is ast.SelectorExpr {
-					// Track enum type for variables assigned enum values (e.g., color1 := Color.red)
-					if rhs_expr.lhs is ast.Ident {
-						enum_name := '${rhs_expr.lhs.name}__${rhs_expr.rhs.name}'
-						if enum_name in b.enum_values {
-							b.var_struct_types[name] = rhs_expr.lhs.name
+				}
+
+				if is_map {
+					// Track map type - use default int-int for now
+					b.var_map_types[name] = [8, 8]!
+					// Map init already returns a pointer, use directly
+					b.vars[name] = rhs_val
+				} else {
+					// Alloca for non-map types
+
+					// Get type from RHS or default to i32
+					rhs_type := b.mod.values[rhs_val].typ
+					ptr_t := b.mod.type_store.get_ptr(rhs_type)
+
+					stack_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+
+					// Store
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, stack_ptr])
+					b.vars[name] = stack_ptr
+
+					if rhs_expr is ast.InitExpr {
+						if rhs_expr.typ is ast.Ident {
+							b.var_struct_types[name] = rhs_expr.typ.name
 						}
-					}
-				} else if rhs_expr is ast.ArrayInitExpr {
-					// Track array size for for-in loops
-					mut arr_size := rhs_expr.exprs.len
-					if rhs_expr.len !is ast.EmptyExpr {
-						if rhs_expr.len is ast.BasicLiteral {
-							if rhs_expr.len.kind == .number {
-								arr_size = rhs_expr.len.value.int()
+					} else if rhs_expr is ast.PrefixExpr {
+						// Handle &Point{} heap allocation
+						if rhs_expr.expr is ast.InitExpr {
+							init_expr := rhs_expr.expr as ast.InitExpr
+							if init_expr.typ is ast.Ident {
+								b.var_struct_types[name] = init_expr.typ.name
 							}
 						}
-					}
-					if arr_size > 0 {
-						b.var_array_sizes[name] = arr_size
-					}
-				} else if rhs_expr is ast.CallOrCastExpr {
-					// Track interface boxing: d := Drawable(point)
-					if rhs_expr.lhs is ast.Ident {
-						iface_name := rhs_expr.lhs.name
-						if iface_name in b.interface_names {
-							b.var_struct_types[name] = iface_name
-							// Also track the concrete type for direct method calls
-							concrete := b.infer_concrete_type(rhs_expr.expr)
-							if concrete != 'unknown' {
-								b.iface_concrete_types[name] = concrete
+					} else if rhs_expr is ast.SelectorExpr {
+						// Track enum type for variables assigned enum values (e.g., color1 := Color.red)
+						if rhs_expr.lhs is ast.Ident {
+							enum_name := '${rhs_expr.lhs.name}__${rhs_expr.rhs.name}'
+							if enum_name in b.enum_values {
+								b.var_struct_types[name] = rhs_expr.lhs.name
+							}
+						}
+					} else if rhs_expr is ast.ArrayInitExpr {
+						// Track array size for for-in loops
+						mut arr_size := rhs_expr.exprs.len
+						if rhs_expr.len !is ast.EmptyExpr {
+							if rhs_expr.len is ast.BasicLiteral {
+								if rhs_expr.len.kind == .number {
+									arr_size = rhs_expr.len.value.int()
+								}
+							}
+						}
+						if arr_size > 0 {
+							b.var_array_sizes[name] = arr_size
+						}
+					} else if rhs_expr is ast.CallOrCastExpr {
+						// Track interface boxing: d := Drawable(point)
+						if rhs_expr.lhs is ast.Ident {
+							iface_name := rhs_expr.lhs.name
+							if iface_name in b.interface_names {
+								b.var_struct_types[name] = iface_name
+								// Also track the concrete type for direct method calls
+								concrete := b.infer_concrete_type(rhs_expr.expr)
+								if concrete != 'unknown' {
+									b.iface_concrete_types[name] = concrete
+								}
 							}
 						}
 					}
@@ -981,6 +1007,20 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				res := b.mod.add_instr(op, b.cur_block, val_typ, [lhs_val, rhs_val])
 				b.mod.add_instr(.store, b.cur_block, 0, [res, ptr])
 			} else {
+				// Check if this is a map assignment: m[key] = value
+				lhs_expr := node.lhs[0]
+				if lhs_expr is ast.IndexExpr {
+					if lhs_expr.lhs is ast.Ident {
+						var_name := lhs_expr.lhs.name
+						if var_name in b.var_map_types {
+							// Map set: use simple inline map set
+							map_ptr := b.vars[var_name]
+							key_val := b.expr(lhs_expr.expr)
+							b.emit_simple_map_set(map_ptr, key_val, rhs_val)
+							return
+						}
+					}
+				}
 				// Assignment to existing variable, field, or array index
 				ptr := b.addr(node.lhs[0])
 				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, ptr])
@@ -1566,6 +1606,13 @@ fn (mut b Builder) expr_ident(node ast.Ident) ValueID {
 }
 
 fn (mut b Builder) expr_init(node ast.InitExpr) ValueID {
+	// Check if this is a map init: map[K]V{}
+	if node.typ is ast.Type {
+		if node.typ is ast.MapType {
+			return b.expr_map_init_from_type(node.typ)
+		}
+	}
+
 	// Struct Init: MyStruct{ a: 1, b: 2 }
 	// 1. Allocate Struct
 	// Need to find the TypeID for the struct.
@@ -1631,6 +1678,27 @@ fn (mut b Builder) expr_init(node ast.InitExpr) ValueID {
 }
 
 fn (mut b Builder) expr_selector(node ast.SelectorExpr) ValueID {
+	// Check for map.len access
+	if node.lhs is ast.Ident && node.rhs.name == 'len' {
+		var_name := node.lhs.name
+		if var_name in b.var_map_types {
+			// Map len access - load the len field from our simple map struct
+			// Simple map structure: [len, keys[0..31], values[0..31]]
+			// len is at index 0
+			i64_t := b.mod.type_store.get_int(64)
+			ptr_t := b.mod.type_store.get_ptr(i64_t)
+			map_ptr := b.vars[var_name]
+
+			// len is at index 0
+			len_offset := b.mod.add_value_node(.constant, i64_t, '0', 0)
+			len_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [
+				map_ptr,
+				len_offset,
+			])
+			return b.mod.add_instr(.load, b.cur_block, i64_t, [len_ptr])
+		}
+	}
+
 	// Load value from field
 	ptr := b.addr(node)
 	// Get the actual field type from the pointer type
@@ -1645,6 +1713,18 @@ fn (mut b Builder) expr_index(node ast.IndexExpr) ValueID {
 	if node.expr is ast.RangeExpr {
 		return b.expr_slice(node.lhs, node.expr)
 	}
+
+	// Check if this is a map access (m[key])
+	if node.lhs is ast.Ident {
+		var_name := node.lhs.name
+		if var_name in b.var_map_types {
+			// Map access: use simple inline map get
+			map_ptr := b.vars[var_name]
+			key_val := b.expr(node.expr)
+			return b.emit_simple_map_get(map_ptr, key_val)
+		}
+	}
+
 	// Load value from index
 	ptr := b.addr(node)
 	i32_t := b.mod.type_store.get_int(64) // Assume i32
@@ -2933,50 +3013,248 @@ fn (mut b Builder) expr_array_init(node ast.ArrayInitExpr) ValueID {
 	return array_ptr
 }
 
-fn (mut b Builder) expr_map_init(node ast.MapInitExpr) ValueID {
-	// Map Init: map[string]int{} or {'key': 'value'}
-	// For now, maps are represented as structs with key/value arrays
+// expr_map_init_from_type handles empty map init from InitExpr with MapType: map[K]V{}
+fn (mut b Builder) expr_map_init_from_type(map_type ast.MapType) ValueID {
+	// Simple inline map implementation
+	// Structure: [len, keys[0..31], values[0..31]]
 	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
 
-	// If empty map or just type declaration, return null placeholder
-	if node.keys.len == 0 {
-		return b.mod.add_value_node(.constant, b.mod.type_store.get_ptr(i64_t), '0', 0)
-	}
+	// Layout: index 0 = len, index 1-32 = keys, index 33-64 = values
+	total_slots := 1 + 32 + 32
 
-	// For map literals with initial values, allocate a simple key-value structure
-	// This is a simplified implementation - real maps need hash table support
-	elem_count := node.keys.len
-	array_type := b.mod.type_store.get_array(i64_t, elem_count * 2) // interleaved key-value
-	array_ptr_t := b.mod.type_store.get_ptr(array_type)
-	elem_ptr_t := b.mod.type_store.get_ptr(i64_t)
+	// Allocate map structure on stack
+	map_struct := b.mod.type_store.get_array(i64_t, total_slots)
+	map_ptr_t := b.mod.type_store.get_ptr(map_struct)
+	map_ptr := b.mod.add_instr(.alloca, b.cur_block, map_ptr_t, [])
 
-	// Allocate map storage on stack
-	map_ptr := b.mod.add_instr(.alloca, b.cur_block, array_ptr_t, [])
+	// Initialize len = 0
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	offset_0 := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	len_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, offset_0])
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, len_ptr])
 
-	// Initialize key-value pairs
-	for i, key_expr in node.keys {
-		key_val := b.expr(key_expr)
-		val_expr := node.vals[i]
-		val_val := b.expr(val_expr)
+	return map_ptr
+}
 
-		// Store key at index i*2
-		key_idx := b.mod.add_value_node(.constant, i64_t, '${i * 2}', 0)
-		key_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
-			map_ptr,
-			key_idx,
-		])
-		b.mod.add_instr(.store, b.cur_block, 0, [key_val, key_ptr])
+fn (mut b Builder) expr_map_init(node ast.MapInitExpr) ValueID {
+	// Simple inline map implementation for int->int maps
+	// Structure (simplified): [len, keys[0..31], values[0..31]]
+	// Total: 1 + 32 + 32 = 65 i64s = 520 bytes
+	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
 
-		// Store value at index i*2+1
-		val_idx := b.mod.add_value_node(.constant, i64_t, '${i * 2 + 1}', 0)
-		val_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_t, [
-			map_ptr,
-			val_idx,
-		])
-		b.mod.add_instr(.store, b.cur_block, 0, [val_val, val_ptr])
+	// Layout (all in i64 units):
+	// index 0: len
+	// index 1-32: keys[0..31]
+	// index 33-64: values[0..31]
+	total_slots := 1 + 32 + 32
+
+	// Allocate map structure on stack
+	map_type := b.mod.type_store.get_array(i64_t, total_slots)
+	map_ptr_t := b.mod.type_store.get_ptr(map_type)
+	map_ptr := b.mod.add_instr(.alloca, b.cur_block, map_ptr_t, [])
+
+	// Initialize len = 0
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	offset_0 := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	len_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, offset_0])
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, len_ptr])
+
+	// If there are initial key-value pairs, add them
+	if node.keys.len > 0 {
+		for i, key_expr in node.keys {
+			key_val := b.expr(key_expr)
+			val_expr := node.vals[i]
+			val_val := b.expr(val_expr)
+			b.emit_simple_map_set(map_ptr, key_val, val_val)
+		}
 	}
 
 	return map_ptr
+}
+
+// type_size_from_ast returns the size in bytes for an AST type expression.
+fn (b &Builder) type_size_from_ast(typ ast.Expr) int {
+	if typ is ast.Ident {
+		match typ.name {
+			'i8', 'u8', 'byte', 'bool' { return 1 }
+			'i16', 'u16' { return 2 }
+			'i32', 'u32', 'rune' { return 4 }
+			'i64', 'u64', 'f64', 'int' { return 8 }
+			'f32' { return 4 }
+			'string' { return 24 } // V string struct: ptr + len + is_lit
+			else { return 8 } // Default to pointer size
+		}
+	}
+	return 8
+}
+
+// emit_simple_map_set - inline map set operation (linear search + append)
+// Map layout: index 0 = len, index 1-32 = keys, index 33-64 = values
+fn (mut b Builder) emit_simple_map_set(map_ptr ValueID, key_val ValueID, val_val ValueID) {
+	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Load map len from index 0
+	offset_0 := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	len_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, offset_0])
+	map_len := b.mod.add_instr(.load, b.cur_block, i64_t, [len_ptr])
+
+	// Keys start at index 1, values at index 33
+	keys_base := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	values_base := b.mod.add_value_node(.constant, i64_t, '33', 0)
+
+	// Linear search loop to find existing key or end of list
+	search_head := b.mod.add_block(b.cur_func, 'map_set.search_head')
+	search_body := b.mod.add_block(b.cur_func, 'map_set.search_body')
+	search_cont := b.mod.add_block(b.cur_func, 'map_set.search_cont')
+	found_blk := b.mod.add_block(b.cur_func, 'map_set.found')
+	not_found_blk := b.mod.add_block(b.cur_func, 'map_set.not_found')
+	exit_blk := b.mod.add_block(b.cur_func, 'map_set.exit')
+
+	// Allocate loop index on stack
+	idx_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, idx_ptr])
+
+	// Jump to search head
+	search_head_val := b.mod.blocks[search_head].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [search_head_val])
+
+	// Search head: check if idx < len
+	b.cur_block = search_head
+	idx := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	cmp := b.mod.add_instr(.lt, b.cur_block, i64_t, [idx, map_len])
+	search_body_val := b.mod.blocks[search_body].val_id
+	not_found_val := b.mod.blocks[not_found_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cmp, search_body_val, not_found_val])
+
+	// Search body: compare keys[idx] with key
+	b.cur_block = search_body
+	idx2 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	// key index = keys_base + idx = 1 + idx
+	key_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [keys_base, idx2])
+	key_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, key_idx])
+	existing_key := b.mod.add_instr(.load, b.cur_block, i64_t, [key_ptr])
+	key_eq := b.mod.add_instr(.eq, b.cur_block, i64_t, [existing_key, key_val])
+	found_val := b.mod.blocks[found_blk].val_id
+	search_cont_val := b.mod.blocks[search_cont].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [key_eq, found_val, search_cont_val])
+
+	// Search continue: increment index and jump back to head
+	b.cur_block = search_cont
+	one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	idx3 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	next_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [idx3, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [next_idx, idx_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [search_head_val])
+
+	// Found: update existing value
+	b.cur_block = found_blk
+	idx4 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	// value index = values_base + idx = 33 + idx
+	val_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [values_base, idx4])
+	val_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, val_idx])
+	b.mod.add_instr(.store, b.cur_block, 0, [val_val, val_ptr])
+	exit_val := b.mod.blocks[exit_blk].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [exit_val])
+
+	// Not found: append new key-value pair
+	b.cur_block = not_found_blk
+	// Store key at keys[len] = map_ptr[1 + len]
+	new_key_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [keys_base, map_len])
+	new_key_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, new_key_idx])
+	b.mod.add_instr(.store, b.cur_block, 0, [key_val, new_key_ptr])
+	// Store value at values[len] = map_ptr[33 + len]
+	new_val_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [values_base, map_len])
+	new_val_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, new_val_idx])
+	b.mod.add_instr(.store, b.cur_block, 0, [val_val, new_val_ptr])
+	// Increment len
+	new_len := b.mod.add_instr(.add, b.cur_block, i64_t, [map_len, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [new_len, len_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [exit_val])
+
+	// Exit block
+	b.cur_block = exit_blk
+}
+
+// emit_simple_map_get - inline map get operation (linear search)
+// Map layout: index 0 = len, index 1-32 = keys, index 33-64 = values
+fn (mut b Builder) emit_simple_map_get(map_ptr ValueID, key_val ValueID) ValueID {
+	i64_t := b.mod.type_store.get_int(64)
+	ptr_t := b.mod.type_store.get_ptr(i64_t)
+
+	// Load map len from index 0
+	offset_0 := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	len_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, offset_0])
+	map_len := b.mod.add_instr(.load, b.cur_block, i64_t, [len_ptr])
+
+	// Keys start at index 1, values at index 33
+	keys_base := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	values_base := b.mod.add_value_node(.constant, i64_t, '33', 0)
+
+	// Allocate result on stack (default to 0)
+	result_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	zero := b.mod.add_value_node(.constant, i64_t, '0', 0)
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, result_ptr])
+
+	// Linear search loop
+	search_head := b.mod.add_block(b.cur_func, 'map_get.search_head')
+	search_body := b.mod.add_block(b.cur_func, 'map_get.search_body')
+	search_cont := b.mod.add_block(b.cur_func, 'map_get.search_cont')
+	found_blk := b.mod.add_block(b.cur_func, 'map_get.found')
+	exit_blk := b.mod.add_block(b.cur_func, 'map_get.exit')
+
+	// Allocate loop index on stack
+	idx_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+	b.mod.add_instr(.store, b.cur_block, 0, [zero, idx_ptr])
+
+	// Jump to search head
+	search_head_val := b.mod.blocks[search_head].val_id
+	b.mod.add_instr(.jmp, b.cur_block, 0, [search_head_val])
+
+	// Search head: check if idx < len
+	b.cur_block = search_head
+	idx := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	cmp := b.mod.add_instr(.lt, b.cur_block, i64_t, [idx, map_len])
+	search_body_val := b.mod.blocks[search_body].val_id
+	exit_val := b.mod.blocks[exit_blk].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [cmp, search_body_val, exit_val])
+
+	// Search body: compare keys[idx] with key
+	b.cur_block = search_body
+	idx2 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	// key index = keys_base + idx = 1 + idx
+	key_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [keys_base, idx2])
+	key_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, key_idx])
+	existing_key := b.mod.add_instr(.load, b.cur_block, i64_t, [key_ptr])
+	key_eq := b.mod.add_instr(.eq, b.cur_block, i64_t, [existing_key, key_val])
+	found_val := b.mod.blocks[found_blk].val_id
+	search_cont_val := b.mod.blocks[search_cont].val_id
+	b.mod.add_instr(.br, b.cur_block, 0, [key_eq, found_val, search_cont_val])
+
+	// Search continue: increment index and jump back to head
+	b.cur_block = search_cont
+	one := b.mod.add_value_node(.constant, i64_t, '1', 0)
+	idx3 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	next_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [idx3, one])
+	b.mod.add_instr(.store, b.cur_block, 0, [next_idx, idx_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [search_head_val])
+
+	// Found: store value to result
+	b.cur_block = found_blk
+	idx4 := b.mod.add_instr(.load, b.cur_block, i64_t, [idx_ptr])
+	// value index = values_base + idx = 33 + idx
+	val_idx := b.mod.add_instr(.add, b.cur_block, i64_t, [values_base, idx4])
+	val_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t, [map_ptr, val_idx])
+	found_value := b.mod.add_instr(.load, b.cur_block, i64_t, [val_ptr])
+	b.mod.add_instr(.store, b.cur_block, 0, [found_value, result_ptr])
+	b.mod.add_instr(.jmp, b.cur_block, 0, [exit_val])
+
+	// Exit block: return result
+	b.cur_block = exit_blk
+	return b.mod.add_instr(.load, b.cur_block, i64_t, [result_ptr])
 }
 
 fn (mut b Builder) expr_heap_alloc(node ast.InitExpr) ValueID {

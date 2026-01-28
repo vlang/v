@@ -294,11 +294,12 @@ pub fn ls(path string) ![]string {
 		}
 		unsafe {
 			bptr := &u8(&ent.d_name[0])
-			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
-				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
+			// vfmt off
+			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0) || (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
 			}
 			res << tos_clone(bptr)
+			// vfmt on
 		}
 	}
 	C.closedir(dir)
