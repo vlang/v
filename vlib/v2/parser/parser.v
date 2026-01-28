@@ -1801,34 +1801,40 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 		}
 		p.expect(.rpar)
 		// operator overload
-		// TODO: what a mess finish / clean up & separate if possible
 		if p.tok.is_overloadable() {
-			// println('look like overload!')
-			op := p.tok()
-			_ = op
+			op_name := p.tok.str() // e.g., '+', '-', etc.
+			p.next()
 			p.expect(.lpar)
 			is_mut2 := p.tok == .key_mut
-			_ = is_mut2
-			if is_mut {
+			if is_mut2 {
 				p.next()
 			}
-			receiver2 := ast.Parameter{
-				name:   p.expect_name()
-				typ:    p.expect_type()
-				is_mut: is_mut
+			param_name := p.expect_name()
+			param_typ := p.expect_type()
+			param := ast.Parameter{
+				name:   param_name
+				typ:    param_typ
+				is_mut: is_mut2
 			}
-			_ = receiver2
 			p.expect(.rpar)
 			mut return_type := ast.empty_expr
-			_ = return_type
 			if p.tok != .lcbr {
 				return_type = p.expect_type()
 			}
-			p.block()
+			stmts := p.block()
 			p.expect(.semicolon)
-			// TODO
 			return ast.FnDecl{
-				pos: p.pos
+				attributes: attributes
+				is_public:  is_public
+				is_method:  true
+				receiver:   receiver
+				name:       op_name
+				typ:        ast.FnType{
+					params:      [param]
+					return_type: return_type
+				}
+				stmts:      stmts
+				pos:        pos
 			}
 		}
 	}
@@ -2124,8 +2130,7 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 }
 
 fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.StructDecl {
-	// TODO: union
-	// is_union := p.tok == .key_union
+	is_union := p.tok == .key_union
 	pos := p.pos
 	p.next()
 	language := p.decl_language()
@@ -2139,6 +2144,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 		}
 		return ast.StructDecl{
 			is_public:      is_public
+			is_union:       is_union
 			language:       language
 			name:           name
 			generic_params: generic_params
@@ -2149,6 +2155,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 	return ast.StructDecl{
 		attributes:     attributes
 		is_public:      is_public
+		is_union:       is_union
 		embedded:       embedded
 		language:       language
 		name:           name

@@ -40,17 +40,34 @@ pub fn Gen.new(mod &ssa.Module) &Gen {
 }
 
 pub fn (mut g Gen) gen() {
+	// Pre-register global symbols BEFORE generating functions
+	// This ensures add_undefined() finds existing symbols instead of creating undefined ones
+	mut data_offset := u64(0)
+	for gvar in g.mod.globals {
+		// Skip external globals (defined elsewhere, e.g. __stdoutp)
+		if gvar.linkage == .external {
+			continue
+		}
+		// Align to 8 bytes
+		data_offset = (data_offset + 7) & ~7
+		g.macho.add_symbol('_' + gvar.name, data_offset, true, 3)
+		size := g.type_size(gvar.typ)
+		data_offset += u64(size)
+	}
+
 	for func in g.mod.funcs {
 		g.gen_func(func)
 	}
 
-	// Globals in __data (Section 3)
+	// Globals in __data (Section 3) - emit actual data
 	for gvar in g.mod.globals {
+		// Skip external globals (defined elsewhere)
+		if gvar.linkage == .external {
+			continue
+		}
 		for g.macho.data_data.len % 8 != 0 {
 			g.macho.data_data << 0
 		}
-		addr := u64(g.macho.data_data.len)
-		g.macho.add_symbol('_' + gvar.name, addr, true, 3)
 		// Calculate actual size of the global variable based on its type
 		size := g.type_size(gvar.typ)
 		if gvar.is_constant && size == 8 {
@@ -947,11 +964,32 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			g.emit_mov_imm64(reg, int_val)
 		}
 	} else if val.kind == .global {
-		sym_idx := g.macho.add_undefined('_' + val.name)
-		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
-		g.emit(asm_adrp(Reg(reg)))
-		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
-		g.emit(asm_add_pageoff(Reg(reg)))
+		// Check if this is an external global (needs GOT access)
+		mut is_external := false
+		for gvar in g.mod.globals {
+			if gvar.name == val.name && gvar.linkage == .external {
+				is_external = true
+				break
+			}
+		}
+
+		if is_external {
+			// External global: load address through GOT
+			sym_idx := g.macho.add_undefined('_' + val.name)
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_page21,
+				true)
+			g.emit(asm_adrp(Reg(reg)))
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_pageoff12,
+				false)
+			g.emit(asm_ldr_pageoff(Reg(reg)))
+		} else {
+			// Local global: direct address
+			sym_idx := g.macho.add_undefined('_' + val.name)
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
+			g.emit(asm_adrp(Reg(reg)))
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
+			g.emit(asm_add_pageoff(Reg(reg)))
+		}
 	} else if val.kind == .string_literal {
 		// String literal: create string struct { str, len, is_lit } on stack
 		// val.name contains the string content, val.index contains the length

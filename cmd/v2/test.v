@@ -1,3 +1,5 @@
+const pi = 3
+
 struct Point {
 mut:
 	x int
@@ -1832,6 +1834,20 @@ fn main() {
 	s5 := '${interp_v1}-${interp_v2}-${interp_v3}'
 	print_str(s5) // 1-2-3
 
+	world := 'world'
+	s6 := 'hello ${world}'
+	print_str(s6)
+
+	// 34.6 String concatenation with + operator
+	str_a := 'Hello'
+	str_b := ' World'
+	str_c := str_a + str_b
+	print_str(str_c) // Hello World
+
+	// 34.7 Chained string concatenation
+	str_chain := 'A' + 'B' + 'C'
+	print_str(str_chain) // ABC
+
 	// ==================== 35. IF-GUARD EXPRESSIONS ====================
 	print_str('--- 35. If-Guard Expressions ---')
 
@@ -2711,6 +2727,7 @@ fn main() {
 	print_int(hm1[3]) // 30
 
 	// 54.2 Map len
+	print_str('map len:')
 	print_int(hm1.len) // 3
 
 	// 54.3 Map with different keys
@@ -2770,6 +2787,8 @@ fn main() {
 
 	only_quot, _ := divmod(23, 4)
 	print_int(only_quot) // 5
+	print_str('pi=')
+	print_int(pi)
 
 	print_str('=== All tests completed ===')
 }

@@ -356,11 +356,12 @@ pub fn (mut b Builder) build_types(file ast.File) {
 			b.stmt(stmt)
 		}
 	}
-	// Second pass: register structs, globals, enums, interfaces
+	// Second pass: register structs, globals, consts, enums, interfaces
 	for stmt in file.stmts {
 		match stmt {
 			ast.StructDecl { b.stmt(stmt) }
 			ast.GlobalDecl { b.stmt(stmt) }
+			ast.ConstDecl { b.stmt(stmt) }
 			ast.EnumDecl { b.stmt(stmt) }
 			ast.InterfaceDecl { b.stmt(stmt) }
 			else {}
@@ -1067,6 +1068,9 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 								}
 							}
 						}
+					} else if rhs_expr is ast.StringLiteral || rhs_expr is ast.StringInterLiteral {
+						// Track string type for variables assigned from string literals
+						b.var_struct_types[name] = 'string'
 					}
 				}
 			} else if node.op in [.plus_assign, .minus_assign, .mul_assign, .div_assign] {
@@ -2267,10 +2271,10 @@ fn (b Builder) eval_comptime_flag(name string) bool {
 		'native' {
 			return true
 		}
-		// Use C.write syscall instead of fwrite for printing
-		// This avoids needing C.stdout/C.stderr which aren't linked in the native backend
+		// Use buffered I/O (fwrite to C.stdout) for printing
+		// This provides consistent output ordering with the reference compiler
 		'builtin_write_buf_to_fd_should_use_c_write' {
-			return true
+			return false
 		}
 		else {
 			// Unknown flag - default to false
@@ -2803,12 +2807,48 @@ fn (mut b Builder) expr_string_inter_literal(node ast.StringInterLiteral) ValueI
 		// Add format specifier and argument for interpolation
 		if i < node.inters.len {
 			inter := node.inters[i]
-			// Evaluate the interpolated expression
-			arg_val := b.expr(inter.expr)
-			args << arg_val
 
-			// Determine format specifier based on format type
-			format_str += b.get_printf_format(inter)
+			// Check if this is a string type expression
+			mut is_string_type := false
+			if inter.expr is ast.Ident {
+				if t := b.var_struct_types[inter.expr.name] {
+					if t == 'string' {
+						is_string_type = true
+					}
+				}
+			}
+
+			if is_string_type {
+				// For strings, extract the .str field (index 0) and use %s format
+				// String struct: { str *char, len int, is_lit int }
+				// We need to get the char pointer (field 0)
+				//
+				// Variable layout: b.addr() -> ptr to slot -> ptr to string struct
+				// So we need to: load(addr) -> ptr to struct, then GEP to field 0
+				var_slot := b.addr(inter.expr)
+				// Load the string pointer from the variable slot
+				string_struct_ptr := b.mod.add_instr(.load, b.cur_block, ptr_t, [
+					var_slot,
+				])
+				// GEP to get address of .str field (index 0)
+				zero_idx := b.mod.add_value_node(.constant, i64_t, '0', 0)
+				str_field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t,
+					[
+					string_struct_ptr,
+					zero_idx,
+				])
+				// Load the char* from the .str field
+				str_val := b.mod.add_instr(.load, b.cur_block, ptr_t, [str_field_ptr])
+				args << str_val
+				format_str += '%s'
+			} else {
+				// Evaluate the interpolated expression
+				arg_val := b.expr(inter.expr)
+				args << arg_val
+
+				// Determine format specifier based on format type
+				format_str += b.get_printf_format(inter)
+			}
 		}
 	}
 
@@ -3538,6 +3578,20 @@ fn (mut b Builder) addr(node ast.Expr) ValueID {
 			return 0
 		}
 		ast.SelectorExpr {
+			// Check for C module globals (C.stdout, C.stderr)
+			if node.lhs is ast.Ident && node.lhs.name == 'C' {
+				// Map C.stdout -> __stdoutp, C.stderr -> __stderrp
+				c_global_name := match node.rhs.name {
+					'stdout' { '__stdoutp' }
+					'stderr' { '__stderrp' }
+					else { '' }
+				}
+				if c_global_name != '' {
+					// Create external global for C stdio
+					voidptr_t := b.mod.type_store.get_ptr(b.mod.type_store.get_int(8))
+					return b.mod.add_external_global(c_global_name, voidptr_t)
+				}
+			}
 			// struct.field
 			base_ptr := b.addr(node.lhs)
 

@@ -285,6 +285,11 @@ fn asm_add_pageoff(rd Reg) u32 {
 	return 0x91000000 | u32(rd) | (u32(rd) << 5)
 }
 
+// ldr rd, [rd, #imm12] (load from page offset - for GOT access, typically follows adrp)
+fn asm_ldr_pageoff(rd Reg) u32 {
+	return 0xF9400000 | u32(rd) | (u32(rd) << 5)
+}
+
 // === Stack Operations ===
 
 // sub sp, sp, x10

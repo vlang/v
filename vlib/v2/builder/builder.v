@@ -86,19 +86,9 @@ fn (mut b Builder) gen_v_files() {
 
 fn (mut b Builder) gen_cleanc() {
 	// Clean C Backend (AST -> C)
-	// Cleanc has its own minimal runtime - only pass user files, not builtin
-	mut user_files := []ast.File{}
-	for file in b.files {
-		// Skip builtin/stdlib files - they are identified by path
-		if file.name.contains('vlib/builtin') || file.name.contains('vlib/strconv')
-			|| file.name.contains('vlib/strings') || file.name.contains('vlib/hash')
-			|| file.name.contains('vlib/math') {
-			continue
-		}
-		user_files << file
-	}
+	// Pass all files to cleanc - it will handle filtering system types
 
-	mut gen := cleanc.Gen.new(user_files)
+	mut gen := cleanc.Gen.new(b.files)
 	c_source := gen.gen()
 
 	// Determine output name
@@ -127,10 +117,25 @@ fn (mut b Builder) gen_cleanc() {
 
 		// Compile C to binary
 		cc := os.getenv_opt('CC') or { 'cc' }
-		compile_result := os.execute('${cc} ${c_file} -o ${output_name} -w')
+		compile_result := os.execute('${cc} -w ${c_file} -o ${output_name} -ferror-limit=0')
 		if compile_result.exit_code != 0 {
 			eprintln('C compilation failed:')
-			eprintln(compile_result.output)
+			lines := compile_result.output.split_into_lines()
+			limit := if lines.len < 50 { lines.len } else { 50 }
+			for line in lines[..limit] {
+				eprintln(line)
+			}
+			// Count errors and warnings
+			mut error_count := 0
+			mut warning_count := 0
+			for line in lines {
+				if line.contains(': error:') || line.contains(': fatal error:') {
+					error_count += 1
+				} else if line.contains(': warning:') {
+					warning_count += 1
+				}
+			}
+			eprintln('Total: ${warning_count} warnings and ${error_count} errors')
 			exit(1)
 		}
 

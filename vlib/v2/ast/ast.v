@@ -795,6 +795,7 @@ pub struct StructDecl {
 pub:
 	attributes     []Attribute
 	is_public      bool
+	is_union       bool
 	embedded       []Expr
 	language       Language = .v
 	name           string
