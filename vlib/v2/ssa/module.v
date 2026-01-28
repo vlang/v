@@ -23,6 +23,9 @@ pub mut:
 	blocks  []BasicBlock
 	funcs   []Function
 	globals []GlobalVar
+
+	// Constant cache: (type, name) -> ValueID for deduplication
+	const_cache map[string]ValueID
 }
 
 pub fn Module.new(name string) &Module {
@@ -84,6 +87,18 @@ pub fn (mut m Module) add_value_node(kind ValueKind, typ TypeID, name string, in
 		name:  name
 		index: index
 	}
+	return id
+}
+
+// Get or create a constant value, reusing existing ones when possible.
+// This maintains SSA's immutability principle by avoiding duplicate constants.
+pub fn (mut m Module) get_or_add_const(typ TypeID, name string) ValueID {
+	key := '${typ}:${name}'
+	if existing := m.const_cache[key] {
+		return existing
+	}
+	id := m.add_value_node(.constant, typ, name, 0)
+	m.const_cache[key] = id
 	return id
 }
 

@@ -2460,5 +2460,35 @@ fn main() {
 	// 49.1 Test println
 	println('hello world')
 
+	// ==================== 50. ALGEBRAIC OPTIMIZATIONS ====================
+	print_str('--- 50. Algebraic Optimizations ---')
+
+	// 50.1 x - x = 0
+	opt_val := 42
+	print_int(opt_val - opt_val) // 0
+
+	// 50.2 x ^ x = 0
+	opt_xor := 123
+	print_int(opt_xor ^ opt_xor) // 0
+
+	// 50.3 x & x = x
+	opt_and := 99
+	print_int(opt_and & opt_and) // 99
+
+	// 50.4 x | x = x
+	opt_or := 77
+	print_int(opt_or | opt_or) // 77
+
+	// 50.5 x * 2 = x << 1
+	opt_mul2 := 25
+	print_int(opt_mul2 * 2) // 50
+
+	// 50.6 Combined optimizations
+	opt_a := 10
+	opt_b := opt_a - opt_a // Should be 0
+	opt_c := opt_a | opt_a // Should be 10
+	print_int(opt_b) // 0
+	print_int(opt_c) // 10
+
 	print_str('=== All tests completed ===')
 }

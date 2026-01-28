@@ -668,6 +668,10 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 
 fn (mut b Builder) stmts(stmts []ast.Stmt) {
 	for s in stmts {
+		// Stop processing if block is already terminated (e.g., after return in $if)
+		if b.is_block_terminated(b.cur_block) {
+			break
+		}
 		b.stmt(s)
 	}
 }
@@ -2017,8 +2021,12 @@ fn (b Builder) eval_comptime_flag(name string) bool {
 			return false
 		}
 		// Common feature flags (typically false in simple compilers)
-		'freestanding', 'ios', 'android', 'termux', 'debug', 'test' {
+		'freestanding', 'ios', 'android', 'termux', 'debug', 'test', 'prealloc', 'gcboehm' {
 			return false
+		}
+		// v2 generates native code
+		'native' {
+			return true
 		}
 		// Use C.write syscall instead of fwrite for printing
 		// This avoids needing C.stdout/C.stderr which aren't linked in the native backend

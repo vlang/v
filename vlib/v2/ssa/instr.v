@@ -95,4 +95,12 @@ pub:
 
 	pos        token.Pos
 	atomic_ord AtomicOrdering
+	inline     InlineHint // Inline hint for call instructions
+}
+
+pub enum InlineHint {
+	none   // No hint, let optimizer decide
+	always // Always inline (e.g., V's [inline] attribute)
+	never  // Never inline (e.g., V's [noinline] attribute)
+	hint   // Suggest inlining (optimizer may ignore)
 }

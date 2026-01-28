@@ -34,11 +34,24 @@ fn constant_fold(mut m ssa.Module) bool {
 					// vfmt off
 					repl, needs_zero := try_algebraic_simplify(m, val_id, instr, lhs, rhs)
 					// vfmt on
-					if repl >= 0 {
-						if needs_zero {
-							// x * 0 or x & 0 - create zero constant
+					if repl >= 0 || repl == -2 {
+						if repl == -2 {
+							// x * 2 -> x << 1
+							other_id := if lhs.kind == .constant {
+								instr.operands[1]
+							} else {
+								instr.operands[0]
+							}
 							typ := m.values[val_id].typ
-							zero_val := m.add_value_node(.constant, typ, '0', 0)
+							one_val := m.get_or_add_const(typ, '1')
+							m.instrs[m.values[val_id].index].op = .shl
+							m.instrs[m.values[val_id].index].operands = [other_id, one_val]
+							changed = true
+							continue
+						} else if needs_zero {
+							// x * 0 or x & 0 or x - x or x ^ x - reuse zero constant
+							typ := m.values[val_id].typ
+							zero_val := m.get_or_add_const(typ, '0')
 							m.replace_uses(val_id, zero_val)
 						} else {
 							m.replace_uses(val_id, repl)
@@ -141,8 +154,7 @@ fn constant_fold(mut m ssa.Module) bool {
 
 						if folded {
 							typ := m.values[val_id].typ
-							const_val := m.add_value_node(.constant, typ, result.str(),
-								0)
+							const_val := m.get_or_add_const(typ, result.str())
 							m.replace_uses(val_id, const_val)
 							changed = true
 						}
@@ -184,9 +196,35 @@ fn branch_fold(mut m ssa.Module) bool {
 	return changed
 }
 
-// Algebraic simplifications: x+0=x, x*1=x, x*0=0, etc.
+// Algebraic simplifications: x+0=x, x*1=x, x*0=0, x-x=0, x^x=0, x&x=x, x|x=x, x*2=x<<1, etc.
 // Returns (replacement_id, needs_zero) - if needs_zero is true, caller should create zero constant
 fn try_algebraic_simplify(m ssa.Module, val_id int, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) (int, bool) {
+	lhs_id := instr.operands[0]
+	rhs_id := instr.operands[1]
+
+	// Check for same-operand simplifications (x op x)
+	if lhs_id == rhs_id {
+		match instr.op {
+			.sub {
+				// x - x = 0
+				return val_id, true
+			}
+			.xor {
+				// x ^ x = 0
+				return val_id, true
+			}
+			.and_ {
+				// x & x = x
+				return lhs_id, false
+			}
+			.or_ {
+				// x | x = x
+				return lhs_id, false
+			}
+			else {}
+		}
+	}
+
 	// Check if either operand is a constant
 	mut const_val := i64(0)
 	mut const_is_rhs := false
@@ -225,6 +263,10 @@ fn try_algebraic_simplify(m ssa.Module, val_id int, instr ssa.Instruction, lhs s
 			// x * 1 = 1 * x = x
 			if const_val == 1 {
 				return other_id, false
+			}
+			// x * 2 = x << 1, 2 * x = x << 1
+			if const_val == 2 {
+				return -2, false // Signal caller to create shift
 			}
 		}
 		.sdiv {

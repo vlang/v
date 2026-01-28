@@ -26,6 +26,23 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 						continue
 					}
 
+					// Dead phi removal: phi with no uses can be removed
+					if m.values[val_id].uses.len == 0 {
+						// Remove uses from this phi's operands
+						for i := 0; i < instr.operands.len; i += 2 {
+							op_val := instr.operands[i]
+							if op_val != val_id { // Don't try to remove self-reference
+								remove_phi_use(mut m, op_val, val_id)
+							}
+						}
+						// Mark phi as dead
+						m.instrs[m.values[val_id].index].op = .bitcast
+						m.instrs[m.values[val_id].index].operands = []
+						changed = true
+						any_changed = true
+						continue
+					}
+
 					// Check if phi is trivial (all non-self operands are the same)
 					mut unique_val := -1
 					mut is_trivial := true
@@ -59,6 +76,19 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 		}
 	}
 	return any_changed
+}
+
+// Helper to remove a use from a value's uses list (for dead phi removal)
+fn remove_phi_use(mut m ssa.Module, val_id int, user_id int) {
+	if val_id >= m.values.len {
+		return
+	}
+	mut val := &m.values[val_id]
+	for i := val.uses.len - 1; i >= 0; i-- {
+		if val.uses[i] == user_id {
+			val.uses.delete(i)
+		}
+	}
 }
 
 // --- Critical Edge Splitting ---

@@ -200,7 +200,7 @@ fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 					} else {
 						// Undef - reading uninitialized memory
 						res_type := m.values[val_id].typ
-						repl = m.add_value_node(.constant, res_type, 'undef', 0)
+						repl = m.get_or_add_const(res_type, 'undef')
 					}
 					m.replace_uses(val_id, repl)
 					instrs_to_nop << val_id
@@ -238,7 +238,7 @@ fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 						} else {
 							// Undef - reading uninitialized memory
 							typ := m.type_store.types[m.values[alloc_id].typ].elem_type
-							val = m.add_value_node(.constant, typ, 'undef', 0)
+							val = m.get_or_add_const(typ, 'undef')
 						}
 						m.instrs[v.index].operands << val
 						m.instrs[v.index].operands << m.blocks[blk_id].val_id
