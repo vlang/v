@@ -951,12 +951,14 @@ fn normalize_drive_letter(path string) {
 	// a path like c:\nv\.bin (note the small `c`) in %PATH,
 	// is NOT recognized by cmd.exe (and probably other programs too)...
 	// Capital drive letters do work fine.
+	// vfmt off
 	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
 		unsafe {
 			x := &path.str[0]
 			(*x) = *x - 32
 		}
 	}
+	// vfmt on
 }
 
 // fork will fork the current system process and return the pid of the fork.

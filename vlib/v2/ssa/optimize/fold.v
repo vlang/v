@@ -31,7 +31,9 @@ fn constant_fold(mut m ssa.Module) bool {
 					}
 
 					// Try algebraic simplifications first (even with non-constants)
+					// vfmt off
 					repl, needs_zero := try_algebraic_simplify(m, val_id, instr, lhs, rhs)
+					// vfmt on
 					if repl >= 0 {
 						if needs_zero {
 							// x * 0 or x & 0 - create zero constant
