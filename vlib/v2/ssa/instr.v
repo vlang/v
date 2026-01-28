@@ -73,6 +73,10 @@ pub enum OpCode {
 	select
 	assign             // copy for phi elimination
 	inline_string_init // Create string struct by value: (string){str, len, is_lit}
+
+	// Aggregate (struct/tuple) operations
+	extractvalue // Extract element from struct/tuple: extractvalue %tuple, index
+	insertvalue  // Insert element into struct/tuple: insertvalue %tuple, %val, index
 }
 
 pub enum AtomicOrdering {

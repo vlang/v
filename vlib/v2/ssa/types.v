@@ -82,6 +82,23 @@ pub fn (mut ts TypeStore) get_array(elem TypeID, length int) TypeID {
 	return id
 }
 
+pub fn (mut ts TypeStore) get_tuple(elem_types []TypeID) TypeID {
+	// Create a cache key from element types
+	mut key := 'tuple'
+	for t in elem_types {
+		key += '_${t}'
+	}
+	if id := ts.cache[key] {
+		return id
+	}
+	id := ts.register(Type{
+		kind:   .struct_t
+		fields: elem_types
+	})
+	ts.cache[key] = id
+	return id
+}
+
 pub fn (mut ts TypeStore) register(t Type) TypeID {
 	id := ts.types.len
 	ts.types << t

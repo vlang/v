@@ -125,6 +125,37 @@ fn gcd(a int, b int) int {
 	return gcd(b, a % b)
 }
 
+// Multi-return functions
+fn swap(a int, b int) (int, int) {
+	return b, a
+}
+
+fn divmod(a int, b int) (int, int) {
+	return a / b, a % b
+}
+
+fn min_max(a int, b int, c int) (int, int) {
+	mut min := a
+	mut max := a
+	if b < min {
+		min = b
+	}
+	if b > max {
+		max = b
+	}
+	if c < min {
+		min = c
+	}
+	if c > max {
+		max = c
+	}
+	return min, max
+}
+
+fn triple_return(x int) (int, int, int) {
+	return x, x * 2, x * 3
+}
+
 fn power(base int, exp int) int {
 	if exp == 0 {
 		return 1
@@ -2708,6 +2739,37 @@ fn main() {
 	print_int(hm4[2]) // 4
 	print_int(hm4[3]) // 9
 	print_int(hm4[4]) // 16
+
+	// ==================== 55. MULTI-RETURN ====================
+	print_str('--- 55. Multi-return ---')
+
+	// 55.1 Basic two-value return
+	a1, b1 := swap(10, 20)
+	print_int(a1) // 20
+	print_int(b1) // 10
+
+	// 55.2 Division and modulo
+	quot, rem := divmod(17, 5)
+	print_int(quot) // 3
+	print_int(rem) // 2
+
+	// 55.3 Min/max of three values
+	min1, max1 := min_max(5, 2, 8)
+	print_int(min1) // 2
+	print_int(max1) // 8
+
+	// 55.4 Three-value return
+	t1, t2, t3 := triple_return(7)
+	print_int(t1) // 7
+	print_int(t2) // 14
+	print_int(t3) // 21
+
+	// 55.5 Ignore some return values with _
+	_, only_rem := divmod(23, 4)
+	print_int(only_rem) // 3
+
+	only_quot, _ := divmod(23, 4)
+	print_int(only_quot) // 5
 
 	print_str('=== All tests completed ===')
 }

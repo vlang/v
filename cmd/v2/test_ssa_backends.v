@@ -14,7 +14,6 @@ import v2.transform
 import v2.gen.x64
 import v2.gen.arm64
 import v2.gen.cleanc
-import v2.gen.c
 import time
 
 enum Arch {
@@ -114,10 +113,9 @@ fn main() {
 	// Optimize
 	println('[*] Optimizing SSA...')
 	optimize.optimize(mut mod)
-	// Backend selection: default to native, use 'cleanc' or 'c' arg to switch
+	// Backend selection: default to native, use 'cleanc' arg to switch
 	use_cleanc := os.args.contains('cleanc')
-	use_ssa_c := os.args.contains('c') && !use_cleanc
-	native := !use_cleanc && !use_ssa_c
+	native := !use_cleanc
 	// Default architecture based on OS
 	mut arch := if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
 	// Allow override via command line
@@ -189,25 +187,12 @@ fn main() {
 			}
 			println('linking took ${time.since(t)}')
 		}
-	} else if use_ssa_c {
-		// SSA -> C Backend
-		println('[*] Generating SSA C Backend...')
-		mut c_gen := c.Gen.new(mod)
-		c_source := c_gen.gen()
-		os.write_file('out.c', c_source) or { panic(err) }
-		println('[*] Done. Wrote out.c')
-		// Compile C Code
-		println('[*] Compiling out.c...')
-		cc_res := os.system('cc out.c -o out_bin -w')
-		if cc_res != 0 {
-			eprintln('Error: C compilation failed with code ${cc_res}')
-			return
-		}
 	} else {
 		// Clean C Backend (AST -> C)
 		println('[*] Generating Clean C Backend...')
 		// We use the file AST directly instead of SSA for readable C
-		mut c_gen := cleanc.Gen.new(file)
+		// Note: cleanc has its own minimal runtime, only pass user file
+		mut c_gen := cleanc.Gen.new([file])
 		c_source := c_gen.gen()
 		os.write_file('out.c', c_source) or { panic(err) }
 		println('[*] Done. Wrote out.c')

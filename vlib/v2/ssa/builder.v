@@ -261,12 +261,42 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 					// Result types - for now, same as base type
 					return b.ast_type_to_ssa(typ.base_type)
 				}
+				ast.TupleType {
+					// Tuple type for multi-return functions
+					if typ.types.len == 0 {
+						return 0 // void
+					}
+					if typ.types.len == 1 {
+						return b.ast_type_to_ssa(typ.types[0])
+					}
+					// Multi-value tuple - create a struct type
+					mut elem_types := []TypeID{}
+					for e in typ.types {
+						elem_types << b.ast_type_to_ssa(e)
+					}
+					return b.mod.type_store.get_tuple(elem_types)
+				}
 				else {}
 			}
 		}
 		ast.EmptyExpr {
 			// EmptyExpr means void return type or unspecified type
 			return 0 // void
+		}
+		ast.Tuple {
+			// Tuple type for multi-return functions
+			if typ.exprs.len == 0 {
+				return 0 // void
+			}
+			if typ.exprs.len == 1 {
+				return b.ast_type_to_ssa(typ.exprs[0])
+			}
+			// Multi-value tuple - create a struct type
+			mut elem_types := []TypeID{}
+			for e in typ.exprs {
+				elem_types << b.ast_type_to_ssa(e)
+			}
+			return b.mod.type_store.get_tuple(elem_types)
 		}
 		else {}
 	}
@@ -891,6 +921,54 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				println(node)
 				return
 			}
+
+			// Check for multi-return assignment: a, b := foo()
+			if node.lhs.len > 1 && node.rhs.len == 1 && node.op == .decl_assign {
+				// Multi-return: evaluate RHS (which returns a tuple)
+				tuple_val := b.expr(node.rhs[0])
+				tuple_typ := b.mod.values[tuple_val].typ
+				tuple_info := b.mod.type_store.types[tuple_typ]
+
+				// Extract each value from the tuple and assign to LHS variables
+				for i, lhs_expr in node.lhs {
+					mut ident := ast.Ident{}
+					if lhs_expr is ast.ModifierExpr {
+						ident = lhs_expr.expr as ast.Ident
+					} else {
+						ident = lhs_expr as ast.Ident
+					}
+					name := ident.name
+
+					// Skip underscore (discard)
+					if name == '_' {
+						continue
+					}
+
+					// Get element type from tuple
+					elem_typ := if i < tuple_info.fields.len {
+						tuple_info.fields[i]
+					} else {
+						b.mod.type_store.get_int(64)
+					}
+
+					// Extract value from tuple
+					idx := b.mod.add_value_node(.constant, b.mod.type_store.get_int(32),
+						'${i}', 0)
+					elem_val := b.mod.add_instr(.extractvalue, b.cur_block, elem_typ,
+						[
+						tuple_val,
+						idx,
+					])
+
+					// Allocate and store
+					ptr_t := b.mod.type_store.get_ptr(elem_typ)
+					stack_ptr := b.mod.add_instr(.alloca, b.cur_block, ptr_t, [])
+					b.mod.add_instr(.store, b.cur_block, 0, [elem_val, stack_ptr])
+					b.vars[name] = stack_ptr
+				}
+				return
+			}
+
 			rhs_val := b.expr(node.rhs[0])
 
 			// 2. Get LHS Address
@@ -1030,8 +1108,30 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			// In V/Go semantics: evaluate return value FIRST, then run defer
 			// 1. Evaluate return expression (if any)
 			mut ret_val := ValueID(0)
-			if node.exprs.len > 0 {
+			if node.exprs.len == 1 {
 				ret_val = b.expr(node.exprs[0])
+			} else if node.exprs.len > 1 {
+				// Multi-return: build a tuple from the expressions
+				mut elem_vals := []ValueID{}
+				mut elem_types := []TypeID{}
+				for e in node.exprs {
+					val := b.expr(e)
+					elem_vals << val
+					elem_types << b.mod.values[val].typ
+				}
+				tuple_t := b.mod.type_store.get_tuple(elem_types)
+				// Build tuple using insertvalue instructions
+				mut tuple_val := b.mod.add_value_node(.constant, tuple_t, 'undef', 0)
+				for i, val in elem_vals {
+					idx := b.mod.add_value_node(.constant, b.mod.type_store.get_int(32),
+						'${i}', 0)
+					tuple_val = b.mod.add_instr(.insertvalue, b.cur_block, tuple_t, [
+						tuple_val,
+						val,
+						idx,
+					])
+				}
+				ret_val = tuple_val
 			}
 			// 2. Execute deferred statements in reverse order
 			b.emit_deferred_stmts()
@@ -1546,6 +1646,65 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 					return b.mod.add_value_node(.constant, i64_t, '0', 0)
 				}
 			}
+		}
+		ast.LockExpr {
+			// lock/rlock expression - process the body statements
+			// TODO: add proper mutex lock/unlock calls
+			return b.stmts_with_value(node.stmts)
+		}
+		ast.GenericArgs {
+			// Generic instantiation like Foo!int - evaluate the base expression
+			return b.expr(node.lhs)
+		}
+		ast.AsCastExpr {
+			// 'as' cast expression (e.g., x as SomeType)
+			// Similar to CastExpr but used for sum type narrowing
+			val := b.expr(node.expr)
+			// For now, just return the value - proper implementation would
+			// add runtime type checking for sum types
+			return val
+		}
+		ast.AssocExpr {
+			// Copy-with-modification expression: { expr | field: value }
+			// Evaluate the base expression - the field modifications would be applied in codegen
+			return b.expr(node.expr)
+		}
+		ast.FnLiteral {
+			// Lambda/anonymous function
+			// TODO: generate anonymous function and return function pointer
+			i64_t := b.mod.type_store.get_int(64)
+			return b.mod.add_value_node(.constant, i64_t, '0', 0)
+		}
+		ast.Tuple {
+			// Tuple expression (e.g., (a, b) for multi-return)
+			if node.exprs.len == 0 {
+				i64_t := b.mod.type_store.get_int(64)
+				return b.mod.add_value_node(.constant, i64_t, '0', 0)
+			}
+			if node.exprs.len == 1 {
+				return b.expr(node.exprs[0])
+			}
+			// Multi-value tuple - build a tuple type and insertvalue instructions
+			mut elem_vals := []ValueID{}
+			mut elem_types := []TypeID{}
+			for e in node.exprs {
+				val := b.expr(e)
+				elem_vals << val
+				elem_types << b.mod.values[val].typ
+			}
+			tuple_t := b.mod.type_store.get_tuple(elem_types)
+			// Build tuple using insertvalue instructions
+			mut tuple_val := b.mod.add_value_node(.constant, tuple_t, 'undef', 0)
+			for i, val in elem_vals {
+				idx := b.mod.add_value_node(.constant, b.mod.type_store.get_int(32), '${i}',
+					0)
+				tuple_val = b.mod.add_instr(.insertvalue, b.cur_block, tuple_t, [
+					tuple_val,
+					val,
+					idx,
+				])
+			}
+			return tuple_val
 		}
 		else {
 			println('Builder: Unhandled expr ${node.type_name()}')

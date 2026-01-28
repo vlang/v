@@ -8,11 +8,13 @@ import v2.ast
 import strings
 
 pub struct Gen {
-	file ast.File
+	files []ast.File
 mut:
 	sb              strings.Builder
 	indent          int
+	tmp_counter     int // Counter for unique temp variable names
 	fn_types        map[string]string
+	fn_ret_counts   map[string]int // Track number of return values for multi-return functions
 	var_types       map[string]string
 	mut_receivers   map[string]bool     // Track which methods have mutable receivers
 	defer_stmts     [][]ast.Stmt        // Deferred statements for current function
@@ -23,11 +25,12 @@ mut:
 	cur_match_type  string              // Current match expression type for enum shorthand
 }
 
-pub fn Gen.new(file ast.File) &Gen {
+pub fn Gen.new(files []ast.File) &Gen {
 	mut g := &Gen{
-		file:            file
+		files:           files
 		sb:              strings.new_builder(4096)
 		fn_types:        map[string]string{}
+		fn_ret_counts:   map[string]int{}
 		var_types:       map[string]string{}
 		mut_receivers:   map[string]bool{}
 		enum_names:      map[string]bool{}
@@ -36,40 +39,55 @@ pub fn Gen.new(file ast.File) &Gen {
 		type_methods:    map[string][]string{}
 	}
 	// Pass 0: Register function return types, mutable receivers, enum names, and interfaces
-	for stmt in file.stmts {
-		if stmt is ast.EnumDecl {
-			g.enum_names[stmt.name] = true
-		}
-		if stmt is ast.InterfaceDecl {
-			g.interface_names[stmt.name] = true
-			// Collect method names for this interface
-			mut methods := []string{}
-			for field in stmt.fields {
-				methods << field.name
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.EnumDecl {
+				g.enum_names[stmt.name] = true
 			}
-			g.interface_meths[stmt.name] = methods
-		}
-		if stmt is ast.FnDecl {
-			mut ret := 'void'
-			ret_expr := stmt.typ.return_type
-			if ret_expr !is ast.EmptyExpr {
-				ret = g.expr_type_to_c(ret_expr)
-			}
-
-			if stmt.is_method {
-				// For methods, use mangled name
-				receiver_type := g.expr_type_to_c(stmt.receiver.typ)
-				mangled := '${receiver_type}__${stmt.name}'
-				g.fn_types[mangled] = ret
-				// Track if receiver is mutable
-				g.mut_receivers[mangled] = stmt.receiver.is_mut
-				// Track methods per type for vtable generation
-				if receiver_type !in g.type_methods {
-					g.type_methods[receiver_type] = []string{}
+			if stmt is ast.InterfaceDecl {
+				g.interface_names[stmt.name] = true
+				// Collect method names for this interface
+				mut methods := []string{}
+				for field in stmt.fields {
+					methods << field.name
 				}
-				g.type_methods[receiver_type] << stmt.name
-			} else {
-				g.fn_types[stmt.name] = ret
+				g.interface_meths[stmt.name] = methods
+			}
+			if stmt is ast.FnDecl {
+				mut ret := 'void'
+				mut ret_count := 1
+				ret_expr := stmt.typ.return_type
+				if ret_expr !is ast.EmptyExpr {
+					// Check for multi-return (TupleType)
+					if ret_expr is ast.Type {
+						if ret_expr is ast.TupleType {
+							ret_count = ret_expr.types.len
+							ret = 'Tuple_${ret_count}_int'
+						} else {
+							ret = g.expr_type_to_c(ret_expr)
+						}
+					} else {
+						ret = g.expr_type_to_c(ret_expr)
+					}
+				}
+
+				if stmt.is_method {
+					// For methods, use mangled name
+					receiver_type := g.expr_type_to_c(stmt.receiver.typ)
+					mangled := '${receiver_type}__${stmt.name}'
+					g.fn_types[mangled] = ret
+					g.fn_ret_counts[mangled] = ret_count
+					// Track if receiver is mutable
+					g.mut_receivers[mangled] = stmt.receiver.is_mut
+					// Track methods per type for vtable generation
+					if receiver_type !in g.type_methods {
+						g.type_methods[receiver_type] = []string{}
+					}
+					g.type_methods[receiver_type] << stmt.name
+				} else {
+					g.fn_types[stmt.name] = ret
+					g.fn_ret_counts[stmt.name] = ret_count
+				}
 			}
 		}
 	}
@@ -82,15 +100,72 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <stdlib.h>')
 	g.sb.writeln('#include <stdbool.h>')
 	g.sb.writeln('#include <stdint.h>')
+	g.sb.writeln('#include <stddef.h>')
 	g.sb.writeln('#include <string.h>')
+	g.sb.writeln('')
+
+	// V primitive type aliases
+	g.sb.writeln('// V primitive types')
+	g.sb.writeln('typedef int8_t i8;')
+	g.sb.writeln('typedef int16_t i16;')
+	g.sb.writeln('typedef int32_t i32;')
+	g.sb.writeln('typedef int64_t i64;')
+	g.sb.writeln('typedef uint8_t u8;')
+	g.sb.writeln('typedef uint16_t u16;')
+	g.sb.writeln('typedef uint32_t u32;')
+	g.sb.writeln('typedef uint64_t u64;')
+	g.sb.writeln('typedef float f32;')
+	g.sb.writeln('typedef double f64;')
+	g.sb.writeln('typedef u8 byte;')
+	g.sb.writeln('typedef size_t usize;')
+	g.sb.writeln('typedef ptrdiff_t isize;')
+	g.sb.writeln('typedef u32 rune;')
 	g.sb.writeln('')
 
 	g.sb.writeln('typedef struct { char* str; int len; } string;')
 	g.sb.writeln('typedef struct { int start; int end; } Range_;')
 	g.sb.writeln('')
+	// Builtin function declarations
+	g.sb.writeln('static inline void println(string s) { printf("%.*s\\n", s.len, s.str); }')
+	g.sb.writeln('static inline void print(string s) { printf("%.*s", s.len, s.str); }')
+	g.sb.writeln('')
 	// Array type and builtin function
 	g.sb.writeln('typedef struct { void* data; int len; int cap; } Array;')
 	g.sb.writeln('typedef Array Array_int;')
+	g.sb.writeln('')
+	// Tuple types for multi-return functions
+	g.sb.writeln('typedef struct { int f0; int f1; } Tuple_2_int;')
+	g.sb.writeln('typedef struct { int f0; int f1; int f2; } Tuple_3_int;')
+	g.sb.writeln('')
+	// Simple hashmap implementation for map[int]int
+	g.sb.writeln('typedef struct { int* keys; int* values; int len; int cap; } Map_int_int;')
+	g.sb.writeln('static inline Map_int_int __new_map_int_int() {')
+	g.sb.writeln('\tMap_int_int m;')
+	g.sb.writeln('\tm.cap = 16;')
+	g.sb.writeln('\tm.len = 0;')
+	g.sb.writeln('\tm.keys = (int*)calloc(m.cap, sizeof(int));')
+	g.sb.writeln('\tm.values = (int*)calloc(m.cap, sizeof(int));')
+	g.sb.writeln('\treturn m;')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline void __map_int_int_set(Map_int_int* m, int key, int val) {')
+	g.sb.writeln('\tfor (int i = 0; i < m->len; i++) {')
+	g.sb.writeln('\t\tif (m->keys[i] == key) { m->values[i] = val; return; }')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\tif (m->len >= m->cap) {')
+	g.sb.writeln('\t\tm->cap *= 2;')
+	g.sb.writeln('\t\tm->keys = (int*)realloc(m->keys, m->cap * sizeof(int));')
+	g.sb.writeln('\t\tm->values = (int*)realloc(m->values, m->cap * sizeof(int));')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\tm->keys[m->len] = key;')
+	g.sb.writeln('\tm->values[m->len] = val;')
+	g.sb.writeln('\tm->len++;')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline int __map_int_int_get(Map_int_int* m, int key) {')
+	g.sb.writeln('\tfor (int i = 0; i < m->len; i++) {')
+	g.sb.writeln('\t\tif (m->keys[i] == key) return m->values[i];')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn 0;')
+	g.sb.writeln('}')
 	g.sb.writeln('')
 	g.sb.writeln('static inline Array __new_array_from_c_array(int len, int cap, int elem_size, void* data) {')
 	g.sb.writeln('\tArray a;')
@@ -107,80 +182,100 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('')
 
 	// 1. Struct Declarations (Typedefs)
-	for stmt in g.file.stmts {
-		if stmt is ast.StructDecl {
-			g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+			}
 		}
 	}
 	// Also forward-declare interfaces
-	for stmt in g.file.stmts {
-		if stmt is ast.InterfaceDecl {
-			g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.InterfaceDecl {
+				g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+			}
 		}
 	}
 	// Forward-declare sum types
-	for stmt in g.file.stmts {
-		if stmt is ast.TypeDecl {
-			if stmt.variants.len > 0 {
-				g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.TypeDecl {
+				if stmt.variants.len > 0 {
+					g.sb.writeln('typedef struct ${stmt.name} ${stmt.name};')
+				}
 			}
 		}
 	}
 	g.sb.writeln('')
 
 	// 2. Struct Definitions
-	for stmt in g.file.stmts {
-		if stmt is ast.StructDecl {
-			g.gen_struct_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				g.gen_struct_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 2.5. Enum Declarations
-	for stmt in g.file.stmts {
-		if stmt is ast.EnumDecl {
-			g.gen_enum_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.EnumDecl {
+				g.gen_enum_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 2.6. Interface Declarations
-	for stmt in g.file.stmts {
-		if stmt is ast.InterfaceDecl {
-			g.gen_interface_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.InterfaceDecl {
+				g.gen_interface_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 2.7. Type Declarations
-	for stmt in g.file.stmts {
-		if stmt is ast.TypeDecl {
-			g.gen_type_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.TypeDecl {
+				g.gen_type_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 3. Globals
-	for stmt in g.file.stmts {
-		if stmt is ast.GlobalDecl {
-			g.gen_global_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.GlobalDecl {
+				g.gen_global_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 3.5. Constants
-	for stmt in g.file.stmts {
-		if stmt is ast.ConstDecl {
-			g.gen_const_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.ConstDecl {
+				g.gen_const_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
 	// 4. Function Prototypes
-	for stmt in g.file.stmts {
-		if stmt is ast.FnDecl {
-			g.gen_fn_head(stmt)
-			g.sb.writeln(';')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				g.gen_fn_head(stmt)
+				g.sb.writeln(';')
+			}
 		}
 	}
 	g.sb.writeln('')
@@ -190,10 +285,12 @@ pub fn (mut g Gen) gen() string {
 	g.gen_interface_wrappers()
 
 	// 5. Functions
-	for stmt in g.file.stmts {
-		if stmt is ast.FnDecl {
-			g.gen_fn_decl(stmt)
-			g.sb.writeln('')
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				g.gen_fn_decl(stmt)
+				g.sb.writeln('')
+			}
 		}
 	}
 
@@ -248,6 +345,14 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			return 'void'
 		}
 		ast.Type {
+			// Handle Type variants
+			if e is ast.MapType {
+				return 'Map_int_int'
+			}
+			if e is ast.TupleType {
+				// Multi-return tuple type
+				return 'Tuple_${e.types.len}_int'
+			}
 			// Handle Option and Result types
 			if e is ast.OptionType {
 				// For ?T, we use the base type (simplified - no proper optional handling)
@@ -297,6 +402,12 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			return 'Array_int'
 		}
 		ast.InitExpr {
+			// Check if it's a map type
+			if node.typ is ast.Type {
+				if node.typ is ast.MapType {
+					return 'Map_int_int'
+				}
+			}
 			return g.expr_type_to_c(node.typ)
 		}
 		ast.PrefixExpr {
@@ -387,8 +498,12 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 				// Slice returns same type as the base array
 				return g.infer_type(node.lhs)
 			}
-			// For regular array indexing, get the element type
+			// For regular array/map indexing, get the element type
 			base_type := g.infer_type(node.lhs)
+			if base_type.starts_with('Map_') {
+				// Map_int_int -> return int (the value type)
+				return 'int'
+			}
 			if base_type.starts_with('Array_') {
 				return base_type['Array_'.len..]
 			}
@@ -399,6 +514,9 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 		}
 		ast.RangeExpr {
 			return 'Range_'
+		}
+		ast.MapInitExpr {
+			return 'Map_int_int'
 		}
 		else {
 			return 'int'
@@ -660,9 +778,29 @@ fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 fn (mut g Gen) gen_stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			g.write_indent()
+			// Handle multi-return assignments: a, b := func()
+			if node.lhs.len > 1 && node.rhs.len == 1 && node.op == .decl_assign {
+				g.gen_multi_return_assign(node)
+				return
+			}
 			lhs := node.lhs[0]
 			rhs := node.rhs[0]
+			// Check if LHS is blank identifier '_'
+			mut is_blank := false
+			if lhs is ast.Ident {
+				if lhs.name == '_' {
+					is_blank = true
+				}
+			}
+			if is_blank {
+				// Skip blank identifier assignments, but evaluate RHS for side effects
+				g.write_indent()
+				g.sb.write_string('(void)(')
+				g.gen_expr(rhs)
+				g.sb.writeln(');')
+				return
+			}
+			g.write_indent()
 			if node.op == .decl_assign {
 				// var decl
 				mut name := ''
@@ -681,6 +819,21 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.writeln(';')
 			} else {
 				// assignment
+				// Check if LHS is a map index expression
+				if lhs is ast.IndexExpr {
+					lhs_type := g.infer_type(lhs.lhs)
+					if lhs_type.starts_with('Map_') {
+						// Map assignment: __map_int_int_set(&m, key, val)
+						g.sb.write_string('__map_int_int_set(&')
+						g.gen_expr(lhs.lhs)
+						g.sb.write_string(', ')
+						g.gen_expr(lhs.expr)
+						g.sb.write_string(', ')
+						g.gen_expr(rhs)
+						g.sb.writeln(');')
+						return
+					}
+				}
 				g.gen_expr(lhs)
 				op_str := match node.op {
 					.assign { '=' }
@@ -707,8 +860,21 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln(';')
 		}
 		ast.ReturnStmt {
-			// In V/Go semantics: evaluate return value FIRST, then run defer
-			if node.exprs.len > 0 && g.defer_stmts.len > 0 {
+			// Handle multi-return: return a, b -> return (Tuple_N_int){a, b}
+			if node.exprs.len > 1 {
+				// Emit deferred statements first (if any)
+				g.emit_deferred_stmts()
+				g.write_indent()
+				g.sb.write_string('return (Tuple_${node.exprs.len}_int){')
+				for i, expr in node.exprs {
+					if i > 0 {
+						g.sb.write_string(', ')
+					}
+					g.gen_expr(expr)
+				}
+				g.sb.writeln('};')
+			} else if node.exprs.len > 0 && g.defer_stmts.len > 0 {
+				// In V/Go semantics: evaluate return value FIRST, then run defer
 				// Store return value in temp variable before running defers
 				ret_type := g.infer_type(node.exprs[0])
 				g.write_indent()
@@ -1245,6 +1411,14 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string(')')
 		}
 		ast.InitExpr {
+			// Check if it's a map type
+			if node.typ is ast.Type {
+				if node.typ is ast.MapType {
+					// Generate empty map initialization
+					g.sb.write_string('__new_map_int_int()')
+					return
+				}
+			}
 			// Get the type name properly
 			typ_name := g.expr_type_to_c(node.typ)
 			g.sb.write_string('(${typ_name}){')
@@ -1295,7 +1469,14 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 			// Check if this is an array access (Array struct type)
 			lhs_type := g.infer_type(node.lhs)
-			if lhs_type.starts_with('Array_') {
+			if lhs_type.starts_with('Map_') {
+				// Map access: __map_int_int_get(&m, key)
+				g.sb.write_string('__map_int_int_get(&')
+				g.gen_expr(node.lhs)
+				g.sb.write_string(', ')
+				g.gen_expr(node.expr)
+				g.sb.write_string(')')
+			} else if lhs_type.starts_with('Array_') {
 				// For Array types, access via ((elem_type*)arr.data)[index]
 				elem_type := lhs_type['Array_'.len..]
 				g.sb.write_string('((${elem_type}*)')
@@ -1336,6 +1517,10 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.gen_expr(expr)
 			}
 			g.sb.write_string('})')
+		}
+		ast.MapInitExpr {
+			// Generate empty map initialization
+			g.sb.write_string('__new_map_int_int()')
 		}
 		ast.IfGuardExpr {
 			// If-guard expression: `if x := opt() { ... }`
@@ -1908,5 +2093,46 @@ fn (mut g Gen) emit_deferred_stmts() {
 	// Execute deferred statements in LIFO order (last defer first)
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		g.gen_stmts(g.defer_stmts[i])
+	}
+}
+
+// gen_multi_return_assign handles multi-return assignments like: a, b := func()
+fn (mut g Gen) gen_multi_return_assign(node ast.AssignStmt) {
+	rhs := node.rhs[0]
+
+	// Generate tuple type name based on number of return values
+	tuple_type := 'Tuple_${node.lhs.len}_int'
+
+	// Get a unique temp variable name
+	tmp_name := '__tmp_${g.tmp_counter}'
+	g.tmp_counter++
+
+	// Generate: TupleN_int __tmp = func();
+	g.write_indent()
+	g.sb.write_string('${tuple_type} ${tmp_name} = ')
+	g.gen_expr(rhs)
+	g.sb.writeln(';')
+
+	// Extract each field: int a = __tmp.f0; int b = __tmp.f1;
+	for i, lhs_expr in node.lhs {
+		mut name := ''
+		mut is_blank := false
+		if lhs_expr is ast.Ident {
+			name = lhs_expr.name
+			is_blank = name == '_'
+		} else if lhs_expr is ast.ModifierExpr {
+			if lhs_expr.expr is ast.Ident {
+				name = lhs_expr.expr.name
+				is_blank = name == '_'
+			}
+		}
+
+		if is_blank {
+			continue // Skip blank identifiers
+		}
+
+		g.var_types[name] = 'int' // Simplified - assume int return type
+		g.write_indent()
+		g.sb.writeln('int ${name} = ${tmp_name}.f${i};')
 	}
 }

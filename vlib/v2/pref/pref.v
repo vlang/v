@@ -9,7 +9,6 @@ import os.cmdline
 pub enum Backend {
 	v      // V source output (default)
 	cleanc // Clean C backend (AST -> C)
-	c      // SSA -> C backend
 	x64    // Native x64/AMD64 backend
 	arm64  // Native ARM64 backend
 }
@@ -51,7 +50,6 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	match backend_str {
 		'cleanc' { backend = .cleanc }
 		'v' { backend = .v }
-		'c' { backend = .c }
 		'arm64' { backend = .arm64 }
 		'x64' { backend = .x64 }
 		else {}
@@ -90,8 +88,6 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		backend = .cleanc
 	} else if '--v' in options || 'v' in options {
 		backend = .v
-	} else if '--c' in options || 'c' in options {
-		backend = .c
 	} else if '--arm64' in options || 'arm64' in options {
 		backend = .arm64
 	} else if '--x64' in options || 'x64' in options {

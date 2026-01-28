@@ -159,6 +159,28 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				continue // Don't allocate another 8 bytes below
 			}
 
+			if instr.op == .insertvalue {
+				// Tuple/struct needs space for all fields (8 bytes each)
+				tuple_typ := g.mod.type_store.types[instr.typ]
+				tuple_size := tuple_typ.fields.len * 8
+				slot_offset = (slot_offset + 15) & ~0xF
+				slot_offset += tuple_size
+				g.stack_map[val_id] = -slot_offset
+				continue
+			}
+
+			if instr.op == .call {
+				// Check if call returns a tuple
+				result_typ := g.mod.type_store.types[val.typ]
+				if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
+					tuple_size := result_typ.fields.len * 8
+					slot_offset = (slot_offset + 15) & ~0xF
+					slot_offset += tuple_size
+					g.stack_map[val_id] = -slot_offset
+					continue
+				}
+			}
+
 			if val_id in g.reg_map {
 				continue
 			}
@@ -534,8 +556,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit(asm_bl_reloc())
 				}
 
-				if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-					g.store_reg_to_val(0, val_id)
+				result_typ := g.mod.type_store.types[g.mod.values[val_id].typ]
+				if result_typ.kind != .void_t {
+					// Check if returning a tuple (struct type with multiple fields)
+					if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
+						// Store each return register into the tuple's stack location
+						result_offset := g.stack_map[val_id]
+						for i in 0 .. result_typ.fields.len {
+							if i < 8 {
+								g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+							}
+						}
+					} else {
+						g.store_reg_to_val(0, val_id)
+					}
 				}
 			}
 		}
@@ -601,7 +635,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.ret {
 			if instr.operands.len > 0 {
-				g.load_val_to_reg(0, instr.operands[0])
+				ret_val_id := instr.operands[0]
+				ret_val := g.mod.values[ret_val_id]
+				ret_typ := g.mod.type_store.types[ret_val.typ]
+
+				// Check if returning a tuple (struct type)
+				if ret_typ.kind == .struct_t && ret_typ.fields.len > 1 {
+					// Load each tuple element into x0, x1, x2, ...
+					if ret_offset := g.stack_map[ret_val_id] {
+						for i in 0 .. ret_typ.fields.len {
+							if i < 8 {
+								// Load from tuple's stack location
+								g.emit_ldr_reg_offset(i, 29, ret_offset + i * 8)
+							}
+						}
+					} else {
+						// Tuple not in stack_map - it might be loaded from memory
+						// For now, just load the first value into x0
+						// This handles cases like returning a constant or loaded value
+						g.load_val_to_reg(0, ret_val_id)
+					}
+				} else {
+					g.load_val_to_reg(0, ret_val_id)
+				}
 			}
 			// Reset SP to the bottom of the callee-saved registers area
 			// SP = FP - callee_saved_size
@@ -754,6 +810,51 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Return pointer to struct (base address)
 			g.emit_add_fp_imm(8, base_offset) // x8 = fp + offset
 			g.store_reg_to_val(8, val_id)
+		}
+		.extractvalue {
+			// Extract element from tuple/struct
+			// operands: [tuple_val, index]
+			tuple_id := instr.operands[0]
+			idx_val := g.mod.values[instr.operands[1]]
+			idx := idx_val.name.int()
+
+			// Get tuple's stack location and load from offset
+			if tuple_offset := g.stack_map[tuple_id] {
+				field_offset := tuple_offset + idx * 8
+				g.emit_ldr_reg_offset(8, 29, field_offset)
+				g.store_reg_to_val(8, val_id)
+			} else {
+				// Tuple not in stack_map - fallback to loading as single value
+				g.load_val_to_reg(8, tuple_id)
+				g.store_reg_to_val(8, val_id)
+			}
+		}
+		.insertvalue {
+			// Insert element into tuple/struct
+			// operands: [tuple_val, elem_val, index]
+			tuple_id := instr.operands[0]
+			elem_id := instr.operands[1]
+			idx_val := g.mod.values[instr.operands[2]]
+			idx := idx_val.name.int()
+
+			// Get result's stack location
+			result_offset := g.stack_map[val_id]
+
+			// Copy existing tuple data if not undef
+			tuple_val := g.mod.values[tuple_id]
+			if !(tuple_val.kind == .constant && tuple_val.name == 'undef') {
+				// Copy all fields from source tuple
+				tuple_offset := g.stack_map[tuple_id]
+				tuple_typ := g.mod.type_store.types[instr.typ]
+				for i in 0 .. tuple_typ.fields.len {
+					g.emit_ldr_reg_offset(9, 29, tuple_offset + i * 8)
+					g.emit_str_reg_offset(9, 29, result_offset + i * 8)
+				}
+			}
+
+			// Store the new element at the specified index
+			g.load_val_to_reg(8, elem_id)
+			g.emit_str_reg_offset(8, 29, result_offset + idx * 8)
 		}
 		else {
 			eprintln('arm64: unknown instruction ${instr}')
