@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3? && !windows && !sanitize-memory-clang
 // vtest retry: 3
 // Tests for generic structs where the type parameter is used as a field type
 import db.sqlite
