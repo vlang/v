@@ -145,3 +145,33 @@ fn test_create_table_in_generic_function() {
 
 	queue.conn.close()!
 }
+
+// Test inserting from within a generic function
+// This tests the fix for the "cannot use `Message` as `Message[Payload]`" error
+pub fn (mut q Queue[T]) add_message(data string) !GenericMessage[T] {
+	msg := GenericMessage[T]{
+		data: data
+	}
+	sql q.conn {
+		insert msg into GenericMessage[T]
+	}!
+	return msg
+}
+
+fn test_insert_in_generic_function() {
+	mut queue := create_queue[Payload](':memory:')!
+
+	// Insert from within a generic function
+	msg := queue.add_message('inserted from generic fn')!
+	assert msg.data == 'inserted from generic fn'
+
+	// Verify it was inserted
+	messages := sql queue.conn {
+		select from GenericMessage[Payload]
+	}!
+
+	assert messages.len == 1
+	assert messages[0].data == 'inserted from generic fn'
+
+	queue.conn.close()!
+}

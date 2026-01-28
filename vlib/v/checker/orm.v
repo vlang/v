@@ -277,6 +277,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
+		// Resolve generic inserting object type if we're inside a generic function context
+		if inserting_object_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
+			inserting_object_type = c.table.unwrap_generic_type(inserting_object_type,
+				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		}
+
 		if inserting_object_type != node.table_expr.typ
 			&& !c.table.sumtype_has_variant(inserting_object_type, node.table_expr.typ, false) {
 			table_name := table_sym.name
