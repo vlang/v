@@ -23,7 +23,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	table_sym := c.table.sym(node.table_expr.typ)
+	// Resolve generic table type if we're inside a generic function context
+	mut table_type := node.table_expr.typ
+	if table_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+		&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
+		table_type = c.table.unwrap_generic_type(table_type, c.table.cur_fn.generic_names,
+			c.table.cur_concrete_types)
+		node.table_expr.typ = table_type
+	}
+	table_sym := c.table.sym(table_type)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
 		return ast.void_type
@@ -236,7 +244,15 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	table_sym := c.table.sym(node.table_expr.typ)
+	// Resolve generic table type if we're inside a generic function context
+	mut table_type := node.table_expr.typ
+	if table_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+		&& c.table.cur_fn.generic_names.len > 0 && c.table.cur_concrete_types.len > 0 {
+		table_type = c.table.unwrap_generic_type(table_type, c.table.cur_fn.generic_names,
+			c.table.cur_concrete_types)
+		node.table_expr.typ = table_type
+	}
+	table_sym := c.table.sym(table_type)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
 		return ast.void_type
@@ -415,6 +431,8 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 	if cache := c.orm_table_fields[table_name] {
 		return cache
 	}
+	// Build generic names list from the struct's generic_types
+	generic_names := info.generic_types.map(c.table.sym(it).name)
 	mut fields := []ast.StructField{}
 	for field in info.fields {
 		if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
@@ -460,14 +478,24 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 			}
 			continue
 		}
+		mut field_typ := field.typ
+		// Resolve generic field types using the struct's concrete_types if available
+		if field_typ.has_flag(.generic) && info.generic_types.len > 0
+			&& info.generic_types.len == info.concrete_types.len {
+			if resolved_typ := c.table.convert_generic_type(field_typ, generic_names,
+				info.concrete_types)
+			{
+				field_typ = resolved_typ
+			}
+		}
 		// Validate field type is resolved (not 0 and not still generic)
-		if field.typ == 0 || field.typ.has_flag(.generic) {
+		if field_typ == 0 || field_typ.has_flag(.generic) {
 			c.orm_error('field `${field.name}` has unresolved type in generic struct `${table_name}` - use a concrete type instantiation',
 				field.pos)
 			continue
 		}
-		field_sym := c.table.sym(field.typ)
-		final_field_typ := c.table.final_type(field.typ)
+		field_sym := c.table.sym(field_typ)
+		final_field_typ := c.table.final_type(field_typ)
 		is_primitive := final_field_typ.is_string() || final_field_typ.is_bool()
 			|| final_field_typ.is_number()
 		is_struct := field_sym.kind == .struct
@@ -496,7 +524,10 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 			}
 		}
 		if is_primitive || is_struct || is_enum || is_array_of_structs {
-			fields << field
+			// Use the resolved type in the field
+			mut resolved_field := field
+			resolved_field.typ = field_typ
+			fields << resolved_field
 		}
 	}
 	if fields.len == 0 {

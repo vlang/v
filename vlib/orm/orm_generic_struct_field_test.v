@@ -96,3 +96,52 @@ fn test_generic_struct_with_skipped_field() {
 
 	db.close()!
 }
+
+// Test generic struct creation inside a generic function
+// This tests the fix for issue #26433
+pub struct GenericMessage[T] {
+	id      int @[primary; sql: serial]
+	data    string
+	payload T @[sql: '-'] // Skipped to avoid needing fkey setup
+}
+
+pub struct Queue[T] {
+pub mut:
+	conn &sqlite.DB
+}
+
+pub fn create_queue[T](path string) !Queue[T] {
+	mut conn := sqlite.connect(path)!
+
+	mut queue := Queue[T]{
+		conn: &conn
+	}
+
+	// This should work: creating a table with a generic struct inside a generic function
+	sql queue.conn {
+		create table GenericMessage[T]
+	}!
+
+	return queue
+}
+
+fn test_create_table_in_generic_function() {
+	mut queue := create_queue[Payload](':memory:')!
+
+	// Verify the table was created by inserting and selecting data
+	msg := GenericMessage[Payload]{
+		data: 'test message'
+	}
+	sql queue.conn {
+		insert msg into GenericMessage[Payload]
+	}!
+
+	messages := sql queue.conn {
+		select from GenericMessage[Payload]
+	}!
+
+	assert messages.len == 1
+	assert messages[0].data == 'test message'
+
+	queue.conn.close()!
+}
