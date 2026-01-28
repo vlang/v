@@ -27,6 +27,9 @@ pub mut:
 
 	// Track which string literals have been materialized (value_id -> str_data offset)
 	string_literal_offsets map[int]int
+
+	// Cache for parsed constant integer values (value_id -> parsed i64)
+	const_cache map[int]i64
 }
 
 pub fn Gen.new(mod &ssa.Module) &Gen {
@@ -88,6 +91,7 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.reg_map = map[int]int{}
 	g.used_regs = []int{}
 	g.string_literal_offsets = map[int]int{}
+	g.const_cache = map[int]i64{}
 	g.allocate_registers(func)
 
 	// Stack Frame
@@ -343,7 +347,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			op1 := g.mod.values[instr.operands[1]]
 			if op1.kind == .constant && instr.op in [.add, .sub] {
-				v := op1.name.i64()
+				v := g.get_const_int(instr.operands[1])
 				if v >= 0 && v < 4096 {
 					is_imm = true
 					imm_val = v
@@ -801,12 +805,21 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 	}
 }
 
+// Get constant integer value with caching to avoid repeated string parsing
+fn (mut g Gen) get_const_int(val_id int) i64 {
+	if cached := g.const_cache[val_id] {
+		return cached
+	}
+	int_val := g.mod.values[val_id].name.i64()
+	g.const_cache[val_id] = int_val
+	return int_val
+}
+
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 	val := g.mod.values[val_id]
 	if val.kind == .constant {
-		if val.name.starts_with('"') {
-			// str_content := val.name.trim('"')
-
+		// Quick check: if first char is '"' it's a string
+		if val.name.len > 0 && val.name[0] == `"` {
 			raw_content := val.name.trim('"')
 			// Handle escape sequences
 			mut str_content := []u8{}
@@ -831,7 +844,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			}
 
 			str_offset := g.macho.str_data.len
-			g.macho.str_data << str_content //.bytes()
+			g.macho.str_data << str_content
 			g.macho.str_data << 0
 
 			sym_idx := g.macho.add_symbol('L_str_${str_offset}', u64(str_offset), false,
@@ -841,7 +854,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 			g.emit(0x91000000 | u32(reg) | (u32(reg) << 5))
 		} else {
-			int_val := val.name.i64()
+			int_val := g.get_const_int(val_id)
 			g.emit_mov_imm64(reg, int_val)
 		}
 	} else if val.kind == .global {
@@ -1224,13 +1237,13 @@ fn (mut g Gen) allocate_registers(func ssa.Function) {
 		}
 	}
 
-	mut sorted := []&Interval{}
+	mut sorted := []&Interval{cap: intervals.len}
 	for _, i in intervals {
 		sorted << i
 	}
 	sorted.sort(a.start < b.start)
 
-	mut active := []&Interval{}
+	mut active := []&Interval{cap: 32}
 
 	// Registers
 	// Caller-saved (Temporaries): x9..x15
@@ -1240,33 +1253,39 @@ fn (mut g Gen) allocate_registers(func ssa.Function) {
 	short_regs := [11, 12, 13, 14, 15]
 	long_regs := [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 
+	// Reusable arrays to avoid allocation in the hot loop
+	mut used := []bool{len: 32, init: false}
+	mut used_regs_set := []bool{len: 32, init: false}
+
 	for i in sorted {
-		for j := 0; j < active.len; j++ {
+		// Remove expired intervals from active list
+		mut j := 0
+		for j < active.len {
 			if active[j].end < i.start {
 				active.delete(j)
-				j--
+			} else {
+				j++
 			}
 		}
 
-		// Decide which pool to use
-		// mut pool := unsafe { short_regs }
-		mut pool := short_regs.clone()
-		if i.has_call {
-			pool = long_regs.clone()
+		// Reset used array
+		for k in 0 .. 32 {
+			used[k] = false
 		}
-
-		// Try allocation
-		mut used := []bool{len: 32, init: false}
 		for a in active {
 			used[g.reg_map[a.val_id]] = true
 		}
+
+		// Decide which pool to use (avoid clone)
+		pool := if i.has_call { long_regs } else { short_regs }
 
 		for r in pool {
 			if !used[r] {
 				g.reg_map[i.val_id] = r
 				active << i
 				// Only track used callee-saved regs for prologue saving
-				if r >= 19 && r <= 28 && r !in g.used_regs {
+				if r >= 19 && r <= 28 && !used_regs_set[r] {
+					used_regs_set[r] = true
 					g.used_regs << r
 				}
 				break

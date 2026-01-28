@@ -41,6 +41,10 @@ pub fn (mut m Module) optimize() {
 
 // --- 1. CFG Construction ---
 fn (mut m Module) build_cfg() {
+	// Use a set for deduplication instead of linear search
+	mut seen_succs := map[int]bool{}
+	mut seen_preds := map[int]bool{}
+
 	for func in m.funcs {
 		// Clear existing preds/succs
 		for blk_id in func.blocks {
@@ -56,38 +60,54 @@ fn (mut m Module) build_cfg() {
 			term_val_id := blk.instrs.last()
 			term := m.instrs[m.values[term_val_id].index]
 
-			mut succs := []int{}
+			// Clear the set for reuse
+			seen_succs.clear()
+
 			match term.op {
 				.br {
-					succs << m.get_block_from_val(term.operands[1])
-					succs << m.get_block_from_val(term.operands[2])
+					s1 := m.get_block_from_val(term.operands[1])
+					s2 := m.get_block_from_val(term.operands[2])
+					if !seen_succs[s1] {
+						seen_succs[s1] = true
+						m.blocks[blk_id].succs << s1
+					}
+					if !seen_succs[s2] {
+						seen_succs[s2] = true
+						m.blocks[blk_id].succs << s2
+					}
 				}
 				.jmp {
-					succs << m.get_block_from_val(term.operands[0])
+					s := m.get_block_from_val(term.operands[0])
+					seen_succs[s] = true
+					m.blocks[blk_id].succs << s
 				}
 				.switch_ {
 					// default
-					succs << m.get_block_from_val(term.operands[1])
+					s := m.get_block_from_val(term.operands[1])
+					if !seen_succs[s] {
+						seen_succs[s] = true
+						m.blocks[blk_id].succs << s
+					}
 					// cases
 					for i := 3; i < term.operands.len; i += 2 {
-						succs << m.get_block_from_val(term.operands[i])
+						cs := m.get_block_from_val(term.operands[i])
+						if !seen_succs[cs] {
+							seen_succs[cs] = true
+							m.blocks[blk_id].succs << cs
+						}
 					}
 				}
 				else {}
 			}
 
-			// Deduplicate successors to avoid duplicate edges
-			mut unique_succs := []int{}
-			for s in succs {
-				if s !in unique_succs {
-					unique_succs << s
+			// Build predecessors - use seen_preds to check if already added
+			for s in m.blocks[blk_id].succs {
+				// Reset seen_preds for each successor check
+				seen_preds.clear()
+				for p in m.blocks[s].preds {
+					seen_preds[p] = true
 				}
-			}
-
-			m.blocks[blk_id].succs = unique_succs
-			for s in unique_succs {
-				// Avoid duplicate predecessors
-				if blk_id !in m.blocks[s].preds {
+				if !seen_preds[blk_id] {
 					m.blocks[s].preds << blk_id
 				}
 			}
@@ -110,30 +130,36 @@ mut:
 }
 
 fn (mut m Module) compute_dominators() {
+	// Pre-allocate context once and reuse for all functions
+	// Size based on total blocks since block IDs are indices into m.blocks
+	max_id := m.blocks.len
+
+	mut ctx := LTContext{
+		parent:   []int{len: max_id, init: -1}
+		semi:     []int{len: max_id, init: -1}
+		vertex:   []int{len: max_id + 1, init: -1}
+		bucket:   [][]int{len: max_id}
+		dfnum:    []int{len: max_id, init: 0}
+		ancestor: []int{len: max_id, init: -1}
+		label:    []int{len: max_id, init: -1}
+		n:        0
+	}
+
 	for func in m.funcs {
 		if func.blocks.len == 0 {
 			continue
 		}
 
-		// Calculate total block count to size arrays correctly
-		// Note: func.blocks contains IDs, max_id could be larger than len
-		max_id := m.blocks.len
-
-		mut ctx := LTContext{
-			parent:   []int{len: max_id, init: -1}
-			semi:     []int{len: max_id, init: -1}
-			vertex:   []int{len: max_id + 1, init: -1} // +1 because n is 1-indexed
-			bucket:   [][]int{len: max_id}
-			dfnum:    []int{len: max_id, init: 0}
-			ancestor: []int{len: max_id, init: -1}
-			label:    []int{len: max_id, init: -1}
-			n:        0
-		}
-
-		// Initialize DSU labels
+		// Reset context for this function (only reset what's needed)
+		ctx.n = 0
 		for blk_id in func.blocks {
-			ctx.label[blk_id] = blk_id
+			ctx.parent[blk_id] = -1
 			ctx.semi[blk_id] = blk_id
+			ctx.vertex[blk_id] = -1
+			ctx.bucket[blk_id] = []
+			ctx.dfnum[blk_id] = 0
+			ctx.ancestor[blk_id] = -1
+			ctx.label[blk_id] = blk_id
 			// Initialize idom to -1
 			m.blocks[blk_id].idom = -1
 		}
@@ -873,9 +899,8 @@ fn (mut m Module) constant_fold() bool {
 	mut changed := false
 	for func in m.funcs {
 		for blk_id in func.blocks {
-			instrs := m.blocks[blk_id].instrs.clone()
-
-			for val_id in instrs {
+			// Iterate directly without cloning - we don't modify the array during iteration
+			for val_id in m.blocks[blk_id].instrs {
 				if m.values[val_id].kind != .instruction {
 					continue
 				}
@@ -1132,29 +1157,47 @@ fn (mut m Module) dead_code_elimination() bool {
 		changed = false
 		for func in m.funcs {
 			for blk_id in func.blocks {
-				blk := m.blocks[blk_id]
-				mut new_instrs := []int{}
-				for val_id in blk.instrs {
+				// First pass: find dead instructions (don't modify yet)
+				mut dead_instrs := []int{}
+				for val_id in m.blocks[blk_id].instrs {
 					val := m.values[val_id]
-					// If converted to constant, it stays (backend handles it)
-					// If instruction, check uses and side effects
 					if val.kind == .instruction {
 						instr := m.instrs[val.index]
 						side_effects := instr.op in [.store, .call, .call_indirect, .ret, .br,
 							.jmp, .switch_, .unreachable, .assign, .fence, .atomicrmw]
 						if !side_effects && val.uses.len == 0 {
-							// Kill
-							for op_id in instr.operands {
-								m.remove_use(op_id, val_id)
-							}
-							changed = true
-							any_changed = true
-							continue
+							dead_instrs << val_id
 						}
 					}
-					new_instrs << val_id
 				}
-				m.blocks[blk_id].instrs = new_instrs
+
+				// Only rebuild the instruction list if we found dead instructions
+				if dead_instrs.len > 0 {
+					// Remove uses from dead instructions
+					for val_id in dead_instrs {
+						instr := m.instrs[m.values[val_id].index]
+						for op_id in instr.operands {
+							m.remove_use(op_id, val_id)
+						}
+					}
+
+					// Build set for O(1) lookup
+					mut dead_set := map[int]bool{}
+					for d in dead_instrs {
+						dead_set[d] = true
+					}
+
+					// Filter out dead instructions
+					mut new_instrs := []int{cap: m.blocks[blk_id].instrs.len}
+					for val_id in m.blocks[blk_id].instrs {
+						if !dead_set[val_id] {
+							new_instrs << val_id
+						}
+					}
+					m.blocks[blk_id].instrs = new_instrs
+					changed = true
+					any_changed = true
+				}
 			}
 		}
 	}
@@ -1216,9 +1259,14 @@ fn (mut m Module) merge_blocks() {
 	// We need to be careful about iteration while modifying.
 	// Loop until no changes.
 	mut changed := true
+	mut first_iter := true
 	for changed {
 		changed = false
-		m.build_cfg() // Refresh preds
+		// Only rebuild CFG on first iteration or after actual changes
+		if first_iter {
+			m.build_cfg()
+			first_iter = false
+		}
 
 		for mut func in m.funcs {
 			// We iterate through blocks.
@@ -1284,7 +1332,7 @@ fn (mut m Module) merge_blocks() {
 			}
 
 			// Filter out merged blocks
-			if changed {
+			if merged.len > 0 {
 				mut new_blks := []int{}
 				for b in func.blocks {
 					if !merged[b] {
@@ -1293,6 +1341,10 @@ fn (mut m Module) merge_blocks() {
 				}
 				func.blocks = new_blks
 			}
+		}
+		// Rebuild CFG for next iteration if we made changes
+		if changed {
+			m.build_cfg()
 		}
 	}
 }
