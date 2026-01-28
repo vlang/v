@@ -226,6 +226,11 @@ pub fn (lang Language) str() string {
 	}
 }
 
+pub enum DeferMode {
+	scoped   // default: defer to end of current scope
+	function // defer(fn): defer to end of function
+}
+
 // Expressions
 pub struct ArrayInitExpr {
 pub:
@@ -675,6 +680,7 @@ pub:
 
 pub struct DeferStmt {
 pub:
+	mode  DeferMode
 	stmts []Stmt
 }
 

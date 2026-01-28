@@ -151,6 +151,11 @@ pub fn (t Token) right_binding_power() BindingPower {
 }
 
 @[inline]
+pub fn (t Token) is_keyword() bool {
+	return int(t) >= int(Token.key_as) && int(t) <= int(Token.key_volatile)
+}
+
+@[inline]
 pub fn (t Token) is_prefix() bool {
 	return t in [.minus, .amp, .mul, .not, .bit_not, .arrow]
 }

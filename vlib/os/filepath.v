@@ -297,8 +297,7 @@ fn is_normal_path(path string) bool {
 	if plen == 0 {
 		return false
 	}
-	return (plen == 1 && is_slash(path[0])) || (plen >= 2 && is_slash(path[0])
-		&& !is_slash(path[1]))
+	return (plen == 1 && is_slash(path[0])) || (plen >= 2 && is_slash(path[0]) && !is_slash(path[1]))
 }
 
 // is_curr_dir_ref returns `true` if the 3 given integer construct

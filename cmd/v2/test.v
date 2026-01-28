@@ -236,6 +236,9 @@ fn print_str(s string) {
 	C.puts(s.str)
 }
 
+// C function with keyword name (tests parser allowing keywords after C.)
+fn C.select(ndfs int, readfds voidptr, writefds voidptr, exceptfds voidptr, timeout voidptr) int
+
 fn nested_return(x int) int {
 	if x < 10 {
 		return 100
@@ -286,6 +289,18 @@ fn defer_order_test() {
 	defer {
 		print_str('Third')
 	}
+}
+
+// Helper function to test defer(fn) - function-level defer
+fn defer_fn_test() int {
+	mut x := 0
+	for i := 0; i < 3; i++ {
+		defer(fn) {
+			x += 100
+		}
+		x += 1
+	}
+	return x // returns 3, but defer(fn) adds 300 at function end
 }
 
 // ===================== IF-GUARD HELPERS =====================
@@ -1979,6 +1994,9 @@ fn main() {
 
 	// 38.5 Test defer order in function
 	defer_order_test() // Should print: Third, Second, First
+
+	// 38.6 Test defer(fn) - function-level defer
+	print_int(defer_fn_test()) // 303 (3 from loop + 300 from function-level defers)
 
 	// ==================== 39. ENUMS ====================
 	print_str('--- 39. Enums ---')

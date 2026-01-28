@@ -9,8 +9,8 @@ pub fn get_v_files_from_dir(dir string) []string {
 	mod_files := os.ls(dir) or { panic('error getting ls from ${dir}') }
 	mut v_files := []string{}
 	for file in mod_files {
-		if !file.ends_with('.v') || file.ends_with('.js.v') || file.ends_with('.c.v')
-			|| file.contains('_test.') {
+		// Include .v files (including .c.v), exclude .js.v and test files
+		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
 			continue
 		}
 		// skip platform-specific files
@@ -18,8 +18,9 @@ pub fn get_v_files_from_dir(dir string) []string {
 			continue
 		}
 		// skip OS-specific files for other platforms
+		// Note: _nix files are for Unix-like systems including macOS and Linux
 		$if macos {
-			if file.contains('_windows.') || file.contains('_linux.') || file.contains('_nix.') {
+			if file.contains('_windows.') || file.contains('_linux.') {
 				continue
 			}
 		} $else $if linux {

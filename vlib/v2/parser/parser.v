@@ -248,9 +248,22 @@ fn (mut p Parser) stmt() ast.Stmt {
 		}
 		.key_defer {
 			p.next()
+			mut defer_mode := ast.DeferMode.scoped
+			if p.tok == .lpar {
+				p.next()
+				if p.tok == .key_fn {
+					defer_mode = .function
+					p.next()
+				} else {
+					mode := p.expect_name()
+					p.error('unknown `defer` mode: `${mode}`')
+				}
+				p.expect(.rpar)
+			}
 			stmts := p.block()
 			p.expect(.semicolon)
 			return ast.DeferStmt{
+				mode:  defer_mode
 				stmts: stmts
 			}
 		}
@@ -1250,6 +1263,18 @@ fn (mut p Parser) expect_name() string {
 	return name
 }
 
+// expect `.name` or keyword & return `p.lit` & go to next token
+// used for C/JS function names where keywords are allowed (e.g. `C.select`)
+@[inline]
+fn (mut p Parser) expect_name_or_keyword() string {
+	if p.tok != .name && !p.tok.is_keyword() {
+		p.error_expected(.name, p.tok)
+	}
+	name := p.lit
+	p.next()
+	return name
+}
+
 // return `p.lit` & go to next token
 @[inline]
 fn (mut p Parser) lit() string {
@@ -1778,7 +1803,8 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 		}
 	}
 	language := p.decl_language()
-	name_ident := p.ident()
+	// use ident_or_keyword() for C/JS functions to allow keywords as names (e.g. `C.select`)
+	name_ident := if language == .v { p.ident() } else { p.ident_or_keyword() }
 	mut name := name_ident.name
 	mut is_static := false
 	if p.tok == .dot {
@@ -1793,11 +1819,12 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 			}
 		}
 		// eg. `Promise.resolve` in `JS.Promise.resolve`
+		// use expect_name_or_keyword() to allow keywords as names (e.g. `C.select`)
 		else {
-			name += '.' + p.expect_name()
+			name += '.' + p.expect_name_or_keyword()
 			for p.tok == .dot {
 				p.next()
-				name += '.' + p.expect_name()
+				name += '.' + p.expect_name_or_keyword()
 			}
 		}
 	}
@@ -2390,6 +2417,15 @@ fn (mut p Parser) ident() ast.Ident {
 	}
 }
 
+// like ident() but allows keywords as names (for C/JS function names like `C.select`)
+@[inline]
+fn (mut p Parser) ident_or_keyword() ast.Ident {
+	return ast.Ident{
+		pos:  p.pos
+		name: p.expect_name_or_keyword()
+	}
+}
+
 @[inline]
 fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 	ident := p.ident()
@@ -2407,9 +2443,15 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 				pos: p.pos
 			}
 		}
+		// for C/JS calls, allow keywords as names (e.g. `C.select`)
+		rhs := if ident.name == 'C' || ident.name == 'JS' {
+			p.ident_or_keyword()
+		} else {
+			p.ident()
+		}
 		return ast.SelectorExpr{
 			lhs: ident
-			rhs: p.ident()
+			rhs: rhs
 			pos: p.pos
 		}
 	}

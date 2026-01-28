@@ -9,6 +9,7 @@ import v2.parser
 import v2.token
 import v2.pref
 import v2.ssa
+import v2.ssa.optimize
 import v2.transform
 import v2.gen.x64
 import v2.gen.arm64
@@ -112,7 +113,7 @@ fn main() {
 	builder.build_all(all_files)
 	// Optimize
 	println('[*] Optimizing SSA...')
-	mod.optimize()
+	optimize.optimize(mut mod)
 	// Backend selection: default to native, use 'cleanc' or 'c' arg to switch
 	use_cleanc := os.args.contains('cleanc')
 	use_ssa_c := os.args.contains('c') && !use_cleanc

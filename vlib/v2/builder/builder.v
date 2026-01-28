@@ -12,6 +12,7 @@ import v2.gen.v as gen_v
 import v2.gen.x64
 import v2.pref
 import v2.ssa
+import v2.ssa.optimize
 import v2.token
 import v2.transform
 import time
@@ -19,8 +20,9 @@ import time
 struct Builder {
 	pref &pref.Preferences
 mut:
-	files    []ast.File
-	file_set &token.FileSet = token.FileSet.new()
+	files      []ast.File
+	user_files []string // original user-provided files (for output name)
+	file_set   &token.FileSet = token.FileSet.new()
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -32,6 +34,7 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 }
 
 pub fn (mut b Builder) build(files []string) {
+	b.user_files = files
 	mut sw := time.new_stopwatch()
 	b.files = if b.pref.no_parallel {
 		b.parse_files(files)
@@ -117,7 +120,7 @@ fn (mut b Builder) gen_ssa_c() {
 	}
 	// Build all files together with proper multi-file ordering
 	ssa_builder.build_all(transformed_files)
-	mod.optimize()
+	optimize.optimize(mut mod)
 
 	mut gen := c.Gen.new(mod)
 	c_source := gen.gen()
@@ -132,8 +135,8 @@ fn (mut b Builder) gen_ssa_c() {
 	// Compile C to binary
 	output_binary := if b.pref.output_file != '' {
 		b.pref.output_file
-	} else if b.files.len > 0 {
-		os.file_name(b.files.last().name).all_before_last('.v')
+	} else if b.user_files.len > 0 {
+		os.file_name(b.user_files.last()).all_before_last('.v')
 	} else {
 		'out'
 	}
@@ -165,13 +168,13 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	// Build all files together with proper multi-file ordering
 	ssa_builder.build_all(transformed_files)
-	mod.optimize()
+	optimize.optimize(mut mod)
 
 	// Determine output binary name from the last user file
 	output_binary := if b.pref.output_file != '' {
 		b.pref.output_file
-	} else if b.files.len > 0 {
-		os.file_name(b.files.last().name).all_before_last('.v')
+	} else if b.user_files.len > 0 {
+		os.file_name(b.user_files.last()).all_before_last('.v')
 	} else {
 		'out'
 	}
