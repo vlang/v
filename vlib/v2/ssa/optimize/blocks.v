@@ -76,11 +76,21 @@ fn merge_blocks(mut m ssa.Module) {
 						target_val := last_instr.operands[0]
 						target_id := m.get_block_from_val(target_val)
 
-						// Candidate: target_id
+						// Check if target has phi nodes - don't merge if it does
+						mut has_phi := false
+						for vid in m.blocks[target_id].instrs {
+							if m.values[vid].kind == .instruction {
+								if m.instrs[m.values[vid].index].op == .phi {
+									has_phi = true
+									break
+								}
+							}
+						}
+
+						// Candidate: target_id (only if no phi nodes)
 						if target_id != blk_id && m.blocks[target_id].preds.len == 1
-							&& m.blocks[target_id].preds[0] == blk_id {
-							// MERGE
-							// Remove JMP from A
+							&& m.blocks[target_id].preds[0] == blk_id && !has_phi {
+							// MERGE: Remove JMP from A
 							m.blocks[blk_id].instrs.delete_last()
 
 							// Append B's instrs to A

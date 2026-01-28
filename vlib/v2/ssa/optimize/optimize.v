@@ -17,8 +17,7 @@ pub fn optimize(mut m ssa.Module) {
 	compute_dominators(mut m)
 
 	// 3. Promote Memory to Register (Construct SSA / Phi Nodes)
-	// NOTE: Disabled due to bug with nested loops containing break statements
-	// promote_memory_to_register(mut m)
+	promote_memory_to_register(mut m)
 
 	// 4. Scalar Optimizations (run until fixed point)
 	mut opt_changed := true

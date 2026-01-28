@@ -81,7 +81,7 @@ fn promote_memory_to_register(mut m ssa.Module) {
 			for alloc_id in allocs {
 				typ := m.type_store.types[m.values[alloc_id].typ].elem_type
 				phi_val := m.add_instr_front(.phi, blk_id, typ, [])
-				m.values[phi_val].name = '${m.values[alloc_id].name}.phi'
+				m.values[phi_val].name = '${m.values[alloc_id].name}.phi_${blk_id}'
 			}
 		}
 
@@ -127,6 +127,7 @@ fn is_promotable(m ssa.Module, alloc_id int) bool {
 
 fn compute_dominance_frontier(m ssa.Module, func ssa.Function) map[int][]int {
 	mut df := map[int][]int{}
+
 	for blk_id in func.blocks {
 		preds := m.blocks[blk_id].preds
 		if preds.len >= 2 {
@@ -153,10 +154,16 @@ fn compute_dominance_frontier(m ssa.Module, func ssa.Function) map[int][]int {
 fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 	blk := m.blocks[blk_id]
 
+	// Save stack counts BEFORE pushing phis (so we can pop them later)
+	mut stack_counts := map[int]int{}
+	for k, v in ctx.stacks {
+		stack_counts[k] = v.len
+	}
+
 	// 1. Push Phis to stack
 	if phis := ctx.phi_placements[blk_id] {
 		for alloc_id in phis {
-			name := '${m.values[alloc_id].name}.phi'
+			name := '${m.values[alloc_id].name}.phi_${blk_id}'
 			for val_id in blk.instrs {
 				instr := m.instrs[m.values[val_id].index]
 				if instr.op != .phi {
@@ -171,11 +178,6 @@ fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 	}
 
 	// 2. Process Instructions
-	mut stack_counts := map[int]int{}
-	for k, v in ctx.stacks {
-		stack_counts[k] = v.len
-	}
-
 	mut instrs_to_nop := []int{}
 
 	for val_id in blk.instrs {
@@ -229,7 +231,7 @@ fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 						continue
 					}
 					ins := m.instrs[v.index]
-					if ins.op == .phi && v.name == '${m.values[alloc_id].name}.phi' {
+					if ins.op == .phi && v.name == '${m.values[alloc_id].name}.phi_${succ_id}' {
 						mut val := 0
 						if ctx.stacks[alloc_id].len > 0 {
 							val = ctx.stacks[alloc_id].last()
@@ -240,6 +242,10 @@ fn rename_recursive(mut m ssa.Module, blk_id int, mut ctx Mem2RegCtx) {
 						}
 						m.instrs[v.index].operands << val
 						m.instrs[v.index].operands << m.blocks[blk_id].val_id
+						// FIX: Update uses so DCE doesn't remove the value
+						if val < m.values.len && vid !in m.values[val].uses {
+							m.values[val].uses << vid
+						}
 					}
 				}
 			}
