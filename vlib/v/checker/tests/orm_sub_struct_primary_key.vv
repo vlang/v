@@ -1,0 +1,17 @@
+import db.sqlite
+
+struct Payload {
+	data string
+}
+
+struct Message {
+	id      int @[primary; sql: serial]
+	payload Payload
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	_ := sql db {
+		select from Message
+	}!
+}
