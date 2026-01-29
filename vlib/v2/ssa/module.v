@@ -4,6 +4,8 @@
 
 module ssa
 
+import v2.types
+
 pub struct TargetData {
 pub:
 	ptr_size      int
@@ -16,6 +18,9 @@ pub mut:
 	name       string
 	target     TargetData
 	type_store TypeStore
+
+	// Type checker environment (optional, for backends that need rich type info)
+	env &types.Environment = unsafe { nil }
 
 	// Arenas
 	values  []Value

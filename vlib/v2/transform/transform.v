@@ -13,6 +13,8 @@ pub struct Transformer {
 mut:
 	// Track array literals that need lowering
 	array_temps int
+	// Track variable types for type inference (var_name -> type_name)
+	var_types map[string]string
 }
 
 pub fn Transformer.new() &Transformer {
@@ -66,8 +68,20 @@ fn (mut t Transformer) stmt(node ast.Stmt) ast.Stmt {
 fn (mut t Transformer) assign_stmt(node ast.AssignStmt) ast.Stmt {
 	// Transform RHS expressions
 	mut new_rhs := []ast.Expr{cap: node.rhs.len}
-	for rhs_expr in node.rhs {
-		new_rhs << t.expr(rhs_expr)
+	for i, rhs_expr in node.rhs {
+		transformed := t.expr(rhs_expr)
+		new_rhs << transformed
+
+		// Track variable types for type inference
+		if node.op == .decl_assign && i < node.lhs.len {
+			if node.lhs[i] is ast.Ident {
+				var_name := (node.lhs[i] as ast.Ident).name
+				inferred_type := t.infer_type(transformed)
+				if inferred_type != '' {
+					t.var_types[var_name] = inferred_type
+				}
+			}
+		}
 	}
 	return ast.AssignStmt{
 		op:  node.op
@@ -138,12 +152,7 @@ fn (mut t Transformer) expr(node ast.Expr) ast.Expr {
 			return t.lower_string_inter(node)
 		}
 		ast.InfixExpr {
-			return ast.InfixExpr{
-				op:  node.op
-				lhs: t.expr(node.lhs)
-				rhs: t.expr(node.rhs)
-				pos: node.pos
-			}
+			return t.infix_expr(node)
 		}
 		ast.PrefixExpr {
 			return ast.PrefixExpr{
@@ -261,4 +270,88 @@ fn (mut t Transformer) lower_string_inter(node ast.StringInterLiteral) ast.Expr 
 		values: node.values
 		inters: new_inters
 	}
+}
+
+// infix_expr handles binary operations, transforming string concatenation
+// into method calls: `a + b` -> `a.+(b)` which becomes `string__plus(a, b)`
+fn (mut t Transformer) infix_expr(node ast.InfixExpr) ast.Expr {
+	lhs := t.expr(node.lhs)
+	rhs := t.expr(node.rhs)
+
+	// Check if this is string concatenation
+	if node.op == .plus {
+		lhs_type := t.infer_type(lhs)
+		rhs_type := t.infer_type(rhs)
+		if lhs_type == 'string' && rhs_type == 'string' {
+			// Transform `a + b` into method call syntax
+			// This will be compiled as string__plus(a, b)
+			return ast.CallExpr{
+				lhs:  ast.SelectorExpr{
+					lhs: lhs
+					rhs: ast.Ident{
+						name: '+'
+					}
+				}
+				args: [rhs]
+				pos:  node.pos
+			}
+		}
+	}
+
+	// Default: keep as infix expression
+	return ast.InfixExpr{
+		op:  node.op
+		lhs: lhs
+		rhs: rhs
+		pos: node.pos
+	}
+}
+
+// infer_type attempts to determine the type of an expression
+// Returns the type name or '' if unknown
+fn (t &Transformer) infer_type(node ast.Expr) string {
+	match node {
+		ast.StringLiteral {
+			return 'string'
+		}
+		ast.StringInterLiteral {
+			return 'string'
+		}
+		ast.BasicLiteral {
+			if node.kind == .number {
+				if node.value.contains('.') || node.value.contains('e') || node.value.contains('E') {
+					return 'f64'
+				}
+				return 'int'
+			}
+			if node.kind in [.key_true, .key_false] {
+				return 'bool'
+			}
+		}
+		ast.Ident {
+			// Look up tracked variable type
+			if typ := t.var_types[node.name] {
+				return typ
+			}
+		}
+		ast.CallExpr {
+			// Method call on string returns string for + operator
+			if node.lhs is ast.SelectorExpr {
+				sel := node.lhs as ast.SelectorExpr
+				if sel.rhs.name == '+' && t.infer_type(sel.lhs) == 'string' {
+					return 'string'
+				}
+			}
+		}
+		ast.InfixExpr {
+			// String + string = string
+			if node.op == .plus {
+				if t.infer_type(node.lhs) == 'string' && t.infer_type(node.rhs) == 'string' {
+					return 'string'
+				}
+			}
+		}
+		else {}
+	}
+	return ''
 }

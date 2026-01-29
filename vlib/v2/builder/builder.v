@@ -96,7 +96,7 @@ fn (mut b Builder) gen_cleanc() {
 	// Clean C Backend (AST -> C)
 	// Pass all files to cleanc - it will handle filtering system types
 
-	mut gen := cleanc.Gen.new(b.files)
+	mut gen := cleanc.Gen.new_with_env(b.files, b.env)
 	c_source := gen.gen()
 
 	// Determine output name

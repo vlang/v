@@ -5,10 +5,13 @@
 module cleanc
 
 import v2.ast
+import v2.types
 import strings
 
 pub struct Gen {
 	files []ast.File
+	// Type checker environment with populated scopes
+	env &types.Environment = unsafe { nil }
 mut:
 	sb              strings.Builder
 	indent          int
@@ -32,8 +35,13 @@ mut:
 }
 
 pub fn Gen.new(files []ast.File) &Gen {
+	return Gen.new_with_env(files, unsafe { nil })
+}
+
+pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 	mut g := &Gen{
 		files:           files
+		env:             unsafe { env }
 		sb:              strings.new_builder(4096)
 		fn_types:        map[string]string{}
 		fn_ret_counts:   map[string]int{}
@@ -125,6 +133,114 @@ pub fn Gen.new(files []ast.File) &Gen {
 		}
 	}
 	return g
+}
+
+// lookup_type_in_scope looks up a type by name in the environment's scopes.
+// First tries current module scope, then builtin scope.
+fn (g &Gen) lookup_type_in_scope(name string, module_name string) ?types.Type {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	// Try module scope first
+	mut scope := lock g.env.scopes {
+		g.env.scopes[module_name] or {
+			// Try builtin scope as fallback
+			g.env.scopes['builtin'] or { return none }
+		}
+	}
+	if obj := scope.lookup_parent(name, 0) {
+		if obj is types.Type {
+			return obj
+		}
+	}
+	return none
+}
+
+// lookup_struct_type looks up a struct type by name from the environment.
+// Tries current module scope first, then builtin scope.
+fn (g &Gen) lookup_struct_type(name string) ?types.Struct {
+	// Try environment - check current module, then builtin
+	if typ := g.lookup_type_in_scope(name, g.cur_module) {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	if typ := g.lookup_type_in_scope(name, 'builtin') {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	return none
+}
+
+// get_struct_field_type gets the type of a struct field using the environment.
+// Returns the C type name for the field if found.
+fn (g &Gen) get_struct_field_type_from_env(struct_name string, field_name string) ?string {
+	if struct_type := g.lookup_struct_type(struct_name) {
+		for field in struct_type.fields {
+			if field.name == field_name {
+				return g.types_type_to_c(field.typ)
+			}
+		}
+	}
+	return none
+}
+
+// types_type_to_c converts a types.Type to a C type string
+fn (g &Gen) types_type_to_c(t types.Type) string {
+	match t {
+		types.Primitive {
+			if t.props.has(.integer) {
+				size := if t.size == 0 { 64 } else { int(t.size) }
+				signed := !t.props.has(.unsigned)
+				return if signed {
+					match size {
+						8 { 'i8' }
+						16 { 'i16' }
+						32 { 'i32' }
+						else { 'i64' }
+					}
+				} else {
+					match size {
+						8 { 'u8' }
+						16 { 'u16' }
+						32 { 'u32' }
+						else { 'u64' }
+					}
+				}
+			} else if t.props.has(.float) {
+				return if t.size == 32 { 'f32' } else { 'f64' }
+			} else if t.props.has(.boolean) {
+				return 'bool'
+			}
+			return 'i64'
+		}
+		types.Pointer {
+			base := g.types_type_to_c(t.base_type)
+			return '${base}*'
+		}
+		types.Array {
+			return 'Array' // Arrays use generic Array struct
+		}
+		types.Struct {
+			return t.name
+		}
+		types.String {
+			return 'string'
+		}
+		types.Alias {
+			return t.name
+		}
+		types.Char {
+			return 'char'
+		}
+		types.Void {
+			return 'void'
+		}
+		else {
+			return 'int' // fallback
+		}
+	}
 }
 
 pub fn (mut g Gen) gen() string {

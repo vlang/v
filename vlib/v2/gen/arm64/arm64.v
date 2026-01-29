@@ -5,6 +5,7 @@
 module arm64
 
 import v2.ssa
+import v2.types
 import encoding.binary
 
 pub struct Gen {
@@ -1260,6 +1261,33 @@ fn (g Gen) type_size(typ_id ssa.TypeID) int {
 			return 0
 		}
 	}
+}
+
+// lookup_type_from_env looks up a type by name from the Environment.
+// Returns the types.Type if found, none otherwise.
+fn (g &Gen) lookup_type_from_env(name string, module_name string) ?types.Type {
+	if g.mod.env == unsafe { nil } {
+		return none
+	}
+	mut scope := lock g.mod.env.scopes {
+		g.mod.env.scopes[module_name] or { g.mod.env.scopes['builtin'] or { return none } }
+	}
+	if obj := scope.lookup_parent(name, 0) {
+		if obj is types.Type {
+			return obj
+		}
+	}
+	return none
+}
+
+// lookup_struct_from_env looks up a struct type by name from the Environment.
+fn (g &Gen) lookup_struct_from_env(name string) ?types.Struct {
+	if typ := g.lookup_type_from_env(name, 'builtin') {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	return none
 }
 
 fn (mut g Gen) allocate_registers(func ssa.Function) {
