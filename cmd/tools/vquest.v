@@ -32,6 +32,7 @@ fn main() {
 		name:        'quest'
 		description: 'A tool to help make V better for everyone, by spending some time each day, on random tasks/missions like:\n * documenting public APIs\n * issue confirmation reviewing and triage\n * testing'
 		execute:     cli.print_help_for_command
+		posix_mode:  true
 		defaults:    struct {
 			man: false
 		}
@@ -45,12 +46,9 @@ fn main() {
 				name:        'confirm'
 				description: 'Open a random unconfirmed vlang/v issue in your browser.'
 				flags:       [
-					cli.Flag{
-						flag:        .bool
-						name:        'print-only'
-						abbrev:      'p'
-						description: 'Print the issue URL without opening a browser.'
-					},
+					quest_flag_print_only,
+					quest_flag_from,
+					quest_flag_to,
 				]
 				execute:     run_confirm
 			},
@@ -58,12 +56,9 @@ fn main() {
 				name:        'fix'
 				description: 'Open a random open vlang/v issue in your browser.'
 				flags:       [
-					cli.Flag{
-						flag:        .bool
-						name:        'print-only'
-						abbrev:      'p'
-						description: 'Print the issue URL without opening a browser.'
-					},
+					quest_flag_print_only,
+					quest_flag_from,
+					quest_flag_to,
 				]
 				execute:     run_fix
 			},
@@ -79,6 +74,29 @@ fn main() {
 	app.parse(args)
 }
 
+const quest_flag_print_only = cli.Flag{
+	description: 'Print the issue URL without opening a browser.'
+	flag:        .bool
+	name:        'print-only'
+	abbrev:      'p'
+}
+
+const quest_flag_from = cli.Flag{
+	description:   'Start page for issues (default -1: auto). Must be > 0.'
+	flag:          .int
+	name:          'from'
+	abbrev:        'f'
+	default_value: ['-1']
+}
+
+const quest_flag_to = cli.Flag{
+	description:   'End page for issues (default -1: auto). Must be > 0 and >= the from page (see -f).'
+	flag:          .int
+	name:          'to'
+	abbrev:        't'
+	default_value: ['-1']
+}
+
 fn run_confirm(cmd cli.Command) ! {
 	print_only := cmd.flags.get_bool('print-only') or { false }
 	total := fetch_total_count(confirm_search_query)!
@@ -86,8 +104,9 @@ fn run_confirm(cmd cli.Command) ! {
 	if max_pages == 0 {
 		return error('no unconfirmed issues found')
 	}
-	page := (rand.intn(max_pages) or { 0 }) + 1
-	eprintln(term.colorize(term.gray, 'Found: ${total} still unconfirmed issues. Fetching issue from page: ${page} ...'))
+	start_page, end_page := resolve_page_range(cmd, max_pages)!
+	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
+	eprintln(term.colorize(term.gray, 'Found: ${total} still unconfirmed issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
 	issue := fetch_issue_from_page(confirm_search_query, page)!
 	println(term.colorize(term.green, 'Help us by confirming and triaging this issue:'))
 	println(issue.html_url)
@@ -104,8 +123,9 @@ fn run_fix(cmd cli.Command) ! {
 	if max_pages == 0 {
 		return error('no unconfirmed issues found')
 	}
-	page := (rand.intn(max_pages) or { 0 }) + 1
-	eprintln(term.colorize(term.gray, 'Found: ${total} open issues. Fetching issue from page: ${page} ...'))
+	start_page, end_page := resolve_page_range(cmd, max_pages)!
+	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
+	eprintln(term.colorize(term.gray, 'Found: ${total} open issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
 	issue := fetch_issue_from_page(fix_search_query, page)!
 	println(term.colorize(term.green, 'Help us by fixing or confirming this issue:'))
 	println(issue.html_url)
@@ -134,6 +154,50 @@ fn fetch_total_count(query string) !int {
 	body := api_get(url)!
 	resp := json.decode(SearchResponse, body)!
 	return resp.total_count
+}
+
+fn resolve_page_range(cmd cli.Command, max_pages int) !(int, int) {
+	from, from_set := read_page_limit(cmd, 'from', '-f')!
+	to, to_set := read_page_limit(cmd, 'to', '-t')!
+	if from_set && to_set && to < from {
+		return error('invalid page range: -t (${to}) is smaller than -f (${from})')
+	}
+	mut start_page := 1
+	mut end_page := max_pages
+	if from_set {
+		start_page = from
+	}
+	if to_set {
+		end_page = to
+	}
+	if start_page < 1 {
+		start_page = 1
+	}
+	if end_page > max_pages {
+		end_page = max_pages
+	}
+	if end_page < start_page {
+		return error('no issues found in the requested page range')
+	}
+	return start_page, end_page
+}
+
+fn read_page_limit(cmd cli.Command, name string, flag_label string) !(int, bool) {
+	value := cmd.flags.get_int(name)!
+	is_set := flag_is_set(cmd, name)
+	if is_set && value < 0 {
+		return error('${flag_label} must be >= 0')
+	}
+	return value, is_set
+}
+
+fn flag_is_set(cmd cli.Command, name string) bool {
+	for flag in cmd.flags.get_all_found() {
+		if flag.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn fetch_issue_from_page(query string, page int) !Issue {
