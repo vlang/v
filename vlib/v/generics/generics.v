@@ -715,9 +715,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			if g.cur_concrete_types.len > 0 {
 				return ast.Expr(ast.CastExpr{
 					...node
-					typ:  g.unwrap_generic(node.typ)
-					arg:  g.expr(mut node.arg)
-					expr: g.expr(mut node.expr)
+					typ:       g.unwrap_generic(node.typ)
+					expr_type: g.unwrap_generic(node.expr_type)
+					arg:       g.expr(mut node.arg)
+					expr:      g.expr(mut node.expr)
 				})
 			}
 			node.arg = g.expr(mut node.arg)
@@ -1274,3 +1275,4 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 	}
 	return typ
 }
+
