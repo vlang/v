@@ -9,7 +9,8 @@ import rand
 import term
 
 const search_endpoint = 'https://api.github.com/search/issues'
-const search_query = 'repo:vlang/v is:issue is:open -label:"Status: Confirmed"'
+const confirm_search_query = 'repo:vlang/v is:issue is:open -label:"Status: Confirmed"'
+const fix_search_query = 'repo:vlang/v is:issue is:open'
 const per_page = 100
 const max_search_results = 1000
 
@@ -53,6 +54,19 @@ fn main() {
 				]
 				execute:     run_confirm
 			},
+			cli.Command{
+				name:        'fix'
+				description: 'Open a random open vlang/v issue in your browser.'
+				flags:       [
+					cli.Flag{
+						flag:        .bool
+						name:        'print-only'
+						abbrev:      'p'
+						description: 'Print the issue URL without opening a browser.'
+					},
+				]
+				execute:     run_fix
+			},
 		]
 	}
 	app.setup()
@@ -67,20 +81,39 @@ fn main() {
 
 fn run_confirm(cmd cli.Command) ! {
 	print_only := cmd.flags.get_bool('print-only') or { false }
-	total := fetch_total_count()!
+	total := fetch_total_count(confirm_search_query)!
 	max_pages := total_to_max_pages(total)
 	if max_pages == 0 {
 		return error('no unconfirmed issues found')
 	}
 	page := (rand.intn(max_pages) or { 0 }) + 1
 	eprintln(term.colorize(term.gray, 'Found: ${total} still unconfirmed issues. Fetching issue from page: ${page} ...'))
-	issue := fetch_issue_from_page(page)!
+	issue := fetch_issue_from_page(confirm_search_query, page)!
 	if print_only {
 		println(issue.html_url)
 		return
 	}
 	os.open_uri(issue.html_url)!
 	println(term.colorize(term.green, 'Help us by confirming and triaging this issue:'))
+	println(issue.html_url)
+}
+
+fn run_fix(cmd cli.Command) ! {
+	print_only := cmd.flags.get_bool('print-only') or { false }
+	total := fetch_total_count(fix_search_query)!
+	max_pages := total_to_max_pages(total)
+	if max_pages == 0 {
+		return error('no unconfirmed issues found')
+	}
+	page := (rand.intn(max_pages) or { 0 }) + 1
+	eprintln(term.colorize(term.gray, 'Found: ${total} open issues. Fetching issue from page: ${page} ...'))
+	issue := fetch_issue_from_page(fix_search_query, page)!
+	if print_only {
+		println(issue.html_url)
+		return
+	}
+	os.open_uri(issue.html_url)!
+	println(term.colorize(term.green, 'Help us by fixing or confirming this issue:'))
 	println(issue.html_url)
 }
 
@@ -98,15 +131,15 @@ fn run_document(cmd cli.Command) ! {
 	println(term.colorize(term.bold, lines[idx]))
 }
 
-fn fetch_total_count() !int {
-	url := build_search_url(1, 1)
+fn fetch_total_count(query string) !int {
+	url := build_search_url(query, 1, 1)
 	body := api_get(url)!
 	resp := json.decode(SearchResponse, body)!
 	return resp.total_count
 }
 
-fn fetch_issue_from_page(page int) !Issue {
-	url := build_search_url(page, per_page)
+fn fetch_issue_from_page(query string, page int) !Issue {
+	url := build_search_url(query, page, per_page)
 	body := api_get(url)!
 	resp := json.decode(SearchResponse, body)!
 	if resp.items.len == 0 {
@@ -116,9 +149,9 @@ fn fetch_issue_from_page(page int) !Issue {
 	return resp.items[idx]
 }
 
-fn build_search_url(page int, per_page int) string {
+fn build_search_url(query string, page int, per_page int) string {
 	mut values := urllib.new_values()
-	values.add('q', search_query)
+	values.add('q', query)
 	values.add('per_page', per_page.str())
 	values.add('page', page.str())
 	return '${search_endpoint}?${values.encode()}'
