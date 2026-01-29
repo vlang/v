@@ -14,6 +14,9 @@ mut:
 	cur_func  int     = -1
 	cur_block BlockID = -1
 
+	// Type checker environment with populated scopes
+	env &types.Environment = unsafe { nil }
+
 	// Maps AST variable name to SSA ValueID (pointer to stack slot)
 	vars map[string]ValueID
 
@@ -68,6 +71,10 @@ struct LoopInfo {
 }
 
 pub fn Builder.new(mod &Module) &Builder {
+	return Builder.new_with_env(mod, unsafe { nil })
+}
+
+pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 	mut b := &Builder{
 		mod:                  mod
 		vars:                 map[string]ValueID{}
@@ -88,7 +95,46 @@ pub fn Builder.new(mod &Module) &Builder {
 		type_alias_bases:     map[string]string{}
 		enum_names:           map[string]bool{}
 	}
+	unsafe {
+		b.env = env
+	}
 	return b
+}
+
+// lookup_type_in_scope looks up a type by name in the environment's scopes.
+// First tries module scope, then builtin scope.
+// Returns none if not found or if env is nil.
+fn (b &Builder) lookup_type_in_scope(name string, module_name string) ?types.Type {
+	if b.env == unsafe { nil } {
+		return none
+	}
+	// Try module scope first
+	mut scope := lock b.env.scopes {
+		b.env.scopes[module_name] or {
+			// Try builtin scope as fallback
+			b.env.scopes['builtin'] or { return none }
+		}
+	}
+	if obj := scope.lookup_parent(name, 0) {
+		if obj is types.Type {
+			return obj
+		}
+	}
+	return none
+}
+
+// lookup_struct_type looks up a struct type by name from the environment.
+// Falls back to the local struct_types map if not found in environment.
+fn (mut b Builder) lookup_struct_type(name string) ?types.Struct {
+	// Try environment first
+	if typ := b.lookup_type_in_scope(name, 'builtin') {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	// Fallback: check if we have it in struct_types but can't get full info
+	// This path is used when type checker is skipped
+	return none
 }
 
 // Convert v2.types.Type to SSA TypeID

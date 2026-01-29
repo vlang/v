@@ -1154,8 +1154,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				pos:   pos
 			}
 		}
-		// range
-		else if p.tok in [.dotdot, .ellipsis] {
+		// range - only create RangeExpr at lowest precedence to avoid
+		// consuming `..` inside higher-precedence expressions like `a + b..`
+		else if min_bp == .lowest && p.tok in [.dotdot, .ellipsis] {
 			// p.log('ast.RangeExpr')
 			// no need to continue
 			return ast.RangeExpr{

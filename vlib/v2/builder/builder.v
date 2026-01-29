@@ -14,6 +14,7 @@ import v2.ssa
 import v2.ssa.optimize
 import v2.token
 import v2.transform
+import v2.types
 import time
 
 struct Builder {
@@ -21,7 +22,8 @@ struct Builder {
 mut:
 	files      []ast.File
 	user_files []string // original user-provided files (for output name)
-	file_set   &token.FileSet = token.FileSet.new()
+	file_set   &token.FileSet     = token.FileSet.new()
+	env        &types.Environment = unsafe { nil } // Type checker environment
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -42,7 +44,13 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	parse_time := sw.elapsed()
 
-	// b.type_check_files()
+	b.env = if b.pref.skip_type_check {
+		types.Environment.new()
+	} else if b.pref.no_parallel {
+		b.type_check_files()
+	} else {
+		b.type_check_files_parallel()
+	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 
 	// Generate output based on backend
@@ -153,7 +161,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	// Build all files into a single SSA module
 	mut mod := ssa.Module.new('main')
-	mut ssa_builder := ssa.Builder.new(mod)
+	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut t := transform.Transformer.new()
 
 	// Transform all files first
