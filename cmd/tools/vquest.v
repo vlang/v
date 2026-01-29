@@ -89,13 +89,12 @@ fn run_confirm(cmd cli.Command) ! {
 	page := (rand.intn(max_pages) or { 0 }) + 1
 	eprintln(term.colorize(term.gray, 'Found: ${total} still unconfirmed issues. Fetching issue from page: ${page} ...'))
 	issue := fetch_issue_from_page(confirm_search_query, page)!
+	println(term.colorize(term.green, 'Help us by confirming and triaging this issue:'))
+	println(issue.html_url)
 	if print_only {
-		println(issue.html_url)
 		return
 	}
 	os.open_uri(issue.html_url)!
-	println(term.colorize(term.green, 'Help us by confirming and triaging this issue:'))
-	println(issue.html_url)
 }
 
 fn run_fix(cmd cli.Command) ! {
@@ -108,13 +107,12 @@ fn run_fix(cmd cli.Command) ! {
 	page := (rand.intn(max_pages) or { 0 }) + 1
 	eprintln(term.colorize(term.gray, 'Found: ${total} open issues. Fetching issue from page: ${page} ...'))
 	issue := fetch_issue_from_page(fix_search_query, page)!
+	println(term.colorize(term.green, 'Help us by fixing or confirming this issue:'))
+	println(issue.html_url)
 	if print_only {
-		println(issue.html_url)
 		return
 	}
 	os.open_uri(issue.html_url)!
-	println(term.colorize(term.green, 'Help us by fixing or confirming this issue:'))
-	println(issue.html_url)
 }
 
 fn run_document(cmd cli.Command) ! {
