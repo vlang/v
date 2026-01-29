@@ -933,13 +933,40 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.InfixExpr {
 			if g.cur_concrete_types.len > 0 {
+				left := g.expr(mut node.left)
+				right := g.expr(mut node.right)
+				mut left_type := g.unwrap_generic(node.left_type)
+				mut right_type := g.unwrap_generic(node.right_type)
+				mut promoted_type := g.unwrap_generic(node.promoted_type)
+				// The checker may have baked numeric types from a different
+				// concrete instantiation (losing the .generic flag so
+				// unwrap_generic is a no-op). For plain numeric operands,
+				// derive types from the resolved sub-expressions and
+				// recompute promoted_type.
+				if left_type.is_number() && right_type.is_number() && !left_type.has_flag(.result)
+					&& !right_type.has_flag(.result) && !left_type.has_flag(.option)
+					&& !right_type.has_flag(.option) {
+					expr_left_type := left.type()
+					if expr_left_type != ast.void_type && !expr_left_type.has_flag(.generic)
+						&& expr_left_type.is_number() && !expr_left_type.has_flag(.result)
+						&& !expr_left_type.has_flag(.option) {
+						left_type = expr_left_type
+					}
+					expr_right_type := right.type()
+					if expr_right_type != ast.void_type && !expr_right_type.has_flag(.generic)
+						&& expr_right_type.is_number() && !expr_right_type.has_flag(.result)
+						&& !expr_right_type.has_flag(.option) {
+						right_type = expr_right_type
+					}
+					promoted_type = g.promote_num(left_type, right_type)
+				}
 				return ast.Expr(ast.InfixExpr{
 					...node
-					left_type:     g.unwrap_generic(node.left_type)
-					right_type:    g.unwrap_generic(node.right_type)
-					promoted_type: g.unwrap_generic(node.promoted_type)
-					left:          g.expr(mut node.left)
-					right:         g.expr(mut node.right)
+					left_type:     left_type
+					right_type:    right_type
+					promoted_type: promoted_type
+					left:          left
+					right:         right
 				})
 			}
 			node.left = g.expr(mut node.left)
@@ -1276,3 +1303,53 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 	return typ
 }
 
+// promote_num returns the promoted type for two numeric operands,
+// mirroring the checker's promote_num logic.
+fn (g &Generics) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == right_type {
+		return left_type
+	}
+	mut type_hi := left_type
+	mut type_lo := right_type
+	if type_hi.idx() < type_lo.idx() {
+		type_hi, type_lo = type_lo, type_hi
+	}
+	idx_hi := type_hi.idx()
+	idx_lo := type_lo.idx()
+	if idx_hi == ast.int_literal_type_idx {
+		return type_lo
+	} else if idx_hi == ast.float_literal_type_idx {
+		if idx_lo in ast.float_type_idxs {
+			return type_lo
+		} else {
+			return ast.void_type
+		}
+	} else if type_hi.is_float() {
+		if idx_hi == ast.f32_type_idx {
+			if idx_lo in [ast.i64_type_idx, ast.u64_type_idx] {
+				return ast.void_type
+			} else {
+				return type_hi
+			}
+		} else {
+			return type_hi
+		}
+	} else if idx_lo >= ast.u8_type_idx { // both unsigned
+		return type_hi
+	} else if idx_lo >= ast.i8_type_idx
+		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
+		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
+	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
+		return type_lo
+	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
+		return type_lo
+	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
+		return type_lo
+	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
+		return type_lo
+	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
+		return type_lo
+	} else {
+		return ast.void_type
+	}
+}
