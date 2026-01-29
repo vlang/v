@@ -78,6 +78,31 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		foreign_typ := c.get_field_foreign_table_type(field)
 
+		// Get foreign struct's primary key field
+		foreign_sym := c.table.sym(foreign_typ)
+		if foreign_sym.info !is ast.Struct {
+			continue
+		}
+		foreign_info := foreign_sym.info as ast.Struct
+
+		// Find primary key field in foreign struct
+		mut foreign_primary_field := ast.StructField{}
+		mut foreign_has_primary := false
+		for f in foreign_info.fields {
+			if f.attrs.contains('primary') {
+				foreign_primary_field = f
+				foreign_has_primary = true
+				break
+			}
+		}
+
+		// Require foreign struct to have a primary key for relationship
+		if !foreign_has_primary {
+			c.orm_error('struct `${foreign_sym.name}` used as ORM sub-struct field `${field.name}` must have a `@[primary]` field, or use `@[sql: \'-\']` to skip this field',
+				field.pos)
+			continue
+		}
+
 		mut subquery_expr := ast.SqlExpr{
 			inserted_var: field.name
 			pos:          node.pos
@@ -105,7 +130,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				scope:    c.fn_scope
 				obj:      ast.Var{}
 				mod:      'main'
-				name:     'id'
+				name:     foreign_primary_field.name
 				is_mut:   false
 				kind:     .unresolved
 				info:     ast.IdentVar{}
@@ -118,11 +143,11 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				is_mut:   false
 				scope:    c.fn_scope
 				info:     ast.IdentVar{
-					typ: ast.int_type
+					typ: foreign_primary_field.typ
 				}
 			}
-			left_type:   ast.int_type
-			right_type:  ast.int_type
+			left_type:   foreign_primary_field.typ
+			right_type:  foreign_primary_field.typ
 			auto_locked: ''
 			or_block:    ast.OrExpr{}
 		}
