@@ -94,7 +94,7 @@ fn run_confirm(cmd cli.Command) ! {
 	if print_only {
 		return
 	}
-	os.open_uri(issue.html_url)!
+	open_uri(issue.html_url)!
 }
 
 fn run_fix(cmd cli.Command) ! {
@@ -112,7 +112,7 @@ fn run_fix(cmd cli.Command) ! {
 	if print_only {
 		return
 	}
-	os.open_uri(issue.html_url)!
+	open_uri(issue.html_url)!
 }
 
 fn run_document(cmd cli.Command) ! {
@@ -177,4 +177,10 @@ fn total_to_max_pages(total int) int {
 	max_pages := (total + per_page - 1) / per_page
 	limit := max_search_results / per_page
 	return if max_pages < limit { max_pages } else { limit }
+}
+
+fn open_uri(uri string) ! {
+	$if !termux {
+		os.open_uri(uri)!
+	}
 }
