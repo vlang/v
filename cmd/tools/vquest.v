@@ -29,7 +29,7 @@ fn main() {
 	args << os.args[0]
 	args << os.args#[2..]
 	mut app := cli.Command{
-		name:        'quest'
+		name:        'v quest'
 		description: 'A tool to help make V better for everyone, by spending some time each day, on random tasks/missions like:\n * documenting public APIs\n * issue confirmation reviewing and triage\n * testing'
 		execute:     cli.print_help_for_command
 		posix_mode:  true
