@@ -4,209 +4,56 @@
 module main
 
 import os
-import v2.ast
-import v2.parser
-import v2.token
-import v2.pref
-import v2.ssa
-import v2.ssa.optimize
-import v2.transform
-import v2.gen.x64
-import v2.gen.arm64
-import v2.gen.cleanc
 import time
 
-enum Arch {
-	arm64
-	x64
-}
-
 fn main() {
-	// Setup Parser
 	t0 := time.now()
-	prefs := &pref.Preferences{}
-	mut file_set := token.FileSet.new()
-	mut p := parser.Parser.new(prefs)
-	mut transformer := transform.Transformer.new()
 
-	// Initialize SSA Module
-	mut mod := ssa.Module.new('main')
-	mut builder := ssa.Builder.new(mod)
-
-	// Parse builtin files from vlib/builtin and dependent modules
-	skip_builtin := os.args.contains('--skip-builtin')
+	// Build v2 compiler
+	println('[*] Building v2...')
 	vroot := os.dir(@VEXE)
-	mut all_files := []ast.File{}
-	if skip_builtin {
-		println('[*] Skipping builtin files')
-	} else {
-		// Parse builtin
-		builtin_dir := os.join_path(vroot, 'vlib', 'builtin')
-		builtin_files := get_v_files_from_dir(builtin_dir)
-		println('[*] Parsing ${builtin_files.len} builtin files...')
-		for builtin_file in builtin_files {
-			parsed := p.parse_file(builtin_file, mut file_set)
-			if parsed.stmts.len > 0 {
-				all_files << transformer.transform(parsed)
-			}
-		}
-		// Parse strconv (used by builtin for string formatting)
-		strconv_dir := os.join_path(vroot, 'vlib', 'strconv')
-		strconv_files := get_v_files_from_dir(strconv_dir)
-		println('[*] Parsing ${strconv_files.len} strconv files...')
-		for strconv_file in strconv_files {
-			parsed := p.parse_file(strconv_file, mut file_set)
-			if parsed.stmts.len > 0 {
-				all_files << transformer.transform(parsed)
-			}
-		}
-		// Parse strings (used by builtin for string building)
-		strings_dir := os.join_path(vroot, 'vlib', 'strings')
-		strings_files := get_v_files_from_dir(strings_dir)
-		println('[*] Parsing ${strings_files.len} strings files...')
-		for strings_file in strings_files {
-			parsed := p.parse_file(strings_file, mut file_set)
-			if parsed.stmts.len > 0 {
-				all_files << transformer.transform(parsed)
-			}
-		}
-		// Parse hash (used by maps for wyhash)
-		hash_dir := os.join_path(vroot, 'vlib', 'hash')
-		hash_files := get_v_files_from_dir(hash_dir)
-		println('[*] Parsing ${hash_files.len} hash files...')
-		for hash_file in hash_files {
-			parsed := p.parse_file(hash_file, mut file_set)
-			if parsed.stmts.len > 0 {
-				all_files << transformer.transform(parsed)
-			}
-		}
-		// Parse math.bits (used by strconv for bit operations)
-		bits_dir := os.join_path(vroot, 'vlib', 'math', 'bits')
-		bits_files := get_v_files_from_dir(bits_dir)
-		println('[*] Parsing ${bits_files.len} math.bits files...')
-		for bits_file in bits_files {
-			parsed := p.parse_file(bits_file, mut file_set)
-			if parsed.stmts.len > 0 {
-				all_files << transformer.transform(parsed)
-			}
-		}
+	v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	v2_binary := os.join_path(vroot, 'cmd', 'v2', 'v2')
+	build_res := os.execute('${@VEXE} ${v2_source} -o ${v2_binary}')
+	if build_res.exit_code != 0 {
+		eprintln('Error: Failed to build v2')
+		eprintln(build_res.output)
+		return
 	}
 
-	// Parse File
+	// Determine backend from command line args
+	mut backend := 'arm64' // default
+	if os.args.contains('x64') {
+		backend = 'x64'
+	} else if os.args.contains('cleanc') {
+		backend = 'cleanc'
+	}
+
+	// Parse test file from args or default to test.v
 	input_file := 'test.v'
 	if !os.exists(input_file) {
 		eprintln('Error: ${input_file} not found')
 		return
 	}
-	println('[*] Parsing ${input_file}...')
-	parsed_file := p.parse_file(input_file, mut file_set)
-	if parsed_file.stmts.len == 0 {
-		println('Warning: No statements found in ${input_file}')
-	}
-	// Transform AST (lower complex constructs like ArrayInitExpr)
-	println('[*] Transforming AST...')
-	file := transformer.transform(parsed_file)
-	all_files << file
-	//  Build SSA from all files with proper multi-file ordering
-	println('[*] Building SSA...')
-	builder.build_all(all_files)
-	// Optimize
-	println('[*] Optimizing SSA...')
-	optimize.optimize(mut mod)
-	// Backend selection: default to native, use 'cleanc' arg to switch
-	use_cleanc := os.args.contains('cleanc')
-	native := !use_cleanc
-	// Default architecture based on OS
-	mut arch := if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
-	// Allow override via command line
-	if os.args.contains('x64') {
-		arch = .x64
-	} else if os.args.contains('arm64') {
-		arch = .arm64
-	}
-	use_external_linker := os.args.contains('external-linker')
 
-	if native {
-		if arch == .arm64 {
-			// Generate Mach-O ARM64
-			println('[*] Generating Mach-O ARM64...')
-			mut arm_gen := arm64.Gen.new(mod)
-			arm_gen.gen()
-
-			// Use built-in linker by default on macOS (required for force_external_syms fix)
-			// Use --external-linker flag to use the system linker instead
-			if os.user_os() == 'macos' && !use_external_linker {
-				// Use built-in linker
-				println('[*] Linking...')
-				arm_gen.link_executable('out_bin')
-				println('generation + linking took ${time.since(t0)}')
-			} else {
-				arm_gen.write_file('main.o')
-				println('generating main.o took ${time.since(t0)}')
-				// Link with external linker
-				println('[*] Linking with external linker...')
-				t := time.now()
-				if os.user_os() == 'macos' {
-					sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-					sdk_path := sdk_res.output.trim_space()
-					link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch arm64 -platform_version macos 11.0.0 11.0.0'
-					link_result := os.execute(link_cmd)
-					if link_result.exit_code != 0 {
-						eprintln('Link failed:')
-						eprintln(link_result.output)
-						return
-					}
-				}
-				println('linking took ${time.since(t)}')
-			}
-		} else if arch == .x64 {
-			println('[*] Generating ELF AMD64 Object...')
-			mut x64_gen := x64.Gen.new(mod)
-			x64_gen.gen()
-			x64_gen.write_file('main.o')
-			println('generating main.o took ${time.since(t0)}')
-			// Link
-			println('[*] Linking...')
-			t := time.now()
-			if os.user_os() == 'macos' {
-				// macOS Linking (Mach-O)
-				sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-				sdk_path := sdk_res.output.trim_space()
-				link_cmd := 'ld -o out_bin main.o -lSystem -syslibroot "${sdk_path}" -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
-				if os.system(link_cmd) != 0 {
-					eprintln('Link failed')
-					return
-				}
-			} else {
-				// Linux Linking (ELF)
-				link_cmd := 'cc main.o -o out_bin -no-pie'
-				if os.system(link_cmd) != 0 {
-					eprintln('Link failed')
-					return
-				}
-			}
-			println('linking took ${time.since(t)}')
-		}
-	} else {
-		// Clean C Backend (AST -> C)
-		println('[*] Generating Clean C Backend...')
-		// We use the file AST directly instead of SSA for readable C
-		// Note: cleanc has its own minimal runtime, only pass user file
-		mut c_gen := cleanc.Gen.new([file])
-		c_source := c_gen.gen()
-		os.write_file('out.c', c_source) or { panic(err) }
-		println('[*] Done. Wrote out.c')
-		// Compile C Code
-		println('[*] Compiling out.c...')
-		cc_res := os.system('cc out.c -o out_bin -w')
-		if cc_res != 0 {
-			eprintln('Error: C compilation failed with code ${cc_res}')
-			return
-		}
+	// Run v2 with selected backend
+	println('[*] Running v2 -backend ${backend} ${input_file}...')
+	mut v2_cmd := '${v2_binary} -backend ${backend} ${input_file}'
+	if os.args.contains('--skip-builtin') {
+		v2_cmd = '${v2_binary} -backend ${backend} --skip-builtin ${input_file}'
 	}
+	v2_res := os.execute(v2_cmd)
+	if v2_res.exit_code != 0 {
+		eprintln('Error: v2 compilation failed')
+		eprintln(v2_res.output)
+		return
+	}
+	println(v2_res.output)
+	println('compilation took ${time.since(t0)}')
+
 	// Run Reference (v run test.v)
 	println('[*] Running reference: v -enable-globals run ${input_file}...')
-	ref_res := os.execute('v -n -enable-globals run ${input_file}')
+	ref_res := os.execute('v -n -w -enable-globals run ${input_file}')
 	if ref_res.exit_code != 0 {
 		eprintln('Error: Reference run failed')
 		eprintln(ref_res.output)
@@ -214,8 +61,9 @@ fn main() {
 	}
 	// Normalize newlines
 	expected_out := ref_res.output.trim_space().replace('\r\n', '\n')
+
 	// Run Generated Binary
-	println('[*] Running generated binary (with 2s timeout)...')
+	println('[*] Running generated binary...')
 	// Use script command to create a pty (fixes output buffering issues with printf)
 	// The -q flag suppresses "Script started" messages, /dev/null discards the typescript file
 	mut cmd := 'script -q /dev/null ./out_bin'
@@ -226,25 +74,15 @@ fn main() {
 		cmd = 'script -q -c ./out_bin /dev/null'
 	}
 	gen_res := os.execute(cmd)
-	// Perl alarm usually kills with SIGALRM (14), exit code might vary (e.g. 142)
-	// If it was killed by signal, we assume timeout.
 	if gen_res.exit_code != 0 {
-		// Check for timeout symptoms
-		// Standard SIGALRM is 14. Bash reports 128+14=142.
 		if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
 			eprintln('Error: Execution timed out (infinite loop detected)')
 			return
 		}
-		// It might just be a crash or non-zero return (our main returns 0 usually)
-		if gen_res.exit_code != 0 {
-			// In the current builder, main returns 0. If it returns something else, it might be an error.
-			// However, perl exec propagation might change codes.
-			// Let's proceed to compare output, but warn.
-			println('Warning: Binary exited with code ${gen_res.exit_code}')
-		}
+		println('Warning: Binary exited with code ${gen_res.exit_code}')
 	}
+
 	// Strip terminal control characters that script command may prepend
-	// This includes: ^D (literal), ctrl-D (0x04), backspace (0x08), carriage return, etc.
 	mut cleaned := gen_res.output.replace('\r\n', '\n').replace('\x04', '').replace('\x08',
 		'')
 	// Remove "^D" literal string that macOS script may add
@@ -252,6 +90,7 @@ fn main() {
 		cleaned = cleaned[2..]
 	}
 	actual_out := cleaned.trim_space()
+
 	// Compare
 	if expected_out == actual_out {
 		println('\n[SUCCESS] Outputs match!')
@@ -274,40 +113,4 @@ fn main() {
 			}
 		}
 	}
-}
-
-fn get_v_files_from_dir(dir string) []string {
-	mod_files := os.ls(dir) or { panic('error getting ls from ${dir}') }
-	mut v_files := []string{}
-	for file in mod_files {
-		// Include .v files (including .c.v), exclude .js.v and test files
-		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
-			continue
-		}
-		// skip platform-specific files
-		if file.contains('.arm64.') || file.contains('.arm32.') || file.contains('.amd64.') {
-			continue
-		}
-		// skip OS-specific files for other platforms
-		// Note: _nix files are for Unix-like systems including macOS and Linux
-		$if macos {
-			if file.contains('_windows.') || file.contains('_linux.') {
-				continue
-			}
-		} $else $if linux {
-			if file.contains('_windows.') || file.contains('_macos.') {
-				continue
-			}
-		} $else $if windows {
-			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.') {
-				continue
-			}
-		}
-		// skip mutually exclusive conditional compilation files
-		if file.contains('_d_') {
-			continue
-		}
-		v_files << os.join_path(dir, file)
-	}
-	return v_files
 }

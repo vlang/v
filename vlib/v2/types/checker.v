@@ -9,15 +9,13 @@ import v2.errors
 import v2.pref
 import v2.token
 
-struct Environment {
-mut:
+pub struct Environment {
+pub mut:
 	// errors with no default value
 	scopes shared map[string]&Scope = map[string]&Scope{}
 	// types map[int]Type
-	// TODO:
-	// methods map...
-	// methods map[int][]&Fn
-	methods           map[string][]&Fn
+	// methods - shared for parallel type checking
+	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
 }
@@ -26,14 +24,15 @@ pub fn Environment.new() &Environment {
 	return &Environment{}
 }
 
-enum DeferredKind {
+pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic
 	struct_decl
 	const_decl
 }
 
-struct Deferred {
+pub struct Deferred {
+pub:
 	kind  DeferredKind
 	func  fn () = unsafe { nil }
 	scope &Scope
@@ -85,6 +84,7 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 	// c.file_set = unsafe { file_set }
 	c.preregister_all_scopes(files)
 	c.preregister_all_types(files)
+	c.preregister_all_fn_signatures(files)
 
 	for file in files {
 		c.check_file(file)
@@ -145,7 +145,12 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	for stmt in file.stmts {
 		// if stmt is ast.Decl {
 		match stmt {
+			// Types are pre-registered in preregister_all_types
 			ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
+				continue
+			}
+			// Functions are pre-registered in preregister_all_fn_signatures
+			ast.FnDecl {
 				continue
 			}
 			else {
@@ -163,7 +168,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 }
 
-fn (mut c Checker) preregister_scopes(file ast.File) {
+pub fn (mut c Checker) preregister_scopes(file ast.File) {
 	builtin_scope := c.get_module_scope('builtin', universe)
 
 	mod_scope := c.get_module_scope(file.mod, builtin_scope)
@@ -198,8 +203,10 @@ fn (mut c Checker) preregister_all_scopes(files []ast.File) {
 	}
 }
 
-fn (mut c Checker) preregister_types(file ast.File) {
-	mut mod_scope := c.env.scopes[file.mod] or { panic('scope should exist') }
+pub fn (mut c Checker) preregister_types(file ast.File) {
+	mut mod_scope := lock c.env.scopes {
+		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	}
 	c.scope = mod_scope
 	for stmt in file.stmts {
 		// if stmt is ast.Decl {
@@ -227,6 +234,28 @@ fn (mut c Checker) preregister_all_types(files []ast.File) {
 		d.func()
 	}
 	// c.log('DEFERRED - END')
+}
+
+// preregister_all_fn_signatures registers all function/method signatures
+// before processing any function bodies. This ensures methods are available
+// when checking code that calls them, regardless of file order.
+fn (mut c Checker) preregister_all_fn_signatures(files []ast.File) {
+	for file in files {
+		c.preregister_fn_signatures(file)
+	}
+}
+
+pub fn (mut c Checker) preregister_fn_signatures(file ast.File) {
+	mut mod_scope := lock c.env.scopes {
+		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	}
+	c.scope = mod_scope
+	for stmt in file.stmts {
+		// Only process function declarations
+		if stmt is ast.FnDecl {
+			c.decl(stmt)
+		}
+	}
 }
 
 fn (mut c Checker) decl(decl ast.Stmt) {
@@ -664,7 +693,10 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			lhs_type := c.expr(expr.lhs)
 			// TODO: make sure lhs_type is indexable
 			// if !lhs_type.is_indexable() { c.error('cannot index ${lhs_type.name()}') }
-			value_type := if expr.expr is ast.RangeExpr {
+			// For slicing (RangeExpr), return the same type as the container
+			// For single index, return the element type
+			is_range := expr.expr is ast.RangeExpr
+			value_type := if is_range {
 				lhs_type
 			} else {
 				lhs_type.value_type()
@@ -809,6 +841,14 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				if expr_type is Pointer {
 					// c.log('DEREF')
 					return expr_type.base_type
+				} else if expr_type is Interface {
+					// Interface types are internally pointers, so dereference is valid
+					// This handles match narrowing where the concrete type is still behind a pointer
+					return expr_type
+				} else if expr_type is Struct {
+					// Allow deref on structs narrowed from interfaces in match expressions
+					// TODO: properly track interface narrowing instead of this workaround
+					return expr_type
 				} else {
 					c.error_with_pos('deref on non pointer type `${expr_type.name()}`',
 						expr.pos)
@@ -1069,6 +1109,58 @@ fn (mut c Checker) later(func fn (), kind DeferredKind) {
 	}
 }
 
+// take_deferred returns and clears the deferred items
+pub fn (mut c Checker) take_deferred() []Deferred {
+	result := c.deferred.clone()
+	c.deferred.clear()
+	return result
+}
+
+// add_deferred adds deferred items from another checker (used in parallel checking)
+pub fn (mut c Checker) add_deferred(items []Deferred) {
+	c.deferred << items
+}
+
+// process_struct_deferred processes only struct_decl deferred items
+// Used after Phase 1 to resolve struct fields before full checking
+pub fn (mut c Checker) process_struct_deferred() {
+	for d in c.deferred {
+		if d.kind != .struct_decl {
+			continue
+		}
+		c.scope = d.scope
+		d.func()
+	}
+}
+
+// process_all_deferred processes all deferred items in proper order
+pub fn (mut c Checker) process_all_deferred() {
+	// const decl
+	for d in c.deferred {
+		if d.kind != .const_decl {
+			continue
+		}
+		c.scope = d.scope
+		d.func()
+	}
+	// fn decls
+	for d in c.deferred {
+		if d.kind != .fn_decl {
+			continue
+		}
+		c.scope = d.scope
+		d.func()
+	}
+	// fn decls - generic
+	for d in c.deferred {
+		if d.kind != .fn_decl_generic {
+			continue
+		}
+		c.scope = d.scope
+		d.func()
+	}
+}
+
 fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 	for i, lx in stmt.lhs {
 		// TODO: proper / tuple (handle multi return)
@@ -1258,7 +1350,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	// 	eprintln('## GENERIC FN DECL: $decl.name')
 	// }
 	mut typ := Type(c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes)))
-	obj := Fn{
+	// Heap-allocate Fn so pointer stored in env.methods remains valid
+	obj := &Fn{
 		name: decl.name
 		typ:  typ
 	}
@@ -1293,16 +1386,20 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			receiver_type
 		}
 		// type_name := if base_type is Interface { receiver_type.name() } else { base_type.name() }
-		// c.env.methods[type_name] << &obj
-		// c.env.methods[receiver_type.base_type().name()] << &obj
-		unsafe { c.env.methods[method_owner_type.name()] << &obj }
+		// Register method in shared methods map (safe inside lock)
+		method_type_name := method_owner_type.name()
+		lock c.env.methods {
+			unsafe {
+				c.env.methods[method_type_name] << obj
+			}
+		}
 		c.log('registering method: ${decl.name} for ${receiver_type.name()} - ${method_owner_type.name()} - ${receiver_base_type.name()}')
 		c.scope.insert(decl.receiver.name, c.expr(decl.receiver.typ))
 	} else {
 		if decl.language == .c {
-			c.c_scope.insert(decl.name, obj)
+			c.c_scope.insert(decl.name, *obj)
 		} else {
-			prev_scope.insert(decl.name, obj)
+			prev_scope.insert(decl.name, *obj)
 		}
 	}
 	fn_decl := decl
@@ -2271,13 +2368,15 @@ fn (mut c Checker) find_method(t Type, name string) !Type {
 	// if base_type is Interface { base_type = t }
 	base_type_name := if t is Pointer { base_type.name() } else { t.name() }
 	// c.log('base_type_name: $base_type_name - $t.type_name() - $base_type.type_name()')
-	if methods := c.env.methods[base_type_name] {
-		for method in methods {
-			// c.log('# $method.name - $name')
-			if method.name == name {
-				c.log('found method ${name} for ${t.name()}')
-				return method.typ
-			}
+	// Lookup method in shared methods map
+	methods := rlock c.env.methods {
+		c.env.methods[base_type_name] or { []&Fn{} }
+	}
+	for method in methods {
+		// c.log('# $method.name - $name')
+		if method.name == name {
+			c.log('found method ${name} for ${t.name()}')
+			return method.typ
 		}
 	}
 	return error('cannot find method `${name}` for `${t.name()}`')

@@ -14,6 +14,12 @@ mut:
 	cur_func  int     = -1
 	cur_block BlockID = -1
 
+	// Type checker environment with populated scopes
+	env &types.Environment = unsafe { nil }
+
+	// Current module being processed (for type lookups)
+	cur_module string = 'main'
+
 	// Maps AST variable name to SSA ValueID (pointer to stack slot)
 	vars map[string]ValueID
 
@@ -68,6 +74,10 @@ struct LoopInfo {
 }
 
 pub fn Builder.new(mod &Module) &Builder {
+	return Builder.new_with_env(mod, unsafe { nil })
+}
+
+pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 	mut b := &Builder{
 		mod:                  mod
 		vars:                 map[string]ValueID{}
@@ -88,7 +98,124 @@ pub fn Builder.new(mod &Module) &Builder {
 		type_alias_bases:     map[string]string{}
 		enum_names:           map[string]bool{}
 	}
+	unsafe {
+		b.env = env
+		// Also store environment on the module for backends to use
+		mod.env = env
+	}
 	return b
+}
+
+// lookup_type_in_scope looks up a type by name in the environment's scopes.
+// First tries module scope, then builtin scope.
+// Returns none if not found or if env is nil.
+fn (b &Builder) lookup_type_in_scope(name string, module_name string) ?types.Type {
+	if b.env == unsafe { nil } {
+		return none
+	}
+	// Try module scope first
+	mut scope := lock b.env.scopes {
+		b.env.scopes[module_name] or {
+			// Try builtin scope as fallback
+			b.env.scopes['builtin'] or { return none }
+		}
+	}
+	if obj := scope.lookup_parent(name, 0) {
+		if obj is types.Type {
+			return obj
+		}
+	}
+	return none
+}
+
+// lookup_struct_type looks up a struct type by name from the environment.
+// Tries current module scope first, then builtin scope.
+// Falls back to the local struct_types map if not found in environment.
+fn (mut b Builder) lookup_struct_type(name string) ?types.Struct {
+	// Try environment first - check current module, then builtin
+	if typ := b.lookup_type_in_scope(name, b.cur_module) {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	if typ := b.lookup_type_in_scope(name, 'builtin') {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	// Fallback: check if we have it in struct_types but can't get full info
+	// This path is used when type checker is skipped
+	return none
+}
+
+// lookup_var_type_from_env looks up a variable's type from the environment's scopes.
+// Returns the type if found, none otherwise.
+fn (b &Builder) lookup_var_type_from_env(name string) ?types.Type {
+	if b.env == unsafe { nil } {
+		return none
+	}
+	// Try current module scope first
+	mut scope := lock b.env.scopes {
+		b.env.scopes[b.cur_module] or {
+			// Try builtin scope as fallback
+			b.env.scopes['builtin'] or { return none }
+		}
+	}
+	if obj := scope.lookup_parent(name, 0) {
+		return obj.typ()
+	}
+	return none
+}
+
+// extract_type_name extracts the name from a types.Type
+// Only handles public types; for private types (Enum, Interface, SumType),
+// the local var_struct_types map should be used instead.
+fn (b &Builder) extract_type_name(t types.Type) string {
+	match t {
+		types.Struct {
+			return t.name
+		}
+		types.Alias {
+			return t.name
+		}
+		types.String {
+			return 'string'
+		}
+		types.Array {
+			return 'Array'
+		}
+		types.Pointer {
+			// For pointer types, get the base type name
+			return b.extract_type_name(t.base_type)
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+// get_type_name_from_env extracts the type name for a variable from the environment.
+// Returns the type name string if found, empty string otherwise.
+fn (b &Builder) get_type_name_from_env(var_name string) string {
+	if typ := b.lookup_var_type_from_env(var_name) {
+		return b.extract_type_name(typ)
+	}
+	return ''
+}
+
+// get_var_struct_type looks up the struct type name for a variable.
+// First checks the local var_struct_types map, then falls back to environment lookup.
+fn (b &Builder) get_var_struct_type(var_name string) ?string {
+	// First try local tracking map (set during SSA building)
+	if struct_type := b.var_struct_types[var_name] {
+		return struct_type
+	}
+	// Fall back to environment lookup
+	type_name := b.get_type_name_from_env(var_name)
+	if type_name != '' {
+		return type_name
+	}
+	return none
 }
 
 // Convert v2.types.Type to SSA TypeID
@@ -336,14 +463,17 @@ fn (b Builder) get_receiver_type_name(typ ast.Expr) string {
 pub fn (mut b Builder) build_all(files []ast.File) {
 	// Phase 1: Register all types from all files
 	for file in files {
+		b.cur_module = file.mod
 		b.build_types(file)
 	}
 	// Phase 2: Register all function signatures from all files
 	for file in files {
+		b.cur_module = file.mod
 		b.build_fn_signatures(file)
 	}
 	// Phase 3: Generate all function bodies
 	for file in files {
+		b.cur_module = file.mod
 		b.build_fn_bodies(file)
 	}
 }
@@ -356,11 +486,12 @@ pub fn (mut b Builder) build_types(file ast.File) {
 			b.stmt(stmt)
 		}
 	}
-	// Second pass: register structs, globals, enums, interfaces
+	// Second pass: register structs, globals, consts, enums, interfaces
 	for stmt in file.stmts {
 		match stmt {
 			ast.StructDecl { b.stmt(stmt) }
 			ast.GlobalDecl { b.stmt(stmt) }
+			ast.ConstDecl { b.stmt(stmt) }
 			ast.EnumDecl { b.stmt(stmt) }
 			ast.InterfaceDecl { b.stmt(stmt) }
 			else {}
@@ -416,7 +547,8 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 			}
 
 			// Create Function Skeleton
-			// For methods, use mangled name: TypeName_methodName
+			// For methods, use mangled name: TypeName__methodName
+			// Operator overloads need special mangling: + -> __plus, - -> __minus, etc.
 			mut fn_name := stmt.name
 			if stmt.is_method {
 				mut receiver_type_name := b.get_receiver_type_name(stmt.receiver.typ)
@@ -425,7 +557,22 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 					receiver_type_name = base_type
 				}
 				if receiver_type_name != '' {
-					fn_name = '${receiver_type_name}_${stmt.name}'
+					// Mangle operator names to valid symbol names
+					method_name := match stmt.name {
+						'+' { '__plus' }
+						'-' { '__minus' }
+						'*' { '__mul' }
+						'/' { '__div' }
+						'%' { '__mod' }
+						'==' { '__eq' }
+						'!=' { '__ne' }
+						'<' { '__lt' }
+						'>' { '__gt' }
+						'<=' { '__le' }
+						'>=' { '__ge' }
+						else { stmt.name }
+					}
+					fn_name = '${receiver_type_name}${method_name}'
 					// Track methods per type for vtable generation
 					if receiver_type_name !in b.type_methods {
 						b.type_methods[receiver_type_name] = []string{}
@@ -464,7 +611,22 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 					receiver_type_name = base_type
 				}
 				if receiver_type_name != '' {
-					fn_name = '${receiver_type_name}_${stmt.name}'
+					// Mangle operator names to valid symbol names
+					method_name := match stmt.name {
+						'+' { '__plus' }
+						'-' { '__minus' }
+						'*' { '__mul' }
+						'/' { '__div' }
+						'%' { '__mod' }
+						'==' { '__eq' }
+						'!=' { '__ne' }
+						'<' { '__lt' }
+						'>' { '__gt' }
+						'<=' { '__le' }
+						'>=' { '__ge' }
+						else { stmt.name }
+					}
+					fn_name = '${receiver_type_name}${method_name}'
 				}
 			}
 			// Find function by name
@@ -1067,6 +1229,9 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 								}
 							}
 						}
+					} else if rhs_expr is ast.StringLiteral || rhs_expr is ast.StringInterLiteral {
+						// Track string type for variables assigned from string literals
+						b.var_struct_types[name] = 'string'
 					}
 				}
 			} else if node.op in [.plus_assign, .minus_assign, .mul_assign, .div_assign] {
@@ -2267,10 +2432,10 @@ fn (b Builder) eval_comptime_flag(name string) bool {
 		'native' {
 			return true
 		}
-		// Use C.write syscall instead of fwrite for printing
-		// This avoids needing C.stdout/C.stderr which aren't linked in the native backend
+		// Use buffered I/O (fwrite to C.stdout) for printing
+		// This provides consistent output ordering with the reference compiler
 		'builtin_write_buf_to_fd_should_use_c_write' {
-			return true
+			return false
 		}
 		else {
 			// Unknown flag - default to false
@@ -2544,7 +2709,7 @@ fn (mut b Builder) expr_match(node ast.MatchExpr) ValueID {
 	old_match_type := b.cur_match_type
 	if node.expr is ast.Ident {
 		// Check if this variable has an enum type
-		if var_type := b.var_struct_types[node.expr.name] {
+		if var_type := b.get_var_struct_type(node.expr.name) {
 			// If it's an enum type, set the context
 			b.cur_match_type = var_type
 		}
@@ -2641,7 +2806,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 			if receiver_name in known_modules {
 				// Module-qualified function call - just use the function name
 				name = method_name
-			} else if struct_type_name := b.var_struct_types[receiver_name] {
+			} else if struct_type_name := b.get_var_struct_type(receiver_name) {
 				// Check if this is a function pointer field call (e.g., m.key_eq_fn(args))
 				fn_ptr_key := '${struct_type_name}.${method_name}'
 				if fn_ptr_key in b.fn_ptr_fields {
@@ -2705,7 +2870,22 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 					} else {
 						struct_type_name
 					}
-					name = '${mangled_type}_${method_name}'
+					// Mangle operator names to valid symbol names
+					mangled_method := match method_name {
+						'+' { '__plus' }
+						'-' { '__minus' }
+						'*' { '__mul' }
+						'/' { '__div' }
+						'%' { '__mod' }
+						'==' { '__eq' }
+						'!=' { '__ne' }
+						'<' { '__lt' }
+						'>' { '__gt' }
+						'<=' { '__le' }
+						'>=' { '__ge' }
+						else { method_name }
+					}
+					name = '${mangled_type}${mangled_method}'
 					is_method_call = true
 					// Get the receiver - need to load the struct pointer from the variable
 					// b.vars stores Ptr(Ptr(struct)), we need Ptr(struct)
@@ -2722,7 +2902,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 				if inferred_type != '' {
 					name = '${inferred_type}_${method_name}'
 				} else {
-					eprintln('WARN: Method ${method_name} on ${receiver_name} - type not found in var_struct_types')
+					eprintln('WARN: Method ${method_name} on ${receiver_name} - type not found')
 					name = method_name
 				}
 			}
@@ -2803,12 +2983,48 @@ fn (mut b Builder) expr_string_inter_literal(node ast.StringInterLiteral) ValueI
 		// Add format specifier and argument for interpolation
 		if i < node.inters.len {
 			inter := node.inters[i]
-			// Evaluate the interpolated expression
-			arg_val := b.expr(inter.expr)
-			args << arg_val
 
-			// Determine format specifier based on format type
-			format_str += b.get_printf_format(inter)
+			// Check if this is a string type expression
+			mut is_string_type := false
+			if inter.expr is ast.Ident {
+				if t := b.get_var_struct_type(inter.expr.name) {
+					if t == 'string' {
+						is_string_type = true
+					}
+				}
+			}
+
+			if is_string_type {
+				// For strings, extract the .str field (index 0) and use %s format
+				// String struct: { str *char, len int, is_lit int }
+				// We need to get the char pointer (field 0)
+				//
+				// Variable layout: b.addr() -> ptr to slot -> ptr to string struct
+				// So we need to: load(addr) -> ptr to struct, then GEP to field 0
+				var_slot := b.addr(inter.expr)
+				// Load the string pointer from the variable slot
+				string_struct_ptr := b.mod.add_instr(.load, b.cur_block, ptr_t, [
+					var_slot,
+				])
+				// GEP to get address of .str field (index 0)
+				zero_idx := b.mod.add_value_node(.constant, i64_t, '0', 0)
+				str_field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, ptr_t,
+					[
+					string_struct_ptr,
+					zero_idx,
+				])
+				// Load the char* from the .str field
+				str_val := b.mod.add_instr(.load, b.cur_block, ptr_t, [str_field_ptr])
+				args << str_val
+				format_str += '%s'
+			} else {
+				// Evaluate the interpolated expression
+				arg_val := b.expr(inter.expr)
+				args << arg_val
+
+				// Determine format specifier based on format type
+				format_str += b.get_printf_format(inter)
+			}
 		}
 	}
 
@@ -2921,7 +3137,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 			receiver_name := node.lhs.lhs.name
 			if receiver_name == 'C' {
 				name = method_name
-			} else if struct_type_name := b.var_struct_types[receiver_name] {
+			} else if struct_type_name := b.get_var_struct_type(receiver_name) {
 				i32_t := b.mod.type_store.get_int(64)
 				ptr_t := b.mod.type_store.get_ptr(i32_t)
 				// Check if this is a function pointer field call (e.g., m.hash_fn(args))
@@ -3538,6 +3754,20 @@ fn (mut b Builder) addr(node ast.Expr) ValueID {
 			return 0
 		}
 		ast.SelectorExpr {
+			// Check for C module globals (C.stdout, C.stderr)
+			if node.lhs is ast.Ident && node.lhs.name == 'C' {
+				// Map C.stdout -> __stdoutp, C.stderr -> __stderrp
+				c_global_name := match node.rhs.name {
+					'stdout' { '__stdoutp' }
+					'stderr' { '__stderrp' }
+					else { '' }
+				}
+				if c_global_name != '' {
+					// Create external global for C stdio
+					voidptr_t := b.mod.type_store.get_ptr(b.mod.type_store.get_int(8))
+					return b.mod.add_external_global(c_global_name, voidptr_t)
+				}
+			}
 			// struct.field
 			base_ptr := b.addr(node.lhs)
 
@@ -3713,8 +3943,8 @@ fn (mut b Builder) expr_interface_box(iface_name string, expr ast.Expr) ValueID 
 fn (b &Builder) infer_concrete_type(expr ast.Expr) string {
 	match expr {
 		ast.Ident {
-			// Look up variable type
-			if t := b.var_struct_types[expr.name] {
+			// Look up variable type from local map or environment
+			if t := b.get_var_struct_type(expr.name) {
 				return t
 			}
 		}

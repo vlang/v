@@ -4,6 +4,8 @@
 
 module ssa
 
+import v2.types
+
 pub struct TargetData {
 pub:
 	ptr_size      int
@@ -16,6 +18,9 @@ pub mut:
 	name       string
 	target     TargetData
 	type_store TypeStore
+
+	// Type checker environment (optional, for backends that need rich type info)
+	env &types.Environment = unsafe { nil }
 
 	// Arenas
 	values  []Value
@@ -143,12 +148,37 @@ pub fn (mut m Module) add_global_with_value(name string, typ TypeID, is_const bo
 	g := GlobalVar{
 		name:          name
 		typ:           typ
+		linkage:       .private // Local global, not external
 		is_constant:   is_const
 		initial_value: initial_value
 	}
 	m.globals << g
 
 	// FIX: The Value representing a global is a POINTER to the data
+	ptr_typ := m.type_store.get_ptr(typ)
+	return m.add_value_node(.global, ptr_typ, name, id)
+}
+
+// add_external_global adds an external global variable (defined outside this module)
+// Returns the ValueID for the global pointer
+pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {
+	// Check if this external global already exists
+	for v in m.values {
+		if v.kind == .global && v.name == name {
+			return v.id
+		}
+	}
+
+	// Create a new external global
+	id := m.globals.len
+	g := GlobalVar{
+		name:    name
+		typ:     typ
+		linkage: .external
+	}
+	m.globals << g
+
+	// The Value representing a global is a POINTER to the data
 	ptr_typ := m.type_store.get_ptr(typ)
 	return m.add_value_node(.global, ptr_typ, name, id)
 }

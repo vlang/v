@@ -55,7 +55,7 @@ const bind_symbol_flags_weak_import = 0x01
 // V's malloc() wrapper calls C.malloc() which would otherwise resolve
 // back to the V wrapper.
 const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy',
-	'_memmove', '_memset', '_memcmp']
+	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp']
 
 pub struct Linker {
 	macho &MachOObject
@@ -895,6 +895,33 @@ fn (mut l Linker) write_text_with_relocations() {
 					new_instr := (instr & 0xFFC003FF) | (u32(scaled_off) << 10)
 					write_u32_le_at_arr(mut text, r.addr, new_instr)
 				}
+			}
+			arm64_reloc_got_load_page21 {
+				// ADRP instruction: PC-relative page address to GOT entry
+				got_idx1 := l.sym_to_got[sym_name] or { 0 }
+				got_entry_addr1 := l.data_vmaddr + u64(l.got_offset) + u64(got_idx1 * 8)
+
+				got_page := i64(got_entry_addr1) & ~0xFFF
+				pc_page := i64(pc) & ~0xFFF
+				page_off := (got_page - pc_page) >> 12
+
+				immlo := u32(page_off & 0x3) << 29
+				immhi := u32((page_off >> 2) & 0x7FFFF) << 5
+				instr := read_u32_le(text, r.addr)
+				new_instr := (instr & 0x9F00001F) | immlo | immhi
+				write_u32_le_at_arr(mut text, r.addr, new_instr)
+			}
+			arm64_reloc_got_load_pageoff12 {
+				// LDR instruction: page offset to GOT entry
+				got_idx2 := l.sym_to_got[sym_name] or { 0 }
+				got_entry_addr2 := l.data_vmaddr + u64(l.got_offset) + u64(got_idx2 * 8)
+
+				page_off := got_entry_addr2 & 0xFFF
+				instr := read_u32_le(text, r.addr)
+				// LDR with scaled offset (8-byte scale for 64-bit load)
+				scaled_off := page_off >> 3
+				new_instr := (instr & 0xFFC003FF) | (u32(scaled_off) << 10)
+				write_u32_le_at_arr(mut text, r.addr, new_instr)
 			}
 			else {}
 		}
