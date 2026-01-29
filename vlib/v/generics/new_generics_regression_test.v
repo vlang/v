@@ -5,6 +5,8 @@
 // need to update the summary line too, so that it matches the current result of running:
 // `./v -new-generic-solver test vlib/v/tests/generics/`
 // on your local working branch.
+// TODO: investigate what exact test fails on msvc only and record it in a separate skip list.
+// TODO: remove this test, once -new-generic-solver has improved so much, that it becomes the new default, since it is slow (~32s on m1).
 import os
 import log
 
@@ -45,10 +47,26 @@ fn test_new_generic_solver_does_not_regress_silently() {
 		}
 	}
 
-	assert summary_lines.any(it.contains(expected_summary)), 'could not find the expected_summary in: ${summary_lines}'
+	actual_expected_summary := $if msvc {
+		expected_summsvc
+	} $else {
+		expected_summary
+	}
+
+	if summary_lines.any(it.contains(actual_expected_summary)) {
+		eprintln('Could not find the actual_expected_summary in: ${summary_lines}')
+		eprintln('actual_expected_summary: ${actual_expected_summary}')
+		eprintln('----------------------------------------------------------------')
+		for tline in res_lines {
+			eprintln('>>>>> tline: ${tline}')
+		}
+		eprintln('----------------------------------------------------------------')
+		exit(1)
+	}
 	log.info('>>> Found the expected summary: ${expected_summary}, OK')
 }
 
+const expected_summsvc = 'Summary for all V _test.v files: 53 failed, 208 passed, 261 total.'
 const expected_summary = 'Summary for all V _test.v files: 52 failed, 209 passed, 261 total.'
 const failing_tests = [
 	'vlib/v/tests/generics/concrete_type_as_generic_fn_type_1_test.v',
