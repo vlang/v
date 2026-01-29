@@ -38,8 +38,7 @@ fn test_new_generic_solver_does_not_regress_silently() {
 
 	for idx, known in failing_tests {
 		found_expected_failure := failure_lines.any(it.contains(known))
-		assert found_expected_failure, 'expected failing test ${known} , was not found.
-        Run `v -new-generic-solver test vlib/v/tests/generics/` manually to verify, and then edit ${@FILE} to reflect the new state.'
+		assert found_expected_failure, 'expected failing test ${known} , was not found.\nRun `v -new-generic-solver test vlib/v/tests/generics/` manually to verify, and then edit ${@FILE} to reflect the new state.'
 
 		if vtrace_output {
 			eprintln('>>>>> found_expected_failure ${idx + 1} ${known}, OK')
@@ -104,4 +103,4 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_struct_with_inconsistent_generic_types_1_test.v',
 	'vlib/v/tests/generics/generics_test.v',
 	'vlib/v/tests/generics/generics_with_generics_fn_return_generics_map_type_test.v',
-]
+]!
