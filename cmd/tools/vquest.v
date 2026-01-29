@@ -11,6 +11,7 @@ import term
 const search_endpoint = 'https://api.github.com/search/issues'
 const confirm_search_query = 'repo:vlang/v is:issue is:open -label:"Status: Confirmed"'
 const fix_search_query = 'repo:vlang/v is:issue is:open'
+const feature_search_query = 'repo:vlang/v is:issue state:open label:"Feature/Enhancement Request"'
 const per_page = 100
 const max_search_results = 1000
 
@@ -44,23 +45,21 @@ fn main() {
 			},
 			cli.Command{
 				name:        'confirm'
-				description: 'Open a random unconfirmed vlang/v issue in your browser.'
-				flags:       [
-					quest_flag_print_only,
-					quest_flag_from,
-					quest_flag_to,
-				]
+				description: 'Open a random vlang/v issue, that is still unconfirmed in your browser.'
+				flags:       issue_flags.clone()
 				execute:     run_confirm
 			},
 			cli.Command{
 				name:        'fix'
-				description: 'Open a random open vlang/v issue in your browser.'
-				flags:       [
-					quest_flag_print_only,
-					quest_flag_from,
-					quest_flag_to,
-				]
+				description: 'Open a random vlang/v issue (but still open) in your browser.'
+				flags:       issue_flags.clone()
 				execute:     run_fix
+			},
+			cli.Command{
+				name:        'implement'
+				description: 'Open a random vlang/v feature request issue in your browser.'
+				flags:       issue_flags.clone()
+				execute:     run_implement
 			},
 		]
 	}
@@ -74,60 +73,53 @@ fn main() {
 	app.parse(args)
 }
 
-const quest_flag_print_only = cli.Flag{
-	description: 'Print the issue URL without opening a browser.'
-	flag:        .bool
-	name:        'print-only'
-	abbrev:      'p'
-}
-
-const quest_flag_from = cli.Flag{
-	description:   'Start page for issues (default -1: auto). Must be > 0.'
-	flag:          .int
-	name:          'from'
-	abbrev:        'f'
-	default_value: ['-1']
-}
-
-const quest_flag_to = cli.Flag{
-	description:   'End page for issues (default -1: auto). Must be > 0 and >= the from page (see -f).'
-	flag:          .int
-	name:          'to'
-	abbrev:        't'
-	default_value: ['-1']
-}
+const issue_flags = [
+	cli.Flag{
+		description: 'Print the issue URL without opening a browser.'
+		flag:        .bool
+		name:        'print-only'
+		abbrev:      'p'
+	},
+	cli.Flag{
+		description:   'Start page for issues (default -1: auto). Must be > 0.'
+		flag:          .int
+		name:          'from'
+		abbrev:        'f'
+		default_value: ['-1']
+	},
+	cli.Flag{
+		description:   'End page for issues (default -1: auto). Must be > 0 and >= the from page (see -f).'
+		flag:          .int
+		name:          'to'
+		abbrev:        't'
+		default_value: ['-1']
+	},
+]
 
 fn run_confirm(cmd cli.Command) ! {
-	print_only := cmd.flags.get_bool('print-only') or { false }
-	total := fetch_total_count(confirm_search_query)!
-	max_pages := total_to_max_pages(total)
-	if max_pages == 0 {
-		return error('no unconfirmed issues found')
-	}
-	start_page, end_page := resolve_page_range(cmd, max_pages)!
-	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
-	eprintln(term.colorize(term.gray, 'Found: ${total} still unconfirmed issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
-	issue := fetch_issue_from_page(confirm_search_query, page)!
-	println(term.colorize(term.green, 'Help us by confirming and triaging this issue:'))
-	println(issue.html_url)
-	if print_only {
-		return
-	}
-	open_uri(issue.html_url)!
+	run_issue(cmd, confirm_search_query, 'still unconfirmed', 'Help us by confirming and triaging this issue:')!
 }
 
 fn run_fix(cmd cli.Command) ! {
+	run_issue(cmd, fix_search_query, 'open', 'Help us by fixing or confirming this issue:')!
+}
+
+fn run_implement(cmd cli.Command) ! {
+	run_issue(cmd, feature_search_query, 'feature request', 'Help us by implementing the issue in a PR, or triage it:')!
+}
+
+fn run_issue(cmd cli.Command, issue_query string, issue_label string, help_label string) ! {
 	print_only := cmd.flags.get_bool('print-only') or { false }
-	total := fetch_total_count(fix_search_query)!
+	total := fetch_total_count(issue_query)!
 	max_pages := total_to_max_pages(total)
 	if max_pages == 0 {
 		return error('no unconfirmed issues found')
 	}
 	start_page, end_page := resolve_page_range(cmd, max_pages)!
 	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
-	eprintln(term.colorize(term.gray, 'Found: ${total} open issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
-	issue := fetch_issue_from_page(fix_search_query, page)!
-	println(term.colorize(term.green, 'Help us by fixing or confirming this issue:'))
+	eprintln(term.colorize(term.gray, 'Found: ${total} ${issue_label} issues. Fetching issue from page: ${page} in [${start_page}, ${end_page}] ...'))
+	issue := fetch_issue_from_page(issue_query, page)!
+	println(term.colorize(term.green, help_label))
 	println(issue.html_url)
 	if print_only {
 		return
