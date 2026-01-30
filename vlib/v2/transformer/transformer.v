@@ -341,30 +341,30 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			t.transform_infix_expr(expr)
 		}
 		ast.ParenExpr {
-			ast.ParenExpr{
+			ast.Expr(ast.ParenExpr{
 				expr: t.transform_expr(expr.expr)
-			}
+			})
 		}
 		ast.PrefixExpr {
-			ast.PrefixExpr{
+			ast.Expr(ast.PrefixExpr{
 				op:   expr.op
 				expr: t.transform_expr(expr.expr)
 				pos:  expr.pos
-			}
+			})
 		}
 		ast.CastExpr {
-			ast.CastExpr{
+			ast.Expr(ast.CastExpr{
 				typ:  expr.typ
 				expr: t.transform_expr(expr.expr)
 				pos:  expr.pos
-			}
+			})
 		}
 		ast.IndexExpr {
-			ast.IndexExpr{
+			ast.Expr(ast.IndexExpr{
 				lhs:      t.transform_expr(expr.lhs)
 				expr:     t.transform_expr(expr.expr)
 				is_gated: expr.is_gated
-			}
+			})
 		}
 		ast.ArrayInitExpr {
 			t.transform_array_init_expr(expr)
@@ -381,7 +381,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 	}
 }
 
-fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.ArrayInitExpr {
+fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
 	mut exprs := []ast.Expr{cap: expr.exprs.len}
 	for e in expr.exprs {
 		exprs << t.transform_expr(e)
@@ -396,7 +396,7 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Arr
 	}
 }
 
-fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.MatchExpr {
+fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 	mut branches := []ast.MatchBranch{cap: expr.branches.len}
 	for branch in expr.branches {
 		branches << ast.MatchBranch{
@@ -412,7 +412,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.MatchExpr {
 	}
 }
 
-fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.IfExpr {
+fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	return ast.IfExpr{
 		cond:      t.transform_expr(expr.cond)
 		stmts:     t.transform_stmts(expr.stmts)

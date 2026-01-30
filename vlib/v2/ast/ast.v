@@ -187,7 +187,43 @@ pub fn (expr Expr) name() string {
 
 pub fn (expr Expr) pos() token.Pos {
 	return match expr {
+		AsCastExpr {
+			expr.pos
+		}
+		ArrayInitExpr {
+			expr.pos
+		}
+		CallExpr {
+			expr.pos
+		}
+		CallOrCastExpr {
+			expr.pos
+		}
+		CastExpr {
+			expr.pos
+		}
+		ComptimeExpr {
+			expr.pos
+		}
 		Ident {
+			expr.pos
+		}
+		InfixExpr {
+			expr.pos
+		}
+		MapInitExpr {
+			expr.pos
+		}
+		MatchExpr {
+			expr.pos
+		}
+		OrExpr {
+			expr.pos
+		}
+		PrefixExpr {
+			expr.pos
+		}
+		SelectExpr {
 			expr.pos
 		}
 		SelectorExpr {
@@ -197,7 +233,8 @@ pub fn (expr Expr) pos() token.Pos {
 			// expr.lhs.pos()
 		}
 		else {
-			panic('Expr.pos(): TODO: add ${expr.type_name()}')
+			// Default for expressions without pos field
+			0
 		}
 	}
 }
@@ -853,9 +890,9 @@ pub:
 pub fn (ft &FnType) str() string {
 	mut s := 'fn('
 	for param in ft.params {
-		s += param.name + param.typ.str()
+		s += param.name + param.typ.name()
 	}
-	s += ') ' + ft.return_type.str()
+	s += ') ' + ft.return_type.name()
 	return s
 }
 

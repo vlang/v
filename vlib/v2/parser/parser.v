@@ -769,6 +769,41 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					}
 				}
 			}
+			// (`[n]type{}` | `[n]type`) - single-dimensional fixed array with one size expr
+			else if exprs.len == 1 && p.tok in [.amp, .name] {
+				lhs = ast.Type(ast.ArrayFixedType{
+					elem_type: p.expect_type()
+					len:       exprs[0]
+				})
+				// `[n]type{}`
+				if p.tok == .lcbr && !p.exp_lcbr {
+					p.next()
+					mut init := ast.empty_expr
+					if p.tok != .rcbr {
+						key := p.expect_name()
+						p.expect(.colon)
+						match key {
+							'init' { init = p.expr(.lowest) }
+							else { p.error('expecting `init`, got `${key}`') }
+						}
+					}
+					p.next()
+					lhs = ast.ArrayInitExpr{
+						typ:  lhs
+						init: init
+						pos:  pos
+					}
+				}
+				// `[n]type`
+				// casts are completed in expr loop
+				else if p.tok != .lpar {
+					if !p.exp_pt {
+						p.error('unexpected type')
+					}
+					// no need to chain here
+					return lhs
+				}
+			}
 			// (`[]type{}` | `[][]type{}` | `[]&type{len: 2}`) | `[]type`
 			else if p.tok in [.amp, .lsbr, .name] {
 				lhs = ast.Type(ast.ArrayType{

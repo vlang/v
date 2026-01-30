@@ -20,15 +20,16 @@ pub fn get_v_files_from_dir(dir string) []string {
 		// skip OS-specific files for other platforms
 		// Note: _nix files are for Unix-like systems including macOS and Linux
 		$if macos {
-			if file.contains('_windows.') || file.contains('_linux.') {
+			if file.contains('_windows.') || file.contains('_linux.') || file.contains('_android') {
 				continue
 			}
 		} $else $if linux {
-			if file.contains('_windows.') || file.contains('_macos.') {
+			if file.contains('_windows.') || file.contains('_macos.') || file.contains('_android') {
 				continue
 			}
 		} $else $if windows {
-			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.') {
+			if file.contains('_linux.') || file.contains('_macos.') || file.contains('_nix.')
+				|| file.contains('_android') {
 				continue
 			}
 		}

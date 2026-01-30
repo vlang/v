@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module token
 
-import sync
-
 // TODO: finish fileset / file / base pos etc
 
 // compact encoding of a source position within a file set
@@ -36,7 +34,6 @@ mut:
 	base int = 1 // reserve 0 for no position
 	// files shared []&File
 	files []&File
-	mu    &sync.Mutex = sync.new_mutex()
 }
 
 pub fn FileSet.new() &FileSet {
@@ -46,10 +43,6 @@ pub fn FileSet.new() &FileSet {
 // TODO:
 pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
 	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: $filename | base_: $base_ | size: $size')
-	fs.mu.lock()
-	defer {
-		fs.mu.unlock()
-	}
 	mut base := if base_ < 0 { fs.base } else { base_ }
 
 	// eprintln('>>> add_file fs: ${voidptr(fs)} | base: ${base:10} | fs.base: $fs.base | base_: ${base_:10} | size: ${size:10} | filename: $filename')
@@ -109,10 +102,6 @@ fn search_files(files []&File, x int) int {
 
 pub fn (mut fs FileSet) file(pos Pos) &File {
 	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: $pos')
-	fs.mu.lock()
-	defer {
-		fs.mu.unlock()
-	}
 
 	// lock fs.files
 	// last file

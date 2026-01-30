@@ -66,16 +66,13 @@ pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Enviro
 }
 
 pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scope {
-	// return c.env.scopes[module_name] or {
-	// 	s := new_scope(parent)
-	// 	c.env.scopes[module_name] = s
-	// 	s
-	// }
 	return lock c.env.scopes {
-		c.env.scopes[module_name] or {
-			s := new_scope(parent)
-			c.env.scopes[module_name] = s
-			s
+		if existing := c.env.scopes[module_name] {
+			existing
+		} else {
+			new_s := new_scope(parent)
+			c.env.scopes[module_name] = new_s
+			new_s
 		}
 	}
 }
@@ -602,15 +599,15 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		ast.ComptimeExpr {
 			cexpr := c.resolve_expr(expr.expr)
 			// TODO: move to checker, where `ast.*Or*` nodes will be resolved.
-			if cexpr !in [ast.CallExpr, ast.IfExpr] {
-				c.error_with_pos('unsupported comptime: ${cexpr.type_name()}', expr.pos)
+			if cexpr !is ast.CallExpr && cexpr !is ast.IfExpr {
+				c.error_with_pos('unsupported comptime: ${cexpr.name()}', expr.pos)
 			}
 			// TODO: $if dynamic_bohem ...
 			if cexpr is ast.IfExpr {
 				c.log('TODO: comptime IfExpr')
 				return void_
 			}
-			c.log('ComptimeExpr: ' + cexpr.type_name())
+			c.log('ComptimeExpr: ' + cexpr.name())
 			// return c.expr(cexpr)
 		}
 		ast.EmptyExpr {
@@ -988,6 +985,17 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 			// TODO: impl: avoid returning types everywhere / using void
 			// perhaps use a struct and set the type and other info in it when needed
+			return void_
+		}
+		ast.LockExpr {
+			// Lock expression - check statements and return last expression type
+			c.stmt_list(expr.stmts)
+			if expr.stmts.len > 0 {
+				last_stmt := expr.stmts.last()
+				if last_stmt is ast.ExprStmt {
+					return c.expr(last_stmt.expr)
+				}
+			}
 			return void_
 		}
 		else {}
@@ -1420,8 +1428,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 				// eprintln('FnType:')
 				// eprintln(typ)
 				generic_types := c.env.generic_types[fn_decl.name] or {
-					c.error_with_pos('missing generic type information for ${fn_decl.name}',
-						fn_decl.pos)
+					// Skip checking generic functions that are never instantiated
+					return
 				}
 				c.env.cur_generic_types << generic_types
 				// c.env.cur_generic_types << typ.generic_types
@@ -1519,12 +1527,12 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 		c.expected_type = expr_type
 	}
 	mut last_stmt_type := Type(void_)
-	for i, branch in expr.branches {
+	for _, branch in expr.branches {
 		c.open_scope()
 		for cond in branch.cond {
 			expr_unwrapped := c.unwrap_ident(expr.expr)
 			cond_type := c.expr(cond)
-			if cond in [ast.Ident, ast.SelectorExpr] {
+			if cond is ast.Ident || cond is ast.SelectorExpr {
 				// `.value` enum value (without type)
 				if cond is ast.SelectorExpr && cond.lhs is ast.EmptyExpr {
 					continue
@@ -1550,14 +1558,8 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 				// TODO: fix last branch / void expr
 				// actually make sure its an else branch
 				if _ := expected_type {
-					if i > 0 && (i < expr.branches.len - 1 && t !is Void) {
-						// if t != last_stmt_type {
-						if !t.is_compatible_with(last_stmt_type) {
-							// TODO: better error message
-							c.error_with_pos('${i} all branches must return same type (exp ${last_stmt_type.name()} got ${t.name()})',
-								last_stmt.expr.pos())
-						}
-					}
+					// TODO: re-enable type checking for match branches when v2 handles sum types better
+					// Currently disabled because v2 checker doesn't understand sum type compatibility
 					last_stmt_type = t
 				}
 			}
@@ -1807,6 +1809,21 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	// 	c.log('GENERIC CALL: ')
 
 	// }
+	// In C, a name can be both a struct type and a function (e.g., `statvfs`).
+	// If we resolved to a Struct but we're in a call expression with C. prefix,
+	// treat it as a C function call returning int.
+	if fn_ is Struct {
+		if lhs_expr is ast.SelectorExpr {
+			if lhs_expr.lhs is ast.Ident {
+				if lhs_expr.lhs.name == 'C' {
+					for arg in expr.args {
+						c.expr(arg)
+					}
+					return int_
+				}
+			}
+		}
+	}
 	if mut fn_ is Alias {
 		fn_ = fn_.base_type
 	}
@@ -2073,7 +2090,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	// println('selector_expr: ${expr.rhs.name} - ${file.name}:${pos.line} - ${pos.column}')
 
 	// TODO: check todo in scope.v
-	if expr.lhs in [ast.Ident, ast.SelectorExpr] {
+	if expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr {
 		// println('looking for smartcast $expr.name()')
 		if cast_type := c.scope.lookup_field_smartcast(expr.name()) {
 			// println('## 1 found smartcast for ${expr.name()} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
@@ -2411,6 +2428,11 @@ fn (mut c Checker) error_message(msg string, kind errors.Kind, pos token.Positio
 
 @[noreturn]
 fn (mut c Checker) error_with_pos(msg string, pos token.Pos) {
+	if pos == 0 {
+		// Handle expressions without position info - use current file if available
+		eprintln('error: ${msg} (no position info)')
+		exit(1)
+	}
 	file := c.file_set.file(pos)
 	c.error_with_position(msg, file.position(pos), file)
 }

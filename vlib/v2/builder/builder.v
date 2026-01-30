@@ -37,20 +37,30 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
-	b.files = if b.pref.no_parallel {
-		b.parse_files(files)
-	} else {
-		b.parse_files_parallel(files)
+	$if parallel ? {
+		b.files = if b.pref.no_parallel {
+			b.parse_files(files)
+		} else {
+			b.parse_files_parallel(files)
+		}
+	} $else {
+		b.files = b.parse_files(files)
 	}
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 
-	b.env = if b.pref.skip_type_check {
-		types.Environment.new()
-	} else if b.pref.no_parallel {
-		b.type_check_files()
+	if b.pref.skip_type_check {
+		b.env = types.Environment.new()
 	} else {
-		b.type_check_files_parallel()
+		$if parallel ? {
+			b.env = if b.pref.no_parallel {
+				b.type_check_files()
+			} else {
+				b.type_check_files_parallel()
+			}
+		} $else {
+			b.env = b.type_check_files()
+		}
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)

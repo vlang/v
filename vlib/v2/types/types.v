@@ -274,11 +274,11 @@ fn (t Type) key_type() Type {
 fn (t Type) value_type() Type {
 	match t {
 		Array, ArrayFixed { return t.elem_type }
-		Channel { return t.elem_type or { t } } // TODO: ?
+		Channel { return t.elem_type or { Type(t) } } // TODO: ?
 		Map { return t.value_type }
 		Pointer { return t.base_type.value_type() }
 		String { return u8_ }
-		Thread { return t.elem_type or { t } } // TODO: ?
+		Thread { return t.elem_type or { Type(t) } } // TODO: ?
 		OptionType, ResultType { return t.base_type.value_type() }
 		else { return t.base_type() }
 	}
@@ -331,12 +331,17 @@ fn (t Type) deref() Type {
 fn (t Type) is_compatible_with(t2 Type) bool {
 	if t == t2 {
 		return true
-	} else if t is Alias {
-		return t.base_type.is_compatible_with(t2)
-	} else if t2 is Alias {
-		return t.is_compatible_with(t2.base_type)
 	}
-	return false
+	// Unwrap aliases for comparison
+	mut t1_unwrapped := t
+	mut t2_unwrapped := t2
+	if t is Alias {
+		t1_unwrapped = t.base_type
+	}
+	if t2 is Alias {
+		t2_unwrapped = t2.base_type
+	}
+	return t1_unwrapped == t2_unwrapped
 }
 
 fn (t Type) is_float() bool {
@@ -566,9 +571,11 @@ fn (t Thread) name() string {
 }
 
 fn (t Tuple) name() string {
-	// TODO: use faster method
-	types_str := t.types.map(|typ| typ.name()).join(', ')
-	return 'tuple (${types_str})'
+	mut names := []string{cap: t.types.len}
+	for typ in t.types {
+		names << typ.name()
+	}
+	return 'tuple (${names.join(', ')})'
 }
 
 fn (t ISize) name() string {
