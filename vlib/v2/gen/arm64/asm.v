@@ -200,6 +200,12 @@ fn asm_ldr(rt Reg, rn Reg) u32 {
 	return 0xF9400000 | (u32(rn) << 5) | u32(rt)
 }
 
+// ldr rt, [rn, #imm12] (load 64-bit with unsigned scaled offset)
+// imm12 is the offset divided by 8 (scaled by element size)
+fn asm_ldr_imm(rt Reg, rn Reg, imm12 u32) u32 {
+	return 0xF9400000 | ((imm12 & 0xFFF) << 10) | (u32(rn) << 5) | u32(rt)
+}
+
 // ldr rt, [rn, #simm9] (unscaled)
 fn asm_ldur(rt Reg, rn Reg, simm9 i32) u32 {
 	return 0xF8400000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)

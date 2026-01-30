@@ -31,6 +31,12 @@ pub mut:
 
 	// Cache for parsed constant integer values (value_id -> parsed i64)
 	const_cache map[int]i64
+
+	// Current function's return type (for handling struct returns)
+	cur_func_ret_type int
+
+	// Stack offset where x8 (indirect return pointer) is saved for large struct returns
+	x8_save_offset int
 }
 
 pub fn Gen.new(mod &ssa.Module) &Gen {
@@ -110,24 +116,87 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.used_regs = []int{}
 	g.string_literal_offsets = map[int]int{}
 	g.const_cache = map[int]i64{}
+	g.cur_func_ret_type = func.typ
+	g.x8_save_offset = 0
 	g.allocate_registers(func)
 
-	// Stack Frame
-	mut slot_offset := 8
+	// Check if function returns a large struct (> 16 bytes) requiring x8 preservation
+	fn_ret_typ := g.mod.type_store.types[func.typ]
+	fn_ret_size := g.type_size(func.typ)
+	needs_x8_save := fn_ret_typ.kind == .struct_t && fn_ret_size > 16
 
-	for pid in func.params {
-		g.stack_map[pid] = -slot_offset
+	// Callee-saved registers are pushed at [fp - 8], [fp - 16], etc.
+	// We need to account for this when computing stack offsets
+	callee_saved_size := ((g.used_regs.len + 1) / 2) * 16
+
+	// Stack Frame - start after callee-saved register area
+	mut slot_offset := 8 + callee_saved_size
+
+	// If function returns large struct, reserve slot for saving x8
+	if needs_x8_save {
+		g.x8_save_offset = -slot_offset
 		slot_offset += 8
 	}
 
-	// Pre-pass: allocate stack slots for string_literal values
-	for val in g.mod.values {
-		if val.kind == .string_literal {
-			// String struct needs 24 bytes (str ptr + len + is_lit)
+	for pid in func.params {
+		// For large struct parameters (> 16 bytes), allocate full struct size
+		// On ARM64, these are passed by pointer, and we need to copy the struct locally
+		param_typ := g.mod.values[pid].typ
+		param_type_info := g.mod.type_store.types[param_typ]
+		param_size := g.type_size(param_typ)
+		if param_type_info.kind == .struct_t && param_size > 16 {
+			// Align to 16 bytes and allocate full struct size
 			slot_offset = (slot_offset + 15) & ~0xF
-			slot_offset += 24
-			g.stack_map[val.id] = -slot_offset
+			slot_offset += param_size
+			g.stack_map[pid] = -slot_offset
+		} else {
+			g.stack_map[pid] = -slot_offset
+			slot_offset += 8
 		}
+	}
+
+	// Pre-pass: find string_literal values used in this function and allocate stack for them
+	mut used_string_literals := map[int]bool{}
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			val := g.mod.values[val_id]
+			if val.kind != .instruction {
+				continue
+			}
+			instr := g.mod.instrs[val.index]
+			// Check all operands for string_literal references
+			for op in instr.operands {
+				op_val := g.mod.values[op]
+				if op_val.kind == .string_literal {
+					used_string_literals[op] = true
+				}
+			}
+		}
+	}
+	// Also check return values - if function returns a string_literal directly
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			val := g.mod.values[val_id]
+			if val.kind == .instruction {
+				instr := g.mod.instrs[val.index]
+				if instr.op == .ret && instr.operands.len > 0 {
+					ret_val := g.mod.values[instr.operands[0]]
+					if ret_val.kind == .string_literal {
+						used_string_literals[instr.operands[0]] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Allocate stack slots for used string_literal values
+	for str_lit_id, _ in used_string_literals {
+		// String struct needs 24 bytes (str ptr + len + is_lit)
+		slot_offset = (slot_offset + 15) & ~0xF
+		slot_offset += 24
+		g.stack_map[str_lit_id] = -slot_offset
 	}
 
 	for i, blk_id in func.blocks {
@@ -216,7 +285,7 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.emit(asm_stp_fp_lr_pre())
 	g.emit(asm_mov_fp_sp())
 
-	// Save callee-saved regs
+	// Save callee-saved regs (pushed below fp using pre-decrement)
 	for i := 0; i < g.used_regs.len; i += 2 {
 		r1 := g.used_regs[i]
 		mut r2 := 31 // xzr
@@ -228,10 +297,36 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 
 	g.emit_sub_sp(g.stack_size)
 
+	// Save x8 if this function returns a large struct
+	// x8 contains the indirect return pointer from the caller
+	// Save it at a fixed offset from fp (below callee-saved registers)
+	if g.x8_save_offset != 0 {
+		g.emit_str_reg_offset(8, 29, g.x8_save_offset)
+	}
+
 	// Spill params
 	for i, pid in func.params {
 		if i < 8 {
-			if reg := g.reg_map[pid] {
+			param_typ := g.mod.values[pid].typ
+			param_type_info := g.mod.type_store.types[param_typ]
+			param_size := g.type_size(param_typ)
+
+			// For large struct parameters (> 16 bytes), the register contains a pointer
+			// We need to copy the struct from that pointer to local storage
+			if param_type_info.kind == .struct_t && param_size > 16 {
+				// xi contains pointer to struct, copy struct to local storage
+				// Use x9 to hold the source pointer (don't clobber argument registers)
+				g.emit_mov_reg(9, i)
+				offset := g.stack_map[pid]
+				// Copy each 8-byte field
+				num_fields := (param_size + 7) / 8
+				for field_idx in 0 .. num_fields {
+					// LDR x10, [x9, #field_idx*8]
+					g.emit(asm_ldr_imm(Reg(10), Reg(9), u32(field_idx)))
+					// STR x10, [fp, #offset + field_idx*8]
+					g.emit_str_reg_offset(10, 29, offset + field_idx * 8)
+				}
+			} else if reg := g.reg_map[pid] {
 				g.emit_mov_reg(reg, i)
 			} else {
 				offset := g.stack_map[pid]
@@ -463,10 +558,28 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.store {
-			val_reg := g.get_operand_reg(instr.operands[0], 8)
-			ptr_reg := g.get_operand_reg(instr.operands[1], 9)
+			// Check if we're storing a large struct value (> 16 bytes)
+			// In this case, the value is a pointer to the struct and we need to copy
+			val_val := g.mod.values[instr.operands[0]]
+			val_typ := g.mod.type_store.types[val_val.typ]
+			val_size := g.type_size(val_val.typ)
 
-			g.emit(asm_str(Reg(val_reg), Reg(ptr_reg)))
+			if val_typ.kind == .struct_t && val_size > 16 {
+				// Large struct: val_reg contains pointer to struct, copy fields
+				val_reg := g.get_operand_reg(instr.operands[0], 8)
+				ptr_reg := g.get_operand_reg(instr.operands[1], 9)
+				num_fields := (val_size + 7) / 8
+				for i in 0 .. num_fields {
+					// LDR x10, [val_reg, #i*8]
+					g.emit(asm_ldr_imm(Reg(10), Reg(val_reg), u32(i)))
+					// STR x10, [ptr_reg, #i*8]
+					g.emit(asm_str_imm(Reg(10), Reg(ptr_reg), u32(i)))
+				}
+			} else {
+				val_reg := g.get_operand_reg(instr.operands[0], 8)
+				ptr_reg := g.get_operand_reg(instr.operands[1], 9)
+				g.emit(asm_str(Reg(val_reg), Reg(ptr_reg)))
+			}
 		}
 		.load {
 			ptr_reg := g.get_operand_reg(instr.operands[0], 9)
@@ -519,6 +632,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 				num_args := instr.operands.len - 1
 
+				// Check if return type is a large struct (> 16 bytes) requiring indirect return
+				result_typ := g.mod.type_store.types[g.mod.values[val_id].typ]
+				result_size := g.type_size(g.mod.values[val_id].typ)
+				is_indirect_return := result_typ.kind == .struct_t && result_size > 16
+
+				// For indirect struct returns, set x8 to point to result storage BEFORE the call
+				if is_indirect_return {
+					result_offset := g.stack_map[val_id]
+					g.emit_add_fp_imm(8, result_offset)
+				}
+
 				if is_variadic && num_args > num_fixed_args {
 					// Variadic call: push variadic args to stack, fixed args to registers
 					num_variadic := num_args - num_fixed_args
@@ -532,11 +656,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 					// Store variadic arguments to stack (in order)
 					for i := 0; i < num_variadic; i++ {
 						arg_idx := num_fixed_args + 1 + i // +1 because operands[0] is the function
-						g.load_val_to_reg(8, instr.operands[arg_idx])
-						// STR x8, [sp, #offset]
+						g.load_val_to_reg(9, instr.operands[arg_idx]) // Use x9 to avoid clobbering x8
+						// STR x9, [sp, #offset]
 						offset := i * 8
 						imm12 := u32(offset / 8)
-						g.emit(asm_str_imm(Reg(8), sp, imm12))
+						g.emit(asm_str_imm(Reg(9), sp, imm12))
 					}
 
 					// Load fixed arguments to registers (in reverse order to avoid clobbering)
@@ -574,17 +698,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit(asm_bl_reloc())
 				}
 
-				result_typ := g.mod.type_store.types[g.mod.values[val_id].typ]
 				if result_typ.kind != .void_t {
-					// Check if returning a tuple (struct type with multiple fields)
+					// For indirect returns (large structs), result is already at x8 location
+					// For small structs (≤ 16 bytes), values are in x0, x1
 					if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
-						// Store each return register into the tuple's stack location
-						result_offset := g.stack_map[val_id]
-						for i in 0 .. result_typ.fields.len {
-							if i < 8 {
-								g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+						if !is_indirect_return {
+							// Small struct: store return registers into the tuple's stack location
+							result_offset := g.stack_map[val_id]
+							for i in 0 .. result_typ.fields.len {
+								if i < 8 {
+									g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+								}
 							}
 						}
+						// For indirect return, result is already written by callee to x8
 					} else {
 						g.store_reg_to_val(0, val_id)
 					}
@@ -657,20 +784,69 @@ fn (mut g Gen) gen_instr(val_id int) {
 				ret_val := g.mod.values[ret_val_id]
 				ret_typ := g.mod.type_store.types[ret_val.typ]
 
-				// Check if returning a tuple (struct type)
-				if ret_typ.kind == .struct_t && ret_typ.fields.len > 1 {
-					// Load each tuple element into x0, x1, x2, ...
-					if ret_offset := g.stack_map[ret_val_id] {
-						for i in 0 .. ret_typ.fields.len {
+				// Get the function's declared return type
+				fn_ret_type := g.cur_func_ret_type
+				fn_ret_typ := g.mod.type_store.types[fn_ret_type]
+				fn_ret_size := g.type_size(fn_ret_type)
+
+				// Check if we're returning a pointer but the function expects a struct
+				// This happens when returning local struct variables (expr_init returns pointers)
+				mut is_indirect_struct_return := false
+				if ret_typ.kind == .ptr_t && fn_ret_typ.kind == .struct_t {
+					elem_type := ret_typ.elem_type
+					if elem_type == fn_ret_type {
+						is_indirect_struct_return = true
+					}
+				}
+
+				// For large struct returns (> 16 bytes), use indirect return via x8
+				// The caller provides the destination address in x8
+				if fn_ret_typ.kind == .struct_t && fn_ret_size > 16 {
+					// Restore x8 from the saved location (fp-relative)
+					if g.x8_save_offset != 0 {
+						g.emit_ldr_reg_offset(8, 29, g.x8_save_offset)
+					}
+
+					// Get the source address of the struct
+					if is_indirect_struct_return {
+						// Return value is a pointer to struct - use it as source
+						g.load_val_to_reg(9, ret_val_id)
+					} else if ret_offset := g.stack_map[ret_val_id] {
+						// Struct is on stack - compute its address
+						g.emit_add_fp_imm(9, ret_offset)
+					} else {
+						// Fallback
+						g.load_val_to_reg(9, ret_val_id)
+					}
+					// Copy struct from [x9] to [x8] (x8 was restored from saved location)
+					num_fields := (fn_ret_size + 7) / 8
+					for i in 0 .. num_fields {
+						// LDR x10, [x9, #i*8]
+						g.emit(asm_ldr_imm(Reg(10), Reg(9), u32(i)))
+						// STR x10, [x8, #i*8]
+						g.emit(asm_str_imm(Reg(10), Reg(8), u32(i)))
+					}
+				} else if (ret_typ.kind == .struct_t && ret_typ.fields.len > 1)
+					|| is_indirect_struct_return {
+					// Small struct (≤ 16 bytes) - return in registers x0, x1
+					actual_struct_typ := if is_indirect_struct_return { fn_ret_typ } else { ret_typ }
+
+					if is_indirect_struct_return {
+						// Return value is a pointer to struct - load each field via the pointer
+						g.load_val_to_reg(8, ret_val_id)
+						for i in 0 .. actual_struct_typ.fields.len {
 							if i < 8 {
-								// Load from tuple's stack location
+								imm12 := u32(i * 8 / 8)
+								g.emit(asm_ldr_imm(Reg(i), Reg(8), imm12))
+							}
+						}
+					} else if ret_offset := g.stack_map[ret_val_id] {
+						for i in 0 .. actual_struct_typ.fields.len {
+							if i < 8 {
 								g.emit_ldr_reg_offset(i, 29, ret_offset + i * 8)
 							}
 						}
 					} else {
-						// Tuple not in stack_map - it might be loaded from memory
-						// For now, just load the first value into x0
-						// This handles cases like returning a constant or loaded value
 						g.load_val_to_reg(0, ret_val_id)
 					}
 				} else {
@@ -1045,7 +1221,15 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		g.emit(asm_add_pageoff(Reg(reg)))
 	} else {
 		// Handles .instruction, .argument, etc.
-		if reg_idx := g.reg_map[val_id] {
+		// For large struct types (> 16 bytes like string), ARM64 ABI requires
+		// passing by pointer, so load the address instead of the value
+		typ := g.mod.type_store.types[val.typ]
+		val_size := g.type_size(val.typ)
+		if typ.kind == .struct_t && val_size > 16 {
+			// Load address of the struct on stack
+			offset := g.stack_map[val_id]
+			g.emit_add_fp_imm(reg, offset)
+		} else if reg_idx := g.reg_map[val_id] {
 			if reg_idx != reg {
 				g.emit_mov_reg(reg, reg_idx)
 			}
@@ -1313,7 +1497,23 @@ fn (mut g Gen) allocate_registers(func ssa.Function) {
 		for val_id in blk.instrs {
 			val := g.mod.values[val_id]
 			if val.kind == .instruction || val.kind == .argument {
-				if unsafe { intervals[val_id] == nil } {
+				// Check if this is a call with indirect struct return (> 16 bytes)
+				// These values must stay on the stack - don't register-allocate them
+				mut skip_interval := false
+				if val.kind == .instruction {
+					instr := g.mod.instrs[val.index]
+					if instr.op == .call {
+						result_typ := g.mod.type_store.types[val.typ]
+						if result_typ.kind == .struct_t {
+							result_size := g.type_size(val.typ)
+							if result_size > 16 {
+								skip_interval = true
+							}
+						}
+					}
+				}
+
+				if !skip_interval && unsafe { intervals[val_id] == nil } {
 					intervals[val_id] = &Interval{
 						val_id: val_id
 						start:  instr_idx

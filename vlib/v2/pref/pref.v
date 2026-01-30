@@ -28,6 +28,7 @@ pub mut:
 	skip_imports    bool
 	skip_type_check bool // Skip type checking phase (for backends that don't need it yet)
 	no_parallel     bool = true // default to sequential parsing until parallel is fixed
+	keep_c          bool // Keep generated C file after compilation
 	backend         Backend
 	arch            Arch = .auto
 	output_file     string
@@ -77,6 +78,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		skip_imports:    '--skip-imports' in options
 		skip_type_check: '--skip-type-check' in options
 		no_parallel:     !use_parallel
+		keep_c:          '-keepc' in options
 		backend:         backend
 		arch:            arch
 		output_file:     output_file

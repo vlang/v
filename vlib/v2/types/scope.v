@@ -18,7 +18,7 @@ struct SmartCastSelector {
 
 pub struct Scope {
 	parent &Scope = unsafe { nil }
-mut:
+pub mut:
 	objects map[string]Object
 	// TODO: try implement using original concept
 	field_smartcasts map[string]Type
