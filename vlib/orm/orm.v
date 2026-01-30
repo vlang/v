@@ -406,6 +406,13 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	if cfg.has_where {
 		str += ' WHERE '
+		$if trace_orm_where ? {
+			eprintln('> orm_select_gen: where.fields.len = ${where.fields.len}')
+			eprintln('> orm_select_gen: where.kinds.len = ${where.kinds.len}')
+			for i, field in where.fields {
+				eprintln('> orm_select_gen: field[${i}] = ${field}')
+			}
+		}
 		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 

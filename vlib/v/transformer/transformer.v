@@ -18,6 +18,7 @@ mut:
 	is_assert   bool
 	inside_dump bool
 	inside_in   bool
+	inside_sql  bool
 	//
 	strings_builder_type ast.Type = ast.no_type
 }
@@ -1115,7 +1116,9 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			else {
 				// for `a == a`, `a != a`, `struct.f != struct.f`
 				// Note: can't compare `f32` or `f64` here, as `NaN != NaN` will return true in IEEE 754
-				if node.left.type_name() == node.right.type_name()
+				// Note: skip this optimization in SQL WHERE clauses, where `field == field` means
+				// comparing a table field with a variable of the same name, not self-comparison.
+				if !t.inside_sql && node.left.type_name() == node.right.type_name()
 					&& node.left_type !in [ast.f32_type, ast.f64_type] && node.op in [.eq, .ne]
 					&& node.left !is ast.StructInit && node.right !is ast.StructInit {
 					left_name := '${node.left}'
@@ -1213,7 +1216,13 @@ pub fn (mut t Transformer) match_expr(mut node ast.MatchExpr) ast.Expr {
 pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	node.db_expr = t.expr(mut node.db_expr)
 	if node.has_where {
+		// Don't optimize `x == x` to `true` in SQL WHERE clauses,
+		// because the left `x` refers to a table field while the right `x`
+		// may refer to a variable (they just happen to have the same name).
+		old_inside_sql := t.inside_sql
+		t.inside_sql = true
 		node.where_expr = t.expr(mut node.where_expr)
+		t.inside_sql = old_inside_sql
 	}
 	if node.has_order {
 		node.order_expr = t.expr(mut node.order_expr)
