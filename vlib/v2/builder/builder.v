@@ -124,7 +124,12 @@ fn (mut b Builder) gen_cleanc() {
 		// Compile C to binary
 		cc_start := sw.elapsed()
 		cc := os.getenv_opt('CC') or { 'cc' }
-		compile_result := os.execute('${cc} -w ${c_file} -o ${output_name} -ferror-limit=0')
+		cc_flags := os.getenv_opt('CFLAGS') or { '' }
+		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name} -ferror-limit=0'
+		if os.getenv('CVERBOSE') != '' {
+			dump(cc_cmd)
+		}
+		compile_result := os.execute(cc_cmd)
 		if compile_result.exit_code != 0 {
 			eprintln('C compilation failed:')
 			lines := compile_result.output.split_into_lines()
