@@ -10,6 +10,7 @@
 // TODO: remove this test, once -new-generic-solver has improved so much, that it becomes the new default, since it is slow (~32s on m1).
 import os
 import log
+import term
 
 const vexe = @VEXE
 const vroot = @VROOT
@@ -18,21 +19,20 @@ const vtrace_output = os.getenv('VTRACE_OUTPUT').int() != 0
 fn testsuite_begin() {
 	os.chdir(@VROOT)!
 	os.setenv('VJOBS', '1', true)
-	os.setenv('VCOLORS', 'never', true)
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {
-	run_new_generic_solver_tests('vlib/v/tests/generics/', '${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
-		expected_summary_generics, expected_summsvc_generics, failing_tests[..])
 	run_new_generic_solver_tests('vlib/math/vec', '${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec',
 		expected_summary_vec, expected_summsvc_vec, failing_math_vec_tests[..])
 	run_new_generic_solver_tests('vlib/flag', '${os.quoted_path(vexe)} -new-generic-solver test vlib/flag/',
 		expected_summary_flag, expected_summsvc_flag, failing_flag_tests[..])
+	run_new_generic_solver_tests('vlib/v/tests/generics/', '${os.quoted_path(vexe)} -new-generic-solver test vlib/v/tests/generics/',
+		expected_summary_generics, expected_summsvc_generics, failing_tests[..])
 }
 
 fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_summary string,
 	expected_summsvc string, expected_failures []string) {
-	log.info('>>> running ${test_cmd} ...')
+	log.info('>>> running ${term.colorize(term.magenta, test_cmd)} ...')
 	res := os.execute(test_cmd)
 	log.info('>>> done running ${test_cmd} ; exit_code: ${res.exit_code}')
 	assert res.exit_code != 0
@@ -52,7 +52,8 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		assert found_expected_failure, 'expected failing test ${known} , was not found.\nRun `v -new-generic-solver test ${root_label}` manually to verify, and then edit ${@FILE} to reflect the new state.'
 
 		if vtrace_output {
-			eprintln('>>>>> found_expected_failure ${idx + 1} ${known}, OK')
+			eprintln('>>>>> found_expected_failure ${idx + 1} `${term.colorize(term.green,
+				known)}`, OK')
 		}
 	}
 
@@ -61,26 +62,25 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	if !summary_lines.any(it.contains(actual_expected_summary)) {
 		eprintln('----------------------------------------------------------------')
 		eprintln('----------------------------------------------------------------')
-		eprintln('----------------------------------------------------------------')
 		for tline in res_lines {
 			eprintln('>>>>> tline: ${tline}')
 		}
-		eprintln('----------------------------------------------------------------')
 		eprintln('----------------------------------------------------------------')
 		eprintln('----------------------------------------------------------------')
 		eprintln('Could not find the actual_expected_summary in: ${summary_lines}')
 		eprintln('actual_expected_summary: ${actual_expected_summary}')
 		exit(1)
 	}
-	log.info('>>> Found the expected summary: ${actual_expected_summary}, OK')
+	log.info('>>> Found the expected summary: ${term.colorize(term.yellow, actual_expected_summary)}, OK')
+	println('')
 }
 
 const expected_summsvc_generics = 'Summary for all V _test.v files: 53 failed, 208 passed, 261 total.'
 const expected_summary_generics = 'Summary for all V _test.v files: 52 failed, 209 passed, 261 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
-const expected_summsvc_flag = 'Summary for all V _test.v files: 16 failed, 3 passed, 19 total.'
-const expected_summary_flag = 'Summary for all V _test.v files: 16 failed, 3 passed, 19 total.'
+const expected_summsvc_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
+const expected_summary_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
 const failing_tests = [
 	'vlib/v/tests/generics/concrete_type_as_generic_fn_type_1_test.v',
 	'vlib/v/tests/generics/default_type_with_ref_test.v',
@@ -140,21 +140,20 @@ const failing_math_vec_tests = [
 	'vlib/math/vec/vec3_test.v',
 	'vlib/math/vec/vec4_test.v',
 ]!
+
 const failing_flag_tests = [
-	'vlib/flag/default_flag_options_test.v',
 	'vlib/flag/cmd_exe_style_flags_test.v',
-	'vlib/flag/flag_to_bool_test.v',
 	'vlib/flag/flag_from_test.v',
-	'vlib/flag/flag_to_edge_case_1_test.v',
-	'vlib/flag/flag_to_relaxed_test.v',
+	'vlib/flag/flag_to_bool_test.v',
 	'vlib/flag/flag_to_doc_test.v',
+	'vlib/flag/flag_to_edge_case_1_test.v',
 	'vlib/flag/flag_to_misc_test.v',
+	'vlib/flag/flag_to_relaxed_test.v',
 	'vlib/flag/flag_to_tail_bool_test.v',
 	'vlib/flag/flag_to_tail_test.v',
 	'vlib/flag/gnu_style_flags_test.v',
-	'vlib/flag/usage_example_test.v',
-	'vlib/flag/posix_style_flags_test.v',
 	'vlib/flag/go_flag_style_flags_test.v',
+	'vlib/flag/posix_style_flags_test.v',
 	'vlib/flag/v_flag_parser_style_flags_test.v',
 	'vlib/flag/v_style_flags_test.v',
 ]!
