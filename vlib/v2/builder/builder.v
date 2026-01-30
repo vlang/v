@@ -125,7 +125,12 @@ fn (mut b Builder) gen_cleanc() {
 		cc_start := sw.elapsed()
 		cc := os.getenv_opt('V2CC') or { 'cc' }
 		cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
-		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name} -ferror-limit=0'
+		version_res := os.execute('${cc} --version')
+		mut error_limit_flag := ''
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			error_limit_flag = ' -ferror-limit=0'
+		}
+		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name}${error_limit_flag}'
 		if os.getenv('V2VERBOSE') != '' {
 			dump(cc_cmd)
 		}
