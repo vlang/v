@@ -27,7 +27,7 @@ jobs:
         os: [macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 121
+    timeout-minutes: 151
     env:
       VFLAGS: -cc clang
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
