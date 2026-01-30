@@ -3326,7 +3326,21 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 		g.indent++
 		g.write_indent()
 		// Return appropriate default based on return type
-		// Check for array return type first
+		// Check for pointer return type first (returns NULL)
+		// Pointers are represented as PrefixExpr with op == .amp (e.g., &Module)
+		mut is_ptr_return := false
+		if node.typ.return_type is ast.PrefixExpr {
+			if (node.typ.return_type as ast.PrefixExpr).op == .amp {
+				is_ptr_return = true
+			}
+		}
+		if is_ptr_return {
+			g.sb.writeln('return NULL; // TODO: Stub - pointer return')
+			g.indent--
+			g.sb.writeln('}')
+			return
+		}
+		// Check for array return type
 		mut is_array_return := false
 		mut array_elem_type := ast.Expr(ast.empty_expr)
 		match node.typ.return_type {

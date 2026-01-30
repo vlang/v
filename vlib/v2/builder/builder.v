@@ -112,6 +112,13 @@ fn (mut b Builder) gen_cleanc() {
 	c_source := gen.gen()
 	print_time('C Gen', sw.elapsed())
 
+	// Check if cleanc.Gen.gen() returned empty (stubbed version)
+	if c_source == '' {
+		eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
+		eprintln('hint: use v2 compiled with v1 for proper C code generation')
+		return
+	}
+
 	// Determine output name
 	output_name := if b.pref.output_file != '' {
 		b.pref.output_file
@@ -181,6 +188,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	// Build all files into a single SSA module
 	mut mod := ssa.Module.new('main')
+	if mod == unsafe { nil } {
+		eprintln('error: native backend not available (compiled with stubbed ssa module)')
+		eprintln('hint: use v2 compiled with v1 for native code generation')
+		return
+	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 
 	// Build all files together with proper multi-file ordering
