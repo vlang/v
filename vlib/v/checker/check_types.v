@@ -756,53 +756,17 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 }
 
 fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
-	// sort the operands to save time
-	mut type_hi := left_type
-	mut type_lo := right_type
-	if type_hi.idx() < type_lo.idx() {
-		type_hi, type_lo = type_lo, type_hi
-	}
-	idx_hi := type_hi.idx()
-	idx_lo := type_lo.idx()
-	// the following comparisons rely on the order of the indices in table/types.v
-	if idx_hi == ast.int_literal_type_idx {
-		return type_lo
-	} else if idx_hi == ast.float_literal_type_idx {
-		if idx_lo in ast.float_type_idxs {
-			return type_lo
-		} else {
-			return ast.void_type
+	result := ast.promote_num(left_type, right_type)
+	if result == ast.void_type && c.pref.translated {
+		// In translated mode, fall back to the higher type instead of
+		// rejecting signed -> unsigned conversions.
+		mut type_hi := left_type
+		if type_hi.idx() < right_type.idx() {
+			type_hi = right_type
 		}
-	} else if type_hi.is_float() {
-		if idx_hi == ast.f32_type_idx {
-			if idx_lo in [ast.i64_type_idx, ast.u64_type_idx] {
-				return ast.void_type
-			} else {
-				return type_hi
-			}
-		} else { // f64, float_literal
-			return type_hi
-		}
-	} else if idx_lo >= ast.u8_type_idx { // both operands are unsigned
 		return type_hi
-	} else if idx_lo >= ast.i8_type_idx
-		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
-		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
-		return type_lo // conversion unsigned u8 -> signed if signed type is larger
-	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
-		return type_lo // conversion unsigned u16 -> signed if signed type is larger
-	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
-		return type_lo // conversion unsigned u32 -> signed if signed type is larger
-	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
-		return type_lo // conversion unsigned u64 -> signed if signed type is larger
-	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
-		return type_lo // conversion unsigned usize -> signed if signed type is larger
-	} else if c.pref.translated {
-		return type_hi
-	} else {
-		return ast.void_type // conversion signed -> unsigned not allowed
 	}
+	return result
 }
 
 fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {

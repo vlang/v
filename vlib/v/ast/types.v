@@ -2106,3 +2106,54 @@ pub fn (t &TypeSymbol) get_methods() []Fn {
 	methods << methods_with_attrs
 	return methods
 }
+
+// promote_num returns the promoted type for two numeric operands.
+pub fn promote_num(left_type Type, right_type Type) Type {
+	if left_type == right_type {
+		return left_type
+	}
+	// sort the operands to save time
+	mut type_hi := left_type
+	mut type_lo := right_type
+	if type_hi.idx() < type_lo.idx() {
+		type_hi, type_lo = type_lo, type_hi
+	}
+	idx_hi := type_hi.idx()
+	idx_lo := type_lo.idx()
+	// the following comparisons rely on the order of the indices in table/types.v
+	if idx_hi == int_literal_type_idx {
+		return type_lo
+	} else if idx_hi == float_literal_type_idx {
+		if idx_lo in float_type_idxs {
+			return type_lo
+		} else {
+			return void_type
+		}
+	} else if type_hi.is_float() {
+		if idx_hi == f32_type_idx {
+			if idx_lo in [i64_type_idx, u64_type_idx] {
+				return void_type
+			} else {
+				return type_hi
+			}
+		} else {
+			return type_hi
+		}
+	} else if idx_lo >= u8_type_idx { // both operands are unsigned
+		return type_hi
+	} else if idx_lo >= i8_type_idx && (idx_hi <= isize_type_idx || idx_hi == rune_type_idx) { // both signed
+		return if idx_lo == i64_type_idx { type_lo } else { type_hi }
+	} else if idx_hi == u8_type_idx && idx_lo > i8_type_idx {
+		return type_lo
+	} else if idx_hi == u16_type_idx && idx_lo > i16_type_idx {
+		return type_lo
+	} else if idx_hi == u32_type_idx && idx_lo > int_type_idx {
+		return type_lo
+	} else if idx_hi == u64_type_idx && idx_lo >= i64_type_idx {
+		return type_lo
+	} else if idx_hi == usize_type_idx && idx_lo >= isize_type_idx {
+		return type_lo
+	} else {
+		return void_type
+	}
+}
