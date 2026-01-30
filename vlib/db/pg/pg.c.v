@@ -91,7 +91,7 @@ pub:
 pub struct Config {
 pub:
 	host     string = 'localhost'
-	port     int    = 5432
+	port     u32    = 5432
 	user     string
 	password string
 	dbname   string
