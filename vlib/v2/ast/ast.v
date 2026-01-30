@@ -651,6 +651,12 @@ pub fn (attributes []Attribute) has(name string) bool {
 		if attribute.name == name {
 			return true
 		}
+		// Also check value when it's a simple identifier (e.g., @[flag])
+		if attribute.name == '' {
+			if attribute.value is Ident && attribute.value.name == name {
+				return true
+			}
+		}
 	}
 	return false
 }

@@ -33,6 +33,14 @@ enum Status {
 	done    = 2
 }
 
+// Flag enum for bitfield operations
+@[flag]
+enum Permissions {
+	read
+	write
+	execute
+}
+
 // Interface declaration
 interface Drawable {
 	draw() int
@@ -334,6 +342,131 @@ fn defer_fn_test() int {
 		x += 1
 	}
 	return x // returns 3, but defer(fn) adds 300 at function end
+}
+
+// ===================== FLAG ENUM TEST =====================
+
+fn flag_enum_test() int {
+	// Test flag enum .has() method
+	// Use fully qualified enum values (shorthand in | expr needs type inference)
+	perms := Permissions.read | Permissions.write
+	mut result := 0
+	if perms.has(.read) {
+		result += 1
+	}
+	if perms.has(.write) {
+		result += 2
+	}
+	if perms.has(.execute) {
+		result += 4 // Should NOT execute
+	}
+	// Test .all() method - use fully qualified for | in argument
+	if perms.all(Permissions.read | Permissions.write) {
+		result += 10
+	}
+	if perms.all(Permissions.read | Permissions.execute) {
+		result += 20 // Should NOT execute
+	}
+	return result // Expected: 1 + 2 + 10 = 13
+}
+
+// Debug test for flag enum - returns raw value of perms
+fn flag_enum_debug() int {
+	// This should be: read (1) | write (2) = 3
+	perms := Permissions.read | Permissions.write
+	return int(perms) // Expected: 3
+}
+
+// Debug test - return has(.read) as int
+fn flag_enum_has_read() int {
+	perms := Permissions.read | Permissions.write
+	if perms.has(.read) {
+		return 1
+	}
+	return 0
+}
+
+// Debug test - return has(.execute) as int
+fn flag_enum_has_execute() int {
+	perms := Permissions.read | Permissions.write
+	if perms.has(.execute) {
+		return 1 // Should NOT return this
+	}
+	return 0 // Expected: 0
+}
+
+// Debug test - return values of individual enum members
+fn flag_enum_values() int {
+	r := int(Permissions.read) // Expected: 1
+	w := int(Permissions.write) // Expected: 2
+	e := int(Permissions.execute) // Expected: 4
+	return r + w * 10 + e * 100 // Expected: 1 + 20 + 400 = 421
+}
+
+// Debug test - raw AND operation
+fn flag_enum_and_test() int {
+	perms := Permissions.read | Permissions.write // 3
+	exec := Permissions.execute // 4
+	result := int(perms) & int(exec) // 3 & 4 = 0
+	return result // Expected: 0
+}
+
+// Debug test - manual has check without calling has() method
+fn flag_enum_manual_has() int {
+	perms := Permissions.read | Permissions.write // 3
+	exec := Permissions.execute // 4
+	anded := int(perms) & int(exec) // 3 & 4 = 0
+	if anded != 0 {
+		return 1 // Should NOT return this
+	}
+	return 0 // Expected: 0
+}
+
+// Debug test - return has() result directly as int (no if)
+fn flag_enum_has_result() int {
+	perms := Permissions.read | Permissions.write
+	result := perms.has(.execute)
+	return int(result) // Expected: 0 (false)
+}
+
+// Debug test - manual implementation of has() logic
+fn flag_enum_manual_has_impl(self int, flag int) int {
+	anded := self & flag
+	if anded != 0 {
+		return 1
+	}
+	return 0
+}
+
+// Debug test - call manual has impl
+fn flag_enum_manual_call() int {
+	perms := Permissions.read | Permissions.write // 3
+	exec := Permissions.execute // 4
+	return flag_enum_manual_has_impl(int(perms), int(exec)) // Expected: 0
+}
+
+// Debug test - check what values the has() gets
+// This is exactly like has() but returns the args
+fn flag_enum_debug_args(self Permissions, flag Permissions) int {
+	// Return self * 100 + flag so we can see both values
+	return int(self) * 100 + int(flag)
+}
+
+// Debug test - call debug_args (without shorthand)
+fn flag_enum_check_args() int {
+	perms := Permissions.read | Permissions.write // 3
+	exec := Permissions.execute // 4
+	return flag_enum_debug_args(perms, exec) // Expected: 304 (3 * 100 + 4)
+}
+
+// Debug test - simple 2-arg function with ints
+fn simple_two_arg(a int, b int) int {
+	return a * 100 + b
+}
+
+// Debug test - call simple 2-arg function
+fn flag_enum_check_int_args() int {
+	return simple_two_arg(3, 4) // Expected: 304
 }
 
 // ===================== IF-GUARD HELPERS =====================
@@ -2064,6 +2197,30 @@ fn main() {
 
 	// 38.6 Test defer(fn) - function-level defer
 	print_int(defer_fn_test()) // 303 (3 from loop + 300 from function-level defers)
+
+	// 38.7 Test flag enum .has() and .all() methods
+	print_str('enum vals (exp 421):')
+	print_int(flag_enum_values()) // Expected: 421 (1 + 20 + 400)
+	print_str('AND test (exp 0):')
+	print_int(flag_enum_and_test()) // Expected: 0 (3 & 4 = 0)
+	print_str('manual has (exp 0):')
+	print_int(flag_enum_manual_has()) // Expected: 0 (manual has check)
+	print_str('flag debug (exp 3):')
+	print_int(flag_enum_debug()) // Expected: 3 (read=1 | write=2)
+	print_str('has read (exp 1):')
+	print_int(flag_enum_has_read()) // Expected: 1
+	print_str('has exec (exp 0):')
+	print_int(flag_enum_has_execute()) // Expected: 0
+	print_str('has result (exp 0):')
+	print_int(flag_enum_has_result()) // Expected: 0 (direct bool->int)
+	print_str('manual call (exp 0):')
+	print_int(flag_enum_manual_call()) // Expected: 0 (manual has impl)
+	print_str('check args (exp 304):')
+	print_int(flag_enum_check_args()) // Expected: 304 (perms=3, exec=4)
+	print_str('int args (exp 304):')
+	print_int(flag_enum_check_int_args()) // Expected: 304
+	print_str('full test (exp 13):')
+	print_int(flag_enum_test()) // Expected: 13 (1 + 2 + 10)
 
 	// ==================== 39. ENUMS ====================
 	print_str('--- 39. Enums ---')

@@ -86,7 +86,8 @@ struct Channel {
 	elem_type ?Type
 }
 
-struct Enum {
+pub struct Enum {
+pub:
 	// TODO: store attributes enum or bool?
 	is_flag bool
 	name    string

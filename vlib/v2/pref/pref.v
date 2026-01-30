@@ -21,16 +21,18 @@ pub enum Arch {
 
 pub struct Preferences {
 pub mut:
-	debug           bool
-	verbose         bool
-	skip_genv       bool
-	skip_builtin    bool
-	skip_imports    bool
-	skip_type_check bool // Skip type checking phase (for backends that don't need it yet)
-	no_parallel     bool = true // default to sequential parsing until parallel is fixed
-	backend         Backend
-	arch            Arch = .auto
-	output_file     string
+	debug                 bool
+	verbose               bool
+	skip_genv             bool
+	skip_builtin          bool
+	skip_imports          bool
+	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
+	no_parallel           bool = true // default to sequential parsing until parallel is fixed
+	keep_c                bool // Keep generated C file after compilation
+	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
+	backend               Backend
+	arch                  Arch = .auto
+	output_file           string
 pub:
 	vroot         string = os.dir(@VEXE)
 	vmodules_path string = os.vmodules_dir()
@@ -70,16 +72,18 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	// Default to sequential parsing (no_parallel=true) unless --parallel is specified
 	use_parallel := '--parallel' in options
 	return Preferences{
-		debug:           '--debug' in options || '-d' in options
-		verbose:         '--verbose' in options || '-v' in options
-		skip_genv:       '--skip-genv' in options
-		skip_builtin:    '--skip-builtin' in options
-		skip_imports:    '--skip-imports' in options
-		skip_type_check: '--skip-type-check' in options
-		no_parallel:     !use_parallel
-		backend:         backend
-		arch:            arch
-		output_file:     output_file
+		debug:                 '--debug' in options || '-d' in options
+		verbose:               '--verbose' in options || '-v' in options
+		skip_genv:             '--skip-genv' in options
+		skip_builtin:          '--skip-builtin' in options
+		skip_imports:          '--skip-imports' in options
+		skip_type_check:       '--skip-type-check' in options
+		no_parallel:           !use_parallel
+		keep_c:                '-keepc' in options
+		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		backend:               backend
+		arch:                  arch
+		output_file:           output_file
 	}
 }
 
@@ -107,15 +111,16 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	use_parallel := '--parallel' in options
 	return Preferences{
 		// config flags
-		debug:           '--debug' in options || '-d' in options
-		verbose:         '--verbose' in options || '-v' in options
-		skip_genv:       '--skip-genv' in options
-		skip_builtin:    '--skip-builtin' in options
-		skip_imports:    '--skip-imports' in options
-		skip_type_check: '--skip-type-check' in options
-		no_parallel:     !use_parallel
-		backend:         backend
-		arch:            arch
+		debug:                 '--debug' in options || '-d' in options
+		verbose:               '--verbose' in options || '-v' in options
+		skip_genv:             '--skip-genv' in options
+		skip_builtin:          '--skip-builtin' in options
+		skip_imports:          '--skip-imports' in options
+		skip_type_check:       '--skip-type-check' in options
+		no_parallel:           !use_parallel
+		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		backend:               backend
+		arch:                  arch
 	}
 }
 

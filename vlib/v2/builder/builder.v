@@ -13,7 +13,7 @@ import v2.pref
 import v2.ssa
 import v2.ssa.optimize
 import v2.token
-import v2.transform
+import v2.transformer
 import v2.types
 import time
 
@@ -43,6 +43,7 @@ pub fn (mut b Builder) build(files []string) {
 		b.parse_files_parallel(files)
 	}
 	parse_time := sw.elapsed()
+	print_time('Scan & Parse', parse_time)
 
 	b.env = if b.pref.skip_type_check {
 		types.Environment.new()
@@ -52,6 +53,14 @@ pub fn (mut b Builder) build(files []string) {
 		b.type_check_files_parallel()
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
+	print_time('Type Check', type_check_time)
+
+	// Transform AST (flag enum desugaring, etc.)
+	transform_start := sw.elapsed()
+	mut trans := transformer.Transformer.new(b.files, b.env)
+	b.files = trans.transform_files(b.files)
+	transform_time := time.Duration(sw.elapsed() - transform_start)
+	print_time('Transform', transform_time)
 
 	// Generate output based on backend
 	match b.pref.backend {
@@ -71,15 +80,7 @@ pub fn (mut b Builder) build(files []string) {
 		}
 	}
 
-	gen_time := time.Duration(sw.elapsed() - parse_time - type_check_time)
-	total_time := sw.elapsed()
-
-	if b.pref.verbose {
-		print_time('Scan & Parse', parse_time)
-		print_time('Type Check', type_check_time)
-		print_time('Gen', gen_time)
-		print_time('Total', total_time)
-	}
+	print_time('Total', sw.elapsed())
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -95,9 +96,11 @@ fn (mut b Builder) gen_v_files() {
 fn (mut b Builder) gen_cleanc() {
 	// Clean C Backend (AST -> C)
 	// Pass all files to cleanc - it will handle filtering system types
+	mut sw := time.new_stopwatch()
 
-	mut gen := cleanc.Gen.new_with_env(b.files, b.env)
+	mut gen := cleanc.Gen.new_with_env_and_pref(b.files, b.env, b.pref)
 	c_source := gen.gen()
+	print_time('C Gen', sw.elapsed())
 
 	// Determine output name
 	output_name := if b.pref.output_file != '' {
@@ -111,21 +114,27 @@ fn (mut b Builder) gen_cleanc() {
 	// If output ends with .c, just write the C file
 	if output_name.ends_with('.c') {
 		os.write_file(output_name, c_source) or { panic(err) }
-		if b.pref.verbose {
-			println('[*] Wrote ${output_name}')
-		}
+		println('[*] Wrote ${output_name}')
 	} else {
 		// Write to temp .c file, compile to binary, then clean up
 		c_file := output_name + '.c'
 		os.write_file(c_file, c_source) or { panic(err) }
-
-		if b.pref.verbose {
-			println('[*] Wrote ${c_file}')
-		}
+		println('[*] Wrote ${c_file}')
 
 		// Compile C to binary
-		cc := os.getenv_opt('CC') or { 'cc' }
-		compile_result := os.execute('${cc} -w ${c_file} -o ${output_name} -ferror-limit=0')
+		cc_start := sw.elapsed()
+		cc := os.getenv_opt('V2CC') or { 'cc' }
+		cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
+		version_res := os.execute('${cc} --version')
+		mut error_limit_flag := ''
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			error_limit_flag = ' -ferror-limit=0'
+		}
+		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name}${error_limit_flag}'
+		if os.getenv('V2VERBOSE') != '' {
+			dump(cc_cmd)
+		}
+		compile_result := os.execute(cc_cmd)
 		if compile_result.exit_code != 0 {
 			eprintln('C compilation failed:')
 			lines := compile_result.output.split_into_lines()
@@ -146,13 +155,14 @@ fn (mut b Builder) gen_cleanc() {
 			eprintln('Total: ${warning_count} warnings and ${error_count} errors')
 			exit(1)
 		}
+		print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
-		if b.pref.verbose {
-			println('[*] Compiled ${output_name}')
+		println('[*] Compiled ${output_name}')
+
+		// Clean up C file unless -keepc is specified
+		if !b.pref.keep_c {
+			os.rm(c_file) or {}
 		}
-
-		// Clean up temp C file
-		os.rm(c_file) or {}
 	}
 }
 
@@ -162,15 +172,9 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	// Build all files into a single SSA module
 	mut mod := ssa.Module.new('main')
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
-	mut t := transform.Transformer.new()
 
-	// Transform all files first
-	mut transformed_files := []ast.File{}
-	for file in b.files {
-		transformed_files << t.transform(file)
-	}
 	// Build all files together with proper multi-file ordering
-	ssa_builder.build_all(transformed_files)
+	ssa_builder.build_all(b.files)
 	optimize.optimize(mut mod)
 	$if debug {
 		optimize.verify_and_panic(mod, 'full optimization')
@@ -244,5 +248,5 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 }
 
 fn print_time(title string, time_d time.Duration) {
-	println(' * ${title}: ${time_d.milliseconds()}ms (${time_d.microseconds()}µs)')
+	println(' * ${title}: ${time_d.milliseconds()}ms')
 }

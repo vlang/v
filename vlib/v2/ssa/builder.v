@@ -66,6 +66,9 @@ mut:
 
 	// Enum type names for cast detection
 	enum_names map[string]bool
+
+	// Flag enum type names for shorthand resolution
+	flag_enum_names map[string]bool
 }
 
 struct LoopInfo {
@@ -97,6 +100,7 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 		fn_ptr_fields:        map[string]bool{}
 		type_alias_bases:     map[string]string{}
 		enum_names:           map[string]bool{}
+		flag_enum_names:      map[string]bool{}
 	}
 	unsafe {
 		b.env = env
@@ -456,11 +460,33 @@ fn (b Builder) get_receiver_type_name(typ ast.Expr) string {
 	return ''
 }
 
+// register_builtin_types registers built-in types like string that aren't
+// declared as structs in source but need SSA struct type representations.
+fn (mut b Builder) register_builtin_types() {
+	// Register string struct type: { str &u8, len int, is_lit int }
+	// This is 24 bytes on 64-bit: 8 (ptr) + 8 (int) + 8 (int)
+	if _ := b.struct_types['string'] {
+		return
+	}
+	i64_t := b.mod.type_store.get_int(64)
+	i8_t := b.mod.type_store.get_int(8)
+	ptr_t := b.mod.type_store.get_ptr(i8_t)
+	string_id := b.mod.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [ptr_t, i64_t, i64_t]
+		field_names: ['str', 'len', 'is_lit']
+	})
+	b.struct_types['string'] = string_id
+}
+
 // build_all processes multiple files with proper multi-file ordering:
 // 1. Register all types from all files first
 // 2. Register all function signatures from all files
 // 3. Generate all function bodies
 pub fn (mut b Builder) build_all(files []ast.File) {
+	// Phase 0: Register built-in types (string, etc.)
+	b.register_builtin_types()
+
 	// Phase 1: Register all types from all files
 	for file in files {
 		b.cur_module = file.mod
@@ -541,9 +567,18 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 			}
 
 			// Map parameter types from declarations
+			// For struct types (like string), pass as pointers to match ARM64 ABI
+			// where large structs (>16 bytes) are passed by reference
 			for param in stmt.typ.params {
 				param_type := b.ast_type_to_ssa(param.typ)
-				param_types << param_type
+				// Check if this is a struct type that should be passed by reference
+				type_info := b.mod.type_store.types[param_type]
+				if type_info.kind == .struct_t {
+					// Struct types are passed as pointers
+					param_types << b.mod.type_store.get_ptr(param_type)
+				} else {
+					param_types << param_type
+				}
 			}
 
 			// Create Function Skeleton
@@ -558,21 +593,22 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 				}
 				if receiver_type_name != '' {
 					// Mangle operator names to valid symbol names
+					// Note: use single word names since we already add '__' separator below
 					method_name := match stmt.name {
-						'+' { '__plus' }
-						'-' { '__minus' }
-						'*' { '__mul' }
-						'/' { '__div' }
-						'%' { '__mod' }
-						'==' { '__eq' }
-						'!=' { '__ne' }
-						'<' { '__lt' }
-						'>' { '__gt' }
-						'<=' { '__le' }
-						'>=' { '__ge' }
+						'+' { 'plus' }
+						'-' { 'minus' }
+						'*' { 'mul' }
+						'/' { 'div' }
+						'%' { 'mod' }
+						'==' { 'eq' }
+						'!=' { 'ne' }
+						'<' { 'lt' }
+						'>' { 'gt' }
+						'<=' { 'le' }
+						'>=' { 'ge' }
 						else { stmt.name }
 					}
-					fn_name = '${receiver_type_name}${method_name}'
+					fn_name = '${receiver_type_name}__${method_name}'
 					// Track methods per type for vtable generation
 					if receiver_type_name !in b.type_methods {
 						b.type_methods[receiver_type_name] = []string{}
@@ -612,21 +648,22 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 				}
 				if receiver_type_name != '' {
 					// Mangle operator names to valid symbol names
+					// Note: use single word names since we already add '__' separator below
 					method_name := match stmt.name {
-						'+' { '__plus' }
-						'-' { '__minus' }
-						'*' { '__mul' }
-						'/' { '__div' }
-						'%' { '__mod' }
-						'==' { '__eq' }
-						'!=' { '__ne' }
-						'<' { '__lt' }
-						'>' { '__gt' }
-						'<=' { '__le' }
-						'>=' { '__ge' }
+						'+' { 'plus' }
+						'-' { 'minus' }
+						'*' { 'mul' }
+						'/' { 'div' }
+						'%' { 'mod' }
+						'==' { 'eq' }
+						'!=' { 'ne' }
+						'<' { 'lt' }
+						'>' { 'gt' }
+						'<=' { 'le' }
+						'>=' { 'ge' }
 						else { stmt.name }
 					}
-					fn_name = '${receiver_type_name}${method_name}'
+					fn_name = '${receiver_type_name}__${method_name}'
 				}
 			}
 			// Find function by name
@@ -665,10 +702,10 @@ fn (b &Builder) find_function(name string) int {
 fn (b &Builder) infer_receiver_type(method_name string) string {
 	// Search registered functions for a matching method
 	for f in b.mod.funcs {
-		// Check if function name matches pattern: TypeName_methodName
-		if f.name.ends_with('_${method_name}') {
-			// Extract type name (everything before _methodName)
-			type_name := f.name.all_before_last('_${method_name}')
+		// Check if function name matches pattern: TypeName__methodName (double underscore)
+		if f.name.ends_with('__${method_name}') {
+			// Extract type name (everything before __methodName)
+			type_name := f.name.all_before_last('__${method_name}')
 			if type_name != '' {
 				return type_name
 			}
@@ -680,7 +717,50 @@ fn (b &Builder) infer_receiver_type(method_name string) string {
 // generate_flag_enum_has generates the has() method for flag enums
 // The method checks if a flag is set: (self & flag) != 0
 fn (mut b Builder) generate_flag_enum_has(enum_name string, field_type TypeID) {
-	fn_name := '${enum_name}_has'
+	fn_name := '${enum_name}__has'
+
+	// Create function with bool return type
+	bool_t := b.mod.type_store.get_int(1)
+	fn_id := b.mod.new_function(fn_name, bool_t, [field_type, field_type])
+
+	b.cur_func = fn_id
+	b.vars.clear()
+	b.var_struct_types.clear()
+	b.var_types.clear()
+
+	// Create entry block
+	entry := b.mod.add_block(fn_id, 'entry')
+	b.cur_block = entry
+
+	// Parameters: self (receiver), flag (argument)
+	self_param := b.mod.add_value_node(.argument, field_type, 'self', 0)
+	b.mod.funcs[fn_id].params << self_param
+	b.vars['self'] = self_param
+
+	flag_param := b.mod.add_value_node(.argument, field_type, 'flag', 1)
+	b.mod.funcs[fn_id].params << flag_param
+	b.vars['flag'] = flag_param
+
+	eprintln('  after adding params: ${b.mod.funcs[fn_id].params.len}')
+
+	// Compute: self & flag
+	and_result := b.mod.add_instr(.and_, b.cur_block, field_type, [self_param, flag_param])
+
+	// Compare: (self & flag) != 0
+	zero := b.mod.add_value_node(.constant, field_type, '0', 0)
+	cmp_result := b.mod.add_instr(.ne, b.cur_block, bool_t, [and_result, zero])
+
+	// Return
+	b.mod.add_instr(.ret, b.cur_block, 0, [cmp_result])
+
+	// Track return type
+	b.func_ret_types[fn_name] = bool_t
+}
+
+// generate_flag_enum_all generates the all() method for flag enums
+// The method checks if all flags are set: (self & flags) == flags
+fn (mut b Builder) generate_flag_enum_all(enum_name string, field_type TypeID) {
+	fn_name := '${enum_name}__all'
 
 	// Create function with bool return type
 	bool_t := b.mod.type_store.get_int(1)
@@ -694,19 +774,20 @@ fn (mut b Builder) generate_flag_enum_has(enum_name string, field_type TypeID) {
 	entry := b.mod.add_block(fn_id, 'entry')
 	b.cur_block = entry
 
-	// Parameters: self (receiver), flag (argument)
+	// Parameters: self (receiver), flags (argument)
 	self_param := b.mod.add_value_node(.argument, field_type, 'self', 0)
+	b.mod.funcs[fn_id].params << self_param
 	b.vars['self'] = self_param
 
-	flag_param := b.mod.add_value_node(.argument, field_type, 'flag', 1)
-	b.vars['flag'] = flag_param
+	flags_param := b.mod.add_value_node(.argument, field_type, 'flags', 1)
+	b.mod.funcs[fn_id].params << flags_param
+	b.vars['flags'] = flags_param
 
-	// Compute: self & flag
-	and_result := b.mod.add_instr(.and_, b.cur_block, field_type, [self_param, flag_param])
+	// Compute: self & flags
+	and_result := b.mod.add_instr(.and_, b.cur_block, field_type, [self_param, flags_param])
 
-	// Compare: (self & flag) != 0
-	zero := b.mod.add_value_node(.constant, field_type, '0', 0)
-	cmp_result := b.mod.add_instr(.ne, b.cur_block, bool_t, [and_result, zero])
+	// Compare: (self & flags) == flags
+	cmp_result := b.mod.add_instr(.eq, b.cur_block, bool_t, [and_result, flags_param])
 
 	// Return
 	b.mod.add_instr(.ret, b.cur_block, 0, [cmp_result])
@@ -1203,6 +1284,18 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 								b.var_struct_types[name] = rhs_expr.lhs.name
 							}
 						}
+					} else if rhs_expr is ast.InfixExpr {
+						// Track enum type for flag enum combinations (e.g., perms := Permissions.read | Permissions.write)
+						// Check if LHS of the binary op is an enum selector
+						if rhs_expr.lhs is ast.SelectorExpr {
+							sel := rhs_expr.lhs
+							if sel.lhs is ast.Ident {
+								enum_name := '${sel.lhs.name}__${sel.rhs.name}'
+								if enum_name in b.enum_values {
+									b.var_struct_types[name] = sel.lhs.name
+								}
+							}
+						}
 					} else if rhs_expr is ast.ArrayInitExpr {
 						// Track array size for for-in loops
 						mut arr_size := rhs_expr.exprs.len
@@ -1488,9 +1581,9 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				}
 			}
 
-			// For flag enums, generate the has() method
+			// Track flag enum names (has/all calls are fully desugared by transformer)
 			if is_flag_enum {
-				b.generate_flag_enum_has(node.name, field_type)
+				b.flag_enum_names[node.name] = true
 			}
 		}
 		ast.LabelStmt {
@@ -1616,6 +1709,11 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 
 			// Continue in pass block
 			b.cur_block = pass_blk
+		}
+		ast.ComptimeStmt {
+			// Comptime statement wrapper - just process the inner statement
+			// The comptime evaluation happens when parsing the $if/$else structure
+			b.stmt(node.stmt)
 		}
 		else {
 			// println('Builder: Unhandled stmt ${node.type_name()}')
@@ -2162,6 +2260,9 @@ fn (mut b Builder) expr_infix(node ast.InfixExpr) ValueID {
 		right := b.expr(node.rhs)
 		return b.mod.add_instr(.or_, b.cur_block, bool_t, [left, right])
 	}
+
+	// Note: String concatenation (str1 + str2 -> string_plus, s1 + s2 + s3 -> string_plus_two)
+	// is fully desugared by the transformer
 
 	mut left := b.expr(node.lhs)
 	mut right := b.expr(node.rhs)
@@ -2779,12 +2880,10 @@ fn (mut b Builder) expr_match(node ast.MatchExpr) ValueID {
 }
 
 fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
-	// Resolve Args
+	// Resolve Function Name first to detect flag enum methods
+	// Arguments are resolved after we know if we need to set cur_match_type
 	mut args := []ValueID{}
-	for arg in node.args {
-		args << b.expr(arg)
-	}
-	// Resolve Function Name
+	mut flag_enum_receiver_type := ''
 	mut name := ''
 	mut is_method_call := false
 	mut receiver_val := ValueID(0)
@@ -2851,7 +2950,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 					// Look up the concrete type for this interface variable
 					if concrete_type := b.iface_concrete_types[receiver_name] {
 						// Use direct call with the concrete type
-						name = '${concrete_type}_${method_name}'
+						name = '${concrete_type}__${method_name}'
 						is_method_call = true
 
 						// The interface value is just a pointer to the boxed object
@@ -2872,21 +2971,25 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 					}
 					// Mangle operator names to valid symbol names
 					mangled_method := match method_name {
-						'+' { '__plus' }
-						'-' { '__minus' }
-						'*' { '__mul' }
-						'/' { '__div' }
-						'%' { '__mod' }
-						'==' { '__eq' }
-						'!=' { '__ne' }
-						'<' { '__lt' }
-						'>' { '__gt' }
-						'<=' { '__le' }
-						'>=' { '__ge' }
+						'+' { 'plus' }
+						'-' { 'minus' }
+						'*' { 'mul' }
+						'/' { 'div' }
+						'%' { 'mod' }
+						'==' { 'eq' }
+						'!=' { 'ne' }
+						'<' { 'lt' }
+						'>' { 'gt' }
+						'<=' { 'le' }
+						'>=' { 'ge' }
 						else { method_name }
 					}
-					name = '${mangled_type}${mangled_method}'
+					name = '${mangled_type}__${mangled_method}'
 					is_method_call = true
+					// Check if this is a flag enum method
+					if mangled_type in b.flag_enum_names && mangled_method in ['has', 'all'] {
+						flag_enum_receiver_type = mangled_type
+					}
 					// Get the receiver - need to load the struct pointer from the variable
 					// b.vars stores Ptr(Ptr(struct)), we need Ptr(struct)
 					var_ptr := b.addr(lhs.lhs)
@@ -2898,26 +3001,77 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 				}
 			} else {
 				// Unknown receiver type - try to infer from registered functions
-				inferred_type := b.infer_receiver_type(method_name)
+				// Mangle operator names to valid symbol names first
+				mangled_method_name := match method_name {
+					'+' { 'plus' }
+					'-' { 'minus' }
+					'*' { 'mul' }
+					'/' { 'div' }
+					'%' { 'mod' }
+					'==' { 'eq' }
+					'!=' { 'ne' }
+					'<' { 'lt' }
+					'>' { 'gt' }
+					'<=' { 'le' }
+					'>=' { 'ge' }
+					else { method_name }
+				}
+				inferred_type := b.infer_receiver_type(mangled_method_name)
 				if inferred_type != '' {
-					name = '${inferred_type}_${method_name}'
+					name = '${inferred_type}__${mangled_method_name}'
+					// Check if this is a flag enum method
+					if inferred_type in b.flag_enum_names && mangled_method_name in ['has', 'all'] {
+						flag_enum_receiver_type = inferred_type
+					}
 				} else {
 					eprintln('WARN: Method ${method_name} on ${receiver_name} - type not found')
-					name = method_name
+					name = mangled_method_name
 				}
 			}
 		} else {
 			// Complex expression as receiver - try to infer type from method name
 			mname := lhs.rhs.name
-			inferred_type := b.infer_receiver_type(mname)
+			// Mangle operator names to valid symbol names
+			mangled_mname := match mname {
+				'+' { 'plus' }
+				'-' { 'minus' }
+				'*' { 'mul' }
+				'/' { 'div' }
+				'%' { 'mod' }
+				'==' { 'eq' }
+				'!=' { 'ne' }
+				'<' { 'lt' }
+				'>' { 'gt' }
+				'<=' { 'le' }
+				'>=' { 'ge' }
+				else { mname }
+			}
+			inferred_type := b.infer_receiver_type(mangled_mname)
 			if inferred_type != '' {
-				name = '${inferred_type}_${mname}'
+				name = '${inferred_type}__${mangled_mname}'
+				// Check if this is a flag enum method
+				if inferred_type in b.flag_enum_names && mangled_mname in ['has', 'all'] {
+					flag_enum_receiver_type = inferred_type
+				}
 			} else {
 				eprintln('WARN: Method ${mname} on complex expression - inference failed')
-				name = mname
+				name = mangled_mname
 			}
+			// Generate receiver value for complex expression
+			receiver_val = b.expr(lhs.lhs)
+			is_method_call = true
 		}
 	}
+
+	// Now resolve arguments with proper enum context for flag enum methods
+	old_match_type := b.cur_match_type
+	if flag_enum_receiver_type != '' {
+		b.cur_match_type = flag_enum_receiver_type
+	}
+	for arg in node.args {
+		args << b.expr(arg)
+	}
+	b.cur_match_type = old_match_type
 
 	// For method calls, prepend receiver as first argument
 	if is_method_call && receiver_val != 0 {
@@ -3121,8 +3275,10 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 	}
 
 	// Handle ambiguous calls like print_int(1111)
+	// Note: We defer argument evaluation until we know if this is a flag enum method
+	// so we can set cur_match_type for enum shorthand resolution
 	mut args := []ValueID{}
-	args << b.expr(node.expr)
+	mut flag_enum_receiver_type := ''
 
 	mut name := ''
 	mut is_method_call := false
@@ -3175,9 +3331,11 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 							field_ptr,
 						])
 
-						// Prepend function pointer as first operand for indirect call
-						args.prepend(fn_ptr)
-						return b.mod.add_instr(.call_indirect, b.cur_block, i32_t, args)
+						// Evaluate argument and prepend function pointer as first operand for indirect call
+						mut fn_args := []ValueID{}
+						fn_args << b.expr(node.expr)
+						fn_args.prepend(fn_ptr)
+						return b.mod.add_instr(.call_indirect, b.cur_block, i32_t, fn_args)
 					}
 				}
 				// Regular method call - mangle the name
@@ -3187,8 +3345,12 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 				} else {
 					struct_type_name
 				}
-				name = '${mangled_type}_${method_name}'
+				name = '${mangled_type}__${method_name}'
 				is_method_call = true
+				// Check if this is a flag enum method
+				if mangled_type in b.flag_enum_names && method_name in ['has', 'all'] {
+					flag_enum_receiver_type = mangled_type
+				}
 				// Get the receiver - need to load the struct pointer from the variable
 				var_ptr := b.addr(node.lhs.lhs)
 				ptr_typ := b.mod.values[var_ptr].typ
@@ -3196,23 +3358,74 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 				receiver_val = b.mod.add_instr(.load, b.cur_block, elem_typ, [var_ptr])
 			} else {
 				// Unknown receiver type - try to infer from registered functions
-				inferred_type := b.infer_receiver_type(method_name)
+				// Mangle operator names to valid symbol names first
+				mangled_method := match method_name {
+					'+' { 'plus' }
+					'-' { 'minus' }
+					'*' { 'mul' }
+					'/' { 'div' }
+					'%' { 'mod' }
+					'==' { 'eq' }
+					'!=' { 'ne' }
+					'<' { 'lt' }
+					'>' { 'gt' }
+					'<=' { 'le' }
+					'>=' { 'ge' }
+					else { method_name }
+				}
+				inferred_type := b.infer_receiver_type(mangled_method)
 				if inferred_type != '' {
-					name = '${inferred_type}_${method_name}'
+					name = '${inferred_type}__${mangled_method}'
+					// Check if this is a flag enum method - SET cur_match_type
+					if inferred_type in b.flag_enum_names && mangled_method in ['has', 'all'] {
+						flag_enum_receiver_type = inferred_type
+					}
 				} else {
-					name = method_name
+					name = mangled_method
 				}
 			}
 		} else {
 			// Complex expression as receiver - try to infer type from method name
-			inferred_type := b.infer_receiver_type(node.lhs.rhs.name)
-			if inferred_type != '' {
-				name = '${inferred_type}_${node.lhs.rhs.name}'
-			} else {
-				name = node.lhs.rhs.name
+			mname := node.lhs.rhs.name
+			// Mangle operator names to valid symbol names
+			mangled_mname := match mname {
+				'+' { 'plus' }
+				'-' { 'minus' }
+				'*' { 'mul' }
+				'/' { 'div' }
+				'%' { 'mod' }
+				'==' { 'eq' }
+				'!=' { 'ne' }
+				'<' { 'lt' }
+				'>' { 'gt' }
+				'<=' { 'le' }
+				'>=' { 'ge' }
+				else { mname }
 			}
+			inferred_type := b.infer_receiver_type(mangled_mname)
+			if inferred_type != '' {
+				name = '${inferred_type}__${mangled_mname}'
+				// Check if this is a flag enum method
+				if inferred_type in b.flag_enum_names && mangled_mname in ['has', 'all'] {
+					flag_enum_receiver_type = inferred_type
+				}
+			} else {
+				name = mangled_mname
+			}
+			// Generate receiver and set it for method call
+			receiver_val = b.expr(node.lhs.lhs)
+			is_method_call = true
 		}
 	}
+
+	// For flag enum methods, set cur_match_type for enum shorthand resolution
+	old_match_type := b.cur_match_type
+	if flag_enum_receiver_type != '' {
+		b.cur_match_type = flag_enum_receiver_type
+	}
+	// Now evaluate the argument with proper enum context
+	args << b.expr(node.expr)
+	b.cur_match_type = old_match_type
 
 	// For method calls, prepend receiver as first argument
 	if is_method_call && receiver_val != 0 {
