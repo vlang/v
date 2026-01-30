@@ -455,9 +455,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if left.unaliased_sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
-		if !g.pref.new_generic_solver {
-			method_name = g.generic_fn_name(concrete_types, method_name)
-		}
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write2('(', '*'.repeat(left.typ.nr_muls()))
@@ -970,9 +968,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	right := g.unwrap(g.type_resolver.get_type_or_default(node.right, node.right_type))
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		if !g.pref.new_generic_solver {
-			method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
-		}
+		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
 		if left.sym.is_builtin() {
 			method_name = 'builtin__${method_name}'
 		}
@@ -999,7 +995,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 				method_name = 'builtin__${method_name}'
 			}
 			if left.unaliased_sym.info is ast.Struct
-				&& left.unaliased_sym.info.generic_types.len > 0 && !g.pref.new_generic_solver {
+				&& left.unaliased_sym.info.generic_types.len > 0 {
 				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
 					method_name)
 			}
@@ -1265,56 +1261,25 @@ struct VSafeArithmeticOp {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	mut left_type := node.left_type
-	mut right_type := node.right_type
-	mut promoted := node.promoted_type
-	// With -new-generic-solver, the solver creates concrete copies of generic
-	// functions but the checker may have baked types from a different concrete
-	// instantiation into left_type/right_type/promoted_type (losing the .generic
-	// flag). Use the resolved expression types as a more reliable source.
-	if g.pref.new_generic_solver {
-		expr_left_type := node.left.type()
-		if expr_left_type != ast.void_type && !expr_left_type.has_flag(.generic)
-			&& expr_left_type.is_number() {
-			left_type = expr_left_type
-		}
-		expr_right_type := node.right.type()
-		if expr_right_type != ast.void_type && !expr_right_type.has_flag(.generic)
-			&& expr_right_type.is_number() {
-			right_type = expr_right_type
-		}
-		// Use the wider of the two types as promoted type
-		if left_type == right_type {
-			promoted = left_type
-		} else if left_type.is_float() && !right_type.is_float() {
-			promoted = left_type
-		} else if right_type.is_float() && !left_type.is_float() {
-			promoted = right_type
-		} else if left_type.idx() > right_type.idx() {
-			promoted = left_type
-		} else {
-			promoted = right_type
-		}
-	}
-	needs_cast := left_type.is_number() && right_type.is_number()
+	needs_cast := node.left_type.is_number() && node.right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
-	mut typ := promoted
+	mut typ := node.promoted_type
 	mut typ_str := g.styp(typ)
 	if needs_cast {
 		typ = if node.left_ct_expr {
-			g.type_resolver.get_type_or_default(node.left, left_type)
+			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
-			g.type_resolver.get_type_or_default(node.right, promoted)
+			g.type_resolver.get_type_or_default(node.right, node.promoted_type)
 		} else {
-			promoted
+			node.promoted_type
 		}
 		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
 	// do not use promoted_type for overflow detect
-	ov_left_type := g.unwrap_generic(left_type)
-	checkoverflow_op := g.do_int_overflow_checks && ov_left_type.is_int()
+	left_type := g.unwrap_generic(node.left_type)
+	checkoverflow_op := g.do_int_overflow_checks && left_type.is_int()
 	is_safe_add := checkoverflow_op && node.op == .plus
 	is_safe_sub := checkoverflow_op && node.op == .minus
 	is_safe_mul := checkoverflow_op && node.op == .mul
@@ -1340,7 +1305,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	mut opstr := node.op.str()
 	if is_safe_add || is_safe_sub || is_safe_mul || is_safe_div || is_safe_mod {
-		overflow_styp := g.styp(get_overflow_fn_type(ov_left_type))
+		overflow_styp := g.styp(get_overflow_fn_type(left_type))
 		vsafe_fn_name := match true {
 			is_safe_add { 'builtin__overflow__add_${overflow_styp}' }
 			is_safe_sub { 'builtin__overflow__sub_${overflow_styp}' }

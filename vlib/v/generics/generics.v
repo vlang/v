@@ -522,8 +522,9 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 		// look them up when generating the function definition with the
 		// correct name suffix.
 		if is_op_method && new_node.is_method {
-			g.table.register_fn_generic_types(new_node.fkey())
-			g.table.register_fn_concrete_types(new_node.fkey(), concrete_types)
+			fk := new_node.fkey()
+			g.table.register_fn_generic_types(fk)
+			g.table.register_fn_concrete_types(fk, concrete_types)
 		}
 		if new_node.is_method {
 			mut sym := g.table.sym(new_node.receiver.typ)
@@ -966,7 +967,7 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 						&& !expr_right_type.has_flag(.option) {
 						right_type = expr_right_type
 					}
-					promoted_type = g.promote_num(left_type, right_type)
+					promoted_type = ast.promote_num(left_type, right_type)
 				}
 				return ast.Expr(ast.InfixExpr{
 					...node
@@ -1309,55 +1310,4 @@ fn (mut g Generics) unwrap_generic(typ ast.Type) ast.Type {
 		}
 	}
 	return typ
-}
-
-// promote_num returns the promoted type for two numeric operands,
-// mirroring the checker's promote_num logic.
-fn (g &Generics) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
-	if left_type == right_type {
-		return left_type
-	}
-	mut type_hi := left_type
-	mut type_lo := right_type
-	if type_hi.idx() < type_lo.idx() {
-		type_hi, type_lo = type_lo, type_hi
-	}
-	idx_hi := type_hi.idx()
-	idx_lo := type_lo.idx()
-	if idx_hi == ast.int_literal_type_idx {
-		return type_lo
-	} else if idx_hi == ast.float_literal_type_idx {
-		if idx_lo in ast.float_type_idxs {
-			return type_lo
-		} else {
-			return ast.void_type
-		}
-	} else if type_hi.is_float() {
-		if idx_hi == ast.f32_type_idx {
-			if idx_lo in [ast.i64_type_idx, ast.u64_type_idx] {
-				return ast.void_type
-			} else {
-				return type_hi
-			}
-		} else {
-			return type_hi
-		}
-	} else if idx_lo >= ast.u8_type_idx { // both unsigned
-		return type_hi
-	} else if idx_lo >= ast.i8_type_idx
-		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
-		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
-		return type_lo
-	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
-		return type_lo
-	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
-		return type_lo
-	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
-		return type_lo
-	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
-		return type_lo
-	} else {
-		return ast.void_type
-	}
 }
