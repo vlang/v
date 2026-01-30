@@ -1647,9 +1647,18 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl, file_module string) {
 		if !g.is_simple_literal(field.value) {
 			continue
 		}
-		g.sb.write_string('const ${t} ${mangled_name} = ')
-		g.gen_expr(field.value)
-		g.sb.writeln(';')
+		// Use enum for integer types to support TCC's stricter const requirements
+		// enum values are compile-time constants without the text substitution issues of #define
+		if t in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte', 'rune', 'usize',
+			'isize'] {
+			g.sb.write_string('enum { ${mangled_name} = ')
+			g.gen_expr(field.value)
+			g.sb.writeln(' };')
+		} else {
+			g.sb.write_string('const ${t} ${mangled_name} = ')
+			g.gen_expr(field.value)
+			g.sb.writeln(';')
+		}
 	}
 }
 
