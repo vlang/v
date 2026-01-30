@@ -98,7 +98,7 @@ fn (mut b Builder) gen_cleanc() {
 	// Pass all files to cleanc - it will handle filtering system types
 	mut sw := time.new_stopwatch()
 
-	mut gen := cleanc.Gen.new_with_env(b.files, b.env)
+	mut gen := cleanc.Gen.new_with_env_and_pref(b.files, b.env, b.pref)
 	c_source := gen.gen()
 	print_time('C Gen', sw.elapsed())
 

@@ -5,6 +5,7 @@
 module cleanc
 
 import v2.ast
+import v2.pref
 import v2.token
 import v2.types
 import strings
@@ -12,7 +13,8 @@ import strings
 pub struct Gen {
 	files []ast.File
 	// Type checker environment with populated scopes
-	env &types.Environment = unsafe { nil }
+	env  &types.Environment = unsafe { nil }
+	pref &pref.Preferences  = unsafe { nil }
 mut:
 	sb                   strings.Builder
 	indent               int
@@ -54,13 +56,18 @@ mut:
 }
 
 pub fn Gen.new(files []ast.File) &Gen {
-	return Gen.new_with_env(files, unsafe { nil })
+	return Gen.new_with_env_and_pref(files, unsafe { nil }, unsafe { nil })
 }
 
 pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
+	return Gen.new_with_env_and_pref(files, env, unsafe { nil })
+}
+
+pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	mut g := &Gen{
 		files:           files
 		env:             unsafe { env }
+		pref:            unsafe { p }
 		sb:              strings.new_builder(4096)
 		fn_types:        map[string]string{}
 		fn_ret_counts:   map[string]int{}
@@ -422,6 +429,19 @@ pub fn (mut g Gen) gen() string {
 	// String free stub
 	g.sb.writeln('static inline void string__free(void* s) { (void)s; }')
 	g.sb.writeln('')
+	// Profiler allocator stub (when --profile-alloc is enabled)
+	if g.pref != unsafe { nil } && g.pref.use_context_allocator {
+		g.sb.writeln('// Profiler allocator support')
+		g.sb.writeln('// v2_profiler_alloc is a stub that can be replaced with actual profiler')
+		g.sb.writeln('// To enable full profiling, link with the v2 profiler library')
+		g.sb.writeln('static inline void* v2_profiler_alloc(size_t size) {')
+		g.sb.writeln('    return malloc(size);')
+		g.sb.writeln('}')
+		g.sb.writeln('static inline void v2_profiler_free(void* ptr) {')
+		g.sb.writeln('    free(ptr);')
+		g.sb.writeln('}')
+		g.sb.writeln('')
+	}
 	// Map function stubs as macros (to handle varying call signatures)
 	g.sb.writeln('#define map__hash_fn(...) ((u64)0)')
 	g.sb.writeln('#define map__key_eq_fn(...) (false)')
@@ -2017,6 +2037,17 @@ fn (mut g Gen) get_or_assign_type_id(type_name string) int {
 	return id
 }
 
+// gen_malloc generates either a direct malloc call or a context allocator call
+// depending on the use_context_allocator preference. This enables allocation profiling.
+fn (g &Gen) gen_malloc(type_name string) string {
+	if g.pref != unsafe { nil } && g.pref.use_context_allocator {
+		// Use context allocator for profiling support
+		return '(${type_name}*)v2_profiler_alloc(sizeof(${type_name}))'
+	}
+	// Default: direct malloc call
+	return '(${type_name}*)malloc(sizeof(${type_name}))'
+}
+
 fn (mut g Gen) gen_type_decl(node ast.TypeDecl) {
 	g.gen_type_decl_with_name(node, node.name)
 }
@@ -2396,7 +2427,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 							type_id := g.get_or_assign_type_id(concrete_type)
 							g.write_indent()
 							g.sb.write_string('return ({ ')
-							g.sb.write_string('${concrete_type}* _iface_obj = (${concrete_type}*)malloc(sizeof(${concrete_type})); ')
+							g.sb.write_string('${concrete_type}* _iface_obj = ${g.gen_malloc(concrete_type)}; ')
 							g.sb.write_string('*_iface_obj = (${concrete_type}){')
 							for i, field in init_expr.fields {
 								if i > 0 {
@@ -2685,7 +2716,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				init_expr := node.expr as ast.InitExpr
 				typ_name := g.expr_type_to_c(init_expr.typ)
 				// Use a compound literal approach - create on heap
-				g.sb.write_string('({ ${typ_name}* _tmp = (${typ_name}*)malloc(sizeof(${typ_name})); *_tmp = (${typ_name}){')
+				g.sb.write_string('({ ${typ_name}* _tmp = ${g.gen_malloc(typ_name)}; *_tmp = (${typ_name}){')
 				for i, field in init_expr.fields {
 					if i > 0 {
 						g.sb.write_string(', ')
@@ -3694,7 +3725,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					// Generate interface struct initialization with vtable
 					g.sb.write_string('({ ')
 					// Allocate heap memory for the object
-					g.sb.write_string('${concrete_type}* _iface_obj = (${concrete_type}*)malloc(sizeof(${concrete_type})); ')
+					g.sb.write_string('${concrete_type}* _iface_obj = ${g.gen_malloc(concrete_type)}; ')
 					g.sb.write_string('*_iface_obj = ')
 					g.gen_expr(node.expr)
 					g.sb.write_string('; ')
