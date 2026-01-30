@@ -123,10 +123,10 @@ fn (mut b Builder) gen_cleanc() {
 
 		// Compile C to binary
 		cc_start := sw.elapsed()
-		cc := os.getenv_opt('CC') or { 'cc' }
-		cc_flags := os.getenv_opt('CFLAGS') or { '' }
+		cc := os.getenv_opt('V2CC') or { 'cc' }
+		cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
 		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name} -ferror-limit=0'
-		if os.getenv('CVERBOSE') != '' {
+		if os.getenv('V2VERBOSE') != '' {
 			dump(cc_cmd)
 		}
 		compile_result := os.execute(cc_cmd)
