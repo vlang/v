@@ -53,14 +53,18 @@ fn test_new_generic_solver_does_not_regress_silently() {
 		expected_summary
 	}
 
-	if summary_lines.any(it.contains(actual_expected_summary)) {
-		eprintln('Could not find the actual_expected_summary in: ${summary_lines}')
-		eprintln('actual_expected_summary: ${actual_expected_summary}')
+	if !summary_lines.any(it.contains(actual_expected_summary)) {
+		eprintln('----------------------------------------------------------------')
+		eprintln('----------------------------------------------------------------')
 		eprintln('----------------------------------------------------------------')
 		for tline in res_lines {
 			eprintln('>>>>> tline: ${tline}')
 		}
 		eprintln('----------------------------------------------------------------')
+		eprintln('----------------------------------------------------------------')
+		eprintln('----------------------------------------------------------------')
+		eprintln('Could not find the actual_expected_summary in: ${summary_lines}')
+		eprintln('actual_expected_summary: ${actual_expected_summary}')
 		exit(1)
 	}
 	log.info('>>> Found the expected summary: ${expected_summary}, OK')
