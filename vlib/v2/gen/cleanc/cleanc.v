@@ -75,6 +75,9 @@ mut:
 	cur_sumtype_match_selector_lhs string                // For SelectorExpr: LHS ident (e.g., "se" for se.lhs)
 	cur_sumtype_match_selector_rhs string                // For SelectorExpr: RHS field (e.g., "lhs" for se.lhs)
 	cur_lambda_elem_type           string                // Element type for lambda `it` variable in filter/map/any
+	// For -printfn support
+	last_fn_c_name string // Current function's C name for -printfn
+	fn_start_pos   int    // Start position of current function in output buffer
 }
 
 pub fn Gen.new(files []ast.File) &Gen {
@@ -408,6 +411,34 @@ fn (g &Gen) get_struct_field_type_from_env(struct_name string, field_name string
 	return none
 }
 
+// lookup_method_return_type_from_env looks up a method's return type from the environment
+fn (g &Gen) lookup_method_return_type_from_env(type_name string, method_name string) ?string {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	if fn_type := g.env.lookup_method(type_name, method_name) {
+		if ret := fn_type.get_return_type() {
+			return g.types_type_to_c(ret)
+		}
+		return 'void'
+	}
+	return none
+}
+
+// lookup_fn_return_type_from_env looks up a function's return type from the environment
+fn (g &Gen) lookup_fn_return_type_from_env(module_name string, fn_name string) ?string {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	if fn_type := g.env.lookup_fn(module_name, fn_name) {
+		if ret := fn_type.get_return_type() {
+			return g.types_type_to_c(ret)
+		}
+		return 'void'
+	}
+	return none
+}
+
 // types_type_to_c converts a types.Type to a C type string
 fn (g &Gen) types_type_to_c(t types.Type) string {
 	match t {
@@ -442,7 +473,8 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 			return '${base}*'
 		}
 		types.Array {
-			return 'Array' // Arrays use generic Array struct
+			elem := g.types_type_to_c(t.elem_type)
+			return 'Array_${elem}'
 		}
 		types.Struct {
 			return t.name
@@ -1195,11 +1227,37 @@ pub fn (mut g Gen) gen() string {
 	// strings__Builder__free - Builder is a type alias for []u8, delegate to array__free
 	g.sb.writeln('static inline void strings__Builder__free(strings__Builder* b) { array__free((array*)b); }')
 	// array__contains_u8 - check if array contains element (for 'in' operator)
-	g.sb.writeln('static inline bool array__contains_u8(array* a, u8 v) { for (int i = 0; i < a->len; i++) { if (((u8*)a->data)[i] == v) return true; } return false; }')
+	g.sb.writeln('static inline bool array__contains_u8(array a, u8 v) { for (int i = 0; i < a.len; i++) { if (((u8*)a.data)[i] == v) return true; } return false; }')
 	// Forward declaration for string__eq (used by array__contains_string)
 	g.sb.writeln('bool string__eq(string s, string a);')
 	// array__contains_string - check if array contains string element
-	g.sb.writeln('static inline bool array__contains_string(array* a, string v) { for (int i = 0; i < a->len; i++) { if (string__eq(((string*)a->data)[i], v)) return true; } return false; }')
+	g.sb.writeln('static inline bool array__contains_string(array a, string v) { for (int i = 0; i < a.len; i++) { if (string__eq(((string*)a.data)[i], v)) return true; } return false; }')
+	// builtin__new_array_from_c_array_noscan - create array from C array literal
+	g.sb.writeln('static inline array builtin__new_array_from_c_array_noscan(int len, int cap, int elem_size, void* c_array) {')
+	g.sb.writeln('    array a = {0}; a.len = len; a.cap = cap; a.element_size = elem_size;')
+	g.sb.writeln('    if (len > 0) { a.data = malloc(cap * elem_size); if (a.data) memcpy(a.data, c_array, len * elem_size); }')
+	g.sb.writeln('    return a;')
+	g.sb.writeln('}')
+	// builtin__array_push_noscan - push element to array
+	g.sb.writeln('static inline void builtin__array_push_noscan(array* a, void* elem) {')
+	g.sb.writeln('    if (a->len >= a->cap) { a->cap = a->cap == 0 ? 8 : a->cap * 2; a->data = realloc(a->data, a->cap * a->element_size); }')
+	g.sb.writeln('    memcpy((char*)a->data + a->len * a->element_size, elem, a->element_size);')
+	g.sb.writeln('    a->len++;')
+	g.sb.writeln('}')
+	// builtin__array_push_many - push multiple elements from another array
+	g.sb.writeln('static inline void builtin__array_push_many(array* a, array b) {')
+	g.sb.writeln('    if (b.len == 0) return;')
+	g.sb.writeln('    int new_len = a->len + b.len;')
+	g.sb.writeln('    while (new_len > a->cap) { a->cap = a->cap == 0 ? 8 : a->cap * 2; }')
+	g.sb.writeln('    a->data = realloc(a->data, a->cap * a->element_size);')
+	g.sb.writeln('    memcpy((char*)a->data + a->len * a->element_size, b.data, b.len * a->element_size);')
+	g.sb.writeln('    a->len = new_len;')
+	g.sb.writeln('}')
+	// array__contains_* functions for common types (takes array by value)
+	g.sb.writeln('static inline bool array__contains_int(array a, int v) { for (int i = 0; i < a.len; i++) { if (((int*)a.data)[i] == v) return true; } return false; }')
+	g.sb.writeln('static inline bool array__contains_i64(array a, i64 v) { for (int i = 0; i < a.len; i++) { if (((i64*)a.data)[i] == v) return true; } return false; }')
+	g.sb.writeln('static inline bool array__contains_u64(array a, u64 v) { for (int i = 0; i < a.len; i++) { if (((u64*)a.data)[i] == v) return true; } return false; }')
+	g.sb.writeln('static inline bool array__contains_rune(array a, rune v) { for (int i = 0; i < a.len; i++) { if (((rune*)a.data)[i] == v) return true; } return false; }')
 	// strings__Builder__trim - trim builder to specified length
 	g.sb.writeln('static inline void strings__Builder__trim(strings__Builder b, int n) { if (n < b.len) b.len = n; }')
 	// ArrayFlags__has - check if flag is set
@@ -1208,13 +1266,6 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('static inline bool array__eq(array a, array b) { if (a.len != b.len) return false; return memcmp(a.data, b.data, a.len * a.element_size) == 0; }')
 	// array__clone - clone an array (returns a copy with same elements)
 	g.sb.writeln('static inline array array__clone(array* a) { array c = {0}; if (!a || a->len == 0) return c; c.len = a->len; c.cap = a->len; c.element_size = a->element_size; c.data = malloc(a->len * a->element_size); if (c.data) memcpy(c.data, a->data, a->len * a->element_size); return c; }')
-	// Register builtin array method return types
-	g.fn_types['array__clone'] = 'array'
-	g.fn_types['array__reverse'] = 'array'
-	g.fn_types['array__sorted'] = 'array'
-	g.fn_types['array__eq'] = 'bool'
-	g.fn_types['array__contains_u8'] = 'bool'
-	g.fn_types['array__contains_string'] = 'bool'
 	// Register Map getter return types
 	g.fn_types['__Map_int_int_get'] = 'int'
 	g.fn_types['__Map_string_int_get'] = 'int'
@@ -1228,6 +1279,11 @@ pub fn (mut g Gen) gen() string {
 	g.fn_types['__Map_string_Array_string_get'] = 'array'
 	g.fn_types['__Map_string_Map_string_bool_get'] = 'map'
 	g.fn_types['__Map_string_Map_string_string_get'] = 'map'
+	// Register transformer-synthesized function return types (not in type system)
+	g.fn_types['string__plus'] = 'string'
+	g.fn_types['string__plus_two'] = 'string'
+	g.fn_types['string__eq'] = 'bool'
+	g.fn_types['string__lt'] = 'bool'
 	// Map function stubs
 	g.sb.writeln('static inline Map_int_int __new_Map_int_int() { return (Map_int_int){0}; }')
 	g.sb.writeln('static inline int __Map_int_int_get(Map_int_int* m, int key) { return 0; }')
@@ -1789,6 +1845,10 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 					if t := g.fn_types[mangled] {
 						return t
 					}
+					// Look up method return type from environment
+					if ret := g.lookup_method_return_type_from_env(clean_type, name) {
+						return ret
+					}
 					// Array methods that return the element type
 					if clean_type.starts_with('Array_') && name in ['first', 'last', 'pop'] {
 						return clean_type['Array_'.len..]
@@ -1821,6 +1881,22 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 				mangled_name := '${g.cur_module}__${name}'
 				if t := g.fn_types[mangled_name] {
 					return t
+				}
+			}
+			// Look up function return type from environment
+			if ret := g.lookup_fn_return_type_from_env(g.cur_module, name) {
+				return ret
+			}
+			if ret := g.lookup_fn_return_type_from_env('builtin', name) {
+				return ret
+			}
+			// For calls with ArrayInitExpr argument, infer array type from that argument
+			for arg in node.args {
+				if arg is ast.ArrayInitExpr {
+					arr_type := g.infer_type(arg)
+					if arr_type.starts_with('Array_') {
+						return arr_type
+					}
 				}
 			}
 			return 'int'
@@ -3265,6 +3341,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	g.mut_params = map[string]bool{}
 	g.defer_stmts.clear()
 
+	// Record start position and function name for -printfn support
+	g.fn_start_pos = g.sb.len
+	g.last_fn_c_name = g.get_fn_name(node)
+
 	// Set the current function's return type for proper return statement generation
 	ret_expr := node.typ.return_type
 	g.cur_fn_returns_result = false
@@ -3646,6 +3726,12 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	}
 	g.indent--
 	g.sb.writeln('}')
+	// Print function source if in -printfn list and exit
+	if g.pref != unsafe { nil } && g.pref.printfn_list.len > 0
+		&& g.last_fn_c_name in g.pref.printfn_list {
+		println(g.sb.after(g.fn_start_pos))
+		exit(0)
+	}
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
@@ -5142,13 +5228,13 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						g.gen_expr(node.lhs)
 						g.sb.write_string(')')
 					} else if rhs_type.starts_with('Array_') {
-						// x in arr => array__contains_u8(&arr, x) (for u8 arrays)
-						// x !in arr => !array__contains_u8(&arr, x)
+						// x in arr => array__contains_T(arr, x) (for arrays)
+						// x !in arr => !array__contains_T(arr, x)
 						elem_type := rhs_type['Array_'.len..]
 						if node.op == .not_in {
 							g.sb.write_string('!')
 						}
-						g.sb.write_string('array__contains_${elem_type}(&')
+						g.sb.write_string('array__contains_${elem_type}(')
 						g.gen_expr(node.rhs)
 						g.sb.write_string(', ')
 						g.gen_expr(node.lhs)
@@ -6916,6 +7002,22 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						return
 					}
 				}
+				// Check for known enum values from stdlib
+				// ProcessState enum from os module
+				if node.rhs.name in ['not_started', 'running', 'stopped', 'exited', 'closed'] {
+					g.sb.write_string('os__ProcessState__${node.rhs.name}')
+					return
+				}
+				// TrimMode enum from strings module
+				if node.rhs.name in ['trim_left', 'trim_right', 'trim_both'] {
+					g.sb.write_string('TrimMode__${node.rhs.name}')
+					return
+				}
+				// CaseMode enum from unicode module
+				if node.rhs.name in ['to_upper', 'to_lower', 'to_title'] {
+					g.sb.write_string('CaseMode__${node.rhs.name}')
+					return
+				}
 				// Last fallback: just output the field name (might not be valid C)
 				g.sb.write_string('${node.rhs.name}')
 				return
@@ -7084,30 +7186,21 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_expr(node.expr)
 		}
 		ast.ArrayInitExpr {
-			// Check if this is a fixed-size array (typ is ArrayFixedType)
+			// After transformer, ArrayInitExpr is either:
+			// 1. Fixed-size array: generate {val1, val2, ...}
+			// 2. Dynamic array as arg to builtin call: generate _MOV((elem_type[len]){values})
 			mut is_fixed_array := false
-			mut fixed_size := ''
-			mut fixed_elem_type := ''
 			match node.typ {
 				ast.Type {
 					if node.typ is ast.ArrayFixedType {
 						is_fixed_array = true
-						fixed_elem_type = g.expr_type_to_c(node.typ.elem_type)
-						fixed_size = if node.typ.len is ast.BasicLiteral {
-							node.typ.len.value
-						} else if node.typ.len is ast.Ident {
-							node.typ.len.name
-						} else {
-							'0'
-						}
 					}
 				}
 				else {}
 			}
 			if is_fixed_array {
-				// Generate C fixed-size array initializer: {val1, val2, ...}
+				// Fixed-size array: generate C array initializer
 				g.sb.write_string('{')
-				// If no explicit elements, generate zeros
 				if node.exprs.len == 0 {
 					g.sb.write_string('0')
 				} else {
@@ -7120,36 +7213,30 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				}
 				g.sb.write_string('}')
 			} else {
-				// Generate array using new_array_from_c_array builtin
+				// Dynamic array values: generate _MOV((elem_type[len]){values})
 				arr_len := node.exprs.len
-				mut c_elem_type := 'int' // Actual C type for sizeof and array literals
-				if node.typ !is ast.EmptyExpr {
-					// node.typ is ArrayType{elem_type: T} for []T{} syntax
-					// Get the actual C type for sizeof and array literals
-					match node.typ {
-						ast.Type {
-							if node.typ is ast.ArrayType {
-								c_elem_type = g.expr_type_to_c(node.typ.elem_type)
-							} else {
-								c_elem_type = g.expr_type_to_c(node.typ)
-							}
-						}
-						else {
-							c_elem_type = g.expr_type_to_c(node.typ)
+				mut c_elem_type := 'int'
+				match node.typ {
+					ast.Type {
+						if node.typ is ast.ArrayType {
+							c_elem_type = g.expr_type_to_c(node.typ.elem_type)
 						}
 					}
-				} else if arr_len > 0 {
-					c_elem_type = g.infer_type(node.exprs[0])
+					else {}
 				}
-				// new_array_from_c_array(len, len, sizeof(elem), (elem_type[len]){values})
-				g.sb.write_string('new_array_from_c_array(${arr_len}, ${arr_len}, sizeof(${c_elem_type}), (${c_elem_type}[${arr_len}]){')
-				for i, expr in node.exprs {
-					if i > 0 {
-						g.sb.write_string(', ')
+				// Handle empty arrays specially - generate empty struct initialization
+				if arr_len == 0 {
+					g.sb.write_string('(array){0}')
+				} else {
+					g.sb.write_string('_MOV((${c_elem_type}[${arr_len}]){')
+					for i, expr in node.exprs {
+						if i > 0 {
+							g.sb.write_string(', ')
+						}
+						g.gen_expr(expr)
 					}
-					g.gen_expr(expr)
+					g.sb.write_string('})')
 				}
-				g.sb.write_string('})')
 			}
 		}
 		ast.MapInitExpr {

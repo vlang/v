@@ -144,6 +144,11 @@ mut:
 	// 	scope          &Scope
 }
 
+// get_return_type returns the function's return type, or none if void
+pub fn (f &FnType) get_return_type() ?Type {
+	return f.return_type
+}
+
 struct Interface {
 	name string
 mut:

@@ -24,6 +24,40 @@ pub fn Environment.new() &Environment {
 	return &Environment{}
 }
 
+// lookup_method looks up a method by receiver type name and method name
+// Returns the method's FnType if found
+pub fn (e &Environment) lookup_method(type_name string, method_name string) ?FnType {
+	methods := rlock e.methods {
+		e.methods[type_name] or { []&Fn{} }
+	}
+	for method in methods {
+		if method.get_name() == method_name {
+			typ := method.get_typ()
+			if typ is FnType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+// lookup_fn looks up a function by module and name in the environment's scopes
+// Returns the function's FnType if found
+pub fn (e &Environment) lookup_fn(module_name string, fn_name string) ?FnType {
+	mut scope := lock e.scopes {
+		e.scopes[module_name] or { return none }
+	}
+	if obj := scope.lookup_parent(fn_name, 0) {
+		if obj is Fn {
+			typ := obj.get_typ()
+			if typ is FnType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
 pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic
