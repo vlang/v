@@ -137,7 +137,7 @@ pub fn Digest.new_hash() !Digest {
 // Digest.new_keyed_hash initializes a Digest structure for a Blake3 keyed hash
 pub fn Digest.new_keyed_hash(key []u8) !Digest {
 	// treat the key bytes as little endian u32 values
-	mut key_words := []u32{len: 8, cap: 8}
+	mut key_words := []u32{len: 8}
 	for i in 0 .. 8 {
 		key_words[i] = binary.little_endian_u32_at(key, i * 4)
 	}
@@ -153,7 +153,7 @@ pub fn Digest.new_derive_key_hash(context []u8) !Digest {
 	context_key := context_digest.checksum_internal(key_length)
 
 	// treat the context key bytes as little endian u32 values
-	mut key_words := []u32{len: 8, cap: 8}
+	mut key_words := []u32{len: 8}
 	for i in 0 .. 8 {
 		key_words[i] = binary.little_endian_u32_at(context_key, i * 4)
 	}
@@ -309,6 +309,7 @@ fn root_output_bytes(state HashState, size u64) []u8 {
 	return output
 }
 
+@[direct_array_access]
 fn (mut d Digest) add_node(node Node, level u8) {
 	// if we are above the highst level,
 	// just add the node at the top
