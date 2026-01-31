@@ -14,6 +14,7 @@ module ttf
 **********************************************************************/
 // Text_block represents a visual block of TTF text.
 pub struct Text_block {
+pub:
 	x         int // x position of the left high corner
 	y         int // y position of the left high corner
 	w         int // width of the text block
