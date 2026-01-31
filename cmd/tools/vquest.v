@@ -9,6 +9,7 @@ import rand
 import term
 
 const search_endpoint = 'https://api.github.com/search/issues'
+const issue_endpoint = 'https://api.github.com/repos/vlang/v/issues'
 const confirm_search_query = 'repo:vlang/v is:issue is:open -label:"Status: Confirmed"'
 const fix_search_query = 'repo:vlang/v is:issue is:open'
 const feature_search_query = 'repo:vlang/v is:issue state:open label:"Feature/Enhancement Request"'
@@ -21,7 +22,24 @@ struct SearchResponse {
 }
 
 struct Issue {
+	number   int
+	title    string
 	html_url string
+	body     string
+	labels   []Label
+}
+
+struct Label {
+	name string
+}
+
+struct IssueDetails {
+	number   int
+	title    string
+	html_url string
+	body     string
+	labels   []Label
+	state    string
 }
 
 fn main() {
@@ -61,6 +79,12 @@ fn main() {
 				flags:       issue_flags.clone()
 				execute:     run_implement
 			},
+			cli.Command{
+				name:        'solve'
+				description: 'Find a random bug reproducible on your OS, print it to stdout and save to bug-<issue_id>.md.'
+				flags:       solve_flags.clone()
+				execute:     run_solve
+			},
 		]
 	}
 	app.setup()
@@ -96,6 +120,37 @@ const issue_flags = [
 	},
 ]
 
+const solve_flags = [
+	cli.Flag{
+		description:   'Override OS detection (macos, windows, linux).'
+		flag:          .string
+		name:          'os'
+		abbrev:        'o'
+		default_value: ['']
+	},
+	cli.Flag{
+		description:   'Start page for issues (default -1: auto). Must be > 0.'
+		flag:          .int
+		name:          'from'
+		abbrev:        'f'
+		default_value: ['-1']
+	},
+	cli.Flag{
+		description:   'End page for issues (default -1: auto). Must be > 0 and >= the from page (see -f).'
+		flag:          .int
+		name:          'to'
+		abbrev:        't'
+		default_value: ['-1']
+	},
+	cli.Flag{
+		description:   'Output file for the bug report (default: bug-<issue_id>.md).'
+		flag:          .string
+		name:          'output'
+		abbrev:        'O'
+		default_value: ['']
+	},
+]
+
 fn run_confirm(cmd cli.Command) ! {
 	run_issue(cmd, confirm_search_query, 'still unconfirmed', 'Help us by confirming and triaging this issue:')!
 }
@@ -106,6 +161,107 @@ fn run_fix(cmd cli.Command) ! {
 
 fn run_implement(cmd cli.Command) ! {
 	run_issue(cmd, feature_search_query, 'feature request', 'Help us by implementing the issue in a PR, or triage it:')!
+}
+
+fn run_solve(cmd cli.Command) ! {
+	// Clean up old bug report files
+	for f in os.glob('bug-*.md') or { []string{} } {
+		os.rm(f) or {}
+	}
+
+	user_os := get_target_os(cmd)
+	os_label := get_os_label(user_os)
+	output_override := cmd.flags.get_string('output') or { '' }
+
+	// Build query that excludes issues for other OSes
+	// We look for open bugs that are NOT exclusive to other operating systems
+	excluded_os_labels := get_excluded_os_labels(user_os)
+	mut query := 'repo:vlang/v is:issue is:open label:Bug'
+	for label in excluded_os_labels {
+		query += ' -label:"${label}"'
+	}
+
+	total := fetch_total_count(query)!
+	max_pages := total_to_max_pages(total)
+	if max_pages == 0 {
+		return error('no bugs found for ${os_label}')
+	}
+	start_page, end_page := resolve_page_range(cmd, max_pages)!
+	page := start_page + (rand.intn(end_page - start_page + 1) or { 0 })
+	eprintln(term.colorize(term.gray, 'Found: ${total} bugs reproducible on ${os_label}. Fetching from page: ${page} in [${start_page}, ${end_page}] ...'))
+
+	issue := fetch_issue_from_page(query, page)!
+	details := fetch_issue_details(issue.number)!
+
+	// Format the bug report
+	report := format_bug_report(details, user_os)
+
+	// Print to stdout
+	println(report)
+
+	// Determine output filename (default: bug-<issue_id>.md)
+	output_file := if output_override != '' { output_override } else { 'bug-${details.number}.md' }
+
+	// Write to file
+	os.write_file(output_file, report) or {
+		return error('failed to write to ${output_file}: ${err}')
+	}
+	eprintln(term.colorize(term.green, '\nBug report saved to: ${output_file}'))
+}
+
+fn get_target_os(cmd cli.Command) string {
+	override := cmd.flags.get_string('os') or { '' }
+	if override != '' {
+		return override.to_lower()
+	}
+	return os.user_os()
+}
+
+fn get_os_label(user_os string) string {
+	return match user_os {
+		'macos' { 'macOS' }
+		'windows' { 'Windows' }
+		'linux' { 'Linux' }
+		'freebsd' { 'FreeBSD' }
+		else { user_os }
+	}
+}
+
+fn get_excluded_os_labels(user_os string) []string {
+	// Return labels for OSes that should be EXCLUDED
+	// i.e., if user is on macOS, exclude Windows-only and Linux-only bugs
+	all_os_labels := ['OS: Windows', 'OS: Linux', 'OS: macOS', 'OS: FreeBSD']
+	user_label := match user_os {
+		'macos' { 'OS: macOS' }
+		'windows' { 'OS: Windows' }
+		'linux' { 'OS: Linux' }
+		'freebsd' { 'OS: FreeBSD' }
+		else { '' }
+	}
+	return all_os_labels.filter(it != user_label)
+}
+
+fn fetch_issue_details(issue_number int) !IssueDetails {
+	url := '${issue_endpoint}/${issue_number}'
+	body := api_get(url)!
+	return json.decode(IssueDetails, body)!
+}
+
+fn format_bug_report(issue IssueDetails, user_os string) string {
+	mut report := '# Bug #${issue.number}: ${issue.title}\n\n'
+	report += '**URL:** ${issue.html_url}\n\n'
+	report += '**Target OS:** ${get_os_label(user_os)}\n\n'
+
+	if issue.labels.len > 0 {
+		labels := issue.labels.map(it.name).join(', ')
+		report += '**Labels:** ${labels}\n\n'
+	}
+
+	report += '## Description\n\n'
+	report += issue.body
+	report += '\n'
+
+	return report
 }
 
 fn run_issue(cmd cli.Command, issue_query string, issue_label string, help_label string) ! {

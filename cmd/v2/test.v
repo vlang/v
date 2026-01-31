@@ -2926,6 +2926,21 @@ fn main() {
 	print_int(hm4[3]) // 9
 	print_int(hm4[4]) // 16
 
+	// 54.6 Map literal initialization
+	print_str('map literal:')
+	mut hm5 := {
+		'a': 1
+		'b': 2
+		'c': 3
+	}
+	print_int(hm5['a']) // 1
+	print_int(hm5['b']) // 2
+	print_int(hm5['c']) // 3
+	print_int(hm5.len) // 3
+	hm5['d'] = 4
+	print_int(hm5['d']) // 4
+	print_int(hm5.len) // 4
+
 	// ==================== 55. MULTI-RETURN ====================
 	print_str('--- 55. Multi-return ---')
 

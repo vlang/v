@@ -27,7 +27,7 @@ fn main() {
 
 // get_files extracts source files from args, excluding options and their values
 fn get_files(args []string) []string {
-	options_with_values := ['-backend', '-o', '-output', '-arch']
+	options_with_values := ['-backend', '-o', '-output', '-arch', '-printfn']
 	mut files := []string{}
 	mut skip_next := false
 	for arg in args {
