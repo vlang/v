@@ -15,7 +15,7 @@ fn draw_header(mut app App) {
 	ctx.draw_rect_filled(0, 0, w, f32(app.header_height), header_bg)
 
 	// Get stats
-	stats := if app.demo_mode { app.cached_stats } else { profiler.get_statistics() }
+	stats := app.cached_stats
 
 	// Format and draw stats
 	heap_str := 'HEAP: ${profiler.format_bytes(stats.live_bytes)}'
@@ -44,7 +44,16 @@ fn draw_header(mut app App) {
 	leak_clr := if stats.leak_count > 0 { leak_color } else { text_color }
 	ctx.draw_text(int(x), int(y), leaks_str, color: leak_clr, size: 20)
 
-	// Frame counter on right
+	// Mode and frame counter on right
+	mode_str := if app.demo_mode {
+		'DEMO'
+	} else if app.live_mode {
+		'LIVE'
+	} else {
+		'LOCAL'
+	}
+	ctx.draw_text(int(w) - 250, int(y), mode_str, color: gg.Color{100, 255, 100, 255}, size: 20)
+
 	frame_str := 'Frame: ${stats.frame_count}'
 	ctx.draw_text(int(w) - 150, int(y), frame_str, color: text_color, size: 20)
 
@@ -68,8 +77,8 @@ fn draw_histogram(mut app App) {
 	// Center line
 	ctx.draw_line(0, center_y, w, center_y, grid_color)
 
-	// Get frame data
-	frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+	// Get frame data (always use cached data - it's populated by update_cache from snapshot or demo)
+	frames := app.cached_frames
 	if frames.len == 0 {
 		ctx.draw_text(int(w / 2) - 80, int(center_y) - 10, 'No frame data',
 			color: text_color
@@ -153,7 +162,7 @@ fn draw_timeline(mut app App) {
 	// Background
 	ctx.draw_rect_filled(0, timeline_y, w, timeline_h, header_bg)
 
-	frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+	frames := app.cached_frames
 	if frames.len == 0 {
 		return
 	}
@@ -253,7 +262,7 @@ fn draw_details(mut app App) {
 
 	// Show selected allocation info or instructions
 	if app.selected_alloc >= 0 {
-		allocs := if app.demo_mode { app.cached_allocs } else { profiler.get_allocs() }
+		allocs := app.cached_allocs
 		if app.selected_alloc < allocs.len {
 			alloc := allocs[app.selected_alloc]
 
@@ -301,10 +310,7 @@ pub fn draw_frame(mut app App) {
 	}
 	app.gg.begin()
 
-	// Draw a test rectangle to verify rendering works
-	app.gg.draw_rect_filled(100, 100, 200, 100, gg.Color{255, 0, 0, 255})
-
-	// Update demo data if in demo mode
+	// Update data
 	if app.demo_mode {
 		update_demo_data(mut app)
 	} else {
@@ -317,6 +323,17 @@ pub fn draw_frame(mut app App) {
 	draw_timeline(mut app)
 	draw_controls(mut app)
 	draw_details(mut app)
+
+	// Draw status message if in live mode with no data
+	if app.live_mode && app.cached_frames.len == 0 {
+		ctx := app.gg
+		w := f32(ctx.width)
+		h := f32(ctx.height)
+		ctx.draw_text(int(w / 2) - 200, int(h / 2), app.status_msg,
+			color: text_color
+			size:  20
+		)
+	}
 
 	app.gg.end()
 }

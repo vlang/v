@@ -40,9 +40,12 @@ pub mut:
 	// Hover state
 	hover_frame int = -1
 	hover_alloc int = -1
-	// Demo mode
-	demo_mode  bool = true // Use simulated data for demo
-	demo_frame int // Current demo frame counter
+	// Mode
+	demo_mode  bool // Use simulated data for demo (false = live mode)
+	demo_frame int  // Current demo frame counter
+	live_mode  bool = true // Read from profiler snapshot file
+	// Status
+	status_msg string = 'Waiting for profiler data...'
 }
 
 // Colors for the profiler visualization
@@ -70,16 +73,48 @@ pub fn (mut app App) update_cache() {
 	if app.demo_mode {
 		return
 	}
+
+	if app.live_mode {
+		// Read from snapshot file
+		if snap := profiler.read_snapshot() {
+			app.cached_frames = snap.frames
+			app.cached_allocs = snap.allocs
+			app.cached_stats = profiler.Statistics{
+				live_bytes:   snap.live_bytes
+				peak_bytes:   snap.peak_bytes
+				total_allocs: snap.total_allocs
+				total_frees:  snap.total_frees
+				leak_count:   count_leaks(snap.allocs)
+				frame_count:  snap.frame_count
+			}
+			app.status_msg = 'Live: Frame ${snap.frame_count}'
+		} else {
+			app.status_msg = 'Waiting for profiler data at ${profiler.profiler_data_path}...'
+		}
+		return
+	}
+
+	// In-process mode (same process)
 	app.cached_frames = profiler.get_frames()
 	app.cached_allocs = profiler.get_allocs()
 	app.cached_stats = profiler.get_statistics()
+}
+
+fn count_leaks(allocs []profiler.AllocRecord) int {
+	mut count := 0
+	for alloc in allocs {
+		if !alloc.freed {
+			count++
+		}
+	}
+	return count
 }
 
 // get_filtered_allocs returns allocations matching current filter
 pub fn (app &App) get_filtered_allocs() []profiler.AllocRecord {
 	mut result := []profiler.AllocRecord{}
 
-	allocs := if app.demo_mode { app.cached_allocs } else { profiler.get_allocs() }
+	allocs := app.cached_allocs
 
 	for alloc in allocs {
 		match app.filter_mode {
@@ -120,7 +155,7 @@ pub fn (app &App) get_filtered_allocs() []profiler.AllocRecord {
 
 // get_frame_at_x returns the frame index at the given x coordinate in timeline
 pub fn (app &App) get_frame_at_x(x f32, timeline_x f32, timeline_width f32) int {
-	frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+	frames := app.cached_frames
 	if frames.len == 0 {
 		return -1
 	}
