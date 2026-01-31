@@ -459,7 +459,8 @@ pub fn (mut d Doc) generate() ! {
 	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
-		return error_with_code('vdoc: No valid V files were found.', 1)
+		eprintln('vdoc: No valid V files were found. Skipping folder: ${d.base_path}.')
+		return
 	}
 	// parse files
 	mut comments_mode := scanner.CommentsMode.skip_comments
