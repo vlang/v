@@ -81,7 +81,7 @@ fn main() {
 			},
 			cli.Command{
 				name:        'solve'
-				description: 'Find a random bug reproducible on your OS, print it to stdout and save to current_bug.md.'
+				description: 'Find a random bug reproducible on your OS, print it to stdout and save to bug-<issue_id>.md.'
 				flags:       solve_flags.clone()
 				execute:     run_solve
 			},
@@ -143,11 +143,11 @@ const solve_flags = [
 		default_value: ['-1']
 	},
 	cli.Flag{
-		description:   'Output file for the bug report (default: current_bug.md).'
+		description:   'Output file for the bug report (default: bug-<issue_id>.md).'
 		flag:          .string
 		name:          'output'
 		abbrev:        'O'
-		default_value: ['current_bug.md']
+		default_value: ['']
 	},
 ]
 
@@ -164,9 +164,14 @@ fn run_implement(cmd cli.Command) ! {
 }
 
 fn run_solve(cmd cli.Command) ! {
+	// Clean up old bug report files
+	for f in os.glob('bug-*.md') or { []string{} } {
+		os.rm(f) or {}
+	}
+
 	user_os := get_target_os(cmd)
 	os_label := get_os_label(user_os)
-	output_file := cmd.flags.get_string('output') or { 'current_bug.md' }
+	output_override := cmd.flags.get_string('output') or { '' }
 
 	// Build query that excludes issues for other OSes
 	// We look for open bugs that are NOT exclusive to other operating systems
@@ -193,6 +198,9 @@ fn run_solve(cmd cli.Command) ! {
 
 	// Print to stdout
 	println(report)
+
+	// Determine output filename (default: bug-<issue_id>.md)
+	output_file := if output_override != '' { output_override } else { 'bug-${details.number}.md' }
 
 	// Write to file
 	os.write_file(output_file, report) or {
