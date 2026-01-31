@@ -1,6 +1,8 @@
 module fasthttp
 
 import net
+import net.http
+import io
 
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
@@ -218,8 +220,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				}
 				if client_fd > 0 {
 					// Try to send 444 No Response before closing abnormal connection
-					C.send(client_fd, status_444_response.data, status_444_response.len,
-						C.MSG_NOSIGNAL)
+					C.send(client_fd, status_444_response.data, status_444_response.len, C.MSG_NOSIGNAL)
 					handle_client_closure(epoll_fd, client_fd)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
@@ -227,24 +228,54 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				continue
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
-				bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
-					0)
-				if bytes_read > 0 {
+				// Read all available data from the socket
+				mut total_bytes_read := 0
+				mut all_data := []u8{cap: server.max_request_buffer_size}
+
+				for {
+					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1, 0)
+					if bytes_read < 0 {
+						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+							// No more data available right now
+							break
+						}
+						// Error occurred
+						eprintln('ERROR: recv() failed with errno=${C.errno}')
+						break
+					} else if bytes_read == 0 {
+						// Connection closed by client
+						break
+					}
+
+					// Append the received data to the buffer
+					if total_bytes_read + bytes_read > server.max_request_buffer_size {
+						// Buffer size exceeded
+						break
+					}
+					unsafe {
+						all_data.push_many(&request_buffer[0], bytes_read)
+					}
+					total_bytes_read += bytes_read
+
+					// Check if we've received the complete HTTP request (look for \r\n\r\n)
+					if total_bytes_read >= 4 {
+						if all_data[total_bytes_read - 4] == `\r` && all_data[total_bytes_read - 3] == `\n` &&
+							all_data[total_bytes_read - 2] == `\r` && all_data[total_bytes_read - 1] == `\n` {
+							break
+						}
+					}
+				}
+
+				if total_bytes_read > 0 {
 					// Check if request exceeds buffer size
-					if bytes_read >= server.max_request_buffer_size - 1 {
-						C.send(client_fd, status_413_response.data, status_413_response.len,
-							C.MSG_NOSIGNAL)
+					if total_bytes_read >= server.max_request_buffer_size - 1 {
+						C.send(client_fd, status_413_response.data, status_413_response.len, C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
-					mut readed_request_buffer := []u8{cap: bytes_read}
-					unsafe {
-						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
-					}
-					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
+					mut decoded_http_request := decode_http_request(all_data) or {
 						eprintln('Error decoding request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-							C.MSG_NOSIGNAL)
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len, C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
@@ -341,16 +372,13 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 
 						C.close(fd)
 					}
-					// Leave the connection open; closure is driven by client FIN or errors
-				} else if bytes_read == 0 {
-					// Normal client closure (FIN received)
-					handle_client_closure(epoll_fd, client_fd)
-				} else if bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+					// Close the connection after sending response
+				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd)
 				}
+				handle_client_closure(epoll_fd, client_fd)
 			}
 		}
 	}
