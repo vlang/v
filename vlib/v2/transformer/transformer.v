@@ -1188,6 +1188,15 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			})
 		}
 		ast.PrefixExpr {
+			// Check for &ErrorType{} pattern - this gets transformed to IError{...}
+			// and the outer & should be removed since IError is already a value type
+			if expr.op == .amp && expr.expr is ast.InitExpr {
+				type_name := t.get_init_expr_type_name(expr.expr.typ)
+				if t.is_error_type_name(type_name) {
+					// Transform &ErrorType{} to IError{...} (without the &)
+					return t.transform_expr(expr.expr)
+				}
+			}
 			ast.Expr(ast.PrefixExpr{
 				op:   expr.op
 				expr: t.transform_expr(expr.expr)
@@ -1211,11 +1220,17 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 		ast.ArrayInitExpr {
 			t.transform_array_init_expr(expr)
 		}
+		ast.MapInitExpr {
+			t.transform_map_init_expr(expr)
+		}
 		ast.MatchExpr {
 			t.transform_match_expr(expr)
 		}
 		ast.ComptimeExpr {
 			t.transform_comptime_expr(expr)
+		}
+		ast.InitExpr {
+			t.transform_init_expr(expr)
 		}
 		else {
 			expr
@@ -1233,15 +1248,13 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	// Check if this is a fixed-size array
 	mut is_fixed := false
 	mut elem_type_expr := ast.empty_expr
-	match expr.typ {
-		ast.Type {
-			if expr.typ is ast.ArrayFixedType {
-				is_fixed = true
-			} else if expr.typ is ast.ArrayType {
-				elem_type_expr = expr.typ.elem_type
-			}
+	// Check for ArrayFixedType or ArrayType (expr.typ is ast.Type sum type)
+	if expr.typ is ast.Type {
+		if expr.typ is ast.ArrayFixedType {
+			is_fixed = true
+		} else if expr.typ is ast.ArrayType {
+			elem_type_expr = expr.typ.elem_type
 		}
-		else {}
 	}
 
 	if is_fixed {
@@ -1373,6 +1386,139 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	}
 }
 
+fn (mut t Transformer) transform_map_init_expr(expr ast.MapInitExpr) ast.Expr {
+	// Empty map - keep as MapInitExpr, cleanc will generate __new_Map_*()
+	if expr.keys.len == 0 {
+		return expr
+	}
+
+	// Transform key and value expressions
+	mut keys := []ast.Expr{cap: expr.keys.len}
+	mut vals := []ast.Expr{cap: expr.vals.len}
+	for k in expr.keys {
+		keys << t.transform_expr(k)
+	}
+	for v in expr.vals {
+		vals << t.transform_expr(v)
+	}
+
+	// Determine key and value types
+	mut key_type_name := 'int'
+	mut val_type_name := 'int'
+	match expr.typ {
+		ast.Type {
+			if expr.typ is ast.MapType {
+				mt := expr.typ as ast.MapType
+				key_type_name = t.expr_to_type_name(mt.key_type)
+				val_type_name = t.expr_to_type_name(mt.value_type)
+			}
+		}
+		else {}
+	}
+	if key_type_name == 'int' && keys.len > 0 {
+		// Infer from first key/value
+		first_key := keys[0]
+		first_val := vals[0]
+		if first_key is ast.BasicLiteral {
+			if first_key.kind == .string {
+				key_type_name = 'string'
+			}
+		} else if first_key is ast.StringLiteral {
+			key_type_name = 'string'
+		}
+		if first_val is ast.BasicLiteral {
+			if first_val.kind == .number {
+				val_type_name = 'int'
+			} else if first_val.kind == .string {
+				val_type_name = 'string'
+			}
+		} else if first_val is ast.StringLiteral {
+			val_type_name = 'string'
+		}
+	}
+
+	n := keys.len
+
+	// Create array types for keys and values
+	key_array_typ := ast.Type(ast.ArrayType{
+		elem_type: ast.Ident{
+			name: key_type_name
+		}
+	})
+	val_array_typ := ast.Type(ast.ArrayType{
+		elem_type: ast.Ident{
+			name: val_type_name
+		}
+	})
+
+	// builtin__new_map_init_noscan_value(hash_fn, eq_fn, clone_fn, free_fn, n, key_size, val_size, keys, vals)
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'builtin__new_map_init_noscan_value'
+		}
+		args: [
+			// &builtin__map_hash_<key_type>
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: 'builtin__map_hash_${key_type_name}'
+				}
+			}),
+			// &builtin__map_eq_<key_type>
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: 'builtin__map_eq_${key_type_name}'
+				}
+			}),
+			// &builtin__map_clone_<key_type>
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: 'builtin__map_clone_${key_type_name}'
+				}
+			}),
+			// &builtin__map_free_<key_type>
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: 'builtin__map_free_${key_type_name}'
+				}
+			}),
+			// n (number of elements)
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${n}'
+			}),
+			// sizeof(key_type)
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [ast.Expr(ast.Ident{
+					name: key_type_name
+				})]
+			}),
+			// sizeof(val_type)
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [ast.Expr(ast.Ident{
+					name: val_type_name
+				})]
+			}),
+			// keys array
+			ast.Expr(ast.ArrayInitExpr{
+				typ:   key_array_typ
+				exprs: keys
+			}),
+			// vals array
+			ast.Expr(ast.ArrayInitExpr{
+				typ:   val_array_typ
+				exprs: vals
+			}),
+		]
+		pos:  expr.pos
+	}
+}
+
 fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 	mut branches := []ast.MatchBranch{cap: expr.branches.len}
 	for branch in expr.branches {
@@ -1387,6 +1533,156 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		branches: branches
 		pos:      expr.pos
 	}
+}
+
+fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
+	// Transform field values recursively
+	// Note: ArrayInitExpr is NOT transformed here because cleanc uses field type info
+	// to determine if it's a fixed-size array (which transformer doesn't have access to)
+	mut fields := []ast.FieldInit{cap: expr.fields.len}
+	for field in expr.fields {
+		transformed_value := if field.value is ast.ArrayInitExpr {
+			// Keep array inits as-is for struct fields - cleanc handles fixed vs dynamic
+			ast.Expr(field.value)
+		} else {
+			t.transform_expr(field.value)
+		}
+		fields << ast.FieldInit{
+			name:  field.name
+			value: transformed_value
+		}
+	}
+
+	// Check if this is an error struct literal that needs IError boxing
+	type_name := t.get_init_expr_type_name(expr.typ)
+	if t.is_error_type_name(type_name) {
+		// Transform to IError struct init with explicit boxing
+		// Generate: IError{ ._object = &ErrorType{...}, ._type_id = __type_id_ErrorType,
+		//                   .type_name = IError_WrapperType_type_name_wrapper,
+		//                   .msg = IError_WrapperType_msg_wrapper,
+		//                   .code = IError_WrapperType_code_wrapper }
+		c_type_name := t.get_c_type_name(type_name)
+		// Determine wrapper type - types that embed Error use Error wrappers,
+		// types with custom msg/code methods use their own wrappers
+		wrapper_type := t.get_error_wrapper_type(type_name)
+
+		// Create &ErrorType{...} - heap-allocated error object
+		inner_init := ast.InitExpr{
+			typ:    expr.typ
+			fields: fields
+		}
+		heap_alloc := ast.PrefixExpr{
+			op:   .amp
+			expr: inner_init
+		}
+
+		return ast.InitExpr{
+			typ:    ast.Ident{
+				name: 'IError'
+			}
+			fields: [
+				ast.FieldInit{
+					name:  '_object'
+					value: heap_alloc
+				},
+				ast.FieldInit{
+					name:  '_type_id'
+					value: ast.Ident{
+						name: '__type_id_${c_type_name}'
+					}
+				},
+				ast.FieldInit{
+					name:  'type_name'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_type_name_wrapper'
+					}
+				},
+				ast.FieldInit{
+					name:  'msg'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_msg_wrapper'
+					}
+				},
+				ast.FieldInit{
+					name:  'code'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_code_wrapper'
+					}
+				},
+			]
+		}
+	}
+
+	return ast.InitExpr{
+		typ:    expr.typ
+		fields: fields
+	}
+}
+
+// get_error_wrapper_type returns the wrapper type name for IError interface methods.
+// Types that embed Error use 'Error' wrappers; types with custom msg/code use their C type name.
+fn (t &Transformer) get_error_wrapper_type(type_name string) string {
+	base_name := if type_name.contains('__') {
+		type_name.all_after_last('__')
+	} else {
+		type_name
+	}
+	// Types that embed Error and use Error's msg/code methods
+	if base_name in ['Eof', 'FileNotOpenedError', 'SizeOfTypeIs0Error', 'ExecutableNotFoundError',
+		'Error'] {
+		return 'Error'
+	}
+	// Types with custom msg/code methods use their full C type name (with module prefix)
+	// The wrapper name must match what cleanc generates
+	if base_name in ['NotExpected', 'MessageError'] {
+		return type_name // Use full name with module prefix if present
+	}
+	// Default to Error wrappers
+	return 'Error'
+}
+
+// get_c_type_name converts a V type name to C type name format
+fn (t &Transformer) get_c_type_name(type_name string) string {
+	// Already in C format (module__Type) or plain name
+	return type_name
+}
+
+// get_init_expr_type_name extracts the type name from an InitExpr's typ field
+// Returns the C-style mangled name (module__Type) for proper wrapper resolution
+fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
+	if typ is ast.Ident {
+		// Add module prefix if we're in a non-main module and the type is a known error type
+		base_name := typ.name
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			// Check if this is an error type that should be module-qualified
+			if base_name in ['Eof', 'NotExpected', 'MessageError', 'Error', 'FileNotOpenedError',
+				'SizeOfTypeIs0Error', 'ExecutableNotFoundError'] {
+				return '${t.cur_module}__${base_name}'
+			}
+		}
+		return base_name
+	}
+	if typ is ast.SelectorExpr {
+		// Module-qualified: os.Eof -> os__Eof
+		if typ.lhs is ast.Ident {
+			return '${typ.lhs.name}__${typ.rhs.name}'
+		}
+		return typ.rhs.name
+	}
+	return ''
+}
+
+// is_error_type_name checks if a type name is a known error type that implements IError
+fn (t &Transformer) is_error_type_name(type_name string) bool {
+	// Get base name (strip module prefix if present)
+	base_name := if type_name.contains('__') {
+		type_name.all_after_last('__')
+	} else {
+		type_name
+	}
+	// Known error types that implement IError
+	return base_name in ['Eof', 'NotExpected', 'MessageError', 'Error', 'FileNotOpenedError',
+		'SizeOfTypeIs0Error', 'ExecutableNotFoundError']
 }
 
 fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
@@ -1484,14 +1780,26 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			}
 
 			if rhs_is_array {
-				// RHS is an array - use builtin__array_push_many
+				// RHS is an array - use builtin array__push_many(array*, val.data, val.len)
+				rhs_transformed := t.transform_expr(expr.rhs)
 				return ast.CallExpr{
 					lhs:  ast.Ident{
-						name: 'builtin__array_push_many'
+						name: 'array__push_many'
 					}
 					args: [
 						ast.Expr(cast_to_array),
-						t.transform_expr(expr.rhs),
+						ast.SelectorExpr{
+							lhs: rhs_transformed
+							rhs: ast.Ident{
+								name: 'data'
+							}
+						},
+						ast.SelectorExpr{
+							lhs: rhs_transformed
+							rhs: ast.Ident{
+								name: 'len'
+							}
+						},
 					]
 					pos:  expr.pos
 				}
