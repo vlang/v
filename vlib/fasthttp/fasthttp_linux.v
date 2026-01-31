@@ -34,6 +34,7 @@ struct C.epoll_event {
 
 struct Server {
 pub:
+	family                  net.AddrFamily = .ip6
 	port                    int = 3000
 	max_request_buffer_size int = 8192
 	user_data               voidptr
@@ -50,6 +51,7 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('max_request_buffer_size must be greater than 0')
 	}
 	mut server := &Server{
+		family:                  config.family
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
 		user_data:               config.user_data
@@ -92,9 +94,9 @@ fn close_socket(fd int) bool {
 	return true
 }
 
-fn create_server_socket(port int) int {
+fn create_server_socket(server &Server) int {
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
+	server_fd := C.socket(server.family, net.SocketType.tcp, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
@@ -118,7 +120,7 @@ fn create_server_socket(port int) int {
 		return -1
 	}
 
-	addr := net.new_ip(u16(port), [u8(0), 0, 0, 0]!)
+	addr := net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
 	alen := addr.len()
 	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
@@ -361,7 +363,7 @@ pub fn (mut server Server) run() ! {
 		return
 	}
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.listen_fds[i] = create_server_socket(server.port)
+		server.listen_fds[i] = create_server_socket(server)
 		if server.listen_fds[i] < 0 {
 			return
 		}
@@ -383,7 +385,7 @@ pub fn (mut server Server) run() ! {
 		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
-	println('listening on http://localhost:${server.port}/')
+	println('listening on http://0.0.0.0:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()

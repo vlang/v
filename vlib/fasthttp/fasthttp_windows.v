@@ -3,6 +3,7 @@ module fasthttp
 struct Server {
 pub:
 	port int = 3000
+	max_request_buffer_size int = 8192
 mut:
 	request_handler fn (HttpRequest) !HttpResponse @[required]
 }
@@ -11,6 +12,7 @@ mut:
 pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
 		port:            config.port
+		max_request_buffer_size: config.max_request_buffer_size
 		request_handler: config.handler
 	}
 

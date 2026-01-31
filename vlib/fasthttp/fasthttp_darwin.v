@@ -55,6 +55,7 @@ mut:
 
 pub struct Server {
 pub mut:
+	family                  net.AddrFamily = .ip6
 	port            int
 	socket_fd       int
 	poll_fd         int // kqueue fd
@@ -65,7 +66,9 @@ pub mut:
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
+		family:          config.family
 		port:            config.port
+		max_request_buffer_size: config.max_request_buffer_size
 		user_data:       config.user_data
 		request_handler: config.handler
 	}
@@ -272,7 +275,7 @@ fn accept_clients(kq int, listen_fd int) {
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
-	s.socket_fd = C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
+	s.socket_fd = C.socket(server.family, net.SocketType.tcp, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
@@ -304,7 +307,7 @@ pub fn (mut s Server) run() ! {
 	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
 		unsafe { nil })
 
-	println('listening on http://localhost:${s.port}/')
+	println('listening on http://0.0.0.0:${s.port}/')
 
 	mut events := [kqueue_max_events]C.kevent{}
 	for {
