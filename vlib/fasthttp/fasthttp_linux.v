@@ -37,8 +37,8 @@ struct C.epoll_event {
 struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
-	port                    int = 3000
-	max_request_buffer_size int = 8192
+	port                    int            = 3000
+	max_request_buffer_size int            = 8192
 	user_data               voidptr
 mut:
 	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
@@ -220,7 +220,8 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				}
 				if client_fd > 0 {
 					// Try to send 444 No Response before closing abnormal connection
-					C.send(client_fd, status_444_response.data, status_444_response.len, C.MSG_NOSIGNAL)
+					C.send(client_fd, status_444_response.data, status_444_response.len,
+						C.MSG_NOSIGNAL)
 					handle_client_closure(epoll_fd, client_fd)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
@@ -233,7 +234,8 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				mut all_data := []u8{cap: server.max_request_buffer_size}
 
 				for {
-					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1, 0)
+					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
+						0)
 					if bytes_read < 0 {
 						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 							// No more data available right now
@@ -259,8 +261,10 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 
 					// Check if we've received the complete HTTP request (look for \r\n\r\n)
 					if total_bytes_read >= 4 {
-						if all_data[total_bytes_read - 4] == `\r` && all_data[total_bytes_read - 3] == `\n` &&
-							all_data[total_bytes_read - 2] == `\r` && all_data[total_bytes_read - 1] == `\n` {
+						if all_data[total_bytes_read - 4] == `\r`
+							&& all_data[total_bytes_read - 3] == `\n`
+							&& all_data[total_bytes_read - 2] == `\r`
+							&& all_data[total_bytes_read - 1] == `\n` {
 							break
 						}
 					}
@@ -269,13 +273,15 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				if total_bytes_read > 0 {
 					// Check if request exceeds buffer size
 					if total_bytes_read >= server.max_request_buffer_size - 1 {
-						C.send(client_fd, status_413_response.data, status_413_response.len, C.MSG_NOSIGNAL)
+						C.send(client_fd, status_413_response.data, status_413_response.len,
+							C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
 					mut decoded_http_request := decode_http_request(all_data) or {
 						eprintln('Error decoding request ${err}')
-						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len, C.MSG_NOSIGNAL)
+						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+							C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}

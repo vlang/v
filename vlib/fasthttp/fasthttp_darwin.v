@@ -55,7 +55,7 @@ mut:
 
 pub struct Server {
 pub mut:
-	family                  net.AddrFamily = .ip6
+	family          net.AddrFamily = .ip6
 	port            int
 	socket_fd       int
 	poll_fd         int // kqueue fd
@@ -66,11 +66,11 @@ pub mut:
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
 	mut server := &Server{
-		family:          config.family
-		port:            config.port
+		family:                  config.family
+		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		user_data:       config.user_data
-		request_handler: config.handler
+		user_data:               config.user_data
+		request_handler:         config.handler
 	}
 	return server
 }
