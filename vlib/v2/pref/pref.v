@@ -85,8 +85,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		arch:                  arch
 		output_file:           output_file
 		// Explicitly set defaults since cleanc doesn't handle struct default values
-		vroot:                 os.dir(@VEXE)
-		vmodules_path:         os.vmodules_dir()
+		vroot:         os.dir(@VEXE)
+		vmodules_path: os.vmodules_dir()
 	}
 }
 
