@@ -68,6 +68,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
 	hack_stmt_line := g.build_sql_stmt_line_from_sql_expr(node)
@@ -123,6 +124,7 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	if node.kind != .create {
 		node.fields = g.filter_struct_fields_by_orm_attrs(node.fields)
@@ -964,6 +966,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	g.writeln('// sql { select from `${table_name}` }')
 	g.writeln('${result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
@@ -1341,10 +1344,19 @@ fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.
+// For generic types, uses ngname (name without generic params) to get the base table name.
 fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 	sym := g.table.sym(typ)
 	info := sym.struct_info()
-	mut table_name := util.strip_mod_name(sym.name)
+	// Use ngname for generic types to strip the generic parameters (e.g., Message[Payload] -> Message)
+	// Fall back to stripping manually from name if ngname is empty
+	base_name := if sym.ngname.len > 0 {
+		sym.ngname
+	} else {
+		// Strip generic parameters manually (e.g., main.Message[main.Payload] -> main.Message)
+		sym.name.all_before('[')
+	}
+	mut table_name := util.strip_mod_name(base_name)
 
 	if attr := info.attrs.find_first('table') {
 		table_name = attr.arg
@@ -1355,7 +1367,14 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
 fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
-	info := g.table.sym(ast.idx_to_type(g.table.type_idxs[g.sql_table_name])).struct_info()
+	// Use sql_table_typ directly for proper generic type support
+	sym := g.table.sym(g.sql_table_typ)
+	// For GenericInst types, get the struct info from the parent type
+	info := if sym.info is ast.GenericInst {
+		g.table.type_symbols[sym.info.parent_idx].struct_info()
+	} else {
+		sym.struct_info()
+	}
 
 	for field in info.fields {
 		if field.name == name {

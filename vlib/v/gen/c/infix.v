@@ -998,8 +998,8 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			if left.unaliased_sym.is_builtin() {
 				method_name = 'builtin__${method_name}'
 			}
-			if left.unaliased_sym.info is ast.Struct
-				&& left.unaliased_sym.info.generic_types.len > 0 && !g.pref.new_generic_solver {
+			if !g.pref.new_generic_solver && left.unaliased_sym.info is ast.Struct
+				&& left.unaliased_sym.info.generic_types.len > 0 {
 				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
 					method_name)
 			}

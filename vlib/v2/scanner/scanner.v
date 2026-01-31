@@ -583,6 +583,10 @@ fn (mut s Scanner) number() {
 		else if !has_exponent && c in [`e`, `E`] {
 			has_exponent = true
 			s.offset++
+			// consume optional sign after exponent
+			if s.offset < s.src.len && s.src[s.offset] in [`+`, `-`] {
+				s.offset++
+			}
 			continue
 		}
 		break

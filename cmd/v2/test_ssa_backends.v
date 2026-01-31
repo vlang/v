@@ -30,17 +30,27 @@ fn main() {
 	}
 
 	// Parse test file from args or default to test.v
-	input_file := 'test.v'
+	// Support: ./test_ssa_backends arm64 path/to/file.v
+	mut input_file := 'test.v'
+	for arg in os.args {
+		if arg.ends_with('.v') && arg != @FILE {
+			input_file = arg
+			break
+		}
+	}
 	if !os.exists(input_file) {
 		eprintln('Error: ${input_file} not found')
 		return
 	}
 
+	// Derive output binary name from input file
+	base_name := os.file_name(input_file).replace('.v', '')
+
 	// Run v2 with selected backend
 	println('[*] Running v2 -backend ${backend} ${input_file}...')
-	mut v2_cmd := '${v2_binary} -backend ${backend} ${input_file}'
+	mut v2_cmd := '${v2_binary} -backend ${backend} ${input_file} -o ${base_name}'
 	if os.args.contains('--skip-builtin') {
-		v2_cmd = '${v2_binary} -backend ${backend} --skip-builtin ${input_file}'
+		v2_cmd = '${v2_binary} -backend ${backend} --skip-builtin ${input_file} -o ${base_name}'
 	}
 	v2_res := os.execute(v2_cmd)
 	if v2_res.exit_code != 0 {
@@ -50,6 +60,12 @@ fn main() {
 	}
 	println(v2_res.output)
 	println('compilation took ${time.since(t0)}')
+
+	// Save the v2-produced binary before running reference (which would overwrite it)
+	os.cp('./${base_name}', './${base_name}_v2') or {
+		eprintln('Error: Failed to save v2 binary')
+		return
+	}
 
 	// Run Reference (v run test.v)
 	println('[*] Running reference: v -enable-globals run ${input_file}...')
@@ -62,16 +78,11 @@ fn main() {
 	// Normalize newlines
 	expected_out := ref_res.output.trim_space().replace('\r\n', '\n')
 
-	// Run Generated Binary
+	// Run Generated Binary (the v2-produced one we saved earlier)
 	println('[*] Running generated binary...')
-	// Use script command to create a pty (fixes output buffering issues with printf)
-	// The -q flag suppresses "Script started" messages, /dev/null discards the typescript file
-	mut cmd := 'script -q /dev/null ./out_bin'
+	mut cmd := './${base_name}_v2'
 	if os.user_os() == 'windows' {
-		cmd = 'out_bin.exe'
-	} else if os.user_os() != 'macos' {
-		// Linux version of script has different syntax
-		cmd = 'script -q -c ./out_bin /dev/null'
+		cmd = '${base_name}_v2.exe'
 	}
 	gen_res := os.execute(cmd)
 	if gen_res.exit_code != 0 {
@@ -98,6 +109,9 @@ fn main() {
 		println('\n[FAILURE] Outputs differ')
 		expected_lines := expected_out.split('\n')
 		actual_lines := actual_out.split('\n')
+
+		// Find first differing line
+		mut first_diff := -1
 		max_lines := if expected_lines.len > actual_lines.len {
 			expected_lines.len
 		} else {
@@ -107,9 +121,30 @@ fn main() {
 			exp := if i < expected_lines.len { expected_lines[i] } else { '<missing>' }
 			act := if i < actual_lines.len { actual_lines[i] } else { '<missing>' }
 			if exp != act {
-				println('line ${i + 1}:')
-				println('  expected: ${exp}')
-				println('       got: ${act}')
+				first_diff = i
+				break
+			}
+		}
+
+		if first_diff >= 0 {
+			context := 2
+			start := if first_diff > context { first_diff - context } else { 0 }
+			end := if first_diff + context + 1 < max_lines {
+				first_diff + context + 1
+			} else {
+				max_lines
+			}
+
+			println('\nExpected (reference compiler):')
+			for i in start .. end {
+				line := if i < expected_lines.len { expected_lines[i] } else { '<missing>' }
+				println('${i + 1}: ${line}')
+			}
+
+			println('\nGot (v2 ${backend}):')
+			for i in start .. end {
+				line := if i < actual_lines.len { actual_lines[i] } else { '<missing>' }
+				println('${i + 1}: ${line}')
 			}
 		}
 	}

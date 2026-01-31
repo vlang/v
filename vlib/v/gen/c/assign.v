@@ -708,7 +708,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(concrete_types, method_name)
+					if !g.pref.new_generic_solver {
+						method_name = g.generic_fn_name(concrete_types, method_name)
+					}
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
@@ -729,7 +731,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if left_sym.kind == .alias && struct_info.kind == .struct
 					&& struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
 					mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(struct_info.info.concrete_types, method_name)
+					if !g.pref.new_generic_solver {
+						method_name = g.generic_fn_name(struct_info.info.concrete_types,
+							method_name)
+					}
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')

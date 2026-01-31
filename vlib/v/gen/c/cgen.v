@@ -213,6 +213,7 @@ mut:
 	sql_idents_types          []ast.Type
 	sql_left_type             ast.Type
 	sql_table_name            string
+	sql_table_typ             ast.Type // the table type, used for generic types lookup
 	sql_fkey                  string
 	sql_parent_id             string
 	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`

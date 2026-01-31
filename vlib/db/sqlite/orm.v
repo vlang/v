@@ -5,6 +5,10 @@ import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+	$if trace_orm_where ? {
+		eprintln('> sqlite.select: where.fields.len = ${where.fields.len}')
+		eprintln('> sqlite.select: where.kinds.len = ${where.kinds.len}')
+	}
 	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	$if trace_sqlite ? {
