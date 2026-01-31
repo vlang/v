@@ -2,8 +2,10 @@
 set -e
 
 # Build v2 with v1
+rm v2 || true
 v v2.v
 
+rm v3 || true
 # Use v2 to compile itself to v3 (using cleanc backend)
 ./v2 -o v3 -backend cleanc v2.v || exit
 

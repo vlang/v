@@ -1186,6 +1186,8 @@ pub fn (mut g Gen) gen() string {
 	// 3.6. Builtin helpers (array__free, etc.)
 	// IError__free - C interop in source doesn't generate correctly
 	g.sb.writeln('static inline void IError__free(IError* ie) { if (ie && ie->_object) free(ie->_object); }')
+	// IError_str - convert IError to string by calling msg() method
+	g.sb.writeln('static inline string IError_str(IError e) { return e.msg ? e.msg(e._object) : (string){"", 0}; }')
 	// array__free - inline implementation since method may not be generated due to $if blocks
 	g.sb.writeln('static inline void array__free(array* a) { if (a->data) free(a->data); a->data = 0; a->len = 0; a->cap = 0; }')
 	// Array_string__free - free each string then free the array
@@ -1947,6 +1949,10 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			// Check constant types
 			if t := g.const_types[node.name] {
 				return t
+			}
+			// Special case: 'err' in or-blocks is always IError
+			if node.name == 'err' {
+				return 'IError'
 			}
 			return 'int'
 		}
@@ -5971,7 +5977,18 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							g.gen_expr(arg)
 						}
 					} else {
-						g.gen_expr(arg)
+						// Check if IError needs to be converted to string
+						arg_type := g.infer_type(arg)
+						// Convert IError to string for print functions or when param expects string
+						is_print_fn := name in ['println', 'eprintln', 'print', 'eprint']
+						if arg_type == 'IError' && (param_type == 'string' || is_print_fn) {
+							// Convert IError to string: IError_str(err)
+							g.sb.write_string('IError_str(')
+							g.gen_expr(arg)
+							g.sb.write_string(')')
+						} else {
+							g.gen_expr(arg)
+						}
 					}
 				}
 				g.cur_match_type = old_match_type_arg
@@ -6763,7 +6780,18 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				}
 				g.gen_expr(node.expr)
 			} else {
-				g.gen_expr(node.expr)
+				// Check if IError needs to be converted to string
+				arg_type := g.infer_type(node.expr)
+				// Convert IError to string for print functions or when param expects string
+				is_print_fn := name in ['println', 'eprintln', 'print', 'eprint']
+				if arg_type == 'IError' && (param_type == 'string' || is_print_fn) {
+					// Convert IError to string: IError_str(err)
+					g.sb.write_string('IError_str(')
+					g.gen_expr(node.expr)
+					g.sb.write_string(')')
+				} else {
+					g.gen_expr(node.expr)
+				}
 			}
 			g.sb.write_string(')')
 		}
@@ -7308,121 +7336,38 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 		}
 		ast.OrExpr {
-			// Or expression: expr or { fallback }
-			// Following V's pattern for Result/Option types
+			// Most OrExpr should be expanded by transformer, but handle fallback
+			// for edge cases (e.g., builtin functions not tracked by transformer)
 			typ := g.infer_type(node.expr)
 
-			// Check if this is a Result type (_result_T)
 			if typ.starts_with('_result_') {
-				// Get base type from result type name
 				base_type := g.result_types[typ] or { 'int' }
-
-				if node.stmts.len >= 1 {
-					// Generate: ({ _result_T _or = expr; if (_or.is_error) { fallback } *(T*)_or.data; })
-					g.sb.write_string('({ ${typ} _or_res = ')
-					g.gen_expr(node.expr)
-					g.sb.write_string('; if (_or_res.is_error) { ')
-
-					// Handle fallback statements
-					if node.stmts.len == 1 {
-						stmt := node.stmts[0]
-						if stmt is ast.ExprStmt {
-							fallback_expr := stmt.expr
-							fallback_typ := g.infer_type(fallback_expr)
-							if fallback_typ == 'void' || fallback_typ == '' {
-								// panic/exit - just execute
-								g.gen_expr(fallback_expr)
-								g.sb.write_string('; ')
-							} else {
-								// Value fallback - assign to data
-								g.sb.write_string('*(${base_type}*)_or_res.data = ')
-								g.gen_expr(fallback_expr)
-								g.sb.write_string('; ')
-							}
-						}
-					} else {
-						// Multiple statements in or block
-						for stmt in node.stmts {
-							if stmt is ast.ExprStmt {
-								g.gen_expr(stmt.expr)
-								g.sb.write_string('; ')
-							}
-						}
-					}
-					g.sb.write_string('} *(${base_type}*)_or_res.data; })')
-				} else {
-					// No fallback - just extract value
-					g.sb.write_string('(*(${base_type}*)(')
-					g.gen_expr(node.expr)
-					g.sb.write_string(').data)')
-				}
-			} else if typ.starts_with('_option_') {
-				// Option type handling (similar to Result but checks state != 0)
-				base_type := g.option_types[typ] or { 'int' }
-
-				if node.stmts.len >= 1 {
-					g.sb.write_string('({ ${typ} _or_opt = ')
-					g.gen_expr(node.expr)
-					g.sb.write_string('; if (_or_opt.state != 0) { ')
-
-					if node.stmts.len == 1 {
-						stmt := node.stmts[0]
-						if stmt is ast.ExprStmt {
-							fallback_expr := stmt.expr
-							fallback_typ := g.infer_type(fallback_expr)
-							if fallback_typ == 'void' || fallback_typ == '' {
-								g.gen_expr(fallback_expr)
-								g.sb.write_string('; ')
-							} else {
-								g.sb.write_string('*(${base_type}*)_or_opt.data = ')
-								g.gen_expr(fallback_expr)
-								g.sb.write_string('; ')
-							}
-						}
-					} else {
-						for stmt in node.stmts {
-							if stmt is ast.ExprStmt {
-								g.gen_expr(stmt.expr)
-								g.sb.write_string('; ')
-							}
-						}
-					}
-					g.sb.write_string('} *(${base_type}*)_or_opt.data; })')
-				} else {
-					g.sb.write_string('(*(${base_type}*)(')
-					g.gen_expr(node.expr)
-					g.sb.write_string(').data)')
-				}
-			} else if typ == 'void' || typ == '' {
-				// Void type - just execute the expression
+				g.sb.write_string('({ ${typ} _or_res = ')
 				g.gen_expr(node.expr)
-			} else if node.stmts.len == 1 {
-				stmt := node.stmts[0]
-				if stmt is ast.ExprStmt {
-					fallback_expr := stmt.expr
-					fallback_typ := g.infer_type(fallback_expr)
-
-					if typ == 'string' {
-						// For strings, check if empty (simplified "none" check)
-						g.sb.write_string('({ string _or_tmp = ')
-						g.gen_expr(node.expr)
-						g.sb.write_string('; if (_or_tmp.len == 0) { ')
-						if fallback_typ == 'void' || fallback_typ == '' {
-							g.gen_expr(fallback_expr)
-							g.sb.write_string('; ')
-						} else {
-							g.sb.write_string('_or_tmp = ')
-							g.gen_expr(fallback_expr)
-							g.sb.write_string('; ')
-						}
-						g.sb.write_string('} _or_tmp; })')
-					} else {
-						g.gen_expr(node.expr)
+				g.sb.write_string('; if (_or_res.is_error) { ')
+				if node.stmts.len == 1 {
+					stmt := node.stmts[0]
+					if stmt is ast.ExprStmt {
+						g.gen_expr(stmt.expr)
+						g.sb.write_string('; ')
 					}
-				} else {
-					g.gen_expr(node.expr)
 				}
+				g.sb.write_string('} *(${base_type}*)_or_res.data; })')
+			} else if typ.starts_with('_option_') {
+				base_type := g.option_types[typ] or { 'int' }
+				g.sb.write_string('({ ${typ} _or_opt = ')
+				g.gen_expr(node.expr)
+				g.sb.write_string('; if (_or_opt.state != 0) { ')
+				if node.stmts.len == 1 {
+					stmt := node.stmts[0]
+					if stmt is ast.ExprStmt {
+						g.gen_expr(stmt.expr)
+						g.sb.write_string('; ')
+					}
+				}
+				g.sb.write_string('} *(${base_type}*)_or_opt.data; })')
 			} else {
+				// Unknown type - just generate the expression
 				g.gen_expr(node.expr)
 			}
 		}

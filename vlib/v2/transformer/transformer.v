@@ -21,10 +21,10 @@ mut:
 	var_types map[string]string
 	// Track function return types
 	fn_return_types map[string]string
-	// Track which functions return Result types (!T)
-	fn_returns_result map[string]bool
-	// Track which functions return Option types (?T)
-	fn_returns_option map[string]bool
+	// Track which functions return Result types (!T) -> base type (empty for void)
+	fn_returns_result map[string]string
+	// Track which functions return Option types (?T) -> base type (empty for void)
+	fn_returns_option map[string]string
 	// Current module for scope lookups
 	cur_module string
 	// Temp variable counter for desugaring
@@ -39,8 +39,8 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 		param_types:       map[string]string{}
 		var_types:         map[string]string{}
 		fn_return_types:   map[string]string{}
-		fn_returns_result: map[string]bool{}
-		fn_returns_option: map[string]bool{}
+		fn_returns_result: map[string]string{}
+		fn_returns_option: map[string]string{}
 	}
 	// Collect flag enum names and function return types from AST
 	for file in files {
@@ -55,13 +55,15 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 				if ret_type != '' {
 					t.fn_return_types[stmt.name] = ret_type
 				}
-				// Track Result/Option return types
+				// Track Result/Option return types with their base type
 				ret_expr := stmt.typ.return_type
 				if ret_expr is ast.Type {
 					if ret_expr is ast.ResultType {
-						t.fn_returns_result[stmt.name] = true
+						base_type := t.expr_to_type_name(ret_expr.base_type)
+						t.fn_returns_result[stmt.name] = base_type
 					} else if ret_expr is ast.OptionType {
-						t.fn_returns_option[stmt.name] = true
+						base_type := t.expr_to_type_name(ret_expr.base_type)
+						t.fn_returns_option[stmt.name] = base_type
 					}
 				}
 			}
@@ -73,7 +75,25 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 			t.collect_flag_enums_from_scope(scope)
 		}
 	}
+	// Add known builtin functions that return Result or Option
+	t.add_builtin_result_option_fns()
 	return t
+}
+
+// add_builtin_result_option_fns adds known builtin functions that return Result or Option types
+fn (mut t Transformer) add_builtin_result_option_fns() {
+	// Builtin functions returning Result (!)
+	t.fn_returns_result['at_exit'] = '' // returns !
+	t.fn_returns_result['atexit'] = '' // alias for at_exit
+	// String methods returning Option
+	t.fn_returns_option['index'] = 'int' // string.index() returns ?int
+	t.fn_returns_option['last_index'] = 'int' // string.last_index() returns ?int
+	t.fn_returns_option['index_any'] = 'int' // string.index_any() returns ?int
+	t.fn_returns_option['index_after'] = 'int' // string.index_after() returns ?int
+	// Array methods returning Option
+	t.fn_returns_option['first'] = '' // array.first() - type unknown, will use default
+	t.fn_returns_option['last'] = '' // array.last()
+	t.fn_returns_option['pop'] = '' // array.pop()
 }
 
 fn (mut t Transformer) collect_flag_enums_from_scope(scope &types.Scope) {
@@ -179,6 +199,20 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 				continue
 			}
 		}
+		// Check for OrExpr in expression statements (e.g., println(may_fail() or { 0 }))
+		if stmt is ast.ExprStmt {
+			if expanded := t.try_expand_or_expr_stmt(stmt) {
+				result << expanded
+				continue
+			}
+		}
+		// Check for OrExpr in return statements
+		if stmt is ast.ReturnStmt {
+			if expanded := t.try_expand_or_expr_return(stmt) {
+				result << expanded
+				continue
+			}
+		}
 		result << t.transform_stmt(stmt)
 	}
 	return result
@@ -239,31 +273,56 @@ fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt 
 //   if _t1.is_error { err := _t1.err; _t1.data = 0 }
 //   a := _t1.data
 fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
-	// Check for single assignment with OrExpr RHS
+	// Check for single assignment with OrExpr somewhere in RHS
 	if stmt.rhs.len != 1 || stmt.lhs.len != 1 {
 		return none
 	}
 	rhs_expr := stmt.rhs[0]
-	if rhs_expr !is ast.OrExpr {
-		return none
+	// Check if RHS is directly an OrExpr (simple case)
+	if rhs_expr is ast.OrExpr {
+		return t.expand_direct_or_expr_assign(stmt, rhs_expr)
 	}
-	or_expr := rhs_expr as ast.OrExpr
+	// Check if RHS contains an OrExpr (nested case like cast(OrExpr))
+	if t.expr_has_or_expr(rhs_expr) {
+		mut prefix_stmts := []ast.Stmt{}
+		new_rhs := t.extract_or_expr(rhs_expr, mut prefix_stmts)
+		if prefix_stmts.len == 0 {
+			return none
+		}
+		// Add the final assignment with the extracted expression
+		prefix_stmts << ast.AssignStmt{
+			op:  stmt.op
+			lhs: stmt.lhs
+			rhs: [t.transform_expr(new_rhs)]
+			pos: stmt.pos
+		}
+		return prefix_stmts
+	}
+	return none
+}
+
+// expand_direct_or_expr_assign handles the simple case where RHS is directly an OrExpr
+fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr ast.OrExpr) ?[]ast.Stmt {
 	// The inner expression should be a call that returns Result or Option
 	call_expr := or_expr.expr
 	fn_name := t.get_call_fn_name(call_expr)
 	if fn_name == '' {
 		return none
 	}
-	// Check if function returns Result or Option
+	// Check if function returns Result or Option and get base type
 	mut is_result := false
 	mut is_option := false
+	mut base_type := ''
 	if fn_name in t.fn_returns_result {
 		is_result = true
+		base_type = t.fn_returns_result[fn_name]
 	} else if fn_name in t.fn_returns_option {
 		is_option = true
+		base_type = t.fn_returns_option[fn_name]
 	} else {
 		return none
 	}
+	is_void_result := base_type == '' || base_type == 'void'
 	_ = is_option // suppress unused warning
 	// Generate temp variable name
 	temp_name := t.gen_temp_name()
@@ -325,8 +384,8 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 	if t.or_block_has_return(or_expr.stmts) {
 		// Or-block contains return - use the statements directly
 		if_stmts << t.transform_stmts(or_expr.stmts)
-	} else {
-		// Or-block provides a value - assign to data
+	} else if !is_void_result {
+		// Or-block provides a value - assign to data (only for non-void results)
 		or_value := t.get_or_block_value(or_expr.stmts)
 		// _t1.data = or_value (the backend will handle proper casting)
 		if_stmts << ast.AssignStmt{
@@ -348,19 +407,21 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 			stmts: if_stmts
 		}
 	}
-	// 3. a := _t1.data (extract value)
-	stmts << ast.AssignStmt{
-		op:  stmt.op
-		lhs: stmt.lhs
-		rhs: [
-			ast.Expr(ast.SelectorExpr{
-				lhs: temp_ident
-				rhs: ast.Ident{
-					name: 'data'
-				}
-			}),
-		]
-		pos: stmt.pos
+	// 3. a := _t1.data (extract value) - only for non-void results
+	if !is_void_result {
+		stmts << ast.AssignStmt{
+			op:  stmt.op
+			lhs: stmt.lhs
+			rhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: temp_ident
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+			pos: stmt.pos
+		}
 	}
 	return stmts
 }
@@ -377,10 +438,18 @@ fn (t &Transformer) get_call_fn_name(expr ast.Expr) string {
 		if expr.lhs is ast.Ident {
 			return expr.lhs.name
 		}
+		// Handle module-qualified calls: strconv.common_parse_int(...)
+		if expr.lhs is ast.SelectorExpr {
+			return expr.lhs.rhs.name
+		}
 	}
 	if expr is ast.CallOrCastExpr {
 		if expr.lhs is ast.Ident {
 			return expr.lhs.name
+		}
+		// Handle module-qualified calls: strconv.common_parse_int(...)
+		if expr.lhs is ast.SelectorExpr {
+			return expr.lhs.rhs.name
 		}
 	}
 	return ''
@@ -437,6 +506,387 @@ fn (mut t Transformer) get_or_block_value(stmts []ast.Stmt) ast.Expr {
 	return ast.BasicLiteral{
 		kind:  .number
 		value: '0'
+	}
+}
+
+// try_expand_or_expr_stmt handles OrExpr in expression statements like println(may_fail() or { 0 })
+// Transforms: println(may_fail(5) or { 0 })
+// Into:
+//   _t1 := may_fail(5)
+//   if _t1.is_error { err := _t1.err; _t1.data = 0 }
+//   println(_t1.data)
+fn (mut t Transformer) try_expand_or_expr_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
+	// Check if expression contains any OrExpr
+	if !t.expr_has_or_expr(stmt.expr) {
+		return none
+	}
+	// Extract OrExpr and get prefix statements + transformed expression
+	mut prefix_stmts := []ast.Stmt{}
+	new_expr := t.extract_or_expr(stmt.expr, mut prefix_stmts)
+	if prefix_stmts.len == 0 {
+		return none
+	}
+	// Add the final expression statement
+	prefix_stmts << ast.ExprStmt{
+		expr: t.transform_expr(new_expr)
+	}
+	return prefix_stmts
+}
+
+// try_expand_or_expr_return handles OrExpr in return statements
+// Transforms: return may_fail(5) or { 0 }
+// Into:
+//   _t1 := may_fail(5)
+//   if _t1.is_error { err := _t1.err; _t1.data = 0 }
+//   return _t1.data
+fn (mut t Transformer) try_expand_or_expr_return(stmt ast.ReturnStmt) ?[]ast.Stmt {
+	// Check if any return expression contains OrExpr
+	mut has_or_expr := false
+	for expr in stmt.exprs {
+		if t.expr_has_or_expr(expr) {
+			has_or_expr = true
+			break
+		}
+	}
+	if !has_or_expr {
+		return none
+	}
+	// Extract OrExpr from all return expressions
+	mut prefix_stmts := []ast.Stmt{}
+	mut new_exprs := []ast.Expr{cap: stmt.exprs.len}
+	for expr in stmt.exprs {
+		new_expr := t.extract_or_expr(expr, mut prefix_stmts)
+		new_exprs << t.transform_expr(new_expr)
+	}
+	if prefix_stmts.len == 0 {
+		return none
+	}
+	// Add the final return statement
+	prefix_stmts << ast.ReturnStmt{
+		exprs: new_exprs
+	}
+	return prefix_stmts
+}
+
+// expr_has_or_expr checks if an expression contains any OrExpr
+fn (t &Transformer) expr_has_or_expr(expr ast.Expr) bool {
+	if expr is ast.OrExpr {
+		return true
+	}
+	match expr {
+		ast.CallExpr {
+			for arg in expr.args {
+				if t.expr_has_or_expr(arg) {
+					return true
+				}
+			}
+		}
+		ast.CallOrCastExpr {
+			if t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.InfixExpr {
+			if t.expr_has_or_expr(expr.lhs) || t.expr_has_or_expr(expr.rhs) {
+				return true
+			}
+		}
+		ast.PrefixExpr {
+			if t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.ParenExpr {
+			if t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.IndexExpr {
+			if t.expr_has_or_expr(expr.lhs) || t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.SelectorExpr {
+			if t.expr_has_or_expr(expr.lhs) {
+				return true
+			}
+		}
+		ast.CastExpr {
+			if t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.IfExpr {
+			if t.expr_has_or_expr(expr.cond) {
+				return true
+			}
+			if t.expr_has_or_expr(expr.else_expr) {
+				return true
+			}
+			// Note: stmts inside IfExpr are handled separately by transform_stmts
+		}
+		ast.MatchExpr {
+			if t.expr_has_or_expr(expr.expr) {
+				return true
+			}
+		}
+		ast.ArrayInitExpr {
+			for e in expr.exprs {
+				if t.expr_has_or_expr(e) {
+					return true
+				}
+			}
+		}
+		ast.InitExpr {
+			for field in expr.fields {
+				if t.expr_has_or_expr(field.value) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+// extract_or_expr extracts OrExpr from an expression tree.
+// It generates prefix statements for the OrExpr expansion and returns the expression
+// with OrExpr replaced by the temp variable's data access.
+fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stmt) ast.Expr {
+	// If this is an OrExpr, expand it directly
+	if expr is ast.OrExpr {
+		return t.expand_single_or_expr(expr, mut prefix_stmts)
+	}
+	// Recursively check sub-expressions
+	match expr {
+		ast.CallExpr {
+			mut new_args := []ast.Expr{cap: expr.args.len}
+			for arg in expr.args {
+				new_args << t.extract_or_expr(arg, mut prefix_stmts)
+			}
+			return ast.CallExpr{
+				lhs:  expr.lhs
+				args: new_args
+				pos:  expr.pos
+			}
+		}
+		ast.CallOrCastExpr {
+			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.CallOrCastExpr{
+				lhs:  expr.lhs
+				expr: new_inner
+				pos:  expr.pos
+			}
+		}
+		ast.InfixExpr {
+			new_lhs := t.extract_or_expr(expr.lhs, mut prefix_stmts)
+			new_rhs := t.extract_or_expr(expr.rhs, mut prefix_stmts)
+			return ast.InfixExpr{
+				op:  expr.op
+				lhs: new_lhs
+				rhs: new_rhs
+				pos: expr.pos
+			}
+		}
+		ast.PrefixExpr {
+			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.PrefixExpr{
+				op:   expr.op
+				expr: new_inner
+				pos:  expr.pos
+			}
+		}
+		ast.ParenExpr {
+			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.ParenExpr{
+				expr: new_inner
+			}
+		}
+		ast.IndexExpr {
+			new_lhs := t.extract_or_expr(expr.lhs, mut prefix_stmts)
+			new_idx := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.IndexExpr{
+				lhs:      new_lhs
+				expr:     new_idx
+				is_gated: expr.is_gated
+			}
+		}
+		ast.SelectorExpr {
+			new_lhs := t.extract_or_expr(expr.lhs, mut prefix_stmts)
+			return ast.SelectorExpr{
+				lhs: new_lhs
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+		ast.CastExpr {
+			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.CastExpr{
+				typ:  expr.typ
+				expr: new_inner
+				pos:  expr.pos
+			}
+		}
+		ast.IfExpr {
+			new_cond := t.extract_or_expr(expr.cond, mut prefix_stmts)
+			new_else := t.extract_or_expr(expr.else_expr, mut prefix_stmts)
+			return ast.IfExpr{
+				cond:      new_cond
+				stmts:     expr.stmts // stmts are processed separately by transform_stmts
+				else_expr: new_else
+			}
+		}
+		ast.MatchExpr {
+			new_matched := t.extract_or_expr(expr.expr, mut prefix_stmts)
+			return ast.MatchExpr{
+				expr:     new_matched
+				branches: expr.branches
+				pos:      expr.pos
+			}
+		}
+		ast.ArrayInitExpr {
+			mut new_exprs := []ast.Expr{cap: expr.exprs.len}
+			for e in expr.exprs {
+				new_exprs << t.extract_or_expr(e, mut prefix_stmts)
+			}
+			return ast.ArrayInitExpr{
+				typ:   expr.typ
+				exprs: new_exprs
+			}
+		}
+		ast.InitExpr {
+			mut new_fields := []ast.FieldInit{cap: expr.fields.len}
+			for field in expr.fields {
+				new_fields << ast.FieldInit{
+					name:  field.name
+					value: t.extract_or_expr(field.value, mut prefix_stmts)
+				}
+			}
+			return ast.InitExpr{
+				typ:    expr.typ
+				fields: new_fields
+			}
+		}
+		else {
+			return expr
+		}
+	}
+}
+
+// expand_single_or_expr expands a single OrExpr and returns the data access expression
+fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ast.Expr {
+	call_expr := or_expr.expr
+	fn_name := t.get_call_fn_name(call_expr)
+	if fn_name == '' {
+		// Not a known function call, return as-is (shouldn't happen)
+		return or_expr
+	}
+	// Check if function returns Result or Option and get base type
+	mut is_result := false
+	mut is_option := false
+	mut base_type := ''
+	if fn_name in t.fn_returns_result {
+		is_result = true
+		base_type = t.fn_returns_result[fn_name]
+	} else if fn_name in t.fn_returns_option {
+		is_option = true
+		base_type = t.fn_returns_option[fn_name]
+	} else {
+		// Not a Result/Option function, return as-is
+		return or_expr
+	}
+	is_void_result := base_type == '' || base_type == 'void'
+	_ = is_option // suppress unused warning
+	// Generate temp variable name
+	temp_name := t.gen_temp_name()
+	temp_ident := ast.Ident{
+		name: temp_name
+	}
+	// 1. _t1 := call_expr
+	prefix_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(temp_ident)]
+		rhs: [t.transform_expr(call_expr)]
+	}
+	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
+	error_cond := if is_result {
+		// _t1.is_error
+		ast.Expr(ast.SelectorExpr{
+			lhs: temp_ident
+			rhs: ast.Ident{
+				name: 'is_error'
+			}
+		})
+	} else {
+		// _t1.state != 0
+		ast.Expr(ast.InfixExpr{
+			op:  .ne
+			lhs: ast.SelectorExpr{
+				lhs: temp_ident
+				rhs: ast.Ident{
+					name: 'state'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			}
+		})
+	}
+	// Build the if-block statements
+	mut if_stmts := []ast.Stmt{}
+	// Declare err variable: err := _t1.err
+	if_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'err'
+		})]
+		rhs: [
+			ast.Expr(ast.SelectorExpr{
+				lhs: temp_ident
+				rhs: ast.Ident{
+					name: 'err'
+				}
+			}),
+		]
+	}
+	// Check if or-block contains a return statement (control flow)
+	if t.or_block_has_return(or_expr.stmts) {
+		// Or-block contains return - use the statements directly
+		if_stmts << t.transform_stmts(or_expr.stmts)
+	} else if !is_void_result {
+		// Or-block provides a value - assign to data (only for non-void results)
+		or_value := t.get_or_block_value(or_expr.stmts)
+		// _t1.data = or_value
+		if_stmts << ast.AssignStmt{
+			op:  .assign
+			lhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: temp_ident
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+			rhs: [or_value]
+		}
+	}
+	prefix_stmts << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  error_cond
+			stmts: if_stmts
+		}
+	}
+	// Return the data access expression (or empty expr for void)
+	if is_void_result {
+		// For void results, return an empty expression since there's no value
+		return ast.empty_expr
+	}
+	return ast.SelectorExpr{
+		lhs: temp_ident
+		rhs: ast.Ident{
+			name: 'data'
+		}
 	}
 }
 

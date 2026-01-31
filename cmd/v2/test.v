@@ -2061,6 +2061,18 @@ fn main() {
 		print_int(0) // 0 (none case)
 	}
 
+	// 35.10 Direct or { value } pattern - successful call
+	or_direct1 := maybe_positive(42) or { 0 }
+	print_int(or_direct1) // 42
+
+	// 35.11 Direct or { value } pattern - fallback used
+	or_direct2 := maybe_positive(-10) or { 99 }
+	print_int(or_direct2) // 99
+
+	// 35.12 Chained or { value } with computation
+	or_chain := maybe_double(25) or { 0 }
+	print_int(or_chain + 5) // 50 + 5 = 55
+
 	// ==================== 36. RANGE EXPRESSIONS ====================
 	print_str('--- 36. Range Expressions ---')
 
