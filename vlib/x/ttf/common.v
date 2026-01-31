@@ -36,12 +36,11 @@ pub enum Style {
 * DEBUG Utility
 *
 ******************************************************************************/
-const debug_flag = false
 
+// dprintln prints the `txt` message, *only* when `-d debug_flag` is passed while compiling a program
+@[if debug_flag ?]
 pub fn dprintln(txt string) {
-	if debug_flag {
-		println(txt)
-	}
+	println(txt)
 }
 
 /******************************************************************************
