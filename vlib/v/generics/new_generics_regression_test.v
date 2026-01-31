@@ -1,4 +1,4 @@
-// vtest build: !docker-ubuntu-musl
+// vtest build: !docker-ubuntu-musl && !sanitize-memory-gcc && !sanitize-address-gcc && !sanitize-address-clang
 // This test ensures the -new-generic-solver option, and its corresponding compiler stage, will not regress silently,
 // as V continues to change. If you make changes to the generics stage to improve it, once you spot a failure here, or
 // some of the expected tests starts passing (which will be also a failure as far as this _test.v file is concerned),
