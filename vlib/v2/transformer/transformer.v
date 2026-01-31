@@ -21,18 +21,26 @@ mut:
 	var_types map[string]string
 	// Track function return types
 	fn_return_types map[string]string
+	// Track which functions return Result types (!T)
+	fn_returns_result map[string]bool
+	// Track which functions return Option types (?T)
+	fn_returns_option map[string]bool
 	// Current module for scope lookups
 	cur_module string
+	// Temp variable counter for desugaring
+	temp_counter int
 }
 
 pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 	mut t := &Transformer{
-		env:             unsafe { env }
-		flag_enum_names: map[string]bool{}
-		var_enum_types:  map[string]string{}
-		param_types:     map[string]string{}
-		var_types:       map[string]string{}
-		fn_return_types: map[string]string{}
+		env:               unsafe { env }
+		flag_enum_names:   map[string]bool{}
+		var_enum_types:    map[string]string{}
+		param_types:       map[string]string{}
+		var_types:         map[string]string{}
+		fn_return_types:   map[string]string{}
+		fn_returns_result: map[string]bool{}
+		fn_returns_option: map[string]bool{}
 	}
 	// Collect flag enum names and function return types from AST
 	for file in files {
@@ -46,6 +54,15 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 				ret_type := t.expr_to_type_name(stmt.typ.return_type)
 				if ret_type != '' {
 					t.fn_return_types[stmt.name] = ret_type
+				}
+				// Track Result/Option return types
+				ret_expr := stmt.typ.return_type
+				if ret_expr is ast.Type {
+					if ret_expr is ast.ResultType {
+						t.fn_returns_result[stmt.name] = true
+					} else if ret_expr is ast.OptionType {
+						t.fn_returns_option[stmt.name] = true
+					}
 				}
 			}
 		}
@@ -100,6 +117,12 @@ fn (mut t Transformer) transform_file(file ast.File) ast.File {
 }
 
 fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
+	// Check for OrExpr assignment that needs expansion
+	if stmt is ast.AssignStmt {
+		if expanded := t.try_expand_or_expr_assign(stmt) {
+			return expanded
+		}
+	}
 	return match stmt {
 		ast.AssignStmt {
 			t.transform_assign_stmt(stmt)
@@ -149,6 +172,13 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	mut result := []ast.Stmt{cap: stmts.len}
 	for stmt in stmts {
+		// Check for OrExpr assignment that expands to multiple statements
+		if stmt is ast.AssignStmt {
+			if expanded := t.try_expand_or_expr_assign_stmts(stmt) {
+				result << expanded
+				continue
+			}
+		}
 		result << t.transform_stmt(stmt)
 	}
 	return result
@@ -193,6 +223,220 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 		lhs: stmt.lhs
 		rhs: rhs
 		pos: stmt.pos
+	}
+}
+
+// try_expand_or_expr_assign checks if an assignment has an OrExpr RHS (used by transform_stmt)
+// Returns none since expansion is handled by try_expand_or_expr_assign_stmts at the list level
+fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt {
+	return none
+}
+
+// try_expand_or_expr_assign_stmts expands an OrExpr assignment to multiple statements.
+// Transforms: a := may_fail(5) or { 0 }
+// Into:
+//   _t1 := may_fail(5)
+//   if _t1.is_error { err := _t1.err; _t1.data = 0 }
+//   a := _t1.data
+fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
+	// Check for single assignment with OrExpr RHS
+	if stmt.rhs.len != 1 || stmt.lhs.len != 1 {
+		return none
+	}
+	rhs_expr := stmt.rhs[0]
+	if rhs_expr !is ast.OrExpr {
+		return none
+	}
+	or_expr := rhs_expr as ast.OrExpr
+	// The inner expression should be a call that returns Result or Option
+	call_expr := or_expr.expr
+	fn_name := t.get_call_fn_name(call_expr)
+	if fn_name == '' {
+		return none
+	}
+	// Check if function returns Result or Option
+	mut is_result := false
+	mut is_option := false
+	if fn_name in t.fn_returns_result {
+		is_result = true
+	} else if fn_name in t.fn_returns_option {
+		is_option = true
+	} else {
+		return none
+	}
+	_ = is_option // suppress unused warning
+	// Generate temp variable name
+	temp_name := t.gen_temp_name()
+	temp_ident := ast.Ident{
+		name: temp_name
+	}
+	// Build the expanded statements
+	mut stmts := []ast.Stmt{}
+	// 1. _t1 := call_expr
+	stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(temp_ident)]
+		rhs: [t.transform_expr(call_expr)]
+		pos: stmt.pos
+	}
+	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
+	error_cond := if is_result {
+		// _t1.is_error
+		ast.Expr(ast.SelectorExpr{
+			lhs: temp_ident
+			rhs: ast.Ident{
+				name: 'is_error'
+			}
+		})
+	} else {
+		// _t1.state != 0
+		ast.Expr(ast.InfixExpr{
+			op:  .ne
+			lhs: ast.SelectorExpr{
+				lhs: temp_ident
+				rhs: ast.Ident{
+					name: 'state'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			}
+		})
+	}
+	// Build the if-block statements
+	mut if_stmts := []ast.Stmt{}
+	// Declare err variable: err := _t1.err
+	if_stmts << ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'err'
+		})]
+		rhs: [
+			ast.Expr(ast.SelectorExpr{
+				lhs: temp_ident
+				rhs: ast.Ident{
+					name: 'err'
+				}
+			}),
+		]
+	}
+	// Check if or-block contains a return statement (control flow)
+	if t.or_block_has_return(or_expr.stmts) {
+		// Or-block contains return - use the statements directly
+		if_stmts << t.transform_stmts(or_expr.stmts)
+	} else {
+		// Or-block provides a value - assign to data
+		or_value := t.get_or_block_value(or_expr.stmts)
+		// _t1.data = or_value (the backend will handle proper casting)
+		if_stmts << ast.AssignStmt{
+			op:  .assign
+			lhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: temp_ident
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+			rhs: [or_value]
+		}
+	}
+	stmts << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  error_cond
+			stmts: if_stmts
+		}
+	}
+	// 3. a := _t1.data (extract value)
+	stmts << ast.AssignStmt{
+		op:  stmt.op
+		lhs: stmt.lhs
+		rhs: [
+			ast.Expr(ast.SelectorExpr{
+				lhs: temp_ident
+				rhs: ast.Ident{
+					name: 'data'
+				}
+			}),
+		]
+		pos: stmt.pos
+	}
+	return stmts
+}
+
+// gen_temp_name generates a unique temporary variable name
+fn (mut t Transformer) gen_temp_name() string {
+	t.temp_counter++
+	return '_or_t${t.temp_counter}'
+}
+
+// get_call_fn_name extracts the function name from a call expression
+fn (t &Transformer) get_call_fn_name(expr ast.Expr) string {
+	if expr is ast.CallExpr {
+		if expr.lhs is ast.Ident {
+			return expr.lhs.name
+		}
+	}
+	if expr is ast.CallOrCastExpr {
+		if expr.lhs is ast.Ident {
+			return expr.lhs.name
+		}
+	}
+	return ''
+}
+
+// or_block_has_return checks if the or-block contains a control flow statement
+// (return, continue, break, panic, exit)
+fn (t &Transformer) or_block_has_return(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt is ast.ReturnStmt {
+			return true
+		}
+		if stmt is ast.FlowControlStmt {
+			// break, continue, goto
+			return true
+		}
+		if stmt is ast.ExprStmt {
+			// Check for panic() or exit() calls
+			if stmt.expr is ast.CallExpr {
+				if stmt.expr.lhs is ast.Ident {
+					name := stmt.expr.lhs.name
+					if name in ['panic', 'exit'] {
+						return true
+					}
+				}
+			} else if stmt.expr is ast.CallOrCastExpr {
+				if stmt.expr.lhs is ast.Ident {
+					name := stmt.expr.lhs.name
+					if name in ['panic', 'exit'] {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// get_or_block_value extracts the value expression from an or-block
+// The value is typically the last expression statement, or 0/default for empty blocks
+fn (mut t Transformer) get_or_block_value(stmts []ast.Stmt) ast.Expr {
+	if stmts.len == 0 {
+		return ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		}
+	}
+	// Check if last statement is an expression statement (the value)
+	last := stmts[stmts.len - 1]
+	if last is ast.ExprStmt {
+		return t.transform_expr(last.expr)
+	}
+	// For more complex blocks, just return 0 for now
+	return ast.BasicLiteral{
+		kind:  .number
+		value: '0'
 	}
 }
 
