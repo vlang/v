@@ -1,7 +1,6 @@
 module fasthttp
 
 import net
-import io
 
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
