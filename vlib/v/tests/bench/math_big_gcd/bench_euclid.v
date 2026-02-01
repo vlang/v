@@ -93,7 +93,7 @@ fn main() {
 		bench_euclid_vs_binary(prime_cfg, false, predicate_fn, mut clocks)
 
 		// just-to-be-sure, but makes no difference in this test.
-		// println('\n#-${i + 1}(Heap) "$prime_cfg"')
+		// println('\n#-${i + 1}(Heap) "${prime_cfg}"')
 		// bench_euclid_vs_binary(prime_cfg, true,  predicate_fn, mut clocks)
 	}
 	println('')
