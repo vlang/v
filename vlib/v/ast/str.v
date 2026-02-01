@@ -345,49 +345,13 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 	return res
 }
 
-// Expressions in string interpolations may have to be put in braces if they
-// are non-trivial, if they would interfere with the next character or if a
-// format specification is given. In the latter case
-// the format specifier must be appended, separated by a colon:
-// '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
 // This method creates the format specifier (including the colon) or an empty
-// string if none is needed and also returns (as bool) if the expression
-// must be enclosed in braces.
-pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
+// string if none is needed. For example, '${z:8.3f} ${a:-20} ${a>b+2}'
+pub fn (lit &StringInterLiteral) get_fspec(i int) string {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
 		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
 		|| lit.precisions[i] != 987698
-	mut needs_braces := needs_fspec
-	sx := lit.exprs[i].str()
-	if sx.contains(r'"') || sx.contains(r"'") {
-		needs_braces = true
-	}
-	if !needs_braces {
-		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
-			next_char := lit.vals[i + 1][0]
-			if util.is_func_char(next_char) || next_char == `.` || next_char == `(` {
-				needs_braces = true
-			}
-		}
-	}
-	if !needs_braces {
-		mut sub_expr := lit.exprs[i]
-		for {
-			match mut sub_expr {
-				Ident {
-					if sub_expr.name[0] == `@` {
-						needs_braces = true
-					}
-					break
-				}
-				else {
-					needs_braces = true
-					break
-				}
-			}
-		}
-	}
 	if needs_fspec {
 		res << ':'
 		if lit.pluss[i] {
@@ -406,7 +370,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 			res << '${lit.fmts[i]:c}'
 		}
 	}
-	return res.join(''), needs_braces
+	return res.join('')
 }
 
 __global nested_expr_str_calls = i64(0)
@@ -639,15 +603,12 @@ pub fn (x Expr) str() string {
 					break
 				}
 				res.write_string('$')
-				fspec_str, needs_braces := x.get_fspec_braces(i)
-				if needs_braces {
-					res.write_string('{')
-					res.write_string(x.exprs[i].str())
-					res.write_string(fspec_str)
-					res.write_string('}')
-				} else {
-					res.write_string(x.exprs[i].str())
-				}
+				fspec_str := x.get_fspec(i)
+
+				res.write_string('{')
+				res.write_string(x.exprs[i].str())
+				res.write_string(fspec_str)
+				res.write_string('}')
 			}
 			res.write_string("'")
 			return res.str()

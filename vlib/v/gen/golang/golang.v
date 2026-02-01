@@ -2251,15 +2251,12 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 		f.write('$')
-		fspec_str, needs_braces := node.get_fspec_braces(i)
-		if needs_braces {
-			f.write('{')
-			f.expr(node.exprs[i])
-			f.write(fspec_str)
-			f.write('}')
-		} else {
-			f.expr(node.exprs[i])
-		}
+		fspec_str := node.get_fspec(i)
+
+		f.write('{')
+		f.expr(node.exprs[i])
+		f.write(fspec_str)
+		f.write('}')
 	}
 	f.write(quote)
 }
