@@ -4913,7 +4913,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					typ:               cur_type
 					pos:               expr.pos
 					is_used:           true
-					is_mut:            expr.is_mut
+					is_mut:            expr.is_mut || is_mut
 					is_inherited:      is_inherited
 					is_unwrapped:      is_option_unwrap
 					smartcasts:        smartcasts
