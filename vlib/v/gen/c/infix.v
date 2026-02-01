@@ -1052,11 +1052,16 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
 		elem_is_option := array_info.elem_type.has_flag(.option)
+		mut prevent_push_many := g.table.sumtype_has_variant(array_info.elem_type, node.right_type,
+			false)
+		if prevent_push_many && node.right is ast.CallExpr {
+			// Allow concatenation for array-returning calls; avoids nesting for common builder APIs.
+			prevent_push_many = false
+		}
 		if (right.unaliased_sym.kind == .array
 			|| (right.unaliased_sym.kind == .struct && right.unaliased_sym.name == 'array'))
 			&& left.sym.nr_dims() == right.sym.nr_dims() && array_info.elem_type != right.typ
-			&& !elem_is_option
-			&& !g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false) {
+			&& !elem_is_option && !prevent_push_many {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
 			mut expected_push_many_atype := left.typ
