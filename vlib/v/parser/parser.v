@@ -130,10 +130,8 @@ pub mut:
 	opened_scopes     int
 	max_opened_scopes int = 100 // values above 300 risk stack overflow
 
-	errors         []errors.Error
-	warnings       []errors.Warning
-	notices        []errors.Notice
-	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
+	error_handler  &errors.DefaultErrorHandler // unified error handler
+	template_paths []string                    // record all compiled $tmpl files; needed for `v watch run webserver.v`
 	content        ParseContentKind
 }
 
@@ -156,6 +154,7 @@ pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stm
 		table:            table
 		pref:             &pref.Preferences{}
 		scope:            scope
+		error_handler:    errors.new_handler(&pref.Preferences{})
 	}
 	p.init_parse_fns()
 	util.timing_start('PARSE stmt')
@@ -171,14 +170,13 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
-		content:   .comptime
-		file_path: tmpl_path
-		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
-		table:     table
-		pref:      pref_
-		scope:     scope
-		errors:    []errors.Error{}
-		warnings:  []errors.Warning{}
+		content:       .comptime
+		file_path:     tmpl_path
+		scanner:       scanner.new_scanner(text, .skip_comments, pref_)
+		table:         table
+		pref:          pref_
+		scope:         scope
+		error_handler: errors.new_handler(pref_)
 	}
 	mut res := p.parse()
 	unsafe { p.free_scanner() }
@@ -201,8 +199,7 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		errors:           []errors.Error{}
-		warnings:         []errors.Warning{}
+		error_handler:    errors.new_handler(pref_)
 	}
 	p.set_path(path)
 	mut res := p.parse()
@@ -307,9 +304,8 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		errors:           []errors.Error{}
-		warnings:         []errors.Warning{}
 		file_idx:         file_idx
+		error_handler:    errors.new_handler(pref_)
 	}
 	p.set_path(path)
 	res := p.parse()
@@ -365,20 +361,27 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.attrs = []
 		}
 		stmts << stmt
-		if p.should_abort {
+		if p.should_abort || p.error_handler.should_abort() {
 			break
 		}
 	}
 	p.scope.end_pos = p.tok.pos
 
-	mut errors_ := p.errors.clone()
-	mut warnings := p.warnings.clone()
-	mut notices := p.notices.clone()
+	// Collect errors from error_handler for backward compatibility
+	mut errors_ := []errors.ErrorMessage{}
+	mut warnings_ := []errors.WarningMessage{}
+	mut notices_ := []errors.NoticeMessage{}
 
-	if p.pref.check_only {
-		errors_ << p.scanner.errors
-		warnings << p.scanner.warnings
-		notices << p.scanner.notices
+	// Copy errors from error_handler to maintain backward compatibility
+	// with builder's error collection mechanism
+	for err in p.error_handler.get_errors() {
+		errors_ << err
+	}
+	for warn in p.error_handler.get_warnings() {
+		warnings_ << warn
+	}
+	for note in p.error_handler.get_notices() {
+		notices_ << note
 	}
 
 	if p.pref.is_check_overflow {
@@ -408,8 +411,8 @@ pub fn (mut p Parser) parse() &ast.File {
 		scope:                 p.scope
 		global_scope:          p.table.global_scope
 		errors:                errors_
-		warnings:              warnings
-		notices:               notices
+		warnings:              warnings_
+		notices:               notices_
 		global_labels:         p.global_labels
 		template_paths:        p.template_paths
 		unique_prefix:         p.unique_prefix
@@ -857,7 +860,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
 		}
-		if p.should_abort {
+		if p.should_abort || p.error_handler.should_abort() {
 			break
 		}
 	}
@@ -991,7 +994,7 @@ fn (mut p Parser) goto_eof() {
 
 fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	// ensure that possible parser aborts, are handled as early as possible (on the *next* processed statement):
-	if p.should_abort {
+	if p.should_abort || p.error_handler.should_abort() {
 		abort_pos := p.tok.pos()
 		p.goto_eof()
 		return ast.NodeError{

@@ -1108,10 +1108,10 @@ pub mut:
 	imported_symbols      map[string]string         // used for `import {symbol}`, it maps symbol => module.symbol
 	imported_symbols_trie token.KeywordsMatcherTrie // constructed from imported_symbols, to accelerate presense checks
 	imported_symbols_used map[string]bool
-	errors                []errors.Error         // all the checker errors in the file
-	warnings              []errors.Warning       // all the checker warnings in the file
-	notices               []errors.Notice        // all the checker notices in the file
-	call_stack            []errors.CallStackItem // call stack for this file (used for template errors)
+	errors                []errors.ErrorMessage   // all the checker errors in the file
+	warnings              []errors.WarningMessage // all the checker warnings in the file
+	notices               []errors.NoticeMessage  // all the checker notices in the file
+	call_stack            []errors.CallStackItem  // call stack for this file (used for template errors)
 	generic_fns           []&FnDecl
 	global_labels         []string // from `asm { .globl labelname }`
 	template_paths        []string // all the .html/.md files that were processed with $tmpl

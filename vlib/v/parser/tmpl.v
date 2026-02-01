@@ -255,7 +255,7 @@ fn veb_tmpl_${fn_name}() string {
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
-			p.error_with_error(errors.Error{
+			p.error_with_error(errors.ErrorMessage{
 				message:   "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
 				pos:       token.Pos{
@@ -270,7 +270,7 @@ fn veb_tmpl_${fn_name}() string {
 		}
 		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
-			p.error_with_error(errors.Error{
+			p.error_with_error(errors.ErrorMessage{
 				message:   "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
 				pos:       token.Pos{
@@ -287,7 +287,7 @@ fn veb_tmpl_${fn_name}() string {
 			lines.delete(i)
 			resolved := p.process_includes(template_file, tline_number, line, mut &dc) or {
 				if err is IncludeError {
-					p.error_with_error(errors.Error{
+					p.error_with_error(errors.ErrorMessage{
 						message:   err.msg()
 						file_path: err.calling_file()
 						pos:       token.Pos{
@@ -301,7 +301,7 @@ fn veb_tmpl_${fn_name}() string {
 					})
 					[]string{}
 				} else {
-					p.error_with_error(errors.Error{
+					p.error_with_error(errors.ErrorMessage{
 						message:   'An unknown error has occurred'
 						file_path: template_file
 						pos:       token.Pos{

@@ -51,13 +51,9 @@ pub mut:
 	eofs                        int
 	max_eofs                    int = 50
 	pref                        &pref.Preferences
-	error_details               []string
-	errors                      []errors.Error
-	warnings                    []errors.Warning
-	notices                     []errors.Notice
-	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
+	error_handler               &errors.DefaultErrorHandler // unified error handler
 
-	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without escapes
+	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without exceptions
 	all_pos         []int
 	u16_escapes_pos []int // pos list of \uXXXX
 	u32_escapes_pos []int // pos list of \UXXXXXXXX
@@ -125,6 +121,7 @@ pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMo
 		file_path:                   file_path
 		file_base:                   os.base(file_path)
 		file_idx:                    file_idx
+		error_handler:               errors.new_handler(pref_)
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -145,6 +142,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		comments_mode:               comments_mode
 		file_path:                   internally_generated_v_code
 		file_base:                   internally_generated_v_code
+		error_handler:               errors.new_handler(pref_)
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -594,7 +592,7 @@ fn (mut s Scanner) scan_remaining_text() {
 		t := s.text_scan()
 		if !(is_skip_comments && t.kind == .comment) {
 			s.all_tokens << t
-			if t.kind == .eof || s.should_abort {
+			if t.kind == .eof || s.error_handler.should_abort() {
 				break
 			}
 		}
@@ -606,7 +604,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	for {
 		cidx := s.tidx
 		s.tidx++
-		if cidx >= s.all_tokens.len || s.should_abort {
+		if cidx >= s.all_tokens.len || s.error_handler.should_abort() {
 			return s.end_of_file()
 		}
 		if s.all_tokens[cidx].kind == .comment && !s.should_parse_comment() {
@@ -652,7 +650,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 		if !s.is_inside_string {
 			s.skip_whitespace()
 		}
-		if s.pos >= s.text.len || s.should_abort {
+		if s.pos >= s.text.len || s.error_handler.should_abort() {
 			return s.end_of_file()
 		}
 		// End of $var, start next string
@@ -1660,43 +1658,28 @@ pub fn (mut s Scanner) current_pos() token.Pos {
 }
 
 pub fn (mut s Scanner) note(msg string) {
-	if s.pref.notes_are_errors {
-		s.error_with_pos(msg, s.current_pos())
-		return
-	}
 	pos := token.Pos{
 		line_nr:  s.line_nr
 		pos:      s.pos
 		file_idx: s.file_idx
 	}
-	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		util.show_compiler_message('notice:', pos: pos, file_path: s.file_path, message: msg)
-	} else {
-		s.notices << errors.Notice{
-			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
-		}
-	}
+	// Use the new unified error handler
+	s.error_handler.report(errors.CompilerMessage{
+		file_path: s.file_path
+		pos:       pos
+		reporter:  .scanner
+		message:   msg
+	}, .notice)
 }
 
 // call this *before* calling error or warn
 pub fn (mut s Scanner) add_error_detail(msg string) {
-	s.error_details << msg
+	// Use the new unified error handler
+	s.error_handler.add_detail(msg)
 }
 
 pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
 	s.add_error_detail('\n' + util.formatted_error('details:', msg, s.file_path, pos))
-}
-
-fn (mut s Scanner) eat_details() string {
-	mut details := ''
-	if s.error_details.len > 0 {
-		details = s.error_details.join('\n')
-		s.error_details = []
-	}
-	return details
 }
 
 pub fn (mut s Scanner) warn(msg string) {
@@ -1704,31 +1687,13 @@ pub fn (mut s Scanner) warn(msg string) {
 }
 
 pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
-	if s.pref.warns_are_errors {
-		s.error_with_pos(msg, pos)
-		return
-	}
-	details := s.eat_details()
-	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		util.show_compiler_message('warning:',
-			pos:       pos
-			file_path: s.file_path
-			message:   msg
-			details:   details
-		)
-	} else {
-		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
-			s.should_abort = true
-			return
-		}
-		s.warnings << errors.Warning{
-			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
-			details:   details
-		}
-	}
+	// Use the new unified error handler
+	s.error_handler.report(errors.CompilerMessage{
+		file_path: s.file_path
+		pos:       pos
+		reporter:  .scanner
+		message:   msg
+	}, .warning)
 }
 
 pub fn (mut s Scanner) error(msg string) {
@@ -1736,37 +1701,13 @@ pub fn (mut s Scanner) error(msg string) {
 }
 
 pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
-	details := s.eat_details()
-	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		util.show_compiler_message('error:',
-			pos:       pos
-			file_path: s.file_path
-			message:   msg
-			details:   details
-		)
-		exit(1)
-	} else {
-		if s.pref.fatal_errors {
-			util.show_compiler_message('error:',
-				pos:       pos
-				file_path: s.file_path
-				message:   msg
-				details:   details
-			)
-			exit(1)
-		}
-		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {
-			s.should_abort = true
-			return
-		}
-		s.errors << errors.Error{
-			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
-			details:   details
-		}
-	}
+	// Use the new unified error handler
+	s.error_handler.report(errors.CompilerMessage{
+		file_path: s.file_path
+		pos:       pos
+		reporter:  .scanner
+		message:   msg
+	}, .error)
 }
 
 fn (mut s Scanner) trace[T](fbase string, x &T) {
@@ -1783,17 +1724,13 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.pos = -1
 	s.tidx = 0
 	s.all_tokens.clear()
-	s.errors.clear()
-	s.error_details.clear()
-	s.warnings.clear()
-	s.notices.clear()
+	s.error_handler.reset()
 	s.str_helper_tokens.clear()
 	s.str_segments.clear()
 	s.all_pos.clear()
 	s.u16_escapes_pos.clear()
 	s.u32_escapes_pos.clear()
 	s.h_escapes_pos.clear()
-	s.should_abort = false
 	s.eofs = 0
 	s.nr_lines = 0
 	s.line_nr = 0
@@ -1813,9 +1750,11 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 pub fn new_silent_scanner() &Scanner {
 	mut p := pref.new_preferences()
 	p.output_mode = .silent
-	return &Scanner{
-		pref: p
+	mut s := &Scanner{
+		pref:          p
+		error_handler: errors.new_handler(p)
 	}
+	return s
 }
 
 @[direct_array_access]

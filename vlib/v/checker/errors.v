@@ -44,6 +44,7 @@ fn (mut c Checker) warn(s string, pos token.Pos, options MessageOptions) {
 		message:    s
 		call_stack: options.call_stack
 	}, .warning)
+	c.nr_warnings++
 }
 
 fn (mut c Checker) warn_alloc(s string, pos token.Pos) {
@@ -84,6 +85,7 @@ fn (mut c Checker) error(message string, pos token.Pos, options MessageOptions) 
 		message:    msg
 		call_stack: options.call_stack
 	}, .error)
+	c.nr_errors++
 }
 
 fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) {
@@ -126,6 +128,7 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 		message:    message
 		call_stack: c.file.call_stack
 	}, .notice)
+	c.nr_notices++
 }
 
 // for debugging only

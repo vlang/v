@@ -1,7 +1,6 @@
 module parser
 
 import v.ast
-import v.util
 import v.token
 import v.errors
 
@@ -67,33 +66,20 @@ fn (mut p Parser) note(s string) {
 
 fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
-	mut kind := 'error:'
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
-	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
-		exit(1)
-	}
-	if p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls {
-		if p.pref.is_verbose {
-			print_backtrace()
-			kind = 'parser error:'
-		}
-		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
-		exit(1)
-	} else {
-		p.errors << errors.Error{
-			file_path: file_path
-			pos:       pos
-			reporter:  .parser
-			message:   s
-		}
+	// Use the new unified error handler
+	p.error_handler.report(errors.CompilerMessage{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   s
+	}, .error)
 
-		// To avoid getting stuck after an error, the parser
-		// will proceed to the next token.
-		if p.pref.check_only || p.pref.only_check_syntax {
-			if p.tok.kind != .eof {
-				p.next()
-			}
+	// To avoid getting stuck after an error, the parser
+	// will proceed to the next token.
+	if p.pref.check_only || p.pref.only_check_syntax {
+		if p.tok.kind != .eof {
+			p.next()
 		}
 	}
 	if p.pref.output_mode == .silent && p.tok.kind != .eof {
@@ -103,32 +89,22 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
 		p.next()
 	}
+
+	// Use the error_handler to check if we should abort
+	// if p.error_handler.should_abort() {
+	// 	// Handle abort if needed
+	// }
+
 	return ast.NodeError{
-		idx: p.errors.len - 1
+		idx: p.error_handler.error_count() - 1
 		pos: pos
 	}
 }
 
-fn (mut p Parser) error_with_error(error errors.Error) {
-	mut kind := 'error:'
-	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, error.CompilerMessage)
-		exit(1)
-	}
-	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		if p.pref.is_verbose {
-			print_backtrace()
-			kind = 'parser error:'
-		}
-		util.show_compiler_message(kind, error.CompilerMessage)
-		exit(1)
-	} else {
-		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
-			p.should_abort = true
-			return
-		}
-		p.errors << error
-	}
+fn (mut p Parser) error_with_error(error errors.ErrorMessage) {
+	// Use the new unified error handler
+	p.error_handler.report(error.CompilerMessage, .error)
+
 	if p.pref.output_mode == .silent {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
@@ -139,55 +115,34 @@ fn (mut p Parser) error_with_error(error errors.Error) {
 }
 
 fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
-	if p.pref.warns_are_errors {
-		p.error_with_pos(s, pos)
-		return
-	}
 	if p.pref.skip_warnings {
 		return
 	}
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
-	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('warning:', pos: pos, file_path: file_path, message: s)
-	} else {
-		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
-			p.should_abort = true
-			return
-		}
-		p.warnings << errors.Warning{
-			file_path: file_path
-			pos:       pos
-			reporter:  .parser
-			message:   s
-		}
-	}
+	// Use the new unified error handler
+	p.error_handler.report(errors.CompilerMessage{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   s
+	}, .warning)
 }
 
 fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	if p.pref.skip_warnings {
 		return
 	}
-	if p.pref.skip_notes {
-		return
-	}
 	if p.is_generated {
 		return
 	}
-	if p.pref.notes_are_errors {
-		p.error_with_pos(s, pos)
-		return
-	}
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
-	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('notice:', pos: pos, file_path: file_path, message: s)
-	} else {
-		p.notices << errors.Notice{
-			file_path: file_path
-			pos:       pos
-			reporter:  .parser
-			message:   s
-		}
-	}
+	// Use the new unified error handler
+	p.error_handler.report(errors.CompilerMessage{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   s
+	}, .notice)
 }
 
 @[params]

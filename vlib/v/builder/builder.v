@@ -475,9 +475,9 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		return
 	}
 	if b.pref.is_stats {
-		mut nr_errors := b.checker.errors.len
-		mut nr_warnings := b.checker.warnings.len
-		mut nr_notices := b.checker.notices.len
+		mut nr_errors := b.checker.error_handler.error_count()
+		mut nr_warnings := b.checker.error_handler.warning_count()
+		mut nr_notices := b.checker.error_handler.notice_count()
 
 		if b.pref.check_only {
 			nr_errors = b.nr_errors
@@ -497,7 +497,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 	}
 	if !b.pref.is_vls && b.checker.nr_errors > 0 && b.pref.path.ends_with('.v')
 		&& os.is_file(b.pref.path) && !b.pref.path.ends_with('vrepl_temp.v') {
-		if b.checker.errors.any(it.message.starts_with('unknown ')) {
+		if b.checker.error_handler.get_errors().any(it.message.starts_with('unknown ')) {
 			// Sometimes users try to `v main.v`, when they have several .v files in their project.
 			// Then, they encounter puzzling errors about missing or unknown types. In this case,
 			// the intended command may have been `v .` instead, so just suggest that:
@@ -594,7 +594,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		println('${b.checker.nr_notices} notices')
 	}
 	if b.checker.nr_notices > 0 && !b.pref.skip_notes {
-		for err in b.checker.notices {
+		for err in b.checker.error_handler.get_notices() {
 			kind := if b.pref.is_verbose {
 				'${err.reporter} notice #${b.checker.nr_notices}:'
 			} else {
@@ -604,7 +604,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
-		for err in b.checker.warnings {
+		for err in b.checker.error_handler.get_warnings() {
 			kind := if b.pref.is_verbose {
 				'${err.reporter} warning #${b.checker.nr_warnings}:'
 			} else {
@@ -618,7 +618,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		println('${b.checker.nr_errors} errors')
 	}
 	if b.checker.nr_errors > 0 {
-		for err in b.checker.errors {
+		for err in b.checker.error_handler.get_errors() {
 			kind := if b.pref.is_verbose {
 				'${err.reporter} error #${b.checker.nr_errors}:'
 			} else {
@@ -680,13 +680,13 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.Error {
+pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.ErrorMessage {
 	if !b.pref.check_only {
 		util.show_compiler_message('builder error:', pos: pos, file_path: fpath, message: s)
 		exit(1)
 	}
 
-	return errors.Error{
+	return errors.ErrorMessage{
 		file_path: fpath
 		pos:       pos
 		reporter:  .builder
