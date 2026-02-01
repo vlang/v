@@ -3,6 +3,7 @@ module parser
 import v.ast
 import v.token
 import v.errors
+import v.util
 
 fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
 	upcase_language := language.str().to_upper_ascii()
@@ -66,19 +67,39 @@ fn (mut p Parser) note(s string) {
 
 fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
+	mut kind := 'error:'
 	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
-	// Use the new unified error handler
-	p.error_handler.report(errors.CompilerMessage{
-		file_path: file_path
-		pos:       pos
-		message:   s
-	}, .error)
+	if p.pref.fatal_errors {
+		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
+		exit(1)
+	}
+	if p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls {
+		// Report error through error_handler for consistency
+		p.error_handler.report(errors.CompilerMessage{
+			file_path: file_path
+			pos:       pos
+			message:   s
+		}, .error)
+		if p.pref.is_verbose {
+			print_backtrace()
+			kind = 'parser error:'
+		}
+		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
+		exit(1)
+	} else {
+		// Report error through error_handler
+		p.error_handler.report(errors.CompilerMessage{
+			file_path: file_path
+			pos:       pos
+			message:   s
+		}, .error)
 
-	// To avoid getting stuck after an error, the parser
-	// will proceed to the next token.
-	if p.pref.check_only || p.pref.only_check_syntax {
-		if p.tok.kind != .eof {
-			p.next()
+		// To avoid getting stuck after an error, the parser
+		// will proceed to the next token.
+		if p.pref.check_only || p.pref.only_check_syntax {
+			if p.tok.kind != .eof {
+				p.next()
+			}
 		}
 	}
 	if p.pref.output_mode == .silent && p.tok.kind != .eof {
@@ -88,11 +109,6 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
 		p.next()
 	}
-
-	// Use the error_handler to check if we should abort
-	// if p.error_handler.should_abort() {
-	// 	// Handle abort if needed
-	// }
 
 	return ast.NodeError{
 		idx: p.error_handler.error_count() - 1
