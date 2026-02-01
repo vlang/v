@@ -14,7 +14,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_update_tmp_var = true
 
 		tmp_update_var = g.new_tmp_var()
-		s := g.go_before_last_stmt()
+		s := if g.inside_ternary > 0 { g.go_before_ternary() } else { g.go_before_last_stmt() }
 		g.empty_line = true
 
 		styp := g.styp(node.update_expr_type)
@@ -121,7 +121,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	} else if node.typ.has_flag(.option) {
 		tmp_var := g.new_tmp_var()
-		s := g.go_before_last_stmt()
+		s := if g.inside_ternary > 0 { g.go_before_ternary() } else { g.go_before_last_stmt() }
 		g.empty_line = true
 
 		base_styp := g.styp(node.typ.clear_option_and_result())
