@@ -190,35 +190,3 @@ pub fn show_compiler_message(kind string, err CompilerMessage) {
 		}
 	}
 }
-
-// Helper functions for UTF-8 handling
-fn utf8_char_len(b u8) int {
-	if b < 0x80 {
-		return 1
-	}
-	if b < 0xC0 {
-		return 0
-	}
-	if b < 0xE0 {
-		return 2
-	}
-	if b < 0xF0 {
-		return 3
-	}
-	return 4
-}
-
-fn utf8_str_visible_length(s string) int {
-	mut len := 0
-	mut i := 0
-	for i < s.len {
-		char_len := utf8_char_len(s[i])
-		if char_len > 0 {
-			len++
-			i += char_len
-		} else {
-			i++
-		}
-	}
-	return len
-}

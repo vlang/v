@@ -121,7 +121,7 @@ pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMo
 		file_path:                   file_path
 		file_base:                   os.base(file_path)
 		file_idx:                    file_idx
-		error_handler:               errors.new_handler(pref_)
+		error_handler:               errors.new_error_handler(pref_, .scanner)
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -142,7 +142,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		comments_mode:               comments_mode
 		file_path:                   internally_generated_v_code
 		file_base:                   internally_generated_v_code
-		error_handler:               errors.new_handler(pref_)
+		error_handler:               errors.new_error_handler(pref_, .scanner)
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -1667,7 +1667,6 @@ pub fn (mut s Scanner) note(msg string) {
 	s.error_handler.report(errors.CompilerMessage{
 		file_path: s.file_path
 		pos:       pos
-		reporter:  .scanner
 		message:   msg
 	}, .notice)
 }
@@ -1691,7 +1690,6 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 	s.error_handler.report(errors.CompilerMessage{
 		file_path: s.file_path
 		pos:       pos
-		reporter:  .scanner
 		message:   msg
 	}, .warning)
 }
@@ -1705,7 +1703,6 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 	s.error_handler.report(errors.CompilerMessage{
 		file_path: s.file_path
 		pos:       pos
-		reporter:  .scanner
 		message:   msg
 	}, .error)
 }
@@ -1752,7 +1749,7 @@ pub fn new_silent_scanner() &Scanner {
 	p.output_mode = .silent
 	mut s := &Scanner{
 		pref:          p
-		error_handler: errors.new_handler(p)
+		error_handler: errors.new_error_handler(p, .scanner)
 	}
 	return s
 }

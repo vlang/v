@@ -71,9 +71,9 @@ fn process_files(files []string) ! {
 		total_bytes += p.scanner.text.len
 		total_tokens += p.scanner.all_tokens.len
 		total_lines += ast_file.nr_lines
-		total_errors += p.errors.len
+		total_errors += p.error_handler.error_count()
 		if !fuzzer_mode {
-			println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${ast_file.nr_lines:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):13.3} ${p.errors.len:10}   ${f}')
+			println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${ast_file.nr_lines:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):13.3} ${p.error_handler.error_count():10}   ${f}')
 		}
 		total_files++
 	}
@@ -87,15 +87,14 @@ fn process_files(files []string) ! {
 
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
-		scanner:  scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
-		table:    table
-		pref:     pref_
-		scope:    &ast.Scope{
+		scanner:       scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
+		table:         table
+		pref:          pref_
+		scope:         &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		errors:   []errors.Error{}
-		warnings: []errors.Warning{}
+		error_handler: errors.new_error_handler(pref_, .parser)
 	}
 	p.set_path(path)
 	return p

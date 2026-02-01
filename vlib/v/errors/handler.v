@@ -42,10 +42,14 @@ pub mut:
 	deduplicator &ErrorDeduplicator
 	call_stack   []CallStackItem
 	should_abort bool
+	reporter     Reporter // default reporter when message.reporter is .unknown
 }
 
-// new_handler creates a new DefaultErrorHandler instance
-pub fn new_handler(pref_ &pref.Preferences) &DefaultErrorHandler {
+// new_error_handler creates a new DefaultErrorHandler instance
+pub fn new_error_handler(pref_ &pref.Preferences, reporter Reporter) &DefaultErrorHandler {
+	if reporter == .unknown {
+		print_backtrace()
+	}
 	return &DefaultErrorHandler{
 		errors:       []ErrorMessage{}
 		warnings:     []WarningMessage{}
@@ -55,6 +59,7 @@ pub fn new_handler(pref_ &pref.Preferences) &DefaultErrorHandler {
 		deduplicator: new_deduplicator()
 		call_stack:   []CallStackItem{}
 		should_abort: false
+		reporter:     reporter
 	}
 }
 
@@ -80,25 +85,9 @@ pub fn (mut h DefaultErrorHandler) report(message CompilerMessage, kind MessageK
 
 	// 4. Check message limit
 	if h.pref.message_limit >= 0 {
-		match actual_kind {
-			.error {
-				if h.error_count() >= h.pref.message_limit {
-					h.should_abort = true
-					return
-				}
-			}
-			.warning {
-				if h.warning_count() >= h.pref.message_limit {
-					h.should_abort = true
-					return
-				}
-			}
-			.notice {
-				if h.notice_count() >= h.pref.message_limit {
-					h.should_abort = true
-					return
-				}
-			}
+		if h.error_count() + h.warning_count() + h.notice_count() >= h.pref.message_limit {
+			h.should_abort = true
+			return
 		}
 	}
 
@@ -110,24 +99,24 @@ pub fn (mut h DefaultErrorHandler) report(message CompilerMessage, kind MessageK
 		h.call_stack.clone()
 	}
 
-	// 5. Store the message
+	// 5. reporter
+	if message.reporter == .unknown {
+		unsafe {
+			message.reporter = h.reporter
+		}
+	}
+
+	// 6. Store the message
 	match actual_kind {
 		.error {
-			// Create a modified CompilerMessage
-			comp_msg := CompilerMessage{
+			h.errors << ErrorMessage{
 				message:    message.message
-				details:    details
 				file_path:  message.file_path
 				pos:        message.pos
 				reporter:   message.reporter
+				details:    details
 				call_stack: call_stack
 			}
-			mut err := ErrorMessage{}
-			unsafe {
-				// Use C.memcpy to copy the CompilerMessage
-				C.memcpy(voidptr(&err), voidptr(&comp_msg), sizeof(CompilerMessage))
-			}
-			h.errors << err
 			// If fatal errors mode is enabled, display and exit immediately
 			if h.pref.fatal_errors {
 				show_compiler_message('error:', message)
@@ -135,35 +124,25 @@ pub fn (mut h DefaultErrorHandler) report(message CompilerMessage, kind MessageK
 			}
 		}
 		.warning {
-			comp_msg := CompilerMessage{
+			h.warnings << WarningMessage{
 				message:    message.message
-				details:    details
 				file_path:  message.file_path
 				pos:        message.pos
 				reporter:   message.reporter
+				details:    details
 				call_stack: call_stack
 			}
-			mut warn := WarningMessage{}
-			unsafe {
-				C.memcpy(voidptr(&warn), voidptr(&comp_msg), sizeof(CompilerMessage))
-			}
-			h.warnings << warn
 		}
 		.notice {
 			if !h.pref.skip_notes {
-				comp_msg := CompilerMessage{
+				h.notices << NoticeMessage{
 					message:    message.message
-					details:    details
 					file_path:  message.file_path
 					pos:        message.pos
 					reporter:   message.reporter
+					details:    details
 					call_stack: call_stack
 				}
-				mut note := NoticeMessage{}
-				unsafe {
-					C.memcpy(voidptr(&note), voidptr(&comp_msg), sizeof(CompilerMessage))
-				}
-				h.notices << note
 			}
 		}
 	}

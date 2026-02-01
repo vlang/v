@@ -55,8 +55,8 @@ mut:
 	stack_depth               i32
 	debug_pos                 i32
 	current_file              &ast.File = unsafe { nil }
-	errors                    []errors.Error
-	warnings                  []errors.Warning
+	errors                    []errors.ErrorMessage
+	warnings                  []errors.WarningMessage
 	syms                      []Symbol
 	size_pos                  []i32
 	nlines                    i32

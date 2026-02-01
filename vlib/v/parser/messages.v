@@ -71,7 +71,6 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	p.error_handler.report(errors.CompilerMessage{
 		file_path: file_path
 		pos:       pos
-		reporter:  .parser
 		message:   s
 	}, .error)
 
@@ -123,7 +122,6 @@ fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 	p.error_handler.report(errors.CompilerMessage{
 		file_path: file_path
 		pos:       pos
-		reporter:  .parser
 		message:   s
 	}, .warning)
 }
@@ -140,7 +138,6 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	p.error_handler.report(errors.CompilerMessage{
 		file_path: file_path
 		pos:       pos
-		reporter:  .parser
 		message:   s
 	}, .notice)
 }

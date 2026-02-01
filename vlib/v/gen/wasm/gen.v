@@ -20,8 +20,8 @@ pub struct Gen {
 	files    []&ast.File
 mut:
 	file_path string // current ast.File path
-	warnings  []errors.Warning
-	errors    []errors.Error
+	warnings  []errors.WarningMessage
+	errors    []errors.ErrorMessage
 	table     &ast.Table = unsafe { nil }
 	eval      eval.Eval
 	enum_vals map[string]Enum

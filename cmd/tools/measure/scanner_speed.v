@@ -61,9 +61,9 @@ fn process_files(files []string) ! {
 		total_bytes += s.text.len
 		total_tokens += s.all_tokens.len
 		total_lines += s.nr_lines
-		total_errors += s.errors.len
+		total_errors += s.error_handler.error_count()
 		if !fuzzer_mode {
-			println('${f_us:10}us ${s.all_tokens.len:10} ${s.text.len:10} ${s.nr_lines:10} ${(f64(s.text.len) / s.all_tokens.len):13.3f} ${s.errors.len:10}   ${f}')
+			println('${f_us:10}us ${s.all_tokens.len:10} ${s.text.len:10} ${s.nr_lines:10} ${(f64(s.text.len) / s.all_tokens.len):13.3f} ${s.error_handler.error_count():10}   ${f}')
 		}
 	}
 	hline()

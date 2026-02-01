@@ -154,7 +154,7 @@ pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stm
 		table:            table
 		pref:             &pref.Preferences{}
 		scope:            scope
-		error_handler:    errors.new_handler(&pref.Preferences{})
+		error_handler:    errors.new_error_handler(&pref.Preferences{}, .parser)
 	}
 	p.init_parse_fns()
 	util.timing_start('PARSE stmt')
@@ -176,7 +176,7 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		table:         table
 		pref:          pref_
 		scope:         scope
-		error_handler: errors.new_handler(pref_)
+		error_handler: errors.new_error_handler(pref_, .parser)
 	}
 	mut res := p.parse()
 	unsafe { p.free_scanner() }
@@ -199,7 +199,7 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		error_handler:    errors.new_handler(pref_)
+		error_handler:    errors.new_error_handler(pref_, .parser)
 	}
 	p.set_path(path)
 	mut res := p.parse()
@@ -305,7 +305,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 			parent:    table.global_scope
 		}
 		file_idx:         file_idx
-		error_handler:    errors.new_handler(pref_)
+		error_handler:    errors.new_error_handler(pref_, .parser)
 	}
 	p.set_path(path)
 	res := p.parse()

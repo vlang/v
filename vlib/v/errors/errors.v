@@ -3,6 +3,7 @@ module errors
 import v.token
 
 pub enum Reporter {
+	unknown
 	scanner
 	parser
 	checker
@@ -18,12 +19,13 @@ pub:
 }
 
 pub struct CompilerMessage {
+pub mut:
+	reporter Reporter
 pub:
 	message    string
 	details    string
 	file_path  string
 	pos        token.Pos
-	reporter   Reporter
 	call_stack []CallStackItem // call stack for compile-time errors
 }
 

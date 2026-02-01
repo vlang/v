@@ -40,7 +40,6 @@ fn (mut c Checker) warn(s string, pos token.Pos, options MessageOptions) {
 	c.error_handler.report(errors.CompilerMessage{
 		file_path:  file_path
 		pos:        pos
-		reporter:   errors.Reporter.checker
 		message:    s
 		call_stack: options.call_stack
 	}, .warning)
@@ -81,7 +80,6 @@ fn (mut c Checker) error(message string, pos token.Pos, options MessageOptions) 
 	c.error_handler.report(errors.CompilerMessage{
 		file_path:  file_path
 		pos:        pos
-		reporter:   errors.Reporter.checker
 		message:    msg
 		call_stack: options.call_stack
 	}, .error)
@@ -108,7 +106,6 @@ fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) 
 	c.error_handler.report(errors.CompilerMessage{
 		file_path:  file_path
 		pos:        pos
-		reporter:   errors.Reporter.checker
 		message:    msg
 		call_stack: actual_call_stack
 	}, .error)
@@ -124,7 +121,6 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	c.error_handler.report(errors.CompilerMessage{
 		file_path:  file_path
 		pos:        pos
-		reporter:   errors.Reporter.checker
 		message:    message
 		call_stack: c.file.call_stack
 	}, .notice)

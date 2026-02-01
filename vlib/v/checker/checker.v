@@ -181,7 +181,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash:         v_current_commit_hash
 		checker_transformer:           transformer.new_transformer_with_table(table, pref_)
-		error_handler:                 errors.new_handler(pref_)
+		error_handler:                 errors.new_error_handler(pref_, .checker)
 	}
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
