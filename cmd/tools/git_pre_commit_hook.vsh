@@ -58,7 +58,7 @@ fn main() {
 		eprintln('The V pre commit hook will format ${vfiles.len} V file(s):')
 		// vfmt off
 		for vfile in vfiles {
-			eprintln('    ${term.bold('$vfile')}')
+			eprintln('    ${term.bold('${vfile}')}')
 		}
 		// vfmt on
 		all_vfiles_on_a_line := vfiles.map(os.quoted_path(it)).join(' ')
