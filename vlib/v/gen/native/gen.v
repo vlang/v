@@ -1333,7 +1333,7 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
 		util.show_compiler_message('warning:', pos: pos, file_path: g.current_file.path, message: s)
 	} else {
-		g.warnings << errors.Warning{
+		g.warnings << errors.WarningMessage{
 			file_path: g.current_file.path
 			pos:       pos
 			reporter:  .gen
@@ -1351,7 +1351,7 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 		util.show_compiler_message(kind, pos: pos, file_path: g.current_file.path, message: s)
 		exit(1)
 	} else {
-		g.errors << errors.Error{
+		g.errors << errors.ErrorMessage{
 			file_path: g.current_file.path
 			pos:       pos
 			reporter:  .gen
