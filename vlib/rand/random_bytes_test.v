@@ -52,7 +52,7 @@ fn test_rand_read() {
 		for k in j + 1 .. max {
 			end := '00'.repeat(max - k)
 			middle := '00'.repeat(k - j)
-			// eprintln('> j: $j | k: $k | start: $start | middle: $middle | end: $end')
+			// eprintln('> j: ${j} | k: ${k} | start: ${start} | middle: ${middle} | end: ${end}')
 			for i in 0 .. max {
 				a[i] = 0
 			}
@@ -82,7 +82,7 @@ fn test_prng_rand_read() {
 		for k in j + 1 .. max {
 			end := '00'.repeat(max - k)
 			middle := '00'.repeat(k - j)
-			// eprintln('> j: $j | k: $k | start: $start | middle: $middle | end: $end')
+			// eprintln('> j: ${j} | k: ${k} | start: ${start} | middle: ${middle} | end: ${end}')
 			for i in 0 .. max {
 				a[i] = 0
 			}

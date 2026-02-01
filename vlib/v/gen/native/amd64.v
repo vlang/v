@@ -1231,7 +1231,7 @@ fn (mut c Amd64) cg_call(addr i32) i64 {
 fn (mut c Amd64) call(addr i32) i64 {
 	rel := c.cg_call_addr_at(addr, c.g.pos())
 	c_addr := c.g.pos()
-	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
+	// println('call addr=${addr.hex2()} rel_addr=${rel.hex2()} pos=${g.buf.len}')
 	c.g.write8(0xe8)
 
 	c.g.write32(i32(rel))
@@ -4165,7 +4165,7 @@ pub fn (mut c Amd64) cg_allocate_stack_var(name string, size i32, initial_val Nu
 		}
 	}
 
-	// println('allocate_var(size=$size, initial_val=$initial_val)')
+	// println('allocate_var(size=${size}, initial_val=${initial_val})')
 	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}` size: ${size}')
 	return c.g.stack_var_pos
 }

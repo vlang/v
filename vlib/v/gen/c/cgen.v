@@ -2332,7 +2332,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 		stmt := stmts[0]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
 			// g.trace_autofree('// autofree scope')
-			// g.trace_autofree('// autofree_scope_vars($stmt.pos.pos) | ${typeof(stmt)}')
+			// g.trace_autofree('// autofree_scope_vars(${stmt.pos.pos}) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
 			// g.autofree_scope_vars(stmt.pos.pos - 1)
@@ -2781,9 +2781,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.sym(field.typ)
-			// g.writeln('\t$field_type_sym.name $field.name;')
+			// g.writeln('\t${field_type_sym.name} ${field.name};')
 			// }
-			// g.writeln('} $name;')
+			// g.writeln('} ${name};')
 			if node.language == .c {
 				return
 			}
@@ -3320,7 +3320,7 @@ fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
 }
 
-// ctoslit returns a '_S("$s")' call, where s is properly escaped.
+// ctoslit returns a '_S("${s}")' call, where s is properly escaped.
 fn ctoslit(s string) string {
 	return '_S("' + cescape_nonascii(cestring(s)) + '")'
 }

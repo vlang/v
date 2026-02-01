@@ -162,7 +162,7 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 		// If its not there then end user needs to update their visual studio
 		// installation!
 		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
-		// println('res: "$res"')
+		// println('res: "${res}"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)
 		}
@@ -171,13 +171,13 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 			// println('Unable to find msvc version')
 			return error('Unable to find vs installation')
 		}
-		// println('version: $version')
+		// println('version: ${version}')
 		v := version.trim_space()
 		lib_path := '${res_output}\\VC\\Tools\\MSVC\\${v}\\lib\\${target_arch}'
 		include_path := '${res_output}\\VC\\Tools\\MSVC\\${v}\\include'
 		if os.exists('${lib_path}\\vcruntime.lib') {
 			p := '${res_output}\\VC\\Tools\\MSVC\\${v}\\bin\\Host${host_arch}\\${target_arch}'
-			// println('$lib_path $include_path')
+			// println('${lib_path} ${include_path}')
 			return VsInstallation{
 				exe_path:     p
 				lib_path:     lib_path
@@ -318,7 +318,7 @@ pub fn (mut v Builder) cc_msvc() {
 		eprintln('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
-	// a << '"$TmpPath/$v.out_name_c"'
+	// a << '"$TmpPath/${v.out_name_c}"'
 	a << '"' + os.real_path(v.out_name_c) + '"'
 	if !v.ccoptions.debug_mode {
 		v.pref.cleanup_files << os.real_path(v.out_name_c)
@@ -426,7 +426,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	}
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
-		// println('$obj_path already built.')
+		// println('${obj_path} already built.')
 		return
 	}
 	if trace_thirdparty_obj_files {
@@ -530,7 +530,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut defines := []string{}
 	mut other_flags := []string{}
 	for flag in cflags {
-		// println('fl: $flag.name | flag arg: $flag.value')
+		// println('fl: ${flag.name} | flag arg: ${flag.value}')
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler

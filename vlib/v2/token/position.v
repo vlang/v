@@ -42,10 +42,10 @@ pub fn FileSet.new() &FileSet {
 
 // TODO:
 pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
-	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: $filename | base_: $base_ | size: $size')
+	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: ${filename} | base_: ${base_} | size: ${size}')
 	mut base := if base_ < 0 { fs.base } else { base_ }
 
-	// eprintln('>>> add_file fs: ${voidptr(fs)} | base: ${base:10} | fs.base: $fs.base | base_: ${base_:10} | size: ${size:10} | filename: $filename')
+	// eprintln('>>> add_file fs: ${voidptr(fs)} | base: ${base:10} | fs.base: ${fs.base} | base_: ${base_:10} | size: ${size:10} | filename: ${filename}')
 
 	if base < fs.base {
 		panic('invalid base ${base} (should be >= ${fs.base}')
@@ -79,7 +79,7 @@ fn search_files(files []&File, x int) int {
 	mut min, mut max := 0, files.len
 	for min < max {
 		mid := (min + max) / 2
-		// println('# min: $min, mid: $mid, max: $max')
+		// println('# min: ${min}, mid: ${mid}, max: ${max}')
 		if files[mid].base <= x {
 			min = mid + 1
 		} else {
@@ -92,7 +92,7 @@ fn search_files(files []&File, x int) int {
 	// for i := files.len-1; i>=0; i-- {
 	// 	file := files[i]
 	// 	if file.base < x && x <= file.base + file.size {
-	// 		// println('found file for pos `$x` i = $i:')
+	// 		// println('found file for pos `${x}` i = ${i}:')
 	// 		// dump(file)
 	// 		return i
 	// 	}
@@ -101,7 +101,7 @@ fn search_files(files []&File, x int) int {
 }
 
 pub fn (mut fs FileSet) file(pos Pos) &File {
-	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: $pos')
+	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: ${pos}')
 
 	// lock fs.files
 	// last file
@@ -182,7 +182,7 @@ pub fn (f &File) find_line(pos int) int {
 	mut min, mut max := 0, f.line_offsets.len
 	for min < max {
 		mid := (min + max) / 2
-		// println('# min: $min, mid: $mid, max: $max')
+		// println('# min: ${min}, mid: ${mid}, max: ${max}')
 		if f.line_offsets[mid] <= pos {
 			min = mid + 1
 		} else {

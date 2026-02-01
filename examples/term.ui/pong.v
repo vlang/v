@@ -449,7 +449,7 @@ fn (mut g Game) draw() {
 	}
 	// Ball
 	gfx.draw_point(int(g.ball.pos.x), int(g.ball.pos.y))
-	// gfx.draw_text(22,2,'$g.ball.pos')
+	// gfx.draw_text(22,2,'${g.ball.pos}')
 	gfx.reset_bg_color()
 }
 

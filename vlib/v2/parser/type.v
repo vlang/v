@@ -169,7 +169,7 @@ fn (mut p Parser) try_type() ast.Expr {
 			})
 		}
 		else {
-			// return error('expecting type, got `$p.tok`')
+			// return error('expecting type, got `${p.tok}`')
 			return ast.empty_expr
 		}
 	}

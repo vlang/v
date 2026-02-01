@@ -538,6 +538,6 @@ pub fn ast_to_any(value ast.Value) Any {
 
 	return null
 	// TODO: decide this
-	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
+	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "${value}"')
 	// return Any('')
 }

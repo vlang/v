@@ -83,7 +83,7 @@ mut:
 
 fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	handler.counter++
-	// eprintln('$time.now() | counter: $handler.counter | $req.method $req.url\n$req.header\n$req.data - 200 OK\n')
+	// eprintln('${time.now()} | counter: ${handler.counter} | ${req.method} ${req.url}\n${req.header}\n${req.data} - 200 OK\n')
 	mut r := http.Response{
 		body:   req.data + ', ${req.url}'
 		header: req.header

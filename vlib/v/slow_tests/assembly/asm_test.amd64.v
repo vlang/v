@@ -35,7 +35,7 @@ fn test_inline_asm() {
 
 	// g, h, i := 2.3, 4.8, -3.5
 	// asm rv64 {
-	// 	fadd.s $i, $g, $h // test `.` in instruction name
+	// 	fadd.s ${i}, ${g}, ${h} // test `.` in instruction name
 	// 	: =r (i) as i
 	// 	: r (g) as g
 	// 	  r (g) as h

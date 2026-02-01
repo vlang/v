@@ -255,7 +255,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 	}
 	/*
 	else {
-			println('jsgen.typ: Unhandled type $t')
+			println('jsgen.typ: Unhandled type ${t}')
 			styp = sym.name
 		}
 	*/
@@ -325,7 +325,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 		if c.has_strfn {
 			g.writeln('str: (function() { return new string(this.toString())).bind(this) }')
 		}
-		// g.writeln('eq: (function(other) { return $c.eq }).bind(this),')
+		// g.writeln('eq: (function(other) { return ${c.eq} }).bind(this),')
 	} else {
 		g.writeln('valueOf() { return ${c.value_of}   },')
 		g.writeln('toString() { return ${c.to_string} },')
@@ -333,7 +333,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 		if c.has_strfn {
 			g.writeln('str() { return new string(this.toString()) }')
 		}
-		// g.writeln('eq(other) { return $c.eq },')
+		// g.writeln('eq(other) { return ${c.eq} },')
 	}
 	g.dec_indent()
 	g.writeln('};\n')

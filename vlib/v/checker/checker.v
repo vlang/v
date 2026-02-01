@@ -365,7 +365,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 					}
 					// if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
 					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// c.warn('`${obj.name}` is declared as mutable, but it was never changed',
 					// obj.pos)
 					// }
 				}
@@ -945,7 +945,7 @@ fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Typ
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
-	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
+	// eprintln('> expand_iface_embeds: idecl.name: ${idecl.name} | level: ${level} | iface_embeds.len: ${iface_embeds.len}')
 	if level > iface_level_cutoff_limit {
 		c.error('too many interface embedding levels: ${level}, for interface `${idecl.name}`',
 			idecl.pos)
@@ -3683,7 +3683,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 // 			return c.table.bitsize_to_type(bit_size)
 // 		}
 // 	}
-// 	c.error('invalid register name: `$name`', node.pos)
+// 	c.error('invalid register name: `${name}`', node.pos)
 // 	return ast.void_type
 // }
 

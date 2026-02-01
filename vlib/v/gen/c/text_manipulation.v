@@ -82,7 +82,7 @@ fn (mut g Gen) writeln(s string) {
 		g.out.write_string(util.tabs(g.indent))
 		// g.out_parallel[g.out_idx].write_string(util.tabs(g.indent))
 	}
-	// println('w len=$g.out_parallel.len')
+	// println('w len=${g.out_parallel.len}')
 	g.out.writeln(s)
 	// g.out_parallel[g.out_idx].writeln(s)
 	g.empty_line = true

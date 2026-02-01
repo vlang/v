@@ -310,7 +310,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 				g.println('; jump to label ${int(endif_label)}')
 			}
-			// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
+			// println('after if g.pos=${g.pos()} jneaddr=${cjmp_addr}')
 			g.labels.addrs[label] = g.pos()
 			g.println('; label ${label}')
 		}

@@ -46,7 +46,7 @@ pub mut:
 // `data`.
 pub fn new_request(method Method, url_ string, data string) Request {
 	url := if method == .get && !url_.contains('?') { url_ + '?' + data } else { url_ }
-	// println('new req() method=$method url="$url" dta="$data"')
+	// println('new req() method=${method} url="${url}" dta="${data}"')
 	return Request{
 		method: method
 		url:    url

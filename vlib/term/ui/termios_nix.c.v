@@ -224,7 +224,7 @@ fn (mut ctx Context) termios_loop() {
 			ctx.init()
 			init_called = true
 		}
-		// println('SLEEPING: $sleep_len')
+		// println('SLEEPING: ${sleep_len}')
 		if sleep_len > 0 {
 			time.sleep(sleep_len * time.microsecond)
 		}

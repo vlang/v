@@ -67,7 +67,7 @@ pub fn (mut s Scope) lookup_parent(name string, pos token.Pos) ?Object {
 			// }
 		}
 	}
-	// println('lookup_parent: NOT FOUND: $name')
+	// println('lookup_parent: NOT FOUND: ${name}')
 	return none
 }
 
@@ -81,15 +81,15 @@ pub fn (mut s Scope) lookup_parent_with_scope(name string, pos token.Pos) ?(&Sco
 			// }
 		}
 	}
-	// println('lookup_parent: NOT FOUND: $name')
+	// println('lookup_parent: NOT FOUND: ${name}')
 	return none
 }
 
 pub fn (mut s Scope) insert(name string, obj Object) {
-	// println(' - register: $name: ${obj.type_name()}')
+	// println(' - register: ${name}: ${obj.type_name()}')
 	// TODO/FIXME:
 	// if name in s.objects {
-	// 	println(' #### EXISTS: $name')
+	// 	println(' #### EXISTS: ${name}')
 	// 	mut existing := s.objects[name] or { panic('should exist') }
 	// 	if mut existing is Type {
 	// 		if mut existing is Struct {

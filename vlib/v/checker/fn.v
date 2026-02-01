@@ -912,7 +912,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	prtyp_sym := c.table.sym(prtyp)
 	prtyp_is_ptr := prtyp.is_ptr()
 	prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
-	eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
+	eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: ${prtyp_is_ptr} | has_str: ${prhas_str} | expects_ptr: ${prexpects_ptr} | nr_args: ${prnr_args} | expr: ${prexpr.str()} ')
 	*/
 }
 
@@ -2503,7 +2503,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
-		// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
+		// println('warn ${method_name} lef.mod=${left_type_sym.mod} c.mod=${c.mod}')
 		c.error('method `${left_sym.name}.${method_name}` is private', node.pos)
 	}
 	rec_share := method.params[0].typ.share()

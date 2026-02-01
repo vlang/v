@@ -79,7 +79,7 @@ fn str_inter() {
 	a := 10
 	println('a = ${a}')
 	// foo := Foo{10, 'x' + 'x'}
-	// println('foo = $foo') // TODO
+	// println('foo = ${foo}') // TODO
 }
 
 fn str_replace() {
@@ -163,7 +163,7 @@ fn option_str() {
 	s := 'query: select'
 	// option fn args must be freed
 	pos2 := opt('query:${q}') or {
-		// pos := s.index('query: $q') or {
+		// pos := s.index('query: ${q}') or {
 		println('exiting')
 		return
 	}

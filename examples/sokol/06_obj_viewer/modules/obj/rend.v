@@ -141,7 +141,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	res.bind.fs.images[C.SLOT_tex] = texture
 	res.bind.fs.samplers[C.SLOT_smp] = sampler
 	res.pipeline = gfx.make_pipeline(&pipdesc)
-	// println('Buffers part [$in_part] init done!')
+	// println('Buffers part [${in_part}] init done!')
 
 	return res
 }
@@ -165,7 +165,7 @@ pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image, sampler gfx.Sa
 	// println("Material dict: ${obj_part.mat_map.keys()}")
 
 	for k, v in part_dict {
-		// println("$k => Parts $v")
+		// println("${k} => Parts ${v}")
 
 		mut txt := texture
 		mut smp := sampler

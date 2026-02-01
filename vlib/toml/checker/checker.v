@@ -617,7 +617,7 @@ fn (c &Checker) check_unicode_escape(esc_unicode string) ! {
 	sequence = sequence[..hex_digits_len]
 	// TODO: not enforced in BurnSushi testsuite??
 	// if !sequence.is_upper() {
-	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
+	//	return error('Unicode escape sequence `${esc_unicode}` is not in all uppercase.')
 	//}
 	validate_utf8_codepoint_string(sequence.to_upper())!
 	if is_long_esc_type {

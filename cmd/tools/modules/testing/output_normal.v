@@ -134,7 +134,7 @@ pub fn (r &NormalReporter) session_stop(message string, mut ts TestSession) {
 // the most general form; it may be useful for other reporters
 // in the normal one, it currently does nothing
 pub fn (mut r NormalReporter) report(index int, message LogMessage) {
-	// eprintln('> ${@METHOD} index: $index | message: $message')
+	// eprintln('> ${@METHOD} index: ${index} | message: ${message}')
 	if message.kind == .compile_begin {
 		lock r.compiling {
 			r.compiling[message.file] = message

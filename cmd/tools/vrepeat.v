@@ -127,7 +127,7 @@ fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 		devsum += (x * x)
 	}
 	res.stddev = math.sqrt(devsum / f64(vals.len))
-	// eprintln('\novals: $ovals\n vals: $vals\n vals.len: $vals.len |  res.imin: $res.imin | res.imax: $res.imax | res.average: $res.average | res.stddev: $res.stddev')
+	// eprintln('\novals: ${ovals}\n vals: ${vals}\n vals.len: ${vals.len} |  res.imin: ${res.imin} | res.imax: ${res.imax} | res.average: ${res.average} | res.stddev: ${res.stddev}')
 	return res
 }
 

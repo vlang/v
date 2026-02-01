@@ -224,7 +224,7 @@ After it is defined in the attribute, you have to add it as a function parameter
           vvvv
 @['/hello/:user']            vvvv
 fn (mut app App) hello_user(user string) vweb.Result {
-	return app.text('Hello $user')
+	return app.text('Hello ${user}')
 }
 ```
 
@@ -929,7 +929,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 
     response := app.service_get_all_user() or {
         app.set_status(400, '')
-        return app.text('$err')
+        return app.text('${err}')
     }
     return app.json(response)
 }
@@ -976,12 +976,12 @@ pub fn (mut app App) articles() vweb.Result {
 pub fn (mut app App) controller_create_user() vweb.Result {
     body := json.decode(User, app.req.data) or {
         app.set_status(400, '')
-        return app.text('Failed to decode json, error: $err')
+        return app.text('Failed to decode json, error: ${err}')
 	}
 
     response := app.service_add_user(body.username, body.password) or {
         app.set_status(400, '')
-        return app.text('error: $err')
+        return app.text('error: ${err}')
     }
 
     return app.json(response)
@@ -1040,7 +1040,7 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
     if username !in known_users {
         return app.not_found()
     }
-    return app.html('username: $username | repository: $repository')
+    return app.html('username: ${username} | repository: ${repository}')
 }
 ```
 
@@ -1107,7 +1107,7 @@ Sets a cookie
 ```v ignore
 pub fn (mut app App) cookie() vweb.Result {
     app.set_cookie(name: 'cookie', value: 'test')
-    return app.text('Response Headers\n$app.header')
+    return app.text('Response Headers\n${app.header}')
 }
 ```
 
@@ -1124,7 +1124,7 @@ pub fn (mut app App) cookie() vweb.Result {
     expire_date := time.now().add(duration)
 
     app.set_cookie_with_expire_date(key, value, expire_date)
-    return app.text('Response Headers\n$app.header')
+    return app.text('Response Headers\n${app.header}')
 }
 ```
 
@@ -1206,7 +1206,7 @@ Returns the user-agent from the current user
 ```v ignore
 pub fn (mut app App) user_agent() vweb.Result {
     ua := app.user_agent()
-    return app.text('User-Agent: $ua')
+    return app.text('User-Agent: ${ua}')
 }
 ```
 
@@ -1219,7 +1219,7 @@ Returns the ip address from the current user
 ```v ignore
 pub fn (mut app App) ip() vweb.Result {
     ip := app.ip()
-    return app.text('ip: $ip')
+    return app.text('ip: ${ip}')
 }
 ```
 

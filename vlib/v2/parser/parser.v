@@ -204,7 +204,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 }
 
 fn (mut p Parser) stmt() ast.Stmt {
-	// p.log('STMT: $p.tok - $p.file.name:$p.line')
+	// p.log('STMT: ${p.tok} - ${p.file.name}:${p.line}')
 	match p.tok {
 		.dollar {
 			return p.comptime_stmt()
@@ -414,7 +414,7 @@ fn (mut p Parser) complete_simple_stmt(expr ast.Expr, expecting_semi bool) ast.S
 }
 
 fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
-	// p.log('EXPR: $p.tok - $p.line')
+	// p.log('EXPR: ${p.tok} - ${p.line}')
 	mut lhs := ast.empty_expr
 	match p.tok {
 		.char, .key_false, .key_true, .number {
@@ -1242,7 +1242,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			break
 		}
 	}
-	// p.log('returning: $p.tok')
+	// p.log('returning: ${p.tok}')
 	return lhs
 }
 
@@ -1388,7 +1388,7 @@ fn (mut p Parser) expr_list() []ast.Expr {
 		// expr := p.expr(.lowest)
 		// // TODO: is this the best place/way to handle this?
 		// if expr is ast.EmptyExpr {
-		// 	p.error('expecting expr, got `$p.tok`')
+		// 	p.error('expecting expr, got `${p.tok}`')
 		// }
 		// exprs << expr
 		if p.tok != .comma {
@@ -1470,7 +1470,7 @@ fn (mut p Parser) attributes() []ast.Attribute {
 		}
 		break
 	}
-	// p.log('ast.Attribute: $name')
+	// p.log('ast.Attribute: ${name}')
 	return attributes
 }
 
@@ -1736,7 +1736,7 @@ fn (mut p Parser) import_stmt() ast.ImportStmt {
 		}
 		p.expect(.rcbr)
 	}
-	// p.log('ast.ImportStmt: $name as $alias')
+	// p.log('ast.ImportStmt: ${name} as ${alias}')
 	return ast.ImportStmt{
 		name:       name
 		alias:      alias
@@ -1901,7 +1901,7 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 		}
 	}
 	typ := p.fn_type()
-	// p.log('ast.FnDecl: $name $p.lit - $p.tok ($p.lit) - $p.tok_next_')
+	// p.log('ast.FnDecl: ${name} ${p.lit} - ${p.tok} (${p.lit}) - ${p.tok_next_}')
 	// also check line for better error detection
 	stmts := if p.tok == .lcbr {
 		p.block()
@@ -2034,7 +2034,7 @@ fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.Enum
 	} else {
 		ast.empty_expr
 	}
-	// p.log('ast.EnumDecl: $name')
+	// p.log('ast.EnumDecl: ${name}')
 	p.expect(.lcbr)
 	mut fields := []ast.FieldDecl{}
 	for p.tok != .rcbr {
@@ -2171,7 +2171,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 	p.next()
 	language := p.decl_language()
 	name := p.expect_name()
-	// p.log('ast.StructDecl: $name')
+	// p.log('ast.StructDecl: ${name}')
 	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
 	// probably C struct decl with no body or {}
 	if p.tok != .lcbr {
@@ -2450,7 +2450,7 @@ fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
 	name := p.expect_name()
 	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
 
-	// p.log('ast.TypeDecl: $name')
+	// p.log('ast.TypeDecl: ${name}')
 	p.expect(.assign)
 	typ := p.expect_type()
 

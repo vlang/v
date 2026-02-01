@@ -252,7 +252,7 @@ pub mut:
 	// wasm settings:
 	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
-	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
+	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi ${name}'. Mostly for low level development where manual memory management is used.
 	// game prototyping flags:
 	div_by_zero_is_zero bool // -div-by-zero-is-zero makes so `x / 0 == 0`, i.e. eliminates the division by zero panics/segfaults
 	// forwards compatibility settings:
@@ -1195,7 +1195,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		m[x] = ''
 	}
 	res.build_options = m.keys()
-	// eprintln('>> res.build_options: $res.build_options')
+	// eprintln('>> res.build_options: ${res.build_options}')
 	res.fill_with_defaults()
 	if res.backend == .c {
 		res.skip_unused = res.build_mode != .build_module

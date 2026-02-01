@@ -142,7 +142,7 @@ pub fn error(message string) IError {
 // Example: if ouch { return error_with_code('an error occurred', 1) }
 @[inline]
 pub fn error_with_code(message string, code int) IError {
-	// trace_error('$message | code: $code')
+	// trace_error('${message} | code: ${code}')
 	return &MessageError{
 		msg:  message
 		code: code

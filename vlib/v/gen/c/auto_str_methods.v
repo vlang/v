@@ -1144,7 +1144,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				if field.typ.is_ptr() && sym.kind in [.struct, .interface] {
 					funcprefix += '(indent_count > 25)? _S("<probably circular>") : '
 				}
-				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: $funcprefix | func: $func')
+				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: ${funcprefix} | func: ${func}')
 				if caller_should_free {
 					tmpvar := g.new_tmp_var()
 					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}${func};',

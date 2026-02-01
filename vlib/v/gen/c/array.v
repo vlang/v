@@ -776,7 +776,7 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
-	// println('filter s="$s"')
+	// println('filter s="${s}"')
 	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind !in [.array, .array_fixed] {
 		// println(rec_sym.kind)
@@ -900,7 +900,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 	} else {
 		g.dot_or_ptr(node.left_type)
 	}
-	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
+	// eprintln('> qsort: pointer ${node.left_type} | deref_field: `${deref_field}`')
 	g.empty_line = true
 	if is_array {
 		g.write('if (')

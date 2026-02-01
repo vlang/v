@@ -468,16 +468,16 @@ fn (t Primitive) name() string {
 	// 	}
 	// 	.integer {
 	// 		if t.props.has(.unsigned) {
-	// 			return 'u$t.size'
+	// 			return 'u${t.size}'
 	// 		} else {
 	// 			if t.size == 32 {
 	// 				return 'int'
 	// 			}
-	// 			return 'i$t.size'
+	// 			return 'i${t.size}'
 	// 		}
 	// 	}
 	// 	.float {
-	// 		return 'f$t.size'
+	// 		return 'f${t.size}'
 	// 	}
 	// 	else {
 	// 		println(t)

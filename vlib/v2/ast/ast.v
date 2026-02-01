@@ -537,7 +537,7 @@ pub fn (se SelectorExpr) leftmost() Expr {
 }
 
 // pub fn (expr Expr) str() string {
-// 	return 'Expr.str() - $expr.type_name()'
+// 	return 'Expr.str() - ${expr.type_name()}'
 // }
 
 pub fn (se SelectorExpr) name() string {
