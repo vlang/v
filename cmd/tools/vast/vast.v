@@ -403,7 +403,7 @@ fn (t Tree) imports(nodes []ast.Import) &Node {
 	return import_array
 }
 
-fn (t Tree) errors(errors_ []errors.Error) &Node {
+fn (t Tree) errors(errors_ []errors.ErrorMessage) &Node {
 	mut errs := create_array()
 	for e in errors_ {
 		mut obj := create_object()
@@ -416,7 +416,7 @@ fn (t Tree) errors(errors_ []errors.Error) &Node {
 	return errs
 }
 
-fn (t Tree) warnings(warnings []errors.Warning) &Node {
+fn (t Tree) warnings(warnings []errors.WarningMessage) &Node {
 	mut warns := create_array()
 	for w in warnings {
 		mut obj := create_object()
@@ -429,7 +429,7 @@ fn (t Tree) warnings(warnings []errors.Warning) &Node {
 	return warns
 }
 
-fn (t Tree) notices(notices []errors.Notice) &Node {
+fn (t Tree) notices(notices []errors.NoticeMessage) &Node {
 	mut notice_array := create_array()
 	for n in notices {
 		mut obj := create_object()
