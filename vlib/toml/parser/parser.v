@@ -926,7 +926,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 					' table[${dotted_key_str}] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			table[dotted_key_str] = p.array_of_tables_contents()!
+			table[dotted_key_str] = [p.array_of_tables_contents()!]
 		}
 	}
 	p.last_aot = dotted_key
@@ -937,17 +937,14 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 	}
 }
 
-// array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
+// array_of_tables_contents parses next tokens into a single table `ast.Value`.
+pub fn (mut p Parser) array_of_tables_contents() !ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
 
 	p.table_contents(mut tbl)!
-
-	mut arr := []ast.Value{}
-	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
-	return arr
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables entry ${ast.Value(tbl)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
+	return ast.Value(tbl)
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
@@ -1057,7 +1054,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 					' t[${last.str()}] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			t[last.str()] = p.double_array_of_tables_contents(dotted_key)!
+			t[last.str()] = [p.double_array_of_tables_contents(dotted_key)!]
 		}
 		if t_arr.len == 0 {
 			t_arr << t
@@ -1066,8 +1063,8 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	}
 }
 
-// double_array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
+// double_array_of_tables_contents parses next tokens into a single table `ast.Value`.
+pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) !ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
 
@@ -1086,9 +1083,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 		if peek_tok.kind == .lsbr {
 			peek_tok, peeked_over = p.peek_over(peeked_over + 1, space_formatting)!
 			if peek_tok.kind == .lsbr {
-				mut arr := []ast.Value{}
-				arr << tbl
-				return arr
+				return ast.Value(tbl)
 			}
 		}
 
@@ -1157,10 +1152,8 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 			}
 		}
 	}
-	mut arr := []ast.Value{}
-	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
-	return arr
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables entry ${ast.Value(tbl)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
+	return ast.Value(tbl)
 }
 
 // array parses next tokens into an array of `ast.Value`s.
