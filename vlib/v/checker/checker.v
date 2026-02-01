@@ -53,14 +53,13 @@ pub mut:
 	nr_errors     int
 	nr_warnings   int
 	nr_notices    int
-	errors        []errors.Error
-	warnings      []errors.Warning
-	notices       []errors.Notice
 	error_lines   map[string]bool // dedup errors
 	warning_lines map[string]bool // dedup warns
 	notice_lines  map[string]bool // dedup notices
 	error_details []string
 	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+
+	error_handler &errors.DefaultErrorHandler // unified error handler
 
 	expected_type               ast.Type
 	expected_or_type            ast.Type // fn() or { 'this type' } eg. string. expected or block type
@@ -182,6 +181,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash:         v_current_commit_hash
 		checker_transformer:           transformer.new_transformer_with_table(table, pref_)
+		error_handler:                 errors.new_handler(pref_)
 	}
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
@@ -291,7 +291,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			c.expr_level = 0
 			c.stmt(mut stmt)
 		}
-		if c.should_abort {
+		if c.should_abort || c.error_handler.should_abort() {
 			return
 		}
 	}
@@ -302,7 +302,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			c.expr_level = 0
 			c.stmt(mut stmt)
 		}
-		if c.should_abort {
+		if c.should_abort || c.error_handler.should_abort() {
 			return
 		}
 	}
@@ -313,7 +313,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			c.expr_level = 0
 			c.stmt(mut stmt)
 		}
-		if c.should_abort {
+		if c.should_abort || c.error_handler.should_abort() {
 			return
 		}
 	}
@@ -3192,7 +3192,7 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 			}
 			c.scope_returns = false
 		}
-		if c.should_abort {
+		if c.should_abort || c.error_handler.should_abort() {
 			return
 		}
 	}

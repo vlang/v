@@ -10,12 +10,12 @@ import v.util
 
 // call this *before* calling error or warn
 fn (mut c Checker) add_error_detail(s string) {
-	c.error_details << s
+	c.error_handler.add_detail(s)
 }
 
 fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
 	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
-	c.add_error_detail(util.formatted_error('details:', msg, file_path, pos))
+	c.error_handler.add_detail(util.formatted_error('details:', msg, file_path, pos))
 }
 
 fn (mut c Checker) add_instruction_for_option_type() {
@@ -35,8 +35,15 @@ pub:
 }
 
 fn (mut c Checker) warn(s string, pos token.Pos, options MessageOptions) {
-	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
-	c.warn_or_error(s, pos, allow_warnings, options)
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
+	// Use the new unified error handler
+	c.error_handler.report(errors.CompilerMessage{
+		file_path:  file_path
+		pos:        pos
+		reporter:   errors.Reporter.checker
+		message:    s
+		call_stack: options.call_stack
+	}, .warning)
 }
 
 fn (mut c Checker) warn_alloc(s string, pos token.Pos) {
@@ -67,7 +74,16 @@ fn (mut c Checker) error(message string, pos token.Pos, options MessageOptions) 
 		}
 		msg += ' (veb action: ${veb_action[..j]})'
 	}
-	c.warn_or_error(msg, pos, false, options)
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
+
+	// Use the new unified error handler
+	c.error_handler.report(errors.CompilerMessage{
+		file_path:  file_path
+		pos:        pos
+		reporter:   errors.Reporter.checker
+		message:    msg
+		call_stack: options.call_stack
+	}, .error)
 }
 
 fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) {
@@ -76,121 +92,40 @@ fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) 
 		return
 	}
 	msg := message.replace('`Array_', '`[]')
-	c.pref.fatal_errors = true
-	c.warn_or_error(msg, pos, false, options)
+
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
+
+	// Use provided call_stack or fall back to file.call_stack
+	actual_call_stack := if options.call_stack.len > 0 {
+		options.call_stack
+	} else {
+		c.file.call_stack
+	}
+
+	// Use the new unified error handler
+	c.error_handler.report(errors.CompilerMessage{
+		file_path:  file_path
+		pos:        pos
+		reporter:   errors.Reporter.checker
+		message:    msg
+		call_stack: actual_call_stack
+	}, .error)
 }
 
 fn (mut c Checker) note(message string, pos token.Pos) {
-	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
-		c.should_abort = true
-		return
-	}
 	if c.is_generated {
 		return
 	}
-	if c.pref.notes_are_errors {
-		c.error(message, pos)
-	}
-	mut details := ''
-	if c.error_details.len > 0 {
-		details = c.error_details.join('\n')
-		c.error_details = []
-	}
-	// deduplicate notices for the same line
 	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
-	kpos := '${file_path}:${pos.line_nr}:${message}'
-	if kpos !in c.notice_lines {
-		c.notice_lines[kpos] = true
-		note := errors.Notice{
-			reporter:  errors.Reporter.checker
-			pos:       pos
-			file_path: file_path
-			message:   message
-			details:   details
-		}
-		c.file.notices << note
-		c.notices << note
-		c.nr_notices++
-	}
-}
 
-fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool, options MessageOptions) {
-	if !warn {
-		$if checker_exit_on_first_error ? {
-			eprintln('\n\n>> checker error: ${message}, pos: ${pos}')
-			print_backtrace()
-			exit(1)
-		}
-		if c.pref.is_verbose {
-			print_backtrace()
-		}
-	}
-	mut details := ''
-	if c.error_details.len > 0 {
-		details = c.error_details.join('\n')
-		c.error_details = []
-	}
-	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
-	if warn && !c.pref.skip_warnings {
-		c.nr_warnings++
-		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
-			c.should_abort = true
-			return
-		}
-		// deduplicate warnings for the same line
-		kpos := '${file_path}:${pos.line_nr}:${message}'
-		if kpos !in c.warning_lines {
-			c.warning_lines[kpos] = true
-			wrn := errors.Warning{
-				reporter:  errors.Reporter.checker
-				pos:       pos
-				file_path: file_path
-				message:   message
-				details:   details
-			}
-			c.file.warnings << wrn
-			c.warnings << wrn
-		}
-		return
-	}
-	if !warn {
-		// Use provided call_stack or fall back to file.call_stack
-		actual_call_stack := if options.call_stack.len > 0 {
-			options.call_stack
-		} else {
-			c.file.call_stack
-		}
-		if c.pref.fatal_errors {
-			util.show_compiler_message('error:', errors.CompilerMessage{
-				pos:        pos
-				file_path:  file_path
-				message:    message
-				details:    details
-				call_stack: actual_call_stack
-			})
-			exit(1)
-		}
-		c.nr_errors++
-		if c.pref.message_limit >= 0 && c.errors.len >= c.pref.message_limit {
-			c.should_abort = true
-			return
-		}
-		// deduplicate errors for the same line
-		kpos := '${file_path}:${pos.line_nr}:${message}'
-		if kpos !in c.error_lines {
-			c.error_lines[kpos] = true
-			err := errors.Error{
-				reporter:   errors.Reporter.checker
-				pos:        pos
-				file_path:  file_path
-				message:    message
-				details:    details
-				call_stack: actual_call_stack
-			}
-			c.file.errors << err
-			c.errors << err
-		}
-	}
+	// Use the new unified error handler
+	c.error_handler.report(errors.CompilerMessage{
+		file_path:  file_path
+		pos:        pos
+		reporter:   errors.Reporter.checker
+		message:    message
+		call_stack: c.file.call_stack
+	}, .notice)
 }
 
 // for debugging only

@@ -27,14 +27,14 @@ pub:
 	call_stack []CallStackItem // call stack for compile-time errors
 }
 
-pub struct Error {
+pub struct ErrorMessage {
 	CompilerMessage
 }
 
-pub struct Warning {
+pub struct WarningMessage {
 	CompilerMessage
 }
 
-pub struct Notice {
+pub struct NoticeMessage {
 	CompilerMessage
 }

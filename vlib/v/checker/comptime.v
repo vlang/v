@@ -118,12 +118,19 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
 		c2.check(mut node.veb_tmpl)
-		c.warnings << c2.warnings
-		c.errors << c2.errors
-		c.notices << c2.notices
-		c.nr_warnings += c2.nr_warnings
-		c.nr_errors += c2.nr_errors
-		c.nr_notices += c2.nr_notices
+		// Merge errors from c2 into c's error_handler
+		for err in c2.error_handler.get_errors() {
+			c.error_handler.report(err.CompilerMessage, .error)
+		}
+		for warn in c2.error_handler.get_warnings() {
+			c.error_handler.report(warn.CompilerMessage, .warning)
+		}
+		for note in c2.error_handler.get_notices() {
+			c.error_handler.report(note.CompilerMessage, .notice)
+		}
+		c.nr_warnings += c2.error_handler.warning_count()
+		c.nr_errors += c2.error_handler.error_count()
+		c.nr_notices += c2.error_handler.notice_count()
 
 		c.table.cur_fn = save_cur_fn
 	}
