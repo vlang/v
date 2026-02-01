@@ -2374,7 +2374,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.assign_op = assign_op
 	}
 	g.assign_op = .unknown
-	stmt_str := g.go_before_last_stmt().trim_space()
+	stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
 	final_expr_sym := g.table.final_sym(expr_typ)
