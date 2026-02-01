@@ -77,7 +77,8 @@ pub:
 	elem_type Type
 }
 
-struct ArrayFixed {
+pub struct ArrayFixed {
+pub:
 	len       int
 	elem_type Type
 }
@@ -157,7 +158,8 @@ mut:
 	// TODO:
 }
 
-struct Map {
+pub struct Map {
+pub:
 	key_type   Type
 	value_type Type
 }

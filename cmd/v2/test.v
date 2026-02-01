@@ -2974,5 +2974,21 @@ fn main() {
 	print_str('pi=')
 	print_int(pi)
 
+	// 55.6 String compound assignment
+	mut s := 'hello'
+	s += ' world'
+	print_str(s) // hello world
+
+	// 55.7 Array comparison
+	cmp_arr1 := [1, 2, 3]
+	cmp_arr2 := [1, 2, 3]
+	cmp_arr3 := [1, 2, 4]
+	if cmp_arr1 == cmp_arr2 {
+		print_str('arr1 == arr2: yes')
+	}
+	if cmp_arr1 != cmp_arr3 {
+		print_str('arr1 != arr3: yes')
+	}
+
 	print_str('=== All tests completed ===')
 }

@@ -82,9 +82,10 @@ mut:
 	cur_sumtype_match_selector_rhs string                // For SelectorExpr: RHS field (e.g., "lhs" for se.lhs)
 	cur_lambda_elem_type           string                // Element type for lambda `it` variable in filter/map/any
 	// For -printfn support
-	last_fn_c_name      string                 // Current function's C name for -printfn
-	fn_start_pos        int                    // Start position of current function in output buffer
-	collected_map_types map[string]MapTypeInfo // Collected map types from AST traversal
+	last_fn_c_name        string                 // Current function's C name for -printfn
+	fn_start_pos          int                    // Start position of current function in output buffer
+	collected_map_types   map[string]MapTypeInfo // Collected map types from AST traversal
+	collected_array_types map[string]bool        // Collected array types from AST traversal (e.g., "Array_int")
 }
 
 pub fn Gen.new(files []ast.File) &Gen {
@@ -127,6 +128,7 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		sum_type_names:        map[string]bool{}
 		sum_type_variants:     map[string][]string{}
 		collected_map_types:   map[string]MapTypeInfo{}
+		collected_array_types: map[string]bool{}
 	}
 	// Build file -> module mapping and collect module names
 	for file in files {
@@ -730,58 +732,11 @@ pub fn (mut g Gen) gen() string {
 	}
 	g.sb.writeln('')
 
-	// Array type aliases (arrays are all the same struct, but V names them by element type)
+	// Array type aliases (dynamically generated from types collected in AST traversal)
 	g.sb.writeln('// Array type aliases')
-	g.sb.writeln('typedef array Array_int;')
-	g.sb.writeln('typedef array Array_u8;')
-	g.sb.writeln('typedef array Array_i8;')
-	g.sb.writeln('typedef array Array_u16;')
-	g.sb.writeln('typedef array Array_i16;')
-	g.sb.writeln('typedef array Array_u32;')
-	g.sb.writeln('typedef array Array_i32;')
-	g.sb.writeln('typedef array Array_u64;')
-	g.sb.writeln('typedef array Array_i64;')
-	g.sb.writeln('typedef array Array_f32;')
-	g.sb.writeln('typedef array Array_f64;')
-	g.sb.writeln('typedef array Array_string;')
-	g.sb.writeln('typedef array Array_rune;')
-	g.sb.writeln('typedef array Array_bool;')
-	g.sb.writeln('typedef array Array_voidptr;')
-	g.sb.writeln('typedef array Array_byte;')
-	g.sb.writeln('typedef array FixedArray_u8;')
-	g.sb.writeln('typedef array FixedArray_int;')
-	g.sb.writeln('typedef array Array_ast__Expr;')
-	g.sb.writeln('typedef array Array_ast__FieldDecl;')
-	g.sb.writeln('typedef array Array_ast__FieldInit;')
-	g.sb.writeln('typedef array Array_ast__Ident;')
-	g.sb.writeln('typedef array Array_ast__MatchBranch;')
-	g.sb.writeln('typedef array Array_ast__StringInter;')
-	g.sb.writeln('typedef array Array_ast__ImportStmt;')
-	g.sb.writeln('typedef array Array_types__Type;')
-	g.sb.writeln('typedef array Array_types__Fnptr;')
-	g.sb.writeln('typedef array Array_Map_string_types__Type;')
-	g.sb.writeln('typedef array Array_ast__File;')
-	g.sb.writeln('typedef array Array_ast__Stmt;')
-	g.sb.writeln('typedef array Array_ast__Attribute;')
-	g.sb.writeln('typedef array Array_ssa__TypeID;')
-	g.sb.writeln('typedef array Array_ssa__ValueID;')
-	g.sb.writeln('typedef array Array_optimize__ParallelCopy;')
-	g.sb.writeln('typedef array Array_optimize__VerifyError;')
-	g.sb.writeln('typedef array Array_token__Fileptr;')
-	g.sb.writeln('typedef array Array_types__Deferred;')
-	g.sb.writeln('typedef array Array_ast__Parameter;')
-	g.sb.writeln('typedef array Array_FunctionParam;')
-	g.sb.writeln('typedef array Array_arm64__RelocationInfo;')
-	g.sb.writeln('typedef array Array_arm64__Symbol;')
-	g.sb.writeln('typedef array Array_x64__RelocationInfo;')
-	g.sb.writeln('typedef array Array_x64__Symbol;')
-	g.sb.writeln('typedef array Array_x64__ElfRela;')
-	g.sb.writeln('typedef array Array_ssa__Type;')
-	g.sb.writeln('typedef array Array_ssa__LoopInfo;')
-	g.sb.writeln('typedef array Array_ssa__BlockID;')
-	g.sb.writeln('typedef array Array_types__Struct;')
-	g.sb.writeln('typedef array Array_term__TextStyle;')
-	g.sb.writeln('typedef array Array_Array_int;')
+	for array_type_name, _ in g.collected_array_types {
+		g.sb.writeln('typedef array ${array_type_name};')
+	}
 	g.sb.writeln('')
 	// Variadic string type (needs to come after string is defined)
 	g.sb.writeln('typedef struct { int len; string* data; } VArg_string;')
@@ -1605,6 +1560,9 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 			if node.kind == .char {
 				return 'rune'
 			}
+			if node.kind == .string {
+				return 'string'
+			}
 		}
 		ast.StringLiteral {
 			if node.kind == .c || node.value.starts_with("c'") {
@@ -2420,7 +2378,7 @@ fn (mut g Gen) gen_struct_decl_with_name(node ast.StructDecl, mangled_name strin
 				g.write_indent()
 				g.sb.write_string('\t')
 				safe_name := escape_c_keyword(field_name)
-				t := type_for_c_decl(field_type)
+				t := g.type_for_c_decl(field_type)
 				g.sb.writeln('${t} ${safe_name};')
 			}
 		}
@@ -2433,7 +2391,7 @@ fn (mut g Gen) gen_struct_decl_with_name(node ast.StructDecl, mangled_name strin
 		if arr_info := g.get_fixed_array_info(field.typ) {
 			g.sb.writeln('${arr_info.elem_type} ${field_name}[${arr_info.size}];')
 		} else {
-			t := type_for_c_decl(g.expr_type_to_c(field.typ))
+			t := g.type_for_c_decl(g.expr_type_to_c(field.typ))
 			g.sb.writeln('${t} ${field_name};')
 		}
 	}
@@ -2728,10 +2686,24 @@ fn (mut g Gen) collect_map_types_from_type(typ ast.Type) {
 			}
 		}
 		ast.ArrayType {
+			elem_type := sanitize_type_for_mangling(g.expr_type_to_c(typ.elem_type))
+			// Recursively collect nested types first
 			g.collect_map_types_from_expr(typ.elem_type)
+			// Skip generic type parameters
+			if !is_generic_type_param(elem_type) {
+				array_type_name := 'Array_${elem_type}'
+				g.collected_array_types[array_type_name] = true
+			}
 		}
 		ast.ArrayFixedType {
+			elem_type := sanitize_type_for_mangling(g.expr_type_to_c(typ.elem_type))
+			// Recursively collect nested types first
 			g.collect_map_types_from_expr(typ.elem_type)
+			// Skip generic type parameters
+			if !is_generic_type_param(elem_type) {
+				array_type_name := 'FixedArray_${elem_type}'
+				g.collected_array_types[array_type_name] = true
+			}
 		}
 		ast.OptionType {
 			g.collect_map_types_from_expr(typ.base_type)
@@ -2803,23 +2775,10 @@ fn is_pointer_type(t string) bool {
 	return t.ends_with('*') || t in ['voidptr', 'charptr', 'byteptr']
 }
 
-// Known array typedefs - types that have been typedef'd and can use specific names
-const known_array_types = ['Array_int', 'Array_u8', 'Array_i8', 'Array_u16', 'Array_i16', 'Array_u32',
-	'Array_i32', 'Array_u64', 'Array_i64', 'Array_f32', 'Array_f64', 'Array_string', 'Array_rune',
-	'Array_bool', 'Array_voidptr', 'Array_byte', 'Array_ast__Expr', 'Array_ast__Stmt',
-	'Array_ast__File', 'Array_ast__Attribute', 'Array_ast__Parameter', 'Array_ast__FieldDecl',
-	'Array_ast__FieldInit', 'Array_ast__Ident', 'Array_ast__MatchBranch', 'Array_ast__StringInter',
-	'Array_ast__ImportStmt', 'Array_types__Type', 'Array_types__Fnptr', 'Array_types__Deferred',
-	'Array_types__Struct', 'Array_ssa__TypeID', 'Array_ssa__ValueID', 'Array_ssa__Type',
-	'Array_ssa__LoopInfo', 'Array_ssa__BlockID', 'Array_optimize__ParallelCopy',
-	'Array_optimize__VerifyError', 'Array_token__Fileptr', 'Array_arm64__RelocationInfo',
-	'Array_arm64__Symbol', 'Array_x64__RelocationInfo', 'Array_x64__Symbol', 'Array_x64__ElfRela',
-	'Array_term__TextStyle', 'Array_Array_int', 'Array_FunctionParam', 'Array_Map_string_types__Type']
-
 // type_for_c_decl converts a V type name to a valid C type for variable declaration
 // For unknown Array_ types, it falls back to 'array'
-fn type_for_c_decl(t string) string {
-	if t.starts_with('Array_') && t !in known_array_types {
+fn (g &Gen) type_for_c_decl(t string) string {
+	if (t.starts_with('Array_') || t.starts_with('FixedArray_')) && t !in g.collected_array_types {
 		return 'array'
 	}
 	return t
@@ -2865,7 +2824,7 @@ fn (mut g Gen) get_field_type_for_inference(typ ast.Expr) string {
 fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
 		full_type := g.expr_type_to_c(field.typ)
-		t := type_for_c_decl(full_type)
+		t := g.type_for_c_decl(full_type)
 		// Skip globals with void type (type inference failed)
 		if t == 'void' {
 			continue
@@ -3585,6 +3544,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	} else {
 		g.cur_fn_ret_type = 'void'
 	}
+	// Special case: main returns int in C
+	if node.name == 'main' {
+		g.cur_fn_ret_type = 'int'
+	}
 
 	// Set current function name for @FN and @METHOD comptime values
 	g.cur_fn_name = node.name
@@ -3988,7 +3951,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					}
 					typ := g.infer_type(rhs_i)
 					g.var_types[name] = typ
-					c_typ := type_for_c_decl(typ)
+					c_typ := g.type_for_c_decl(typ)
 					g.write_indent()
 					g.sb.write_string('${c_typ} ${name} = ')
 					g.gen_expr(rhs_i)
@@ -4061,27 +4024,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 						return
 					}
 				}
-				c_typ := type_for_c_decl(typ)
+				c_typ := g.type_for_c_decl(typ)
 				g.sb.write_string('${c_typ} ${name} = ')
 				g.gen_expr(rhs)
 				g.sb.writeln(';')
 			} else {
 				// assignment
-				// Check if LHS is a map index expression
-				if lhs is ast.IndexExpr {
-					lhs_type := g.infer_type(lhs.lhs)
-					if lhs_type.starts_with('Map_') {
-						// Map assignment: __map_<type>_set(&m, key, val)
-						g.sb.write_string('__${lhs_type}_set(&')
-						g.gen_expr(lhs.lhs)
-						g.sb.write_string(', ')
-						g.gen_expr(lhs.expr)
-						g.sb.write_string(', ')
-						g.gen_expr(rhs)
-						g.sb.writeln(');')
-						return
-					}
-				}
 				// Check if RHS is an IfExpr that can't be ternary - hoist assignment into branches
 				if rhs is ast.IfExpr && !g.can_be_ternary(rhs) && rhs.else_expr !is ast.EmptyExpr {
 					g.gen_assign_if_expr(lhs, rhs, node.op)
@@ -4090,21 +4038,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				// Check if RHS is a MatchExpr - hoist assignment into branches
 				if rhs is ast.MatchExpr {
 					g.gen_assign_match_expr(lhs, rhs, node.op, false)
-					return
-				}
-				// Check for string compound assignment: p += x -> p = string__plus(p, x)
-				lhs_type := g.infer_type(lhs)
-				if lhs_type == 'string' && node.op == .plus_assign {
-					// Check if LHS is a mut parameter - need to dereference for assignment
-					if lhs is ast.Ident && lhs.name in g.mut_params {
-						g.sb.write_string('*')
-					}
-					g.gen_expr(lhs)
-					g.sb.write_string(' = string__plus(')
-					g.gen_expr(lhs)
-					g.sb.write_string(', ')
-					g.gen_expr(rhs)
-					g.sb.writeln(');')
 					return
 				}
 				// Check if LHS is a mut parameter - need to dereference for assignment
@@ -4129,6 +4062,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.write_string(' ${op_str} ')
 				// Set enum context for RHS based on LHS type
 				old_match_type := g.cur_match_type
+				lhs_type := g.infer_type(lhs)
 				if lhs_type in g.enum_names || lhs_type in g.flag_enum_names {
 					g.cur_match_type = lhs_type
 				}
@@ -4519,6 +4453,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 						} else {
 							g.sb.writeln('return (${g.cur_fn_ret_type}){ .state=0, .data={0} };')
 						}
+					} else if g.cur_fn_ret_type == 'int' {
+						// For int-returning functions (like main), return 0
+						g.sb.writeln('return 0;')
 					} else {
 						g.sb.writeln('return;')
 					}
@@ -5282,7 +5219,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				// Match with range conditions - use if-else chain
 				g.write_indent()
 				g.sb.write_string('{ ')
-				c_match_type := type_for_c_decl(match_type)
+				c_match_type := g.type_for_c_decl(match_type)
 				g.sb.write_string('${c_match_type} __match_val = ')
 				g.gen_expr(node.expr)
 				g.sb.writeln(';')
@@ -5525,199 +5462,34 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					}
 				}
 			} else if node.op == .left_shift {
-				// Check if this is array append (arr << elem) vs bitshift
-				lhs_type := g.infer_type(node.lhs)
-				// Handle array types and type aliases (e.g., strings__Builder is an alias for []u8)
-				lhs_is_array := lhs_type.starts_with('Array_') || lhs_type == 'array'
-					|| lhs_type.starts_with('strings__Builder')
-					|| (lhs_type.ends_with('*') && (lhs_type.starts_with('Array_')
-					|| lhs_type[..lhs_type.len - 1] == 'strings__Builder'))
-				if lhs_is_array {
-					// Array append: arr << elem => array__push(&arr, elem)
-					// Determine element type
-					clean_lhs_type := if lhs_type.ends_with('*') {
-						lhs_type[..lhs_type.len - 1]
-					} else {
-						lhs_type
-					}
-					elem_type := if clean_lhs_type.starts_with('Array_') {
-						clean_lhs_type['Array_'.len..]
-					} else if clean_lhs_type.starts_with('strings__Builder') {
-						'u8' // strings.Builder is []u8
-					} else {
-						'int'
-					}
-					rhs_type := g.infer_type(node.rhs)
-					// Check if RHS is also an array (need push_many instead of push)
-					rhs_clean := if rhs_type.ends_with('*') {
-						rhs_type[..rhs_type.len - 1]
-					} else {
-						rhs_type
-					}
-					rhs_is_array := rhs_clean.starts_with('Array_') || rhs_clean == 'array'
-						|| rhs_clean.starts_with('strings__Builder')
-					if rhs_is_array {
-						// Pushing entire array: use array__push_many
-						if lhs_type.ends_with('*') {
-							g.sb.write_string('array__push_many(')
-							g.gen_expr(node.lhs)
-						} else {
-							g.sb.write_string('array__push_many(&')
-							g.gen_expr(node.lhs)
-						}
-						g.sb.write_string(', ')
-						// Need to pass data pointer and length
-						if rhs_type.ends_with('*') {
-							g.gen_expr(node.rhs)
-							g.sb.write_string('->data, ')
-							g.gen_expr(node.rhs)
-							g.sb.write_string('->len)')
-						} else {
-							g.sb.write_string('(')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(').data, (')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(').len)')
-						}
-					} else {
-						// If LHS is already a pointer, pass it directly; otherwise take address
-						if lhs_type.ends_with('*') {
-							g.sb.write_string('array__push(')
-							g.gen_expr(node.lhs)
-						} else {
-							g.sb.write_string('array__push(&')
-							g.gen_expr(node.lhs)
-						}
-						// If RHS is already a pointer or void*, wrap it differently
-						if rhs_type.ends_with('*') || rhs_type == 'voidptr'
-							|| elem_type == 'voidptr' {
-							g.sb.write_string(', _MOV((void*[]){')
-							g.gen_expr(node.rhs)
-							g.sb.write_string('}))')
-						} else {
-							g.sb.write_string(', _MOV((${elem_type}[]){')
-							g.gen_expr(node.rhs)
-							g.sb.write_string('}))')
-						}
-					}
-				} else {
-					// Regular bitshift
-					g.sb.write_string('(')
-					g.gen_expr(node.lhs)
-					g.sb.write_string(' << ')
-					g.gen_expr(node.rhs)
-					g.sb.write_string(')')
-				}
+				// Regular bitshift (array append is handled by transformer)
+				g.sb.write_string('(')
+				g.gen_expr(node.lhs)
+				g.sb.write_string(' << ')
+				g.gen_expr(node.rhs)
+				g.sb.write_string(')')
 			} else if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
-				// Check for string comparisons - need function calls instead of operators
+				// Comparison operators - string/array comparisons handled by transformer
 				lhs_type := g.infer_type(node.lhs)
-				rhs_type := g.infer_type(node.rhs)
-				if lhs_type == 'string' && rhs_type == 'string' {
-					// Generate string comparison function calls
-					match node.op {
-						.eq {
-							// s1 == s2 -> string__eq(s1, s2)
-							g.sb.write_string('string__eq(')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(')')
-						}
-						.ne {
-							// s1 != s2 -> !string__eq(s1, s2)
-							g.sb.write_string('!string__eq(')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(')')
-						}
-						.lt {
-							// s1 < s2 -> string__lt(s1, s2)
-							g.sb.write_string('string__lt(')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(')')
-						}
-						.gt {
-							// s1 > s2 -> string__lt(s2, s1)
-							g.sb.write_string('string__lt(')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(')')
-						}
-						.le {
-							// s1 <= s2 -> !string__lt(s2, s1)
-							g.sb.write_string('!string__lt(')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(')')
-						}
-						.ge {
-							// s1 >= s2 -> !string__lt(s1, s2)
-							g.sb.write_string('!string__lt(')
-							g.gen_expr(node.lhs)
-							g.sb.write_string(', ')
-							g.gen_expr(node.rhs)
-							g.sb.write_string(')')
-						}
-						else {}
-					}
-				} else if lhs_type.starts_with('Array_') && rhs_type.starts_with('Array_') {
-					// Array comparison - need to use array_eq function
-					if node.op == .ne {
-						g.sb.write_string('!')
-					}
-					g.sb.write_string('array__eq(')
-					g.gen_expr(node.lhs)
-					g.sb.write_string(', ')
-					g.gen_expr(node.rhs)
-					g.sb.write_string(')')
-				} else {
-					// Non-string comparison - use regular operator
-					// Set enum context if LHS is an enum type (for shorthand resolution on RHS)
-					lhs_type_cmp := g.infer_type(node.lhs)
-					old_match_type_cmp := g.cur_match_type
-					if lhs_type_cmp in g.enum_names {
-						g.cur_match_type = lhs_type_cmp
-					}
-					g.sb.write_string('(')
-					g.gen_expr(node.lhs)
-					op := match node.op {
-						.eq { '==' }
-						.ne { '!=' }
-						.lt { '<' }
-						.gt { '>' }
-						.le { '<=' }
-						.ge { '>=' }
-						else { '?' }
-					}
-					g.sb.write_string(' ${op} ')
-					g.gen_expr(node.rhs)
-					g.sb.write_string(')')
-					g.cur_match_type = old_match_type_cmp
+				old_match_type := g.cur_match_type
+				if lhs_type in g.enum_names {
+					g.cur_match_type = lhs_type
 				}
-			} else if node.op == .plus {
-				// Check for string concatenation
-				lhs_type := g.infer_type(node.lhs)
-				rhs_type := g.infer_type(node.rhs)
-				if lhs_type == 'string' || rhs_type == 'string' {
-					// string + string -> string__plus(a, b)
-					g.sb.write_string('string__plus(')
-					g.gen_expr(node.lhs)
-					g.sb.write_string(', ')
-					g.gen_expr(node.rhs)
-					g.sb.write_string(')')
-				} else {
-					// Regular addition
-					g.sb.write_string('(')
-					g.gen_expr(node.lhs)
-					g.sb.write_string(' + ')
-					g.gen_expr(node.rhs)
-					g.sb.write_string(')')
+				g.sb.write_string('(')
+				g.gen_expr(node.lhs)
+				op := match node.op {
+					.eq { '==' }
+					.ne { '!=' }
+					.lt { '<' }
+					.gt { '>' }
+					.le { '<=' }
+					.ge { '>=' }
+					else { '?' }
 				}
+				g.sb.write_string(' ${op} ')
+				g.gen_expr(node.rhs)
+				g.sb.write_string(')')
+				g.cur_match_type = old_match_type
 			} else {
 				// Other binary operators
 				g.sb.write_string('(')
@@ -7614,6 +7386,13 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					}
 					else {}
 				}
+				// If no type annotation, infer from first element
+				if c_elem_type == 'int' && node.exprs.len > 0 {
+					inferred := g.infer_type(node.exprs[0])
+					if inferred != '' {
+						c_elem_type = inferred
+					}
+				}
 				// Handle empty arrays specially - generate empty struct initialization
 				if arr_len == 0 {
 					g.sb.write_string('(array){0}')
@@ -8208,7 +7987,7 @@ fn (mut g Gen) gen_decl_if_expr(name string, if_expr ast.IfExpr) {
 	// Infer type and declare variable
 	typ := g.infer_type(if_expr)
 	g.var_types[name] = typ
-	c_typ := type_for_c_decl(typ)
+	c_typ := g.type_for_c_decl(typ)
 	g.sb.writeln('${c_typ} ${name};')
 
 	// Generate if-statement with assignment in each branch
@@ -8425,7 +8204,7 @@ fn (mut g Gen) gen_assign_match_expr(lhs ast.Expr, match_expr ast.MatchExpr, op 
 	if is_decl && var_name != '' {
 		typ := g.infer_type(match_expr)
 		g.var_types[var_name] = typ
-		c_typ := type_for_c_decl(typ)
+		c_typ := g.type_for_c_decl(typ)
 		g.write_indent()
 		g.sb.writeln('${c_typ} ${var_name};')
 	}
@@ -8437,7 +8216,7 @@ fn (mut g Gen) gen_assign_match_expr(lhs ast.Expr, match_expr ast.MatchExpr, op 
 		g.write_indent()
 		g.sb.write_string('{ ')
 		match_type := g.infer_type(match_expr.expr)
-		c_match_type := type_for_c_decl(match_type)
+		c_match_type := g.type_for_c_decl(match_type)
 		g.sb.write_string('${c_match_type} __match_val = ')
 		g.gen_expr(match_expr.expr)
 		g.sb.writeln(';')

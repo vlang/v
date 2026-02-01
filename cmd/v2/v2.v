@@ -10,6 +10,12 @@ import v2.builder
 fn main() {
 	args := os.args[1..]
 
+	// Check for 'ast' subcommand
+	if args.len > 0 && args[0] == 'ast' {
+		run_ast_command(args[1..])
+		return
+	}
+
 	prefs := pref.new_preferences_from_args(args)
 
 	files := get_files(args)
@@ -23,6 +29,38 @@ fn main() {
 
 	mut b := builder.new_builder(prefs)
 	b.build(files)
+}
+
+fn run_ast_command(args []string) {
+	if args.len == 0 {
+		eprintln('Usage: v2 ast <file.v>')
+		eprintln('Dumps AST to <file>_ast.json and <file>_ast_transformed.json')
+		exit(1)
+	}
+
+	// Find the vast2 tool relative to vexe
+	vroot := os.dir(@VEXE)
+	vast2_path := os.join_path(vroot, 'cmd', 'tools', 'vast2', 'vast2')
+
+	// Build vast2 if it doesn't exist
+	if !os.exists(vast2_path) {
+		eprintln('Building vast2 tool...')
+		vast2_source := os.join_path(vroot, 'cmd', 'tools', 'vast2', 'vast2.v')
+		build_result := os.execute('${@VEXE} ${vast2_source}')
+		if build_result.exit_code != 0 {
+			eprintln('Failed to build vast2 tool:')
+			eprintln(build_result.output)
+			exit(1)
+		}
+	}
+
+	// Run vast2 with the provided arguments
+	cmd := '${vast2_path} ${args.join(' ')}'
+	result := os.execute(cmd)
+	print(result.output)
+	if result.exit_code != 0 {
+		exit(result.exit_code)
+	}
 }
 
 // get_files extracts source files from args, excluding options and their values

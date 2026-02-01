@@ -139,8 +139,7 @@ pub fn (obj &Object) typ() Type {
 			return obj.typ
 		}
 		Module {
-			// TODO:
-			println('#### got Module')
+			// TODO: modules don't have a type, return a placeholder
 			return Type(u16_)
 		}
 		SmartCastSelector {
