@@ -144,7 +144,7 @@ fn hash_file(path string) !string {
 	return sum256.hex()
 }
 
-@[no_return]
+@[noreturn]
 fn err_exit(msg string) {
 	eprintln('> error: ${msg} .')
 	exit(0) // note: this is important, since the command is ran in `v up` and during `make`
