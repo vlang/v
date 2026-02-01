@@ -161,7 +161,7 @@ pub fn (mut c Arm64) cg_fn_decl(node ast.FnDecl) {
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
-		name := '_defer$i'
+		name := '_defer${i}'
 		g.allocate_var(name, 8, 0)
 	}
 	//
@@ -182,7 +182,7 @@ pub fn (mut c Arm64) cg_fn_decl(node ast.FnDecl) {
 		// save return value
 		g.push(.rax)
 		for defer_stmt in g.defer_stmts.reverse() {
-			defer_var := g.get_var_offset('_defer$defer_stmt.idx_in_fn')
+			defer_var := g.get_var_offset('_defer${defer_stmt.idx_in_fn}')
 			g.code_gen.mov_var_to_reg(.rax, defer_var)
 			g.cmp_zero(.rax)
 			label := g.labels.new_label()
@@ -204,7 +204,7 @@ pub fn (mut c Arm64) cg_fn_decl(node ast.FnDecl) {
 
 pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 	name := node.name
-	// println('call fn $name')
+	// println('call fn ${name}')
 	addr := c.g.fn_addr[name]
 	if addr == 0 {
 		c.g.n_error('fn addr of `${name}` = 0')
@@ -223,7 +223,7 @@ pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
 				var_offset := c.g.get_var_offset(expr.name)
 				if c.g.pref.is_verbose {
-					println('i=$i fn name= $name offset=$var_offset')
+					println('i=${i} fn name= ${name} offset=${var_offset}')
 					println(i32(native.fn_arg_registers[i]))
 				}
 				c.g.code_gen.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
@@ -239,7 +239,7 @@ pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 	}
 	c.cg_call(i32(addr))
 	c.g.println('fn call `${name}()`')
-	// println('call $name $addr')
+	// println('call ${name} ${addr}')
 }
 
 fn (mut g Gen) gen_arm64_helloworld() {

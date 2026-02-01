@@ -734,7 +734,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				.blank_ident {}
 				else {
 					// `.unresolved`, `.variable`
-					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')
+					// println('>>> else, ast.Ident ${node.name} kind: ${node.kind} ')
 					if node.name in w.all_consts {
 						w.mark_const_as_used(node.name)
 					} else if node.name in w.all_globals {

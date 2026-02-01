@@ -60,7 +60,7 @@ fn (mut state BFState) find_matching_pairs() {
 				pc := stack.pop()
 				state.targets[pc] = i + 1
 				state.targets[i] = pc + 1
-				// eprintln('>>> found `[` at i $i; pc: $pc')
+				// eprintln('>>> found `[` at i ${i}; pc: ${pc}')
 			}
 			else {}
 		}

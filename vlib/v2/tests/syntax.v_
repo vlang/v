@@ -144,24 +144,24 @@ fn fn_with_comment_and_attribute_a() {}
 [attribute_c: 'attribute_c_val']
 [attribute_d]
 fn fn_a(arg_a string, arg_b int) int {
-	println('fn_a($arg_a, $arg_b)')
+	println('fn_a(${arg_a}, ${arg_b})')
 	return 1
 }
 
 // TODO: error on missing name/type
 // fn fn_b(arg_a string, arg_b, arg_c, arg_d int) int {
 fn fn_b(arg_a string, arg_b int, arg_c int, arg_d int) int {
-	println('fn_b($arg_a, $arg_b, $arg_c, $arg_d)')
+	println('fn_b(${arg_a}, ${arg_b}, ${arg_c}, ${arg_d})')
 	return 1
 }
 
 fn fn_c(arg_a [][]StructA, arg_b [4]StructA) [][]StructA {
-	println('fn_b($arg_a, $arg_b)')
+	println('fn_b(${arg_a}, ${arg_b})')
 	return arg_a
 }
 
 fn fn_d(arg_a GenericStructA[int], arg_b moda.GenericStructA[int]) {
-	println('fn_d($arg_a, $arg_b)')
+	println('fn_d(${arg_a}, ${arg_b})')
 }
 
 fn C.fn_d(GenericStructA[int], moda.GenericStructA[int])
@@ -219,7 +219,7 @@ fn fn_arg_struct_int_a(arg_a StructA, arg_b int) {
 }
 
 fn (rec &StructA) method_a(arg_a string, arg_b int) int {
-	println('StructA.method_a($arg_a, $arg_b)')
+	println('StructA.method_a(${arg_a}, ${arg_b})')
 	return 1
 }
 
@@ -237,7 +237,7 @@ fn channel_test(arg_a chan string) {
 fn spawn_test() {
 	t := spawn fn() {
 		for i in 0..100 {
-			println('$i...')
+			println('${i}...')
 		}
 	}()
 	t.wait()
@@ -389,10 +389,10 @@ fn main_a() {
 		println(val)
 	}
 	if res_a := fn_optional_a() {
-		println('if guard: $res_a')
+		println('if guard: ${res_a}')
 	}
 	if res_a, res_b := fn_multi_return_optional_a() {
-		println('if guard: $res_a, $res_b')
+		println('if guard: ${res_a}, ${res_b}')
 	}
 	if res_a, res_b := fn_optional_a(), fn_optional_b() {
 		println('if guard: ${res_a}, ${res_b}')
@@ -417,13 +417,13 @@ fn main_a() {
 		println(1)
 	}
 	if a == 1 {
-		println('1 a == $s')
+		println('1 a == ${s}')
 	}
 	else if a == 2 {
-		println('2 a == $s')
+		println('2 a == ${s}')
 	}
 	else {
-		println('a == $s')
+		println('a == ${s}')
 	}
 	if (if a > 0 {
 		1
@@ -497,10 +497,10 @@ fn main_a() {
 		println(a)
 	}
 	for a, b := 0, 1; a < 4; a++ {
-		println('$a - $b')
+		println('${a} - ${b}')
 	}
 	for a, b, c, d := 0, 1, 2, 3; a < 4; a++ {
-		println('$a - $b')
+		println('${a} - ${b}')
 	}
 	// currently erroring in this case
 	// for a := 1 {}

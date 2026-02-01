@@ -196,7 +196,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32 {
 		// indicates glyph has no outline( eg space)
 		return 0
 	}
-	// dprintln("Offset for glyph index $index is $offset")
+	// dprintln("Offset for glyph index ${index} is ${offset}")
 	tf.pos = old_pos
 	return offset + tf.tables['glyf'].offset
 }
@@ -214,7 +214,7 @@ pub fn (mut tf TTF_File) glyph_count() u16 {
 // read_glyph_dim returns glyph dimension data in the form `x_min`, `x_max`, `y_min` and `y_max`.
 pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	offset := tf.get_glyph_offset(index)
-	// dprintln("offset: $offset")
+	// dprintln("offset: ${offset}")
 	if offset == 0 || offset >= tf.tables['glyf'].offset + tf.tables['glyf'].length {
 		dprintln('No glyph found!')
 		return 0, 0, 0, 0
@@ -224,7 +224,7 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	assert offset < tf.tables['glyf'].offset + tf.tables['glyf'].length
 
 	tf.pos = offset
-	// dprintln("file seek read_glyph: $tf.pos")
+	// dprintln("file seek read_glyph: ${tf.pos}")
 
 	// number_of_contours
 	_ := tf.get_i16()
@@ -249,7 +249,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		if glyph_index == 0 {
 			continue
 		}
-		// dprintln("$i = glyph_index: $glyph_index ${i:c}")
+		// dprintln("${i} = glyph_index: ${glyph_index} ${i:c}")
 		if i > max_code {
 			max_code = i
 		}
@@ -257,7 +257,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 			min_code = i
 		}
 	}
-	// dprintln("min_code: $min_code max_code: $max_code")
+	// dprintln("min_code: ${min_code} max_code: ${max_code}")
 	mut widths := []int{len: max_code - min_code + 1, init: 0}
 
 	for i in min_code .. max_code {
@@ -281,7 +281,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 
 		widths[pos] = int(w1 / tf.width_scale)
 		// if i >= int(`A`) && i <= int(`Z`) {
-		//	dprintln("${i:c}|$glyph_index [$pos] =>  width:${x_max-x_min} aw:${aw}|w1:${w1} lsb:${lsb} rsb:${rsb} pp1:${pp1} pp2:${pp2}")
+		//	dprintln("${i:c}|${glyph_index} [${pos}] =>  width:${x_max-x_min} aw:${aw}|w1:${w1} lsb:${lsb} rsb:${rsb} pp1:${pp1} pp2:${pp2}")
 		//}
 	}
 
@@ -299,7 +299,7 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	// dprintln("Create glyp: ${index}")
 
 	offset := tf.get_glyph_offset(index)
-	// dprintln("offset: $offset")
+	// dprintln("offset: ${offset}")
 	if offset == 0 || offset >= tf.tables['glyf'].offset + tf.tables['glyf'].length {
 		dprintln('No glyph found!')
 		return Glyph{}
@@ -309,7 +309,7 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	assert offset < tf.tables['glyf'].offset + tf.tables['glyf'].length
 
 	tf.pos = offset
-	// dprintln("file seek read_glyph: $tf.pos")
+	// dprintln("file seek read_glyph: ${tf.pos}")
 
 	/*
 	---- BUG TO SOLVE -----
@@ -330,7 +330,7 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	tmp_glyph.x_max = tf.get_fword()
 	tmp_glyph.y_max = tf.get_fword()
 
-	// dprintln("file seek after read_glyph: $tf.pos")
+	// dprintln("file seek after read_glyph: ${tf.pos}")
 
 	assert tmp_glyph.number_of_contours >= -1
 
@@ -415,7 +415,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		} else {
 			// value is unchanged
 		}
-		// dprintln("$i_x x: $value")
+		// dprintln("${i_x} x: ${value}")
 		in_glyph.points[i_x].x = value
 	}
 
@@ -434,7 +434,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		} else {
 			// value is unchanged
 		}
-		// dprintln("$i_y y: $value")
+		// dprintln("${i_y} y: ${value}")
 		in_glyph.points[i_y].y = value
 	}
 
@@ -639,7 +639,7 @@ fn (mut tf TTF_File) calc_checksum(offset u32, length u32) u32 {
 	mut sum := u64(0)
 	mut nlongs := int((length + 3) >> 2)
 	tf.pos = offset
-	// dprintln("offs: $offset nlongs: $nlongs")
+	// dprintln("offs: ${offset} nlongs: ${nlongs}")
 	for nlongs > 0 {
 		sum = sum + u64(tf.get_u32())
 		nlongs--
@@ -759,7 +759,7 @@ fn (mut tf TTF_File) read_name_table() {
 		} else {
 			name = tf.get_string(length)
 		}
-		// dprintln("Name [${platform_id} / ${platform_specific_id}] id:[$name_id] language:[$language_id] [$name]")
+		// dprintln("Name [${platform_id} / ${platform_specific_id}] id:[${name_id}] language:[${language_id}] [${name}]")
 		tf.pos = old_pos
 
 		match name_id {
@@ -861,7 +861,7 @@ fn (mut tm TrueTypeCmap) init_0(mut tf TTF_File) {
 
 fn (mut tm TrueTypeCmap) map_0(char_code int) int {
 	if char_code >= 0 && char_code <= 255 {
-		// dprintln("charCode $char_code maps to ${tm.arr[char_code]}")
+		// dprintln("charCode ${char_code} maps to ${tm.arr[char_code]}")
 		return tm.arr[char_code]
 	}
 	return 0
@@ -910,13 +910,13 @@ fn (mut tm TrueTypeCmap) init_4(mut tf TTF_File) {
 	// DEBUG LOG
 	for i in 0..seg_count {
 	seg := tm.segments[i]
-	dprintln("    segments[$i] = $seg.start_code $seg.end_code $seg.id_delta $seg.id_range_offset")
+	dprintln("    segments[${i}] = ${seg.start_code} ${seg.end_code} ${seg.id_delta} ${seg.id_range_offset}")
 	}
 	*/
 }
 
 fn (mut tm TrueTypeCmap) map_4(char_code int, mut tf TTF_File) int {
-	// dprintln("HERE map_4 for char [$char_code]")
+	// dprintln("HERE map_4 for char [${char_code}]")
 	old_pos := tf.pos
 	if tm.cache[char_code] == -1 {
 		// dprintln("Not found, search for it!")
@@ -999,7 +999,7 @@ fn (mut kt Kern0Table) get(glyph_index int) (int, int) {
 
 	if kt.old_index >= 0 {
 		ch := ((u32(kt.old_index & 0xFFFF) << 16) | u32(glyph_index & 0xFFFF))
-		// dprintln("kern_get: $ch")
+		// dprintln("kern_get: ${ch}")
 		if ch in kt.kmap {
 			x = int(kt.kmap[ch])
 		}

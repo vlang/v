@@ -178,7 +178,7 @@ fn frame(mut app App) {
 	*/
 	draw_end_glsl(app)
 
-	// println("v:$n_vertex_drawn")
+	// println("v:${n_vertex_drawn}")
 	app.frame_count++
 }
 

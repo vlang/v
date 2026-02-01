@@ -502,7 +502,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 pub fn (mut f Gen) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	// if f.is_debug {
-	// eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
+	// eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | ${node.str()}')
 	//}
 	match mut node {
 		ast.NodeError {}
@@ -2033,7 +2033,7 @@ pub fn (mut f Gen) or_expr(node ast.OrExpr) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
 				// str := f.node_str(node.stmts[0]).trim_space()
-				// single_line := ' or { $str }'
+				// single_line := ' or { ${str} }'
 			}
 			// Make it multiline if the blocks has at least two stmts
 			// or a single line would be too long
@@ -2251,15 +2251,12 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 		f.write('$')
-		fspec_str, needs_braces := node.get_fspec_braces(i)
-		if needs_braces {
-			f.write('{')
-			f.expr(node.exprs[i])
-			f.write(fspec_str)
-			f.write('}')
-		} else {
-			f.expr(node.exprs[i])
-		}
+		fspec_str := node.get_fspec(i)
+
+		f.write('{')
+		f.expr(node.exprs[i])
+		f.write(fspec_str)
+		f.write('}')
 	}
 	f.write(quote)
 }

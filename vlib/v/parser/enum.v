@@ -98,7 +98,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		vals << val
 		mut expr := ast.empty_expr
 		mut has_expr := false
-		// p.warn('enum val $val')
+		// p.warn('enum val ${val}')
 		if p.tok.kind == .assign {
 			p.next()
 			old_assign_rhs := p.inside_assign_rhs

@@ -143,7 +143,7 @@ fn test_c_must_have_files() {
 		for idx_expected_line, eline in expected_lines {
 			if does_line_match_one_of_generated_lines(eline, generated_c_lines) {
 				nmatches++
-				// eprintln('> testing: $must_have_path has line: $eline')
+				// eprintln('> testing: ${must_have_path} has line: ${eline}')
 			} else {
 				failed_patterns << eline
 				description += '\n failed pattern: `${eline}`'

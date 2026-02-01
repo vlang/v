@@ -34,7 +34,7 @@ fn test_debugger() {
 	assert all_expect_files.len > 0, 'no .expect files found in ${expect_tests_path}'
 	mut oks := 0
 	for eidx, efile in all_expect_files.sorted() {
-		// if !efile.contains('sumtype') { gprintln('skipping $efile') continue }
+		// if !efile.contains('sumtype') { gprintln('skipping ${efile}') continue }
 		vfile := efile.replace('.expect', '.vv')
 		output_file := os.join_path(test_module_path, os.file_name(efile).replace('.expect',
 			'.exe'))

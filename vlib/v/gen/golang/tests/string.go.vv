@@ -24,8 +24,8 @@ fn main() {
 	// bananna := 'bananna'
 	// number_one := 1
 	// number_two := 2
-	// inter_a := 'I have $number_one ${apple}\'s and $number_two ${bananna}\'s'
-	// inter_b := "I have \"$number_one ${apple}'s\" and \"$number_two ${bananna}'s\""
+	// inter_a := 'I have ${number_one} ${apple}\'s and ${number_two} ${bananna}\'s'
+	// inter_b := "I have \"${number_one} ${apple}'s\" and \"${number_two} ${bananna}'s\""
 	// println(inter_a)
 	// println(inter_b)
 }

@@ -773,7 +773,7 @@ fn (re &RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 		unsafe {
 			ch = in_txt.str[i]
 		}
-		// println("${ch:c} status: $status")
+		// println("${ch:c} status: ${status}")
 
 		// exit on no compatible char with {} quantifier
 		if utf8util_char_len(ch) != 1 {
@@ -1039,7 +1039,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				return err_group_qm_notation, next_i
 			}
 
-			// println("Parse group: [$tmp_res, $cgroup_flag, ($i,$next_i), '${in_txt[i..next_i]}' ]")
+			// println("Parse group: [${tmp_res}, ${cgroup_flag}, (${i},${next_i}), '${in_txt[i..next_i]}' ]")
 			i = next_i
 
 			if cgroup_flag == true {
@@ -1188,7 +1188,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 					min, max, tmp, greedy := re.parse_quantifier(in_txt, i + 1)
 					// it is a quantifier
 					if min >= 0 {
-						// println("{$min,$max}\n str:[${in_txt[i..i+tmp]}] greedy:$greedy")
+						// println("{${min},${max}}\n str:[${in_txt[i..i+tmp]}] greedy:${greedy}")
 						i = i + tmp
 						re.prog[pc - 1].rep_min = min
 						re.prog[pc - 1].rep_max = max
@@ -1229,7 +1229,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			if u8(char_tmp) == `[` {
 				cc_index, tmp, cc_type := re.parse_char_class(in_txt, i + 1)
 				if cc_index >= 0 {
-					// println("index: $cc_index str:${in_txt[i..i+tmp]}")
+					// println("index: ${cc_index} str:${in_txt[i..i+tmp]}")
 					i = i + tmp
 					re.prog[pc].ist = u32(0) | cc_type
 					re.prog[pc].cc_index = cc_index
@@ -1346,7 +1346,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut last_dot_char_pc := -1
 	for pc1 < pc {
 		if re.prog[pc1].ist == ist_dot_char {
-			// println("Dot_char pc: $pc1")
+			// println("Dot_char pc: ${pc1}")
 			last_dot_char_pc = pc1
 			dot_char_count++
 			mut pc2 := pc1 + 1
@@ -1392,7 +1392,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut last_bsls_char_pc := -1
 	for pc1 < pc {
 		if re.prog[pc1].ist == ist_bsls_char {
-			// println("bsls_char pc: $pc1")
+			// println("bsls_char pc: ${pc1}")
 			last_bsls_char_pc = pc1
 			bsls_char_count++
 			mut pc2 := pc1 + 1
@@ -1472,7 +1472,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	// set the jump in the right places
 	pc1 = 0
 	for pc1 < pc - 2 {
-		// println("Here $pc1 ${pc-2}")
+		// println("Here ${pc1} ${pc-2}")
 		// println("source index: ${pc1 + 1} => ${re.prog[pc1+1].source_index}")
 		if re.prog[pc1 + 1].ist == ist_or_branch {
 			// two consecutive OR are a syntax error
@@ -1512,7 +1512,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			if re.prog[pc1 + 1].rep_max == pc1 {
 				re.prog[pc1 + 1].rep_max = 3
 			}
-			// println("Compile OR postproc. [$pc1,OR ${pc1+1},$pc2]")
+			// println("Compile OR postproc. [${pc1},OR ${pc1+1},${pc2}]")
 			pc1 = pc2
 			continue
 		}
@@ -1955,7 +1955,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				for state.group_index >= 0 {
 					tmp_pc := re.group_data[state.group_index]
 					re.prog[tmp_pc].group_rep++
-					// println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
+					// println("Closing group ${state.group_index} {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
 
 					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min
 						&& re.prog[tmp_pc].group_id >= 0 {
@@ -1998,7 +1998,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			// println("Finished text!!")
-			// println("Instruction: ${ist:08x} pc: $state.pc")
+			// println("Instruction: ${ist:08x} pc: ${state.pc}")
 			// println("min_rep: ${re.prog[state.pc].rep_min} max_rep: ${re.prog[state.pc].rep_max} rep: ${re.prog[state.pc].rep}")
 
 			// program end
@@ -2147,7 +2147,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				state.group_index++
 				re.group_data[state.group_index] = re.prog[state.pc].goto_pc // save where is ist_group_end, we will use it for escape
 				re.group_stack[state.group_index] = state.i // index where we start to manage
-				// println("group_index $state.group_index rep ${re.prog[re.prog[state.pc].goto_pc].group_rep}")
+				// println("group_index ${state.group_index} rep ${re.prog[re.prog[state.pc].goto_pc].group_rep}")
 
 				m_state = .ist_next
 				continue
@@ -2183,14 +2183,14 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 							re.groups[g_index + 1] = in_txt_len - 1
 						}
 
-						// println("GROUP ${re.prog[state.pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}] i: $state.i in_txt_len: $in_txt_len")
+						// println("GROUP ${re.prog[state.pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}] i: ${state.i} in_txt_len: ${in_txt_len}")
 
 						// continuous save, save until we have space
 						re.group_continuous_save(g_index)
 					}
 
 					re.prog[state.pc].group_rep++ // increase repetitions
-					// println("GROUP $group_index END ${re.prog[state.pc].group_rep}")
+					// println("GROUP ${group_index} END ${re.prog[state.pc].group_rep}")
 					if re.prog[state.pc].group_rep > in_txt_len - 1 {
 						m_state = .ist_quant_ng
 						continue
@@ -2207,10 +2207,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			else if ist == ist_or_branch {
 				if state.match_index >= 0 {
 					state.pc = re.prog[state.pc].rep_max
-					// println("ist_or_branch True pc: $state.pc")
+					// println("ist_or_branch True pc: ${state.pc}")
 				} else {
 					state.pc = re.prog[state.pc].rep_min
-					// println("ist_or_branch False pc: $state.pc")
+					// println("ist_or_branch False pc: ${state.pc}")
 				}
 				re.prog[state.pc].reset()
 				m_state = .ist_load
@@ -2242,7 +2242,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						if re.prog[chk_pc].ch == ch_t {
 							next_check_flag = true
 						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
 					}
 					// char char_class
 					else if re.prog[chk_pc].ist == ist_char_class_pos
@@ -2257,12 +2257,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 							cc_res = !cc_res
 						}
 						next_check_flag = cc_res
-						// println("Check [ist_char_class] => $next_check_flag")
+						// println("Check [ist_char_class] => ${next_check_flag}")
 					}
 					// check bsls
 					else if re.prog[chk_pc].ist == ist_bsls_char {
 						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => $next_check_flag")
+						// println("Check [ist_bsls_char] => ${next_check_flag}")
 					}
 				}
 
@@ -2328,7 +2328,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						if re.prog[chk_pc].ch == ch_t {
 							next_check_flag = true
 						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
 					}
 					// char char_class
 					else if re.prog[chk_pc].ist == ist_char_class_pos
@@ -2343,12 +2343,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 							cc_res = !cc_res
 						}
 						next_check_flag = cc_res
-						// println("Check [ist_char_class] => $next_check_flag")
+						// println("Check [ist_char_class] => ${next_check_flag}")
 					}
 					// check bsls
 					else if re.prog[chk_pc].ist == ist_bsls_char {
 						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => $next_check_flag")
+						// println("Check [ist_bsls_char] => ${next_check_flag}")
 					}
 				}
 
@@ -2441,7 +2441,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						if re.prog[chk_pc].ch == ch_t {
 							next_check_flag = true
 						}
-						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => ${next_check_flag}")
 					}
 					// char char_class
 					else if re.prog[chk_pc].ist == ist_char_class_pos
@@ -2456,12 +2456,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 							cc_res = !cc_res
 						}
 						next_check_flag = cc_res
-						// println("Check [ist_char_class] => $next_check_flag")
+						// println("Check [ist_char_class] => ${next_check_flag}")
 					}
 					// check bsls
 					else if re.prog[chk_pc].ist == ist_bsls_char {
 						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
-						// println("Check [ist_bsls_char] => $next_check_flag")
+						// println("Check [ist_bsls_char] => ${next_check_flag}")
 					}
 				}
 
@@ -2535,7 +2535,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				continue
 			}
 			// UNREACHABLE
-			// println("PANIC2!! state: $m_state")
+			// println("PANIC2!! state: ${m_state}")
 			return err_internal_error, state.i
 		}
 		/***********************************
@@ -2555,10 +2555,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			rep := re.prog[tmp_pc].group_rep // use a temp variable
 			re.prog[tmp_pc].group_rep = 0 // clear the repetitions
 
-			// println(".ist_quant_ng group_pc_end: $tmp_pc rep: $rep")
+			// println(".ist_quant_ng group_pc_end: ${tmp_pc} rep: ${rep}")
 
 			if rep >= re.prog[tmp_pc].rep_min {
-				// println("ist_quant_ng GROUP CLOSED OK group_index: $state.group_index")
+				// println("ist_quant_ng GROUP CLOSED OK group_index: ${state.group_index}")
 
 				state.i = re.group_stack[state.group_index]
 				state.pc = tmp_pc
@@ -2574,7 +2574,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				m_state = .ist_next
 				continue
 			} else if rep > 0 && rep < re.prog[tmp_pc].rep_min {
-				// println("ist_quant_ng UNDER THE MINIMUM g.i: $state.group_index")
+				// println("ist_quant_ng UNDER THE MINIMUM g.i: ${state.group_index}")
 
 				// check if we are inside a group, if yes exit from the nested groups
 				if state.group_index > 0 {
@@ -2595,7 +2595,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				m_state = .stop
 				continue
 			} else if rep == 0 && rep < re.prog[tmp_pc].rep_min {
-				// println("ist_quant_ng c_zero UNDER THE MINIMUM g.i: $state.group_index")
+				// println("ist_quant_ng c_zero UNDER THE MINIMUM g.i: ${state.group_index}")
 
 				if state.group_index > 0 {
 					state.group_index--
@@ -2609,7 +2609,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				continue
 			}
 
-			// println("DO NOT STAY HERE!! {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:$rep")
+			// println("DO NOT STAY HERE!! {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${rep}")
 			// UNREACHABLE
 			return err_internal_error, state.i
 		}
@@ -2643,7 +2643,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 				continue
 			} else if rep >= re.prog[tmp_pc].rep_min {
-				// println("ist_quant_pg IN RANGE group_index:$state.group_index")
+				// println("ist_quant_pg IN RANGE group_index:${state.group_index}")
 
 				// check greedy flag, if true exit on minimum
 				if re.prog[tmp_pc].greedy == true {
@@ -2660,13 +2660,13 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			// UNREACHABLE
-			// println("PANIC3!! state: $m_state")
+			// println("PANIC3!! state: ${m_state}")
 			return err_internal_error, state.i
 		}
 		// ist_quant_n => quantifier negative test on token
 		else if m_state == .ist_quant_n {
 			rep := re.prog[state.pc].rep
-			// println("Here!! PC $state.pc is_next_or: ${re.prog[state.pc].next_is_or}")
+			// println("Here!! PC ${state.pc} is_next_or: ${re.prog[state.pc].next_is_or}")
 
 			// zero quantifier * or ?
 			if rep == 0 && re.prog[state.pc].rep_min == 0 {
@@ -2691,7 +2691,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 			// we are in a group manage no match from here
 			if state.group_index >= 0 {
-				// println("ist_quant_n FAILED insied a GROUP group_index:$state.group_index")
+				// println("ist_quant_n FAILED insied a GROUP group_index:${state.group_index}")
 				m_state = .ist_quant_ng
 				continue
 			}
@@ -2747,7 +2747,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 		}
 		// UNREACHABLE
-		// println("PANIC4!! state: $m_state")
+		// println("PANIC4!! state: ${m_state}")
 		return err_internal_error, state.i
 	}
 
@@ -2767,11 +2767,11 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				}
 			}
 
-			// println("No Group here, natural end [$state.first_match,$state.i] state: ${state_str(m_state)} ist: $ist pgr_end: $re.prog.len")
+			// println("No Group here, natural end [${state.first_match},${state.i}] state: ${state_str(m_state)} ist: ${ist} pgr_end: ${re.prog.len}")
 
 			if re.prog[state.pc + 1].ist == ist_prog_end || re.prog[state.pc].ist == ist_prog_end {
 				rep := re.prog[state.pc].rep
-				// println("rep: $rep re.prog[state.pc].rep_min: ${re.prog[state.pc].rep_min} re.prog[state.pc].rep_max: ${re.prog[state.pc].rep_max}")
+				// println("rep: ${rep} re.prog[state.pc].rep_min: ${re.prog[state.pc].rep_min} re.prog[state.pc].rep_max: ${re.prog[state.pc].rep_max}")
 				if rep >= re.prog[state.pc].rep_min && rep <= re.prog[state.pc].rep_max {
 					return state.first_match, state.i
 				}
@@ -2786,7 +2786,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			return no_match_found, state.i
 		} else {
 			// println("Group match! OK")
-			// println("first_match: $state.first_match, i: $state.i")
+			// println("first_match: ${state.first_match}, i: ${state.i}")
 
 			// println("Skip last group")
 			return state.first_match, state.i

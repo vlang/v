@@ -977,7 +977,7 @@ run them via `v file.v` instead',
 		}
 	}
 	// if no_body && !name.starts_with('C.') {
-	// 	p.error_with_pos('did you mean C.$name instead of $name', start_pos)
+	// 	p.error_with_pos('did you mean C.${name} instead of ${name}', start_pos)
 	// }
 	fn_decl := ast.FnDecl{
 		name:               name

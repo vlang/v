@@ -444,7 +444,7 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 			if skip {
 				continue
 			}
-			// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+			// eprintln('vgt: ${vgt} | pvgt: ${pvgt} | sym_app.name: ${sym_app.name} | m.name: ${m.name}')
 			all_fn_root_names << pvgt + '.' + m.name
 		}
 	}

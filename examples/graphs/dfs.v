@@ -23,7 +23,6 @@ fn main() {
 		'G': ['H']
 		'H': ['E', 'F', 'G']
 	}
-	// println('Graph: $graph')
 	path_01 := depth_first_search_path(graph_01, 'A', 'F')
 	println('\n Graph_01: a first path from node A to node F is: ${path_01.reverse()}')
 	path_02 := depth_first_search_path(graph_02, 'A', 'H')

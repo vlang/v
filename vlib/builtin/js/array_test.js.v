@@ -972,7 +972,7 @@ fn test_for_last() {
 	numbers := [1, 2, 3, 4]
 	mut s := '['
 	for num in numbers {
-		s += '$num'
+		s += '${num}'
 		if !last {
 			s += ', '
 
@@ -1103,7 +1103,7 @@ fn test_multi_array_index() {
 	assert '${a}' == '[[1, 0, 0], [0, 0, 0]]'
 	// mut b := [[0].repeat(3)].repeat(2)
 	// b[0][0] = 1
-	// assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+	// assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
 fn test_plus_assign_string() {
@@ -1447,7 +1447,7 @@ fn test_array_of_map_insert() {
 	x[2]['123'] = 123 // RTE
 	println(x)
 	println('TODO: Map eq')
-	// assert '$x' == "[{}, {}, {'123': 123}, {}]"
+	// assert '${x}' == "[{}, {}, {'123': 123}, {}]"
 }
 
 fn test_multi_fixed_array_init() {

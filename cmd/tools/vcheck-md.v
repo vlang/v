@@ -213,7 +213,7 @@ fn (mut f MDFile) echeck(actual int, limit int, ctx CheckResultContext, msg_temp
 fn (mut f MDFile) check() CheckResult {
 	mut anchor_data := AnchorData{}
 	for j, line in f.lines {
-		// f.progress('line: $j')
+		// f.progress('line: ${j}')
 		if !f.skip_line_length_check {
 			ctx := CheckResultContext{f.path, j, line}
 			if f.state == .vexample {
@@ -466,7 +466,7 @@ fn (mut f MDFile) check_examples() {
 		vfile := os.join_path(vcheckfolder, 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
 		efile := os.join_path(vcheckfolder, 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.exe')
 		mut should_cleanup_vfile := true
-		// eprintln('>>> checking example $vfile ...')
+		// eprintln('>>> checking example ${vfile} ...')
 		vcontent := e.text.join('\n') + '\n'
 		os.write_file(vfile, vcontent) or { panic(err) }
 		mut acommands := e.command.split(' ')

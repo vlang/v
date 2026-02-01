@@ -72,7 +72,7 @@ fn testsuite_begin() {
 		exit(0)
 	}
 	atomic_write_source(live_program_source)
-	// os.system('tree $vtmp_folder') exit(1)
+	// os.system('tree ${vtmp_folder}') exit(1)
 	spawn watchdog()
 }
 
@@ -107,7 +107,7 @@ fn vprintln(s string) {
 }
 
 fn testsuite_end() {
-	// os.system('tree $vtmp_folder') exit(1)
+	// os.system('tree ${vtmp_folder}') exit(1)
 	vprintln('source: ${source_file}')
 	vprintln('output: ${output_file}')
 	vprintln('---------------------------------------------------------------------------')

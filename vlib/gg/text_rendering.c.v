@@ -276,7 +276,7 @@ pub fn (ctx &Context) text_width(s string) int {
 			ctx.text_width('i') // TODO: fix this in fontstash?
 	}
 	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "$s" = $res')
+	// println('TW "${s}" = ${res}')
 	$if macos {
 		if ctx.native_rendering {
 			return res * 2
@@ -325,7 +325,7 @@ pub fn (ctx &Context) text_width_f(s string) f32 {
 			ctx.text_width('i') // TODO: fix this in fontstash?
 	}
 	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "$s" = $res')
+	// println('TW "${s}" = ${res}')
 	$if macos {
 		if ctx.native_rendering {
 			return res * 2

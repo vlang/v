@@ -185,7 +185,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			}
 		}
 		context.affected_paths = apaths.keys()
-		// context.elog('vfiles paths to be scanned: $context.affected_paths')
+		// context.elog('vfiles paths to be scanned: ${context.affected_paths}')
 	}
 	// scan all files in the found folders:
 	mut newstats := []VFileStat{}
@@ -346,7 +346,7 @@ fn (mut context Context) compilation_runner_loop() {
 						should_restart := RerunCommand.restart in cmds
 						cmds = []
 						if should_restart {
-							// context.elog('>>>>>>>> KILLING $context.child_process.pid')
+							// context.elog('>>>>>>>> KILLING ${context.child_process.pid}')
 							context.kill_pgroup()
 							break
 						}

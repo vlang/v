@@ -128,7 +128,7 @@ pub fn open(path string) !File {
 		$if !android {
 			fd := C.syscall(sys_open, path.str, 511)
 			if fd == -1 {
-				return error('failed to open file "$path"')
+				return error('failed to open file "${path}"')
 			}
 			return File{
 				fd: fd

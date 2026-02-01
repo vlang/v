@@ -1298,7 +1298,7 @@ fn (mut g Gen) println(comment string) {
 	}
 	addr := int(g.debug_pos).hex()
 	mut sb := strings.new_builder(80)
-	// println('$g.debug_pos "$addr"')
+	// println('${g.debug_pos} "${addr}"')
 	sb.write_string(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
 	for i := g.debug_pos; i < g.pos(); i++ {
 		s := g.buf[i].hex()

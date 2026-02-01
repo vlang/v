@@ -293,7 +293,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 	match decl {
 		ast.ConstDecl {
 			for field in decl.fields {
-				// c.log('const decl: $field.name')
+				// c.log('const decl: ${field.name}')
 				obj := Const{
 					mod:  c.mod
 					name: field.name
@@ -304,7 +304,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				// delay those. or keep deferring until type is known otherwise error
 				// work out best way to do this, and use same approach for everything
 				c.later(fn [mut c, field] () {
-					// c.log('updating const $field.name type')
+					// c.log('updating const ${field.name} type')
 					const_type := c.expr(field.value)
 					if mut cd := c.scope.lookup(field.name) {
 						if mut cd is Const {
@@ -347,14 +347,14 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// 	// field_type := c.expr(field.typ)
 			// 	// if field.name == 'g_timers' {
 			// 	// 	// dump(field.typ)
-			// 	// 	panic('# g_timers: $field_type.name()')
+			// 	// 	panic('# g_timers: ${field_type.name()}')
 			// 	// }
 			// 	obj := Global{
 			// 		name: field.name
 			// 		// typ: c.expr(field.typ)
 			// 		typ: c.expr(field.value)
 			// 	}
-			// 	// c.log('GlobalDecl: $field.name - $obj.typ.type_name()')
+			// 	// c.log('GlobalDecl: ${field.name} - ${obj.typ.type_name()}')
 			// 	c.scope.insert(field.name, obj)
 			// }
 		}
@@ -384,11 +384,11 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			}, .struct_decl)
 		}
 		ast.StructDecl {
-			// c.log(' # StructDecl: $decl.name')
+			// c.log(' # StructDecl: ${decl.name}')
 			// TODO: clean this up
 			struct_decl := decl
 			c.later(fn [mut c, struct_decl] () {
-				// c.log('add fields: $struct_decl.name')
+				// c.log('add fields: ${struct_decl.name}')
 				mut fields := []Field{}
 				for field in struct_decl.fields {
 					fields << Field{
@@ -425,7 +425,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				// typ := Type(obj)
 				// c.scope.insert(struct_decl.name, typ)
 			}, .struct_decl)
-			// c.log('struct decl: $decl.name')
+			// c.log('struct decl: ${decl.name}')
 			obj := Struct{
 				name: decl.name
 				// fields: [Field{name: 'len', typ: ast.Ident{name: 'int'}}]
@@ -579,7 +579,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(expr.typ)
 		}
 		ast.BasicLiteral {
-			// c.log('ast.BasicLiteral: $expr.kind.str(): $expr.value')
+			// c.log('ast.BasicLiteral: ${expr.kind.str()}: ${expr.value}')
 			match expr.kind {
 				.char {
 					return char_
@@ -602,7 +602,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 		}
 		ast.CallOrCastExpr {
-			// c.log('CallOrCastExpr: $lhs_type.name()')
+			// c.log('CallOrCastExpr: ${lhs_type.name()}')
 			// lhs_type := c.expr(expr.lhs)
 			// // call
 			// if lhs_type is FnType {
@@ -684,7 +684,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(c.resolve_generic_arg_or_index_expr(expr))
 		}
 		ast.Ident {
-			// c.log('ident: $expr.name')
+			// c.log('ident: ${expr.name}')
 			obj := c.ident(expr)
 			typ := obj.typ()
 			// TODO:
@@ -811,7 +811,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		}
 		ast.ModifierExpr {
 			// if expr.expr !is ast.Ident && expr.expr !is ast.Type {
-			// 	panic('not ident: $expr.expr.type_name()')
+			// 	panic('not ident: ${expr.expr.type_name()}')
 			// }
 			return c.expr(expr.expr)
 		}
@@ -1060,7 +1060,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 		// }
 		ast.GlobalDecl {
 			for field in stmt.fields {
-				// c.log('GlobalDecl: $field.name - $obj.typ.type_name()')
+				// c.log('GlobalDecl: ${field.name} - ${obj.typ.type_name()}')
 				field_type := if field.typ !is ast.EmptyExpr {
 					c.expr(field.typ)
 				} else {
@@ -1125,7 +1125,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 			c.close_scope()
 		}
 		ast.ImportStmt {
-			// c.log('import: $stmt.name as $stmt.alias')
+			// c.log('import: ${stmt.name} as ${stmt.alias}')
 		}
 		ast.ReturnStmt {
 			c.log('ReturnStmt:')
@@ -1223,7 +1223,7 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		}
 		rhs_type := c.expr(rx)
 		// if t := expected_type {
-		// 	c.log('AssignStmt: setting expected_type to: $t.name()')
+		// 	c.log('AssignStmt: setting expected_type to: ${t.name()}')
 		// } else {
 		// 	c.log('AssignStmt: setting expected_type to: none')
 		// }
@@ -1382,14 +1382,14 @@ fn (mut c Checker) extract_smartcasts(expr ast.Expr) ([]ast.Expr, []Type) {
 }
 
 fn (mut c Checker) fn_decl(decl ast.FnDecl) {
-	// c.log('ast.FnDecl: $decl.name: $c.file.name')
+	// c.log('ast.FnDecl: ${decl.name}: ${c.file.name}')
 	// c.log('return type:')
 	// c.expr(decl.typ.return_type)
 	mut prev_scope := c.scope
 	c.open_scope()
 	// mut fn_scope := c.scope
 	// if decl.typ.generic_params.len > 0 {
-	// 	eprintln('## GENERIC FN DECL: $decl.name')
+	// 	eprintln('## GENERIC FN DECL: ${decl.name}')
 	// }
 	mut typ := Type(c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes)))
 	// Heap-allocate Fn so pointer stored in env.methods remains valid
@@ -1455,10 +1455,10 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		// if fn_decl.typ.generic_params.len > 0 {
 		// 	panic('GENERIC FN')
 		// }
-		// eprintln('@@ FnDecl: $fn_decl.name - $fn_decl.typ.generic_params.len')
+		// eprintln('@@ FnDecl: ${fn_decl.name} - ${fn_decl.typ.generic_params.len}')
 		if typ is FnType {
 			if fn_decl.typ.generic_params.len > 0 {
-				// eprintln('## DEFERRED GENERIC FN: $fn_decl.name - $typ.generic_params.len')
+				// eprintln('## DEFERRED GENERIC FN: ${fn_decl.name} - ${typ.generic_params.len}')
 				// eprintln('FnType:')
 				// eprintln(typ)
 				generic_types := c.env.generic_types[fn_decl.name] or {
@@ -1811,7 +1811,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	mut fn_ := c.expr(lhs_expr)
 	// fn_ := c.expr(expr.lhs)
 	c.expecting_method = expecting_method
-	// c.log('call expr: $fn_.type_name() - $fn_.name() - ${lhs_expr.type_name()}')
+	// c.log('call expr: ${fn_.type_name()} - ${fn_.name()} - ${lhs_expr.type_name()}')
 
 	// if expr.lhs is PrefixExpr {
 	// 	xpr.op
@@ -1865,7 +1865,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		if fn_.generic_params.len > 0 {
 			// file := c.file_set.file(expr.pos)
 			// pos := file.position(expr.pos)
-			// eprintln('GENERIC CALL: $expr.lhs.name() - $expr.pos - $file.name:$pos.line')
+			// eprintln('GENERIC CALL: ${expr.lhs.name()} - ${expr.pos} - ${file.name}:${pos.line}')
 			mut generic_type_map := map[string]Type{}
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
@@ -1877,7 +1877,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 					generic_types << generic_type
 					generic_type_map[generic_param] = generic_type
 				}
-				// eprintln('GENERIC TYPES: $expr.lhs.name()')
+				// eprintln('GENERIC TYPES: ${expr.lhs.name()}')
 				// dump(generic_types)
 			}
 			// infer generic types from args
@@ -1885,7 +1885,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// TODO: move above (to be done globally)
 				// once error is fixed
 				mut arg_types := []Type{}
-				// eprintln('INFERRED GENERIC TYPES: $expr.lhs.name()')
+				// eprintln('INFERRED GENERIC TYPES: ${expr.lhs.name()}')
 				for i, arg in expr.args {
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
@@ -1897,15 +1897,15 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 						c.error_with_pos(err.msg(), expr.pos)
 					}
 					// if param.typ !is NamedType {
-					// 	eprintln('Generic argument: $param.typ.name() - $arg_type.name()')
-					// 	eprintln('should be NamedType but got $param.typ.name()')
+					// 	eprintln('Generic argument: ${param.typ.name()} - ${arg_type.name()}')
+					// 	eprintln('should be NamedType but got ${param.typ.name()}')
 					// }
 				}
 			}
-			// eprintln('## GENERIC TYPE MAP: $expr.lhs.name()')
+			// eprintln('## GENERIC TYPE MAP: ${expr.lhs.name()}')
 			// eprintln('========================')
 			// for k,v in generic_type_map {
-			// 	eprintln(' * $k -> $v')
+			// 	eprintln(' * ${k} -> ${v}')
 			// }
 			// eprintln('========================')
 			// if expr.lhs is ast.Ident {
@@ -2120,12 +2120,12 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	c.log('## selector_expr')
 	// file := c.file_set.file(expr.pos)
 	// pos := file.position(expr.pos)
-	// c.log('${expr.name()} - $expr.rhs.name')
+	// c.log('${expr.name()} - ${expr.rhs.name}')
 	// println('selector_expr: ${expr.rhs.name} - ${file.name}:${pos.line} - ${pos.column}')
 
 	// TODO: check todo in scope.v
 	if expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr {
-		// println('looking for smartcast $expr.name()')
+		// println('looking for smartcast ${expr.name()}')
 		if cast_type := c.scope.lookup_field_smartcast(expr.name()) {
 			// println('## 1 found smartcast for ${expr.name()} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
 			return cast_type
@@ -2140,7 +2140,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 
 	if expr.lhs is ast.Ident {
 		lhs_obj := c.ident(expr.lhs)
-		// c.log('LHS.RHS: $expr.lhs.name . $expr.rhs.name - $lhs_obj.typ().name()')
+		// c.log('LHS.RHS: ${expr.lhs.name} . ${expr.rhs.name} - ${lhs_obj.typ().name()}')
 		match lhs_obj {
 			Const {
 				return c.find_field_or_method(lhs_obj.typ, expr.rhs.name) or {
@@ -2158,7 +2158,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				rhs_obj := mod_scope.lookup_parent(expr.rhs.name, expr.rhs.pos) or {
 					// TODO: proper
 					if expr.lhs.name == 'C' {
-						// c.log('assuming C constant: $expr.lhs.name . $expr.rhs.name')
+						// c.log('assuming C constant: ${expr.lhs.name} . ${expr.rhs.name}')
 						return int_
 					}
 					mod_scope.print(true)
@@ -2172,7 +2172,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				}
 			}
 			// SmartCastSelector {
-			// 	c.log('@@ found smart cast selector: $expr.rhs.name')
+			// 	c.log('@@ found smart cast selector: ${expr.rhs.name}')
 			// 	if expr.rhs.name == lhs_obj.field {
 			// 		return lhs_obj.cast_type
 			// 		// return c.find_field_or_method(lhs_obj.cast_type, expr.rhs.name) or { c.error_with_pos(err.msg(), expr.pos) }
@@ -2186,7 +2186,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 		}
 	}
 	// else {
-	// 	panic('unexpected expr.lhs: $expr.lhs.type_name()')
+	// 	panic('unexpected expr.lhs: ${expr.lhs.type_name()}')
 	// }
 	// TODO: this will be removed
 	// unset when checking lhs, only needed for rightmost selector
@@ -2223,13 +2223,13 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('array', 0) or { panic('missing builtin array type') }
 			at_type := at.typ()
-			// c.log('ARRAY: looking for field or method $name on $t.name()')
+			// c.log('ARRAY: looking for field or method ${name} on ${t.name()}')
 			// // dump(t)
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
 				c.log('found ${name}')
 				if field_or_method_type is FnType {
 					if name in ['clone', 'map', 'filter'] {
-						// c.log('SNEAKY: $t.name()')
+						// c.log('SNEAKY: ${t.name()}')
 						// return t
 						return FnType{
 							...field_or_method_type
@@ -2302,7 +2302,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('map', 0) or { panic('missing builtin map type') }
 			at_type := at.typ()
-			// c.log('MAP: looking for field or method $name on $t.name()')
+			// c.log('MAP: looking for field or method ${name} on ${t.name()}')
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
 				if name == 'keys' {
 					if field_or_method_type is FnType {
@@ -2340,7 +2340,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 		Struct {
 			for field in t.fields {
-				// c.log('comparing field $field.name with $name for $t.name')
+				// c.log('comparing field ${field.name} with ${name} for ${t.name}')
 				if field.name == name {
 					c.log('found field ${name} for ${t.name}: ${field.typ.name()} (${field.typ.type_name()})')
 					return field.typ
@@ -2394,11 +2394,11 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 	}
 	// else if t is FnType {
-	// 			c.log('FnType: $t.name')
+	// 			c.log('FnType: ${t.name}')
 	// }
 
 	// // dump(t)
-	// c.log('returning none for $t.type_name() - $name')
+	// c.log('returning none for ${t.type_name()} - ${name}')
 	if method := c.find_method(t, name) {
 		return method
 	}
@@ -2418,13 +2418,13 @@ fn (mut c Checker) find_method(t Type, name string) !Type {
 	// TODO: interface methods
 	// if base_type is Interface { base_type = t }
 	base_type_name := if t is Pointer { base_type.name() } else { t.name() }
-	// c.log('base_type_name: $base_type_name - $t.type_name() - $base_type.type_name()')
+	// c.log('base_type_name: ${base_type_name} - ${t.type_name()} - ${base_type.type_name()}')
 	// Lookup method in shared methods map
 	methods := rlock c.env.methods {
 		c.env.methods[base_type_name] or { []&Fn{} }
 	}
 	for method in methods {
-		// c.log('# $method.name - $name')
+		// c.log('# ${method.name} - ${name}')
 		if method.name == name {
 			c.log('found method ${name} for ${t.name()}')
 			return method.typ

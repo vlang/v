@@ -213,7 +213,7 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 		mut last := s.children.len - 1
 		mut middle := last / 2
 		for first <= last {
-			// println('FIRST: $first, LAST: $last, LEN: $s.children.len-1')
+			// println('FIRST: ${first}, LAST: ${last}, LEN: ${s.children.len-1}')
 			s1 := s.children[middle]
 			if s1.end_pos < pos {
 				first = middle + 1

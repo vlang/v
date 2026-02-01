@@ -431,7 +431,7 @@ fn convert_case(s string, upper_flag bool) string {
 				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
-			// println("#${index} ($lword)")
+			// println("#${index} (${lword})")
 
 			mut res := 0
 

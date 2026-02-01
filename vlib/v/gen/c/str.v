@@ -17,7 +17,7 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 }
 
 // optimize string interpolation in string builders:
-// `sb.writeln('a=$a')` =>
+// `sb.writeln('a=${a}')` =>
 // `sb.writeln('a='); sb.writeln(a.str())`
 fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	node := call_expr.args[0].expr as ast.StringInterLiteral

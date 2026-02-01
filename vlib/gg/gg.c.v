@@ -248,7 +248,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
-	// println('ctx.scale=$ctx.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	// println('ctx.scale=${ctx.scale} is_high_dpi=${is_high_dpi} fb_w=${fb_w} fb_h=${fb_h}')
 	// if ctx.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(ctx.config.font_path) } $else { true }

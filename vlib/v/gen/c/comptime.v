@@ -275,7 +275,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		// receiver := method.args[0]
 		// if !p.expr_var.ptr {
-		// p.error('`$p.expr_var.name` needs to be a reference')
+		// p.error('`${p.expr_var.name}` needs to be a reference')
 		// }
 		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
 		if node.is_vweb {

@@ -243,7 +243,7 @@ pub fn (mut ws Client) pong() ! {
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
 pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
-	// ws.debug_log('write_ptr code: $code')
+	// ws.debug_log('write_ptr code: ${code}')
 	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')

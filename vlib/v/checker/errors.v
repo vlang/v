@@ -205,7 +205,7 @@ fn (mut c Checker) trace[T](fbase string, x &T) {
 }
 
 fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
-	// println('deprecate kind=${kind} name=${name} attrs=$attrs')
+	// println('deprecate kind=${kind} name=${name} attrs=${attrs}')
 	// print_backtrace()
 	mut deprecation_message := ''
 	now := time.now()

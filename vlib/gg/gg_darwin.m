@@ -78,7 +78,7 @@ void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 }
 
 int darwin_text_width(string s) {
-	// println('text_width "$s" len=$s.len')
+	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
 	if (s.len == 1) {
 		// println('len=1')

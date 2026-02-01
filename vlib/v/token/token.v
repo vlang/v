@@ -24,7 +24,7 @@ pub enum Kind {
 	name       // user
 	number     // 123
 	string     // 'foo'
-	str_inter  // 'name=$user.name'
+	str_inter  // 'name=${user.name}'
 	chartoken  // `A` - rune
 	plus       // +
 	minus      // -

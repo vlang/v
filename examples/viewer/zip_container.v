@@ -21,7 +21,7 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 		is_dir := zp.is_dir()!
 		name := zp.name()
 		size := zp.size()
-		// println("$index ${name} ${size:10} $is_dir")
+		// println("${index} ${name} ${size:10} ${is_dir}")
 
 		if !is_dir {
 			ext := get_extension(name)

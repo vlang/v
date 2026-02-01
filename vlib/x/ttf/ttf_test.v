@@ -171,7 +171,7 @@ fn test_main() {
 		tf.buf = unsafe { mut_font_bytes.data().vbytes(font_bytes.len) }
 	}
 	tf.init()
-	// println("Unit per EM: $tf.units_per_em")
+	// println("Unit per EM: ${tf.units_per_em}")
 
 	w := 64
 	h := 32
