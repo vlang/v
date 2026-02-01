@@ -123,7 +123,7 @@ fn main() {
 	// measure
 	diff1 := measure('${vdir}/vprod ${voptions} -o v.c cmd/v', 'v.c')
 	diff2 := measure('${vdir}/vprod ${voptions} -cc ${ccompiler_path} -o v2 cmd/v', 'v2')
-	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
+	diff3 := 0 // measure('${vdir}/vprod -native ${vdir}/cmd/tools/1mil.v', 'native 1mil')
 	diff4 := measure('${vdir}/vprod ${voptions} -cc ${ccompiler_path} examples/hello_world.v',
 		'hello.v')
 	vc_size := os.file_size('v.c') / 1000
