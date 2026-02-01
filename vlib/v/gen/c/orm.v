@@ -640,7 +640,7 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 			g.write_orm_primitive(info.typ, expr)
 		}
 		ast.SelectorExpr {
-			g.write_orm_primitive(expr.typ, expr)
+			g.write_orm_primitive(g.orm_selector_expr_type(expr), expr)
 		}
 		ast.CallExpr {
 			g.write_orm_primitive(expr.return_type, expr)
@@ -653,6 +653,38 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 			verror('ORM: ${expr.type_name()} is not supported')
 		}
 	}
+}
+
+fn (mut g Gen) orm_selector_expr_type(expr ast.SelectorExpr) ast.Type {
+	mut sel_typ := expr.typ
+	scope := if expr.scope != unsafe { nil } {
+		expr.scope
+	} else {
+		g.file.scope.innermost(expr.pos.pos)
+	}
+	if scope != unsafe { nil } {
+		field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name)
+		if field != unsafe { nil } {
+			if field.smartcasts.len > 0 {
+				sel_typ = field.smartcasts.last()
+			} else if sel_typ == 0 {
+				sel_typ = field.typ
+			}
+		}
+	}
+	if sel_typ == 0 && expr.expr_type != 0 {
+		mut expr_typ := g.unwrap_generic(expr.expr_type)
+		if expr_typ.has_flag(.option) {
+			expr_typ = expr_typ.clear_flag(.option)
+		}
+		sym := g.table.sym(expr_typ)
+		if field := g.table.find_field(sym, expr.field_name) {
+			sel_typ = field.typ
+		} else if field, _ := g.table.find_field_from_embeds(sym, expr.field_name) {
+			sel_typ = field.typ
+		}
+	}
+	return sel_typ
 }
 
 // write_orm_primitive writes C code for casting expressions into a primitive type,
