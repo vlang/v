@@ -314,14 +314,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
-	mut expected_elem_type := if node.elem_type.has_flag(.generic)
-		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len
-		&& init_expr is ast.CallExpr {
-		expected_elem_type = c.table.unwrap_generic_type(node.elem_type, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types)
-	} else {
-		node.elem_type
+	mut expected_elem_type := node.elem_type
+	if node.elem_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
+		if c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
+			if init_expr is ast.CallExpr {
+				expected_elem_type = c.table.unwrap_generic_type(node.elem_type, c.table.cur_fn.generic_names,
+					c.table.cur_concrete_types)
+			}
+		}
 	}
 	c.expected_type = expected_elem_type
 	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
