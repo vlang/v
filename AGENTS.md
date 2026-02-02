@@ -1,70 +1,75 @@
 # V Language Repository Guide for Agents
 
-This repository contains the source code for the V programming language compiler,
-standard library (`vlib`) and V tools like `v fmt`, `v doc`, `v check-md`,
-`v quest` etc.
+Scope: V compiler, standard library (`vlib`), and tools including `v fmt`,
+`v doc`, `v check-md`, and `v quest`.
+All commands are run from the repository root.
 
-When you produce code and documentation, the formatting should make results easy
-to scan, but not feel mechanical. Use judgment to decide how much structure adds value.
-
-Default: be very concise; friendly coding teammate tone.
-- Ask only when needed; suggest ideas; mirror the user's style.
-- For substantial work, summarize clearly; follow final‑answer formatting.
+Keep output easy to scan. Use a strict, operational tone.
+- Ask only when required. If information is missing, ask a direct question.
+- After substantial work, provide a short summary and list touched file paths.
 - Skip heavy formatting for simple confirmations.
-- Don't dump large files you've written; reference paths only.
-
-- Default to ASCII when editing or creating files. Only introduce non-ASCII or other
-Unicode characters when there is a clear justification and the file already uses them.
-- Add succinct code comments that explain what is going on, only if the code is not
-self-explanatory.
+- Default to ASCII; only add non-ASCII when the file already uses it and it
+  is clearly justified.
+- Add succinct comments only when code is not self-explanatory.
 
 ## 🚀 Key Commands
 
 ### Building
-The V compiler is written in V and bootstraps itself.
+The compiler bootstraps itself.
 
 - **Build an updated compiler**: `./v -keepc -g -o ./vnew self`
-    (this command uses an existing `v` binary, to create a new `vnew` binary,
-    that has the latest changes in the repo)
-- **Fresh build**: `make` (downloads C bootstrap, builds from scratch,
-    then runs `v self` several times to ensure consistent output)
+    Use the existing `v` binary to create `vnew` with your latest changes.
+- **Fresh build**: `make`
+    Download the C bootstrap, build from scratch, then run `v self` several times
+    to ensure consistent output.
 - **Windows build**: `make.bat` or `.\make.bat`
 
 ### Testing
-Tests are **crucial** in this repo.
+Do not skip tests relevant to your changes. Use `./vnew` for tests.
 
-- **Run all tests**: `./vnew test-all` (comprehensive, runs everything)
+- **Run all tests**: `./vnew test-all`
 - **Run specific test file**: `./vnew path/to/file_test.v`
 - **Run directory tests**: `./vnew test path/to/dir/`
 - **Run specific compiler tests**: `./vnew vlib/v/compiler_errors_test.v`
 - **Update test expectations**: `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`
-    (update `.out` files matching `.vv` files)
+    Run only when you intend to update `.out` files.
 - **Test with statistics**: `./vnew -stats test path/to/dir/`
 
 ### Formatting & Linting
-- **Format code**: `v fmt -w file.v` (ALWAYS run this before committing)
+- **Format code**: `v fmt -w file.v`. Run before committing.
 - **Check Markdown .md files**: `v check-md .`
+
+### Searching
+- Use `rg` for fast search; use `git grep` only if `rg` is unavailable.
+- Use `rg --files` for listing files.
+
+### When to Run Tests
+- **Compiler changes**: run `./vnew vlib/v/compiler_errors_test.v` and a focused
+  `./vnew test path/to/dir/`.
+- **vlib changes**: run the closest `*_test.v` files or `./vnew test vlib/path/`.
+- **Tooling changes** (`cmd/tools/`, `cmd/v/`): run the tool or its tests, then a
+  targeted `./vnew test` if available.
+- **Broad refactors**: run `./vnew test-all`.
 
 ## 📂 Code Structure
 
 - **`examples/`**: Example V programs.
-- **`thirdparty/`**: Bundled dependencies (TCC, etc.).
-- **`cmd/tools/`**: Tools. vfmt is for example in `cmd/tools/vfmt.v` .
-- **`cmd/v/`**: Compiler entry point (`v.v`).
-         Use the following command, to produce an updated compiler executable:
-         `./v -o vnew cmd/v/v.v` too (`./v -o vnew self` does that).
+- **`thirdparty/`**: Bundled dependencies.
+- **`cmd/tools/`**: Tools. vfmt: `cmd/tools/vfmt.v`.
+- **`cmd/v/`**: Compiler entry point. File: `cmd/v/v.v`.
+         Build with `./v -o vnew cmd/v/v.v` (same as `./v -o vnew self`).
 - **`vlib/`**: Standard library modules.
   - **`vlib/v/`**: Compiler source code.
     - **`scanner/`**: Tokenizer.
     - **`parser/`**: AST generation.
     - **`checker/`**: Type checking.
-    - **`gen/`**: Code generation (c, js, native). 
+    - **`gen/`**: Code generation: c, js, native.
          `vlib/v/gen/c` is often referred to as `cgen`.
     - **`builder/`**: Build orchestration.
 
-Use `v doc modulename` to discover what public APIs are available for
-each module. For example: `v doc -readme -all -l os.cmdline` will produce:
-```
+List public APIs with `v doc -readme -all -l modulename`. Example:
+`v doc -readme -all -l os.cmdline`:
+```text
 module os.cmdline
 
 vlib/os/cmdline/cmdline.v:73           pub fn only_non_options(args []string) []string
@@ -74,24 +79,22 @@ vlib/os/cmdline/cmdline.v:7            pub fn options(args []string, param strin
 vlib/os/cmdline/cmdline.v:55           pub fn options_after(args []string, what []string) []string
 vlib/os/cmdline/cmdline.v:40           pub fn options_before(args []string, what []string) []string
 ```
-so later you know you can use `cmdline.only_options(['some', 'arguments', '--opts'])` .
-If that fails, fallback to using ripgrep `rg` or `git grep` as usual.
+If `v doc -readme -all -l` is not enough, use `rg` or `git grep`.
 
 ## 🧪 Testing Patterns
 
 1.  **Standard Tests**: `*_test.v` files containing `test_` functions.
 2.  **Compiler Output Tests**:
     - Located in `vlib/v/tests/` or `vlib/v/slow_tests/inout/`.
-    - Pairs of `.vv` (source) and `.out` (expected output) files.
+    - Pairs of `.vv` source files and `.out` expected output files.
     - `compiler_errors_test.v` runs these.
-    - If output of compiling .vv files mismatches the .out files,
-      use `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v` to update the `.out` file,
-      if the change is intentional.
+    - If compiling `.vv` files mismatches `.out` files, update with
+      `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v` only when intentional.
 
 ## 🐛 Debugging
 
-The compiler accepts `-d` flags for verbose output during compilation
-(pass these when building `v` itself or when using `v` to compile a program).
+Use `-d` flags for verbose output during compilation.
+Apply them when building `v` or compiling a program.
 
 - `-d trace_scanner`: Trace tokenization.
 - `-d trace_parser`: Trace parsing.
@@ -100,19 +103,16 @@ The compiler accepts `-d` flags for verbose output during compilation
 - `-d time_parsing`: Measure parsing time.
 - `-d time_checking`: Measure checking time.
 
-The V compiler can also produce executables with more debugging information, 
-if you use `-keepc -g` (to get backtraces with V lines in them).
-In case you are debugging a low level C issue/crash/segfault, use `-keepc -cg -cc clang`
-instead, in order to get backtraces with C lines in them.
+For V backtraces, use `-keepc -g`.
+For low-level C issues/segfaults, use `-keepc -cg -cc clang`.
 
 
 ## ⚠️ Gotchas
 
 - **Bootstrapping**: If you break the compiler, `./v -o ./vnew self` will fail.
-    It is important to avoid using plain `./v self`, since that will overwrite
-    the working older compiler `./v`.
-- **Breaking Changes**: Be careful modifying core `vlib` modules, like
-    `os`, `builtin`, `strconv`, `time`, as they are used by the compiler itself.
+    Do not use `./v self`; it overwrites the working `./v` binary.
+- **Breaking Changes**: Avoid changes to core `vlib` modules such as `os`,
+    `builtin`, `strconv`, `time`; the compiler depends on them.
 - **Whitespace**: Running `v fmt -w path/to/changed_file.v` is mandatory.
-- **Output Tests**: Exact output matching is common.
+- **Output Tests**: Exact output matching is required.
     Whitespace changes in error messages will break tests. Use `VAUTOFIX=1`.
