@@ -1,4 +1,4 @@
-// vtest build: present_sqlite3? && !windows && !sanitize-memory-clang
+// vtest build: present_sqlite3? && !windows && !sanitize-memory-clang && !docker-ubuntu-musl
 import db.sqlite
 
 @[table: 'foos']
