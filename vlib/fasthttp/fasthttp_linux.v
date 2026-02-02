@@ -377,7 +377,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						C.close(fd)
 					}
 					// Leave the connection open; closure is driven by client FIN or errors
-				} else if bytes_read == 0 {
+				} else if total_bytes_read == 0 {
 					// Normal client closure (FIN received)
 					handle_client_closure(epoll_fd, client_fd)
 				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
