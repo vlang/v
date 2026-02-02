@@ -314,21 +314,30 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
-	c.expected_type = node.elem_type
+	mut expected_elem_type := if node.elem_type.has_flag(.generic)
+		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len
+		&& init_expr is ast.CallExpr {
+		expected_elem_type = c.table.unwrap_generic_type(node.elem_type, c.table.cur_fn.generic_names,
+			c.table.cur_concrete_types)
+	} else {
+		node.elem_type
+	}
+	c.expected_type = expected_elem_type
 	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
-	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
+	if !expected_elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
 	}
-	if node.elem_type.is_number() && init_typ.is_number() {
+	if expected_elem_type.is_number() && init_typ.is_number() {
 		return
 	}
-	if c.table.type_kind(node.elem_type) == .interface {
-		if c.type_implements(init_typ, node.elem_type, init_expr.pos()) {
+	if c.table.type_kind(expected_elem_type) == .interface {
+		if c.type_implements(init_typ, expected_elem_type, init_expr.pos()) {
 			return
 		}
 	}
-	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
+	c.check_expected(init_typ, expected_elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
