@@ -23,7 +23,8 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * Fix outputs: `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v` (updates `.out` files)
 
 **When:**
-* Compiler changes (`scanner|parser|checker|gen`): Run `compiler_errors_test.v` + targeted dir
+* Compiler changes (`scanner|parser|checker|transformer|markused|gen`):
+  Run `./v compiler_errors_test.v` + `./v test ` and the dir with the change.
 * vlib changes: Run nearest `*_test.v` or `./vnew test vlib/path/`
 * Tool changes (`cmd/`): Run tool-specific tests
 * Broad refactors: Run `test-all`
@@ -41,7 +42,7 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 ## Structure
 * `cmd/v/v.v`: Compiler entry
 * `vlib/v/`: Compiler pipeline
-  * `scanner/` → `parser/` → `checker/` → `gen/c|js|native/` → `builder/`
+  * `scanner/` → `parser/` → `checker/` → `transformer` → `markused` → `gen/c|js|native/` → `builder/`
 * `vlib/`: Standard library
 * `cmd/tools/`: vfmt, vdoc, etc.
 * `examples/`: Example programs
