@@ -2,6 +2,12 @@
 
 Quick reference for V compiler, standard library, and tools. Run commands from repo root.
 
+* Always BE CONCISE.
+* Keep output easy to scan. Use a strict, operational tone.
+* Ask only when required. If information is missing, ask a direct question.
+* After substantial work, provide a short summary and list touched file paths.
+* Add succinct comments, only when code is not self-explanatory.
+
 ## Build
 * **Initial**: `make` (only when `./v` missing; Windows: `make.bat`)
 * **Rebuild**: `./v -keepc -g -o ./vnew self` (use `./vnew` for testing)
@@ -84,3 +90,5 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * Always format before committing: `./vnew fmt -w` (.v files) and `./vnew check-md` (.md files)
 * C compilation errors? Check generated C with `-keepc` (creates `/tmp/*.tmp.c` files)
 * Broken compiler? Run `make` to rebuild from C bootstrap
+
+*** BE CONCISE ***
