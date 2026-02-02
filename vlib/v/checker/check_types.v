@@ -537,8 +537,7 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
 		return false
 	}
-	if !exp_fn.return_type.has_flag(.generic)
-		&& !c.check_basic(got_fn.return_type, exp_fn.return_type) {
+	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
 	// The check for sumtype in c.check_basic() in the previous step is only for its variant to be subsumed
@@ -549,9 +548,6 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
-		if exp_arg.typ.has_flag(.generic) {
-			continue
-		}
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
 		got_arg_typ := c.unwrap_generic(got_arg.typ)
 		exp_arg_is_ptr := exp_arg_typ.is_any_kind_of_pointer()
@@ -1145,7 +1141,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					for {
 						if mut arg_elem_sym.info is ast.Array
 							&& mut param_elem_sym.info is ast.Array
-							&& param_elem_sym.name !in func.generic_names {
+							&& c.table.cur_fn != unsafe { nil }
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
 							arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
 						} else {
@@ -1164,7 +1161,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					for {
 						if mut arg_elem_sym.info is ast.ArrayFixed
 							&& mut param_elem_sym.info is ast.ArrayFixed
-							&& param_elem_sym.name !in func.generic_names {
+							&& c.table.cur_fn != unsafe { nil }
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
 							arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
 						} else {

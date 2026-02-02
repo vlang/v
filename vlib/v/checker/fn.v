@@ -1349,7 +1349,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 		// XTODO document
 		if typ != 0 {
-			// Only unwrap FnType if we have concrete types (during recheck/instantiation)
 			unwrapped_typ := if typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
 				&& c.table.cur_fn.generic_names.len > 0 {
 				c.table.unwrap_generic_type(typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
@@ -1359,26 +1358,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			generic_vts := c.table.final_sym(unwrapped_typ)
 			if generic_vts.info is ast.FnType {
 				func = generic_vts.info.func
-				// If we're inside a generic function with concrete types, unwrap the function's parameter types
-				// This is needed to properly type-check calls like f(1) where f: fn(T) U and T=string
-				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-					&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-					mut unwrapped_func := func
-					unwrapped_func.params = unwrapped_func.params.clone()
-					for i, param in func.params {
-						if param.typ.has_flag(.generic) {
-							unwrapped_func.params[i].typ = c.table.unwrap_generic_type_ex(param.typ,
-								c.table.cur_fn.generic_names, c.table.cur_concrete_types,
-								true)
-						}
-					}
-					if func.return_type.has_flag(.generic) {
-						unwrapped_func.return_type = c.table.unwrap_generic_type_ex(func.return_type,
-							c.table.cur_fn.generic_names, c.table.cur_concrete_types,
-							true)
-					}
-					func = unwrapped_func
-				}
 				found = true
 				found_in_args = true
 			} else {
@@ -1781,28 +1760,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				call_arg.pos)
 		}
-		// checked by second pass
-		if param.typ.has_flag(.generic) && func.generic_names.len > 0 && concrete_types.len == 0 {
-			continue
-		}
-		unwrapped_param_typ := if param.typ.has_flag(.generic) && func.generic_names.len > 0
-			&& concrete_types.len == func.generic_names.len {
-			c.table.unwrap_generic_type_ex(param.typ, func.generic_names, concrete_types,
-				true)
-		} else {
-			c.unwrap_generic(param.typ)
-		}
-		unwrapped_arg_typ := if arg_typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
-			&& c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-			c.table.unwrap_generic_type_ex(arg_typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
-				true)
-		} else {
-			arg_typ
-		}
-		c.check_expected_call_arg(unwrapped_arg_typ, unwrapped_param_typ, node.language,
+		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
-			if unwrapped_param_typ.has_flag(.generic) {
+			if param.typ.has_flag(.generic) {
 				continue
 			}
 			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
@@ -1980,16 +1940,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if is_json_encode {
 		// json.encode param is set voidptr, we should bound the proper type here
 		node.expected_arg_types = [node.args[0].typ]
-	}
-	// unwrap before type inference matching
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
-		for i, arg in node.args {
-			if arg.typ.has_flag(.generic) {
-				node.args[i].typ = c.table.unwrap_generic_type_ex(arg.typ, c.table.cur_fn.generic_names,
-					c.table.cur_concrete_types, true)
-			}
-		}
 	}
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
