@@ -55,12 +55,13 @@ mut:
 
 pub struct Server {
 pub mut:
-	family          net.AddrFamily = .ip6
-	port            int
-	socket_fd       int
-	poll_fd         int // kqueue fd
-	user_data       voidptr
-	request_handler fn (HttpRequest) !HttpResponse @[required]
+	family                  net.AddrFamily = .ip6
+	port                    int
+	max_request_buffer_size int = 8192
+	socket_fd               int
+	poll_fd                 int // kqueue fd
+	user_data               voidptr
+	request_handler         fn (HttpRequest) !HttpResponse @[required]
 }
 
 // new_server creates and initializes a new Server instance.
