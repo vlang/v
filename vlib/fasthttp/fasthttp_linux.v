@@ -376,13 +376,16 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 
 						C.close(fd)
 					}
-					// Close the connection after sending response
+					// Leave the connection open; closure is driven by client FIN or errors
+				} else if bytes_read == 0 {
+					// Normal client closure (FIN received)
+					handle_client_closure(epoll_fd, client_fd)
 				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
+					handle_client_closure(epoll_fd, client_fd)
 				}
-				handle_client_closure(epoll_fd, client_fd)
 			}
 		}
 	}
