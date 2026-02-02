@@ -1,8 +1,11 @@
 # V Repo Guide
 
-Quick reference for V compiler, standard library, and tools. Run commands from repo root.
+This file provides guidance to agents when working in this repository.
+It is a quick reference for the V compiler, standard library, and tools.
 
+## Behavior Rules
 * Always BE CONCISE.
+* Run commands from repo root.
 * Keep output easy to scan. Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
 * After substantial work, provide a short summary and list touched file paths.
@@ -46,13 +49,13 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * **V panics**: `-keepc -g`
 * **C segfaults**: `-keepc -cg -cc clang`
 
-## Structure
+## Code Structure
 * `cmd/v/v.v`: Compiler entry
 * `vlib/v/`: Compiler pipeline
   * `scanner/` → `parser/` → `checker/` → `transformer` → `markused` →
     `gen/c|js|native/` → `builder/`
-* `vlib/v/tests/`: — Compiler feature tests
-* `vlib/v/slow_tests/`: — Output-matching and slow tests for the compiler
+* `vlib/v/tests/`: Compiler feature tests
+* `vlib/v/slow_tests/`: Output-matching and slow tests for the compiler
 * `vlib/`: Standard library
 * `cmd/tools/`: vfmt, vdoc, vup, vquest, etc.
 * `examples/`: Example programs
@@ -89,6 +92,5 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * Output tests require exact matches - whitespace changes break tests
 * Always format before committing: `./vnew fmt -w` (.v files) and `./vnew check-md` (.md files)
 * C compilation errors? Check generated C with `-keepc` (creates `/tmp/*.tmp.c` files)
-* Broken compiler? Run `make` to rebuild from C bootstrap
-
-*** BE CONCISE ***
+* Broken compiler? Run `git stash`, then `make`, then `git stash apply` to rebuild V from
+  a clean slate
