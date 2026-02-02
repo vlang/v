@@ -1983,7 +1983,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !prevent_sum_type_unwrapping_once {
 				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
 				if scope_field != unsafe { nil } {
-					return scope_field.smartcasts.last()
+					smartcast_typ := scope_field.smartcasts.last()
+					// Only set node.typ for non-interface/sumtype cases to avoid
+					// breaking cgen pointer handling for interface field access
+					if field_sym.kind !in [.sum_type, .interface] {
+						node.typ = smartcast_typ
+					}
+					return smartcast_typ
 				}
 			}
 		}
