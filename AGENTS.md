@@ -67,7 +67,7 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 
 ## Tools
 * **Format**: `./vnew fmt -w file.v` (required before commits)
-* **Check markdown**: `./vnew check-md file.md`
+* **Check markdown**: `./vnew check-md file.md` (required for .md files before commits)
 * **Module docs**: `./vnew doc -readme -all -l module_name`
 * **Search**: `rg pattern` (or `git grep`); list files: `rg --files`
 * **Auto-format hook**: `./vnew git-fmt-hook install`
@@ -81,6 +81,6 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 ## Gotchas
 * Core modules (`builtin`, `strings`, `os`, `strconv`, `time`) affect compiler - be careful
 * Output tests require exact matches - whitespace changes break tests
-* Always format before committing: `./vnew fmt -w`
+* Always format before committing: `./vnew fmt -w` (.v files) and `./vnew check-md` (.md files)
 * C compilation errors? Check generated C with `-keepc` (creates `/tmp/*.tmp.c` files)
 * Broken compiler? Run `make` to rebuild from C bootstrap
