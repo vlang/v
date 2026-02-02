@@ -276,7 +276,7 @@ fn accept_clients(kq int, listen_fd int) {
 
 // run starts the server and enters the main event loop (Kqueue version).
 pub fn (mut s Server) run() ! {
-	s.socket_fd = C.socket(server.family, net.SocketType.tcp, 0)
+	s.socket_fd = C.socket(s.family, net.SocketType.tcp, 0)
 	if s.socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
