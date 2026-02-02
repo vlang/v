@@ -6,7 +6,8 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * **Initial**: `make` (only when `./v` missing; Windows: `make.bat`)
 * **Rebuild**: `./v -keepc -g -o ./vnew self` (use `./vnew` for testing)
 * **Critical**: Never `./v self` - overwrites working binary. Always output to `vnew`.
-* **Common flags**: `-g` (debug), `-prod` (optimized), `-o file` (output name), `-cc clang` (C compiler), `-b js|native` (backend)
+* **Common flags**: `-g` (debug), `-prod` (optimized), `-o file` (output name),
+  `-cc clang` (C compiler), `-b js|native` (backend)
 
 ## Run Programs (test your changes)
 * **Compile and run**: `./vnew run file.v`
@@ -42,7 +43,8 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 ## Structure
 * `cmd/v/v.v`: Compiler entry
 * `vlib/v/`: Compiler pipeline
-  * `scanner/` → `parser/` → `checker/` → `transformer` → `markused` → `gen/c|js|native/` → `builder/`
+  * `scanner/` → `parser/` → `checker/` → `transformer` → `markused` →
+    `gen/c|js|native/` → `builder/`
 * `vlib/v/tests/`: — Compiler feature tests
 * `vlib/v/slow_tests/`: — Output-matching and slow tests for the compiler
 * `vlib/`: Standard library
