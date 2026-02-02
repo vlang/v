@@ -1983,8 +1983,11 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !prevent_sum_type_unwrapping_once {
 				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
 				if scope_field != unsafe { nil } {
-					node.typ = scope_field.smartcasts.last()
-					return node.typ
+					ntype := scope_field.smartcasts.last()
+					if ntype < 0xFFFF && node.typ == 0 {
+						node.typ = ntype
+					}
+					return ntype
 				}
 			}
 		}
