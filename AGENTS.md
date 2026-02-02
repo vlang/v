@@ -43,9 +43,12 @@ Quick reference for V compiler, standard library, and tools. Run commands from r
 * `cmd/v/v.v`: Compiler entry
 * `vlib/v/`: Compiler pipeline
   * `scanner/` → `parser/` → `checker/` → `transformer` → `markused` → `gen/c|js|native/` → `builder/`
+* `vlib/v/tests/`: — Compiler feature tests
+* `vlib/v/slow_tests/`: — Output-matching and slow tests for the compiler
 * `vlib/`: Standard library
-* `cmd/tools/`: vfmt, vdoc, etc.
+* `cmd/tools/`: vfmt, vdoc, vup, vquest, etc.
 * `examples/`: Example programs
+* `thirdparty/`: Bundled C libraries (tcc, mbedtls, sokol, etc.)
 
 ## Error Reporting (checker/parser)
 * **Error**: `c.error('message', pos)` - Hard error, stops compilation
