@@ -12,10 +12,19 @@ Quick reference for the V compiler, standard library, and tools.
 ## Behavior Rules
 * Always be concise.
 * Run commands from repo root.
+* Run commands like `./v -o vnew self`, `./v .` and `./v file.v` immediately
+  without asking for permission.
+* Read and edit all files in V repo wihout asking for permission.
 * Keep output easy to scan. Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
 * After substantial work, provide a short summary and list touched file paths.
-* Add succinct comments only when code is not self-explanatory.
+* NEVER simplify or edit the test files to make them pass.
+
+## Code Style
+* Comments: add succinct comments only when code is not self-explanatory.
+  Do not delete existing comments unless they are explicitly incorrect.
+* Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function.
+* Avoid using `unsafe{ code }` blocks where possible, and minimize their scope.
 
 ## Safety
 * Never run `./v self`. It overwrites the working binary.
@@ -33,18 +42,18 @@ Quick reference for the V compiler, standard library, and tools.
 * With debug info: `./vnew -g run file.v`.
 * Example: `./vnew run examples/hello_world.v`.
 
-## Test
+## Testing
 Run:
-* All: `./vnew test-all`.
 * File: `./vnew path/to/file_test.v`.
-* Dir: `./vnew test path/to/dir/` (add `-stats` for metrics).
+* Dir: `./vnew test path/to/dir/`.
+* Dir with statistics/metrics: `./vnew -stats path/to/dir/`.
 * Compiler: `./vnew vlib/v/compiler_errors_test.v`.
 * Fix outputs: `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
+* All: `./vnew test-all`.
 
 When:
 * Compiler changes (`scanner|parser|checker|transformer|markused|gen`):
-  Run `./vnew vlib/v/compiler_errors_test.v`, `./vnew test vlib/v/`, and the
-  dir with the change.
+  Run `./vnew vlib/v/compiler_errors_test.v`, `./vnew test vlib/v/`.
 * vlib changes: Run nearest `*_test.v` or `./vnew test vlib/path/`.
 * Tool changes (`cmd/`): Run tool-specific tests.
 * Broad refactors: Run `./vnew test-all`.
@@ -53,23 +62,53 @@ Types:
 * Standard: `*_test.v` files with `test_` functions.
 * Output: `.vv` source + `.out` expected output in `vlib/v/tests/`.
 
+### Useful env variables and flags while testing
+* `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice).
+* `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
+* `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
+* `./vnew -progress test path/to/dir/` - Show only the currently running test.
+
 ## Debug
 * Trace stages: `-d trace_scanner|trace_parser|trace_checker|trace_gen`.
+  These flags can help diagnose a problem, when a stage stops earlier than expected.
 * Time stages: `-d time_parsing|time_checking`.
 * V panics: `-keepc -g`.
 * C segfaults: `-keepc -cg -cc clang`.
 
-## Code Structure
-* `cmd/v/v.v`: Compiler entry.
-* `vlib/v/`: Compiler pipeline.
-  * `scanner/` -> `parser/` -> `checker/` -> `transformer` -> `markused` ->
-    `gen/c|js|native/` -> `builder/`.
-* `vlib/v/tests/`: Compiler feature tests.
-* `vlib/v/slow_tests/`: Output-matching and slow tests for the compiler.
+## Compiler Architecture
+The V compiler, has the following stages, orchestrated by the `v.builder` module:
+`v.scanner` -> `v.parser` -> `v.checker` -> `v.transformer` -> `v.markused` -> `v.gen.c`
+Their corresponding folders are: vlib/v/scanner, vlib/v/parser, vlib/v/checker,
+vlib/v/transformer, vlib/v/markused, vlib/v/gen/c .
+
+### Key Directories
 * `vlib/`: Standard library.
 * `cmd/tools/`: vfmt, vdoc, vup, vquest, etc.
 * `examples/`: Example programs.
 * `thirdparty/`: Bundled C libraries (tcc, mbedtls, sokol, etc.).
+* `cmd/v/v.v`: Compiler entry.
+* `vlib/v/`: Compiler modules.
+  * ast/ - AST node definitions
+  * fmt/ - Code formatter
+  * scanner/ - Tokenizer
+  * token/ - Token definitions
+  * parser/ - Produces AST from tokens
+  * checker/ - Type checking and resolution
+  * transformer/ - Common optimisations and simplifications, makes the backends simpler
+  * markused/ - Dead code eliminator
+  * gen/c/ - C code generation (primary backend, known as cgen)
+  * gen/js/ - JavaScript backend
+  * gen/native/ - Machine code generation (ELF, Mach-O)
+  * gen/wasm/ - WebAssembly backend
+
+### Test Locations
+* `vlib/v/tests/`: Compiler feature tests.
+* `vlib/v/slow_tests/`: Output-matching and slow tests for the compiler.
+* `vlib/v/slow_tests/inout/` - Output comparison tests (.vv + .out pairs)
+* `vlib/v/parser/tests/` - Parser error tests
+* `vlib/v/checker/tests/` - Checker error tests
+* `vlib/v/gen/c/testdata/` - C codegen tests (.vv + .c.must_have)
+
 
 ## Error Reporting (checker/parser)
 * Error: `c.error('message', pos)` - hard error, stops compilation.
@@ -88,7 +127,9 @@ Types:
 
 ## Tools
 * Format: `./vnew fmt -w file.v` (required before commits).
+* Check *all* files are formatted: `./vnew -silent test-fmt`.
 * Check markdown: `./vnew check-md file.md` (required before commits).
+* Code style checker: `./vnew vet vlib/v`
 * Module docs: `./vnew doc -readme -all -l module_name`.
 * Search: `rg pattern` (or `git grep`); list files: `rg --files`.
 * Auto-format hook: `./vnew git-fmt-hook install`.
