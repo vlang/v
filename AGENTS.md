@@ -14,7 +14,7 @@ Quick reference for the V compiler, standard library, and tools.
 * Run commands from repo root.
 * Run commands like `./v -o vnew self`, `./v .` and `./v file.v` immediately
   without asking for permission.
-* Read and edit all files in V repo wihout asking for permission.
+* Read and edit all files in V repo without asking for permission.
 * Keep output easy to scan. Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
 * After substantial work, provide a short summary and list touched file paths.
