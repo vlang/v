@@ -209,3 +209,36 @@ fn test_skipped_fields() {
 		assert false
 	}
 }
+
+// Test for issue where field order affects decoded values when there are nested structures with same field names
+fn test_field_order_with_nested_structures() {
+	struct Foo {
+		id    string @[required]
+		title string @[required]
+	}
+
+	// Test case 1: fields in expected order with nested structure after
+	s1 := '{"id":"sss","title":"ttt","thumb":[{ "url":"i1.jpg","id":"000"}]}'
+	f1 := json.decode[Foo](s1)!
+	assert f1.id == 'sss', 'f1.id should be "sss" but got "${f1.id}"'
+	assert f1.title == 'ttt', 'f1.title should be "ttt" but got "${f1.title}"'
+
+	// Test case 2: fields in different order with nested structure in the middle
+	s2 := '{"title":"ttt","thumb":[{ "url":"i1.jpg","id":"000"}],"id":"sss"}'
+	f2 := json.decode[Foo](s2)!
+	assert f2.id == 'sss', 'f2.id should be "sss" but got "${f2.id}"'
+	assert f2.title == 'ttt', 'f2.title should be "ttt" but got "${f2.title}"'
+
+	// Test case 3: nested structure before known fields
+	s3 := '{"extra":[{"id":"wrong"}],"id":"correct","title":"test"}'
+	f3 := json.decode[Foo](s3)!
+	assert f3.id == 'correct', 'f3.id should be "correct" but got "${f3.id}"'
+	assert f3.title == 'test', 'f3.title should be "test" but got "${f3.title}"'
+
+	// Test case 4: multiple nested structures with conflicting field names
+	s4 := '{"id":"right","nested":{"id":"wrong1","title":"wrong2"},"title":"right_title"}'
+	f4 := json.decode[Foo](s4)!
+	assert f4.id == 'right', 'f4.id should be "right" but got "${f4.id}"'
+	assert f4.title == 'right_title', 'f4.title should be "right_title" but got "${f4.title}"'
+}
+

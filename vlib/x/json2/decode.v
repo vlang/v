@@ -460,7 +460,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				// field loop
 				for {
 					if current_field_info == unsafe { nil } {
-						decoder.current_node = decoder.current_node.next // skip value
+						decoder.skip_value() // skip unknown field's value and all its nested content
 
 						break
 					}
@@ -655,6 +655,33 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 	if decoder.current_node != unsafe { nil } {
 		decoder.current_node = decoder.current_node.next
+	}
+}
+
+// skip_value skips the current value node and all its nested content
+fn (mut decoder Decoder) skip_value() {
+	if decoder.current_node == unsafe { nil } {
+		return
+	}
+
+	value_info := decoder.current_node.value
+	value_position := value_info.position
+	value_end := value_position + value_info.length
+
+	// Move past the current value node
+	decoder.current_node = decoder.current_node.next
+
+	// For arrays and objects, skip all nested nodes
+	if value_info.value_kind in [.array, .object] {
+		for {
+			if decoder.current_node == unsafe { nil } {
+				break
+			}
+			if decoder.current_node.value.position >= value_end {
+				break
+			}
+			decoder.current_node = decoder.current_node.next
+		}
 	}
 }
 
