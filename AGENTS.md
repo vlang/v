@@ -12,8 +12,7 @@ Quick reference for the V compiler, standard library, and tools.
 ## Behavior Rules
 * Always be concise.
 * Run commands from repo root.
-* Run commands like `./v -o vnew self`, `./v .` and `./v file.v` immediately
-  without asking for permission.
+* Use `./v` only to build `./vnew`; use `./vnew` for everything else.
 * Read and edit all files in V repo without asking for permission.
 * Keep output easy to scan. Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
@@ -83,6 +82,8 @@ The V compiler, has the following stages, orchestrated by the `v.builder` module
 `v.scanner` -> `v.parser` -> `v.checker` -> `v.transformer` -> `v.markused` -> `v.gen.c`
 Their corresponding folders are: vlib/v/scanner, vlib/v/parser, vlib/v/checker,
 vlib/v/transformer, vlib/v/markused, vlib/v/gen/c .
+There are additional subsystems (supporting or optional compiler
+modules) like v.comptime, v.generics, v.pref, v.reflection, v.callgraph, etc.
 
 ### Key Directories
 * `vlib/`: Standard library.
