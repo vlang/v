@@ -94,7 +94,7 @@ fn close_socket(fd int) bool {
 	return true
 }
 
-fn create_server_socket(server &Server) int {
+fn create_server_socket(server Server) int {
 	// Create a socket with non-blocking mode
 	server_fd := C.socket(server.family, net.SocketType.tcp, 0)
 	if server_fd < 0 {
@@ -229,7 +229,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				// Read all available data from the socket
 				mut total_bytes_read := 0
-				mut all_data := []u8{cap: server.max_request_buffer_size}
+				mut readed_request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
 
 				for {
 					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
@@ -253,16 +253,16 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						break
 					}
 					unsafe {
-						all_data.push_many(&request_buffer[0], bytes_read)
+						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
 					}
 					total_bytes_read += bytes_read
 
 					// Check if we've received the complete HTTP request (look for \r\n\r\n)
 					if total_bytes_read >= 4 {
-						if all_data[total_bytes_read - 4] == `\r`
-							&& all_data[total_bytes_read - 3] == `\n`
-							&& all_data[total_bytes_read - 2] == `\r`
-							&& all_data[total_bytes_read - 1] == `\n` {
+						if readed_request_buffer[total_bytes_read - 4] == `\r`
+							&& readed_request_buffer[total_bytes_read - 3] == `\n`
+							&& readed_request_buffer[total_bytes_read - 2] == `\r`
+							&& readed_request_buffer[total_bytes_read - 1] == `\n` {
 							break
 						}
 					}
@@ -276,7 +276,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						handle_client_closure(epoll_fd, client_fd)
 						continue
 					}
-					mut decoded_http_request := decode_http_request(all_data) or {
+					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
 						eprintln('Error decoding request ${err}')
 						C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 							C.MSG_NOSIGNAL)
