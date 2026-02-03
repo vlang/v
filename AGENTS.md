@@ -32,6 +32,7 @@ Quick reference for the V compiler, standard library, and tools.
 * Run the smallest relevant tests; see Testing for triggers and minimums.
 * Ask before large refactors or wide file touches (see Agent Rules).
 * Do not stash or modify unrelated files unless explicitly instructed.
+* This guide assumes agents run locally, not in CI; CI notes are informational only.
 * Reports must include behavior change, tests run, and touched file paths.
 * If instructions overlap, prefer Build & Rebuild, Testing, and Reporting.
 
@@ -46,6 +47,7 @@ Quick reference for the V compiler, standard library, and tools.
   Prefer repo root unless a task requires a subdir.
 * Use `./v` only to build `./vnew`; use `./vnew` for everything else.
 * Read and edit all files in V repo without asking for permission.
+  Permission here refers to access, not change scope; still ask before wide refactors.
 * Only modify files required for the user request; avoid unrelated refactors.
   If duplication is already harmful, small refactors to remove it are OK when
   they are directly needed to deliver the request.
@@ -104,6 +106,7 @@ See Build & Rebuild for rebuild triggers and flags.
   * Note doc updates if public behavior/tool output changed.
 * If public behavior or tool output changes, update relevant docs
   (README.md, `doc/`, `tutorials/`) and note it.
+* Public behavior includes compiler output, diagnostics, user-facing CLI, and stdlib API.
 * Acceptable reasons for not running tests: docs-only change, no relevant tests,
   or environment constraints. Be specific.
 * Docs-only changes: run `./vnew check-md file.md`; no other tests required unless
@@ -113,6 +116,8 @@ See Build & Rebuild for rebuild triggers and flags.
 * Example summary line: `Behavior change: none` or `Behavior change: fixed X`.
 * Behavior change includes output, API, error messages, and test expectations.
 * If blocked, note what was attempted and why it failed.
+* If tooling/network restrictions block a step, state the restriction and the
+  closest viable alternative.
 * Use `git status` to confirm touched files before reporting.
 
 ## Prerequisites
@@ -197,10 +202,13 @@ Run:
 * Dir: `./vnew test path/to/dir/`.
 * Dir with statistics/metrics: `./vnew -stats path/to/dir/`.
 * Compiler: `./vnew vlib/v/compiler_errors_test.v`.
-  Note: this can take a bit over 30 seconds on M1.
+  Note: on M1, it's normal to see no output for 30-60s during this test.
+  Most other `_test.v` files finish in <2s. Expect variance on other hardware.
+  Run it alone and avoid re-running just because logs pause.
 * Fix outputs (only when intended): `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
 * All: `./vnew test-all`.
-  Note: `./vnew test-all` can take a bit over 5 minutes on M1; run sparingly.
+  Note: on M1, this is often 5+ minutes; expect variance and avoid re-running
+  based on early time estimates.
   Ask before running `./vnew test-all` unless explicitly requested.
 
 When:
@@ -240,6 +248,8 @@ Types:
   `./vnew test vlib/v/tests`.
 
 Docs-only guidance: see Reporting.
+If time-boxed, run at least the smallest relevant test and note skipped coverage
+in the summary.
 
 ### Useful env variables and flags while testing
 * `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice), only when intended.
@@ -328,6 +338,7 @@ modules) like v.comptime, v.generics, v.pref, v.reflection, v.callgraph, etc.
 ## Tools
 * Note: if a rule overlaps with Testing, follow Testing.
 * Format: `./vnew fmt -w <file>` for touched `.v` and `.vsh` files.
+  Format only touched files unless explicitly asked to reformat broader scope.
 * Treat new files as touched for formatting and markdown checks.
 * Check *all* files are formatted: `./vnew -silent test-fmt`.
   Run only when asked or when validating the full tree.
