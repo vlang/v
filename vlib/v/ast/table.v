@@ -2446,13 +2446,9 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		else {
-			if typ.has_flag(.generic) && ts.kind == .any {
+			if typ.has_flag(.generic) {
 				if converted := t.convert_generic_type(typ, generic_names, concrete_types) {
-					converted_sym := t.sym(converted)
-					// TODO: find out why cgen fails on interfaces
-					if converted_sym.kind != .interface {
-						return converted
-					}
+					return converted
 				}
 			}
 		}
