@@ -754,9 +754,15 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
+	prev_stmt_path_pos := g.stmt_path_pos.clone()
+	prev_skip_stmt_pos := g.skip_stmt_pos
+	g.stmt_path_pos = []
+	g.skip_stmt_pos = false
 	g.anon_fn = node
 	g.fn_decl(node.decl)
 	g.anon_fn = was_anon_fn
+	g.skip_stmt_pos = prev_skip_stmt_pos
+	g.stmt_path_pos = prev_stmt_path_pos
 	builder.write_string(g.out.cut_to(pos))
 	out := builder.str()
 	g.anon_fn_definitions << out
