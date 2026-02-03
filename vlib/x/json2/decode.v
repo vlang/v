@@ -658,7 +658,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
-// skip_value skips the current value node and all its nested content
+// skip_value skips the current value node and all its nested content.
+// It modifies decoder.current_node to point to the next node after the value.
+// For primitive values (string, number, boolean, null), it advances by one node.
+// For arrays and objects, it advances past all nested nodes until reaching the end
+// of the structure (determined by position + length).
+// Assumes decoder.current_node is not nil and points to a valid value node.
 fn (mut decoder Decoder) skip_value() {
 	if decoder.current_node == unsafe { nil } {
 		return
