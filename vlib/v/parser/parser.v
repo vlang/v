@@ -130,11 +130,12 @@ pub mut:
 	opened_scopes     int
 	max_opened_scopes int = 100 // values above 300 risk stack overflow
 
-	errors         []errors.Error
-	warnings       []errors.Warning
-	notices        []errors.Notice
-	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
-	content        ParseContentKind
+	errors            []errors.Error
+	warnings          []errors.Warning
+	notices           []errors.Notice
+	template_paths    []string               // record all compiled $tmpl files; needed for `v watch run webserver.v`
+	template_line_map []ast.TemplateLineInfo // line mapping for current template compilation
+	content           ParseContentKind
 }
 
 enum ParseContentKind {

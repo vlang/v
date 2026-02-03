@@ -5,6 +5,7 @@ module checker
 import os
 import v.ast
 import v.pref
+import v.token
 import v.util
 import v.pkgconfig
 import v.type_resolver
@@ -118,6 +119,70 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
 		c2.check(mut node.veb_tmpl)
+
+		// Cache template file content for error display using the relative path
+		// The template_paths contains full paths, but errors use relative paths from node.veb_tmpl.path
+		if node.veb_tmpl.template_paths.len > 0 {
+			// Cache the main template file
+			main_template_path := node.veb_tmpl.template_paths[0]
+			if content := os.read_file(main_template_path) {
+				util.set_source_for_path(node.veb_tmpl.path, content)
+			}
+		}
+
+		// Fix error line numbers using template line mapping
+		line_map := node.veb_tmpl.template_line_map
+		if line_map.len > 0 {
+			for i, err in c2.errors {
+				if err.pos.line_nr >= 0 && err.pos.line_nr < line_map.len {
+					line_info := line_map[err.pos.line_nr]
+					c2.errors[i] = errors.Error{
+						message:    err.message
+						details:    err.details
+						file_path:  err.file_path
+						pos:        token.Pos{
+							...err.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   err.reporter
+						call_stack: err.call_stack
+					}
+				}
+			}
+			for i, warn in c2.warnings {
+				if warn.pos.line_nr >= 0 && warn.pos.line_nr < line_map.len {
+					line_info := line_map[warn.pos.line_nr]
+					c2.warnings[i] = errors.Warning{
+						message:    warn.message
+						details:    warn.details
+						file_path:  warn.file_path
+						pos:        token.Pos{
+							...warn.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   warn.reporter
+						call_stack: warn.call_stack
+					}
+				}
+			}
+			for i, notice in c2.notices {
+				if notice.pos.line_nr >= 0 && notice.pos.line_nr < line_map.len {
+					line_info := line_map[notice.pos.line_nr]
+					c2.notices[i] = errors.Notice{
+						message:    notice.message
+						details:    notice.details
+						file_path:  notice.file_path
+						pos:        token.Pos{
+							...notice.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   notice.reporter
+						call_stack: notice.call_stack
+					}
+				}
+			}
+		}
+
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices

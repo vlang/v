@@ -383,6 +383,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos:       start_pos
 		},
 	]
+	// Transfer template paths and line mapping from parser to file for error reporting
+	file.template_paths = p.template_paths
+	file.template_line_map = p.template_line_map
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
 		is_vweb:     true
