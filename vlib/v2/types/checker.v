@@ -13,15 +13,33 @@ pub struct Environment {
 pub mut:
 	// errors with no default value
 	scopes shared map[string]&Scope = map[string]&Scope{}
+	// Function scopes - stores the scope for each function by qualified name (module__fn_name)
+	// This allows later passes (transformer, codegen) to look up local variable types
+	fn_scopes shared map[string]&Scope = map[string]&Scope{}
 	// types map[int]Type
 	// methods - shared for parallel type checking
 	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
+	// Expression types - maps position to computed type for direct access
+	// This simplifies the type system by storing types directly rather than through scopes
+	expr_types        map[int]Type
 }
 
 pub fn Environment.new() &Environment {
-	return &Environment{}
+	return &Environment{
+		expr_types: map[int]Type{}
+	}
+}
+
+// set_expr_type stores the computed type for an expression at a given position
+pub fn (mut e Environment) set_expr_type(pos int, typ Type) {
+	e.expr_types[pos] = typ
+}
+
+// get_expr_type retrieves the computed type for an expression at a given position
+pub fn (e &Environment) get_expr_type(pos int) ?Type {
+	return e.expr_types[pos] or { return none }
 }
 
 // lookup_method looks up a method by receiver type name and method name
@@ -58,6 +76,32 @@ pub fn (e &Environment) lookup_fn(module_name string, fn_name string) ?FnType {
 	return none
 }
 
+// lookup_local_var looks up a local variable by name in the given scope.
+// Walks up the scope chain to find the variable and returns its type.
+pub fn (e &Environment) lookup_local_var(scope &Scope, name string) ?Type {
+	mut s := unsafe { scope }
+	if obj := s.lookup_parent(name, 0) {
+		return obj.typ()
+	}
+	return none
+}
+
+// set_fn_scope stores the scope for a function by its qualified name
+pub fn (mut e Environment) set_fn_scope(module_name string, fn_name string, scope &Scope) {
+	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	lock e.fn_scopes {
+		e.fn_scopes[key] = scope
+	}
+}
+
+// get_fn_scope retrieves the scope for a function by its qualified name
+pub fn (e &Environment) get_fn_scope(module_name string, fn_name string) ?&Scope {
+	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	return lock e.fn_scopes {
+		e.fn_scopes[key] or { return none }
+	}
+}
+
 pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic
@@ -84,6 +128,10 @@ mut:
 	c_scope       &Scope = new_scope(unsafe { nil })
 	deferred      []Deferred
 	expected_type ?Type
+	// Current file's module name (for saving function scopes)
+	cur_file_module string
+	// Function root scope - used to flatten local variable types for transformer lookup
+	fn_root_scope &Scope = unsafe { nil }
 
 	generic_params []string
 	// TODO: remove once fields/methods with same name
@@ -97,6 +145,17 @@ pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Enviro
 		file_set: unsafe { file_set }
 		env:      unsafe { env }
 	}
+}
+
+// qualify_type_name returns the fully qualified type name with module prefix.
+// e.g., "File" in module "ast" becomes "ast__File".
+// Builtin types and main module types are not prefixed.
+fn (c &Checker) qualify_type_name(name string) string {
+	// Don't qualify builtin or main module types
+	if c.cur_file_module == 'builtin' || c.cur_file_module == '' || c.cur_file_module == 'main' {
+		return name
+	}
+	return '${c.cur_file_module}__${name}'
 }
 
 pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scope {
@@ -137,7 +196,13 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 			continue
 		}
 		c.scope = d.scope
+		$if debug ? {
+			eprintln('DEBUG: deferred fn_decl START scope has ${d.scope.objects.len} objects')
+		}
 		d.func()
+		$if debug ? {
+			eprintln('DEBUG: deferred fn_decl END scope has ${d.scope.objects.len} objects')
+		}
 	}
 	// fn decls - generic
 	for d in c.deferred {
@@ -158,6 +223,8 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 	mut sw := time.new_stopwatch()
 	start_no_time:
+	// Track current file's module for function scope saving
+	c.cur_file_module = file.mod
 	// file_scope := new_scope(c.mod.scope)
 	// mut mod_scope := new_scope(c.mod.scope)
 	// c.env.scopes[file.mod] = mod_scope
@@ -235,6 +302,7 @@ fn (mut c Checker) preregister_all_scopes(files []ast.File) {
 }
 
 pub fn (mut c Checker) preregister_types(file ast.File) {
+	c.cur_file_module = file.mod
 	mut mod_scope := lock c.env.scopes {
 		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
 	}
@@ -277,6 +345,7 @@ fn (mut c Checker) preregister_all_fn_signatures(files []ast.File) {
 }
 
 pub fn (mut c Checker) preregister_fn_signatures(file ast.File) {
+	c.cur_file_module = file.mod
 	mut mod_scope := lock c.env.scopes {
 		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
 	}
@@ -326,10 +395,10 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// as_type := decl.as_type !is ast.EmptyExpr { c.expr(decl.as_type) } else { Type(int_) }
 			obj := Enum{
 				is_flag: decl.attributes.has('flag')
-				name:    decl.name
+				name:    c.qualify_type_name(decl.name)
 				fields:  fields
 			}
-			c.scope.insert(obj.name, Type(obj))
+			c.scope.insert(decl.name, Type(obj))
 		}
 		ast.FnDecl {
 			// if decl.typ.generic_params.len > 0 {
@@ -361,7 +430,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 		ast.InterfaceDecl {
 			// TODO:
 			obj := Interface{
-				name: decl.name
+				name: c.qualify_type_name(decl.name)
 			}
 			c.scope.insert(decl.name, Type(obj))
 			interface_decl := decl
@@ -426,8 +495,10 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				// c.scope.insert(struct_decl.name, typ)
 			}, .struct_decl)
 			// c.log('struct decl: ${decl.name}')
+			// Don't qualify C types
+			qualified_name := if decl.language == .c { decl.name } else { c.qualify_type_name(decl.name) }
 			obj := Struct{
-				name: decl.name
+				name: qualified_name
 				// fields: [Field{name: 'len', typ: ast.Ident{name: 'int'}}]
 				// fields: [Field{name: 'len'}]
 			}
@@ -444,7 +515,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// alias
 			if decl.variants.len == 0 {
 				alias_type := Alias{
-					name: decl.name
+					name: c.qualify_type_name(decl.name)
 					// TODO: defer
 					// parent: c.expr(decl.base_type)
 				}
@@ -468,7 +539,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// sum type
 			else {
 				sum_type := SumType{
-					name: decl.name
+					name: c.qualify_type_name(decl.name)
 					// variants: decl.variants
 				}
 				mut typ := Type(sum_type)
@@ -512,6 +583,16 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 }
 
 fn (mut c Checker) expr(expr ast.Expr) Type {
+	typ := c.expr_impl(expr)
+	// Store the computed type in the environment for expressions with positions
+	pos := expr.pos()
+	if pos > 0 {
+		c.env.set_expr_type(pos, typ)
+	}
+	return typ
+}
+
+fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 	c.log('expr: ${expr.type_name()}')
 	match expr {
 		ast.ArrayInitExpr {
@@ -636,9 +717,9 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			if cexpr !is ast.CallExpr && cexpr !is ast.IfExpr {
 				c.error_with_pos('unsupported comptime: ${cexpr.name()}', expr.pos)
 			}
-			// TODO: $if dynamic_bohem ...
+			// Handle compile-time $if/$else - evaluate condition and check only the matching branch
 			if cexpr is ast.IfExpr {
-				c.log('TODO: comptime IfExpr')
+				c.comptime_if_else(cexpr)
 				return void_
 			}
 			c.log('ComptimeExpr: ' + cexpr.name())
@@ -917,6 +998,10 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return string_
 		}
 		ast.StringLiteral {
+			// C strings (c'...' or c"...") return charptr
+			if expr.kind == .c {
+				return charptr_
+			}
 			return string_
 		}
 		ast.Tuple {
@@ -1250,7 +1335,15 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		// or some method to use modifiers
 		lx_unwrapped := c.unwrap_expr(lx)
 		if lx_unwrapped is ast.Ident {
+			$if debug ? {
+				eprintln('DEBUG: assign_stmt inserting var "${lx_unwrapped.name}" type=${expr_type.name()} into scope')
+			}
 			c.scope.insert(lx_unwrapped.name, expr_type)
+			// Also insert into function root scope for transformer type lookups
+			// This flattens nested scope variables into the function scope
+			if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
+				c.fn_root_scope.insert(lx_unwrapped.name, expr_type)
+			}
 		}
 	}
 }
@@ -1436,7 +1529,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			}
 		}
 		c.log('registering method: ${decl.name} for ${receiver_type.name()} - ${method_owner_type.name()} - ${receiver_base_type.name()}')
-		c.scope.insert(decl.receiver.name, c.expr(decl.receiver.typ))
+		// Note: receiver was already inserted at line 1515 with correct type (including Pointer for mut)
 	} else {
 		if decl.language == .c {
 			c.c_scope.insert(decl.name, *obj)
@@ -1451,7 +1544,21 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		DeferredKind.fn_decl
 	}
 	// if decl.typ.generic_params.len == 0 {
-	c.later(fn [mut c, fn_decl, typ] () {
+	// Capture the function scope and its key for the deferred callback
+	// The scope will be saved AFTER processing the body (in the deferred callback)
+	// so that local variables declared in the body are included
+	fn_scope := c.scope
+	scope_fn_name := if decl.is_method {
+		// Get receiver base type name for method scope key
+		mut receiver_type := c.expr(decl.receiver.typ)
+		receiver_base_type := receiver_type.base_type()
+		'${receiver_base_type.name()}__${decl.name}'
+	} else {
+		decl.name
+	}
+	cur_file_module := c.cur_file_module
+
+	c.later(fn [mut c, fn_decl, typ, fn_scope, scope_fn_name, cur_file_module] () {
 		// if fn_decl.typ.generic_params.len > 0 {
 		// 	panic('GENERIC FN')
 		// }
@@ -1472,16 +1579,143 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			// if typ.generic_params.len == 0 || (typ.generic_params.len > 0 && typ.generic_types.len > 0) {
 			if typ.generic_params.len == 0
 				|| (typ.generic_params.len > 0 && c.env.cur_generic_types.len > 0) {
+				// Restore the function scope before processing body
+				prev_scope := c.scope
+				prev_fn_root_scope := c.fn_root_scope
+				c.scope = fn_scope
+				c.fn_root_scope = fn_scope // Set root scope for variable flattening
 				expected_type := c.expected_type
 				c.expected_type = typ.return_type
 				c.stmt_list(fn_decl.stmts)
 				c.expected_type = expected_type
+				c.fn_root_scope = prev_fn_root_scope
+				// Save the function scope AFTER processing body
+				// Now it contains local variables declared in the function (including from nested scopes)
+				$if debug ? {
+					mut var_names := []string{}
+					for name, _ in fn_scope.objects {
+						var_names << name
+					}
+					eprintln('DEBUG: set_fn_scope(${cur_file_module}, ${scope_fn_name}) vars=${var_names}')
+				}
+				c.env.set_fn_scope(cur_file_module, scope_fn_name, fn_scope)
+				c.scope = prev_scope
 			}
 			c.env.cur_generic_types = []
 		}
 	}, deferred_kind)
 	// }
 	c.close_scope()
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression
+fn (c &Checker) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return c.eval_comptime_flag(cond.name)
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !c.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return c.eval_comptime_cond(cond.lhs) && c.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return c.eval_comptime_cond(cond.lhs) || c.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			if cond.op == .question {
+				if cond.expr is ast.Ident {
+					return c.eval_comptime_flag(cond.expr.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return c.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+	return false
+}
+
+// eval_comptime_flag evaluates a single comptime flag/identifier
+fn (c &Checker) eval_comptime_flag(name string) bool {
+	match name {
+		'macos', 'darwin' {
+			$if macos {
+				return true
+			}
+			return false
+		}
+		'linux' {
+			$if linux {
+				return true
+			}
+			return false
+		}
+		'windows' {
+			$if windows {
+				return true
+			}
+			return false
+		}
+		'freebsd' {
+			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'x64', 'amd64' {
+			$if amd64 {
+				return true
+			}
+			return false
+		}
+		'arm64', 'aarch64' {
+			$if arm64 {
+				return true
+			}
+			return false
+		}
+		else {
+			// Unknown flag - return false
+			return false
+		}
+	}
+}
+
+// comptime_if_else checks a compile-time $if/$else expression,
+// only processing the branch that matches the current platform
+fn (mut c Checker) comptime_if_else(node ast.IfExpr) {
+	if c.eval_comptime_cond(node.cond) {
+		// Condition is true - check the then branch
+		c.stmt_list(node.stmts)
+	} else {
+		// Condition is false - check the else branch
+		match node.else_expr {
+			ast.IfExpr {
+				// Check if this is a plain $else block (empty condition) or chained $else $if
+				if node.else_expr.cond is ast.EmptyExpr {
+					// Plain $else { ... } - statements are in the IfExpr.stmts
+					c.stmt_list(node.else_expr.stmts)
+				} else {
+					// Chained $else $if - check recursively
+					c.comptime_if_else(node.else_expr)
+				}
+			}
+			ast.EmptyExpr {
+				// No else branch
+			}
+			else {
+				// Other expression types - just evaluate
+				_ = c.expr(node.else_expr)
+			}
+		}
+	}
 }
 
 fn (mut c Checker) if_expr(expr ast.IfExpr) Type {
@@ -2237,7 +2471,8 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 						}
 					}
 					// TODO: proper PLEASE! :D
-					else if name in ['first', 'last'] {
+					// Array methods that return the element type
+					else if name in ['first', 'last', 'pop'] {
 						return FnType{
 							...field_or_method_type
 							return_type: t.elem_type

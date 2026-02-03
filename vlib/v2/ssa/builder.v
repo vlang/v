@@ -1156,12 +1156,12 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 			// 1. Calc RHS
 			if node.rhs.len == 0 {
 				println('AssignStmt node.rhs.len == 0')
-				println(node)
+				// println(node) // TODO: struct printing not supported in cleanc
 				return
 			}
 			if node.lhs.len == 0 {
 				println('AssignStmt node.lhs.len == 0')
-				println(node)
+				// println(node) // TODO: struct printing not supported in cleanc
 				return
 			}
 
@@ -2019,7 +2019,7 @@ fn (mut b Builder) expr_basic_literal(node ast.BasicLiteral) ValueID {
 }
 
 fn (mut b Builder) expr_ident(node ast.Ident) ValueID {
-	ptr := b.addr(node)
+	ptr := b.addr(ast.Expr(node))
 	// Get type pointed to
 	ptr_typ := b.mod.values[ptr].typ
 	val_typ := b.mod.type_store.types[ptr_typ].elem_type
@@ -2122,7 +2122,7 @@ fn (mut b Builder) expr_selector(node ast.SelectorExpr) ValueID {
 	}
 
 	// Load value from field
-	ptr := b.addr(node)
+	ptr := b.addr(ast.Expr(node))
 	// Get the actual field type from the pointer type
 	ptr_val := b.mod.values[ptr]
 	ptr_typ := b.mod.type_store.types[ptr_val.typ]
@@ -2148,7 +2148,7 @@ fn (mut b Builder) expr_index(node ast.IndexExpr) ValueID {
 	}
 
 	// Load value from index
-	ptr := b.addr(node)
+	ptr := b.addr(ast.Expr(node))
 	i32_t := b.mod.type_store.get_int(64) // Assume i32
 	return b.mod.add_instr(.load, b.cur_block, i32_t, [ptr])
 }
@@ -2911,7 +2911,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 				if fn_ptr_key in b.fn_ptr_fields {
 					// Function pointer field call - load the function pointer and do indirect call
 					// Get the struct pointer
-					var_ptr := b.addr(lhs.lhs)
+					var_ptr := b.addr(ast.Expr(lhs.lhs))
 					ptr_typ := b.mod.values[var_ptr].typ
 					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 					struct_ptr := b.mod.add_instr(.load, b.cur_block, elem_typ, [
@@ -2955,7 +2955,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 
 						// The interface value is just a pointer to the boxed object
 						// Load the object pointer from the variable
-						var_ptr := b.addr(lhs.lhs)
+						var_ptr := b.addr(ast.Expr(lhs.lhs))
 						// Load the pointer value (interface is a ptr)
 						receiver_val = b.mod.add_instr(.load, b.cur_block, ptr_t, [
 							var_ptr,
@@ -2992,7 +2992,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 					}
 					// Get the receiver - need to load the struct pointer from the variable
 					// b.vars stores Ptr(Ptr(struct)), we need Ptr(struct)
-					var_ptr := b.addr(lhs.lhs)
+					var_ptr := b.addr(ast.Expr(lhs.lhs))
 					ptr_typ := b.mod.values[var_ptr].typ
 					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 					receiver_val = b.mod.add_instr(.load, b.cur_block, elem_typ, [
@@ -3300,7 +3300,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 				fn_ptr_key := '${struct_type_name}.${method_name}'
 				if fn_ptr_key in b.fn_ptr_fields {
 					// Function pointer field call - load the function pointer and do indirect call
-					var_ptr := b.addr(node.lhs.lhs)
+					var_ptr := b.addr(ast.Expr(node.lhs.lhs))
 					ptr_typ := b.mod.values[var_ptr].typ
 					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 					struct_ptr := b.mod.add_instr(.load, b.cur_block, elem_typ, [
@@ -3352,7 +3352,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 					flag_enum_receiver_type = mangled_type
 				}
 				// Get the receiver - need to load the struct pointer from the variable
-				var_ptr := b.addr(node.lhs.lhs)
+				var_ptr := b.addr(ast.Expr(node.lhs.lhs))
 				ptr_typ := b.mod.values[var_ptr].typ
 				elem_typ := b.mod.type_store.types[ptr_typ].elem_type
 				receiver_val = b.mod.add_instr(.load, b.cur_block, elem_typ, [var_ptr])

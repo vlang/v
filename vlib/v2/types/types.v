@@ -96,7 +96,8 @@ pub:
 	// fields	map[string]Type
 }
 
-struct OptionType {
+pub struct OptionType {
+pub:
 	base_type Type
 }
 
@@ -106,7 +107,8 @@ struct Parameter {
 	is_mut bool
 }
 
-struct ResultType {
+pub struct ResultType {
+pub:
 	base_type Type
 }
 
@@ -150,9 +152,10 @@ pub fn (f &FnType) get_return_type() ?Type {
 	return f.return_type
 }
 
-struct Interface {
+pub struct Interface {
+pub:
 	name string
-mut:
+pub mut:
 	fields []Field
 	// fields map[string]Type
 	// TODO:
@@ -242,7 +245,7 @@ type Void = u8
 type Nil = u8
 type None = u8
 
-fn (t Type) base_type() Type {
+pub fn (t Type) base_type() Type {
 	match t {
 		// TODO: add base_type method
 		Alias {
@@ -265,7 +268,7 @@ fn (t Type) base_type() Type {
 }
 
 // return the key type used with for in loops
-fn (t Type) key_type() Type {
+pub fn (t Type) key_type() Type {
 	match t {
 		Map { return t.key_type }
 		// TODO: struct here is 'struct string', need to fix this.
@@ -278,7 +281,7 @@ fn (t Type) key_type() Type {
 }
 
 // return the value type used with for in loops
-fn (t Type) value_type() Type {
+pub fn (t Type) value_type() Type {
 	match t {
 		Array, ArrayFixed { return t.elem_type }
 		Channel { return t.elem_type or { Type(t) } } // TODO: ?
@@ -422,7 +425,7 @@ fn (t Primitive) is_int_literal() bool {
 	return t.props.has(.untyped) && t.props.has(.integer)
 }
 
-fn (t Type) name() string {
+pub fn (t Type) name() string {
 	match t {
 		Primitive, Alias, Array, ArrayFixed, Channel, Char, Enum, FnType, Interface, ISize, Map,
 		OptionType, Pointer, ResultType, Rune, String, Struct, SumType, Thread, Tuple, USize, Void,
@@ -571,6 +574,16 @@ fn (t Struct) name() string {
 
 fn (t SumType) name() string {
 	return t.name
+}
+
+// get_sum_type_name returns the name of a SumType (public accessor)
+pub fn (t SumType) get_name() string {
+	return t.name
+}
+
+// get_variants returns the variant types of a SumType
+pub fn (t SumType) get_variants() []Type {
+	return t.variants
 }
 
 fn (t Thread) name() string {

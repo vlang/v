@@ -529,43 +529,49 @@ fn veb_tmpl_${fn_name}() string {
 			else {}
 		}
 
-		if pos := line.index('%') {
-			// %translation_key => ${tr('translation_key')}
-			is_raw := line.contains('%raw ')
-			mut line_ := line
+		// %translation_key => ${tr('translation_key')}
+		// Process all %key patterns on this line
+		mut line_ := line
+		mut search_start := 0
+		for {
+			pos := line_.index_after('%', search_start) or { break }
+			is_raw := pos + 4 < line_.len && line_[pos..pos + 5] == '%raw '
 			if is_raw {
-				// Start reading the key after "raw " (pos + 1 + 4)
+				// Start reading the key after "raw " (pos + 5)
 				mut end := pos + 5
 				// valid variable characters
-				for end < line.len && (line[end].is_letter() || line[end] == `_`) {
+				for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
 					end++
 				}
 				// Extract the key
-				key := line[pos + 5..end]
-				// Replace '%raw key' with just '${key}'
-				// We escape it as \${key} so the generated V code performs the interpolation
-				// line_ = line.replace('%raw ${key}', '\${${key}}')
-				line_ = line.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+				key := line_[pos + 5..end]
+				if key.len > 0 {
+					// Replace '%raw key' with just '${key}'
+					line_ = line_.replace('%raw ${key}', '\${veb.raw(veb.tr(ctx.lang.str(), "${key}"))}')
+				}
+				search_start = pos + 1
 			} else {
-				if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
+				if pos + 1 < line_.len && line_[pos + 1].is_letter() {
 					mut end := pos + 1
-					for end < line.len && (line[end].is_letter() || line[end] == `_`) {
+					for end < line_.len && (line_[end].is_letter() || line_[end] == `_`) {
 						end++
 					}
-					key := line[pos + 1..end]
-					// println('GOT tr key line="${line}" key="${key}"')
-					// source.writeln('\${tr("${key}")}')
-					line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
-					// i += key.len
+					key := line_[pos + 1..end]
+					// println('GOT tr key line="${line_}" key="${key}"')
+					line_ = line_.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
+					search_start = pos + 1
+				} else {
+					// Not a valid translation key, skip this %
+					search_start = pos + 1
 				}
 			}
-			// println(source.str())
+		}
+		if line_ != line {
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line_))
 			p.template_line_map << ast.TemplateLineInfo{
 				tmpl_path: template_file
 				tmpl_line: tline_number
 			}
-			// exit(0)
 		} else {
 			// by default, just copy 1:1
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))

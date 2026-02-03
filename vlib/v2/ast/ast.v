@@ -193,6 +193,12 @@ pub fn (expr Expr) pos() token.Pos {
 		ArrayInitExpr {
 			expr.pos
 		}
+		AssocExpr {
+			expr.pos
+		}
+		BasicLiteral {
+			expr.pos
+		}
 		CallExpr {
 			expr.pos
 		}
@@ -205,10 +211,40 @@ pub fn (expr Expr) pos() token.Pos {
 		ComptimeExpr {
 			expr.pos
 		}
+		FnLiteral {
+			expr.pos
+		}
+		GenericArgOrIndexExpr {
+			expr.pos
+		}
+		GenericArgs {
+			expr.pos
+		}
 		Ident {
 			expr.pos
 		}
+		IfExpr {
+			expr.pos
+		}
+		IfGuardExpr {
+			expr.pos
+		}
+		IndexExpr {
+			expr.pos
+		}
 		InfixExpr {
+			expr.pos
+		}
+		InitExpr {
+			expr.pos
+		}
+		KeywordOperator {
+			expr.pos
+		}
+		LambdaExpr {
+			expr.pos
+		}
+		LockExpr {
 			expr.pos
 		}
 		MapInitExpr {
@@ -217,10 +253,22 @@ pub fn (expr Expr) pos() token.Pos {
 		MatchExpr {
 			expr.pos
 		}
+		ModifierExpr {
+			expr.pos
+		}
 		OrExpr {
 			expr.pos
 		}
+		ParenExpr {
+			expr.pos
+		}
+		PostfixExpr {
+			expr.pos
+		}
 		PrefixExpr {
+			expr.pos
+		}
+		RangeExpr {
 			expr.pos
 		}
 		SelectExpr {
@@ -228,12 +276,24 @@ pub fn (expr Expr) pos() token.Pos {
 		}
 		SelectorExpr {
 			expr.pos
-			// NOTE: should we remove `pos` from `SelectorExpr` and use `expr.lhs.pos()` instead?
-			// which would always get the position of the left most part of the `SelectorExpr`
-			// expr.lhs.pos()
+		}
+		SqlExpr {
+			expr.pos
+		}
+		StringInterLiteral {
+			expr.pos
+		}
+		StringLiteral {
+			expr.pos
+		}
+		Tuple {
+			expr.pos
+		}
+		UnsafeExpr {
+			expr.pos
 		}
 		else {
-			// Default for expressions without pos field
+			// Default for expressions without pos field (EmptyExpr, FieldInit, Keyword, Type)
 			0
 		}
 	}
@@ -291,12 +351,14 @@ pub:
 	typ    Expr
 	expr   Expr
 	fields []FieldInit
+	pos    token.Pos
 }
 
 pub struct BasicLiteral {
 pub:
 	kind  token.Token
 	value string
+	pos   token.Pos
 }
 
 pub struct CallExpr {
@@ -346,18 +408,21 @@ pub:
 	typ           FnType
 	captured_vars []Expr
 	stmts         []Stmt
+	pos           token.Pos
 }
 
 pub struct GenericArgs {
 pub:
 	lhs  Expr
 	args []Expr // concrete types
+	pos  token.Pos
 }
 
 pub struct GenericArgOrIndexExpr {
 pub:
 	lhs  Expr
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct Ident {
@@ -371,11 +436,13 @@ pub:
 	cond      Expr = empty_expr
 	else_expr Expr = empty_expr
 	stmts     []Stmt
+	pos       token.Pos
 }
 
 pub struct IfGuardExpr {
 pub:
 	stmt AssignStmt
+	pos  token.Pos
 }
 
 pub struct InfixExpr {
@@ -391,12 +458,14 @@ pub:
 	lhs      Expr
 	expr     Expr
 	is_gated bool
+	pos      token.Pos
 }
 
 pub struct InitExpr {
 pub:
 	typ    Expr
 	fields []FieldInit
+	pos    token.Pos
 }
 
 pub struct Keyword {
@@ -408,17 +477,20 @@ pub struct KeywordOperator {
 pub:
 	op    token.Token
 	exprs []Expr
+	pos   token.Pos
 }
 
 pub struct Tuple {
 pub:
 	exprs []Expr
+	pos   token.Pos
 }
 
 pub struct LambdaExpr {
 pub:
 	args []Ident
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct LockExpr {
@@ -426,6 +498,7 @@ pub:
 	lock_exprs  []Expr
 	rlock_exprs []Expr
 	stmts       []Stmt
+	pos         token.Pos
 }
 
 pub struct MapInitExpr {
@@ -468,6 +541,7 @@ pub struct ModifierExpr {
 pub:
 	kind token.Token
 	expr Expr
+	pos  token.Pos
 }
 
 // pub fn (expr ModifierExpr) unwrap() Expr {
@@ -492,12 +566,14 @@ pub:
 pub struct ParenExpr {
 pub:
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct PostfixExpr {
 pub:
 	op   token.Token
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct PrefixExpr {
@@ -512,6 +588,7 @@ pub:
 	op    token.Token // `..` exclusive | `...` inclusive
 	start Expr
 	end   Expr
+	pos   token.Pos
 }
 
 pub struct SelectExpr {
@@ -587,6 +664,7 @@ pub struct StringLiteral {
 pub:
 	kind  StringLiteralKind
 	value string
+	pos   token.Pos
 }
 
 pub struct StringInterLiteral {
@@ -594,6 +672,7 @@ pub:
 	kind   StringLiteralKind
 	values []string
 	inters []StringInter
+	pos    token.Pos
 }
 
 pub struct StringInter {
@@ -656,11 +735,13 @@ pub fn (sif StringInterFormat) str() string {
 pub struct SqlExpr {
 pub:
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct UnsafeExpr {
 pub:
 	stmts []Stmt
+	pos   token.Pos
 }
 
 // Statements

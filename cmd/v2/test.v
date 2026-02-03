@@ -20,6 +20,29 @@ mut:
 	right int
 }
 
+// For testing array.clone() on nested selectors
+struct ArrayHolder {
+mut:
+	data []int
+}
+
+struct Wrapper {
+mut:
+	holder &ArrayHolder
+}
+
+// For testing map indexing with push (map[key] << value)
+struct PendingLabels {
+mut:
+	labels map[int][]int
+}
+
+// For testing array push in map iteration
+struct Error76 {
+	msg    string
+	val_id int
+}
+
 enum Color {
 	red
 	green
@@ -41,6 +64,22 @@ enum Permissions {
 	execute
 }
 
+// Enum for testing match with different return type
+enum Operator {
+	plus
+	minus
+	mul
+	div
+}
+
+// Enum for binding power - return type differs from match expression type
+enum BindingPower {
+	lowest
+	low
+	medium
+	high
+}
+
 // Interface declaration
 interface Drawable {
 	draw() int
@@ -52,11 +91,20 @@ interface Shape {
 	perimeter() int
 }
 
+// Interface with methods that take parameters
+interface Calculator {
+	add(a int, b int) int
+	multiply(x int) int
+}
+
 // Type alias
 type MyInt = int
 
 // Sum type
 type Number = int | Point
+
+// For testing nested smartcasts (outer sum type contains inner sum type)
+type NestedOuter = Number | Rectangle
 
 __global (
 	g_val   int
@@ -66,6 +114,15 @@ __global (
 )
 
 // ===================== METHODS =====================
+
+// Method that returns a different enum type than the receiver enum type
+// Tests that match conditions use the correct enum (Operator) not the return type (BindingPower)
+fn (op Operator) get_binding_power() BindingPower {
+	return match op {
+		.plus, .minus { .low }
+		.mul, .div { .medium }
+	}
+}
 
 fn (p Point) sum() int {
 	return p.x + p.y
@@ -93,6 +150,15 @@ fn (mut p Point) double() {
 	p.y = p.y * 2
 }
 
+// Implements Calculator interface
+fn (p Point) add(a int, b int) int {
+	return p.x + p.y + a + b
+}
+
+fn (p Point) multiply(x int) int {
+	return (p.x + p.y) * x
+}
+
 fn (r Rectangle) area() int {
 	return r.width * r.height
 }
@@ -106,6 +172,16 @@ fn (n Node) total() int {
 }
 
 // ===================== HELPER FUNCTIONS =====================
+
+// For test 77: process_number takes a Number sum type and returns a value
+// This tests that smartcasted variables inside match branches can be passed
+// to functions expecting the original sum type
+fn process_number(n Number) int {
+	match n {
+		int { return n }
+		Point { return n.x + n.y }
+	}
+}
 
 fn fib(n int) int {
 	if n < 2 {
@@ -539,6 +615,99 @@ fn clamp(x int, lo int, hi int) int {
 	}
 }
 
+// Helper functions for mutable slice argument tests
+fn read_from_slice(arr []int) int {
+	mut sum := 0
+	for i := 0; i < arr.len; i++ {
+		sum += arr[i]
+	}
+	return sum
+}
+
+fn write_to_slice(mut arr []int, val int) {
+	for i := 0; i < arr.len; i++ {
+		arr[i] = val
+	}
+}
+
+// Helper function for map index with or block test
+fn map_lookup_with_or(m map[string]int, key string) int {
+	// Test pattern: map[key] or { fallback_value }
+	val := m[key] or { -1 }
+	return val
+}
+
+// Helper function for nested map or block (similar to lookup_type_from_env pattern)
+fn nested_map_or(scopes map[string]int, module_name string) int {
+	// Pattern: scopes[module_name] or { scopes['builtin'] or { return default } }
+	scope_val := scopes[module_name] or { scopes['builtin'] or { return -999 } }
+	return scope_val
+}
+
+// For test 63: Method return type + if-guard pattern
+struct DataContainer {
+	value int
+	name  string
+}
+
+fn (d &DataContainer) lookup(key string) ?int {
+	if key == d.name {
+		return d.value
+	}
+	return none
+}
+
+// For test 64: if-guard + is-check + optional return pattern (like lookup_struct_from_env)
+struct StructType {
+	name   string
+	fields int
+}
+
+struct EnumType {
+	name     string
+	variants int
+}
+
+type TypeVariant = StructType | EnumType
+
+struct TypeHolder {
+	struct_type StructType
+	enum_type   EnumType
+}
+
+// Simulates lookup_type_from_env - returns ?TypeVariant based on name
+fn (h &TypeHolder) lookup_type(name string) ?TypeVariant {
+	if name == 'struct' {
+		return TypeVariant(h.struct_type)
+	} else if name == 'enum' {
+		return TypeVariant(h.enum_type)
+	}
+	return none
+}
+
+// This pattern matches lookup_struct_from_env:
+// 1. Call a method returning ?SumType
+// 2. If found, check if it's a specific variant
+// 3. Return the smartcasted variant wrapped in option
+fn (h &TypeHolder) lookup_struct(name string) ?StructType {
+	if typ := h.lookup_type(name) {
+		if typ is StructType {
+			return typ
+		}
+	}
+	return none
+}
+
+fn (h &TypeHolder) lookup_enum(name string) ?EnumType {
+	if typ := h.lookup_type(name) {
+		if typ is EnumType {
+			return typ
+		}
+	}
+	return none
+}
+
+
 // ===================== MAIN TEST FUNCTION =====================
 
 fn main() {
@@ -680,8 +849,8 @@ fn main() {
 	}
 
 	// 4.3 Bool from comparison
-	val := 10
-	flag3 := val > 5
+	cmp_val := 10
+	flag3 := cmp_val > 5
 	if flag3 {
 		print_int(1)
 	} else {
@@ -2577,6 +2746,24 @@ fn main() {
 	d5 := Drawable(vtable_pt5)
 	print_int(d4.draw() + d5.draw()) // 2003 + 4005 = 6008
 
+	// 47.6 Calculator interface with parameters
+	calc_pt := Point{
+		x: 10
+		y: 5
+	}
+	calc := Calculator(calc_pt)
+	print_int(calc.add(3, 7)) // 10 + 5 + 3 + 7 = 25
+	print_int(calc.multiply(4)) // (10 + 5) * 4 = 60
+
+	// 47.7 Multiple Calculator calls
+	calc_pt2 := Point{
+		x: 2
+		y: 3
+	}
+	calc2 := Calculator(calc_pt2)
+	print_int(calc2.add(1, 1)) // 2 + 3 + 1 + 1 = 7
+	print_int(calc2.multiply(10)) // (2 + 3) * 10 = 50
+
 	// ==================== 48. STRUCT FIELD OPERATIONS ====================
 	print_str('--- 48. Struct Field Operations ---')
 
@@ -2988,6 +3175,762 @@ fn main() {
 	}
 	if cmp_arr1 != cmp_arr3 {
 		print_str('arr1 != arr3: yes')
+	}
+
+	// ==================== 56. ARRAY FILTER (4 tests) ====================
+	print_str('--- 56. Array filter ---')
+
+	// 56.1 Basic filter with it
+	filter_arr := [1, 2, 3, 4, 5, 6]
+	evens := filter_arr.filter(it % 2 == 0)
+	print_str('filtered.len:')
+	print_int(evens.len) // 3
+	print_str('filtered values:')
+	for _, number in evens {
+		print_int(number)
+	}
+
+	// 56.2 Filter with comparison
+	odds := filter_arr.filter(it % 2 != 0)
+	print_int(odds.len) // 3
+
+	// 56.3 Filter that returns nothing
+	big_nums := filter_arr.filter(it > 10)
+	print_int(big_nums.len) // 0
+
+	// 56.4 Filter that returns everything
+	small_nums := filter_arr.filter(it <= 6)
+	print_int(small_nums.len) // 6
+
+	// ==================== 57. ARRAY STR (auto-generated) ====================
+	print_str('--- 57. Array str ---')
+
+	// 57.1 Basic array str via println
+	str_arr := [1, 2, 3, 4]
+	println(str_arr) // should print [1, 2, 3, 4]
+
+	// 57.2 Empty array str
+	empty_arr := []int{}
+	println(empty_arr) // should print []
+
+	// 57.3 Single element array
+	single_arr := [42]
+	println(single_arr) // should print [42]
+
+	// ==================== 58. IF-GUARD EXPRESSIONS ====================
+	print_str('--- 58. If-guard expressions ---')
+
+	// 58.1 Basic map if-guard - key exists
+	mut guard_map := map[int]int{}
+	guard_map[10] = 100
+	guard_map[20] = 200
+	if guard_val1 := guard_map[10] {
+		print_int(guard_val1) // 100
+	} else {
+		print_str('not found')
+	}
+
+	// 58.2 Map if-guard - key doesn't exist
+	if guard_val2 := guard_map[99] {
+		print_int(guard_val2)
+	} else {
+		print_str('key 99 not found') // should print this
+	}
+
+	// 58.3 Value-level if-guard (ternary-like)
+	result_guard := if gv1 := guard_map[20] { gv1 } else { 0 }
+	print_int(result_guard) // 200
+
+	// 58.4 Value-level if-guard with missing key
+	result_missing := if gv2 := guard_map[999] { gv2 } else { -1 }
+	print_int(result_missing) // -1
+
+	// 58.5 Multiple if-guards in sequence (same variable name)
+	if off := guard_map[10] {
+		print_int(off) // 100
+	}
+	if off := guard_map[20] {
+		print_int(off) // 200
+	}
+
+	// 58.6 If-guard with computation in body
+	if v := guard_map[10] {
+		doubled := v * 2
+		print_int(doubled) // 200
+	}
+
+	// 59. Array clone() on nested selectors
+	// Test that array.clone() works on deeply nested selector expressions
+	// like wrapper.holder.data.clone() - this tests the fix for chained selector type inference
+	mut holder := ArrayHolder{
+		data: []int{cap: 10}
+	}
+	holder.data << 10
+	holder.data << 20
+	holder.data << 30
+	mut wrap := Wrapper{
+		holder: &holder
+	}
+	// Clone via nested selector (wrapper.holder.data.clone())
+	mut cloned_arr := wrap.holder.data.clone()
+	print_int(cloned_arr.len) // 3
+	print_int(cloned_arr[0])  // 10
+	print_int(cloned_arr[2])  // 30
+
+	// Verify clone is independent - modify cloned array
+	cloned_arr[0] = 99
+	print_int(cloned_arr[0])       // 99 (modified)
+	print_int(wrap.holder.data[0]) // 10 (original unchanged)
+
+	// 60. Map indexing with push (map[key] << value)
+	// Test that g.pending_labels[blk] << off pattern works correctly
+	// This uses map_get_and_set to auto-create empty array if key doesn't exist
+	mut pl := PendingLabels{
+		labels: map[int][]int{}
+	}
+	pl.labels[5] << 100 // First push to key 5 - creates new array
+	pl.labels[5] << 200 // Second push to same key
+	pl.labels[10] << 50 // Push to different key
+	print_int(pl.labels[5].len)  // 2
+	print_int(pl.labels[5][0])   // 100
+	print_int(pl.labels[5][1])   // 200
+	print_int(pl.labels[10].len) // 1
+	print_int(pl.labels[10][0])  // 50
+
+	// ==================== 61. MUTABLE SLICE ARGUMENTS ====================
+	print_str('--- 61. Mutable slice arguments ---')
+
+	// Test that slices can be passed as mutable arguments to functions
+	// This tests the &(array[]){builtin__array_slice(...)}[0] pattern
+	mut slice_data := []int{len: 8}
+	slice_data[0] = 10
+	slice_data[1] = 20
+	slice_data[2] = 30
+	slice_data[3] = 40
+
+	// 61.1 Read from slice (non-mutable)
+	read_result := read_from_slice(slice_data[1..3])
+	print_int(read_result) // 50 (20 + 30)
+
+	// 61.2 Write to slice (mutable) - should modify original array
+	write_to_slice(mut slice_data[0..2], 99)
+	print_int(slice_data[0]) // 99 (modified via slice)
+	print_int(slice_data[1]) // 99 (modified via slice)
+	print_int(slice_data[2]) // 30 (unchanged, outside slice range)
+
+	// 61.3 Nested selector with slice and mutable arg
+	// Note: Using explicit array construction to avoid array literal struct init bug
+	mut holder2 := ArrayHolder{
+		data: []int{len: 4}
+	}
+	holder2.data[0] = 100
+	holder2.data[1] = 200
+	holder2.data[2] = 300
+	holder2.data[3] = 400
+	write_to_slice(mut holder2.data[1..3], 555)
+	print_int(holder2.data[0]) // 100 (unchanged)
+	print_int(holder2.data[1]) // 555 (modified)
+	print_int(holder2.data[2]) // 555 (modified)
+	print_int(holder2.data[3]) // 400 (unchanged)
+
+	// ==================== 62. MAP INDEX WITH OR BLOCK ====================
+	print_str('--- 62. Map index with or block ---')
+
+	// Test the pattern: map[key] or { fallback }
+	// This is used in lookup_type_from_env and similar functions
+	mut or_test_map := map[string]int{}
+	or_test_map['foo'] = 42
+	or_test_map['bar'] = 100
+	or_test_map['builtin'] = 999
+
+	// 62.1 Key exists - should return the value
+	or_result1 := map_lookup_with_or(or_test_map, 'foo')
+	print_int(or_result1) // 42
+
+	// 62.2 Key doesn't exist - should return fallback (-1)
+	or_result2 := map_lookup_with_or(or_test_map, 'nonexistent')
+	print_int(or_result2) // -1
+
+	// 62.3 Nested or block - first key exists
+	or_result3 := nested_map_or(or_test_map, 'foo')
+	print_int(or_result3) // 42
+
+	// 62.4 Nested or block - first key missing, fallback to 'builtin'
+	or_result4 := nested_map_or(or_test_map, 'missing')
+	print_int(or_result4) // 999 (from 'builtin' key)
+
+	// 62.5 Nested or block - both keys missing, return default
+	mut or_empty_map := map[string]int{}
+	or_result5 := nested_map_or(or_empty_map, 'anything')
+	print_int(or_result5) // -999 (default from return in or block)
+
+	// ==================== 63. IF-GUARD WITH METHOD CALL ====================
+	print_str('--- 63. If-guard with method call returning optional ---')
+
+	// This tests the pattern from lookup_type_from_env:
+	// if obj := container.method() { ... } - method returning optional
+
+	// 63.1 Method returning optional - found case
+	dc := DataContainer{value: 42, name: 'test'}
+	if val := dc.lookup('test') {
+		print_int(val) // 42
+	}
+
+	// 63.2 Method returning optional - not found case
+	if val := dc.lookup('missing') {
+		print_int(val) // Should not print
+	} else {
+		print_int(-100) // -100
+	}
+
+	// 63.3 Nested method call with if-guard
+	dc2 := DataContainer{value: 777, name: 'found'}
+	mut result63 := 0
+	if v := dc2.lookup('found') {
+		result63 = v
+	}
+	print_int(result63) // 777
+
+	// ==================== 64. IF-GUARD + IS-CHECK + OPTION RETURN ====================
+	print_str('--- 64. If-guard with is-check and optional return ---')
+
+	// This tests the pattern from lookup_struct_from_env in arm64:
+	// fn lookup_struct() ?Struct { if typ := lookup_type() { if typ is Struct { return typ } } return none }
+
+	// 64.1 Setup type_holder with struct and enum types
+	type_holder := TypeHolder{
+		struct_type: StructType{name: 'Point', fields: 2}
+		enum_type:   EnumType{name: 'Color', variants: 3}
+	}
+
+	// 64.2 lookup_struct - found case (asking for 'struct' returns the struct type)
+	if s64_1 := type_holder.lookup_struct('struct') {
+		print_str(s64_1.name) // Point
+		print_int(s64_1.fields) // 2
+	} else {
+		print_str('NOT_FOUND')
+	}
+
+	// 64.3 lookup_struct - not found because 'enum' returns EnumType, not StructType
+	if s64_2 := type_holder.lookup_struct('enum') {
+		print_str(s64_2.name)
+	} else {
+		print_int(-200) // -200 (returned enum, not struct)
+	}
+
+	// 64.4 lookup_struct - not found because key doesn't exist
+	if s64_3 := type_holder.lookup_struct('missing') {
+		print_str(s64_3.name)
+	} else {
+		print_int(-300) // -300 (key not found)
+	}
+
+	// 64.5 lookup_enum - found case (asking for 'enum' returns the enum type)
+	if e64_1 := type_holder.lookup_enum('enum') {
+		print_str(e64_1.name) // Color
+		print_int(e64_1.variants) // 3
+	} else {
+		print_str('NOT_FOUND')
+	}
+
+	// 64.6 lookup_enum - not found because 'struct' returns StructType, not EnumType
+	if e64_2 := type_holder.lookup_enum('struct') {
+		print_str(e64_2.name)
+	} else {
+		print_int(-400) // -400 (returned struct, not enum)
+	}
+
+	// ==================== 65. MAP ITERATION WITH POINTER VALUES ====================
+	print_str('--- 65. Map iteration with pointer values ---')
+
+	// Tests map[int]&Struct iteration - the same pattern used in allocate_registers
+
+	// 65.1 Create map with pointer values
+	mut intervals := map[int]&Point{}
+	intervals[1] = &Point{x: 10, y: 100}
+	intervals[2] = &Point{x: 20, y: 200}
+	intervals[3] = &Point{x: 30, y: 300}
+
+	// 65.2 Iterate over map and collect pointer values
+	mut sum_x := 0
+	mut sum_y := 0
+	for _, p in intervals {
+		sum_x += p.x
+		sum_y += p.y
+	}
+	print_int(sum_x) // 60 (10+20+30)
+	print_int(sum_y) // 600 (100+200+300)
+
+	// 65.3 If-guard with map[int]&Struct
+	if pt65 := intervals[2] {
+		print_int(pt65.x) // 20
+		print_int(pt65.y) // 200
+	}
+
+	// ==================== 66. NESTED MAP INDEXING IN ARRAY ====================
+	print_str('--- 66. Nested map indexing in array ---')
+
+	// Tests used[reg_map[val_id]] pattern - nested map index as array index
+
+	// 66.1 Setup array and map
+	mut used66 := []bool{len: 10, init: false}
+	mut reg_map66 := map[int]int{}
+	reg_map66[5] = 3 // val_id 5 -> index 3
+	reg_map66[7] = 8 // val_id 7 -> index 8
+
+	// 66.2 Use nested map index to set array element
+	used66[reg_map66[5]] = true
+	print_int(if used66[3] { 1 } else { 0 }) // 1 (index 3 was set)
+	print_int(if used66[0] { 1 } else { 0 }) // 0 (index 0 not set)
+
+	// 66.3 Use nested map index in loop
+	val_ids := [5, 7]
+	for vid in val_ids {
+		map_idx := reg_map66[vid]
+		used66[map_idx] = true
+	}
+	print_int(if used66[3] { 1 } else { 0 }) // 1
+	print_int(if used66[8] { 1 } else { 0 }) // 1
+
+	// 66.4 Direct nested indexing
+	used66[reg_map66[7]] = false
+	print_int(if used66[8] { 1 } else { 0 }) // 0 (reset to false)
+
+	// ==================== 67. NESTED MAP ASSIGNMENT ====================
+	print_str('--- 67. Nested map assignment ---')
+
+	// Tests map[string]map[string]bool{} pattern - nested map with inner map initialization
+
+	// 67.1 Create nested map and initialize inner map
+	mut nested_map := map[string]map[string]bool{}
+	if 'mod1' !in nested_map {
+		nested_map['mod1'] = map[string]bool{}
+	}
+	nested_map['mod1']['TypeA'] = true
+	nested_map['mod1']['TypeB'] = true
+
+	// 67.2 Verify values
+	print_int(if nested_map['mod1']['TypeA'] { 1 } else { 0 }) // 1
+	print_int(if nested_map['mod1']['TypeB'] { 1 } else { 0 }) // 1
+	print_int(if nested_map['mod1']['TypeC'] { 1 } else { 0 }) // 0 (not set)
+
+	// 67.3 Add another module
+	if 'mod2' !in nested_map {
+		nested_map['mod2'] = map[string]bool{}
+	}
+	nested_map['mod2']['TypeX'] = true
+	print_int(if nested_map['mod2']['TypeX'] { 1 } else { 0 }) // 1
+
+	// 67.4 Check independence of inner maps
+	print_int(if nested_map['mod1']['TypeA'] { 1 } else { 0 }) // 1 (still set)
+	print_int(if nested_map['mod2']['TypeA'] { 1 } else { 0 }) // 0 (not in mod2)
+
+	// ==================== 68. SMARTCAST WITH IS-CHECK ====================
+	print_str('--- 68. Smartcast with is-check ---')
+
+	// Tests `if x is Type` pattern with sum types
+
+	// 68.1 Basic is-check with int variant
+	num1 := Number(42)
+	if num1 is int {
+		print_int(num1) // 42 (smartcasted to int)
+	} else {
+		print_int(-1)
+	}
+
+	// 68.2 Basic is-check with Point variant
+	num2 := Number(Point{x: 10, y: 20})
+	if num2 is Point {
+		print_int(num2.x) // 10 (smartcasted to Point, access field)
+		print_int(num2.y) // 20
+	} else {
+		print_int(-1)
+	}
+
+	// 68.3 Negative is-check - int is not Point
+	num3 := Number(100)
+	if num3 is Point {
+		print_int(num3.x)
+	} else {
+		print_int(-100) // -100 (num3 is int, not Point)
+	}
+
+	// 68.4 Negative is-check - Point is not int
+	num4 := Number(Point{x: 5, y: 6})
+	if num4 is int {
+		print_int(num4)
+	} else {
+		print_int(-200) // -200 (num4 is Point, not int)
+	}
+
+	// 68.5 Smartcast with computation
+	num5 := Number(Point{x: 3, y: 4})
+	if num5 is Point {
+		sum := num5.x + num5.y
+		print_int(sum) // 7
+	}
+
+	// 68.6 Compound is-check with && and field access
+	// Tests: if x is Type && x.field == value { ... }
+	// This requires smartcast to be applied in compound conditions
+	num6 := Number(Point{x: 42, y: 100})
+	if num6 is Point && num6.x == 42 {
+		print_int(num6.y) // 100 (smartcast applied in compound &&)
+	} else {
+		print_int(-1)
+	}
+
+	// 68.7 Compound is-check that fails the field check
+	num7 := Number(Point{x: 10, y: 20})
+	if num7 is Point && num7.x == 999 {
+		print_int(-1) // Should not reach here
+	} else {
+		print_int(111) // 111 (fails because x != 999)
+	}
+
+	// 68.8 Compound is-check that fails the type check
+	num8 := Number(77)
+	if num8 is Point && num8.x == 77 {
+		print_int(-1) // Should not reach here
+	} else {
+		print_int(77) // 77 (int is not Point)
+	}
+
+	// ==================== 69. ARRAY APPEND ON STRUCT FIELDS ====================
+	print_str('--- 69. Array append on struct fields ---')
+
+	// Tests arr << elem pattern on struct fields (cleanc fallback when transformer doesn't handle it)
+
+	// 69.1 Basic array append on struct field
+	mut holder69 := ArrayHolder{
+		data: []int{}
+	}
+	holder69.data << 10
+	holder69.data << 20
+	holder69.data << 30
+	print_int(holder69.data.len) // 3
+	print_int(holder69.data[0]) // 10
+	print_int(holder69.data[1]) // 20
+	print_int(holder69.data[2]) // 30
+
+	// 69.2 Array append in a loop
+	mut holder69b := ArrayHolder{
+		data: []int{}
+	}
+	for i := 0; i < 5; i++ {
+		holder69b.data << i * 2
+	}
+	print_int(holder69b.data.len) // 5
+	print_int(holder69b.data[0]) // 0
+	print_int(holder69b.data[4]) // 8
+
+	// 69.3 Array append with expression
+	mut holder69c := ArrayHolder{
+		data: []int{}
+	}
+	x69 := 100
+	holder69c.data << x69 + 1
+	holder69c.data << x69 * 2
+	print_int(holder69c.data[0]) // 101
+	print_int(holder69c.data[1]) // 200
+
+	// ==================== 70. MATCH EXPRESSION ON SUM TYPES ====================
+	print_str('--- 70. Match on sum types ---')
+
+	// Tests `match x { Type { ... } }` pattern with sum types and smartcasting
+
+	// 70.1 Match on int variant
+	num70a := Number(42)
+	match num70a {
+		int {
+			print_int(num70a) // 42 (smartcasted to int)
+		}
+		Point {
+			print_int(-1)
+		}
+	}
+
+	// 70.2 Match on Point variant with field access
+	num70b := Number(Point{x: 7, y: 8})
+	match num70b {
+		int {
+			print_int(-1)
+		}
+		Point {
+			print_int(num70b.x) // 7 (smartcasted to Point)
+			print_int(num70b.y) // 8
+		}
+	}
+
+	// 70.3 Match with computation on Point variant
+	num70c := Number(Point{x: 5, y: 5})
+	match num70c {
+		int {
+			print_int(num70c + 1)
+		}
+		Point {
+			sum70 := num70c.x + num70c.y
+			print_int(sum70) // 10
+		}
+	}
+
+	// 70.4 Match result in assignment
+	num70d := Number(99)
+	result70 := match num70d {
+		int {
+			num70d * 2 // 198
+		}
+		Point {
+			-1
+		}
+	}
+	print_int(result70) // 198
+
+	// 70.5 Match on Point with result assignment
+	num70e := Number(Point{x: 3, y: 4})
+	result70e := match num70e {
+		int {
+			-1
+		}
+		Point {
+			num70e.x * num70e.y // 12
+		}
+	}
+	print_int(result70e) // 12
+
+	// ==================== 71. NESTED SMARTCAST ====================
+	print_str('--- 71. Nested smartcast ---')
+
+	// Tests nested smartcasting where outer match smartcasts to a variant
+	// that is itself a sum type, then inner if-is checks that variant.
+	// This requires the transformer to apply outer smartcasts to inner tag checks.
+
+	// 71.1 Nested smartcast: match outer, if-is inner (int variant)
+	nested1 := NestedOuter(Number(42))
+	match nested1 {
+		Number {
+			// nested1 is now smartcasted to Number
+			// Number is itself a sum type (int | Point)
+			if nested1 is int {
+				print_int(nested1) // 42 (nested smartcast to int)
+			} else {
+				print_int(-1)
+			}
+		}
+		Rectangle {
+			print_int(-1)
+		}
+	}
+
+	// 71.2 Nested smartcast: match outer, if-is inner (Point variant)
+	nested2 := NestedOuter(Number(Point{x: 7, y: 8}))
+	match nested2 {
+		Number {
+			// nested2 is smartcasted to Number
+			if nested2 is Point {
+				print_int(nested2.x) // 7 (nested smartcast to Point)
+				print_int(nested2.y) // 8
+			} else {
+				print_int(-1)
+			}
+		}
+		Rectangle {
+			print_int(-1)
+		}
+	}
+
+	// 71.3 Nested smartcast: negative test - inner type doesn't match
+	nested3 := NestedOuter(Number(100))
+	match nested3 {
+		Number {
+			if nested3 is Point {
+				print_int(-1) // Should not reach
+			} else {
+				print_int(200) // 200 (nested3 is int, not Point)
+			}
+		}
+		Rectangle {
+			print_int(-1)
+		}
+	}
+
+	// 71.4 Nested smartcast with computation
+	nested4 := NestedOuter(Number(Point{x: 5, y: 6}))
+	match nested4 {
+		Number {
+			if nested4 is Point {
+				sum71 := nested4.x + nested4.y
+				print_int(sum71) // 11
+			}
+		}
+		Rectangle {
+			print_int(-1)
+		}
+	}
+
+	// ==================== 72. ARRAY LITERAL TYPE INFERENCE ====================
+	print_str('--- 72. Array literal type inference ---')
+
+	// Test array literal with cast expression as first element
+	// The element type should be inferred from the cast type (u8), not default to int
+	mut buf72 := [u8(`0`), `1`, `2`]
+	print_int(buf72.len) // 3
+	print_int(buf72[0]) // 48 (ASCII for '0')
+	print_int(buf72[1]) // 49 (ASCII for '1')
+	print_int(buf72[2]) // 50 (ASCII for '2')
+
+	// Test bytestr() on the array - this requires Array_u8 type, not Array_int
+	result72 := buf72.bytestr()
+	print_str(result72) // 012
+
+	// Test string comparison between variables (both should be identified as strings)
+	s72a := 'hello'
+	s72b := 'hello'
+	s72c := 'world'
+	if s72a == s72b {
+		print_int(1) // 1 (strings are equal)
+	} else {
+		print_int(0)
+	}
+	if s72a != s72c {
+		print_int(2) // 2 (strings are different)
+	} else {
+		print_int(0)
+	}
+
+	// ==================== 73. ARRAY INDEX METHOD ====================
+	print_str('--- 73. Array index method ---')
+
+	// Test array index method on string arrays
+	months73 := ['January', 'February', 'March', 'April', 'May', 'June']
+	idx73a := months73.index('March')
+	print_int(idx73a) // 2
+
+	idx73b := months73.index('June')
+	print_int(idx73b) // 5
+
+	idx73c := months73.index('NotFound')
+	print_int(idx73c) // -1
+
+	// Test array index on int arrays
+	nums73 := [10, 20, 30, 40, 50]
+	idx73d := nums73.index(30)
+	print_int(idx73d) // 2
+
+	idx73e := nums73.index(99)
+	print_int(idx73e) // -1
+
+	// ==================== 74. MATCH RETURN DIFFERENT ENUM TYPE ====================
+	print_str('--- 74. Match return different enum type ---')
+
+	// Test that match conditions use the correct enum type, not the return type
+	// This tests the fix for: fn (op Operator) get_binding_power() BindingPower
+	// where match op { .plus { .low } } should use Operator for .plus, BindingPower for .low
+	op74a := Operator.plus
+	bp74a := op74a.get_binding_power()
+	print_int(int(bp74a)) // 1 (BindingPower.low)
+
+	op74b := Operator.mul
+	bp74b := op74b.get_binding_power()
+	print_int(int(bp74b)) // 2 (BindingPower.medium)
+
+	op74c := Operator.minus
+	bp74c := op74c.get_binding_power()
+	print_int(int(bp74c)) // 1 (BindingPower.low, same as plus)
+
+	op74d := Operator.div
+	bp74d := op74d.get_binding_power()
+	print_int(int(bp74d)) // 2 (BindingPower.medium, same as mul)
+
+	// ==================== 75. GOTO STATEMENT ====================
+	print_str('--- 75. Goto statement ---')
+
+	// Test goto inside unsafe block
+	mut counter75 := 0
+	mut iterations75 := 0
+	start75:
+	counter75++
+	iterations75++
+	if counter75 < 3 {
+		unsafe {
+			goto start75
+		}
+	}
+	print_int(iterations75) // 3 - should loop 3 times
+
+	// Test goto skipping code
+	mut skipped75 := false
+	unsafe {
+		goto skip75
+	}
+	skipped75 = true // This should be skipped
+	skip75:
+	if skipped75 {
+		print_int(0) // Should not print this
+	} else {
+		print_int(1) // 1 - code was skipped
+	}
+
+	// ==================== 76. ARRAY PUSH IN MAP ITERATION ====================
+	print_str('--- 76. Array push in map iteration ---')
+
+	// Test array << struct_init inside for-in-map loop
+	// This previously caused double transformation of ArrayInitExpr
+	mut errors76 := []Error76{}
+	mut users76 := map[int]bool{}
+	users76[1] = true
+	users76[2] = true
+	users76[3] = true
+	for user_id, _ in users76 {
+		if user_id > 1 {
+			errors76 << Error76{msg: 'user', val_id: user_id}
+		}
+	}
+	print_int(errors76.len) // 2 - two errors added
+
+	// Test map.delete() and map.clear()
+	mut m76 := map[int]bool{}
+	m76[10] = true
+	m76[20] = true
+	m76[30] = true
+	print_int(m76.len) // 3
+	m76.delete(20)
+	print_int(m76.len) // 2
+	m76.clear()
+	print_int(m76.len) // 0
+
+	// ==================== 77. SMARTCAST SUM TYPE ARGUMENT ====================
+	print_str('--- 77. Smartcast sum type argument ---')
+
+	// Test that smartcasted variable inside match branch can be passed
+	// to a function expecting the original sum type
+	// This tests the fix for: b.stmt(stmt) where stmt is smartcast to TypeDecl inside match
+	num77a := Number(42)
+	match num77a {
+		int {
+			// num77a is smartcast to int here, but process_number expects Number
+			result77a := process_number(num77a)
+			print_int(result77a) // 42
+		}
+		else {}
+	}
+
+	num77b := Number(Point{x: 10, y: 20})
+	match num77b {
+		Point {
+			// num77b is smartcast to Point here, but process_number expects Number
+			result77b := process_number(num77b)
+			print_int(result77b) // 30 (10 + 20)
+		}
+		else {}
+	}
+
+	// Test if-is pattern with sum type argument
+	num77c := Number(100)
+	if num77c is int {
+		// num77c is smartcast to int, pass to function expecting Number
+		result77c := process_number(num77c)
+		print_int(result77c) // 100
 	}
 
 	print_str('=== All tests completed ===')

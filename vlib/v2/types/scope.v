@@ -16,7 +16,9 @@ struct SmartCastSelector {
 	cast_type Type
 }
 
+@[heap]
 pub struct Scope {
+pub:
 	parent &Scope = unsafe { nil }
 pub mut:
 	objects map[string]Object
@@ -68,6 +70,15 @@ pub fn (mut s Scope) lookup_parent(name string, pos token.Pos) ?Object {
 		}
 	}
 	// println('lookup_parent: NOT FOUND: ${name}')
+	return none
+}
+
+// lookup_var_type looks up a variable by name and returns its type.
+// Walks up the scope chain to find the variable.
+pub fn (mut s Scope) lookup_var_type(name string) ?Type {
+	if obj := s.lookup_parent(name, 0) {
+		return obj.typ()
+	}
 	return none
 }
 

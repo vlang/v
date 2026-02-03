@@ -25,7 +25,7 @@ const i32_ = Primitive{
 }
 // TODO: represent platform specific size
 // will this be calculated at compile time?
-const int_ = Primitive{
+pub const int_ = Primitive{
 	props: .integer
 	// size: 32
 }

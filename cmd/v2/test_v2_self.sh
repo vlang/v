@@ -6,21 +6,26 @@ rm v2 || true
 v v2.v
 
 rm v3 || true
+rm v3.c || true
 # Use v2 to compile itself to v3 (using cleanc backend)
 ./v2 -o v3 -backend cleanc v2.v || exit
 
-# Use v3 to compile hello world
-#./v3 -backend cleanc hello.v
-./v3 || true
+echo "SUCCESS: v2 successfully compiled itself to v3"
+echo "v3 binary size: $(ls -lh v3 | awk '{print $5}')"
 
-# Test that v3 without args prints the expected error message
+# Test that v3 runs and produces expected output
 OUTPUT=$(./v3 2>&1 || true)
 EXPECTED="At least 1 .v file expected"
 
 if echo "$OUTPUT" | grep -q "$EXPECTED"; then
-    echo "SUCCESS: v3 works correctly and prints expected message"
+    echo "SUCCESS: v3 runs correctly and prints expected message"
 else
     echo "FAILURE: Expected '$EXPECTED' but got:"
     echo "$OUTPUT"
     exit 1
 fi
+
+echo ""
+echo "=== SELF-COMPILATION TEST PASSED ==="
+echo "Note: v3 uses stubbed functions for complex modules."
+echo "Full bootstrap requires fixing remaining issues in cleanc module."
