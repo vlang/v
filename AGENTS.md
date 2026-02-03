@@ -28,52 +28,53 @@ Quick reference for the V compiler, standard library, and tools.
 
 ## Top Rules
 * Use `./v` only to build `./vnew`; use `./vnew` for everything else.
+* Put all V flags immediately after `./vnew` and before the subcommand/file,
+  e.g. `./vnew -g run file.v` (not `./vnew run file.v -g`); flags after the
+  subcommand are passed to that subcommand.
 * Rebuild `./vnew` after compiler or core module changes (see Build & Rebuild).
 * Run the smallest relevant tests; see Testing for triggers and minimums.
 * Ask before large refactors or wide file touches (see Agent Rules).
 * Do not stash or modify unrelated files unless explicitly instructed.
 * This guide assumes agents run locally, not in CI; CI notes are informational only.
-* Reports must include behavior change, tests run, and touched file paths.
+* When a summary is required, include behavior change, tests run, and touched file paths.
 * If instructions overlap, prefer Build & Rebuild, Testing, and Reporting.
 * If duplicates drift, treat Build & Rebuild, Testing, and Reporting as canonical
   and align other sections to them.
 
 ## Agent Rules
-* Be concise by default; expand only when asked for depth.
-* If the user asks for in-depth detail, provide it while keeping structure tight and scan-friendly.
-* Run commands from repo root.
-  Assume `pwd` is repo root in this environment unless stated otherwise.
-  Verify with `pwd` if a command fails due to missing paths.
-  Using per-command working directories is OK; keep paths correct.
-  Default to repo root; use per-command workdir only when needed.
-  Prefer repo root unless a task requires a subdir.
+* Be concise by default. If the user asks for depth, provide it while keeping structure tight.
+* Run commands from repo root (`/opt/v`) unless a task requires a subdir.
+  Use a per-command workdir only when needed; keep paths correct.
+  If a command fails due to missing paths, verify with `pwd`.
 * Bootstrap/compiler usage rules: see Top Rules and Build & Rebuild.
-* Read and edit all files in V repo without asking for permission.
-  Permission here means file access, not change scope; scope is constrained below.
+* You may read and edit all files in the V repo without asking for permission.
+  This is file access, not change scope; scope is constrained below.
   Follow the scope rules and ask before wide touches.
+  Reading is always OK. Edits to `ci/` or `Dockerfile*` still require an explicit ask.
 * Only modify files required for the user request; avoid unrelated refactors.
-  If duplication is already harmful, small refactors to remove it are OK when
-  they are directly needed to deliver the request.
-  Only refactor duplication in code you are already touching.
-  Do so only if it directly supports the user request or fixes a bug there.
+  If duplication is harmful, small refactors to remove it are OK only when needed.
+  Only refactor duplication in code you are already touching, and only when it
+  directly supports the request or fixes a bug there.
   "Touching" means files already modified for the request.
 * Avoid unrelated file changes; call them out if present.
 * Avoid touching `thirdparty/` unless explicitly requested. If changes are
-  needed there, call it out before proceeding.
+  needed there, ask for approval before proceeding.
 * Ask before large refactors or wide file touches (more than 5 files, or changes
   across multiple repo-root directories like `cmd/`, `vlib/`, `doc/`, `examples/`).
   Exception: docs-only changes across many files are OK without asking;
   call them out in the summary.
 * Ask before large behavioral changes within a single subsystem or file, even
   if the file count is small. Examples: changes to parser rules, checker
-  resolution, codegen output shape, or tool CLI behavior.
+  resolution, codegen output shape, diagnostic text/ordering, or tool CLI
+  behavior. Large means user-visible changes in CLI flags, output, diagnostics,
+  or codegen shape. If unsure whether a change is "large," ask.
 * Ask before touching `ci/` or `Dockerfile*` unless explicitly requested.
   If changes are needed there, confirm whether local validation is expected or
   if CI-only coverage is acceptable.
 * If you cannot complete a requested step, state the blocker and partial progress
   (what was attempted and what remains).
 * Keep output easy to scan: short sections, bullets when listing, commands in backticks, no filler.
-  Use a strict, operational tone.
+  Use a strict, operational tone unless higher-priority instructions override it.
 * Ask only when required. If information is missing, ask a direct question.
 * After substantial work, provide a short summary and list touched file paths.
   Substantial work means any behavioral change, or changes in more than one file.
@@ -97,6 +98,27 @@ breaking the bootstrap compiler.
 ## Quick Decisions
 * For rebuild and test choices, follow Build & Rebuild and Testing.
 * Follow Common Workflow for the default execution order.
+* For broader workflow guidance, see `CONTRIBUTING.md`.
+
+### Compact decision table (rebuild/tests)
+Use this table to pick the minimum rebuild/tests quickly. See Build & Rebuild
+and Testing for full details and edge cases.
+Commands omit `./vnew` for brevity; assume the `./vnew` prefix.
+This table is the minimum set; check Testing for additional triggers.
+REPL and backend changes have additional triggers in Testing.
+Note: `cmd/v/` is compiler scope; treat changes there as compiler changes.
+When in doubt, ask before proceeding.
+If you read only one section for tests, **read Testing**.
+
+| Change area | Rebuild `./vnew`? | Minimum tests to run |
+| --- | --- | --- |
+| Docs only (`.md`) | No | `check-md file.md` |
+| Compiler (`vlib/v/`, `cmd/v/`) | Yes | `vlib/v/compiler_errors_test.v`; `test vlib/v/` |
+| Core modules (builtin/strings/os/strconv/time) | Yes | Smallest relevant tests |
+| vlib (non-compiler) | No | Nearest `*_test.v` or `test vlib/path/` |
+| Tools (`cmd/tools/`) | No | Tool-specific test; else nearest `*_test.v` |
+| Diagnostic/output changes (compiler output) | Yes | `vlib/v/slow_tests/inout/compiler_test.v` |
+| C codegen changes (`vlib/v/gen/c/`) | Yes | `vlib/v/gen/c/coutput_test.v` |
 
 ## Common Workflow
 0. Before work: `git status`; ensure `./vnew` exists; rebuild if needed.
@@ -104,13 +126,13 @@ breaking the bootstrap compiler.
 1. Edit the relevant files.
 2. If compiler sources or core modules changed, rebuild `./vnew` with
    `./v -g -keepc -o ./vnew self` (see Build & Rebuild).
-3. Format touched files and run `./vnew check-md` on touched markdown.
+3. Format touched `.v`/`.vsh` files and run `./vnew check-md` on touched markdown.
 4. Run the smallest relevant tests for the change scope (see Testing).
 
 See Build & Rebuild for rebuild triggers and flags.
 
 ## Reporting
-* Summary must include:
+* When a summary is required (see Agent Rules), it must include:
   * Behavior changes (or "No behavior change").
   * Tests run (or "Not run" with a reason).
   * Touched file paths.
@@ -118,6 +140,8 @@ See Build & Rebuild for rebuild triggers and flags.
   * Note doc updates if public behavior/tool output changed.
 * If public behavior or tool output changes, update relevant docs
   (README.md, `doc/`, `tutorials/`) and note it.
+  For example: README.md for top-level CLI usage, `doc/` for compiler/tool docs,
+  `tutorials/` for learning material.
 * If you add or change a public API, update module docs or README and note it.
   Public API includes stdlib functions/types and user-visible compiler flags,
   diagnostics, tool CLI behavior (including `cmd/tools` and stdlib CLI tools),
@@ -130,7 +154,7 @@ See Build & Rebuild for rebuild triggers and flags.
 * Acceptable reasons for not running tests: docs-only change, no relevant tests,
   or environment constraints. Be specific.
 * Docs-only changes: run `./vnew check-md file.md`; no other tests required unless
-  the docs are directly exercised by tests.
+  a test explicitly reads those docs.
   No rebuild is needed unless compiler or core modules changed.
 * For docs-only, explicitly mention `check-md` in the summary.
 * If you update `.out` files, state the rationale in the summary.
@@ -178,12 +202,15 @@ See Build & Rebuild for rebuild triggers and flags.
   grammar or spelling without changing meaning.
   Add V doc comments right before each new or modified public function or method.
   The V doc comments should start with the name of the fn, example: `// the_name does ...`
-* Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function.
+* Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function
+  only when it is required for the request and within code you are already touching.
 * Avoid using `unsafe{ code }` blocks where possible, and minimize their scope.
 * Keep Markdown lines <= 100 chars (the checker is strict).
   Apply to touched lines in modified Markdown files.
 * Avoid hidden/bidirectional Unicode characters in source/markdown files.
 * Non-V files: keep existing formatting; only reformat if required by the change.
+* Treat `.vv` files in `vlib/v/slow_tests/inout/` as fixtures; avoid formatting
+  unless a behavior change is intended and output expectations are updated.
 * Formatting and check commands are in Tools.
 
 ## C/JS Interop Hygiene
@@ -222,30 +249,30 @@ Notes:
 
 ## Testing
 Run:
-* File: `./vnew path/to/file_test.v`.
+* File (shows test output): `./vnew path/to/file_test.v`.
+* File (test runner report only): `./vnew test path/to/file_test.v`.
 * Dir: `./vnew test path/to/dir/`.
-* Dir with statistics/metrics: `./vnew -stats path/to/dir/`.
+* Dir with statistics/metrics: `./vnew -stats test path/to/dir/`.
 * Compiler: `./vnew vlib/v/compiler_errors_test.v`.
-  Note: on M1, it's normal to see no output for 30-60s during this test.
-  Most other `_test.v` files finish in <2s. Expect variance on other hardware.
-  Run it alone and avoid re-running just because logs pause.
 * Fix outputs (only when intended): `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
 * All: `./vnew test-all`.
-  Note: on M1, this is often 5+ minutes; expect variance and avoid re-running
-  based on early time estimates.
   Ask before running `./vnew test-all` unless explicitly requested.
 
 When:
 * Rule of thumb: for localized changes, run the smallest relevant tests.
   If any trigger below matches, run the listed tests.
+* Minimum tests listed are the floor, not the ceiling; add targeted tests for
+  cross-cutting changes.
 * If unsure which tests apply, ask the user before proceeding.
-* If multiple triggers apply, run the smallest targeted tests first, then add
-  slow tests as needed. Run all tests that apply; order does not matter.
-* Compiler changes (`vlib/v/`):
+* If in doubt, prefer the smallest targeted test and ask.
+* Run all tests that apply. Start with the smallest targeted tests; add slow
+  tests as needed. Order does not matter.
+* Compiler changes (`vlib/v/` or `cmd/v/`):
   Run `./vnew vlib/v/compiler_errors_test.v`, `./vnew test vlib/v/`.
 * vlib changes: Run nearest `*_test.v` or `./vnew test vlib/path/`.
-* Tool changes (`cmd/`): Run tool-specific tests. If none exist, run the
+* Tool changes (`cmd/tools/`): Run tool-specific tests. If none exist, run the
   smallest relevant `*_test.v` that exercises the tool.
+  Note: `cmd/v/` is compiler scope, not tools.
   Examples: `cmd/tools/vfmt` -> `vlib/v/fmt/fmt_test.v`,
   `cmd/tools/vdoc` -> `vlib/v/doc/doc_test.v`.
 * Diagnostic/output changes: Run `./vnew vlib/v/slow_tests/inout/compiler_test.v`.
@@ -260,6 +287,8 @@ When:
 If time-constrained, prioritize `./vnew vlib/v/compiler_errors_test.v` and
 the smallest targeted tests. Run `vlib/v/slow_tests/inout/compiler_test.v`
 and `vlib/v/gen/c/coutput_test.v` when output or codegen changes are likely.
+See `TESTS.md` for more guidance on test selection and output expectations.
+See `CONTRIBUTING.md` for broader workflow guidance.
 
 Concrete triggers:
 * `vlib/v/slow_tests/inout/compiler_test.v` when error text or output formatting
@@ -279,7 +308,8 @@ If time-boxed, run at least the smallest relevant test and note skipped coverage
 in the summary.
 
 ### Useful env variables and flags while testing
-* `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice), only when intended.
+* `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice).
+  Use only when a behavior change is intended.
 * `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
 * `./vnew -progress test path/to/dir/` - Show only the currently running test.
