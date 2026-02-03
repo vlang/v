@@ -22,7 +22,10 @@ Quick reference for the V compiler, standard library, and tools.
 
 ## Code Style
 * Comments: add succinct comments only when code is not self-explanatory.
-  Do not delete existing comments unless they are explicitly incorrect.
+  Do not delete existing comments unless they are explicitly incorrect,
+  however you may correct wrong grammar or wrong spelling.
+  Add V doc comments right before each public function or method.
+  The V doc comments should start with the name of the fn, example: `// the_name does ...`
 * Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function.
 * Avoid using `unsafe{ code }` blocks where possible, and minimize their scope.
 
