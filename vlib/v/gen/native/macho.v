@@ -360,7 +360,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	g.write8(0)
 	for o in g.size_pos {
 		n := g.read32_at(o)
-		// eprintln('$n + $delta')
+		// eprintln('${n} + ${delta}')
 		g.write32_at(i64(o), n + delta)
 	}
 	g.write64(i64(0))

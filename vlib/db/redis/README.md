@@ -139,7 +139,7 @@ config := redis.Config{
 
 mut db := redis.connect(config)!
 defer {
-    db.close() or { eprintln('Error closing connection: $err') }
+    db.close() or { eprintln('Error closing connection: ${err}') }
 }
 ```
 

@@ -145,9 +145,9 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			nport = 443
 		}
 	}
-	// println('fetch $method, $scheme, $host_name, $nport, $path ')
+	// println('fetch ${method}, ${scheme}, ${host_name}, ${nport}, ${path} ')
 	if scheme == 'https' && req.proxy == unsafe { nil } {
-		// println('ssl_do( $nport, $method, $host_name, $path )')
+		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
 			res := req.ssl_do(nport, method, host_name, path) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
@@ -158,7 +158,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			return res
 		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
-		// println('http_do( $nport, $method, $host_name, $path )')
+		// println('http_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
 			res := req.http_do('${host_name}:${nport}', method, path) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {

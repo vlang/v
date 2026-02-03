@@ -2061,6 +2061,18 @@ fn main() {
 		print_int(0) // 0 (none case)
 	}
 
+	// 35.10 Direct or { value } pattern - successful call
+	or_direct1 := maybe_positive(42) or { 0 }
+	print_int(or_direct1) // 42
+
+	// 35.11 Direct or { value } pattern - fallback used
+	or_direct2 := maybe_positive(-10) or { 99 }
+	print_int(or_direct2) // 99
+
+	// 35.12 Chained or { value } with computation
+	or_chain := maybe_double(25) or { 0 }
+	print_int(or_chain + 5) // 50 + 5 = 55
+
 	// ==================== 36. RANGE EXPRESSIONS ====================
 	print_str('--- 36. Range Expressions ---')
 
@@ -2914,6 +2926,21 @@ fn main() {
 	print_int(hm4[3]) // 9
 	print_int(hm4[4]) // 16
 
+	// 54.6 Map literal initialization
+	print_str('map literal:')
+	mut hm5 := {
+		'a': 1
+		'b': 2
+		'c': 3
+	}
+	print_int(hm5['a']) // 1
+	print_int(hm5['b']) // 2
+	print_int(hm5['c']) // 3
+	print_int(hm5.len) // 3
+	hm5['d'] = 4
+	print_int(hm5['d']) // 4
+	print_int(hm5.len) // 4
+
 	// ==================== 55. MULTI-RETURN ====================
 	print_str('--- 55. Multi-return ---')
 
@@ -2946,6 +2973,22 @@ fn main() {
 	print_int(only_quot) // 5
 	print_str('pi=')
 	print_int(pi)
+
+	// 55.6 String compound assignment
+	mut s := 'hello'
+	s += ' world'
+	print_str(s) // hello world
+
+	// 55.7 Array comparison
+	cmp_arr1 := [1, 2, 3]
+	cmp_arr2 := [1, 2, 3]
+	cmp_arr3 := [1, 2, 4]
+	if cmp_arr1 == cmp_arr2 {
+		print_str('arr1 == arr2: yes')
+	}
+	if cmp_arr1 != cmp_arr3 {
+		print_str('arr1 != arr3: yes')
+	}
 
 	print_str('=== All tests completed ===')
 }

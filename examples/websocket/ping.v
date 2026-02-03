@@ -52,7 +52,7 @@ fn start_server() ! {
 	})
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
 		slog('s.on_close code: ${code}, reason: ${reason}')
-		// println('client ($ws.id) closed connection')
+		// println('client (${ws.id}) closed connection')
 	})
 	s.listen() or {
 		slog('s.listen err: ${err}')
@@ -93,14 +93,14 @@ fn start_client() ! {
 	// you can add any pointer reference to use in callback
 	// t := TestRef{count: 10}
 	// ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, r &SomeRef) ? {
-	// // eprintln('type: $msg.opcode payload:\n$msg.payload ref: $r')
+	// // eprintln('type: ${msg.opcode} payload:\n${msg.payload} ref: ${r}')
 	// }, &r)
 	ws.connect() or {
 		clog('ws.connect err: ${err}')
 		return err
 	}
 	clog('ws.connect succeeded')
-	spawn write_echo(mut ws) // or { println('error on write_echo $err') }
+	spawn write_echo(mut ws) // or { println('error on write_echo ${err}') }
 	ws.listen() or {
 		clog('ws.listen err: ${err}')
 		return err

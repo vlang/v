@@ -382,7 +382,7 @@ fn test_option_struct() {
 
 // fn test_struct_with_option() {
 // 	w := OptionWrapper{}
-// 	assert '$w' == 'OptionWrapper{\n    x: Option(error: \'\')\n}'
+// 	assert '${w}' == 'OptionWrapper{\n    x: Option(error: \'\')\n}'
 // }
 
 /*
@@ -393,7 +393,7 @@ struct OptionWrapperInt {
 
 fn test_struct_with_option() {
 	w := OptionWrapperInt{}
-	assert '$w' == 'OptionWrapperInt{\n    x: Option(error: \'\')\n}'
+	assert '${w}' == 'OptionWrapperInt{\n    x: Option(error: \'\')\n}'
 }
 */
 

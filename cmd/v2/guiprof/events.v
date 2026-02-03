@@ -57,7 +57,7 @@ fn handle_mouse_click(e &gg.Event, mut app App) {
 
 // handle_histogram_click selects a frame from the histogram
 fn handle_histogram_click(x f32, y f32, mut app App) {
-	frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+	frames := app.cached_frames
 	if frames.len == 0 {
 		return
 	}
@@ -78,7 +78,7 @@ fn handle_histogram_click(x f32, y f32, mut app App) {
 	if frame_idx >= 0 && frame_idx < frames.len {
 		app.selected_frame = frame_idx
 		// Select first allocation in this frame
-		allocs := if app.demo_mode { app.cached_allocs } else { profiler.get_allocs() }
+		allocs := app.cached_allocs
 		for i, alloc in allocs {
 			if alloc.frame == u64(frame_idx) {
 				app.selected_alloc = i
@@ -124,7 +124,7 @@ fn handle_mouse_move(e &gg.Event, mut app App) {
 
 	// Check if hovering over histogram
 	if y >= hist_y && y < hist_y + hist_h {
-		frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+		frames := app.cached_frames
 		if frames.len > 0 {
 			w := f32(app.gg.width)
 			margin := f32(40)
@@ -157,7 +157,7 @@ fn handle_key_down(e &gg.Event, mut app App) {
 		}
 		.right {
 			// Next frame
-			frames := if app.demo_mode { app.cached_frames } else { profiler.get_frames() }
+			frames := app.cached_frames
 			if app.selected_frame < frames.len - 1 {
 				app.selected_frame++
 			}
@@ -170,7 +170,7 @@ fn handle_key_down(e &gg.Event, mut app App) {
 		}
 		.down {
 			// Next allocation
-			allocs := if app.demo_mode { app.cached_allocs } else { profiler.get_allocs() }
+			allocs := app.cached_allocs
 			if app.selected_alloc < allocs.len - 1 {
 				app.selected_alloc++
 			}
@@ -217,7 +217,7 @@ fn open_in_editor(app &App) {
 		return
 	}
 
-	allocs := if app.demo_mode { app.cached_allocs } else { profiler.get_allocs() }
+	allocs := app.cached_allocs
 	if app.selected_alloc >= allocs.len {
 		return
 	}

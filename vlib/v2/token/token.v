@@ -134,12 +134,14 @@ pub fn (t Token) left_binding_power() BindingPower {
 		.logical_or { .lowest }
 		// `&&`
 		.and { .one }
+		// `<<` | `>>` | `>>>` - lower precedence so arr << a + b parses as arr << (a + b)
+		.left_shift, .right_shift, .right_shift_unsigned { .two }
 		// `==` | `!=` | `<` | `<=` | `>` | `>=` | `in` | `!in` | `is` | `!is`
 		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .two }
 		// `+` |  `-` |  `|` | `^`
 		.plus, .minus, .pipe, .xor { .three }
-		// `*` |  `/` | `%` | `<<` | `>>` | `>>>` | `&`
-		.mul, .div, .mod, .left_shift, .right_shift, .right_shift_unsigned, .amp { .four }
+		// `*` |  `/` | `%` | `&`
+		.mul, .div, .mod, .amp { .four }
 		else { .lowest }
 	}
 }

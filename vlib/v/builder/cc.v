@@ -850,7 +850,7 @@ pub fn (mut v Builder) cc() {
 		}
 	}
 	// if v.pref.os == .ios {
-	// ret := os.system('ldid2 -S $v.pref.out_name')
+	// ret := os.system('ldid2 -S ${v.pref.out_name}')
 	// if ret != 0 {
 	// eprintln('failed to run ldid2, try: brew install ldid')
 	// }
@@ -1152,7 +1152,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << c.pref.ldflags
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
-	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
+	// cmd := 'clang -o ${obj_name} -w ${include} -m32 -c -target x86_64-win32 ${pref.default_module_path}/${c.out_name_c}'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
 	}

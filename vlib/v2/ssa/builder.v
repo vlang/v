@@ -3308,7 +3308,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 					])
 
 					// Get field index - look up the struct type by name
-					struct_typ_id := b.struct_types[struct_type_name] or { 0 }
+					struct_typ_id := b.struct_types[struct_type_name] or { TypeID(0) }
 					struct_type := b.mod.type_store.types[struct_typ_id]
 					mut field_idx := -1
 					for i, fname in struct_type.field_names {

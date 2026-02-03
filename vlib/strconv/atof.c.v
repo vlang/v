@@ -146,7 +146,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 
 	// read mantissa
 	for i < s.len && s[i].is_digit() {
-		// println("$i => ${s[i]}")
+		// println("${i} => ${s[i]}")
 		if digx < digits {
 			pn.mantissa *= 10
 			pn.mantissa += u64(s[i] - c_zero)

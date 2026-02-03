@@ -270,9 +270,9 @@ pub fn loginname() !string {
 //   entries := os.ls(os.home_dir()) or { [] }
 //   for entry in entries {
 //     if os.is_dir(os.join_path(os.home_dir(), entry)) {
-//       println('dir: $entry')
+//       println('dir: ${entry}')
 //     } else {
-//       println('file: $entry')
+//       println('file: ${entry}')
 //     }
 //   }
 // ```

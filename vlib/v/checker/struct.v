@@ -950,7 +950,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
 					inited_fields)
 			}
-			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
+			// println('>> checked_types.len: ${checked_types.len} | checked_types: ${checked_types} | type_sym: ${type_sym.name} ')
 		}
 		.sum_type {
 			first_typ := (type_sym.info as ast.SumType).variants[0]
@@ -1158,7 +1158,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		/*
 		sym := c.table.sym(field.typ)
 		if sym.kind == .sum_type {
-			c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+			c.warn('sum type field `${type_sym.name}.${field.name}` must be initialized',
 				node.pos)
 		}
 		*/

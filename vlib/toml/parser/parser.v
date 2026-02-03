@@ -810,7 +810,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 			.whitespace, .tab {
 				/*
 				if !p.scanner.config.tokenize_formatting {
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "$p.tok.kind" "$p.tok.lit"')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${p.tok.kind}" "${p.tok.lit}"')
 					continue
 				}*/
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
@@ -1314,8 +1314,8 @@ pub fn (mut p Parser) key() !ast.Key {
 	}
 
 	// NOTE kept for eased debugging
-	// util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "$p.tok.lit"')
-	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n$p.tok')
+	// util.printdbg(@MOD +'.' + @STRUCT + '.' + @FN, 'parsed key "${p.tok.lit}"')
+	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' could not parse ${p.tok.kind} ("${p.tok.lit}") token \n${p.tok}')
 	// return ast.Key(ast.Bare{})
 
 	if key is ast.Null {

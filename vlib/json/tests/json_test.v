@@ -17,10 +17,10 @@ struct Employee {
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
-	// eprintln('Employee x: $s')
+	// eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":"worker"}'
 	y := json.decode(Employee, s)!
-	// eprintln('Employee y: $y')
+	// eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -90,15 +90,15 @@ fn test_encode_decode_sumtype() {
 			t,
 		]
 	}
-	// eprintln('Game: $game')
+	// eprintln('Game: ${game}')
 
 	enc := json.encode(game)
-	// eprintln('Encoded Game: $enc')
+	// eprintln('Encoded Game: ${enc}')
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
-	// eprintln('Decoded Game: $dec')
+	// eprintln('Decoded Game: ${dec}')
 
 	assert game.title == dec.title
 	assert game.player == dec.player

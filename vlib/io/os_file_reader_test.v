@@ -11,7 +11,7 @@ fn read_file(file string, cap int) []string {
 	for {
 		l := r.read_line() or { break }
 		lines << l
-		// println('Line: $l')
+		// println('Line: ${l}')
 	}
 	assert lines.len > 0
 	assert r.end_of_stream == true

@@ -57,7 +57,7 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 			// return C.darwin_create_image(file)
 			mut img := C.darwin_create_image(file)
 
-			// println('created macos image: $img.path w=$img.width')
+			// println('created macos image: ${img.path} w=${img.width}')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
 			unsafe {
@@ -97,7 +97,7 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 // init_sokol_image initializes this `Image` for use with the
 // sokol graphical backend system.
 pub fn (mut img Image) init_sokol_image() &Image {
-	// println('\n init sokol image $img.path ok=$img.simg_ok')
+	// println('\n init sokol image ${img.path} ok=${img.simg_ok}')
 	mut img_desc := gfx.ImageDesc{
 		width:       img.width
 		height:      img.height

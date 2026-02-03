@@ -37,20 +37,30 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
-	b.files = if b.pref.no_parallel {
-		b.parse_files(files)
-	} else {
-		b.parse_files_parallel(files)
+	$if parallel ? {
+		b.files = if b.pref.no_parallel {
+			b.parse_files(files)
+		} else {
+			b.parse_files_parallel(files)
+		}
+	} $else {
+		b.files = b.parse_files(files)
 	}
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 
-	b.env = if b.pref.skip_type_check {
-		types.Environment.new()
-	} else if b.pref.no_parallel {
-		b.type_check_files()
+	if b.pref.skip_type_check {
+		b.env = types.Environment.new()
 	} else {
-		b.type_check_files_parallel()
+		$if parallel ? {
+			b.env = if b.pref.no_parallel {
+				b.type_check_files()
+			} else {
+				b.type_check_files_parallel()
+			}
+		} $else {
+			b.env = b.type_check_files()
+		}
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
@@ -101,6 +111,13 @@ fn (mut b Builder) gen_cleanc() {
 	mut gen := cleanc.Gen.new_with_env_and_pref(b.files, b.env, b.pref)
 	c_source := gen.gen()
 	print_time('C Gen', sw.elapsed())
+
+	// Check if cleanc.Gen.gen() returned empty (stubbed version)
+	if c_source == '' {
+		eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
+		eprintln('hint: use v2 compiled with v1 for proper C code generation')
+		return
+	}
 
 	// Determine output name
 	output_name := if b.pref.output_file != '' {
@@ -171,6 +188,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	// Build all files into a single SSA module
 	mut mod := ssa.Module.new('main')
+	if mod == unsafe { nil } {
+		eprintln('error: native backend not available (compiled with stubbed ssa module)')
+		eprintln('hint: use v2 compiled with v1 for native code generation')
+		return
+	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 
 	// Build all files together with proper multi-file ordering

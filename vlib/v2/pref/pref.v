@@ -33,6 +33,7 @@ pub mut:
 	backend               Backend
 	arch                  Arch = .auto
 	output_file           string
+	printfn_list          []string // List of function names whose generated C source should be printed
 pub:
 	vroot         string = os.dir(@VEXE)
 	vmodules_path string = os.vmodules_dir()
@@ -68,6 +69,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
 
+	// Parse -printfn option (comma-separated list of function names to print)
+	printfn_str := cmdline.option(args, '-printfn', '')
+	printfn_list := if printfn_str != '' { printfn_str.split(',') } else { []string{} }
+
 	options := cmdline.only_options(args)
 	// Default to sequential parsing (no_parallel=true) unless --parallel is specified
 	use_parallel := '--parallel' in options
@@ -84,6 +89,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		backend:               backend
 		arch:                  arch
 		output_file:           output_file
+		printfn_list:          printfn_list
+		// Explicitly set defaults since cleanc doesn't handle struct default values
+		vroot:         os.dir(@VEXE)
+		vmodules_path: os.vmodules_dir()
 	}
 }
 

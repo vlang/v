@@ -278,7 +278,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
 		export := nodes.last().name
-		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
+		out += 'if (typeof module === "object" && module.exports) module.exports = ${export};\n'
 	}*/
 	out += '\n'
 
@@ -288,9 +288,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
-			out += '/** @namespace $name */\n'
+			out += '/** @namespace ${name} */\n'
 		}
-		// out += 'const $name = (function ('
+		// out += 'const ${name} = (function ('
 		mut namespace := g.namespaces[node.name]
 
 
@@ -1161,7 +1161,7 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 }
 
 fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
-	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
+	// eprintln('> gen_assert_single_expr typ: ${typ} | expr: ${expr} | typeof(expr): ${typeof(expr)}')
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {

@@ -423,7 +423,7 @@ fn parse_binary_tetro(t_ int) []Block {
 }
 
 fn on_event(e &gg.Event, mut game Game) {
-	// println('code=$e.char_code')
+	// println('code=${e.char_code}')
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}

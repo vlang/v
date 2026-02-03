@@ -82,8 +82,8 @@ pub:
 	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
 	usage_examples []string // when set, --help will print:
-	// Usage: $appname $usage_examples[0]`
-	//    or: $appname $usage_examples[1]`
+	// Usage: ${appname} ${usage_examples[0]}`
+	//    or: ${appname} ${usage_examples[1]}`
 	// etc
 	default_help_label      string = 'display this help and exit'
 	default_version_label   string = 'output version information and exit'

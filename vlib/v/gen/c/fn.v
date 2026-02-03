@@ -118,7 +118,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		if ((mod != g.module_built && node.mod != g.module_built.after('/'))
 			|| should_bundle_module) && node.generic_names.len == 0 {
 			// Skip functions that don't have to be generated for this module.
-			// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
+			// println('skip bm ${node.name} mod=${node.mod} module_built=${g.module_built}')
 			skip = true
 		}
 		if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
@@ -981,7 +981,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		''
 	}
-	// g.write('/*EE line="$cur_line"*/')
+	// g.write('/*EE line="${cur_line}"*/')
 	tmp_opt := if gen_or || gen_keep_alive {
 		if g.inside_curry_call && g.last_tmp_call_var.len > 0 {
 			g.last_tmp_call_var.pop()
@@ -2586,7 +2586,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
-		// g.write('/* af=$arg.is_tmp_autofree */')
+		// g.write('/* af=${arg.is_tmp_autofree} */')
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
 		if i < expected_types.len {
@@ -2594,10 +2594,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				if arg.is_tmp_autofree { // && !g.is_js_call {
 					// We saved expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
-					// g.write('_arg_expr_${g.called_fn_name}_$i')
+					// g.write('_arg_expr_${g.called_fn_name}_${i}')
 					// Use these variables here.
 					fn_name := node.name.replace('.', '_')
-					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
+					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
 					name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 					g.write('/*autofree arg*/' + name)
 				}

@@ -49,7 +49,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		cpath := x[1]
 		old_hashes[cpath] = chash
 	}
-	// eprintln('old_hashes: $old_hashes')
+	// eprintln('old_hashes: ${old_hashes}')
 	for cpath in all_files {
 		ccontent := util.read_file(cpath) or { '' }
 		chash := hash.sum64_string(ccontent, 7).hex_full()
@@ -60,7 +60,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		sb_new_hashes.write_u8(`\n`)
 	}
 	snew_hashes := sb_new_hashes.str()
-	// eprintln('new_hashes: $new_hashes')
+	// eprintln('new_hashes: ${new_hashes}')
 	// eprintln('> new_hashes != old_hashes: ' + ( old_hashes != new_hashes ).str())
 	// eprintln(snew_hashes)
 	cm.save('.hashes', 'all_files', snew_hashes) or {}
@@ -69,9 +69,9 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut invalidations := []string{}
 	if new_hashes != old_hashes {
 		util.timing_start('${@METHOD} rebuilding')
-		// eprintln('> b.mod_invalidates_paths: $b.mod_invalidates_paths')
-		// eprintln('> b.mod_invalidates_mods: $b.mod_invalidates_mods')
-		// eprintln('> b.path_invalidates_mods: $b.path_invalidates_mods')
+		// eprintln('> b.mod_invalidates_paths: ${b.mod_invalidates_paths}')
+		// eprintln('> b.mod_invalidates_mods: ${b.mod_invalidates_mods}')
+		// eprintln('> b.path_invalidates_mods: ${b.path_invalidates_mods}')
 		$if trace_invalidations ? {
 			for k, v in b.mod_invalidates_paths {
 				mut m := map[string]bool{}

@@ -14,7 +14,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 		mut has_generic_types := false
 		if node.embeds.len > 0 {
 			all_embeds := c.expand_iface_embeds(node, 0, node.embeds)
-			// eprintln('> node.name: $node.name | node.embeds.len: $node.embeds.len | all_embeds: $all_embeds.len')
+			// eprintln('> node.name: ${node.name} | node.embeds.len: ${node.embeds.len} | all_embeds: ${all_embeds.len}')
 			node.embeds = all_embeds
 			mut emnames := map[string]int{}
 			mut emnames_ds := map[string]bool{}

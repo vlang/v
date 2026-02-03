@@ -720,10 +720,10 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		}
 		// ast.ArrayInit {}
 		// ast.PrefixExpr {
-		//	c.note('prefixexpr: $expr', expr.pos)
+		//	c.note('prefixexpr: ${expr}', expr.pos)
 		// }
 		else {
-			// eprintln('>>> nlevel: $nlevel | another $expr.type_name() | $expr ')
+			// eprintln('>>> nlevel: ${nlevel} | another ${expr.type_name()} | ${expr} ')
 			return none
 		}
 	}

@@ -4,4 +4,4 @@ vlib/v/checker/tests/assign_expr_undefined_err_l.vv:29:6: error: undefined varia
    29 |         i: poo.result()
       |            ~~~
    30 |     }
-   31 |      println('$poo')
+   31 |      println('${poo}')

@@ -530,7 +530,7 @@ fn check_on_curve(points ...Point) bool {
 		}
 		/*
 		if lhs.equal(rhs) != 1 {
-			lg.error('X, Y, and Z do not specify a point on the curve\nX = $p.x \nY = $p.y\nZ = $p.z')
+			lg.error('X, Y, and Z do not specify a point on the curve\nX = ${p.x} \nY = ${p.y}\nZ = ${p.z}')
 		}*/
 
 		// xy = T/Z
@@ -538,7 +538,7 @@ fn check_on_curve(points ...Point) bool {
 		rhs.multiply(p.z, p.t)
 		/*
 		if lhs.equal(rhs) != 1 {
-			lg.error('point $i is not valid\nX = $p.x\nY = $p.y\nZ = $p.z')
+			lg.error('point ${i} is not valid\nX = ${p.x}\nY = ${p.y}\nZ = ${p.z}')
 		}*/
 		if lhs.equal(rhs) != 1 {
 			return false

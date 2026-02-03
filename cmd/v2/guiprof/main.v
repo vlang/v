@@ -4,6 +4,7 @@
 module main
 
 import gg
+import os
 import v2.profiler
 
 fn main() {
@@ -13,8 +14,17 @@ fn main() {
 	// Create application state (on stack, like the working example)
 	mut app := App{}
 
-	// Initialize with demo data
-	init_demo_data(mut app)
+	// Check command line args for mode
+	args := os.args
+	if '--demo' in args {
+		app.demo_mode = true
+		app.live_mode = false
+		init_demo_data(mut app)
+	} else {
+		// Default to live mode - read from snapshot file
+		app.demo_mode = false
+		app.live_mode = true
+	}
 
 	// Create gg context
 	app.gg = gg.new_context(

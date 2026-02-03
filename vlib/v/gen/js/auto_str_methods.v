@@ -497,10 +497,10 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		} else if sym.kind == .rune {
 			g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(it.val) + "\`");')
 			// Rune are managed at this level as strings
-			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
+			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\`"), ${c.si_s_code}, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
 		} else if sym.kind == .string {
 			g.definitions.writeln('\t\tlet x = new string(it);')
-			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\'"), $c.si_s_code, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
+			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\'"), ${c.si_s_code}, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
 		} else {
 			// There is a custom .str() method, so use it.
 			// Note: we need to take account of whether the user has defined
@@ -617,7 +617,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	} else if key_sym.kind == .rune {
 		g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(key.val) + "\`");')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')
-		// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, $tmp_str);')
+		// g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${tmp_str});')
 	} else {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${key_str_fn_name}(key));')
 	}
@@ -625,7 +625,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	if val_sym.kind == .function {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
-		// tmp_str := str_intp_sq('*($val_styp*)DenseArray_value(&m.key_values, i)')
+		// tmp_str := str_intp_sq('*(${val_styp}*)DenseArray_value(&m.key_values, i)')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,new string("\'" + value.str + "\'"));')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
@@ -784,7 +784,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		fn_builder.writeln('')
 	}
 	fn_builder.writeln('res.str += "\\n}"')
-	//	fn_builder.writeln('\t\t{new string("\\n"), $c.si_s_code, {.d_s=indents}}, {new string("}"), 0, {.d_c=0}},')
+	//	fn_builder.writeln('\t\t{new string("\\n"), ${c.si_s_code}, {.d_s=indents}}, {new string("}"), 0, {.d_c=0}},')
 	fn_builder.writeln('\treturn res;')
 	fn_builder.writeln('}')
 }

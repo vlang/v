@@ -17,7 +17,7 @@ fn testsuite_begin() {
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder) or {}
 	assert os.is_dir(tfolder)
-	// println('args_at_start: $args_at_start')
+	// println('args_at_start: ${args_at_start}')
 	assert args_at_start.len > 0
 	assert args_at_start == os.args
 }
@@ -26,7 +26,7 @@ fn testsuite_end() {
 	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
 	// assert !os.is_dir(tfolder)
-	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
+	// eprintln('testsuite_end  , tfolder = ${tfolder} removed.')
 }
 
 fn test_open_file() {
@@ -100,8 +100,8 @@ fn test_open_file_binary() {
 // 	}
 // 	f.close()
 // 	//
-// 	eprintln('line1: $line1 $line1.bytes()')
-// 	eprintln('line2: $line2 $line2.bytes()')
+// 	eprintln('line1: ${line1} ${line1.bytes()}')
+// 	eprintln('line2: ${line2} ${line2.bytes()}')
 // 	assert line1 == 'line 1\n'
 // 	assert line2 == 'line 2'
 // }
@@ -187,8 +187,8 @@ fn test_write_and_read_bytes() {
 	// We only need to test read_bytes because this function calls
 	// read_bytes_at with second parameter zeroed (size, 0).
 	rbytes := file_read.read_bytes(5)
-	// eprintln('rbytes: $rbytes')
-	// eprintln('payload: $payload')
+	// eprintln('rbytes: ${rbytes}')
+	// eprintln('payload: ${payload}')
 	assert rbytes == payload
 	// check that trying to read data from EOF doesn't error and returns 0
 	mut a := []u8{len: 5}
@@ -881,7 +881,7 @@ fn test_stdout_capture() {
 cmd.start()
 for !cmd.eof {
 	line := cmd.read_line()
-	println('line="$line"')
+	println('line="${line}"')
 }
 cmd.close()
 	*/
@@ -1018,10 +1018,10 @@ fn test_execute() {
 	}
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
 	hexresult := result.output.hex()
-	// println('exit_code: $result.exit_code')
-	// println('output: |$result.output|')
-	// println('output.len: $result.output.len')
-	// println('output hexresult: $hexresult')
+	// println('exit_code: ${result.exit_code}')
+	// println('output: |${result.output}|')
+	// println('output.len: ${result.output.len}')
+	// println('output hexresult: ${hexresult}')
 	assert result.exit_code == 0
 	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
@@ -1097,7 +1097,7 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 		eprintln('skipping test_mv_by_cp, because bindfs was not present')
 		return
 	}
-	// eprintln('>> $bindfs')
+	// eprintln('>> ${bindfs}')
 	pfolder := os.join_path(tfolder, 'parent')
 	cfolder := os.join_path(pfolder, 'child')
 	mfolder := os.join_path(pfolder, 'mountpoint')
@@ -1110,7 +1110,7 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 	target_path := os.join_path(cdeepfolder, 'target.txt')
 	os.write_file(original_path, 'text')!
 	os.write_file(os.join_path(cdeepfolder, 'x.txt'), 'some text')!
-	// os.system('tree $pfolder')
+	// os.system('tree ${pfolder}')
 	/*
 	/tmp/v_1000/v/tests/os_test/parent
 	├── child
@@ -1124,7 +1124,7 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 	defer {
 		os.system('sync; umount ${mfolder}')
 	}
-	// os.system('tree $pfolder')
+	// os.system('tree ${pfolder}')
 	/*
 	/tmp/v_1000/v/tests/os_test/parent
 	├── child

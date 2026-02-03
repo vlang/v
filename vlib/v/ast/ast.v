@@ -259,7 +259,7 @@ pub:
 	pos      token.Pos
 }
 
-// 'name: $name'
+// 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string
@@ -727,7 +727,7 @@ pub mut:
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
 	//
-	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some $x $y')`,
+	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`
 	// Note: the same type, has to support also a .write_decimal(n i64) method.
 }

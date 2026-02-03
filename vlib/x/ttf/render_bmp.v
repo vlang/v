@@ -115,7 +115,7 @@ pub fn (mut bmp BitMap) exec_filler() {
 		if bmp.filler[y].len > 0 {
 			bmp.filler[y].sort()
 			if bmp.filler[y].len & 1 != 0 {
-				// dprintln("even line!! $y => ${bmp.filler[y]}")
+				// dprintln("even line!! ${y} => ${bmp.filler[y]}")
 				continue
 			}
 			mut index := 0
@@ -340,7 +340,7 @@ pub fn (mut bmp BitMap) line(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) 
 	x1 := int(in_x1)
 	y0 := int(in_y0)
 	y1 := int(in_y1)
-	// dprintln("line[$x0,$y0,$x1,$y1]")
+	// dprintln("line[${x0},${y0},${x1},${y1}]")
 
 	mut x := x0
 	mut y := y0
@@ -381,7 +381,7 @@ pub fn (mut bmp BitMap) line(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) 
 		// bmp.plot(x, y, u32(0xFF00))
 		bmp.plot(x, y, c)
 
-		// dprintln("$x $y [$x0,$y0,$x1,$y1]")
+		// dprintln("${x} ${y} [${x0},${y0},${x1},${y1}]")
 		if x == x1 && y == y1 {
 			break
 		}
@@ -439,7 +439,7 @@ pub fn (mut bmp BitMap) quadratic(in_x0 int, in_y0 int, in_x1 int, in_y1 int, in
 	// division = 0.1   // 10 division
 	// division = 0.25  // 4 division
 
-	// dprintln("div: $division")
+	// dprintln("div: ${division}")
 
 	/*
 	----- Bezier quadratic form -----
@@ -510,10 +510,10 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		}
 
 		ax, ay := bmp.tf.next_kern(c_index)
-		// dprintln("char_index: $c_index ax: $ax ay: $ay")
+		// dprintln("char_index: ${c_index} ax: ${ax} ay: ${ay}")
 
 		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
-		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
+		// dprintln("metrics: [${u16(chr):c}] cw:${cw} lsb:${lsb}")
 
 		//----- Calc Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
@@ -581,10 +581,10 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 			continue
 		}
 		ax, ay := bmp.tf.next_kern(c_index)
-		// dprintln("char_index: $c_index ax: $ax ay: $ay")
+		// dprintln("char_index: ${c_index} ax: ${ax} ay: ${ay}")
 
 		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
-		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
+		// dprintln("metrics: [${u16(chr):c}] cw:${cw} lsb:${lsb}")
 
 		//----- Calc Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
@@ -612,7 +612,7 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 		i += c_len
 	}
 
-	// dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
+	// dprintln("y_min: ${bmp.tf.y_min} y_max: ${bmp.tf.y_max} res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	// buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
 	return w, int(math.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
@@ -680,11 +680,11 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		}
 
 		ax, ay := bmp.tf.next_kern(c_index)
-		// dprintln("char_index: $c_index ax: $ax ay: $ay")
+		// dprintln("char_index: ${c_index} ax: ${ax} ay: ${ay}")
 
 		cw, _ := bmp.tf.get_horizontal_metrics(u16(chr))
 		// cw, lsb := bmp.tf.get_horizontal_metrics(u16(chr))
-		// dprintln("metrics: [${u16(chr):c}] cw:$cw lsb:$lsb")
+		// dprintln("metrics: [${u16(chr):c}] cw:${cw} lsb:${lsb}")
 
 		//----- Draw_Glyph transformations -----
 		mut x0 := w + int(ax * bmp.scale)
@@ -713,7 +713,7 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		i += c_len
 	}
 
-	// dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
+	// dprintln("y_min: ${bmp.tf.y_min} y_max: ${bmp.tf.y_max} res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	// buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
 	return w, int(math.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
@@ -745,7 +745,7 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 	mut point := Point{}
 
 	for count, point_raw in glyph.points {
-		// dprintln("count: $count, state: $s pl:$glyph.points.len")
+		// dprintln("count: ${count}, state: ${s} pl:${glyph.points.len}")
 		point.x = point_raw.x
 		point.y = point_raw.y
 
