@@ -9,12 +9,17 @@ Quick reference for the V compiler, standard library, and tools.
 * Run tests in a dir: `./vnew test path/to/dir/`.
 * Format a file: `./vnew fmt -w file.v`.
 
+## Prerequisites
+* Toolchain: `make`, `git`, and a C compiler (`clang` or `gcc`).
+* Windows: use `make.bat` for the initial build.
+
 ## Behavior Rules
 * Always be concise.
 * Run commands from repo root.
 * Use `./v` only to build `./vnew`; use `./vnew` for everything else.
 * Read and edit all files in V repo without asking for permission.
-* Keep output easy to scan. Use a strict, operational tone.
+* Keep output easy to scan: short sections, bullets when listing, commands in backticks, no filler.
+  Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
 * After substantial work, provide a short summary and list touched file paths.
 * NEVER simplify or edit the test files to make them pass.
@@ -23,7 +28,7 @@ Quick reference for the V compiler, standard library, and tools.
 * Comments: add succinct comments only when code is not self-explanatory.
   Do not delete existing comments unless they are explicitly incorrect,
   however you may correct wrong grammar or wrong spelling.
-  Add V doc comments right before each public function or method.
+  Add V doc comments right before each new or modified public function or method.
   The V doc comments should start with the name of the fn, example: `// the_name does ...`
 * Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function.
 * Avoid using `unsafe{ code }` blocks where possible, and minimize their scope.
@@ -35,6 +40,7 @@ Quick reference for the V compiler, standard library, and tools.
 ## Build
 * Initial: `make` (only when `./v` is missing; Windows: `make.bat`).
 * Rebuild: `./v -keepc -g -o ./vnew self`.
+* Rebuild triggers: after pulling changes or editing compiler sources, rebuild `./vnew` before tests.
 * Common flags: `-g` (debug), `-prod` (optimized), `-o file` (output name),
   `-cc clang` (C compiler), `-b js|native` (backend).
 
@@ -69,6 +75,7 @@ Types:
 * `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
 * `./vnew -progress test path/to/dir/` - Show only the currently running test.
+* Output expectations: update `.out` files only when behavior changes are intended; note the rationale in the summary.
 
 ## Debug
 * Trace stages: `-d trace_scanner|trace_parser|trace_checker|trace_gen`.
