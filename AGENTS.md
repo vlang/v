@@ -4,7 +4,8 @@ Quick reference for the V compiler, standard library, and tools.
 
 ## Quick Start
 * Build once (only if `./v` is missing): `make` (Windows: `make.bat`).
-* Rebuild compiler: `./v -keepc -g -o ./vnew self`.
+* Build `./vnew` (if missing or after compiler changes; see Build):
+  `./v -keepc -g -o ./vnew self`.
 * Run a file: `./vnew run file.v`.
 * Run tests in a dir: `./vnew test path/to/dir/`.
 * Format a file: `./vnew fmt -w file.v`.
@@ -15,9 +16,13 @@ Quick reference for the V compiler, standard library, and tools.
 
 ## Behavior Rules
 * Always be concise.
+* If the user asks for in-depth detail, provide it while keeping structure tight and scan-friendly.
 * Run commands from repo root.
+  Assume `pwd` is repo root in this environment unless stated otherwise.
+  Verify with `pwd` if unsure.
 * Use `./v` only to build `./vnew`; use `./vnew` for everything else.
 * Read and edit all files in V repo without asking for permission.
+* Only modify files required for the user request; avoid unrelated refactors.
 * Keep output easy to scan: short sections, bullets when listing, commands in backticks, no filler.
   Use a strict, operational tone.
 * Ask only when required. If information is missing, ask a direct question.
@@ -32,6 +37,7 @@ Quick reference for the V compiler, standard library, and tools.
   The V doc comments should start with the name of the fn, example: `// the_name does ...`
 * Copy pasta: avoid copy pasta. If there's duplicate logic, move to a function.
 * Avoid using `unsafe{ code }` blocks where possible, and minimize their scope.
+* Format only files you touched with `./vnew fmt -w file.v`.
 
 ## Safety
 * Never run `./v self`. It overwrites the working binary.
@@ -40,7 +46,9 @@ Quick reference for the V compiler, standard library, and tools.
 ## Build
 * Initial: `make` (only when `./v` is missing; Windows: `make.bat`).
 * Rebuild: `./v -keepc -g -o ./vnew self`.
-* Rebuild triggers: after pulling changes or editing compiler sources, rebuild `./vnew` before tests.
+* Rebuild triggers: after pulling changes or editing compiler sources
+  (`vlib/v/`),
+  rebuild `./vnew` before tests.
 * Common flags: `-g` (debug), `-prod` (optimized), `-o file` (output name),
   `-cc clang` (C compiler), `-b js|native` (backend).
 
@@ -56,11 +64,11 @@ Run:
 * Dir: `./vnew test path/to/dir/`.
 * Dir with statistics/metrics: `./vnew -stats path/to/dir/`.
 * Compiler: `./vnew vlib/v/compiler_errors_test.v`.
-* Fix outputs: `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
+* Fix outputs (only when intended): `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
 * All: `./vnew test-all`.
 
 When:
-* Compiler changes (`scanner|parser|checker|transformer|markused|gen`):
+* Compiler changes (`vlib/v/`):
   Run `./vnew vlib/v/compiler_errors_test.v`, `./vnew test vlib/v/`.
 * vlib changes: Run nearest `*_test.v` or `./vnew test vlib/path/`.
 * Tool changes (`cmd/`): Run tool-specific tests.
@@ -71,11 +79,12 @@ Types:
 * Output: `.vv` source + `.out` expected output in `vlib/v/tests/`.
 
 ### Useful env variables and flags while testing
-* `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice).
+* `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice), only when intended.
 * `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
 * `./vnew -progress test path/to/dir/` - Show only the currently running test.
-* Output expectations: update `.out` files only when behavior changes are intended; note the rationale in the summary.
+* Output expectations: update `.out` files only when behavior changes are intended;
+  note the rationale in the summary.
 
 ## Debug
 * Trace stages: `-d trace_scanner|trace_parser|trace_checker|trace_gen`.
@@ -147,14 +156,17 @@ modules) like v.comptime, v.generics, v.pref, v.reflection, v.callgraph, etc.
 
 ## Environment Variables
 * VFLAGS: Pass flags to all V invocations (e.g., `VFLAGS='-g' ./vnew test-all`).
-* VAUTOFIX: Update test expectations (already mentioned in Test section).
+* VAUTOFIX: Update test expectations, only when intended (already mentioned in Test section).
 * VEXE: Path to V compiler executable (useful in CI/scripts).
 * V2-specific: `V2CC`, `V2CFLAGS`, `V2VERBOSE` (for v2 development).
 
 ## Gotchas
 * Core modules (`builtin`, `strings`, `os`, `strconv`, `time`) affect compiler.
 * Output tests require exact matches; whitespace changes break tests.
-* Always format before committing: `./vnew fmt -w` and `./vnew check-md`.
+* Format touched files before committing: `./vnew fmt -w file.v` and
+  `./vnew check-md file.md` when markdown changes.
 * C compilation errors? Check generated C with `-keepc` (creates `/tmp/*.tmp.c`).
-* Broken compiler? Run `git stash`, then `make`, then `git stash apply` to
-  rebuild V from a clean slate.
+* Broken compiler? First rebuild `./vnew` with `./v -keepc -g -o ./vnew self`.
+  Check `git status` before stashing to avoid hiding unrelated changes.
+  As a last resort, run `git stash`, then `make`, then `git stash apply`
+  to rebuild V from a clean slate.
