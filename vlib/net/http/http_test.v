@@ -77,3 +77,26 @@ fn test_relative_redirects() {
 	assert res.body != ''
 	assert res.body.contains('"abc": "xyz"')
 }
+
+fn test_default_user_agent() {
+	$if !network ? {
+		return
+	}
+	res := http.get('https://httpbin.org/user-agent') or { panic(err) }
+	assert res.status() == .ok
+	assert res.body != ''
+	assert res.body.contains('"user-agent": "v.http"')
+}
+
+fn test_custom_user_agent() {
+	$if !network ? {
+		return
+	}
+	ua := 'V http test for UA'
+	mut req := http.new_request(.get, 'https://httpbin.org/user-agent', '')
+	req.user_agent = ua
+	res := req.do() or { panic(err) }
+	assert res.status() == .ok
+	assert res.body != ''
+	assert res.body.contains('"user-agent": "${ua}"')
+}
