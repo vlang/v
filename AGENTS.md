@@ -35,6 +35,8 @@ Quick reference for the V compiler, standard library, and tools.
 * This guide assumes agents run locally, not in CI; CI notes are informational only.
 * Reports must include behavior change, tests run, and touched file paths.
 * If instructions overlap, prefer Build & Rebuild, Testing, and Reporting.
+* If duplicates drift, treat Build & Rebuild, Testing, and Reporting as canonical
+  and align other sections to them.
 
 ## Agent Rules
 * Be concise by default; expand only when asked for depth.
@@ -45,9 +47,10 @@ Quick reference for the V compiler, standard library, and tools.
   Using per-command working directories is OK; keep paths correct.
   Default to repo root; use per-command workdir only when needed.
   Prefer repo root unless a task requires a subdir.
-* Use `./v` only to build `./vnew`; use `./vnew` for everything else.
+* Bootstrap/compiler usage rules: see Top Rules and Build & Rebuild.
 * Read and edit all files in V repo without asking for permission.
-  Permission here refers to access, not change scope; still ask before wide refactors.
+  Permission here means file access, not change scope; scope is constrained below.
+  Follow the scope rules and ask before wide touches.
 * Only modify files required for the user request; avoid unrelated refactors.
   If duplication is already harmful, small refactors to remove it are OK when
   they are directly needed to deliver the request.
@@ -55,10 +58,18 @@ Quick reference for the V compiler, standard library, and tools.
   Do so only if it directly supports the user request or fixes a bug there.
   "Touching" means files already modified for the request.
 * Avoid unrelated file changes; call them out if present.
+* Avoid touching `thirdparty/` unless explicitly requested. If changes are
+  needed there, call it out before proceeding.
 * Ask before large refactors or wide file touches (more than 5 files, or changes
   across multiple repo-root directories like `cmd/`, `vlib/`, `doc/`, `examples/`).
   Exception: docs-only changes across many files are OK without asking;
   call them out in the summary.
+* Ask before large behavioral changes within a single subsystem or file, even
+  if the file count is small. Examples: changes to parser rules, checker
+  resolution, codegen output shape, or tool CLI behavior.
+* Ask before touching `ci/` or `Dockerfile*` unless explicitly requested.
+  If changes are needed there, confirm whether local validation is expected or
+  if CI-only coverage is acceptable.
 * If you cannot complete a requested step, state the blocker and partial progress
   (what was attempted and what remains).
 * Keep output easy to scan: short sections, bullets when listing, commands in backticks, no filler.
@@ -72,7 +83,8 @@ Quick reference for the V compiler, standard library, and tools.
 * For deeper edge cases, consult `CONTRIBUTING.md` and `TESTS.md`.
 * New file checklist: format with `./vnew fmt -w`, add doc comments for any
   public functions, run `./vnew check-md` for markdown files, and keep
-  Markdown lines <= 100 chars.
+  Markdown lines <= 100 chars. Add or update tests when introducing a new
+  public API.
 
 ## Divergences From Repo Docs
 The repo docs use `v` in examples. In this environment:
@@ -83,12 +95,12 @@ These overrides exist to keep agent workflows reproducible and to avoid
 breaking the bootstrap compiler.
 
 ## Quick Decisions
-* Rebuild `./vnew` after compiler or core module changes (see Build & Rebuild).
-* Pick the smallest relevant tests; use Testing for triggers and locations.
+* For rebuild and test choices, follow Build & Rebuild and Testing.
 * Follow Common Workflow for the default execution order.
 
 ## Common Workflow
 0. Before work: `git status`; ensure `./vnew` exists; rebuild if needed.
+   If `./vnew` is missing, see Build & Rebuild for the exact command sequence.
 1. Edit the relevant files.
 2. If compiler sources or core modules changed, rebuild `./vnew` with
    `./v -g -keepc -o ./vnew self` (see Build & Rebuild).
@@ -106,13 +118,24 @@ See Build & Rebuild for rebuild triggers and flags.
   * Note doc updates if public behavior/tool output changed.
 * If public behavior or tool output changes, update relevant docs
   (README.md, `doc/`, `tutorials/`) and note it.
+* If you add or change a public API, update module docs or README and note it.
+  Public API includes stdlib functions/types and user-visible compiler flags,
+  diagnostics, tool CLI behavior (including `cmd/tools` and stdlib CLI tools),
+  or output formats.
+* Update `CHANGELOG.md` or `ROADMAP.md` only when explicitly requested.
 * Public behavior includes compiler output, diagnostics, user-facing CLI, and stdlib API.
+  This includes developer-facing flags, error codes, or output ordering changes.
+* Internal refactors with no public behavior change do not require doc updates.
+* If unsure whether behavior is public, ask the user before updating docs.
 * Acceptable reasons for not running tests: docs-only change, no relevant tests,
   or environment constraints. Be specific.
 * Docs-only changes: run `./vnew check-md file.md`; no other tests required unless
   the docs are directly exercised by tests.
+  No rebuild is needed unless compiler or core modules changed.
 * For docs-only, explicitly mention `check-md` in the summary.
 * If you update `.out` files, state the rationale in the summary.
+* Do not update `.out` files unless a behavior change is intended; otherwise
+  treat mismatches as regressions.
 * Example summary line: `Behavior change: none` or `Behavior change: fixed X`.
 * Behavior change includes output, API, error messages, and test expectations.
 * If blocked, note what was attempted and why it failed.
@@ -130,6 +153,7 @@ See Build & Rebuild for rebuild triggers and flags.
   `./v -g -keepc -o ./vnew self`.
 * Never run `./v self` directly; only build `./vnew` with the command above.
 * If `./v` is missing, run `make` first, then build `./vnew`.
+* If `./vnew` is missing but `./v` exists, run `./v -g -keepc -o ./vnew self`.
 * This section is the source of truth for rebuild triggers.
   If a rule appears elsewhere, defer to this section.
 * Rebuild triggers:
@@ -214,6 +238,9 @@ Run:
 When:
 * Rule of thumb: for localized changes, run the smallest relevant tests.
   If any trigger below matches, run the listed tests.
+* If unsure which tests apply, ask the user before proceeding.
+* If multiple triggers apply, run the smallest targeted tests first, then add
+  slow tests as needed. Run all tests that apply; order does not matter.
 * Compiler changes (`vlib/v/`):
   Run `./vnew vlib/v/compiler_errors_test.v`, `./vnew test vlib/v/`.
 * vlib changes: Run nearest `*_test.v` or `./vnew test vlib/path/`.
@@ -344,6 +371,8 @@ modules) like v.comptime, v.generics, v.pref, v.reflection, v.callgraph, etc.
   Run only when asked or when validating the full tree.
 * Check markdown: `./vnew check-md file.md` for touched `.md` files.
 * Code style checker: `./vnew vet vlib/v`
+  Run only when asked or when making broad checker changes (more than 3 files
+  in `vlib/v/checker/`).
 * Module docs: `./vnew doc -readme -all -l module_name`.
 * Search: `rg pattern` (or `git grep`); list files: `rg --files`.
 * Auto-format hook: `./vnew git-fmt-hook install`.
