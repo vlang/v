@@ -1281,7 +1281,19 @@ fn (mut g Gen) styp(t ast.Type) string {
 }
 
 fn (mut g Gen) base_type(_t ast.Type) string {
-	t := g.unwrap_generic(_t)
+	mut t := g.unwrap_generic(_t)
+	// Safeguard: if unwrap_generic didn't convert because the generic flag wasn't set,
+	// but the symbol name is a generic name, force the conversion
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 && g.cur_concrete_types.len > 0 {
+		sym := g.table.sym(t)
+		if sym.name in g.cur_fn.generic_names {
+			if utyp := g.table.convert_generic_type(t.set_flag(.generic), g.cur_fn.generic_names,
+				g.cur_concrete_types)
+			{
+				t = utyp
+			}
+		}
+	}
 	if styp := g.styp_cache[t] {
 		return styp
 	}
@@ -1448,13 +1460,22 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
-	g.options[base] = styp
+	// Only skip registration if the computed base is still an unresolved generic type name
+	// (base_type should have resolved generics, but check to be safe)
+	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	if !is_unresolved_generic {
+		g.options[base] = styp
+	}
 	return if !t.has_flag(.option_mut_param_t) { styp } else { '${styp}*' }
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
 	styp, base := g.result_type_name(t)
-	g.results[base] = styp
+	// Only skip registration if the computed base is still an unresolved generic type name
+	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	if !is_unresolved_generic {
+		g.results[base] = styp
+	}
 	return styp
 }
 
@@ -1664,6 +1685,16 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 			}
 		}
 		done << opt_el_type
+		// Ensure the option type is registered for typedef generation
+		// Only add if this styp is not already registered (to avoid duplicates with different bases)
+		option_prefix := option_name + '_'
+		if opt_el_type.starts_with(option_prefix) {
+			already_registered := opt_el_type in g.options.values()
+			if !already_registered {
+				base := opt_el_type[option_prefix.len..]
+				g.options[base] = opt_el_type
+			}
+		}
 		g.channel_definitions.writeln('
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
 	${opt_el_type} _tmp = {0};
@@ -2379,21 +2410,23 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	} else {
 		g.go_before_last_stmt().trim_space()
 	}
-	mut styp := g.base_type(ret_typ)
+	// mut styp := g.base_type(ret_typ)
+	unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+	mut styp := g.base_type(unwrapped_ret_typ)
 	g.empty_line = true
-	final_expr_sym := g.table.final_sym(expr_typ)
+	final_expr_sym := g.table.final_sym(g.unwrap_generic(expr_typ))
 	mut expected_type := ret_typ
-
 	if final_expr_sym.kind == .none {
-		g.write('${g.styp(ret_typ)} ${tmp_var} = ')
-		g.gen_option_error(ret_typ, expr)
+		g.write('${g.styp(unwrapped_ret_typ)} ${tmp_var} = ')
+		g.gen_option_error(unwrapped_ret_typ, expr)
 		g.writeln(';')
 	} else if expr is ast.Ident && expr_typ == ast.error_type {
-		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
+		g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
-		expr_typ_is_option := expr_typ.has_flag(.option)
-		ret_typ_is_option := ret_typ.has_flag(.option)
+		unwrapped_expr_typ := g.unwrap_generic(expr_typ)
+		expr_typ_is_option := unwrapped_expr_typ.has_flag(.option)
+		ret_typ_is_option := unwrapped_ret_typ.has_flag(.option)
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
@@ -2408,16 +2441,14 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					}
 				}
 			}
-			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
-			styp = g.base_type(unwrapped_ret_typ)
 			ret_styp := g.styp(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
-			if ret_typ.has_flag(.option_mut_param_t) {
-				ret_styp := g.styp(ret_typ).replace('*', '')
+			if unwrapped_ret_typ.has_flag(.option_mut_param_t) {
+				ret_styp := g.styp(unwrapped_ret_typ).replace('*', '')
 				g.writeln('${ret_styp} ${tmp_var};')
 			} else {
-				g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+				g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var};')
 			}
 		}
 		mut expr_is_fixed_array_var := false

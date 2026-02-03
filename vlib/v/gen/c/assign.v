@@ -126,8 +126,9 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			defer {
 				g.past_tmp_var_done(past)
 			}
-			styp := g.base_type(ret_typ)
-			decl_styp := g.styp(ret_typ).replace('*', '_ptr')
+			unwrapped_ret := g.unwrap_generic(ret_typ)
+			styp := g.base_type(unwrapped_ret)
+			decl_styp := g.styp(unwrapped_ret).replace('*', '_ptr')
 			g.writeln('${decl_styp} ${past.tmp_var};')
 			is_none := expr is ast.CastExpr && expr.expr is ast.None
 			if is_none {
@@ -167,11 +168,14 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && !g.is_arraymap_set
+	unwrapped_expr_typ := g.unwrap_generic(expr_typ)
+	unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+	if unwrapped_expr_typ.has_flag(.option) && unwrapped_ret_typ.has_flag(.option)
+		&& !g.is_arraymap_set
 		&& expr in [ast.SelectorExpr, ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
-			if expr_typ.idx() != ret_typ.idx() {
-				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
+			if unwrapped_expr_typ.idx() != unwrapped_ret_typ.idx() {
+				return g.expr_opt_with_cast(expr, unwrapped_expr_typ, unwrapped_ret_typ)
 			}
 		}
 		g.expr(expr)
@@ -182,7 +186,8 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 	} else {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var, true)
+		g.expr_with_tmp_var(expr, unwrapped_expr_typ, unwrapped_ret_typ, tmp_out_var,
+			true)
 		return tmp_out_var
 	}
 	return ''
