@@ -10,22 +10,46 @@ import v2.types
 fn create_test_transformer() &Transformer {
 	env := &types.Environment{}
 	return &Transformer{
-		env:               unsafe { env }
-		flag_enum_names:   map[string]bool{}
-		var_enum_types:    map[string]string{}
-		param_types:       map[string]string{}
-		var_types:         map[string]string{}
-		fn_return_types:   map[string]string{}
-		fn_returns_result: map[string]string{}
-		fn_returns_option: map[string]string{}
+		env: unsafe { env }
+	}
+}
+
+// Helper to create a transformer with a scope containing variable types
+fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
+	env := &types.Environment{}
+	mut scope := types.new_scope(unsafe { nil })
+	for name, typ in vars {
+		// Insert Type directly as Object (Type is part of Object sum type)
+		scope.insert(name, typ)
+	}
+	return &Transformer{
+		env:   unsafe { env }
+		scope: scope
+	}
+}
+
+// Create a string-like type that returns 'string' from name()
+fn string_type() types.Type {
+	return types.Alias{
+		name: 'string'
+	}
+}
+
+// Create a rune-like type that returns 'rune' from name()
+fn rune_type() types.Type {
+	return types.Alias{
+		name: 'rune'
 	}
 }
 
 fn test_array_comparison_eq() {
-	mut t := create_test_transformer()
 	// Set up variable types so infer_array_type can detect them
-	t.var_types['arr1'] = 'Array_int'
-	t.var_types['arr2'] = 'Array_int'
+	mut t := create_transformer_with_vars({
+		'arr1': types.Type(types.Array{ elem_type: types.int_ })
+		'arr2': types.Type(types.Array{
+			elem_type: types.int_
+		})
+	})
 
 	// Create: arr1 == arr2
 	expr := ast.InfixExpr{
@@ -50,9 +74,12 @@ fn test_array_comparison_eq() {
 }
 
 fn test_array_comparison_ne() {
-	mut t := create_test_transformer()
-	t.var_types['arr1'] = 'Array_int'
-	t.var_types['arr2'] = 'Array_int'
+	mut t := create_transformer_with_vars({
+		'arr1': types.Type(types.Array{ elem_type: types.int_ })
+		'arr2': types.Type(types.Array{
+			elem_type: types.int_
+		})
+	})
 
 	// Create: arr1 != arr2
 	expr := ast.InfixExpr{
@@ -78,10 +105,11 @@ fn test_array_comparison_ne() {
 }
 
 fn test_array_comparison_non_array_passthrough() {
-	mut t := create_test_transformer()
-	// Variables not in var_types, so not detected as arrays
-	t.var_types['x'] = 'int'
-	t.var_types['y'] = 'int'
+	// Variables with non-array types
+	mut t := create_transformer_with_vars({
+		'x': types.Type(types.int_)
+		'y': types.Type(types.int_)
+	})
 
 	// Create: x == y (non-array comparison)
 	expr := ast.InfixExpr{
@@ -101,8 +129,9 @@ fn test_array_comparison_non_array_passthrough() {
 }
 
 fn test_infer_array_type_from_var() {
-	mut t := create_test_transformer()
-	t.var_types['my_arr'] = 'Array_string'
+	mut t := create_transformer_with_vars({
+		'my_arr': types.Type(types.Array{ elem_type: string_type() })
+	})
 
 	expr := ast.Ident{
 		name: 'my_arr'
@@ -112,12 +141,13 @@ fn test_infer_array_type_from_var() {
 		assert false, 'expected array type to be inferred'
 		return
 	}
-	assert result == 'Array_string'
+	assert result == 'Array_string', 'expected Array_string, got ${result}'
 }
 
 fn test_infer_array_type_from_slice() {
-	mut t := create_test_transformer()
-	t.var_types['arr'] = 'Array_rune'
+	mut t := create_transformer_with_vars({
+		'arr': types.Type(types.Array{ elem_type: rune_type() })
+	})
 
 	// Create: arr[0..5] (slice expression)
 	expr := ast.IndexExpr{
