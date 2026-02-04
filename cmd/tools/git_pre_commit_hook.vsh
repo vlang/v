@@ -49,7 +49,7 @@ fn main() {
 	}
 	configured_stop_committing := os.execute('git config --bool hooks.stopCommitOfNonVfmtedVFiles')
 	if configured_stop_committing.output.trim_space().bool() {
-		verify_result := os.execute('v fmt -verify ${vfiles.join(' ')}')
+		verify_result := os.execute('${os.quoted_path(@VEXE)} fmt -verify ${vfiles.join(' ')}')
 		if verify_result.exit_code != 0 {
 			eprintln(verify_result.output)
 		}

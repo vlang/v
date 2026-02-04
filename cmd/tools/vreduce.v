@@ -355,9 +355,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 			text_code = create_code(sc)
 			os.write_file(rpdc_file_path, text_code) or { panic(err) }
 			if do_fmt {
-				os.execute('v fmt -w ${rpdc_file_path}')
-				final_content := os.read_file(rpdc_file_path) or { panic(err) }
-				show_code_stats(final_content, label: 'Code size after formatting')
+				vfmt_file(rpdc_file_path)
 			}
 			println('The WIP reduced code is now in ${rpdc_file_path}')
 		}
@@ -433,9 +431,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 			text_code = create_code(line_tree)
 			os.write_file(rpdc_file_path, text_code) or { panic(err) }
 			if do_fmt {
-				os.execute('v fmt -w ${rpdc_file_path}')
-				final_content := os.read_file(rpdc_file_path) or { panic(err) }
-				show_code_stats(final_content, label: 'Code size after formatting')
+				vfmt_file(rpdc_file_path)
 			}
 			println('The WIP reduced code is now in ${rpdc_file_path}')
 		}
@@ -445,11 +441,15 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 		'string_reproduces', @LOCATION)
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
 	if do_fmt {
-		os.execute('v fmt -w ${rpdc_file_path}')
-		final_content := os.read_file(rpdc_file_path) or { panic(err) }
-		show_code_stats(final_content, label: 'Code size after formatting')
+		vfmt_file(rpdc_file_path)
 	}
 	println('The reduced code is now in ${rpdc_file_path}')
+}
+
+fn vfmt_file(rpdc_file_path string) {
+	os.execute('${os.quoted_path(@VEXE)} fmt -w ${rpdc_file_path}')
+	final_content := os.read_file(rpdc_file_path) or { panic(err) }
+	show_code_stats(final_content, label: 'Code size after formatting')
 }
 
 @[params]

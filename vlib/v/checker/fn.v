@@ -1433,7 +1433,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			tmp_c_file_with_includes.write_string(includes.join('\n')) or { panic(err) }
 			tmp_c_file_with_includes.close()
 
-			os.execute('v translate fndef ${name[2..]} tmp.c')
+			os.execute('${os.quoted_path(@VEXE)} translate fndef ${name[2..]} tmp.c')
 			x := os.read_file('__cdefs_autogen.v') or {
 				for mut arg in node.args {
 					c.expr(mut arg.expr)
