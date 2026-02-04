@@ -81,13 +81,13 @@ mut:
 	cur_sumtype_match_type         string                // Sum type name (e.g., "ast__Expr")
 	cur_sumtype_match_selector_lhs string                // For SelectorExpr: LHS ident (e.g., "se" for se.lhs)
 	cur_sumtype_match_selector_rhs string                // For SelectorExpr: RHS field (e.g., "lhs" for se.lhs)
-	cur_lambda_elem_type           string                      // Element type for lambda `it` variable in filter/map/any
+	cur_lambda_elem_type           string                // Element type for lambda `it` variable in filter/map/any
 	// For -printfn support
-	last_fn_c_name              string                      // Current function's C name for -printfn
-	fn_start_pos                int                         // Start position of current function in output buffer
-	collected_map_types         map[string]MapTypeInfo      // Collected map types from AST traversal
-	collected_array_types       map[string]bool             // Collected array types from AST traversal (e.g., "Array_int")
-	collected_fixed_array_types map[string]FixedArrayInfo   // Fixed array types with element type and size
+	last_fn_c_name              string                    // Current function's C name for -printfn
+	fn_start_pos                int                       // Start position of current function in output buffer
+	collected_map_types         map[string]MapTypeInfo    // Collected map types from AST traversal
+	collected_array_types       map[string]bool           // Collected array types from AST traversal (e.g., "Array_int")
+	collected_fixed_array_types map[string]FixedArrayInfo // Fixed array types with element type and size
 }
 
 pub fn Gen.new(files []ast.File) &Gen {
@@ -100,35 +100,35 @@ pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	mut g := &Gen{
-		files:                 files
-		env:                   unsafe { env }
-		pref:                  unsafe { p }
-		sb:                    strings.new_builder(4096)
-		fn_types:              map[string]string{}
-		fn_ret_counts:         map[string]int{}
-		var_types:             map[string]string{}
-		mut_receivers:         map[string]bool{}
-		ref_receivers:         map[string]bool{}
-		enum_names:            map[string]bool{}
-		flag_enum_names:       map[string]bool{}
-		interface_names:       map[string]bool{}
-		interface_meths:       map[string][]string{}
-		interface_meth_params: map[string]map[string][]string{}
-		type_methods:          map[string][]string{}
-		struct_fields:         map[string]map[string]string{}
-		file_modules:          map[string]string{}
-		module_names:          map[string]bool{}
-		import_aliases:        map[string]string{}
-		module_types:          map[string]map[string]bool{}
-		params_structs:        map[string]bool{}
-		fn_params:             map[string][]string{}
-		fn_ptr_typedefs:       map[string]ast.FnType{}
-		fn_ptr_modules:        map[string]string{}
-		type_aliases:          map[string]string{}
-		type_ids:              map[string]int{}
-		next_type_id:          1 // Start from 1, 0 means "no type" or error
-		sum_type_names:        map[string]bool{}
-		sum_type_variants:     map[string][]string{}
+		files:                       files
+		env:                         unsafe { env }
+		pref:                        unsafe { p }
+		sb:                          strings.new_builder(4096)
+		fn_types:                    map[string]string{}
+		fn_ret_counts:               map[string]int{}
+		var_types:                   map[string]string{}
+		mut_receivers:               map[string]bool{}
+		ref_receivers:               map[string]bool{}
+		enum_names:                  map[string]bool{}
+		flag_enum_names:             map[string]bool{}
+		interface_names:             map[string]bool{}
+		interface_meths:             map[string][]string{}
+		interface_meth_params:       map[string]map[string][]string{}
+		type_methods:                map[string][]string{}
+		struct_fields:               map[string]map[string]string{}
+		file_modules:                map[string]string{}
+		module_names:                map[string]bool{}
+		import_aliases:              map[string]string{}
+		module_types:                map[string]map[string]bool{}
+		params_structs:              map[string]bool{}
+		fn_params:                   map[string][]string{}
+		fn_ptr_typedefs:             map[string]ast.FnType{}
+		fn_ptr_modules:              map[string]string{}
+		type_aliases:                map[string]string{}
+		type_ids:                    map[string]int{}
+		next_type_id:                1 // Start from 1, 0 means "no type" or error
+		sum_type_names:              map[string]bool{}
+		sum_type_variants:           map[string][]string{}
 		collected_map_types:         map[string]MapTypeInfo{}
 		collected_array_types:       map[string]bool{}
 		collected_fixed_array_types: map[string]FixedArrayInfo{}
@@ -1698,7 +1698,7 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if name.starts_with('[]') {
 				elem_type := name[2..]
 				// Recursively convert the element type
-				elem_c := g.expr_type_to_c(ast.Ident{name: elem_type})
+				elem_c := g.expr_type_to_c(ast.Ident{ name: elem_type })
 				return 'Array_${sanitize_type_for_mangling(elem_c)}'
 			}
 			// Return the actual V type aliases (they are defined in the C preamble)
@@ -2094,7 +2094,8 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 				if map_type.starts_with('Map_') {
 					rest := map_type['Map_'.len..] // K_V
 					// Use known key types to find the split point
-					key_types := ['int_', 'string_', 'i64_', 'u64_', 'bool_', 'u8_', 'i8_', 'i16_', 'u16_', 'i32_', 'u32_', 'rune_']
+					key_types := ['int_', 'string_', 'i64_', 'u64_', 'bool_', 'u8_', 'i8_', 'i16_',
+						'u16_', 'i32_', 'u32_', 'rune_']
 					for key_prefix in key_types {
 						if rest.starts_with(key_prefix) {
 							value_type := rest[key_prefix.len..] // e.g., types__Scopeptr
@@ -2365,7 +2366,8 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 		}
 		ast.InfixExpr {
 			// Comparison, containment, and type-check operators return bool
-			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .key_in, .not_in, .and, .logical_or, .key_is, .not_is] {
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .key_in, .not_in, .and, .logical_or, .key_is,
+				.not_is] {
 				return 'bool'
 			}
 			return g.infer_type(node.lhs)
@@ -2402,7 +2404,8 @@ fn (mut g Gen) infer_type(node ast.Expr) string {
 					// Check both the temp __match_val and the original variable name (e.g., 'stmt')
 					if g.cur_sumtype_match_var != '__selector__'
 						&& (node.lhs.name == g.cur_sumtype_match_var
-						|| (g.cur_sumtype_match_orig != '' && node.lhs.name == g.cur_sumtype_match_orig)) {
+						|| (g.cur_sumtype_match_orig != ''
+						&& node.lhs.name == g.cur_sumtype_match_orig)) {
 						is_match = true
 					}
 					// Selector expression match (e.g., se.lhs in `if se.lhs is Type`)
@@ -2699,7 +2702,8 @@ fn operator_to_name(op string) string {
 fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 	// Skip C stdlib functions that would conflict (but only for standalone functions in builtin, not methods)
 	// Note: strconv.atoi is fine - it becomes strconv__atoi which doesn't conflict with C's atoi
-	if !node.is_method && node.name in c_stdlib_fns && (g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin') {
+	if !node.is_method && node.name in c_stdlib_fns
+		&& (g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin') {
 		return ''
 	}
 	// Convert operator names to valid C identifiers
@@ -3521,7 +3525,8 @@ fn (g Gen) is_simple_literal(e ast.Expr) bool {
 			// Allow arithmetic on literals/consts: degree - 1, 2 * degree - 1, 1 << n
 			if e.op in [.plus, .minus, .mul, .div, .mod, .left_shift, .right_shift, .amp, .pipe,
 				.xor] {
-				return g.is_simple_literal_or_const_ref(e.lhs) && g.is_simple_literal_or_const_ref(e.rhs)
+				return g.is_simple_literal_or_const_ref(e.lhs)
+					&& g.is_simple_literal_or_const_ref(e.rhs)
 			}
 			return false
 		}
@@ -4017,8 +4022,8 @@ fn (mut g Gen) gen_sumtype_wrap(sumtype_name string, variant_type string, expr a
 	short_variant := variant_type.all_after_last('__')
 	variant_field := '_${short_variant}'
 	g.sb.write_string('(${sumtype_name}){._tag = ${tag_value}, ._data.${variant_field} = ')
-	if variant_type in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8',
-		'byte', 'rune', 'bool', 'f32', 'f64', 'usize', 'isize'] {
+	if variant_type in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune',
+		'bool', 'f32', 'f64', 'usize', 'isize'] {
 		// Primitives: store value in pointer space via intptr_t cast
 		g.sb.write_string('(void*)(intptr_t)(')
 		g.gen_expr(expr)
@@ -5328,7 +5333,8 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					// Find the key type (common patterns: string_, int_, i64_, u64_, bool_)
 					mut key_type := ''
 					mut val_type := ''
-					key_patterns := ['string_', 'int_', 'i64_', 'u64_', 'bool_', 'u8_', 'i8_', 'i16_', 'u16_', 'i32_', 'u32_', 'rune_']
+					key_patterns := ['string_', 'int_', 'i64_', 'u64_', 'bool_', 'u8_', 'i8_',
+						'i16_', 'u16_', 'i32_', 'u32_', 'rune_']
 					for kp in key_patterns {
 						if rest.starts_with(kp) {
 							key_type = kp[..kp.len - 1] // Remove trailing _
@@ -5345,7 +5351,8 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							'(${val_type}){0}'
 						} else if val_type == 'string' {
 							'(string){"", 0}'
-						} else if val_type in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool', 'rune'] {
+						} else if val_type in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
+							'u64', 'bool', 'rune'] {
 							'0'
 						} else {
 							'(${val_type}){0}'

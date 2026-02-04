@@ -707,7 +707,6 @@ fn (h &TypeHolder) lookup_enum(name string) ?EnumType {
 	return none
 }
 
-
 // ===================== MAIN TEST FUNCTION =====================
 
 fn main() {
@@ -3274,12 +3273,12 @@ fn main() {
 	// Clone via nested selector (wrapper.holder.data.clone())
 	mut cloned_arr := wrap.holder.data.clone()
 	print_int(cloned_arr.len) // 3
-	print_int(cloned_arr[0])  // 10
-	print_int(cloned_arr[2])  // 30
+	print_int(cloned_arr[0]) // 10
+	print_int(cloned_arr[2]) // 30
 
 	// Verify clone is independent - modify cloned array
 	cloned_arr[0] = 99
-	print_int(cloned_arr[0])       // 99 (modified)
+	print_int(cloned_arr[0]) // 99 (modified)
 	print_int(wrap.holder.data[0]) // 10 (original unchanged)
 
 	// 60. Map indexing with push (map[key] << value)
@@ -3291,11 +3290,11 @@ fn main() {
 	pl.labels[5] << 100 // First push to key 5 - creates new array
 	pl.labels[5] << 200 // Second push to same key
 	pl.labels[10] << 50 // Push to different key
-	print_int(pl.labels[5].len)  // 2
-	print_int(pl.labels[5][0])   // 100
-	print_int(pl.labels[5][1])   // 200
+	print_int(pl.labels[5].len) // 2
+	print_int(pl.labels[5][0]) // 100
+	print_int(pl.labels[5][1]) // 200
 	print_int(pl.labels[10].len) // 1
-	print_int(pl.labels[10][0])  // 50
+	print_int(pl.labels[10][0]) // 50
 
 	// ==================== 61. MUTABLE SLICE ARGUMENTS ====================
 	print_str('--- 61. Mutable slice arguments ---')
@@ -3371,7 +3370,10 @@ fn main() {
 	// if obj := container.method() { ... } - method returning optional
 
 	// 63.1 Method returning optional - found case
-	dc := DataContainer{value: 42, name: 'test'}
+	dc := DataContainer{
+		value: 42
+		name:  'test'
+	}
 	if val := dc.lookup('test') {
 		print_int(val) // 42
 	}
@@ -3384,7 +3386,10 @@ fn main() {
 	}
 
 	// 63.3 Nested method call with if-guard
-	dc2 := DataContainer{value: 777, name: 'found'}
+	dc2 := DataContainer{
+		value: 777
+		name:  'found'
+	}
 	mut result63 := 0
 	if v := dc2.lookup('found') {
 		result63 = v
@@ -3399,8 +3404,14 @@ fn main() {
 
 	// 64.1 Setup type_holder with struct and enum types
 	type_holder := TypeHolder{
-		struct_type: StructType{name: 'Point', fields: 2}
-		enum_type:   EnumType{name: 'Color', variants: 3}
+		struct_type: StructType{
+			name:   'Point'
+			fields: 2
+		}
+		enum_type:   EnumType{
+			name:     'Color'
+			variants: 3
+		}
 	}
 
 	// 64.2 lookup_struct - found case (asking for 'struct' returns the struct type)
@@ -3447,9 +3458,18 @@ fn main() {
 
 	// 65.1 Create map with pointer values
 	mut intervals := map[int]&Point{}
-	intervals[1] = &Point{x: 10, y: 100}
-	intervals[2] = &Point{x: 20, y: 200}
-	intervals[3] = &Point{x: 30, y: 300}
+	intervals[1] = &Point{
+		x: 10
+		y: 100
+	}
+	intervals[2] = &Point{
+		x: 20
+		y: 200
+	}
+	intervals[3] = &Point{
+		x: 30
+		y: 300
+	}
 
 	// 65.2 Iterate over map and collect pointer values
 	mut sum_x := 0
@@ -3539,7 +3559,10 @@ fn main() {
 	}
 
 	// 68.2 Basic is-check with Point variant
-	num2 := Number(Point{x: 10, y: 20})
+	num2 := Number(Point{
+		x: 10
+		y: 20
+	})
 	if num2 is Point {
 		print_int(num2.x) // 10 (smartcasted to Point, access field)
 		print_int(num2.y) // 20
@@ -3556,7 +3579,10 @@ fn main() {
 	}
 
 	// 68.4 Negative is-check - Point is not int
-	num4 := Number(Point{x: 5, y: 6})
+	num4 := Number(Point{
+		x: 5
+		y: 6
+	})
 	if num4 is int {
 		print_int(num4)
 	} else {
@@ -3564,7 +3590,10 @@ fn main() {
 	}
 
 	// 68.5 Smartcast with computation
-	num5 := Number(Point{x: 3, y: 4})
+	num5 := Number(Point{
+		x: 3
+		y: 4
+	})
 	if num5 is Point {
 		sum := num5.x + num5.y
 		print_int(sum) // 7
@@ -3573,7 +3602,10 @@ fn main() {
 	// 68.6 Compound is-check with && and field access
 	// Tests: if x is Type && x.field == value { ... }
 	// This requires smartcast to be applied in compound conditions
-	num6 := Number(Point{x: 42, y: 100})
+	num6 := Number(Point{
+		x: 42
+		y: 100
+	})
 	if num6 is Point && num6.x == 42 {
 		print_int(num6.y) // 100 (smartcast applied in compound &&)
 	} else {
@@ -3581,7 +3613,10 @@ fn main() {
 	}
 
 	// 68.7 Compound is-check that fails the field check
-	num7 := Number(Point{x: 10, y: 20})
+	num7 := Number(Point{
+		x: 10
+		y: 20
+	})
 	if num7 is Point && num7.x == 999 {
 		print_int(-1) // Should not reach here
 	} else {
@@ -3651,7 +3686,10 @@ fn main() {
 	}
 
 	// 70.2 Match on Point variant with field access
-	num70b := Number(Point{x: 7, y: 8})
+	num70b := Number(Point{
+		x: 7
+		y: 8
+	})
 	match num70b {
 		int {
 			print_int(-1)
@@ -3663,7 +3701,10 @@ fn main() {
 	}
 
 	// 70.3 Match with computation on Point variant
-	num70c := Number(Point{x: 5, y: 5})
+	num70c := Number(Point{
+		x: 5
+		y: 5
+	})
 	match num70c {
 		int {
 			print_int(num70c + 1)
@@ -3687,7 +3728,10 @@ fn main() {
 	print_int(result70) // 198
 
 	// 70.5 Match on Point with result assignment
-	num70e := Number(Point{x: 3, y: 4})
+	num70e := Number(Point{
+		x: 3
+		y: 4
+	})
 	result70e := match num70e {
 		int {
 			-1
@@ -3723,7 +3767,10 @@ fn main() {
 	}
 
 	// 71.2 Nested smartcast: match outer, if-is inner (Point variant)
-	nested2 := NestedOuter(Number(Point{x: 7, y: 8}))
+	nested2 := NestedOuter(Number(Point{
+		x: 7
+		y: 8
+	}))
 	match nested2 {
 		Number {
 			// nested2 is smartcasted to Number
@@ -3755,7 +3802,10 @@ fn main() {
 	}
 
 	// 71.4 Nested smartcast with computation
-	nested4 := NestedOuter(Number(Point{x: 5, y: 6}))
+	nested4 := NestedOuter(Number(Point{
+		x: 5
+		y: 6
+	}))
 	match nested4 {
 		Number {
 			if nested4 is Point {
@@ -3883,7 +3933,10 @@ fn main() {
 	users76[3] = true
 	for user_id, _ in users76 {
 		if user_id > 1 {
-			errors76 << Error76{msg: 'user', val_id: user_id}
+			errors76 << Error76{
+				msg:    'user'
+				val_id: user_id
+			}
 		}
 	}
 	print_int(errors76.len) // 2 - two errors added
@@ -3915,7 +3968,10 @@ fn main() {
 		else {}
 	}
 
-	num77b := Number(Point{x: 10, y: 20})
+	num77b := Number(Point{
+		x: 10
+		y: 20
+	})
 	match num77b {
 		Point {
 			// num77b is smartcast to Point here, but process_number expects Number

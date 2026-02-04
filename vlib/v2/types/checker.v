@@ -23,7 +23,7 @@ pub mut:
 	cur_generic_types []map[string]Type
 	// Expression types - maps position to computed type for direct access
 	// This simplifies the type system by storing types directly rather than through scopes
-	expr_types        map[int]Type
+	expr_types map[int]Type
 }
 
 pub fn Environment.new() &Environment {
@@ -496,7 +496,11 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			}, .struct_decl)
 			// c.log('struct decl: ${decl.name}')
 			// Don't qualify C types
-			qualified_name := if decl.language == .c { decl.name } else { c.qualify_type_name(decl.name) }
+			qualified_name := if decl.language == .c {
+				decl.name
+			} else {
+				c.qualify_type_name(decl.name)
+			}
 			obj := Struct{
 				name: qualified_name
 				// fields: [Field{name: 'len', typ: ast.Ident{name: 'int'}}]

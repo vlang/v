@@ -78,7 +78,7 @@ fn test_basic_literal_bool_false() {
 }
 
 fn test_basic_literal_char() {
-	env := check_code("fn main() { x := `a` }")
+	env := check_code('fn main() { x := `a` }')
 	assert has_type(env, 'char'), 'char literal should have char type'
 }
 
