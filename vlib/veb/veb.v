@@ -77,6 +77,7 @@ pub:
 	port                      int  = default_port
 	show_startup_message      bool = true
 	timeout_in_seconds        int  = 30
+	max_request_buffer_size   int  = 8192
 	benchmark_page_generation bool // for the "page rendered in X ms"
 }
 

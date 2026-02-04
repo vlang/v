@@ -34,8 +34,9 @@ struct C.epoll_event {
 
 struct Server {
 pub:
-	port                    int = 3000
-	max_request_buffer_size int = 8192
+	family                  net.AddrFamily = .ip6
+	port                    int            = 3000
+	max_request_buffer_size int            = 8192
 	user_data               voidptr
 mut:
 	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size}
@@ -50,6 +51,7 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('max_request_buffer_size must be greater than 0')
 	}
 	mut server := &Server{
+		family:                  config.family
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
 		user_data:               config.user_data
@@ -92,9 +94,9 @@ fn close_socket(fd int) bool {
 	return true
 }
 
-fn create_server_socket(port int) int {
+fn create_server_socket(server Server) int {
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
+	server_fd := C.socket(server.family, net.SocketType.tcp, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
@@ -118,7 +120,7 @@ fn create_server_socket(port int) int {
 		return -1
 	}
 
-	addr := net.new_ip(u16(port), [u8(0), 0, 0, 0]!)
+	addr := net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
 	alen := addr.len()
 	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
@@ -225,19 +227,54 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 				continue
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
-				bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
-					0)
-				if bytes_read > 0 {
+				// Read all available data from the socket
+				mut total_bytes_read := 0
+				mut readed_request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
+
+				for {
+					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
+						0)
+					if bytes_read < 0 {
+						if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
+							// No more data available right now
+							break
+						}
+						// Error occurred
+						eprintln('ERROR: recv() failed with errno=${C.errno}')
+						break
+					} else if bytes_read == 0 {
+						// Connection closed by client
+						break
+					}
+
+					// Append the received data to the buffer
+					if total_bytes_read + bytes_read > server.max_request_buffer_size {
+						// Buffer size exceeded
+						break
+					}
+					unsafe {
+						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
+					}
+					total_bytes_read += bytes_read
+
+					// Check if we've received the complete HTTP request (look for \r\n\r\n)
+					if total_bytes_read >= 4 {
+						if readed_request_buffer[total_bytes_read - 4] == `\r`
+							&& readed_request_buffer[total_bytes_read - 3] == `\n`
+							&& readed_request_buffer[total_bytes_read - 2] == `\r`
+							&& readed_request_buffer[total_bytes_read - 1] == `\n` {
+							break
+						}
+					}
+				}
+
+				if total_bytes_read > 0 {
 					// Check if request exceeds buffer size
-					if bytes_read >= server.max_request_buffer_size - 1 {
+					if total_bytes_read >= server.max_request_buffer_size - 1 {
 						C.send(client_fd, status_413_response.data, status_413_response.len,
 							C.MSG_NOSIGNAL)
 						handle_client_closure(epoll_fd, client_fd)
 						continue
-					}
-					mut readed_request_buffer := []u8{cap: bytes_read}
-					unsafe {
-						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
 					}
 					mut decoded_http_request := decode_http_request(readed_request_buffer) or {
 						eprintln('Error decoding request ${err}')
@@ -340,10 +377,10 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 						C.close(fd)
 					}
 					// Leave the connection open; closure is driven by client FIN or errors
-				} else if bytes_read == 0 {
+				} else if total_bytes_read == 0 {
 					// Normal client closure (FIN received)
 					handle_client_closure(epoll_fd, client_fd)
-				} else if bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
+				} else if total_bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
@@ -361,7 +398,7 @@ pub fn (mut server Server) run() ! {
 		return
 	}
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.listen_fds[i] = create_server_socket(server.port)
+		server.listen_fds[i] = create_server_socket(server)
 		if server.listen_fds[i] < 0 {
 			return
 		}
@@ -383,7 +420,7 @@ pub fn (mut server Server) run() ! {
 		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
-	println('listening on http://localhost:${server.port}/')
+	println('listening on http://0.0.0.0:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()

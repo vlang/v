@@ -71,8 +71,9 @@ pub:
 // ServerConfig bundles the parameters needed to start a fasthttp server.
 pub struct ServerConfig {
 pub:
-	port                    int = 3000
-	max_request_buffer_size int = 8192
+	family                  net.AddrFamily = .ip6
+	port                    int            = 3000
+	max_request_buffer_size int            = 8192
 	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
 }
