@@ -1563,13 +1563,40 @@ fn (mut g Gen) register_thread_void_wait_call() {
 	g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
 	if g.pref.os == .windows {
 		g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+		g.gowrappers.writeln('\tif (stat != WAIT_OBJECT_0) { builtin___v_panic(_S("error waiting thread")); }')
 	} else {
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
+		g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("error waiting thread")); }')
 	}
-	g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("unable to join thread")); }')
+	g.gowrappers.writeln('}')
+}
+
+fn (mut g Gen) register_thread_wait_call(eltyp string) {
+	thread_typ := '__v_thread_${eltyp}'
+	fn_name := '${thread_typ}_wait'
+	lock g.waiter_fns {
+		if fn_name in g.waiter_fns {
+			return
+		}
+		g.waiter_fns << fn_name
+		g.waiter_fn_definitions.writeln('${eltyp} ${fn_name}(${thread_typ} thread);')
+	}
+	g.gowrappers.writeln('${eltyp} ${fn_name}(${thread_typ} thread) {')
+	g.gowrappers.writeln('\t${eltyp} res;')
 	if g.pref.os == .windows {
-		g.gowrappers.writeln('\tCloseHandle(thread);')
+		g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
+		g.gowrappers.writeln('\tif (stat != WAIT_OBJECT_0) { builtin___v_panic(_S("error waiting thread")); }')
+		g.gowrappers.writeln('\tCloseHandle(thread.handle);')
+		g.gowrappers.writeln('\tres = *(${eltyp}*)(thread.ret_ptr);')
+		g.gowrappers.writeln('\tbuiltin___v_free(thread.ret_ptr);')
+	} else {
+		g.gowrappers.writeln('\tvoid* ret_val;')
+		g.gowrappers.writeln('\tint stat = pthread_join(thread, &ret_val);')
+		g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("error waiting thread")); }')
+		g.gowrappers.writeln('\tres = *(${eltyp}*)ret_val;')
+		g.gowrappers.writeln('\tbuiltin___v_free(ret_val);')
 	}
+	g.gowrappers.writeln('\treturn res;')
 	g.gowrappers.writeln('}')
 }
 
@@ -1599,6 +1626,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 	}
 }')
 		} else {
+			g.register_thread_wait_call(eltyp)
 			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
@@ -1641,12 +1669,13 @@ fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp st
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
 	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
-		${thread_typ} t = ((${thread_typ}*)a)[i];
+		${thread_typ} t = a[i];
 		if (t == 0) continue;
 		__v_thread_wait(t);
 	}
 }')
 		} else {
+			g.register_thread_wait_call(eltyp)
 			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {

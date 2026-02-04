@@ -159,7 +159,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else if is_generic_default {
-			g.write(g.type_default(node.typ))
+			default_val := g.type_default(node.typ)
+			if default_val == '{0}' {
+				g.write('(${styp}){0}')
+			} else {
+				g.write(default_val)
+			}
 		} else {
 			g.write('(${styp}){')
 		}
