@@ -1,35 +1,45 @@
 // Simple HTTP/3 Server Example
-// Demonstrates basic HTTP/3 server usage with QUIC
+// Demonstrates basic HTTP/3 server structure and usage with QUIC
+//
+// Note: This example requires full QUIC implementation:
+// 1. QUIC library with OpenSSL 3.0+ QUIC support
+// 2. TLS 1.3 certificates
+// 3. UDP socket handling
+//
+// Current status: QUIC implementation is in progress.
+// This example shows the API structure and will gracefully handle missing dependencies.
+//
+// To generate test certificates:
+//   openssl req -x509 -newkey rsa:2048 -nodes \
+//     -keyout server.key -out server.crt -days 365 \
+//     -subj "/CN=localhost"
 import net.http.v3
 
 fn main() {
 	println('=== HTTP/3 Server Example ===\n')
 
-	// Note: This example requires OpenSSL and ngtcp2 libraries
-	// Install with: brew install openssl ngtcp2 (macOS)
-	//            or: apt-get install libssl-dev libngtcp2-dev (Linux)
-
 	// Create HTTP/3 server configuration
-	config := v3.ServerConfig{
-		addr:                     '0.0.0.0:4433' // HTTP/3 typically uses port 443 or 4433
-		max_idle_timeout:         30000          // 30 seconds
-		max_udp_payload_size:     1350
-		initial_max_data:         1048576
-		initial_max_stream_data:  524288
-		initial_max_streams_bidi: 100
+	mut config := v3.ServerConfig{
+		addr:             '0.0.0.0:4433' // HTTP/3 typically uses port 443 or 4433
+		max_idle_timeout: 30000          // 30 seconds
+		max_data:         10485760       // 10MB
+		max_stream_data:  1048576        // 1MB
 		// TLS certificate (required for QUIC)
 		cert_file: 'server.crt'
 		key_file:  'server.key'
 	}
 
-	// Create HTTP/3 server with handler
-	mut server := v3.new_server(config, handle_request) or {
+	// Set request handler
+	config.handler = handle_request
+
+	// Create HTTP/3 server
+	mut server := v3.new_server(config) or {
 		eprintln('Failed to create HTTP/3 server: ${err}')
-		eprintln('\nNote: HTTP/3 requires OpenSSL and ngtcp2 libraries')
-		eprintln('Install with:')
-		eprintln('  macOS:  brew install openssl ngtcp2')
-		eprintln('  Linux:  apt-get install libssl-dev libngtcp2-dev')
-		eprintln('\nAlso need TLS certificate:')
+		eprintln('\nThis is expected - HTTP/3 requires full QUIC implementation.')
+		eprintln('The error message provides details about what is needed.')
+		eprintln('\nNote: OpenSSL 3.0+ with QUIC support is required.')
+		eprintln('      Most systems currently have OpenSSL 1.1.1 which does not support QUIC.')
+		eprintln('\nTo generate test certificates:')
 		eprintln('  openssl req -x509 -newkey rsa:2048 -nodes \\')
 		eprintln('    -keyout server.key -out server.crt -days 365 \\')
 		eprintln('    -subj "/CN=localhost"')
@@ -42,17 +52,17 @@ fn main() {
 	println('Press Ctrl+C to stop\n')
 
 	// Start server (blocks)
-	server.listen_and_serve() or { eprintln('Server error: ${err}') }
+	server.start() or { eprintln('Server error: ${err}') }
 }
 
 // handle_request processes HTTP/3 requests
-fn handle_request(req v3.Request) v3.Response {
+fn handle_request(req v3.ServerRequest) v3.ServerResponse {
 	println('[HTTP/3] ${req.method} ${req.path}')
 
 	// Route requests
 	match req.path {
 		'/' {
-			return v3.Response{
+			return v3.ServerResponse{
 				status_code: 200
 				headers:     {
 					'content-type': 'text/html; charset=utf-8'
@@ -62,7 +72,7 @@ fn handle_request(req v3.Request) v3.Response {
 			}
 		}
 		'/json' {
-			return v3.Response{
+			return v3.ServerResponse{
 				status_code: 200
 				headers:     {
 					'content-type': 'application/json'
@@ -72,7 +82,7 @@ fn handle_request(req v3.Request) v3.Response {
 			}
 		}
 		'/echo' {
-			return v3.Response{
+			return v3.ServerResponse{
 				status_code: 200
 				headers:     {
 					'content-type': 'text/plain'
@@ -82,7 +92,7 @@ fn handle_request(req v3.Request) v3.Response {
 			}
 		}
 		'/stream' {
-			return v3.Response{
+			return v3.ServerResponse{
 				status_code: 200
 				headers:     {
 					'content-type': 'text/plain'
@@ -92,7 +102,7 @@ fn handle_request(req v3.Request) v3.Response {
 			}
 		}
 		else {
-			return v3.Response{
+			return v3.ServerResponse{
 				status_code: 404
 				headers:     {
 					'content-type': 'text/plain'
@@ -151,7 +161,7 @@ fn json_response() []u8 {
 	return json.bytes()
 }
 
-fn echo_response(req v3.Request) []u8 {
+fn echo_response(req v3.ServerRequest) []u8 {
 	mut response := 'HTTP/3 Echo Response\n'
 	response += '===================\n\n'
 	response += 'Method: ${req.method}\n'

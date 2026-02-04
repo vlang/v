@@ -46,22 +46,38 @@ fn test_path_info_creation() {
 }
 
 fn test_connection_migration_probe_path() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 
 	// Probe new path
-	new_local := net.resolve_ipaddr('10.0.0.50', .ip, .udp) or {
+	new_local_addrs := net.resolve_addrs('10.0.0.50', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if new_local_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	new_local := new_local_addrs[0]
 	new_path := migration.probe_path(new_local, remote_addr) or {
 		assert false, 'Failed to probe path: ${err}'
 		return
@@ -75,60 +91,97 @@ fn test_connection_migration_probe_path() {
 }
 
 fn test_connection_migration_max_paths() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 	migration.max_paths = 2
 
 	// Add paths up to limit
-	new_local1 := net.resolve_ipaddr('10.0.0.50', .ip, .udp) or {
+	new_local1_addrs := net.resolve_addrs('10.0.0.50', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if new_local1_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	new_local1 := new_local1_addrs[0]
 	migration.probe_path(new_local1, remote_addr) or {
 		assert false, 'Failed to probe path 1'
 		return
 	}
 
-	new_local2 := net.resolve_ipaddr('10.0.0.51', .ip, .udp) or {
+	new_local2_addrs := net.resolve_addrs('10.0.0.51', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if new_local2_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	new_local2 := new_local2_addrs[0]
 	migration.probe_path(new_local2, remote_addr) or {
 		assert false, 'Failed to probe path 2'
 		return
 	}
 
 	// Should fail when exceeding max
-	new_local3 := net.resolve_ipaddr('10.0.0.52', .ip, .udp) or {
+	new_local3_addrs := net.resolve_addrs('10.0.0.52', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	result := migration.probe_path(new_local3, remote_addr)
-
-	if result is PathInfo {
-		assert false, 'Should have failed with max paths error'
+	if new_local3_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	new_local3 := new_local3_addrs[0]
+	migration.probe_path(new_local3, remote_addr) or {
+		// Expected to fail due to max paths limit
+		println('✓ Connection migration max paths test passed')
+		return
 	}
 
-	println('✓ Connection migration max paths test passed')
+	assert false, 'Should have failed with max paths error'
 }
 
 fn test_path_degradation_detection() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	migration := new_connection_migration(local_addr, remote_addr)
 
@@ -148,14 +201,25 @@ fn test_path_degradation_detection() {
 }
 
 fn test_migration_stats() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 
@@ -190,14 +254,25 @@ fn test_migration_stats() {
 }
 
 fn test_migration_controller() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	policy := MigrationPolicy{
 		auto_migrate_on_network_change: true
@@ -215,21 +290,37 @@ fn test_migration_controller() {
 }
 
 fn test_handle_nat_rebinding() {
-	local_addr := net.resolve_ipaddr('192.168.1.100', .ip, .udp) or {
+	addrs := net.resolve_addrs('192.168.1.100', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
-	remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	if addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	local_addr := addrs[0]
+
+	remote_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if remote_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	remote_addr := remote_addrs[0]
 
 	mut migration := new_connection_migration(local_addr, remote_addr)
 
-	new_remote_addr := net.resolve_ipaddr('203.0.113.1', .ip, .udp) or {
+	new_remote_addr_addrs := net.resolve_addrs('203.0.113.1', .ip, .udp) or {
 		println('  ⚠️ Skipping test: Cannot resolve address')
 		return
 	}
+	if new_remote_addr_addrs.len == 0 {
+		println('  ⚠️ Skipping test: No addresses resolved')
+		return
+	}
+	new_remote_addr := new_remote_addr_addrs[0]
 	migration.handle_nat_rebinding(new_remote_addr) or {
 		assert false, 'NAT rebinding failed: ${err}'
 		return

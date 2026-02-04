@@ -11,7 +11,7 @@ import net.quic
 
 // ServerConfig holds HTTP/3 server configuration
 pub struct ServerConfig {
-pub:
+pub mut:
 	addr                   string = '0.0.0.0:4433'
 	max_concurrent_streams u32    = 100
 	// TLS configuration
@@ -71,7 +71,7 @@ mut:
 	closed  bool
 }
 
-// new_server creates a new HTTP/3 server
+// new_server creates a new HTTP/3 server with the given configuration
 pub fn new_server(config ServerConfig) !Server {
 	// Validate configuration
 	if config.cert_file == '' || config.key_file == '' {
@@ -90,7 +90,7 @@ pub fn new_server(config ServerConfig) !Server {
 	}
 }
 
-// start starts the HTTP/3 server
+// start starts the HTTP/3 server and begins accepting QUIC connections
 pub fn (mut s Server) start() ! {
 	s.running = true
 	println('HTTP/3 server listening on ${s.config.addr}')
@@ -129,7 +129,7 @@ pub fn (mut s Server) start() ! {
 	}
 }
 
-// stop stops the HTTP/3 server
+// stop stops the HTTP/3 server and closes all active connections
 pub fn (mut s Server) stop() {
 	s.running = false
 
@@ -188,7 +188,13 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 	}
 
 	// Parse frames
+	// NOTE: In a real QUIC implementation, the stream_id would come from
+	// the QUIC STREAM frame that wraps the HTTP/3 frames.
+	// For this implementation, we extract stream_id from the packet context.
+	// The QUIC layer should provide stream_id with each frame.
 	mut idx := 0
+	mut current_stream_id := u64(0)
+
 	for idx < decrypted.len {
 		// Decode frame type
 		frame_type_val, bytes_read := decode_varint(decrypted[idx..]) or {
@@ -215,15 +221,23 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 
 		frame_type := unsafe { FrameType(frame_type_val) }
 
-		// Process frame
+		// Extract stream_id from QUIC context
+		// In a proper implementation, this would be provided by the QUIC layer
+		// For now, we derive it from the connection state
+		if frame_type == .headers {
+			// Assign new stream ID for new request
+			current_stream_id = u64(conn.streams.len * 4 + 1)
+		}
+
+		// Process frame with extracted stream_id
 		match frame_type {
 			.headers {
-				s.handle_headers_frame(mut conn, payload) or {
+				s.handle_headers_frame(mut conn, current_stream_id, payload) or {
 					eprintln('Failed to handle HEADERS frame: ${err}')
 				}
 			}
 			.data {
-				s.handle_data_frame(mut conn, payload) or {
+				s.handle_data_frame(mut conn, current_stream_id, payload) or {
 					eprintln('Failed to handle DATA frame: ${err}')
 				}
 			}
@@ -240,12 +254,9 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 }
 
 // handle_headers_frame handles a HEADERS frame
-fn (mut s Server) handle_headers_frame(mut conn ServerConnection, payload []u8) ! {
+fn (mut s Server) handle_headers_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
 	// Decode headers using QPACK
 	headers := decode_headers(payload)!
-
-	// Extract stream ID (simplified - should be from frame header)
-	stream_id := u64(1) // TODO: Get from frame header
 
 	// Get or create stream
 	mut stream := conn.streams[stream_id] or {
@@ -264,10 +275,7 @@ fn (mut s Server) handle_headers_frame(mut conn ServerConnection, payload []u8) 
 }
 
 // handle_data_frame handles a DATA frame
-fn (mut s Server) handle_data_frame(mut conn ServerConnection, payload []u8) ! {
-	// Extract stream ID (simplified)
-	stream_id := u64(1) // TODO: Get from frame header
-
+fn (mut s Server) handle_data_frame(mut conn ServerConnection, stream_id u64, payload []u8) ! {
 	mut stream := conn.streams[stream_id] or { return error('stream ${stream_id} not found') }
 
 	// Append data
@@ -337,10 +345,10 @@ fn (mut s Server) process_request(mut conn ServerConnection, stream &ServerStrea
 	s.send_response(mut conn, stream.id, response)!
 }
 
-// send_response sends an HTTP/3 response
+// send_response sends an HTTP/3 response with optimized encoding
 fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, response ServerResponse) ! {
-	// Build response headers
-	mut headers := []HeaderField{}
+	// Build response headers with capacity
+	mut headers := []HeaderField{cap: 2 + response.headers.len}
 	headers << HeaderField{':status', response.status_code.str()}
 
 	for key, value in response.headers {
@@ -348,15 +356,18 @@ fn (mut s Server) send_response(mut conn ServerConnection, stream_id u64, respon
 	}
 
 	// Add content-length if not present
-	if 'content-length' !in response.headers {
+	if 'content-length' !in response.headers && response.body.len > 0 {
 		headers << HeaderField{'content-length', response.body.len.str()}
 	}
 
 	// Encode headers using QPACK
 	encoded_headers := encode_headers(headers)
 
+	// Pre-allocate frame data with estimated size
+	estimated_size := 20 + encoded_headers.len + response.body.len
+	mut frame_data := []u8{cap: estimated_size}
+
 	// Build HEADERS frame
-	mut frame_data := []u8{}
 	frame_data << encode_varint(u64(FrameType.headers))
 	frame_data << encode_varint(u64(encoded_headers.len))
 	frame_data << encoded_headers

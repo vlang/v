@@ -12,7 +12,7 @@ mut:
 	size    int
 }
 
-// new_buffer_pool creates a new buffer pool
+// new_buffer_pool creates a new buffer pool for reducing memory allocations
 pub fn new_buffer_pool(size int, count int) BufferPool {
 	mut buffers := [][]u8{cap: count}
 	for _ in 0 .. count {
@@ -24,7 +24,7 @@ pub fn new_buffer_pool(size int, count int) BufferPool {
 	}
 }
 
-// get gets a buffer from the pool
+// get gets a buffer from the pool or creates a new one if empty
 pub fn (mut p BufferPool) get() []u8 {
 	if p.buffers.len > 0 {
 		buf := p.buffers[p.buffers.len - 1]
@@ -34,7 +34,7 @@ pub fn (mut p BufferPool) get() []u8 {
 	return []u8{len: p.size, cap: p.size}
 }
 
-// put returns a buffer to the pool
+// put returns a buffer to the pool for reuse after clearing it
 pub fn (mut p BufferPool) put(buf []u8) {
 	if buf.cap == p.size {
 		// Clear buffer before returning to pool
@@ -43,7 +43,8 @@ pub fn (mut p BufferPool) put(buf []u8) {
 	}
 }
 
-// Optimized frame encoding with pre-allocated buffer
+// encode_frame_optimized encodes a frame into a pre-allocated buffer for improved performance.
+// Returns the number of bytes written, or 0 if the buffer is too small.
 pub fn encode_frame_optimized(frame Frame, mut buf []u8) int {
 	// Ensure buffer is large enough
 	required_size := 9 + frame.payload.len
@@ -73,7 +74,8 @@ pub fn encode_frame_optimized(frame Frame, mut buf []u8) int {
 	return required_size
 }
 
-// Optimized HPACK encoding with buffer reuse
+// encode_optimized performs HPACK encoding with buffer reuse for better performance.
+// Returns the number of bytes written to the buffer.
 pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int {
 	mut offset := 0
 
@@ -144,7 +146,8 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 	return offset
 }
 
-// Fast integer encoding for variable-length integers
+// encode_int_fast encodes a variable-length integer using fast encoding.
+// Returns the number of bytes written to the buffer.
 pub fn encode_int_fast(value u64, prefix_bits u8, mut buf []u8, offset int) int {
 	max_prefix := (u64(1) << prefix_bits) - 1
 
@@ -187,7 +190,8 @@ pub fn fast_string_equal(a string, b string) bool {
 	return true
 }
 
-// Optimized header field lookup in static table
+// lookup_static_table_fast performs a fast lookup of header fields in the static table.
+// Returns the index of the header field, or 0 if not found.
 pub fn lookup_static_table_fast(name string, value string) int {
 	// Use binary search for common headers
 	match name {
@@ -256,6 +260,7 @@ mut:
 	offset int
 }
 
+// new_frame_buffer creates a new frame buffer with the specified size.
 pub fn new_frame_buffer(size int) FrameBuffer {
 	return FrameBuffer{
 		data:   []u8{len: size, cap: size}
@@ -263,22 +268,30 @@ pub fn new_frame_buffer(size int) FrameBuffer {
 	}
 }
 
+// reset resets the frame buffer offset to zero, making it ready for new data.
+@[inline]
 pub fn (mut fb FrameBuffer) reset() {
 	fb.offset = 0
 }
 
+// write writes data to the frame buffer using bulk copy. Returns false if there is not enough space.
+@[inline]
 pub fn (mut fb FrameBuffer) write(data []u8) bool {
 	if fb.offset + data.len > fb.data.len {
 		return false
 	}
 
-	for i, b in data {
-		fb.data[fb.offset + i] = b
+	if data.len > 0 {
+		unsafe {
+			vmemcpy(&fb.data[fb.offset], data.data, data.len)
+		}
 	}
 	fb.offset += data.len
 	return true
 }
 
+// bytes returns the written bytes from the frame buffer.
+@[inline]
 pub fn (fb FrameBuffer) bytes() []u8 {
 	return fb.data[..fb.offset]
 }
@@ -298,12 +311,14 @@ mut:
 	in_use    bool
 }
 
+// new_connection_pool creates a new connection pool with the specified maximum idle connections.
 pub fn new_connection_pool(max_idle int) ConnectionPool {
 	return ConnectionPool{
 		max_idle: max_idle
 	}
 }
 
+// get retrieves a connection from the pool for the given address if available.
 pub fn (mut cp ConnectionPool) get(addr string) ?&PooledConnection {
 	if addr in cp.connections {
 		mut conn := cp.connections[addr] or { return none }
@@ -315,6 +330,7 @@ pub fn (mut cp ConnectionPool) get(addr string) ?&PooledConnection {
 	return none
 }
 
+// put returns a connection to the pool for reuse.
 pub fn (mut cp ConnectionPool) put(addr string, conn &PooledConnection) {
 	if cp.connections.len < cp.max_idle {
 		cp.connections[addr] = conn
@@ -334,6 +350,7 @@ pub mut:
 	max_time_ms          u64
 }
 
+// record_request records statistics for a single request.
 pub fn (mut s PerformanceStats) record_request(success bool, bytes_sent int, bytes_received int, time_ms u64) {
 	s.total_requests++
 	if success {
@@ -353,6 +370,7 @@ pub fn (mut s PerformanceStats) record_request(success bool, bytes_sent int, byt
 	}
 }
 
+// avg_time_ms calculates and returns the average request time in milliseconds.
 pub fn (s PerformanceStats) avg_time_ms() f64 {
 	if s.total_requests == 0 {
 		return 0.0
@@ -360,6 +378,7 @@ pub fn (s PerformanceStats) avg_time_ms() f64 {
 	return f64(s.total_time_ms) / f64(s.total_requests)
 }
 
+// success_rate calculates and returns the request success rate as a percentage.
 pub fn (s PerformanceStats) success_rate() f64 {
 	if s.total_requests == 0 {
 		return 0.0
@@ -367,6 +386,7 @@ pub fn (s PerformanceStats) success_rate() f64 {
 	return f64(s.successful_requests) / f64(s.total_requests) * 100.0
 }
 
+// print displays the performance statistics to stdout.
 pub fn (s PerformanceStats) print() {
 	println('Performance Statistics:')
 	println('  Total requests: ${s.total_requests}')

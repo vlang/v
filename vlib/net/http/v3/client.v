@@ -30,7 +30,7 @@ pub mut:
 // Settings holds HTTP/3 settings
 pub struct Settings {
 pub mut:
-	max_field_section_size   u64 = 0 // unlimited
+	max_field_section_size   u64
 	qpack_max_table_capacity u64 = 4096
 	qpack_blocked_streams    u64 = 100
 }
@@ -46,6 +46,7 @@ pub enum Method {
 	options
 }
 
+// str returns the string representation of the HTTP method
 pub fn (m Method) str() string {
 	return match m {
 		.get { 'GET' }
@@ -90,7 +91,7 @@ mut:
 	migration_enabled bool = true
 }
 
-// new_client creates a new HTTP/3 client
+// new_client creates a new HTTP/3 client and establishes a QUIC connection
 pub fn new_client(address string) !Client {
 	// Try to create QUIC connection
 	quic_conn := quic.new_connection(
@@ -125,14 +126,14 @@ To enable HTTP/3:
 	}
 }
 
-// request sends an HTTP/3 request
+// request sends an HTTP/3 request and returns the response from the server
 pub fn (mut c Client) request(req SimpleRequest) !SimpleResponse {
 	// Allocate stream ID (client uses odd IDs)
 	stream_id := c.next_stream_id
 	c.next_stream_id += 4 // HTTP/3 uses bidirectional streams
 
-	// Build headers
-	mut headers := []HeaderField{}
+	// Build headers with capacity
+	mut headers := []HeaderField{cap: 4 + req.headers.len}
 	headers << HeaderField{
 		name:  ':method'
 		value: req.method.str()
@@ -260,7 +261,7 @@ fn (mut c Client) read_response(stream_id u64) !SimpleResponse {
 	}
 }
 
-// close closes the HTTP/3 client
+// close closes the HTTP/3 client and terminates the QUIC connection
 pub fn (mut c Client) close() {
 	c.quic_conn.close()
 }
@@ -315,82 +316,4 @@ fn decode_headers(data []u8) ![]HeaderField {
 	}
 
 	return headers
-}
-
-// encode_string encodes a string with length prefix
-fn encode_string(s string) []u8 {
-	mut result := []u8{}
-	result << encode_varint(u64(s.len))
-	result << s.bytes()
-	return result
-}
-
-// decode_string decodes a length-prefixed string
-fn decode_string(data []u8) !(string, int) {
-	length, bytes_read := decode_varint(data)!
-
-	if data.len < bytes_read + int(length) {
-		return error('incomplete string')
-	}
-
-	str_data := data[bytes_read..bytes_read + int(length)]
-	return str_data.bytestr(), bytes_read + int(length)
-}
-
-// encode_varint encodes a variable-length integer (RFC 9000)
-fn encode_varint(value u64) []u8 {
-	if value < 64 {
-		return [u8(value)]
-	} else if value < 16384 {
-		return [u8((value >> 8) | 0x40), u8(value)]
-	} else if value < 1073741824 {
-		return [u8((value >> 24) | 0x80), u8(value >> 16), u8(value >> 8), u8(value)]
-	} else {
-		return [u8((value >> 56) | 0xc0), u8(value >> 48), u8(value >> 40), u8(value >> 32),
-			u8(value >> 24), u8(value >> 16), u8(value >> 8), u8(value)]
-	}
-}
-
-// decode_varint decodes a variable-length integer
-fn decode_varint(data []u8) !(u64, int) {
-	if data.len == 0 {
-		return error('empty data')
-	}
-
-	first := data[0]
-	prefix := first >> 6
-
-	match prefix {
-		0 {
-			// 1-byte encoding
-			return u64(first & 0x3f), 1
-		}
-		1 {
-			// 2-byte encoding
-			if data.len < 2 {
-				return error('incomplete varint')
-			}
-			value := (u64(first & 0x3f) << 8) | u64(data[1])
-			return value, 2
-		}
-		2 {
-			// 4-byte encoding
-			if data.len < 4 {
-				return error('incomplete varint')
-			}
-			value := (u64(first & 0x3f) << 24) | (u64(data[1]) << 16) | (u64(data[2]) << 8) | u64(data[3])
-			return value, 4
-		}
-		3 {
-			// 8-byte encoding
-			if data.len < 8 {
-				return error('incomplete varint')
-			}
-			value := (u64(first & 0x3f) << 56) | (u64(data[1]) << 48) | (u64(data[2]) << 40) | (u64(data[3]) << 32) | (u64(data[4]) << 24) | (u64(data[5]) << 16) | (u64(data[6]) << 8) | u64(data[7])
-			return value, 8
-		}
-		else {
-			return error('invalid varint prefix')
-		}
-	}
 }

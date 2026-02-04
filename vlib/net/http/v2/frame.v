@@ -5,7 +5,7 @@ module v2
 
 import encoding.binary
 
-// HTTP/2 Frame Types (RFC 7540 Section 6)
+// FrameType represents HTTP/2 frame types per RFC 7540 Section 6
 pub enum FrameType as u8 {
 	data          = 0x0
 	headers       = 0x1
@@ -19,7 +19,7 @@ pub enum FrameType as u8 {
 	continuation  = 0x9
 }
 
-// HTTP/2 Frame Flags
+// FrameFlags represents HTTP/2 frame flags per RFC 7540 Section 4.1
 @[_allow_multiple_values]
 pub enum FrameFlags as u8 {
 	none          = 0x0
@@ -30,7 +30,7 @@ pub enum FrameFlags as u8 {
 	priority_flag = 0x20 // HEADERS
 }
 
-// HTTP/2 Error Codes (RFC 7540 Section 7)
+// ErrorCode represents HTTP/2 error codes per RFC 7540 Section 7
 pub enum ErrorCode as u32 {
 	no_error            = 0x0
 	protocol_error      = 0x1
@@ -48,46 +48,44 @@ pub enum ErrorCode as u32 {
 	http_1_1_required   = 0xd
 }
 
-// Frame header constants
+// Frame header constants per RFC 7540
 pub const frame_header_size = 9
 pub const max_frame_size = 16777215 // 2^24 - 1
+pub const default_frame_size = 16384 // 16KB default
 
-pub const default_frame_size = 16384 // 16KB
-
+// HTTP/2 connection preface string
 pub const preface = 'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
-// FrameHeader represents the 9-byte frame header
+// FrameHeader represents the 9-byte HTTP/2 frame header
 pub struct FrameHeader {
 pub mut:
-	length     u32       // 24-bit length
-	frame_type FrameType // 8-bit type
+	length     u32       // 24-bit payload length
+	frame_type FrameType // 8-bit frame type
 	flags      u8        // 8-bit flags
-	stream_id  u32       // 31-bit stream identifier (R bit reserved)
+	stream_id  u32       // 31-bit stream ID (1 bit reserved)
 }
 
-// Frame represents a complete HTTP/2 frame
+// Frame represents a complete HTTP/2 frame with header and payload
 pub struct Frame {
 pub mut:
 	header  FrameHeader
 	payload []u8
 }
 
-// parse_frame_header parses the 9-byte frame header
+// parse_frame_header parses the 9-byte HTTP/2 frame header from raw bytes
 pub fn parse_frame_header(data []u8) !FrameHeader {
 	if data.len < frame_header_size {
-		return error('frame header too short: ${data.len} bytes')
+		return error('frame header too short: ${data.len} bytes, expected ${frame_header_size}')
 	}
 
-	// Parse 24-bit length (big-endian)
+	// Parse 24-bit length in network byte order (big-endian)
 	length := (u32(data[0]) << 16) | (u32(data[1]) << 8) | u32(data[2])
 
-	// Parse frame type
+	// Parse 8-bit frame type and flags
 	frame_type := unsafe { FrameType(data[3]) }
-
-	// Parse flags
 	flags := data[4]
 
-	// Parse 31-bit stream ID (ignore reserved bit)
+	// Parse 31-bit stream ID (mask out reserved bit)
 	stream_id := binary.big_endian_u32(data[5..9]) & 0x7fffffff
 
 	return FrameHeader{
@@ -98,11 +96,11 @@ pub fn parse_frame_header(data []u8) !FrameHeader {
 	}
 }
 
-// encode encodes the frame header to bytes
+// encode encodes the frame header to 9 bytes
 pub fn (h FrameHeader) encode() []u8 {
 	mut buf := []u8{len: frame_header_size}
 
-	// Encode 24-bit length
+	// Encode 24-bit length (big-endian)
 	buf[0] = u8(h.length >> 16)
 	buf[1] = u8(h.length >> 8)
 	buf[2] = u8(h.length)
@@ -117,12 +115,13 @@ pub fn (h FrameHeader) encode() []u8 {
 	return buf
 }
 
-// has_flag checks if a specific flag is set
+// has_flag checks if a specific flag is set in the frame header
+@[inline]
 pub fn (h FrameHeader) has_flag(flag FrameFlags) bool {
 	return (h.flags & u8(flag)) != 0
 }
 
-// DataFrame represents an HTTP/2 DATA frame
+// DataFrame represents the payload of an HTTP/2 DATA frame
 pub struct DataFrame {
 pub mut:
 	stream_id  u32
@@ -132,7 +131,7 @@ pub mut:
 	pad_length u8
 }
 
-// HeadersFrame represents an HTTP/2 HEADERS frame
+// HeadersFrame represents the payload of an HTTP/2 HEADERS frame
 pub struct HeadersFrame {
 pub mut:
 	stream_id   u32
@@ -147,14 +146,14 @@ pub mut:
 	exclusive   bool
 }
 
-// SettingsFrame represents an HTTP/2 SETTINGS frame
+// SettingsFrame represents the payload of an HTTP/2 SETTINGS frame
 pub struct SettingsFrame {
 pub mut:
 	ack      bool
 	settings map[u16]u32
 }
 
-// Settings identifiers (RFC 7540 Section 6.5.2)
+// SettingsId represents setting identifiers per RFC 7540 Section 6.5.2
 pub enum SettingsId as u16 {
 	header_table_size      = 0x1
 	enable_push            = 0x2
@@ -164,14 +163,14 @@ pub enum SettingsId as u16 {
 	max_header_list_size   = 0x6
 }
 
-// PingFrame represents an HTTP/2 PING frame
+// PingFrame represents the payload of an HTTP/2 PING frame
 pub struct PingFrame {
 pub mut:
 	ack  bool
 	data [8]u8
 }
 
-// GoAwayFrame represents an HTTP/2 GOAWAY frame
+// GoAwayFrame represents the payload of an HTTP/2 GOAWAY frame
 pub struct GoAwayFrame {
 pub mut:
 	last_stream_id u32
@@ -179,29 +178,30 @@ pub mut:
 	debug_data     []u8
 }
 
-// WindowUpdateFrame represents an HTTP/2 WINDOW_UPDATE frame
+// WindowUpdateFrame represents the payload of an HTTP/2 WINDOW_UPDATE frame
 pub struct WindowUpdateFrame {
 pub mut:
 	stream_id        u32
 	window_increment u32
 }
 
-// RstStreamFrame represents an HTTP/2 RST_STREAM frame
+// RstStreamFrame represents the payload of an HTTP/2 RST_STREAM frame
 pub struct RstStreamFrame {
 pub mut:
 	stream_id  u32
 	error_code ErrorCode
 }
 
-// parse_frame parses a complete frame from bytes
+// parse_frame parses a complete HTTP/2 frame from raw bytes
 pub fn parse_frame(data []u8) !Frame {
 	header := parse_frame_header(data)!
 
-	if data.len < frame_header_size + int(header.length) {
-		return error('incomplete frame: expected ${frame_header_size + header.length} bytes, got ${data.len}')
+	expected_len := frame_header_size + int(header.length)
+	if data.len < expected_len {
+		return error('incomplete frame: expected ${expected_len} bytes, got ${data.len}')
 	}
 
-	payload := data[frame_header_size..frame_header_size + header.length]
+	payload := data[frame_header_size..expected_len]
 
 	return Frame{
 		header:  header
@@ -209,21 +209,21 @@ pub fn parse_frame(data []u8) !Frame {
 	}
 }
 
-// encode encodes a frame to bytes
+// encode encodes a frame to bytes (header + payload)
 pub fn (f Frame) encode() []u8 {
 	mut buf := f.header.encode()
 	buf << f.payload
 	return buf
 }
 
-// validate validates the frame according to HTTP/2 spec
+// validate validates frame constraints per RFC 7540
 pub fn (f Frame) validate() ! {
-	// Check frame size
+	// Check frame size limit
 	if f.header.length > max_frame_size {
-		return error('frame size exceeds maximum: ${f.header.length}')
+		return error('frame size ${f.header.length} exceeds maximum ${max_frame_size}')
 	}
 
-	// Stream 0 validation
+	// Validate stream ID usage per frame type
 	if f.header.stream_id == 0 {
 		match f.header.frame_type {
 			.data, .headers, .priority, .rst_stream, .push_promise, .continuation {
@@ -231,10 +231,7 @@ pub fn (f Frame) validate() ! {
 			}
 			else {}
 		}
-	}
-
-	// Non-zero stream validation
-	if f.header.stream_id != 0 {
+	} else {
 		match f.header.frame_type {
 			.settings, .ping, .goaway {
 				return error('${f.header.frame_type} frame must use stream 0')
@@ -244,27 +241,38 @@ pub fn (f Frame) validate() ! {
 	}
 }
 
-// encode_frame encodes a frame to bytes
+// encode_frame encodes a frame to bytes using bulk copy for payload
 pub fn encode_frame(frame Frame) []u8 {
-	mut result := []u8{len: frame_header_size + frame.payload.len}
+	mut buf := []u8{len: frame_header_size + frame.payload.len}
+	return encode_frame_to_buffer(frame, mut buf)
+}
 
-	// Encode header (9 bytes)
-	result[0] = u8(frame.header.length >> 16)
-	result[1] = u8(frame.header.length >> 8)
-	result[2] = u8(frame.header.length)
-	result[3] = u8(frame.header.frame_type)
-	result[4] = frame.header.flags
-	result[5] = u8((frame.header.stream_id >> 24) & 0x7f)
-	result[6] = u8(frame.header.stream_id >> 16)
-	result[7] = u8(frame.header.stream_id >> 8)
-	result[8] = u8(frame.header.stream_id)
+// encode_frame_to_buffer encodes a frame into a pre-allocated buffer
+// Returns the encoded frame data as a slice of the buffer
+pub fn encode_frame_to_buffer(frame Frame, mut buf []u8) []u8 {
+	required_size := frame_header_size + frame.payload.len
+	if buf.len < required_size {
+		// Buffer too small, allocate new one
+		buf = []u8{len: required_size}
+	}
+
+	// Encode 9-byte header
+	buf[0] = u8(frame.header.length >> 16)
+	buf[1] = u8(frame.header.length >> 8)
+	buf[2] = u8(frame.header.length)
+	buf[3] = u8(frame.header.frame_type)
+	buf[4] = frame.header.flags
+	buf[5] = u8((frame.header.stream_id >> 24) & 0x7f)
+	buf[6] = u8(frame.header.stream_id >> 16)
+	buf[7] = u8(frame.header.stream_id >> 8)
+	buf[8] = u8(frame.header.stream_id)
 
 	// Copy payload using bulk copy
 	if frame.payload.len > 0 {
 		unsafe {
-			vmemcpy(&result[frame_header_size], frame.payload.data, frame.payload.len)
+			vmemcpy(&buf[frame_header_size], frame.payload.data, frame.payload.len)
 		}
 	}
 
-	return result
+	return buf[..required_size]
 }

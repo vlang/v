@@ -3,16 +3,20 @@
 // that can be found in the LICENSE file.
 module quic
 
+import os
+
 // TLS 1.3 crypto callbacks for ngtcp2
 // This implements the cryptographic operations needed for QUIC
 
 #flag -lssl
 #flag -lcrypto
 
+#include "@VEXEROOT/vlib/net/quic/quic_stubs.c"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
+#include <openssl/rand.h>
 
 // OpenSSL types
 type SSL = voidptr
@@ -63,6 +67,12 @@ fn C.SSL_CTX_set_verify(ctx SSL_CTX, mode int, callback voidptr)
 
 fn C.TLS_client_method() &SSL_METHOD
 fn C.TLS_server_method() &SSL_METHOD
+fn C.SSL_CTX_use_certificate_file(ctx SSL_CTX, file &char, typ int) int
+fn C.SSL_CTX_use_PrivateKey_file(ctx SSL_CTX, file &char, typ int) int
+
+// SSL file types
+pub const ssl_filetype_pem = 1
+pub const ssl_filetype_asn1 = 2
 
 fn C.SSL_new(ctx SSL_CTX) SSL
 fn C.SSL_free(ssl SSL)
@@ -170,7 +180,21 @@ pub fn new_crypto_context_server(cert_file string, key_file string, alpn []strin
 	}
 
 	// Load certificate and key
-	// TODO: Add SSL_CTX_use_certificate_file and SSL_CTX_use_PrivateKey_file
+	if cert_file != '' {
+		cert_result := C.SSL_CTX_use_certificate_file(ssl_ctx, &char(cert_file.str), ssl_filetype_pem)
+		if cert_result != 1 {
+			C.SSL_CTX_free(ssl_ctx)
+			return error('failed to load certificate file: ${cert_file}')
+		}
+	}
+
+	if key_file != '' {
+		key_result := C.SSL_CTX_use_PrivateKey_file(ssl_ctx, &char(key_file.str), ssl_filetype_pem)
+		if key_result != 1 {
+			C.SSL_CTX_free(ssl_ctx)
+			return error('failed to load private key file: ${key_file}')
+		}
+	}
 
 	// Create SSL object
 	ssl := C.SSL_new(ssl_ctx)
@@ -462,4 +486,50 @@ pub fn (ctx CryptoContext) apply_header_protection(header []u8, sample []u8) ![]
 pub fn (ctx CryptoContext) remove_header_protection(header []u8, sample []u8) ![]u8 {
 	// Header protection is symmetric
 	return ctx.apply_header_protection(header, sample)
+}
+
+// load_certificate loads a certificate from a PEM file
+pub fn load_certificate(path string) ![]u8 {
+	if !os.exists(path) {
+		return error('certificate file not found: ${path}')
+	}
+
+	data := os.read_file(path) or { return error('failed to read certificate file: ${err}') }
+
+	if !data.contains('-----BEGIN CERTIFICATE-----') {
+		return error('invalid PEM format: missing BEGIN CERTIFICATE marker')
+	}
+
+	if !data.contains('-----END CERTIFICATE-----') {
+		return error('invalid PEM format: missing END CERTIFICATE marker')
+	}
+
+	return data.bytes()
+}
+
+// load_private_key loads a private key from a PEM file
+pub fn load_private_key(path string) ![]u8 {
+	if !os.exists(path) {
+		return error('private key file not found: ${path}')
+	}
+
+	data := os.read_file(path) or { return error('failed to read private key file: ${err}') }
+
+	has_rsa := data.contains('-----BEGIN RSA PRIVATE KEY-----')
+	has_ec := data.contains('-----BEGIN EC PRIVATE KEY-----')
+	has_private := data.contains('-----BEGIN PRIVATE KEY-----')
+
+	if !has_rsa && !has_ec && !has_private {
+		return error('invalid PEM format: missing BEGIN PRIVATE KEY marker')
+	}
+
+	has_end_rsa := data.contains('-----END RSA PRIVATE KEY-----')
+	has_end_ec := data.contains('-----END EC PRIVATE KEY-----')
+	has_end_private := data.contains('-----END PRIVATE KEY-----')
+
+	if !has_end_rsa && !has_end_ec && !has_end_private {
+		return error('invalid PEM format: missing END PRIVATE KEY marker')
+	}
+
+	return data.bytes()
 }

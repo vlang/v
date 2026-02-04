@@ -49,7 +49,7 @@ mut:
 	running  bool
 }
 
-// new_server creates a new server
+// new_server creates a new HTTP/2 server with the given configuration and handler
 pub fn new_server(config ServerConfig, handler Handler) !&Server {
 	listener := net.listen_tcp(.ip, config.addr)!
 
@@ -60,7 +60,7 @@ pub fn new_server(config ServerConfig, handler Handler) !&Server {
 	}
 }
 
-// listen_and_serve starts the server
+// listen_and_serve starts the HTTP/2 server and begins accepting connections
 pub fn (mut s Server) listen_and_serve() ! {
 	s.running = true
 	println('[HTTP/2] Server listening on ${s.config.addr}')
@@ -77,7 +77,7 @@ pub fn (mut s Server) listen_and_serve() ! {
 	}
 }
 
-// stop stops the server
+// stop stops the HTTP/2 server and closes all active connections
 pub fn (mut s Server) stop() {
 	s.running = false
 	s.listener.close() or {}
@@ -153,9 +153,10 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	println('[HTTP/2] Connection closed')
 }
 
-// send_settings sends initial SETTINGS frame
+// send_settings sends initial SETTINGS frame with pre-allocated buffer
 fn (mut s Server) send_settings(mut conn net.TcpConn) ! {
-	mut payload := []u8{}
+	// Pre-allocate payload with exact size (3 settings * 6 bytes = 18 bytes)
+	mut payload := []u8{cap: 18}
 
 	// SETTINGS_MAX_CONCURRENT_STREAMS (0x03)
 	payload << [u8(0), u8(3)]
@@ -252,10 +253,10 @@ fn (mut s Server) handle_headers(mut conn net.TcpConn, frame Frame, mut decoder 
 	s.send_response(mut conn, stream_id, response, mut encoder)!
 }
 
-// send_response sends HTTP/2 response
+// send_response sends HTTP/2 response with optimized header encoding
 fn (mut s Server) send_response(mut conn net.TcpConn, stream_id u32, response ServerResponse, mut encoder Encoder) ! {
-	// Build response headers
-	mut resp_headers := []HeaderField{}
+	// Pre-allocate headers array with capacity
+	mut resp_headers := []HeaderField{cap: 2 + response.headers.len}
 	resp_headers << HeaderField{
 		name:  ':status'
 		value: response.status_code.str()
@@ -268,7 +269,7 @@ fn (mut s Server) send_response(mut conn net.TcpConn, stream_id u32, response Se
 		}
 	}
 
-	if response.body.len > 0 {
+	if response.body.len > 0 && 'content-length' !in response.headers {
 		resp_headers << HeaderField{
 			name:  'content-length'
 			value: response.body.len.str()

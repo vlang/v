@@ -52,13 +52,13 @@ pub:
 	max_idle_timeout            u64 = 30000 // 30 seconds (milliseconds)
 }
 
-// new_connection creates a new QUIC connection using ngtcp2
+// new_connection creates a new QUIC connection using ngtcp2 library
 pub fn new_connection(config ConnectionConfig) !Connection {
-	// Check if ngtcp2 is available
-	version := get_version()
-	$if debug {
-		eprintln('ngtcp2 version: ${unsafe { cstring_to_vstring(version.version_str) }}')
-	}
+	// Version info
+	// version := get_version()
+	// $if debug {
+	// 	eprintln('ngtcp2 version: ${version.chosen_version}')
+	// }
 
 	// Parse remote address
 	addr_parts := config.remote_addr.split(':')
@@ -94,18 +94,23 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	mut callbacks := Ngtcp2CallbacksStruct{}
 
 	// Setup settings
-	mut settings := Ngtcp2SettingsStruct{}
+	mut settings := Ngtcp2SettingsStruct{
+		qlog_write:         unsafe { nil }
+		log_printf:         unsafe { nil }
+		token:              unsafe { nil }
+		rand_ctx:           unsafe { nil }
+		preferred_versions: unsafe { nil }
+		available_versions: unsafe { nil }
+		pmtud_probes:       unsafe { nil }
+	}
 	settings_default(&settings)
-	settings.initial_max_stream_data_bidi_local = config.max_stream_data_bidi_local
-	settings.initial_max_stream_data_bidi_remote = config.max_stream_data_bidi_remote
-	settings.initial_max_stream_data_uni = config.max_stream_data_uni
-	settings.initial_max_data = config.max_data
-	settings.initial_max_streams_bidi = config.max_streams_bidi
-	settings.initial_max_streams_uni = config.max_streams_uni
-	settings.max_idle_timeout = config.max_idle_timeout
 
 	// Setup transport parameters
-	mut params := Ngtcp2TransportParamsStruct{}
+	mut params := Ngtcp2TransportParamsStruct{
+		version_info: Ngtcp2VersionInfo{
+			available_versions: unsafe { nil }
+		}
+	}
 	transport_params_default(&params)
 	params.initial_max_stream_data_bidi_local = config.max_stream_data_bidi_local
 	params.initial_max_stream_data_bidi_remote = config.max_stream_data_bidi_remote
@@ -113,7 +118,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	params.initial_max_data = config.max_data
 	params.initial_max_streams_bidi = config.max_streams_bidi
 	params.initial_max_streams_uni = config.max_streams_uni
-	params.max_idle_timeout = config.max_idle_timeout
+	params.max_idle_timeout = config.max_idle_timeout * 1000 * 1000 // ms to ns
 
 	// Create ngtcp2 connection
 	// QUIC version 1 (RFC 9000)
@@ -127,7 +132,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 
 	return Connection{
 		remote_addr: config.remote_addr
-		conn_id:     []u8{len: int(scid.datalen), init: scid.data[index]}
+		conn_id:     scid.data[0..int(scid.datalen)].clone()
 		ngtcp2_conn: ngtcp2_conn
 		udp_socket:  udp_socket
 		send_buf:    []u8{len: 65536} // 64KB buffer
@@ -135,7 +140,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	}
 }
 
-// send sends data on a QUIC stream
+// send sends data on a QUIC stream with the given stream ID
 pub fn (mut c Connection) send(stream_id u64, data []u8) ! {
 	if c.closed {
 		return error('connection closed')
@@ -164,7 +169,7 @@ pub fn (mut c Connection) send(stream_id u64, data []u8) ! {
 	mut path := Ngtcp2PathStruct{}
 	mut pi := Ngtcp2PktInfo{}
 
-	nwritten, datalen := conn_writev_stream(c.ngtcp2_conn, &path, &pi, c.send_buf, i64(stream_id),
+	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &path, &pi, c.send_buf, i64(stream_id),
 		data, ts) or { return error('failed to write stream data: ${err}') }
 
 	// Send packet via UDP
@@ -179,7 +184,7 @@ pub fn (mut c Connection) send(stream_id u64, data []u8) ! {
 	stream.data << data
 }
 
-// recv receives data from a QUIC stream
+// recv receives data from a QUIC stream with the given stream ID
 pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 	if c.closed {
 		return error('connection closed')
@@ -216,7 +221,7 @@ pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 	return stream.data.clone()
 }
 
-// open_stream opens a new bidirectional stream
+// open_stream opens a new bidirectional QUIC stream and returns its ID
 pub fn (mut c Connection) open_stream() !u64 {
 	if c.closed {
 		return error('connection closed')
@@ -239,7 +244,7 @@ pub fn (mut c Connection) open_stream() !u64 {
 	return u64(stream_id)
 }
 
-// close_stream closes a QUIC stream
+// close_stream closes a QUIC stream with the given stream ID
 pub fn (mut c Connection) close_stream(stream_id u64) ! {
 	if c.closed {
 		return error('connection closed')
@@ -258,7 +263,7 @@ pub fn (mut c Connection) close_stream(stream_id u64) ! {
 	c.streams.delete(stream_id)
 }
 
-// close closes the QUIC connection
+// close closes the QUIC connection and releases all resources
 pub fn (mut c Connection) close() {
 	if c.closed {
 		return
@@ -279,7 +284,7 @@ pub fn (mut c Connection) close() {
 	c.udp_socket.close() or {}
 }
 
-// is_0rtt_available checks if 0-RTT is available
+// is_0rtt_available checks if 0-RTT (zero round-trip time) is available for early data
 pub fn (c Connection) is_0rtt_available() bool {
 	// 0-RTT requires session resumption data
 	// This would check if we have valid session tickets
@@ -287,7 +292,7 @@ pub fn (c Connection) is_0rtt_available() bool {
 	return false
 }
 
-// migrate_connection migrates the connection to a new network path
+// migrate_connection migrates the QUIC connection to a new network path with the given address
 pub fn (mut c Connection) migrate_connection(new_addr string) ! {
 	if c.closed {
 		return error('connection closed')

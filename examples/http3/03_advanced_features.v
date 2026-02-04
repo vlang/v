@@ -169,25 +169,28 @@ fn demo_zero_rtt() {
 
 fn demo_connection_migration() {
 	println('Demo 3: Connection Migration')
-	println('=' * 50)
+	println('==================================================')
 
 	// Create initial connection
-	local_addr := net.Addr{
-		addr: '192.168.1.100:5000'
+	local_addr := net.new_ip_addr('192.168.1.100:5000') or {
+		println('  ❌ Failed to create local address')
+		return
 	}
-	remote_addr := net.Addr{
-		addr: '203.0.113.1:443'
+	remote_addr := net.new_ip_addr('203.0.113.1:443') or {
+		println('  ❌ Failed to create remote address')
+		return
 	}
 
 	mut migration := quic.new_connection_migration(local_addr, remote_addr)
 	println('  ✓ Connection established')
-	println('  Local address: ${local_addr.addr}')
-	println('  Remote address: ${remote_addr.addr}')
+	println('  Local address: ${local_addr.str()}')
+	println('  Remote address: ${remote_addr.str()}')
 
 	// Simulate network change (WiFi to cellular)
 	println('\n  📱 Network change detected: WiFi → Cellular')
-	new_local_addr := net.Addr{
-		addr: '10.0.0.50:5001'
+	new_local_addr := net.new_ip_addr('10.0.0.50:5001') or {
+		println('  ❌ Failed to create new local address')
+		return
 	}
 
 	// Probe new path
@@ -195,7 +198,7 @@ fn demo_connection_migration() {
 		println('  ❌ Failed to probe new path: ${err}')
 		return
 	}
-	println('  ✓ New path probed: ${new_local_addr.addr}')
+	println('  ✓ New path probed: ${new_local_addr.str()}')
 	println('  Migration state: ${migration.state}')
 	println('  Alternative paths: ${migration.alternative_paths.len}')
 
@@ -219,7 +222,7 @@ fn demo_connection_migration() {
 		return
 	}
 	println('  ✓ Successfully migrated to new path')
-	println('  Current path: ${migration.current_path.local_addr.addr}')
+	println('  Current path: ${migration.current_path.local_addr.str()}')
 	println('  Migration state: ${migration.state}')
 
 	// Show migration statistics

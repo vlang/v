@@ -16,6 +16,7 @@ pub:
 	length u8
 }
 
+// new_connection_id creates a new ConnectionID from the given byte slice.
 pub fn new_connection_id(id []u8) ConnectionID {
 	return ConnectionID{
 		id:     id.clone()
@@ -23,6 +24,7 @@ pub fn new_connection_id(id []u8) ConnectionID {
 	}
 }
 
+// equals checks if two ConnectionIDs are equal.
 pub fn (cid &ConnectionID) equals(other ConnectionID) bool {
 	if cid.length != other.length {
 		return false
@@ -36,6 +38,7 @@ pub fn (cid &ConnectionID) equals(other ConnectionID) bool {
 	}
 }
 
+// str returns the hexadecimal string representation of the ConnectionID.
 pub fn (cid &ConnectionID) str() string {
 	return cid.id.hex()
 }
@@ -51,6 +54,7 @@ pub mut:
 	mtu         u16 = 1200 // Default minimum MTU
 }
 
+// new_path_info creates a new PathInfo for the given local and remote addresses.
 pub fn new_path_info(local_addr net.Addr, remote_addr net.Addr) PathInfo {
 	return PathInfo{
 		local_addr:  local_addr
@@ -113,6 +117,7 @@ pub mut:
 	probe_timeout      time.Duration = 3 * time.second
 }
 
+// new_connection_migration creates a new ConnectionMigration manager for the given addresses.
 pub fn new_connection_migration(local_addr net.Addr, remote_addr net.Addr) ConnectionMigration {
 	return ConnectionMigration{
 		enabled:            true
@@ -259,7 +264,7 @@ pub fn (cm &ConnectionMigration) detect_path_degradation(packet_loss_rate f64, r
 // select_best_path selects the best alternative path
 pub fn (cm &ConnectionMigration) select_best_path() ?PathInfo {
 	mut best_path := ?PathInfo(none)
-	mut best_rtt := time.Duration(i64(1) << 62) // Max duration
+	mut best_rtt := time.Duration(i64(u64(1) << 62)) // Max duration
 
 	for path in cm.alternative_paths {
 		if path.validated && path.rtt < best_rtt {
@@ -325,6 +330,7 @@ pub mut:
 	peer_migrations       u64
 }
 
+// success_rate calculates and returns the migration success rate as a fraction.
 pub fn (stats &MigrationStats) success_rate() f64 {
 	if stats.total_migrations == 0 {
 		return 0.0
@@ -375,6 +381,7 @@ pub mut:
 	stats     MigrationStats
 }
 
+// new_migration_controller creates a new migration controller with the given addresses and policy.
 pub fn new_migration_controller(local_addr net.Addr, remote_addr net.Addr, policy MigrationPolicy) MigrationController {
 	return MigrationController{
 		migration: new_connection_migration(local_addr, remote_addr)

@@ -261,26 +261,23 @@ fn decode_integer(data []u8, prefix_bits int) !(int, int) {
 
 // encode_string encodes a string (with optional Huffman coding)
 fn encode_string(s string, huffman bool) []u8 {
-	// Pre-allocate with estimated size: length encoding (1-5 bytes) + string bytes
-	mut result := []u8{cap: 5 + s.len}
-
 	if huffman {
-		// TODO: Implement Huffman encoding
-		// For now, use literal encoding
-		encoded := encode_integer(s.len, 7)
-		result << (encoded[0] | 0x80) // Set H bit
-		if encoded.len > 1 {
-			result << encoded[1..]
+		huffman_encoded := encode_huffman(s.bytes())
+		encoded_len := encode_integer(huffman_encoded.len, 7)
+		mut result := []u8{cap: encoded_len.len + huffman_encoded.len}
+		result << (encoded_len[0] | 0x80)
+		if encoded_len.len > 1 {
+			result << encoded_len[1..]
 		}
-		result << s.bytes()
+		result << huffman_encoded
+		return result
 	} else {
-		// Literal encoding
 		encoded := encode_integer(s.len, 7)
+		mut result := []u8{cap: encoded.len + s.len}
 		result << encoded
 		result << s.bytes()
+		return result
 	}
-
-	return result
 }
 
 // decode_string decodes a string (with optional Huffman coding)
@@ -299,8 +296,8 @@ fn decode_string(data []u8) !(string, int) {
 	str_data := data[bytes_read..bytes_read + length]
 
 	if huffman {
-		// TODO: Implement Huffman decoding
-		return error('Huffman decoding not yet implemented')
+		decoded := decode_huffman(str_data)!
+		return decoded.bytestr(), bytes_read + length
 	}
 
 	return str_data.bytestr(), bytes_read + length
@@ -365,9 +362,9 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 				}
 			} else {
 				result << u8(0x40)
-				result << encode_string(header.name, false)
+				result << encode_string(header.name, true)
 			}
-			result << encode_string(header.value, false)
+			result << encode_string(header.value, true)
 
 			// Add to dynamic table
 			e.dynamic_table.add(header)

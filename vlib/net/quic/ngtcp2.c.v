@@ -16,6 +16,13 @@ module quic
 #flag -lssl
 #flag -lcrypto
 
+#flag darwin -I/opt/homebrew/include
+#flag darwin -L/opt/homebrew/lib
+#flag darwin -I/opt/homebrew/opt/openssl@3/include
+#flag darwin -L/opt/homebrew/opt/openssl@3/lib
+#flag darwin -I/opt/homebrew/opt/libngtcp2/include
+#flag darwin -L/opt/homebrew/opt/libngtcp2/lib
+
 #include <ngtcp2/ngtcp2.h>
 #include <ngtcp2/ngtcp2_crypto.h>
 #include <ngtcp2/ngtcp2_crypto_ossl.h>
@@ -73,8 +80,19 @@ pub const ngtcp2_err_idle_close = -248
 // Connection ID structure
 pub struct Ngtcp2CidStruct {
 pub mut:
-	datalen u8
+	datalen u64
 	data    [20]u8
+}
+
+// Preferred Address struct
+pub struct Ngtcp2PreferredAddrStruct {
+pub mut:
+	cid                   Ngtcp2CidStruct
+	ipv4                  [16]u8 // sockaddr_in
+	ipv6                  [28]u8 // sockaddr_in6
+	ipv4_present          u8
+	ipv6_present          u8
+	stateless_reset_token [16]u8
 }
 
 // Path structure
@@ -111,42 +129,49 @@ pub mut:
 // Settings structure
 pub struct Ngtcp2SettingsStruct {
 pub mut:
-	max_tx_udp_payload_size                     u64
-	ack_delay_exponent                          u8
-	max_ack_delay                               u64
-	max_udp_payload_size                        u64
-	initial_max_stream_data_bidi_local          u64
-	initial_max_stream_data_bidi_remote         u64
-	initial_max_stream_data_uni                 u64
-	initial_max_data                            u64
-	initial_max_streams_bidi                    u64
-	initial_max_streams_uni                     u64
-	max_idle_timeout                            u64
-	active_connection_id_limit                  u64
-	stateless_reset_token_present               u8
-	stateless_reset_token                       [16]u8
-	preferred_address_present                   u8
-	disable_active_migration                    u8
-	original_version                            u32
-	no_pmtud                                    u8
-	initial_rtt                                 u64
-	initial_max_stream_data_bidi_local_present  u8
-	initial_max_stream_data_bidi_remote_present u8
-	initial_max_stream_data_uni_present         u8
-	initial_max_data_present                    u8
-	initial_max_streams_bidi_present            u8
-	initial_max_streams_uni_present             u8
-	max_idle_timeout_present                    u8
-	active_connection_id_limit_present          u8
-	max_udp_payload_size_present                u8
-	ack_delay_exponent_present                  u8
-	max_ack_delay_present                       u8
-	max_tx_udp_payload_size_present             u8
+	qlog_write                     voidptr
+	cc_algo                        int
+	initial_ts                     u64
+	initial_rtt                    u64
+	log_printf                     voidptr
+	max_tx_udp_payload_size        u64
+	token                          &u8
+	tokenlen                       u64
+	token_type                     int
+	rand_ctx                       voidptr // struct with 1 voidptr
+	max_window                     u64
+	max_stream_window              u64
+	ack_thresh                     u64
+	no_tx_udp_payload_size_shaping u8
+	handshake_timeout              u64
+	preferred_versions             &u32
+	preferred_versionslen          u64
+	available_versions             &u32
+	available_versionslen          u64
+	original_version               u32
+	no_pmtud                       u8
+	initial_pkt_num                u32
+	pmtud_probes                   &u16
+	pmtud_probeslen                u64
+	glitch_ratelim_burst           u64
+	glitch_ratelim_rate            u64
+}
+
+// Version info (Moved up to be available for Transport Params)
+pub struct Ngtcp2VersionInfo {
+pub mut:
+	chosen_version        u32
+	available_versions    &u8
+	available_versionslen u64
 }
 
 // Transport parameters
 pub struct Ngtcp2TransportParamsStruct {
 pub mut:
+	preferred_addr                      Ngtcp2PreferredAddrStruct
+	original_dcid                       Ngtcp2CidStruct
+	initial_scid                        Ngtcp2CidStruct
+	retry_scid                          Ngtcp2CidStruct
 	initial_max_stream_data_bidi_local  u64
 	initial_max_stream_data_bidi_remote u64
 	initial_max_stream_data_uni         u64
@@ -156,17 +181,18 @@ pub mut:
 	max_idle_timeout                    u64
 	max_udp_payload_size                u64
 	active_connection_id_limit          u64
-	ack_delay_exponent                  u8
+	ack_delay_exponent                  u64
 	max_ack_delay                       u64
-	disable_active_migration            u8
+	max_datagram_frame_size             u64
 	stateless_reset_token_present       u8
-	stateless_reset_token               [16]u8
-	preferred_address_present           u8
-	original_version                    u32
-	retry_scid_present                  u8
-	retry_scid                          Ngtcp2CidStruct
+	disable_active_migration            u8
+	original_dcid_present               u8
 	initial_scid_present                u8
-	initial_scid                        Ngtcp2CidStruct
+	retry_scid_present                  u8
+	preferred_addr_present              u8
+	stateless_reset_token               [16]u8
+	grease_quic_bit                     u8
+	version_info                        Ngtcp2VersionInfo
 	version_info_present                u8
 }
 
@@ -272,24 +298,12 @@ fn C.ngtcp2_version(least_version int) &Ngtcp2VersionInfo
 
 fn C.ngtcp2_is_bidi_stream(stream_id i64) int
 
-fn C.ngtcp2_is_uni_stream(stream_id i64) int
-
 // Crypto functions
 fn C.ngtcp2_crypto_ctx_initial(ctx voidptr) int
 
 fn C.ngtcp2_crypto_derive_and_install_rx_key(conn voidptr, key voidptr, iv voidptr, hp_key voidptr, crypto_level u32, secret voidptr, secretlen u64) int
 
 fn C.ngtcp2_crypto_derive_and_install_tx_key(conn voidptr, key voidptr, iv voidptr, hp_key voidptr, crypto_level u32, secret voidptr, secretlen u64) int
-
-// Version info
-pub struct Ngtcp2VersionInfo {
-pub mut:
-	age               int
-	version_num       int
-	version_str       &char
-	proto_version_num int
-	proto_version_str &char
-}
 
 // V wrapper functions
 
@@ -411,7 +425,7 @@ pub fn is_bidi_stream(stream_id i64) bool {
 
 // is_uni_stream checks if stream ID is unidirectional
 pub fn is_uni_stream(stream_id i64) bool {
-	return C.ngtcp2_is_uni_stream(stream_id) != 0
+	return C.ngtcp2_is_bidi_stream(stream_id) == 0
 }
 
 // get_version returns ngtcp2 version information

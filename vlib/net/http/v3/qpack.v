@@ -496,6 +496,7 @@ mut:
 	max_blocked   u64
 }
 
+// new_qpack_encoder creates a new QPACK encoder for HTTP/3 header compression
 pub fn new_qpack_encoder(max_table_capacity int, max_blocked u64) Encoder {
 	return Encoder{
 		dynamic_table: new_dynamic_table(max_table_capacity)
@@ -503,7 +504,7 @@ pub fn new_qpack_encoder(max_table_capacity int, max_blocked u64) Encoder {
 	}
 }
 
-// encode encodes headers using QPACK
+// encode encodes headers using QPACK compression for HTTP/3
 pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 	// Pre-allocate result with estimated size
 	mut estimated_size := 2 // Required Insert Count + Delta Base
@@ -551,14 +552,16 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 }
 
 // encode_indexed_static encodes an indexed field line from static table
+@[inline]
 fn encode_indexed_static(index int) []u8 {
 	mut result := []u8{cap: 6} // Pre-allocate for worst case
 	// Static Indexed: 11XXXXXX pattern
 	if index < 64 {
 		result << u8(0xc0 | index)
 	} else {
-		result << 0xc0
-		result << encode_integer(index - 64, 6)
+		mut suffix := encode_integer(index, 6)
+		suffix[0] |= 0xc0
+		result << suffix
 	}
 	return result
 }
@@ -571,8 +574,9 @@ fn encode_literal_with_name_ref_static(index int, value string) []u8 {
 	if index < 16 {
 		result << u8(0x50 | index) // 0101XXXX
 	} else {
-		result << 0x50
-		result << encode_integer(index - 16, 4)
+		mut suffix := encode_integer(index, 4)
+		suffix[0] |= 0x50
+		result << suffix
 	}
 	// Encode value length and value
 	result << encode_qpack_string(value)
@@ -592,18 +596,23 @@ fn encode_literal_without_name_ref(name string, value string) []u8 {
 	return result
 }
 
-// encode_qpack_string encodes a string with length prefix
+// encode_qpack_string encodes a string with length prefix (optimized)
+@[inline]
 fn encode_qpack_string(s string) []u8 {
 	// Pre-allocate with estimated size: length encoding (1-5 bytes) + string bytes
 	bytes := s.bytes()
-	mut result := []u8{cap: 5 + bytes.len}
+	bytes_len := bytes.len
+	mut result := []u8{cap: 5 + bytes_len}
 	// Length prefix (no Huffman encoding for now)
-	result << encode_integer(bytes.len, 7)
-	result << bytes
+	result << encode_integer(bytes_len, 7)
+	if bytes_len > 0 {
+		result << bytes
+	}
 	return result
 }
 
-// encode_integer encodes an integer with N-bit prefix
+// encode_integer encodes an integer with N-bit prefix (optimized)
+@[inline]
 fn encode_integer(value int, n int) []u8 {
 	// Pre-allocate with capacity for worst case (5 bytes for 32-bit int)
 	mut result := []u8{cap: 5}
@@ -631,6 +640,7 @@ mut:
 	max_blocked   u64
 }
 
+// new_qpack_decoder creates a new QPACK decoder with the specified table capacity and blocked streams limit.
 pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 	return Decoder{
 		dynamic_table: new_dynamic_table(max_table_capacity)
@@ -638,22 +648,17 @@ pub fn new_qpack_decoder(max_table_capacity int, max_blocked u64) Decoder {
 	}
 }
 
-// decode decodes QPACK-encoded headers
+// decode decodes QPACK-encoded headers into header fields
 pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
-	mut headers := []HeaderField{}
-	mut idx := 0
-
 	if data.len < 2 {
 		return error('QPACK data too short')
 	}
 
-	// Decode Required Insert Count
-	required_insert_count := data[idx]
-	idx++
+	mut headers := []HeaderField{}
+	mut idx := 0
 
-	// Decode Delta Base
-	_ := data[idx]
-	idx++
+	// Skip Required Insert Count and Delta Base (simplified)
+	idx += 2
 
 	// Decode header fields
 	for idx < data.len {
@@ -661,68 +666,136 @@ pub fn (mut d Decoder) decode(data []u8) ![]HeaderField {
 
 		if (first_byte & 0xc0) == 0xc0 {
 			// Indexed Field Line (static table)
-			index_val := int(first_byte & 0x3f)
-			mut index := index_val
-
-			if index_val == 63 {
-				// Multi-byte index
-				decoded_int, bytes_read := decode_integer(data[idx + 1..], 6)!
-				index = index_val + decoded_int
-				idx += bytes_read
-			}
-
-			if index >= static_table.len {
-				return error('Static table index out of range: ${index}')
-			}
-
+			index, bytes_read := d.decode_indexed_field_line(data[idx..])!
 			headers << static_table[index]
-			idx++
+			idx += bytes_read
 		} else if (first_byte & 0xf0) == 0x50 {
 			// Literal with Name Reference (static table)
-			index_val := int(first_byte & 0x0f)
-			mut index := index_val
-			idx++
-
-			if index_val == 15 {
-				decoded_int, bytes_read := decode_integer(data[idx..], 4)!
-				index = index_val + decoded_int
-				idx += bytes_read
-			}
-
-			if index >= static_table.len {
-				return error('Static table index out of range: ${index}')
-			}
-
-			// Decode value
-			value, bytes_read := decode_qpack_string(data[idx..])!
+			header, bytes_read := d.decode_literal_name_ref(data[idx..])!
+			headers << header
 			idx += bytes_read
-
-			headers << HeaderField{
-				name:  static_table[index].name
-				value: value
-			}
 		} else if (first_byte & 0xe0) == 0x20 {
 			// Literal without Name Reference
-			idx++
-
-			// Decode name
-			name, name_bytes := decode_qpack_string(data[idx..])!
-			idx += name_bytes
-
-			// Decode value
-			value, value_bytes := decode_qpack_string(data[idx..])!
-			idx += value_bytes
-
-			headers << HeaderField{
-				name:  name
-				value: value
-			}
+			header, bytes_read := d.decode_literal_no_ref(data[idx..])!
+			headers << header
+			idx += bytes_read
 		} else {
 			return error('Unknown QPACK instruction: 0x${first_byte:02x}')
 		}
 	}
 
 	return headers
+}
+
+// Helper methods for decoding specific field types
+
+fn (d Decoder) decode_indexed_field_line(data []u8) !(int, int) {
+	first_byte := data[0]
+	index_prefix := int(first_byte & 0x3f)
+
+	if index_prefix < 63 {
+		if index_prefix >= static_table.len {
+			return error('Static table index out of range: ${index_prefix}')
+		}
+		return index_prefix, 1
+	}
+
+	// Multi-byte index
+	index_val, len := decode_prefixed_integer(data, 6)!
+
+	// static table check
+	if index_val >= static_table.len {
+		return error('Static table index out of range: ${index_val}')
+	}
+
+	return index_val, len
+}
+
+fn (d Decoder) decode_literal_name_ref(data []u8) !(HeaderField, int) {
+	first_byte := data[0]
+	index_prefix := int(first_byte & 0x0f)
+	mut idx := 1
+	mut index := index_prefix
+
+	if index_prefix == 15 {
+		// decode prefixed integer
+		// We pass the whole buffer, but function needs to handle prefix
+		// Re-using manual logic here for correction as extract helper
+		mut m := 0
+		mut decoded_int := i64(0)
+		// Start loop from current idx (1)
+		// We're inside the buffer passed as slice data[idx..], so index 1 is data[1]
+		mut inner_idx := 1
+		for inner_idx < data.len {
+			b := data[inner_idx]
+			decoded_int += i64(u64(b & 0x7f) << m)
+			m += 7
+			inner_idx++
+			if (b & 0x80) == 0 {
+				break
+			}
+		}
+		index = index_prefix + int(decoded_int)
+		idx = inner_idx
+	}
+
+	if index >= static_table.len {
+		return error('Static table index out of range: ${index}')
+	}
+
+	value, bytes_read := decode_qpack_string(data[idx..])!
+	idx += bytes_read
+
+	return HeaderField{
+		name:  static_table[index].name
+		value: value
+	}, idx
+}
+
+fn (d Decoder) decode_literal_no_ref(data []u8) !(HeaderField, int) {
+	mut idx := 1
+
+	name, name_bytes := decode_qpack_string(data[idx..])!
+	idx += name_bytes
+
+	value, value_bytes := decode_qpack_string(data[idx..])!
+	idx += value_bytes
+
+	return HeaderField{
+		name:  name
+		value: value
+	}, idx
+}
+
+// decode_prefixed_integer decodes an integer with N-bit prefix
+// data should start at the byte containing the prefix
+fn decode_prefixed_integer(data []u8, prefix_bits int) !(int, int) {
+	if data.len == 0 {
+		return error('empty data')
+	}
+
+	mask := u8((1 << prefix_bits) - 1)
+	prefix_val := int(data[0] & mask)
+
+	if prefix_val < int(mask) {
+		return prefix_val, 1
+	}
+
+	mut m := 0
+	mut decoded_int := i64(0)
+	mut idx := 1
+
+	for idx < data.len {
+		b := data[idx]
+		decoded_int += i64(u64(b & 0x7f) << m)
+		m += 7
+		idx++
+		if (b & 0x80) == 0 {
+			break
+		}
+	}
+
+	return prefix_val + int(decoded_int), idx
 }
 
 // decode_integer decodes an integer with N-bit prefix
@@ -742,7 +815,7 @@ fn decode_integer(data []u8, n int) !(int, int) {
 	mut m := 0
 	for idx < data.len {
 		b := data[idx]
-		value += int(b & 0x7f) << m
+		value += int(u64(b & 0x7f) << m)
 		m += 7
 		idx++
 
@@ -767,9 +840,18 @@ fn decode_qpack_string(data []u8) !(string, int) {
 	mut idx := 1
 
 	if length == 127 {
-		decoded_len, bytes_read := decode_integer(data[idx..], 7)!
+		mut m := 0
+		mut decoded_len := 0
+		for idx < data.len {
+			b := data[idx]
+			decoded_len += int(u64(b & 0x7f) << m)
+			m += 7
+			idx++
+			if (b & 0x80) == 0 {
+				break
+			}
+		}
 		length = 127 + decoded_len
-		idx += bytes_read
 	}
 
 	if idx + length > data.len {
