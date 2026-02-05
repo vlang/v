@@ -2405,7 +2405,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		s += expr_code
-		s += ';// new af2 pre'
+		s += ';'
 		g.strs_to_free0 << s
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
@@ -2625,7 +2625,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
-			&& !g.inside_const && !g.is_builtin_mod
+			&& !g.inside_const && !g.is_builtin_mod && !g.is_autofree_tmp
 		// g.write('/* af=${arg.is_tmp_autofree} */')
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
