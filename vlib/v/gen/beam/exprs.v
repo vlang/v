@@ -226,6 +226,25 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	}
 
+	// Check for integer division: V's / with integers should use Erlang's div
+	// In V: 10 / 3 = 3 (integer division)
+	// In Erlang: 10 / 3 = 3.333... (float division)
+	// In Erlang: 10 div 3 = 3 (integer division)
+	if node.op == .div {
+		left_is_int := g.is_integer_type_or_literal(node.left, node.left_type)
+		right_is_int := g.is_integer_type_or_literal(node.right, node.right_type)
+		left_is_float := g.is_float_type_or_literal(node.left, node.left_type)
+		right_is_float := g.is_float_type_or_literal(node.right, node.right_type)
+
+		// Use div only if both are integers AND neither is a float
+		if left_is_int && right_is_int && !left_is_float && !right_is_float {
+			g.expr(node.left)
+			g.write(' div ')
+			g.expr(node.right)
+			return
+		}
+	}
+
 	// Default: output with translated operator
 	g.expr(node.left)
 	// Translate V operators to Erlang equivalents
@@ -248,6 +267,32 @@ fn (g Gen) is_string_type_or_literal(expr ast.Expr, typ ast.Type) bool {
 	}
 	// Check the type
 	if int(typ) != 0 && g.is_string_type(typ) {
+		return true
+	}
+	return false
+}
+
+// is_integer_type_or_literal checks if an expression is an integer type or integer literal
+fn (g Gen) is_integer_type_or_literal(expr ast.Expr, typ ast.Type) bool {
+	// Check if it's an integer literal
+	if expr is ast.IntegerLiteral {
+		return true
+	}
+	// Check the type
+	if int(typ) != 0 && g.is_int_type(typ) {
+		return true
+	}
+	return false
+}
+
+// is_float_type_or_literal checks if an expression is a float type or float literal
+fn (g Gen) is_float_type_or_literal(expr ast.Expr, typ ast.Type) bool {
+	// Check if it's a float literal
+	if expr is ast.FloatLiteral {
+		return true
+	}
+	// Check the type
+	if int(typ) != 0 && g.is_float_type(typ) {
 		return true
 	}
 	return false
