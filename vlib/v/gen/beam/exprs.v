@@ -258,6 +258,7 @@ fn (g Gen) erlang_operator(op token.Kind) string {
 	return match op {
 		.le { '=<' }
 		.ne { '/=' }
+		.mod { 'rem' }
 		else { op.str() }
 	}
 }
