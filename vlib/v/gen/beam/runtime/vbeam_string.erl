@@ -12,6 +12,8 @@
          repeat/2, reverse/1]).
 
 %% Check if string contains substring
+contains(_Haystack, <<>>) ->
+    true;  % Empty string is contained in any string
 contains(Haystack, Needle) when is_binary(Haystack), is_binary(Needle) ->
     binary:match(Haystack, Needle) =/= nomatch.
 
@@ -113,6 +115,8 @@ replace_all(Str, Old, New) when is_binary(Str), is_binary(Old), is_binary(New) -
     binary:replace(Str, Old, New, [global]).
 
 %% Find index of first occurrence (-1 if not found)
+index(_Str, <<>>) ->
+    0;  % Empty string is found at position 0
 index(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     case binary:match(Str, Needle) of
         {Pos, _} -> Pos;
