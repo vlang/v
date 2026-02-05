@@ -130,13 +130,14 @@ last_index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
         Matches -> element(1, lists:last(Matches))
     end.
 
-%% Get substring from start position with length
-substr(Str, Start, Len) when is_binary(Str), is_integer(Start), is_integer(Len) ->
+%% Get substring from start position to end index (exclusive)
+%% substr(<<"hello">>, 1, 4) -> <<"ell">>
+substr(Str, Start, End) when is_binary(Str), is_integer(Start), is_integer(End) ->
     StrLen = byte_size(Str),
     ActualStart = max(0, Start),
-    ActualLen = min(Len, StrLen - ActualStart),
-    case ActualStart < StrLen andalso ActualLen > 0 of
-        true -> binary:part(Str, ActualStart, ActualLen);
+    ActualEnd = min(End, StrLen),
+    case ActualStart < ActualEnd of
+        true -> binary:part(Str, ActualStart, ActualEnd - ActualStart);
         false -> <<>>
     end.
 
