@@ -258,6 +258,9 @@ pub fn (v Builder) get_builtin_files() []string {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 						'wasm', 'wasi'))
 				}
+			} else if v.pref.backend == .beam {
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'beam'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}

@@ -735,22 +735,45 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 			}
 		}
 		.array {
-			c.check_alias_vs_element_type_of_parent(node, (parent_typ_sym.info as ast.Array).elem_type,
-				'array')
+			info := parent_typ_sym.info
+			match info {
+				ast.Array {
+					c.check_alias_vs_element_type_of_parent(node, info.elem_type, 'array')
+				}
+				ast.UnknownTypeInfo {
+					c.error('type `${parent_typ_sym.name}` has no definition for backend `${c.pref.backend}`', node.type_pos)
+				}
+				else {}
+			}
 		}
 		.array_fixed {
-			array_fixed_info := parent_typ_sym.info as ast.ArrayFixed
-			if c.array_fixed_has_unresolved_size(array_fixed_info) {
-				c.unresolved_fixed_sizes << &ast.TypeDecl(node)
+			info := parent_typ_sym.info
+			match info {
+				ast.ArrayFixed {
+					if c.array_fixed_has_unresolved_size(&info) {
+						c.unresolved_fixed_sizes << &ast.TypeDecl(node)
+					}
+					c.check_alias_vs_element_type_of_parent(node, info.elem_type, 'fixed array')
+				}
+				ast.UnknownTypeInfo {
+					c.error('type `${parent_typ_sym.name}` has no definition for backend `${c.pref.backend}`', node.type_pos)
+				}
+				else {}
 			}
-			c.check_alias_vs_element_type_of_parent(node, array_fixed_info.elem_type,
-				'fixed array')
 		}
 		.map {
-			info := parent_typ_sym.info as ast.Map
-			c.check_alias_vs_element_type_of_parent(node, info.key_type, 'map key')
-			c.check_alias_vs_element_type_of_parent(node, info.value_type, 'map value')
-			c.markused_used_maps(c.table.used_features.used_maps == 0)
+			info := parent_typ_sym.info
+			match info {
+				ast.Map {
+					c.check_alias_vs_element_type_of_parent(node, info.key_type, 'map key')
+					c.check_alias_vs_element_type_of_parent(node, info.value_type, 'map value')
+					c.markused_used_maps(c.table.used_features.used_maps == 0)
+				}
+				ast.UnknownTypeInfo {
+					c.error('type `${parent_typ_sym.name}` has no definition for backend `${c.pref.backend}`', node.type_pos)
+				}
+				else {}
+			}
 		}
 		.sum_type {
 			// TODO: decide whether the following should be allowed. Note that it currently works,
@@ -2044,6 +2067,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 
 			if unwrapped_sym.kind == .array_fixed && node.field_name == 'len' {
+				node.typ = ast.int_type
+				return ast.int_type
+			}
+
+			// Handle map.len property
+			if unwrapped_sym.kind == .map && node.field_name == 'len' {
 				node.typ = ast.int_type
 				return ast.int_type
 			}
