@@ -8,7 +8,7 @@ pub type Camera3D = C.Camera3D
 pub type Camera = C.Camera3D
 
 // Update camera position for selected mode
-pub fn C.UpdateCamera(camera &Camera, mode int)
+pub fn C.UpdateCamera(camera &Camera, mode i32)
 
 enum CameraMode {
 	camera_free

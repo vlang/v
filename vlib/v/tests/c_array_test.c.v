@@ -2,9 +2,9 @@ import arrays
 
 #insert "@VEXEROOT/vlib/v/tests/c_array_test.c"
 
-fn C.gen_c_array(size int) voidptr
+fn C.gen_c_array(size i32) voidptr
 
-fn C.gen_c_int_array(size int) voidptr
+fn C.gen_c_int_array(size i32) voidptr
 
 fn test_carray_to_varray() {
 	size := 10

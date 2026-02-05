@@ -82,8 +82,8 @@ pub mut:
 
 // https://www.sqlite.org/c3ref/vfs_find.html
 fn C.sqlite3_vfs_find(&char) &C.sqlite3_vfs
-fn C.sqlite3_vfs_register(&C.sqlite3_vfs, int) int
-fn C.sqlite3_vfs_unregister(&C.sqlite3_vfs) int
+fn C.sqlite3_vfs_register(&C.sqlite3_vfs, i32) i32
+fn C.sqlite3_vfs_unregister(&C.sqlite3_vfs) i32
 
 // get_vfs Requests sqlite to return instance of VFS with given name.
 // when such vfs is not known, `none` is returned
@@ -124,7 +124,7 @@ pub fn (mut v Sqlite3_vfs) unregister() ! {
 }
 
 // https://www.sqlite.org/c3ref/open.html
-fn C.sqlite3_open_v2(&char, &&C.sqlite3, int, &char) int
+fn C.sqlite3_open_v2(&char, &&C.sqlite3, i32, &char) i32
 
 // https://www.sqlite.org/c3ref/c_open_autoproxy.html
 pub enum OpenModeFlag {

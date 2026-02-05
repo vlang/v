@@ -28,11 +28,11 @@ pub mut:
 	is_opened bool
 }
 
-fn C.fseeko(&C.FILE, u64, int) int
+fn C.fseeko(&C.FILE, u64, i32) i32
 
-fn C._fseeki64(&C.FILE, u64, int) int
+fn C._fseeki64(&C.FILE, u64, i32) i32
 
-fn C.getc(&C.FILE) int
+fn C.getc(&C.FILE) i32
 
 fn C.freopen(&char, &char, &C.FILE) &C.FILE
 

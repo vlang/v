@@ -42,7 +42,7 @@ fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMAT
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
-fn C.timespec_get(t &C.timespec, base int) int
+fn C.timespec_get(t &C.timespec, base i32) i32
 
 // start_time and time_coefficients are needed on Windows because of potential overflows
 const start_time = init_win_time_start()

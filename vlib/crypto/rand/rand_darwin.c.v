@@ -6,7 +6,7 @@ module rand
 
 #include <sys/random.h>
 
-fn C.getentropy(buf voidptr, buflen usize) int
+fn C.getentropy(buf voidptr, buflen usize) i32
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ![]u8 {

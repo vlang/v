@@ -19,17 +19,17 @@ pub mut:
 	p &C.Atype
 }
 
-fn C.new_atype(int) voidptr
+fn C.new_atype(i32) voidptr
 
 @[trusted]
-fn C.handle_array(voidptr, int)
+fn C.handle_array(voidptr, i32)
 
 fn todo_remove_me() {
 	// TODO: remove this dummy function, when the vfmt bug of @[trusted] after a void C function is fixed
 }
 
 @[trusted]
-fn C.handle_array2(voidptr, int)
+fn C.handle_array2(voidptr, i32)
 
 fn C.destroy_atype(voidptr)
 

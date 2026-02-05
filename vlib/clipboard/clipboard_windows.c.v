@@ -20,12 +20,12 @@ struct WndClassEx {
 	h_icon_sm       &u16 = unsafe { nil }
 }
 
-fn C.RegisterClassEx(class &WndClassEx) int
+fn C.RegisterClassEx(class &WndClassEx) i32
 
 fn C.GetClipboardOwner() C.HWND
 
-fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int,
-	nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x i32, y i32, nWidth i32,
+	nHeight i32, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
 
 // fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
@@ -48,7 +48,7 @@ fn C.DefWindowProc(hwnd C.HWND, msg u32, wParam C.WPARAM, lParam C.LPARAM) C.LRE
 
 fn C.SetLastError(error i64)
 
-fn C.OpenClipboard(hwnd C.HWND) int
+fn C.OpenClipboard(hwnd C.HWND) i32
 
 fn C.DestroyWindow(hwnd C.HWND)
 
