@@ -1,6 +1,7 @@
 module beam
 
 import v.ast
+import v.token
 import strings
 
 fn (mut g Gen) expr(node ast.Expr) {
@@ -208,9 +209,57 @@ fn (mut g Gen) println_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	// Check for string concatenation: string + string -> binary concatenation
+	if node.op == .plus {
+		// Check if both operands are strings
+		left_is_string := g.is_string_type_or_literal(node.left, node.left_type)
+		right_is_string := g.is_string_type_or_literal(node.right, node.right_type)
+
+		if left_is_string && right_is_string {
+			// Generate Erlang binary concatenation: <<A/binary, B/binary>>
+			g.write('<<(')
+			g.expr(node.left)
+			g.write(')/binary, (')
+			g.expr(node.right)
+			g.write(')/binary>>')
+			return
+		}
+	}
+
+	// Default: output with translated operator
 	g.expr(node.left)
-	g.write(' ${node.op} ')
+	// Translate V operators to Erlang equivalents
+	// Erlang uses =< for less-than-or-equal (not <=)
+	// Erlang uses /= for not-equal (not !=)
+	op_str := g.erlang_operator(node.op)
+	g.write(' ${op_str} ')
 	g.expr(node.right)
+}
+
+// is_string_type_or_literal checks if an expression is a string type or string literal
+fn (g Gen) is_string_type_or_literal(expr ast.Expr, typ ast.Type) bool {
+	// Check if it's a string literal
+	if expr is ast.StringLiteral {
+		return true
+	}
+	// Check if it's a string interpolation
+	if expr is ast.StringInterLiteral {
+		return true
+	}
+	// Check the type
+	if int(typ) != 0 && g.is_string_type(typ) {
+		return true
+	}
+	return false
+}
+
+// erlang_operator translates V operator tokens to Erlang equivalents
+fn (g Gen) erlang_operator(op token.Kind) string {
+	return match op {
+		.le { '=<' }
+		.ne { '/=' }
+		else { op.str() }
+	}
 }
 
 fn (mut g Gen) string_inter(node ast.StringInterLiteral) {
