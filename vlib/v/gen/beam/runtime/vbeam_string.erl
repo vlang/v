@@ -3,10 +3,10 @@
 
 -module(vbeam_string).
 -export([contains/2, starts_with/2, ends_with/2,
-         split/2, trim/1, trim_left/1, trim_right/1,
+         split/2, trim/1, trim/2, trim_left/1, trim_right/1,
          to_lower/1, to_upper/1,
          replace/3, replace_all/3,
-         index_of/2, last_index_of/2,
+         index/2, index_of/2, last_index_of/2,
          substr/3, substr/2,
          len/1, 'int'/1, f64/1,
          repeat/2, reverse/1]).
@@ -43,6 +43,32 @@ split(Str, Delim) when is_binary(Str), is_binary(Delim) ->
 %% Trim whitespace from both ends
 trim(Str) when is_binary(Str) ->
     trim_right(trim_left(Str)).
+
+%% Trim specific characters from both ends
+trim(Str, Chars) when is_binary(Str), is_binary(Chars) ->
+    CharList = binary_to_list(Chars),
+    trim_chars_right(trim_chars_left(Str, CharList), CharList).
+
+%% Trim specific chars from left
+trim_chars_left(<<C, Rest/binary>>, CharList) ->
+    case lists:member(C, CharList) of
+        true -> trim_chars_left(Rest, CharList);
+        false -> <<C, Rest/binary>>
+    end;
+trim_chars_left(<<>>, _CharList) ->
+    <<>>.
+
+%% Trim specific chars from right
+trim_chars_right(Str, CharList) when is_binary(Str) ->
+    trim_chars_right_impl(Str, byte_size(Str), CharList).
+
+trim_chars_right_impl(Str, 0, _CharList) ->
+    Str;
+trim_chars_right_impl(Str, Len, CharList) ->
+    case lists:member(binary:at(Str, Len - 1), CharList) of
+        true -> trim_chars_right_impl(binary:part(Str, 0, Len - 1), Len - 1, CharList);
+        false -> binary:part(Str, 0, Len)
+    end.
 
 %% Trim whitespace from left
 trim_left(<<C, Rest/binary>>) when C =:= $\s; C =:= $\t; C =:= $\n; C =:= $\r ->
@@ -87,11 +113,15 @@ replace_all(Str, Old, New) when is_binary(Str), is_binary(Old), is_binary(New) -
     binary:replace(Str, Old, New, [global]).
 
 %% Find index of first occurrence (-1 if not found)
-index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
+index(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     case binary:match(Str, Needle) of
         {Pos, _} -> Pos;
         nomatch -> -1
     end.
+
+%% Alias for compatibility
+index_of(Str, Needle) ->
+    index(Str, Needle).
 
 %% Find index of last occurrence (-1 if not found)
 last_index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
@@ -133,12 +163,7 @@ f64(Str) when is_binary(Str) ->
 
 %% Repeat string N times
 repeat(Str, N) when is_binary(Str), is_integer(N), N >= 0 ->
-    repeat_impl(Str, N, <<>>).
-
-repeat_impl(_, 0, Acc) ->
-    Acc;
-repeat_impl(Str, N, Acc) ->
-    repeat_impl(Str, N - 1, <<Acc/binary, Str/binary>>).
+    binary:copy(Str, N).
 
 %% Reverse string
 reverse(Str) when is_binary(Str) ->
