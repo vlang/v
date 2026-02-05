@@ -12,7 +12,7 @@ to_binary(Bin) when is_binary(Bin) ->
 to_binary(Int) when is_integer(Int) ->
     integer_to_binary(Int);
 to_binary(Float) when is_float(Float) ->
-    float_to_binary(Float);
+    float_to_binary(Float, [{decimals, 6}, compact]);
 to_binary(true) ->
     <<"true">>;
 to_binary(false) ->
