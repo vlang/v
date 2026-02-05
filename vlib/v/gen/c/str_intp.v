@@ -208,6 +208,27 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.expr(expr)
 			g.write(')')
 		} else {
+			if g.is_autofree_tmp && g.is_autofree
+				&& expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+				tmp := g.new_tmp_var()
+				tmp_pos := expr.pos()
+				mut scope := g.file.scope.innermost(tmp_pos.pos)
+				scope.register(ast.Var{
+					name:            tmp
+					typ:             ast.string_type
+					is_autofree_tmp: true
+					pos:             tmp_pos
+				})
+				pos_before := g.out.len
+				if expr.is_auto_deref_var() && fmt != `p` {
+					g.write('*')
+				}
+				g.expr(expr)
+				expr_code := g.out.cut_to(pos_before).trim_space()
+				g.strs_to_free0 << 'string ${tmp} = ${expr_code};'
+				g.write(tmp)
+				return
+			}
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
