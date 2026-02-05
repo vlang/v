@@ -72,6 +72,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend == .wasm && !prefs.should_compile_wasm(file) {
 			continue
 		}
+		if prefs.backend == .beam && !prefs.should_compile_beam(file) {
+			continue
+		}
 		if file.starts_with('.#') {
 			continue
 		}
@@ -170,6 +173,10 @@ pub fn (prefs &Preferences) should_compile_native(file string) bool {
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if file.ends_with('.js.v') {
 		// Probably something like `a.js.v`.
+		return false
+	}
+	if file.ends_with('.beam.v') {
+		// Probably something like `a.beam.v` - BEAM backend only.
 		return false
 	}
 	if prefs.is_bare && file.ends_with('.freestanding.v') {
@@ -293,6 +300,14 @@ pub fn (prefs &Preferences) should_compile_js(file string) bool {
 pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
 	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
 		// not .wasm.v not just .v something else like .c.v
+		return false
+	}
+	return true
+}
+
+pub fn (prefs &Preferences) should_compile_beam(file string) bool {
+	if !file.ends_with('.beam.v') && file.count('.') >= 2 {
+		// not .beam.v not just .v something else like .c.v or .js.v
 		return false
 	}
 	return true

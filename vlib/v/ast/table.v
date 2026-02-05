@@ -985,19 +985,23 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 		return false
 	}
 	sym := t.sym(typ)
-	match sym.kind {
-		.placeholder {
-			return sym.language != .v || sym.name.starts_with('C.')
+	if sym.kind == .placeholder {
+		return sym.language != .v || sym.name.starts_with('C.')
+	}
+	// Use safe match on sym.info to avoid panics when info is UnknownTypeInfo
+	match sym.info {
+		Array {
+			return t.known_type_idx(sym.info.elem_type)
 		}
-		.array {
-			return t.known_type_idx((sym.info as Array).elem_type)
+		ArrayFixed {
+			return t.known_type_idx(sym.info.elem_type)
 		}
-		.array_fixed {
-			return t.known_type_idx((sym.info as ArrayFixed).elem_type)
+		Map {
+			return t.known_type_idx(sym.info.key_type) && t.known_type_idx(sym.info.value_type)
 		}
-		.map {
-			info := sym.info as Map
-			return t.known_type_idx(info.key_type) && t.known_type_idx(info.value_type)
+		UnknownTypeInfo {
+			// Type info not yet resolved - treat as unknown
+			return false
 		}
 		else {}
 	}

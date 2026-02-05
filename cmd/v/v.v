@@ -228,6 +228,9 @@ fn rebuild(prefs &pref.Preferences) {
 		.wasm {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
+		.beam {
+			util.launch_tool(prefs.is_verbose, 'builders/beam_builder', os.args[1..])
+		}
 	}
 }
 

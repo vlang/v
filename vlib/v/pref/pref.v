@@ -62,6 +62,7 @@ pub enum Backend {
 	js_freestanding // The JavaScript freestanding backend
 	native          // The Native backend
 	wasm            // The WebAssembly backend
+	beam            // The BEAM (Erlang VM) backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -925,7 +926,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				sbackend := cmdline.option(args[i..], arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm, beam')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1255,6 +1256,7 @@ pub fn backend_from_string(s string) !Backend {
 		'wasm' { .wasm }
 		'native' { .native }
 		'go' { .golang }
+		'beam' { .beam }
 		else { error('Unknown backend type ${s}') }
 	}
 }
