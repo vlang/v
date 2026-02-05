@@ -45,19 +45,217 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.out.writeln('')
 	g.indent++
 
-	// Generate body
+	// Generate body - handle early returns by restructuring
 	if node.stmts.len == 0 {
 		// Empty function body
 		g.writeln('ok.')
 	} else {
-		for i, stmt in node.stmts {
-			g.is_last_stmt = i == node.stmts.len - 1
-			g.gen_fn_stmt(stmt)
-		}
+		g.gen_fn_body_with_early_returns(node.stmts)
 	}
 
 	g.indent--
 	g.cur_fn = unsafe { nil }
+}
+
+// gen_fn_body_with_early_returns generates a function body, restructuring code
+// so that statements after an `if` with a `return` in its true branch are
+// placed in the `false` branch of the case expression.
+//
+// V code:
+//   if n <= 1 { return n }
+//   return fib(n - 1) + fib(n - 2)
+//
+// Becomes Erlang:
+//   case N =< 1 of
+//       true -> N;
+//       false -> fib(N - 1) + fib(N - 2)
+//   end.
+fn (mut g Gen) gen_fn_body_with_early_returns(stmts []ast.Stmt) {
+	if stmts.len == 0 {
+		g.writeln('ok.')
+		return
+	}
+
+	// Find the first if-with-early-return pattern
+	for i, stmt in stmts {
+		// Check if this is an ExprStmt containing an IfExpr
+		if stmt is ast.ExprStmt {
+			if stmt.expr is ast.IfExpr {
+				if_expr := stmt.expr
+				// Check if the if has a return in its true branch and no else
+				if g.is_early_return_if(if_expr) {
+					// Generate case with remaining statements in false branch
+					g.gen_early_return_case(if_expr, stmts[i + 1..])
+					return
+				}
+			}
+		}
+
+		// Not an early-return if, generate normally
+		g.is_last_stmt = i == stmts.len - 1
+		g.gen_fn_stmt(stmt)
+	}
+}
+
+// is_early_return_if checks if an if expression has:
+// 1. A return statement in its true (first) branch
+// 2. No else branch (or only a placeholder else)
+fn (g Gen) is_early_return_if(node ast.IfExpr) bool {
+	if node.branches.len == 0 {
+		return false
+	}
+
+	// Check if first branch has a return
+	first_branch := node.branches[0]
+	has_return := g.branch_has_return(first_branch)
+
+	// Check if there's no meaningful else branch
+	// An if with just one branch (no else) is an early return candidate
+	// An if with two branches where the second is a placeholder (empty else) is also a candidate
+	no_else := node.branches.len == 1
+	placeholder_else := node.branches.len == 2 && node.branches[1].stmts.len == 0
+
+	return has_return && (no_else || placeholder_else)
+}
+
+// branch_has_return checks if a branch contains a return statement
+fn (g Gen) branch_has_return(branch ast.IfBranch) bool {
+	for stmt in branch.stmts {
+		if stmt is ast.Return {
+			return true
+		}
+	}
+	return false
+}
+
+// gen_early_return_case generates a case expression where:
+// - The true branch contains the early return value
+// - The false branch contains the remaining statements (recursively handled)
+fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.Stmt) {
+	if if_expr.branches.len == 0 {
+		return
+	}
+
+	branch := if_expr.branches[0]
+
+	g.write_indent()
+	g.write('case ')
+	g.expr(branch.cond)
+	g.write(' of')
+	g.out.writeln('')
+	g.indent++
+
+	// True branch - the early return value
+	g.write_indent()
+	g.write('true -> ')
+	g.gen_branch_return_value(branch)
+	g.out.writeln(';')
+
+	// False branch - the remaining statements
+	g.write_indent()
+	g.write('false -> ')
+
+	if remaining_stmts.len == 0 {
+		g.write('ok')
+		g.out.writeln('')
+	} else if remaining_stmts.len == 1 {
+		// Single remaining statement - inline it
+		stmt := remaining_stmts[0]
+		match stmt {
+			ast.Return {
+				if stmt.exprs.len > 0 {
+					g.expr(stmt.exprs[0])
+				} else {
+					g.write('ok')
+				}
+				g.out.writeln('')
+			}
+			ast.ExprStmt {
+				// Check if it's another early-return if
+				if stmt.expr is ast.IfExpr {
+					if g.is_early_return_if(stmt.expr) {
+						g.out.writeln('')
+						g.indent++
+						g.gen_early_return_case(stmt.expr, []ast.Stmt{})
+						g.indent--
+						g.write_indent()
+					} else {
+						g.expr(stmt.expr)
+						g.out.writeln('')
+					}
+				} else {
+					g.expr(stmt.expr)
+					g.out.writeln('')
+				}
+			}
+			else {
+				g.out.writeln('')
+				g.indent++
+				g.gen_fn_body_with_early_returns(remaining_stmts)
+				g.indent--
+				g.write_indent()
+			}
+		}
+	} else {
+		// Multiple remaining statements - check for nested early returns
+		first := remaining_stmts[0]
+		if first is ast.ExprStmt {
+			if first.expr is ast.IfExpr {
+				if g.is_early_return_if(first.expr) {
+					// Nested early return - recurse
+					g.out.writeln('')
+					g.indent++
+					g.gen_early_return_case(first.expr, remaining_stmts[1..])
+					g.indent--
+					g.write_indent()
+				} else {
+					// Regular if, use begin/end block
+					g.out.writeln('begin')
+					g.indent++
+					g.gen_fn_body_with_early_returns(remaining_stmts)
+					g.indent--
+					g.write_indent()
+					g.write('end')
+					g.out.writeln('')
+				}
+			} else {
+				// Not an if, use begin/end block
+				g.out.writeln('begin')
+				g.indent++
+				g.gen_fn_body_with_early_returns(remaining_stmts)
+				g.indent--
+				g.write_indent()
+				g.write('end')
+				g.out.writeln('')
+			}
+		} else {
+			// Use begin/end block for multiple statements
+			g.out.writeln('begin')
+			g.indent++
+			g.gen_fn_body_with_early_returns(remaining_stmts)
+			g.indent--
+			g.write_indent()
+			g.write('end')
+			g.out.writeln('')
+		}
+	}
+
+	g.indent--
+	g.write_indent()
+	g.writeln('end.')
+}
+
+// gen_branch_return_value extracts and generates the return value from a branch
+fn (mut g Gen) gen_branch_return_value(branch ast.IfBranch) {
+	for stmt in branch.stmts {
+		if stmt is ast.Return {
+			if stmt.exprs.len > 0 {
+				g.expr(stmt.exprs[0])
+				return
+			}
+		}
+	}
+	g.write('ok')
 }
 
 // gen_fn_stmt generates a statement within a function body
