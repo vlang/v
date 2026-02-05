@@ -67,7 +67,7 @@ pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	}
 	// add more top level slots, if needed:
 	for km.nodes.len < wlen + 1 {
-		// eprintln('>>>>>>>>>>>>>> appending more nodes for word: $word | value: $value | km.nodes.len: $km.nodes.len | wlen: $wlen')
+		// eprintln('>>>>>>>>>>>>>> appending more nodes for word: ${word} | value: ${value} | km.nodes.len: ${km.nodes.len} | wlen: ${wlen}')
 		km.nodes << unsafe { &TrieNode(nil) }
 	}
 	if km.nodes[wlen] == unsafe { nil } {
@@ -95,7 +95,7 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 	}
 	// dump(km.min_len)
 	// dump(km.max_len)
-	// for idx,x in km.nodes { if x != unsafe { nil } { eprintln('>> idx: $idx | ${ptr_str(x)}') } }
+	// for idx,x in km.nodes { if x != unsafe { nil } { eprintln('>> idx: ${idx} | ${ptr_str(x)}') } }
 	return km
 }
 
@@ -142,7 +142,7 @@ pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 		return
 	}
 	first := u8(word[word_idx])
-	// eprintln('>> node: ${ptr_str(node)} | first: $first | word_idx: $word_idx')
+	// eprintln('>> node: ${ptr_str(node)} | first: ${first} | word_idx: ${word_idx}')
 	mut child_node := node.children[first]
 	if child_node == unsafe { nil } {
 		child_node = new_trie_node()

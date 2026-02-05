@@ -9,21 +9,22 @@ import time
 import net.urllib
 
 struct RequestParams {
-	global_app         voidptr
-	controllers_sorted []&ControllerPath
-	routes             &map[string]Route
+	global_app                voidptr
+	controllers_sorted        []&ControllerPath
+	routes                    &map[string]Route
+	benchmark_page_generation bool
 }
 
 const http_ok_response = 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
 
 pub fn run_at[A, X](mut global_app A, params RunParams) ! {
-	run_new[A, X](mut global_app, params.port)!
+	run_new[A, X](mut global_app, params)!
 }
 
 // run_new - start a new veb server using the parallel fasthttp backend.
-pub fn run_new[A, X](mut global_app A, port int) ! {
-	if port <= 0 || port > 65535 {
-		return error('invalid port number `${port}`, it should be between 1 and 65535')
+pub fn run_new[A, X](mut global_app A, params RunParams) ! {
+	if params.port <= 0 || params.port > 65535 {
+		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
 
 	// Generate routes and controllers just like the original run() function.
@@ -31,22 +32,25 @@ pub fn run_new[A, X](mut global_app A, port int) ! {
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 
 	// Allocate params on the heap to keep it valid for the server lifetime
-	params := &RequestParams{
-		global_app:         global_app
-		controllers_sorted: controllers_sorted
-		routes:             &routes
+	request_params := &RequestParams{
+		global_app:                global_app
+		controllers_sorted:        controllers_sorted
+		routes:                    &routes
+		benchmark_page_generation: params.benchmark_page_generation
 	}
 
 	// Configure and run the fasthttp server
 	mut server := fasthttp.new_server(fasthttp.ServerConfig{
-		port:      port
-		handler:   parallel_request_handler[A, X]
-		user_data: voidptr(params)
+		family:                  params.family
+		port:                    params.port
+		handler:                 parallel_request_handler[A, X]
+		max_request_buffer_size: params.max_request_buffer_size
+		user_data:               voidptr(request_params)
 	}) or {
 		eprintln('Failed to create server: ${err}')
 		return
 	}
-	println('[veb] Running multi-threaded app on http://localhost:${port}/')
+	println('[veb] Running multi-threaded app on http://localhost:${params.port}/')
 	flush_stdout()
 	server.run() or { panic(err) }
 }
@@ -67,7 +71,8 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	}
 	// Create and populate the `veb.Context`.
 	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
-		params.routes, params.controllers_sorted)
+		params)
+	// params.routes, params.controllers_sorted)
 	// Serialize the final `http.Response` into a byte array.
 	if completed_context.takeover {
 		eprintln('[veb] WARNING: ctx.takeover_conn() was called, but this is not supported by this server backend. The connection will be closed after this response.')
@@ -87,7 +92,7 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 } // handle_request_and_route is a unified function that creates the context,
 
 // runs middleware, and finds the correct route for a request.
-fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, routes &map[string]Route, controllers []&ControllerPath) &Context {
+fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, params RequestParams) &Context {
 	// Create and populate the `veb.Context` from the request.
 	mut url := urllib.parse(req.url) or {
 		// This should be rare if http.parse_request succeeded.
@@ -107,12 +112,14 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	}
 	host_with_port := req.header.get(.host) or { '' }
 	host, _ := urllib.split_host_port(host_with_port)
+	page_gen_start := if params.benchmark_page_generation { time.ticks() } else { 0 }
 	mut ctx := &Context{
 		req:            req
-		page_gen_start: time.ticks()
-		query:          query
-		form:           form
-		files:          files
+		page_gen_start: page_gen_start
+		// page_gen_start: time.ticks()
+		query: query
+		form:  form
+		files: files
 	}
 	if connection_header := req.header.get(.connection) {
 		if connection_header.to_lower() == 'close' {
@@ -124,13 +131,15 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, client_fd int, ro
 	}
 	// Match controller paths first
 	$if A is ControllerInterface {
-		if completed_context := handle_controllers[X](controllers, ctx, mut url, host) {
+		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut
+			url, host)
+		{
 			return completed_context
 		}
 	}
 	// Create a new user context and pass veb's context
 	mut user_context := X{}
 	user_context.Context = ctx
-	handle_route[A, X](mut app, mut user_context, url, host, routes)
+	handle_route[A, X](mut app, mut user_context, url, host, params.routes)
 	return &user_context.Context
 }

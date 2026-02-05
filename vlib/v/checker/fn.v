@@ -912,7 +912,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	prtyp_sym := c.table.sym(prtyp)
 	prtyp_is_ptr := prtyp.is_ptr()
 	prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
-	eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
+	eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: ${prtyp_is_ptr} | has_str: ${prhas_str} | expects_ptr: ${prexpects_ptr} | nr_args: ${prnr_args} | expr: ${prexpr.str()} ')
 	*/
 }
 
@@ -1433,7 +1433,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			tmp_c_file_with_includes.write_string(includes.join('\n')) or { panic(err) }
 			tmp_c_file_with_includes.close()
 
-			os.execute('v translate fndef ${name[2..]} tmp.c')
+			os.execute('${os.quoted_path(@VEXE)} translate fndef ${name[2..]} tmp.c')
 			x := os.read_file('__cdefs_autogen.v') or {
 				for mut arg in node.args {
 					c.expr(mut arg.expr)
@@ -1536,7 +1536,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	c.set_node_expected_arg_types(mut node, func)
-	if !c.pref.backend.is_js() && args_len > 0 && func.params.len == 0 {
+	if !c.is_js_backend && args_len > 0 && func.params.len == 0 {
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
@@ -1553,10 +1553,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
 		param_i := i + nr_multi_values
-		param := if func.is_variadic && i >= func.params.len - 1 {
+		mut param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
 			func.params[param_i]
+		}
+		if node.is_fn_var && param.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+			mut unwrapped := param
+			unwrapped.typ = c.table.unwrap_generic_type(param.typ, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+			param = unwrapped
 		}
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
@@ -1925,7 +1933,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				&& arg_typ !in [ast.voidptr_type, ast.nil_type] && arg_typ.nr_muls() == 0
 				&& func.name !in ['isnil', 'ptr_str'] && !func.name.starts_with('json.')
 				&& arg_typ_sym.kind !in [.float_literal, .int_literal, .charptr, .function]
-				&& !c.pref.backend.is_js() {
+				&& !c.is_js_backend {
 				c.warn('automatic ${arg_typ_sym.name} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`',
 					call_arg.pos)
 			}
@@ -2176,7 +2184,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 	method_name := node.name
 	if left_type.has_flag(.option) {
-		c.error('Option type cannot be called directly, you should unwrap it first', node.left.pos())
+		c.error('Option type `${left_sym.name}` cannot be called directly, you should unwrap it first',
+			node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
 		c.error('Result type cannot be called directly', node.left.pos())
@@ -2208,7 +2217,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		unaliased_left_type := c.table.unaliased_type(left_type)
 		return c.map_builtin_method_call(mut node, unaliased_left_type)
-	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[') && node.kind == .wait {
+	} else if c.is_js_backend && left_sym.name.starts_with('Promise[') && node.kind == .wait {
 		info := left_sym.info as ast.Struct
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
@@ -2502,7 +2511,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
-		// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
+		// println('warn ${method_name} lef.mod=${left_type_sym.mod} c.mod=${c.mod}')
 		c.error('method `${left_sym.name}.${method_name}` is private', node.pos)
 	}
 	rec_share := method.params[0].typ.share()
@@ -2902,7 +2911,7 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 			node.call_expr.left.pos())
 	}
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
 		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))
@@ -2929,7 +2938,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 			node.call_expr.left.pos())
 	}
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
 		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))

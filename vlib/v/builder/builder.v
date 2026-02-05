@@ -236,7 +236,7 @@ pub fn (mut b Builder) parse_imports() {
 				continue
 			}
 			import_path := b.find_module_path(mod, ast_file.path) or {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (not found)',
 					ast_file.path, imp.pos)
@@ -244,12 +244,12 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (no .v files in "${import_path}")', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (no .v files in "${import_path}")',
 					ast_file.path, imp.pos)
 				continue
 			}
-			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
+			// eprintln('>> ast_file.path: ${ast_file.path} , done: ${done_imports}, `import ${mod}` => ${v_files}')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
 			for file in parsed_files {
@@ -330,7 +330,7 @@ pub fn (mut b Builder) resolve_deps() {
 			for pf in b.parsed_files {
 				if m == pf.mod.name {
 					reordered_parsed_files << pf
-					// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+					// eprintln('pf.mod.name: ${pf.mod.name} | pf.path: ${pf.path}')
 				}
 			}
 		}
@@ -344,7 +344,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
-		// eprintln('p.path: $p.path')
+		// eprintln('p.path: ${p.path}')
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'

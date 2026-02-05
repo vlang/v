@@ -116,7 +116,7 @@ fn (mut g JsGen) gen_copy_for_interface(info ast.Interface, styp string, copy_fn
 			fn_builder.write_string(' return new string(x.str + "");')
 		} else {
 			/*
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			mut val := '${func_name}(${deref}(${subtype.cname}*)x._${subtype.cname}'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
@@ -159,7 +159,7 @@ fn (mut g JsGen) gen_copy_for_struct(info ast.Struct, styp string, copy_fn_name 
 
 	/*
 	tmp := g.new_tmp_var()
-	fn_builder.writeln('\tlet $tmp = new ${styp}({});')
+	fn_builder.writeln('\tlet ${tmp} = new ${styp}({});')
 	for field in info.fields {
 		println(field)
 		if field.name == '' {
@@ -174,13 +174,13 @@ fn (mut g JsGen) gen_copy_for_struct(info ast.Struct, styp string, copy_fn_name 
 			}
 			if shall_copy {
 				func_name := g.get_copy_fn(field.typ)
-				fn_builder.writeln('\t${tmp}.$field.name = ${func_name}(it.$field.name);')
+				fn_builder.writeln('\t${tmp}.${field.name} = ${func_name}(it.${field.name});')
 			} else {
-				fn_builder.writeln('\t${tmp}.$field.name = it.$field.name')
+				fn_builder.writeln('\t${tmp}.${field.name} = it.${field.name}')
 			}
 		}
 	}
-	fn_builder.writeln('\treturn $tmp;\n}')*/
+	fn_builder.writeln('\treturn ${tmp};\n}')*/
 }
 
 fn (mut g JsGen) final_gen_copy(typ StrType) {

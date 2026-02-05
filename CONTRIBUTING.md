@@ -4,6 +4,7 @@ The tasks in the lists below are ordered in terms of easiness/time/nerves
 investment.
 
 ### Starting tasks
+0. Run `v quest` once (or several times a day) to gain XP.
 
 1. Read the [language documentation](https://docs.vlang.io/introduction.html) and [standard module documentation](https://modules.vlang.io/).
 

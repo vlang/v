@@ -776,7 +776,7 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
-	// println('filter s="$s"')
+	// println('filter s="${s}"')
 	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind !in [.array, .array_fixed] {
 		// println(rec_sym.kind)
@@ -900,7 +900,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 	} else {
 		g.dot_or_ptr(node.left_type)
 	}
-	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
+	// eprintln('> qsort: pointer ${node.left_type} | deref_field: `${deref_field}`')
 	g.empty_line = true
 	if is_array {
 		g.write('if (')
@@ -1491,7 +1491,8 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	elsymcname := g.table.sym(thread_ret_type).cname
+	unwrapped_ret_type := g.unwrap_generic(thread_ret_type)
+	elsymcname := g.table.sym(unwrapped_ret_type).cname
 	fn_name := g.register_thread_array_wait_call(elsymcname)
 	g.write('${fn_name}(')
 	if node.left_type.is_ptr() {
@@ -1506,7 +1507,8 @@ fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_fixed_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	elsymcname := g.table.sym(thread_ret_type).cname
+	unwrapped_ret_type := g.unwrap_generic(thread_ret_type)
+	elsymcname := g.table.sym(unwrapped_ret_type).cname
 	fn_name := g.register_thread_fixed_array_wait_call(node, elsymcname)
 	g.write('${fn_name}(')
 	g.expr(node.left)

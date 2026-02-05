@@ -49,13 +49,13 @@ fn test_atof() {
 		mut s1 := (strconv.atof_quick(src_num_str[c]).str())
 		mut s2 := (x.str())
 		delta := s1.f64() - s2.f64()
-		// println("$s1 $s2 $delta")
+		// println("${s1} ${s2} ${delta}")
 		assert delta < f64(1e-16)
 
 		// test C.atof
 		n1 := x.strsci(18)
 		n2 := f64(C.atof(&char(src_num_str[c].str))).strsci(18)
-		// println("$n1 $n2")
+		// println("${n1} ${n2}")
 		assert n1 == n2
 	}
 

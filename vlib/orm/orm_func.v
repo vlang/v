@@ -363,13 +363,19 @@ pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBui
 		fields << field
 	}
 	qb.data.fields << fields
-	qb.data.data << values
+	for v in values {
+		qb.data.data << v
+	}
 	return qb
 }
 
 // table_from_struct get table from struct
 fn table_from_struct[T]() Table {
 	mut table_name := T.name
+	// Strip generic parameters from type name (e.g., Message[Payload] -> Message)
+	if bracket_pos := table_name.index('[') {
+		table_name = table_name[..bracket_pos]
+	}
 	mut attrs := []VAttribute{}
 	$for a in T.attributes {
 		$if a.name == 'table' && a.has_arg {

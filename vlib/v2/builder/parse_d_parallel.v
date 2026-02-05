@@ -32,12 +32,13 @@ fn (mut pstate ParsingSharedState) already_parsed_module(name string) bool {
 }
 
 fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedState, prefs &pref.Preferences) {
-	// eprintln('>> ${@METHOD}')
 	mut p := parser.Parser.new(prefs)
 	for {
 		filename := wp.get_job() or { break }
 		ast_file := p.parse_file(filename, mut pstate.file_set)
-		if !prefs.skip_imports {
+		// Queue new jobs for imports before pushing result
+		skip_imports := prefs.skip_imports
+		if !skip_imports {
 			for mod in ast_file.imports {
 				if pstate.already_parsed_module(mod.name) {
 					continue
@@ -47,7 +48,6 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 				wp.queue_jobs(get_v_files_from_dir(mod_path))
 			}
 		}
-		// eprintln('>> ${@METHOD} fully parsed file: $filename')
 		wp.push_result(ast_file)
 	}
 }
@@ -63,9 +63,20 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	for _ in 0 .. runtime.nr_jobs() {
 		worker_pool.add_worker(spawn worker(mut worker_pool, mut pstate, b.pref))
 	}
-	// parse builtin
-	if !b.pref.skip_builtin {
+	skip_builtin := b.pref.skip_builtin
+	if !skip_builtin {
+		// Parse builtin and its dependencies
+		// Mark them as parsed first to prevent re-parsing via imports
+		pstate.mark_module_as_parsed('builtin')
+		pstate.mark_module_as_parsed('strconv')
+		pstate.mark_module_as_parsed('strings')
+		pstate.mark_module_as_parsed('hash')
+		pstate.mark_module_as_parsed('math.bits')
 		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('builtin')))
+		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('strconv')))
+		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('strings')))
+		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('hash')))
+		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('math.bits')))
 	}
 	// parse user files
 	worker_pool.queue_jobs(files)

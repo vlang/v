@@ -246,7 +246,7 @@ pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int)
 /*
 pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
-		return error('stbi_image failed to write hdr file to "$path"')
+		return error('stbi_image failed to write hdr file to "${path}"')
 	}
 }
 */

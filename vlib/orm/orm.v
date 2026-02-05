@@ -89,6 +89,32 @@ pub enum OrderType {
 	desc
 }
 
+// JoinType represents the type of SQL JOIN operation
+pub enum JoinType {
+	inner      // INNER JOIN - returns only matching rows
+	left       // LEFT JOIN - returns all left rows, NULL for non-matching right
+	right      // RIGHT JOIN - returns all right rows, NULL for non-matching left
+	full_outer // FULL OUTER JOIN - returns all rows from both tables
+}
+
+fn (jt JoinType) to_str() string {
+	return match jt {
+		.inner { 'INNER JOIN' }
+		.left { 'LEFT JOIN' }
+		.right { 'RIGHT JOIN' }
+		.full_outer { 'FULL OUTER JOIN' }
+	}
+}
+
+// JoinConfig holds configuration for a JOIN clause in a SELECT query
+pub struct JoinConfig {
+pub mut:
+	kind         JoinType
+	table        Table
+	on_left_col  string // Column from main table (e.g., 'user_id')
+	on_right_col string // Column from joined table (e.g., 'id')
+}
+
 pub enum SQLDialect {
 	default
 	mysql
@@ -182,6 +208,7 @@ pub mut:
 // has_offset - Add an offset to the result
 // fields - Fields to select
 // types - Types to select
+// joins - JOIN clauses for this query
 pub struct SelectConfig {
 pub mut:
 	table        Table
@@ -196,6 +223,7 @@ pub mut:
 	has_distinct bool
 	fields       []string
 	types        []int
+	joins        []JoinConfig // JOIN clauses for this query
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -367,10 +395,24 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	str += ' FROM ${q}${cfg.table.name}${q}'
 
+	// Generate JOIN clauses
+	for join in cfg.joins {
+		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
+		str += ' ON ${q}${cfg.table.name}${q}.${q}${join.on_left_col}${q}'
+		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
+	}
+
 	mut c := start_pos
 
 	if cfg.has_where {
 		str += ' WHERE '
+		$if trace_orm_where ? {
+			eprintln('> orm_select_gen: where.fields.len = ${where.fields.len}')
+			eprintln('> orm_select_gen: where.kinds.len = ${where.kinds.len}')
+			for i, field in where.fields {
+				eprintln('> orm_select_gen: field[${i}] = ${field}')
+			}
+		}
 		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 
@@ -521,6 +563,10 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		mut field_comment := ''
 		mut field_name := sql_field_name(field)
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
+			// Struct fields are treated as foreign key references, which requires a primary key
+			if primary_typ == 0 {
+				return error('struct field `${field_name}` in table `${table.name}` requires a primary key field for foreign key reference - add a field with [primary] attribute or use [sql: \'-\'] to skip this field')
+			}
 			field_name = '${field_name}_id'
 			sql_from_v(primary_typ)!
 		}

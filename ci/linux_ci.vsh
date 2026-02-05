@@ -411,6 +411,10 @@ fn native_cross_compilation_to_macos() {
 	exec('rm -f hw.macos')
 }
 
+fn test_inline_assembly() {
+	exec('v test vlib/v/slow_tests/assembly')
+}
+
 // Collect all tasks
 const all_tasks = {
 	'build_v_with_prealloc':                             Task{build_v_with_prealloc, 'Build V with prealloc'}
@@ -476,6 +480,7 @@ const all_tasks = {
 	'native_machine_code_generation_clang':              Task{native_machine_code_generation_clang, 'native machine code generation (clang)'}
 	'native_machine_code_generation_gcc':                Task{native_machine_code_generation_gcc, 'native machine code generation (gcc)'}
 	'native_cross_compilation_to_macos':                 Task{native_cross_compilation_to_macos, 'native cross compilation to macos'}
+	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 
 common.run(all_tasks)

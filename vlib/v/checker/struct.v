@@ -950,7 +950,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
 					inited_fields)
 			}
-			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
+			// println('>> checked_types.len: ${checked_types.len} | checked_types: ${checked_types} | type_sym: ${type_sym.name} ')
 		}
 		.sum_type {
 			first_typ := (type_sym.info as ast.SumType).variants[0]
@@ -1065,7 +1065,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
 	mut fields := c.table.struct_fields(type_sym)
 	mut checked_types := []ast.Type{}
-
 	for i, mut field in fields {
 		if field.name in inited_fields {
 			if c.mod != type_sym.mod {
@@ -1078,7 +1077,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 							} else {
 								parts.last()
 							}
-							if !c.inside_unsafe {
+							if !c.inside_unsafe && !(c.is_js_backend
+								&& mod_type.starts_with('Promise')) {
 								c.error('cannot access private field `${field.name}` on `${mod_type}`',
 									init_field.pos)
 
@@ -1158,7 +1158,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		/*
 		sym := c.table.sym(field.typ)
 		if sym.kind == .sum_type {
-			c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+			c.warn('sum type field `${type_sym.name}.${field.name}` must be initialized',
 				node.pos)
 		}
 		*/

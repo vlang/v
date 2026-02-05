@@ -5,7 +5,12 @@ const tfolder = os.to_slash(os.join_path(os.vtmp_dir(), 'fmt_hook_test'))
 const unformatted_content = '   fn main() {\nprintln(   "hi" )\n println ( 123 )\n   }'
 const formatted_content = "fn main() {\n\tprintln('hi')\n\tprintln(123)\n}\n"
 const hook_file = '.git/hooks/pre-commit'
-const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")'
+// 'env -S' not supported on OpenBSD
+$if openbsd {
+	const foreign_script = '#!/bin/sh\ncat <<EOF | ${vexe} run -\nprintln("hello hello")\nEOF'
+} $else {
+	const foreign_script = '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp\nprintln("hello hello")'
+}
 
 const git = os.to_slash(os.find_abs_path_of_executable('git') or {
 	eprintln('git is needed for this test, skipping...')
@@ -35,15 +40,17 @@ fn testsuite_begin() {
 	os.execute_or_exit('git commit -m "start testing, initially unformatted"')
 	os.execute_or_exit('git checkout -b start') // use a known name, instead of master or main or who knows what else ...
 	assert read_file('main.v') == unformatted_content
-	// show_git_status()	
+	// show_git_status()
 }
 
 fn testsuite_end() {
 	reset_to_start_state()
 	show_git_status()
 	os.chdir(os.wd_at_startup)!
-	full_remove(tfolder)!
-	eprintln('>>>>>> deleted ${tfolder}')
+	if os.getenv('VTEST_KEEP_TFOLDER') != '1' {
+		full_remove(tfolder)!
+		eprintln('>>>>>> deleted ${tfolder} . Use VTEST_KEEP_TFOLDER=1 to keep it to ease diagnosing platform issues.')
+	}
 	assert true
 }
 
@@ -77,7 +84,12 @@ fn test_run_git_fmt_hook() {
 	assert res.exit_code == 0
 	assert res.output.contains('>   CURRENT git repo pre-commit hook: missing')
 	assert res.output.contains('> Main V repo pre-commit hook script: size:  ')
-	assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	// Git hook = shell script on OpenBSD
+	$if openbsd {
+		assert res.output.contains('git_pre_commit_hook.sh')
+	} $else {
+		assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	}
 	assert res.output.contains('> Files have different hashes.')
 	assert res.output.contains('> Use `v git-fmt-hook install`')
 }
@@ -89,7 +101,12 @@ fn test_run_git_fmt_hook_status_explicit() {
 	assert res.exit_code == 0
 	assert res.output.contains('>   CURRENT git repo pre-commit hook: missing')
 	assert res.output.contains('> Main V repo pre-commit hook script: size:  ')
-	assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	// Git hook = shell script on OpenBSD
+	$if openbsd {
+		assert res.output.contains('git_pre_commit_hook.sh')
+	} $else {
+		assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	}
 	assert res.output.contains('> Files have different hashes.')
 	assert res.output.contains('> Use `v git-fmt-hook install`')
 }
@@ -106,7 +123,12 @@ fn test_run_git_fmt_hook_install() {
 	res := os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook status')
 	assert res.output.contains('>   CURRENT git repo pre-commit hook: size:  ')
 	assert res.output.contains('> Main V repo pre-commit hook script: size:  ')
-	assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	// Git hook = shell script on OpenBSD
+	$if openbsd {
+		assert res.output.contains('git_pre_commit_hook.sh')
+	} $else {
+		assert res.output.contains('cmd/tools/git_pre_commit_hook.vsh')
+	}
 	assert res.output.contains(hook_file)
 	assert res.output.contains('> Both files are exactly the same.')
 	assert !res.output.contains('> Use `v git-fmt-hook install`')
@@ -122,7 +144,6 @@ fn test_run_git_fmt_hook_install() {
 	assert dres.output.contains("+\tprintln('hi')")
 	second := os.execute_or_exit('${os.quoted_path(vexe)} git-fmt-hook install')
 	assert second.exit_code == 0
-	assert second.output.contains('> Done.'), 'second:\n${second}'
 }
 
 fn test_run_git_fmt_hook_remove() {

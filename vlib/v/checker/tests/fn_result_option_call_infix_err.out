@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_result_option_call_infix_err.vv:7:14: error: propagating a Result like an Option is deprecated, use `foo()!` instead of `foo()?`
+    5 | fn main() {
+    6 |     assert foo()! == 'foo'
+    7 |     assert foo()? == 'foo'
+      |                 ^
+    8 | }

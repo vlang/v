@@ -213,6 +213,7 @@ mut:
 	sql_idents_types          []ast.Type
 	sql_left_type             ast.Type
 	sql_table_name            string
+	sql_table_typ             ast.Type // the table type, used for generic types lookup
 	sql_fkey                  string
 	sql_parent_id             string
 	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`
@@ -1280,7 +1281,19 @@ fn (mut g Gen) styp(t ast.Type) string {
 }
 
 fn (mut g Gen) base_type(_t ast.Type) string {
-	t := g.unwrap_generic(_t)
+	mut t := g.unwrap_generic(_t)
+	// Safeguard: if unwrap_generic didn't convert because the generic flag wasn't set,
+	// but the symbol name is a generic name, force the conversion
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 && g.cur_concrete_types.len > 0 {
+		sym := g.table.sym(t)
+		if sym.name in g.cur_fn.generic_names {
+			if utyp := g.table.convert_generic_type(t.set_flag(.generic), g.cur_fn.generic_names,
+				g.cur_concrete_types)
+			{
+				t = utyp
+			}
+		}
+	}
 	if styp := g.styp_cache[t] {
 		return styp
 	}
@@ -1447,13 +1460,22 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
-	g.options[base] = styp
+	// Only skip registration if the computed base is still an unresolved generic type name
+	// (base_type should have resolved generics, but check to be safe)
+	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	if !is_unresolved_generic {
+		g.options[base] = styp
+	}
 	return if !t.has_flag(.option_mut_param_t) { styp } else { '${styp}*' }
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
 	styp, base := g.result_type_name(t)
-	g.results[base] = styp
+	// Only skip registration if the computed base is still an unresolved generic type name
+	is_unresolved_generic := g.cur_fn != unsafe { nil } && base in g.cur_fn.generic_names
+	if !is_unresolved_generic {
+		g.results[base] = styp
+	}
 	return styp
 }
 
@@ -1541,13 +1563,40 @@ fn (mut g Gen) register_thread_void_wait_call() {
 	g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
 	if g.pref.os == .windows {
 		g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+		g.gowrappers.writeln('\tif (stat != WAIT_OBJECT_0) { builtin___v_panic(_S("error waiting thread")); }')
 	} else {
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
+		g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("error waiting thread")); }')
 	}
-	g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("unable to join thread")); }')
+	g.gowrappers.writeln('}')
+}
+
+fn (mut g Gen) register_thread_wait_call(eltyp string) {
+	thread_typ := '__v_thread_${eltyp}'
+	fn_name := '${thread_typ}_wait'
+	lock g.waiter_fns {
+		if fn_name in g.waiter_fns {
+			return
+		}
+		g.waiter_fns << fn_name
+		g.waiter_fn_definitions.writeln('${eltyp} ${fn_name}(${thread_typ} thread);')
+	}
+	g.gowrappers.writeln('${eltyp} ${fn_name}(${thread_typ} thread) {')
+	g.gowrappers.writeln('\t${eltyp} res;')
 	if g.pref.os == .windows {
-		g.gowrappers.writeln('\tCloseHandle(thread);')
+		g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
+		g.gowrappers.writeln('\tif (stat != WAIT_OBJECT_0) { builtin___v_panic(_S("error waiting thread")); }')
+		g.gowrappers.writeln('\tCloseHandle(thread.handle);')
+		g.gowrappers.writeln('\tres = *(${eltyp}*)(thread.ret_ptr);')
+		g.gowrappers.writeln('\tbuiltin___v_free(thread.ret_ptr);')
+	} else {
+		g.gowrappers.writeln('\tvoid* ret_val;')
+		g.gowrappers.writeln('\tint stat = pthread_join(thread, &ret_val);')
+		g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("error waiting thread")); }')
+		g.gowrappers.writeln('\tres = *(${eltyp}*)ret_val;')
+		g.gowrappers.writeln('\tbuiltin___v_free(ret_val);')
 	}
+	g.gowrappers.writeln('\treturn res;')
 	g.gowrappers.writeln('}')
 }
 
@@ -1577,6 +1626,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 	}
 }')
 		} else {
+			g.register_thread_wait_call(eltyp)
 			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
@@ -1619,12 +1669,13 @@ fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp st
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
 	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
-		${thread_typ} t = ((${thread_typ}*)a)[i];
+		${thread_typ} t = a[i];
 		if (t == 0) continue;
 		__v_thread_wait(t);
 	}
 }')
 		} else {
+			g.register_thread_wait_call(eltyp)
 			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
@@ -1663,6 +1714,16 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 			}
 		}
 		done << opt_el_type
+		// Ensure the option type is registered for typedef generation
+		// Only add if this styp is not already registered (to avoid duplicates with different bases)
+		option_prefix := option_name + '_'
+		if opt_el_type.starts_with(option_prefix) {
+			already_registered := opt_el_type in g.options.values()
+			if !already_registered {
+				base := opt_el_type[option_prefix.len..]
+				g.options[base] = opt_el_type
+			}
+		}
 		g.channel_definitions.writeln('
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
 	${opt_el_type} _tmp = {0};
@@ -2029,6 +2090,13 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			// unresolved sizes e.g. [unknown_const]int
 			continue
 		}
+		// Skip if element type is a non-builtin struct that isn't marked as used
+		// This prevents generating wrapper structs that reference undefined types
+		elem_sym := g.table.sym(info.elem_type)
+		if g.pref.skip_unused && elem_sym.kind == .struct && !elem_sym.is_builtin()
+			&& elem_sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
 		if info.elem_type.is_ptr() {
 			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())
@@ -2324,7 +2392,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 		stmt := stmts[0]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
 			// g.trace_autofree('// autofree scope')
-			// g.trace_autofree('// autofree_scope_vars($stmt.pos.pos) | ${typeof(stmt)}')
+			// g.trace_autofree('// autofree_scope_vars(${stmt.pos.pos}) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
 			// g.autofree_scope_vars(stmt.pos.pos - 1)
@@ -2366,22 +2434,28 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.assign_op = assign_op
 	}
 	g.assign_op = .unknown
-	stmt_str := g.go_before_last_stmt().trim_space()
-	mut styp := g.base_type(ret_typ)
+	stmt_str := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
+	// mut styp := g.base_type(ret_typ)
+	unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+	mut styp := g.base_type(unwrapped_ret_typ)
 	g.empty_line = true
-	final_expr_sym := g.table.final_sym(expr_typ)
+	final_expr_sym := g.table.final_sym(g.unwrap_generic(expr_typ))
 	mut expected_type := ret_typ
-
 	if final_expr_sym.kind == .none {
-		g.write('${g.styp(ret_typ)} ${tmp_var} = ')
-		g.gen_option_error(ret_typ, expr)
+		g.write('${g.styp(unwrapped_ret_typ)} ${tmp_var} = ')
+		g.gen_option_error(unwrapped_ret_typ, expr)
 		g.writeln(';')
 	} else if expr is ast.Ident && expr_typ == ast.error_type {
-		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
+		g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
-		expr_typ_is_option := expr_typ.has_flag(.option)
-		ret_typ_is_option := ret_typ.has_flag(.option)
+		unwrapped_expr_typ := g.unwrap_generic(expr_typ)
+		expr_typ_is_option := unwrapped_expr_typ.has_flag(.option)
+		ret_typ_is_option := unwrapped_ret_typ.has_flag(.option)
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
@@ -2396,16 +2470,14 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					}
 				}
 			}
-			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
-			styp = g.base_type(unwrapped_ret_typ)
 			ret_styp := g.styp(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
-			if ret_typ.has_flag(.option_mut_param_t) {
-				ret_styp := g.styp(ret_typ).replace('*', '')
+			if unwrapped_ret_typ.has_flag(.option_mut_param_t) {
+				ret_styp := g.styp(unwrapped_ret_typ).replace('*', '')
 				g.writeln('${ret_styp} ${tmp_var};')
 			} else {
-				g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+				g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var};')
 			}
 		}
 		mut expr_is_fixed_array_var := false
@@ -2773,9 +2845,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.sym(field.typ)
-			// g.writeln('\t$field_type_sym.name $field.name;')
+			// g.writeln('\t${field_type_sym.name} ${field.name};')
 			// }
-			// g.writeln('} $name;')
+			// g.writeln('} ${name};')
 			if node.language == .c {
 				return
 			}
@@ -3312,7 +3384,7 @@ fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
 }
 
-// ctoslit returns a '_S("$s")' call, where s is properly escaped.
+// ctoslit returns a '_S("${s}")' call, where s is properly escaped.
 fn ctoslit(s string) string {
 	return '_S("' + cescape_nonascii(cestring(s)) + '")'
 }
@@ -3330,6 +3402,10 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 }
 
 fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
+	if stmt.templates.len == 0 && stmt.input.len == 0 && stmt.output.len == 0
+		&& stmt.global_labels.len == 0 && !stmt.is_goto && !stmt.is_volatile {
+		return
+	}
 	g.write('__asm__')
 	if stmt.is_volatile {
 		g.write(' volatile')
@@ -3470,8 +3546,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				.base {
 					if stmt.arch == .arm64 {
 						g.write('[')
-					}
-					if stmt.arch == .loongarch64 {
+					} else if stmt.arch == .loongarch64 {
 						g.write('')
 					} else {
 						g.write('(')
@@ -3479,8 +3554,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 					g.asm_arg(base, stmt)
 					if stmt.arch == .arm64 {
 						g.write(']')
-					}
-					if stmt.arch == .loongarch64 {
+					} else if stmt.arch == .loongarch64 {
 						g.write('')
 					} else {
 						g.write(')')
@@ -4716,7 +4790,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 	mut method_name := m.name
 	rec_sym := g.table.sym(receiver.typ)
 	if rec_sym.info is ast.Struct {
-		if rec_sym.info.concrete_types.len > 0 {
+		if rec_sym.info.concrete_types.len > 0 && !g.pref.new_generic_solver {
 			method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
 		}
 	}
@@ -7397,7 +7471,19 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						g.write('${cvar_name} = ')
 					}
 					if is_array_fixed {
-						g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
+						// For fixed arrays, we need memcpy. Use compound literal cast only for
+						// expressions that generate brace-enclosed initializers (which need
+						// to become compound literals), not for constants/variables where
+						// casting to array type is invalid C.
+						is_array_init := expr_stmt.expr is ast.ArrayInit
+							|| expr_stmt.expr is ast.StructInit
+							|| (expr_stmt.expr is ast.CastExpr
+							&& (expr_stmt.expr as ast.CastExpr).expr is ast.ArrayInit)
+						if is_array_init {
+							g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
+						} else {
+							g.write('memcpy(${cvar_name}${tmp_op}data, ')
+						}
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr

@@ -138,6 +138,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	is_js_backend                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign        bool
@@ -167,7 +168,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		timers_should_print = true
 	}
 	v_current_commit_hash := if pref_.building_v {
-		version.githash(pref_.vroot) or { vcurrent_hash() }
+		version.githash(pref_.vroot) or { '' }
 	} else {
 		vcurrent_hash()
 	}
@@ -185,6 +186,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	checker.checker_transformer.skip_array_transform = true
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
+	checker.is_js_backend = checker.pref.backend.is_js()
 	return checker
 }
 
@@ -363,7 +365,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 					}
 					// if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
 					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// c.warn('`${obj.name}` is declared as mutable, but it was never changed',
 					// obj.pos)
 					// }
 				}
@@ -943,7 +945,7 @@ fn (mut c Checker) sumtype_has_circular_ref(sum_typ ast.Type, target_typ ast.Typ
 }
 
 fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
-	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
+	// eprintln('> expand_iface_embeds: idecl.name: ${idecl.name} | level: ${level} | iface_embeds.len: ${iface_embeds.len}')
 	if level > iface_level_cutoff_limit {
 		c.error('too many interface embedding levels: ${level}, for interface `${idecl.name}`',
 			idecl.pos)
@@ -1582,6 +1584,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		ast.ParExpr {
 			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
+		ast.InfixExpr {
+			c.check_expr_option_or_result_call(expr.left, ret_type)
+			c.check_expr_option_or_result_call(expr.right, ret_type)
+		}
 		else {}
 	}
 	return ret_type
@@ -1711,6 +1717,9 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 					if ret_type.has_flag(.generic) {
+						return
+					}
+					if ret_type.clear_option_and_result() != expr_return_type {
 						return
 					}
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
@@ -1974,7 +1983,11 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !prevent_sum_type_unwrapping_once {
 				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
 				if scope_field != unsafe { nil } {
-					return scope_field.smartcasts.last()
+					sf_smartcast_type := scope_field.smartcasts.last()
+					if c.inside_sql {
+						node.typ = sf_smartcast_type
+					}
+					return sf_smartcast_type
 				}
 			}
 		}
@@ -2808,7 +2821,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 		c.warn('inline assembly goto is not supported, it will most likely not work',
 			stmt.pos)
 	}
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
@@ -2907,7 +2920,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() || c.pref.backend == .golang {
+	if c.pref.backend == .golang || c.is_js_backend {
 		// consider the best way to handle the .go.vv files
 		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
 			&& !c.file.path.ends_with('.go.vv') {
@@ -3674,7 +3687,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 // 			return c.table.bitsize_to_type(bit_size)
 // 		}
 // 	}
-// 	c.error('invalid register name: `$name`', node.pos)
+// 	c.error('invalid register name: `${name}`', node.pos)
 // 	return ast.void_type
 // }
 
@@ -3722,7 +3735,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	c.check_any_type(to_type, to_sym, node.pos)
 
-	if c.pref.backend.is_js() {
+	if c.is_js_backend {
 		if (to_sym.is_number() && from_sym.name == 'JS.Number')
 			|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
 			|| (to_sym.is_string() && from_sym.name == 'JS.String')
@@ -4904,7 +4917,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					typ:               cur_type
 					pos:               expr.pos
 					is_used:           true
-					is_mut:            expr.is_mut
+					is_mut:            expr.is_mut || is_mut
 					is_inherited:      is_inherited
 					is_unwrapped:      is_option_unwrap
 					smartcasts:        smartcasts

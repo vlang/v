@@ -7,5 +7,5 @@ fn func1() {
 fn main() {
 	func1()
 	a = 2
-	println('a is $a')
+	println('a is ${a}')
 }

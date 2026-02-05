@@ -95,7 +95,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			panic('Could not find `${node_basename}` in system path. Do you have Node.js installed?')
 		}
 	} else if b.pref.backend == .wasm {
-		mut actual_run := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
+		mut actual_run := ['wasmer', 'wasmtime', 'wavm', 'wasm3', 'iwasm']
 		mut actual_rf := ''
 
 		// -autofree bug
@@ -115,7 +115,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		}
 
 		if actual_rf == '' {
-			panic('Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?')
+			panic('Could not find `wasmer`, `wasmtime`, `wavm`, `wasm3` or `ìwasm` in system path. Do you have any installed?')
 		}
 
 		actual_rf

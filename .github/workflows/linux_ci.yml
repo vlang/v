@@ -50,6 +50,8 @@ jobs:
         run: v run ci/linux_ci.vsh verify_v_test_works_tcc
       - name: Test pure V math module
         run: v run ci/linux_ci.vsh test_pure_v_math_module_tcc
+      - name: Test inline assembly on linux
+        run: v run ci/linux_ci.vsh test_inline_assembly
       - name: Self tests
         run: v run ci/linux_ci.vsh self_tests_tcc
       - name: Build examples

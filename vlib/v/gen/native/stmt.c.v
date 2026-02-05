@@ -435,7 +435,7 @@ fn (mut g Gen) gen_native_hash_stmt(node ast.HashStmt) {
 		}
 		b := unsafe { C.strtol(&char(word.str), 0, 16) }
 		// b := word.u8()
-		// println('"$word" $b')
+		// println('"${word}" ${b}')
 		g.write8(b)
 	}
 

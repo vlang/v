@@ -655,7 +655,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 		if s.pos >= s.text.len || s.should_abort {
 			return s.end_of_file()
 		}
-		// End of $var, start next string
+		// End of ${var}, start next string
 		if s.is_inter_end {
 			if s.text[s.pos] == s.quote {
 				s.is_inter_end = false

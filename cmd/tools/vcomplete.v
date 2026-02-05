@@ -95,7 +95,9 @@ const auto_complete_commands = [
 	'download',
 	'fmt',
 	'gret',
+	'git-fmt-hook',
 	'ls',
+	'quest',
 	'retry',
 	'reduce',
 	'repl',
@@ -797,6 +799,6 @@ Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 
 fn main() {
 	args := os.args[1..]
-	// println('"$args"')
+	// println('"${args}"')
 	auto_complete(args)
 }

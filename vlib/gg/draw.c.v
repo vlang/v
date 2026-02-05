@@ -435,6 +435,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 // `w` is the width, `h` is the height .
 // `radius` is the radius of the corner-rounding in pixels.
 // `c` is the color of the filled.
+// it divides the rounded rectangle into 2 shapes, the top rounded part and the bottom rounded part which are connected at both extremes.
 pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	if w <= 0 || h <= 0 || radius < 0 {
 		return
@@ -456,88 +457,51 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	sy := y * ctx.scale
 	width := w * ctx.scale
 	height := h * ctx.scale
-	// circle center coordinates
-	ltx := sx + r
-	lty := sy + r
-	rtx := sx + width - r
-	rty := lty
-	rbx := rtx
-	rby := sy + height - r
-	lbx := ltx
-	lby := rby
 
-	mut rad := f32(0)
-	mut dx := f32(0)
-	mut dy := f32(0)
+	// left x coordinate
+	lx := sx + r
+	// right x coordinate
+	rx := sx + width - r
+	// top y coordinate
+	ty := sy + r
+	// bottom y coordinate
+	by := sy + height - r
 
-	if r != 0 {
-		// left top quarter
-		sgl.begin_triangle_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(ltx - dx, lty - dy)
-			sgl.v2f(ltx, lty)
-		}
+	if r == 0 {
+		// No radius means juste a rectangle
+		sgl.begin_quads()
+		sgl.v2f(sx, ty)
+		sgl.v2f(rx + r, ty)
+		sgl.v2f(rx + r, by)
+		sgl.v2f(sx, by)
 		sgl.end()
+	} else {
+		// draw the top then the bottom and link them with 2 triangle
+		mut rad := f32(0)
+		mut dx := f32(0)
+		mut dy := f32(0)
 
-		// right top quarter
+		// top part
+		// starting at -30 then multiplying it by -1 makes you ends with the angle closer to the side which is needed to link both parts
 		sgl.begin_triangle_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
+		for i in -30 .. 1 {
+			rad = f32(math.radians(-i * 3))
 			dx = r * math.cosf(rad)
 			dy = r * math.sinf(rad)
-			sgl.v2f(rtx + dx, rty - dy)
-			sgl.v2f(rtx, rty)
+			sgl.v2f(rx + dx, ty - dy)
+			sgl.v2f(lx - dx, ty - dy)
 		}
-		sgl.end()
 
-		// right bottom quarter
-		sgl.begin_triangle_strip()
+		// bottom part
 		for i in 0 .. 31 {
 			rad = f32(math.radians(i * 3))
 			dx = r * math.cosf(rad)
 			dy = r * math.sinf(rad)
-			sgl.v2f(rbx + dx, rby + dy)
-			sgl.v2f(rbx, rby)
-		}
-		sgl.end()
-
-		// left bottom quarter
-		sgl.begin_triangle_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(lbx - dx, lby + dy)
-			sgl.v2f(lbx, lby)
+			sgl.v2f(rx + dx, by + dy)
+			sgl.v2f(lx - dx, by + dy)
 		}
 		sgl.end()
 	}
-
-	// Separate drawing is to prevent transparent color overlap
-	// top rectangle
-	sgl.begin_quads()
-	sgl.v2f(ltx, sy)
-	sgl.v2f(rtx, sy)
-	sgl.v2f(rtx, rty)
-	sgl.v2f(ltx, lty)
-	sgl.end()
-	// middle rectangle
-	sgl.begin_quads()
-	sgl.v2f(sx, lty)
-	sgl.v2f(rtx + r, rty)
-	sgl.v2f(rbx + r, rby)
-	sgl.v2f(sx, lby)
-	sgl.end()
-	// bottom rectangle
-	sgl.begin_quads()
-	sgl.v2f(lbx, lby)
-	sgl.v2f(rbx, rby)
-	sgl.v2f(rbx, rby + r)
-	sgl.v2f(lbx, rby + r)
-	sgl.end()
 }
 
 // draw_triangle_empty draws the outline of a triangle.

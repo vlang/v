@@ -86,22 +86,19 @@ pub fn (mut app App) check_auth() bool {
 	return app.is_authenticated
 }
 
-fn other_func1(mut ctx vweb.Context) bool {
+fn other_func1(mut _ctx vweb.Context) bool {
 	println('1')
 	return true
 }
 
-fn other_func2(mut ctx vweb.Context) bool {
+fn other_func2(mut _ctx vweb.Context) bool {
 	println('2')
-
-	// ...
 	return true
 }
 
 fn middleware_early(mut ctx vweb.Context) bool {
 	println('4')
 	ctx.text(':(')
-
 	// returns false, so the middleware propagation is stopped and the user will see the text ":("
 	return false
 }

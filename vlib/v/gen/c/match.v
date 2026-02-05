@@ -136,14 +136,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					}
 					else {
 						// ast.StringLiteral, ast.Ident, ast.RangeExpr can not used in switch cases in C
-						// eprintln('>>>> node.cond: $node.cond | branch expr: ${typeof(expr)} | expr: $expr')
+						// eprintln('>>>> node.cond: ${node.cond} | branch expr: ${typeof(expr)} | expr: ${expr}')
 						can_be_a_switch = false
 						break all_branches
 					}
 				}
 			}
 		}
-		// eprintln('> can_be_a_switch: $can_be_a_switch')
+		// eprintln('> can_be_a_switch: ${can_be_a_switch}')
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
 			&& cond_fsym.is_int() {
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)

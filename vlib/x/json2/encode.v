@@ -299,6 +299,19 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 
 			enum_val = enum_val[i + 1..enum_val.len - 1]
 		}
+		mut attr_value := ''
+		$for member in T.values {
+			if member.value == val {
+				for attr in member.attrs {
+					if attr.starts_with('json: ') {
+						attr_value = attr[6..]
+					}
+				}
+			}
+		}
+		if attr_value != '' {
+			enum_val = attr_value
+		}
 		encoder.output << `"`
 		unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
 		encoder.output << `"`

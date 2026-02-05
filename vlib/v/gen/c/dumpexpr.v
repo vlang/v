@@ -135,7 +135,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
-		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
+		// eprintln('>>> dump_type: ${dump_type} | cname: ${cname} | dump_sym: ${dump_sym.name}')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]

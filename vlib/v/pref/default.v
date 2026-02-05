@@ -210,7 +210,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.third_party_option.trim_space(),
 		p.lookup_path.str(),
 	])
-	// eprintln('prefs.cache_manager: $p')
+	// eprintln('prefs.cache_manager: ${p}')
 	// disable use_cache for specific cases:
 	if os.user_os() == 'windows' {
 		p.use_cache = false

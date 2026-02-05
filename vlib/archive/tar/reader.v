@@ -142,7 +142,7 @@ pub fn new_debug_reader() &DebugReader {
 	return &DebugReader{}
 }
 
-fn (mut t DebugReader) dir_block(mut read Read, size u64) {
+fn (mut t DebugReader) dir_block(mut read Read, _size u64) {
 	println('DIR   #${read.get_block_number()} ${read.get_path()}')
 }
 

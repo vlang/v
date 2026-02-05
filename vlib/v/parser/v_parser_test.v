@@ -216,8 +216,8 @@ table := &ast.Table{}
 for s in text_expr {
 	// print using str method
 	x := parse_expr(s, table)
-	println('source: $s')
-	println('parsed: $x')
+	println('source: ${s}')
+	println('parsed: ${x}')
 	println('===================')
 }
 */
@@ -297,7 +297,7 @@ fn parse(output_mode pref.OutputMode) ! {
 	mut pref_ := pref.new_preferences()
 	pref_.output_mode = output_mode
 	for idx, f in files {
-		// eprintln('> parsing in mode: ${output_mode}, ${idx+1:5}/${files.len} $f ...')
+		// eprintln('> parsing in mode: ${output_mode}, ${idx+1:5}/${files.len} ${f} ...')
 		mut table := ast.new_table()
 		p := parse_file(f, mut table, .parse_comments, pref_)
 		assert !isnil(p), 'failed to parse `${f}` in mode: ${output_mode}'

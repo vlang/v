@@ -262,7 +262,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 		}
 		single_file_recompile := should_recompile_tool(vexe, newest_sfile, tool_name,
 			tool_exe)
-		// eprintln('>>> should_recompile_tool: tool_source: $tool_source | $single_file_recompile | $newest_sfile')
+		// eprintln('>>> should_recompile_tool: tool_source: ${tool_source} | ${single_file_recompile} | ${newest_sfile}')
 		return single_file_recompile
 	}
 	// TODO: Caching should be done on the `vlib/v` level.
@@ -348,7 +348,7 @@ pub fn cached_read_source_file(path string) !string {
 		return error('memory source file cache cleared')
 	}
 
-	// eprintln('>> cached_read_source_file path: $path')
+	// eprintln('>> cached_read_source_file path: ${path}')
 	if res := cache.sources[path] {
 		// eprintln('>> cached')
 		$if trace_cached_read_source_file_cached ? {
@@ -356,7 +356,7 @@ pub fn cached_read_source_file(path string) !string {
 		}
 		return res
 	}
-	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
+	// eprintln('>> not cached | cache.sources.len: ${cache.sources.len}')
 	$if trace_cached_read_source_file_not_cached ? {
 		println('cached_read_source_file not cached ${path}')
 	}
@@ -447,6 +447,23 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 
 @[inline]
 pub fn strip_mod_name(name string) string {
+	// For generic types like main.Message[main.Payload], strip module prefixes
+	// from both the type name and the generic parameters
+	if bracket_pos := name.index('[') {
+		prefix := name[..bracket_pos]
+		suffix := name[bracket_pos..]
+		// Also strip module names from generic parameters inside brackets
+		// e.g., [main.Payload, main.Foo] -> [Payload, Foo]
+		mut result := prefix.all_after_last('.') + '['
+		params := suffix[1..suffix.len - 1] // Remove [ and ]
+		mut param_parts := []string{}
+		for param in params.split(', ') {
+			param_parts << param.all_after_last('.')
+		}
+		result += param_parts.join(', ')
+		result += ']'
+		return result
+	}
 	return name.all_after_last('.')
 }
 

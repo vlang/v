@@ -151,13 +151,13 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Finding prebuilt executables from GitHub release..')
 	resp := http.get('https://api.github.com/repos/vlang/vls/releases')!
-	releases_json := json2.decode[json2.Any](resp.body)!.arr()
+	releases_json := json2.decode[json2.Any](resp.body)!.as_array()
 	if releases_json.len == 0 {
 		return error('Unable to fetch latest VLS release data: No releases found.')
 	}
 
 	latest_release := releases_json[0].as_map()
-	assets := latest_release['assets']!.arr()
+	assets := latest_release['assets']!.as_array()
 
 	mut checksum_asset_idx := -1
 	mut exec_asset_idx := -1

@@ -14,7 +14,7 @@ import net.mbedtls
 // certificates, responding to the given domain name in each of the requests.
 
 // callback to return the certificates to use for the connection
-fn get_cert(mut l mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
+fn get_cert(mut _listener mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
 	println('reading certificates for ${host} ...')
 
 	// For our example, just always use the same certificates. In a real server,

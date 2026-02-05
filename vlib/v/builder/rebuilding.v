@@ -49,7 +49,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		cpath := x[1]
 		old_hashes[cpath] = chash
 	}
-	// eprintln('old_hashes: $old_hashes')
+	// eprintln('old_hashes: ${old_hashes}')
 	for cpath in all_files {
 		ccontent := util.read_file(cpath) or { '' }
 		chash := hash.sum64_string(ccontent, 7).hex_full()
@@ -60,7 +60,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		sb_new_hashes.write_u8(`\n`)
 	}
 	snew_hashes := sb_new_hashes.str()
-	// eprintln('new_hashes: $new_hashes')
+	// eprintln('new_hashes: ${new_hashes}')
 	// eprintln('> new_hashes != old_hashes: ' + ( old_hashes != new_hashes ).str())
 	// eprintln(snew_hashes)
 	cm.save('.hashes', 'all_files', snew_hashes) or {}
@@ -69,9 +69,9 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut invalidations := []string{}
 	if new_hashes != old_hashes {
 		util.timing_start('${@METHOD} rebuilding')
-		// eprintln('> b.mod_invalidates_paths: $b.mod_invalidates_paths')
-		// eprintln('> b.mod_invalidates_mods: $b.mod_invalidates_mods')
-		// eprintln('> b.path_invalidates_mods: $b.path_invalidates_mods')
+		// eprintln('> b.mod_invalidates_paths: ${b.mod_invalidates_paths}')
+		// eprintln('> b.mod_invalidates_mods: ${b.mod_invalidates_mods}')
+		// eprintln('> b.path_invalidates_mods: ${b.path_invalidates_mods}')
 		$if trace_invalidations ? {
 			for k, v in b.mod_invalidates_paths {
 				mut m := map[string]bool{}
@@ -337,11 +337,22 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
 		mut all_v_source_lines, mut all_v_source_bytes, mut all_v_source_tokens := 0, 0, 0
+		mut all_v_top_stmts, mut all_non_vlib_top_stmts, mut all_main_top_stmts := 0, 0, 0
 		for pf in b.parsed_files {
 			all_v_source_lines += pf.nr_lines
 			all_v_source_bytes += pf.nr_bytes
 			all_v_source_tokens += pf.nr_tokens
+			all_v_top_stmts += pf.stmts.len
+			if !pf.path.contains('vlib/') {
+				all_non_vlib_top_stmts += pf.stmts.len
+			}
+			if pf.mod.name == 'main' {
+				all_main_top_stmts += pf.stmts.len
+			}
 		}
+		mut sall_top_stmts := all_v_top_stmts.str()
+		mut sall_non_vlib_top_stmts := all_non_vlib_top_stmts.str()
+		mut sall_main_top_stmts := all_main_top_stmts.str()
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
 		mut sall_v_source_tokens := all_v_source_tokens.str()
@@ -354,7 +365,10 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		sall_v_types = util.bold('${sall_v_types:5s}')
 		sall_v_modules = util.bold('${sall_v_modules:5s}')
 		sall_v_files = util.bold('${sall_v_files:5s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
+		sall_top_stmts = util.bold('${sall_top_stmts:5s}')
+		sall_non_vlib_top_stmts = util.bold('${sall_non_vlib_top_stmts:5s}')
+		sall_main_top_stmts = util.bold('${sall_main_top_stmts:5s}')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files, ${sall_top_stmts} tl_stmts, ${sall_non_vlib_top_stmts} non_vlib_tl_stmts, ${sall_main_top_stmts} main_tl_stmts')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()

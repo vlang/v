@@ -11,7 +11,7 @@ const trace_gen_wanted_value = $d('trace_gen_wanted_value', '')
 fn (mut g Gen) trace_gen_wanted_context(last_character_len int, s string) {
 	last_n := g.out.last_n(last_character_len)
 	eprintln('> trace_gen_wanted, last characters:\n${last_n}\n')
-	eprintln('> trace_gen_wanted, found wanted cgen string `${trace_gen_wanted_value}` in generated string ${s}')
+	eprintln("> trace_gen_wanted, found wanted cgen string `${trace_gen_wanted_value}` in generated string: \"${s}\"")
 	print_backtrace()
 }
 
@@ -82,7 +82,7 @@ fn (mut g Gen) writeln(s string) {
 		g.out.write_string(util.tabs(g.indent))
 		// g.out_parallel[g.out_idx].write_string(util.tabs(g.indent))
 	}
-	// println('w len=$g.out_parallel.len')
+	// println('w len=${g.out_parallel.len}')
 	g.out.writeln(s)
 	// g.out_parallel[g.out_idx].writeln(s)
 	g.empty_line = true

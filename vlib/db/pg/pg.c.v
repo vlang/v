@@ -69,6 +69,11 @@ pub mut:
 	vals []?string
 }
 
+pub struct RowNoNull {
+pub mut:
+	vals []string
+}
+
 pub struct Result {
 pub:
 	cols map[string]int
@@ -259,6 +264,22 @@ fn res_to_rows(res voidptr) []Row {
 	return rows
 }
 
+fn res_to_rows_no_null(res voidptr) []RowNoNull {
+	nr_rows := C.PQntuples(res)
+	nr_cols := C.PQnfields(res)
+	mut rows := []RowNoNull{}
+	for i in 0 .. nr_rows {
+		mut row := RowNoNull{}
+		for j in 0 .. nr_cols {
+			val := C.PQgetvalue(res, i, j)
+			row.vals << unsafe { cstring_to_vstring(val) }
+		}
+		rows << row
+	}
+	C.PQclear(res)
+	return rows
+}
+
 // res_to_result creates a `Result` struct out of a `C.PGresult` pointer
 fn res_to_result(res voidptr) Result {
 	nr_rows := C.PQntuples(res)
@@ -336,6 +357,12 @@ pub fn (db &DB) q_strings(query string) ![]Row {
 pub fn (db &DB) exec(query string) ![]Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_rows(res, 'exec')
+}
+
+// exec_no_null works like exec, but the fields can't be NULL, no optionals
+pub fn (db &DB) exec_no_null(query string) ![]RowNoNull {
+	res := C.PQexec(db.conn, &char(query.str))
+	return db.handle_error_or_rows_no_null(res, 'exec')
 }
 
 // exec_result submits a command to the database server and wait for the result, returning an error on failure and a `Result` set on success
@@ -440,12 +467,26 @@ fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
+		// TODO make it default
 		$if trace_pg_error ? {
 			eprintln('pg error: ${e}')
 		}
 		return error('pg ${elabel} error:\n${e}')
 	}
 	return res_to_rows(res)
+}
+
+fn (db &DB) handle_error_or_rows_no_null(res voidptr, elabel string) ![]RowNoNull {
+	// TODO copypasta
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		C.PQclear(res)
+		$if trace_pg_error ? {
+			eprintln('pg error: ${e}')
+		}
+		return error('pg ${elabel} error:\n${e}')
+	}
+	return res_to_rows_no_null(res)
 }
 
 // hande_error_or_result is an internal function similar to handle_error_or_rows that returns `Result` instead of `[]Row`

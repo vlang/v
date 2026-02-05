@@ -7,5 +7,5 @@ fn comptime_ret_result() !string {
 }
 
 fn test_main() {
-	assert comptime_ret_result()? == 'not debug'
+	assert comptime_ret_result()! == 'not debug'
 }

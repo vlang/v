@@ -91,7 +91,7 @@ fn (pr &HttpProxy) build_proxy_headers(host string) string {
 	return 'CONNECT ${host} ${version}\r\nHost: ${address}\r\n' + uheaders.join('') + '\r\n'
 }
 
-fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Request) !Response {
+fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Request) !Response {
 	host_name, port := net.split_address(host.hostname())!
 
 	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }

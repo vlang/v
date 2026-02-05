@@ -135,7 +135,7 @@ fn (mut ctx Context) parse_events() {
 		return
 	}
 
-	// print('$nr_events | ')
+	// print('${nr_events} | ')
 	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
 		panic('could not read from stdin')
 	}

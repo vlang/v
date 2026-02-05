@@ -247,7 +247,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 				r_i++
 				exp--
 			}
-			// println("exp: $exp $r_i $dot_res_sp")
+			// println("exp: ${exp} ${r_i} ${dot_res_sp}")
 		} else {
 			mut dot_p := true
 			for exp > 0 {

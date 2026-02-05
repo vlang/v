@@ -39,7 +39,7 @@ fn (mut g Game) restart() {
 	g.card2_idx = none
 }
 
-fn (mut g Game) draw_cell(i int, cell Cell) {
+fn (mut g Game) draw_cell(i int) {
 	x, y := i % g.size, i / g.size
 	rect_x, rect_y := x * csize, header_size + y * csize
 	if g.cells[i].is_open || g.sw.elapsed().milliseconds() <= 1000 {
@@ -57,8 +57,8 @@ fn on_frame(mut g Game) {
 	g.ctx.begin()
 	message := '(r)estart (esc)ape | remaining: ${g.remaining:02} | time: ${f64(g.sw.elapsed().milliseconds()) / 1000.0:06.1f}s'
 	g.ctx.draw_text(ws.width / 2, 7, message, color: gg.light_gray, size: 22, align: .center)
-	for i, cell in g.cells {
-		g.draw_cell(i, cell)
+	for i in 0 .. g.cells.len {
+		g.draw_cell(i)
 	}
 	if g.revert_sw.elapsed().milliseconds() > 750 {
 		g.revert_sw = time.new_stopwatch(auto_start: false)

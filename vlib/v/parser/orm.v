@@ -58,6 +58,15 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
 
+	// Parse JOIN clauses (e.g., `join Department on User.dept_id == Department.id`)
+	mut joins := []ast.JoinClause{}
+	for p.tok.kind == .name && p.tok.lit in ['join', 'left', 'right', 'full', 'inner'] {
+		join_clause := p.parse_sql_join_clause()
+		if join_clause.table_expr.typ != ast.void_type {
+			joins << join_clause
+		}
+	}
+
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 
@@ -145,6 +154,66 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			typ: table_type
 			pos: table_pos
 		}
+		joins:        joins
+	}
+}
+
+// parse_sql_join_clause parses a JOIN clause like:
+// `join Department on User.dept_id == Department.id`
+// `left join Department on User.dept_id == Department.id`
+// `inner join Department on User.dept_id == Department.id`
+fn (mut p Parser) parse_sql_join_clause() ast.JoinClause {
+	mut kind := ast.JoinKind.inner
+	join_pos := p.tok.pos()
+
+	// Check for join type prefix (left, right, full, inner)
+	if p.tok.lit == 'left' {
+		kind = .left
+		p.next()
+	} else if p.tok.lit == 'right' {
+		kind = .right
+		p.next()
+	} else if p.tok.lit == 'full' {
+		kind = .full_outer
+		p.next()
+		// Handle optional 'outer' keyword
+		if p.tok.kind == .name && p.tok.lit == 'outer' {
+			p.next()
+		}
+	} else if p.tok.lit == 'inner' {
+		// 'inner' is optional, just skip it
+		p.next()
+	}
+
+	// Now expect 'join'
+	if p.tok.kind != .name || p.tok.lit != 'join' {
+		p.error('expected `join` keyword after join type')
+		return ast.JoinClause{}
+	}
+	p.next() // consume 'join'
+
+	// Parse the joined table type
+	table_pos := p.tok.pos()
+	table_type := p.parse_type()
+
+	// Expect 'on' keyword
+	if p.tok.kind != .name || p.tok.lit != 'on' {
+		p.error('expected `on` keyword after table name in JOIN clause')
+		return ast.JoinClause{}
+	}
+	p.next() // consume 'on'
+
+	// Parse the ON condition expression
+	on_expr := p.expr(0)
+
+	return ast.JoinClause{
+		kind:       kind
+		pos:        join_pos
+		table_expr: ast.TypeNode{
+			typ: table_type
+			pos: table_pos
+		}
+		on_expr:    on_expr
 	}
 }
 

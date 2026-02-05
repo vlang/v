@@ -27,7 +27,7 @@ jobs:
         os: [macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 121
+    timeout-minutes: 151
     env:
       VFLAGS: -cc clang
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
@@ -45,6 +45,8 @@ jobs:
         run: v run ci/macos_ci.vsh build_v_with_prealloc
       - name: Test cross compilation to Linux
         run: v run ci/macos_ci.vsh test_cross_compilation
+      - name: Test inline assembly on macos
+        run: v run ci/macos_ci.vsh test_inline_assembly
       - name: Build V with -cstrict
         run: v run ci/macos_ci.vsh build_with_cstrict
       - name: All code is formatted

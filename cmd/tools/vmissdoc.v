@@ -6,7 +6,7 @@ import flag
 
 const tool_name = 'v missdoc'
 const tool_version = '0.1.0'
-const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.\nNote: use `v missdoc @vlib`, to find public fns that still lack documentation.'
 const work_dir_prefix = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
 
 struct UndocumentedFN {
@@ -226,7 +226,6 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('PATH [PATH]...')
 	fp.skip_executable() // skip the "missdoc" command.
-
 	// Collect tool options
 	mut opt := Options{
 		show_help:       fp.bool('help', `h`, false, 'Show this help text.')
@@ -240,9 +239,7 @@ fn main() {
 		diff:            fp.bool('diff', 0, false, 'exit(1) and show difference between two PATH inputs, return 0 otherwise.')
 		verify:          fp.bool('verify', 0, false, 'exit(1) if documentation is missing, 0 otherwise.')
 	}
-
 	opt.additional_args = fp.finalize() or { panic(err) }
-
 	if opt.show_help {
 		println(fp.usage())
 		exit(0)
@@ -284,6 +281,11 @@ fn main() {
 	}
 	mut total := 0
 	for path in opt.additional_args {
+		if path in ['@vlib', '@cmd', '@examples'] {
+			rpath := path[1..]
+			total += opt.report_undocumented_functions_in_path(os.join_path(@VROOT, rpath))
+			continue
+		}
 		if os.is_file(path) || os.is_dir(path) {
 			total += opt.report_undocumented_functions_in_path(path)
 		}

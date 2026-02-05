@@ -63,7 +63,7 @@ fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, lin
 fn bt_error_callback(data voidptr, msg_ptr &char, errnum int) {
 	// if data != unsafe { nil } && data.state != unsafe { nil } && data.state.filename != unsafe { nil } {
 	// 	filename := unsafe{ data.state.filename.vstring() }
-	// 	eprint('$filename: ')
+	// 	eprint('${filename}: ')
 	// }
 
 	msg := unsafe { msg_ptr.vstring() }

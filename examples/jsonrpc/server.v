@@ -153,7 +153,7 @@ fn (mut h KvHandler) handle_delete(req &jsonrpc.Request, mut wr jsonrpc.Response
 	})
 }
 
-fn (mut h KvHandler) handle_list(req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter) {
+fn (mut h KvHandler) handle_list(_req &jsonrpc.Request, mut wr jsonrpc.ResponseWriter) {
 	mut items := []KvItem{}
 	for k, v in h.store.dump() {
 		items << KvItem{

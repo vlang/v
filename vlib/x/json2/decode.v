@@ -309,7 +309,7 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	return result
 }
 
-fn get_dynamic_from_element[T](t T) []T {
+fn get_dynamic_from_element[T](_t T) []T {
 	return []T{}
 }
 
@@ -830,7 +830,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	}
 }
 
-fn create_value_from_optional[T](val ?T) ?T {
+fn create_value_from_optional[T](_val ?T) ?T {
 	return T{}
 }
 
@@ -853,6 +853,12 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 		decoder.decode_string(mut result)!
 
 		$for value in T.values {
+			for attr in value.attrs {
+				if attr.starts_with('json: ') && attr[6..] == result {
+					val = value.value
+					return
+				}
+			}
 			if value.name == result {
 				val = value.value
 				return

@@ -1221,7 +1221,7 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 	if key_type.is_string() {
 		key += '((${styp}*)${keys_tmp}.data)[i];'
 	} else {
-		// key += '${styp}_str((($styp*)${keys_tmp}.data)[i]);'
+		// key += '${styp}_str(((${styp}*)${keys_tmp}.data)[i]);'
 		verror('json: encode only maps with string keys')
 	}
 	if utyp.has_flag(.option) {

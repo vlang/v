@@ -209,7 +209,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	sc.client.on_close_ref(delete_client_cb, sc)
 }
 
-fn delete_client_cb(mut c Client, code int, reason string, mut sc ServerClient) ! {
+fn delete_client_cb(mut c Client, _code int, _reason string, mut sc ServerClient) ! {
 	c.logger.debug('server-> Delete client')
 	lock sc.server.server_state {
 		sc.server.server_state.clients.delete(sc.client.id)

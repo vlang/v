@@ -259,7 +259,7 @@ pub:
 	pos      token.Pos
 }
 
-// 'name: $name'
+// 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string
@@ -727,7 +727,7 @@ pub mut:
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
 	//
-	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some $x $y')`,
+	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`
 	// Note: the same type, has to support also a .write_decimal(n i64) method.
 }
@@ -1079,6 +1079,13 @@ pub mut:
 	len           int
 }
 
+// TemplateLineInfo maps a generated code line to the original template location
+pub struct TemplateLineInfo {
+pub:
+	tmpl_path string // path to the template file (for @include support)
+	tmpl_line int    // 0-based line number in the template
+}
+
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
 // That array is then passed to V's checker.
@@ -1113,9 +1120,10 @@ pub mut:
 	notices               []errors.Notice        // all the checker notices in the file
 	call_stack            []errors.CallStackItem // call stack for this file (used for template errors)
 	generic_fns           []&FnDecl
-	global_labels         []string // from `asm { .globl labelname }`
-	template_paths        []string // all the .html/.md files that were processed with $tmpl
-	unique_prefix         string   // a hash of the `.path` field, used for making anon fn generation unique
+	global_labels         []string           // from `asm { .globl labelname }`
+	template_paths        []string           // all the .html/.md files that were processed with $tmpl
+	template_line_map     []TemplateLineInfo // maps generated line -> original template location
+	unique_prefix         string             // a hash of the `.path` field, used for making anon fn generation unique
 	//
 	is_parse_text    bool // true for files, produced by parse_text
 	is_template_text bool // true for files, produced by parse_comptime
@@ -2288,6 +2296,24 @@ pub mut:
 	end_comments    []Comment
 }
 
+// JoinKind represents the type of SQL JOIN operation
+pub enum JoinKind {
+	inner      // INNER JOIN - returns only matching rows
+	left       // LEFT JOIN - returns all left rows, NULL for non-matching right
+	right      // RIGHT JOIN - returns all right rows, NULL for non-matching left
+	full_outer // FULL OUTER JOIN - returns all rows from both tables
+}
+
+// JoinClause represents a JOIN clause in an SQL SELECT query
+pub struct JoinClause {
+pub:
+	kind JoinKind
+	pos  token.Pos
+pub mut:
+	table_expr TypeNode // The table being joined (e.g., Department in `join Department`)
+	on_expr    Expr     // The ON condition (e.g., `User.dept_id == Department.id`)
+}
+
 pub struct SqlExpr {
 pub:
 	is_count     bool
@@ -2315,6 +2341,7 @@ pub mut:
 	fields      []StructField
 	sub_structs map[int]SqlExpr
 	or_expr     OrExpr
+	joins       []JoinClause // JOIN clauses for this query
 }
 
 pub struct NodeError {

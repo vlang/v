@@ -599,10 +599,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 	if node.kind == .map {
 		// diff := g.new_tmp_var()
-		// g.writeln('${ast.int_type_name} $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
-		// g.writeln('if ($diff < 0) {')
-		// g.writeln('\t$idx = -1;')
-		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
+		// g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${arw_or_pt}key_values.len - ${map_len};')
+		// g.writeln('if (${diff} < 0) {')
+		// g.writeln('\t${idx} = -1;')
+		// g.writeln('\t${map_len} = ${cond_var}${arw_or_pt}key_values.len;')
 		// g.writeln('}')
 	}
 	g.write_defer_stmts(node.scope, false, node.pos)

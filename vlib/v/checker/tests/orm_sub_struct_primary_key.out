@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_sub_struct_primary_key.vv:9:2: error: ORM: struct `Payload` used as ORM sub-struct field `payload` must have a `@[primary]` field, or use `@[sql: '-']` to skip this field
+    7 | struct Message {
+    8 |     id      int @[primary; sql: serial]
+    9 |     payload Payload
+      |     ~~~~~~~~~~~~~~~
+   10 | }
+   11 |

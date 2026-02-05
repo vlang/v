@@ -1,25 +1,27 @@
 module math
 
-// hypot returns the hypotenuse of the triangle give two sides
+// hypot returns the hypotenuse of the triangle give two sides.
+//
+// special cases are:
+// hypot(±inf, y) = +inf
+// hypot(x, ±inf) = +inf
+// hypot(nan, y) = nan
+// hypot(x, nan) = nan
 pub fn hypot(x f64, y f64) f64 {
-	if is_inf(x, 0) || is_inf(y, 0) {
+	mut p := abs(x)
+	mut q := abs(y)
+	if is_inf(p, 1) || is_inf(q, 1) {
 		return inf(1)
 	}
-	if is_nan(x) || is_nan(y) {
+	if is_nan(p) || is_nan(q) {
 		return nan()
 	}
-	mut result := 0.0
-	if x != 0.0 || y != 0.0 {
-		abs_x := abs(x)
-		abs_y := abs(y)
-		cmin, cmax := minmax(abs_x, abs_y)
-		rat := cmin / cmax
-		root_term := sqrt(1.0 + rat * rat)
-		if cmax < max_f64 / root_term {
-			result = cmax * root_term
-		} else {
-			panic('overflow in hypot_e function')
-		}
+	if p < q {
+		p, q = q, p
 	}
-	return result
+	if p == 0.0 {
+		return 0.0
+	}
+	q = q / p
+	return p * sqrt(1 + q * q)
 }

@@ -203,7 +203,7 @@ fn (mut g Gen) gen_assert_metainfo_common(node ast.AssertStmt) string {
 }
 
 fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
-	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
+	// eprintln('> gen_assert_single_expr typ: ${typ} | expr: ${expr} | typeof(expr): ${typeof(expr)}')
 	expr_str := '${expr}'
 	match expr {
 		ast.CastExpr {

@@ -25,7 +25,7 @@ fn test_fn_variadic() {
 fn variadic_test_generic[T](a int, b ...T) T {
 	b1 := b[0]
 	b2 := b[1]
-	return '$a $b1 $b2'
+	return '${a} ${b1} ${b2}'
 }
 
 fn test_fn_variadic_generic() {

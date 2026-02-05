@@ -141,7 +141,7 @@ fn test_float_to_str() {
 		// println(x)
 		s := strconv.f32_to_str(x, 8)
 		s1 := exp_result_f32[c]
-		// println("$s1 $s")
+		// println("${s1} ${s}")
 		assert s == s1
 	}
 
@@ -149,7 +149,7 @@ fn test_float_to_str() {
 	for c, x in test_cases_f64 {
 		s := strconv.f64_to_str(x, 17)
 		s1 := exp_result_f64[c]
-		// println("$s1 $s")
+		// println("${s1} ${s}")
 		assert s == s1
 	}
 

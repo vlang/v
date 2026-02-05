@@ -229,7 +229,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
-			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("$escaped_val")')
+			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("${escaped_val}")')
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:

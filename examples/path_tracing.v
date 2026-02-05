@@ -473,7 +473,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 }
 
 //*********************** beam scan routine *********************************
-fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
+fn ray_trace(w int, h int, samps int, scene_id int) Image {
 	image := new_image(w, h)
 
 	// inverse costants
@@ -555,17 +555,15 @@ fn main() {
 	// change the seed for a different result
 	rand.seed([u32(2020), 0])
 
-	t1 := time.ticks()
-
 	eprintln('Path tracing samples: ${samples}, file_name: ${file_name}, scene_id: ${scene_id}, width: ${width}, height: ${height}')
 	eprintln('')
-	image := ray_trace(width, height, samples, file_name, scene_id)
-	t2 := time.ticks()
 
+	t1 := time.ticks()
+	image := ray_trace(width, height, samples, scene_id)
+	t2 := time.ticks()
 	eprintln('Rendering finished. Took: ${(t2 - t1):5}ms')
 
 	image.save_as_ppm(file_name)
 	t3 := time.ticks()
-
 	eprintln('Image saved as [${file_name}]. Took: ${(t3 - t2):5}ms')
 }
