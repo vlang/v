@@ -2,6 +2,9 @@
 // These functions are translated by the BEAM codegen to runtime calls
 module builtin
 
+// FnExitCb is the callback type for at_exit handlers
+pub type FnExitCb = fn ()
+
 // println prints a line to stdout
 // Codegen translates to: vbeam_io:println(...)
 pub fn println(s string) {
@@ -124,6 +127,16 @@ pub fn vcalloc(n isize) &u8 {
 @[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
+}
+
+// at_exit registers a fn callback that will be called at normal process termination.
+// On BEAM: This is a stub that returns success but doesn't actually register
+// the callback, as BEAM's process model differs from traditional OS processes.
+// Real implementation could use erlang:halt/2 with custom handling.
+pub fn at_exit(cb FnExitCb) ! {
+	// BEAM doesn't have traditional atexit functionality
+	// The callback is accepted but may not be called on process exit
+	// Erlang processes can use 'trap_exit' and handle exit signals differently
 }
 
 // copy copies elements from src to dest

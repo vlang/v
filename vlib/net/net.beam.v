@@ -259,6 +259,11 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 	return error('TcpConn.read not implemented for BEAM backend')
 }
 
+// read_ptr reads data from the connection into a pointer
+pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
+	return error('TcpConn.read_ptr not implemented for BEAM backend')
+}
+
 // write writes data to the connection
 pub fn (mut c TcpConn) write(bytes []u8) !int {
 	return error('TcpConn.write not implemented for BEAM backend')
@@ -272,6 +277,12 @@ pub fn (mut c TcpConn) write_string(s string) !int {
 // peer_addr retrieves the peer address
 pub fn (c &TcpConn) peer_addr() !Addr {
 	return Addr{}
+}
+
+// peer_ip retrieves the peer IP address as a string
+pub fn (c &TcpConn) peer_ip() !string {
+	addr := c.peer_addr()!
+	return addr.str()
 }
 
 // addr retrieves the local address
@@ -357,6 +368,11 @@ pub mut:
 // accept accepts a connection
 pub fn (mut l TcpListener) accept() !&TcpConn {
 	return error('TcpListener.accept not implemented for BEAM backend')
+}
+
+// set_accept_timeout sets the accept timeout for the listener
+pub fn (mut l TcpListener) set_accept_timeout(t time.Duration) {
+	l.accept_timeout = t
 }
 
 // close closes the listener

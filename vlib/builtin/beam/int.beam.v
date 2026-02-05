@@ -223,6 +223,21 @@ pub fn (b &u8) vstring_with_len(len int) string {
 	return ''
 }
 
+// vstring_literal_with_len creates a string from a byte pointer with a given length
+// On BEAM: Stub - binary creation would be handled by codegen
+// This is similar to vstring_with_len but typically used for string literals
+pub fn (b &u8) vstring_literal_with_len(len int) string {
+	// BEAM codegen handles this - would create binary from pointer + length
+	return ''
+}
+
+// vbytes creates a byte slice from a pointer with a given length
+// On BEAM: Stub - array creation would be handled by codegen
+pub fn (b &u8) vbytes(len int) []u8 {
+	// BEAM codegen handles this - would create list/binary from pointer + length
+	return []
+}
+
 // is_hex_digit returns true if the byte is a valid hexadecimal digit (0-9, a-f, A-F)
 pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)

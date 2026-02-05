@@ -718,3 +718,36 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 	// Re-open the file
 	f.is_opened = true
 }
+
+// ========================================
+// Signal handling
+// ========================================
+
+// signal_opt assigns a handler callback to be called when a signal is received.
+// On BEAM: This is a stub - BEAM uses Erlang's process signal handling
+// which is fundamentally different from POSIX signals.
+// Returns the previous handler (always nil for BEAM stub).
+pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
+	// BEAM doesn't support traditional POSIX signal handlers
+	// Erlang processes use process links and monitors for similar functionality
+	// Return a dummy handler to indicate "no previous handler"
+	return handler
+}
+
+// signal_ignore masks system signals.
+// On BEAM: This is a no-op since BEAM doesn't have traditional signal handling.
+pub fn signal_ignore(args ...Signal) {
+	// No-op on BEAM - Erlang handles this differently via process flags
+}
+
+// is_main_thread returns whether the current thread is the main thread.
+// On BEAM: Always returns true since the concept doesn't directly apply.
+fn is_main_thread() bool {
+	return true
+}
+
+// signal_ignore_internal is the internal implementation for background threads.
+// On BEAM: This is a no-op.
+fn signal_ignore_internal(args ...Signal) {
+	// No-op on BEAM
+}

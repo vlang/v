@@ -120,6 +120,14 @@ pub fn (s string) substr(start int, end int) string {
 	return ''
 }
 
+// substr_unsafe returns a substring without bounds checking
+// Codegen: vbeam_string:slice(S, Start, End)
+// On BEAM: same as substr since BEAM handles bounds internally
+@[unsafe]
+pub fn (s string) substr_unsafe(start int, end int) string {
+	return ''
+}
+
 // int parses the string as an integer
 // Codegen: vbeam_conv:string_to_int(S)
 pub fn (s string) int() int {
@@ -421,4 +429,21 @@ pub fn (s string) bool() bool {
 // match_glob matches the string against a glob pattern
 pub fn (s string) match_glob(pattern string) bool {
 	return false
+}
+
+// split_once splits the string at the first occurrence of delim
+// Returns (before, after) tuple, or none if delim not found
+// Codegen: vbeam_string:split_once(S, Delim)
+pub fn (s string) split_once(delim string) ?(string, string) {
+	idx := s.index_(delim)
+	if idx == -1 {
+		return none
+	}
+	return s.substr(0, idx), s.substr(idx + delim.len, s.len)
+}
+
+// split_nth splits the string by delim into at most n parts
+// Codegen: vbeam_string:split_nth(S, Delim, N)
+pub fn (s string) split_nth(delim string, n int) []string {
+	return []
 }
