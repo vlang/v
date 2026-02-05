@@ -210,6 +210,11 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		} else {
 			if g.is_autofree_tmp && g.is_autofree
 				&& expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+				if expr is ast.CallExpr {
+					old_is_autofree_tmp := g.is_autofree_tmp
+					g.autofree_call_pregen(expr)
+					g.is_autofree_tmp = old_is_autofree_tmp
+				}
 				tmp := g.new_tmp_var()
 				tmp_pos := expr.pos()
 				mut scope := g.file.scope.innermost(tmp_pos.pos)
