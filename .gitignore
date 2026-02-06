@@ -139,9 +139,9 @@ vls.log
 # ignore Intellij files
 .idea/
 /*.iml
+
+#ignore generated files:
 wasm.v
-TAGS
-tags
 
 # ignore large GTK *.gir files
 Gtk-4.0.gir
@@ -149,6 +149,11 @@ Gtk-4.0.gir
 
 vlib/builtin/js/*.js
 vlib/v/tests/*.js
+
+#ignore tags indexes, used by emacs/vim:
+ETAGS
+TAGS
+tags
 
 # ignore the old regexp based v.ctags file (people using universal ctags < 6.1.0, can still benefit from them)
 .ctags.d/v.ctags
@@ -160,3 +165,8 @@ bench/vectors/obj
 autofuzz.log
 .project.gf
 .aider*
+
+#ignore common file names for bugs/reproductions
+bug*
+issue*
+

@@ -1,0 +1,6 @@
+string _arg_expr_os_execute_1_
+= builtin__str_intp
+os__Result res = os__execute(/*autofree arg*/_arg_expr_os_execute_1_
+string _arg_expr_println_1_
+= builtin__string_trim_space(res.output);
+builtin__println(/*autofree arg*/_arg_expr_println_1_
