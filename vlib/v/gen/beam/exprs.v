@@ -108,9 +108,21 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 
 	call_mod := node.mod
-	// Cross-module call: 'v.other_module':'fn_name'(args)
-	if call_mod != g.cur_mod && call_mod.len > 0 {
-		erl_mod := g.v_mod_to_erl_mod(call_mod)
+	// Detect cross-module calls: V resolves imported functions like
+	// mymodules.add_xy with node.mod still set to the calling module.
+	// Check if full_name has a module prefix different from cur_mod.
+	mut is_cross_module := call_mod != g.cur_mod && call_mod.len > 0
+	mut cross_mod_name := call_mod
+	if !is_cross_module && full_name.contains('.') {
+		mod_prefix := full_name.all_before_last('.')
+		if mod_prefix != g.cur_mod && mod_prefix.len > 0 {
+			is_cross_module = true
+			cross_mod_name = mod_prefix
+		}
+	}
+	if is_cross_module {
+		// Cross-module call: 'v.other_module':'fn_name'(args)
+		erl_mod := g.v_mod_to_erl_mod(cross_mod_name)
 		fn_name := full_name.all_after_last('.')
 		g.write("'${erl_mod}':'${fn_name}'(")
 	} else {
