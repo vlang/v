@@ -396,8 +396,8 @@ fn test_expand_single_or_expr_defaults_to_result() {
 	sel := if_expr.cond as ast.SelectorExpr
 	assert sel.rhs.name == 'is_error', 'expected is_error selector for Result, got ${sel.rhs.name}'
 
-	// base_type is unknown (empty env), so is_void_result is true => returns empty_expr
-	assert result is ast.EmptyExpr, 'expected EmptyExpr for void result (unknown base type)'
+	// base_type is unknown (empty env), defaults to 'int' => not void => returns data access
+	assert result is ast.SelectorExpr, 'expected SelectorExpr (.data access) for default base type, got ${result.type_name()}'
 }
 
 fn test_expand_single_or_expr_with_return_in_or_block() {
@@ -423,13 +423,12 @@ fn test_expand_single_or_expr_with_return_in_or_block() {
 	// Should still generate prefix statements
 	assert prefix_stmts.len == 2, 'expected 2 prefix stmts, got ${prefix_stmts.len}'
 
-	// The if-block body should contain err assignment + return statement
+	// The if-block body should contain only the return statement (err not used, so no err assign)
 	if_stmt := (prefix_stmts[1] as ast.ExprStmt).expr as ast.IfExpr
-	// err := _or_t1.err, then the return
-	assert if_stmt.stmts.len == 2, 'expected 2 stmts in if body (err assign + return), got ${if_stmt.stmts.len}'
+	assert if_stmt.stmts.len == 1, 'expected 1 stmt in if body (return only, err not used), got ${if_stmt.stmts.len}'
 
-	// base_type is unknown => void result => returns empty_expr
-	assert result is ast.EmptyExpr, 'expected EmptyExpr for void result'
+	// base_type is unknown => defaults to 'int' => not void => returns data access
+	assert result is ast.SelectorExpr, 'expected SelectorExpr (.data access) for default base type'
 }
 
 fn test_transform_expr_or_expr_wraps_in_unsafe() {
