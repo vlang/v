@@ -270,7 +270,9 @@ pub fn (t Type) base_type() Type {
 // return the key type used with for in loops
 pub fn (t Type) key_type() Type {
 	match t {
+		Alias { return t.base_type.key_type() }
 		Map { return t.key_type }
+		Pointer { return t.base_type.key_type() }
 		// TODO: struct here is 'struct string', need to fix this.
 		// we could use an alias? remove once fixed.
 		// Array, ArrayFixed, String, Struct { return int_ }
@@ -283,14 +285,38 @@ pub fn (t Type) key_type() Type {
 // return the value type used with for in loops
 pub fn (t Type) value_type() Type {
 	match t {
-		Array, ArrayFixed { return t.elem_type }
-		Channel { return t.elem_type or { Type(t) } } // TODO: ?
-		Map { return t.value_type }
-		Pointer { return t.base_type.value_type() }
-		String { return u8_ }
-		Thread { return t.elem_type or { Type(t) } } // TODO: ?
-		OptionType, ResultType { return t.base_type.value_type() }
-		else { return t.base_type() }
+		Alias {
+			return t.base_type.value_type()
+		}
+		Array, ArrayFixed {
+			return t.elem_type
+		}
+		Channel {
+			return t.elem_type or { Type(t) }
+		} // TODO: ?
+		Map {
+			return t.value_type
+		}
+		Pointer {
+			if t.base_type is String {
+				// `&string` is used as pointer-to-first-string in several builtin APIs.
+				// Indexing it should yield `string`, not `u8`.
+				return string_
+			}
+			return t.base_type.value_type()
+		}
+		String {
+			return u8_
+		}
+		Thread {
+			return t.elem_type or { Type(t) }
+		} // TODO: ?
+		OptionType, ResultType {
+			return t.base_type.value_type()
+		}
+		else {
+			return t.base_type()
+		}
 	}
 }
 

@@ -1003,6 +1003,6 @@ fn (mut g Gen) writeln(str string) {
 	g.on_newline = true
 }
 
-pub fn (g &Gen) print_output() {
-	println(g.out)
+pub fn (mut g Gen) print_output() {
+	println(g.out.str())
 }

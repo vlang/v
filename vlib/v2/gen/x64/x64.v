@@ -4,11 +4,12 @@
 
 module x64
 
+import v2.mir
 import v2.ssa
 import encoding.binary
 
 pub struct Gen {
-	mod &ssa.Module
+	mod &mir.Module
 mut:
 	elf &ElfObject
 
@@ -23,6 +24,10 @@ mut:
 	// Register allocation
 	reg_map   map[int]int
 	used_regs []int
+
+	cur_func_ret_type         int
+	cur_func_abi_ret_indirect bool
+	sret_save_offset          int
 }
 
 struct Interval {
@@ -33,7 +38,7 @@ mut:
 	has_call bool
 }
 
-pub fn Gen.new(mod &ssa.Module) &Gen {
+pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
 		mod: mod
 		elf: ElfObject.new()
@@ -68,7 +73,7 @@ pub fn (mut g Gen) gen() {
 	}
 }
 
-fn (mut g Gen) gen_func(func ssa.Function) {
+fn (mut g Gen) gen_func(func mir.Function) {
 	g.curr_offset = g.elf.text_data.len
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
@@ -76,15 +81,33 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	g.pending_labels = map[int][]int{}
 	g.reg_map = map[int]int{}
 	g.used_regs = []int{}
+	g.cur_func_ret_type = func.typ
+	g.cur_func_abi_ret_indirect = func.abi_ret_indirect
+	g.sret_save_offset = 0
 
 	g.allocate_registers(func)
 
 	// Calculate Stack Frame
 	mut slot_offset := 8
 
-	for pid in func.params {
-		g.stack_map[pid] = -slot_offset
+	// Hidden sret pointer slot (SysV: incoming in RDI)
+	if func.abi_ret_indirect {
+		g.sret_save_offset = -slot_offset
 		slot_offset += 8
+	}
+
+	for pi, pid in func.params {
+		param_typ := g.mod.values[pid].typ
+		param_size := g.type_size(param_typ)
+		is_indirect_param := pi < func.abi_param_class.len && func.abi_param_class[pi] == .indirect
+		if is_indirect_param && param_size > 0 {
+			slot_offset = (slot_offset + 15) & ~0xF
+			slot_offset += param_size
+			g.stack_map[pid] = -slot_offset
+		} else {
+			g.stack_map[pid] = -slot_offset
+			slot_offset += 8
+		}
 	}
 
 	for blk_id in func.blocks {
@@ -122,6 +145,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				slot_offset += 8 // Slot for the pointer
 			}
 
+			if instr.op == .call_sret {
+				result_typ := g.mod.type_store.types[val.typ]
+				if result_typ.kind == .struct_t {
+					result_size := g.type_size(val.typ)
+					slot_offset = (slot_offset + 15) & ~0xF
+					slot_offset += result_size
+					g.stack_map[val_id] = -slot_offset
+					continue
+				}
+			}
+
 			if val_id in g.reg_map {
 				continue
 			}
@@ -154,23 +188,33 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
-	// First 6 args in registers, rest on stack at [rbp+16], [rbp+24], ...
+	// For sret functions, hidden pointer consumes RDI.
 	abi_regs := [7, 6, 2, 1, 8, 9]
+	arg_reg_base := if func.abi_ret_indirect { 1 } else { 0 }
+	num_reg_args := 6 - arg_reg_base
+	if func.abi_ret_indirect && g.sret_save_offset != 0 {
+		asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rdi)
+	}
 	for i, pid in func.params {
-		if i < 6 {
-			src := abi_regs[i]
-			if reg := g.reg_map[pid] {
+		is_indirect_param := i < func.abi_param_class.len && func.abi_param_class[i] == .indirect
+		if i < num_reg_args {
+			src := abi_regs[i + arg_reg_base]
+			if is_indirect_param {
+				g.copy_indirect_param_from_reg(pid, src)
+			} else if reg := g.reg_map[pid] {
 				asm_mov_reg_reg(mut g, Reg(reg), Reg(src))
 			} else {
 				offset := g.stack_map[pid]
 				asm_store_rbp_disp_reg(mut g, offset, Reg(src))
 			}
 		} else {
-			// Stack parameters: [rbp+16] is 7th param, [rbp+24] is 8th, etc.
-			stack_param_offset := 16 + (i - 6) * 8
+			// Stack parameters start at [rbp+16].
+			stack_param_offset := 16 + (i - num_reg_args) * 8
 			// Load from stack into RAX, then store to our slot
 			asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
-			if reg := g.reg_map[pid] {
+			if is_indirect_param {
+				g.copy_indirect_param_from_reg(pid, int(rax))
+			} else if reg := g.reg_map[pid] {
 				asm_mov_reg_reg(mut g, Reg(reg), rax)
 			} else {
 				offset := g.stack_map[pid]
@@ -200,16 +244,17 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 
 fn (mut g Gen) gen_instr(val_id int) {
 	instr := g.mod.instrs[g.mod.values[val_id].index]
+	op := g.selected_opcode(instr)
 
 	// Temps: 0=RAX, 1=RCX
 
-	match instr.op {
+	match op {
 		.add, .sub, .mul, .sdiv, .srem, .and_, .or_, .xor, .shl, .ashr, .lshr, .eq, .ne, .lt, .gt,
 		.le, .ge {
 			g.load_val_to_reg(0, instr.operands[0]) // RAX
 			g.load_val_to_reg(1, instr.operands[1]) // RCX
 
-			match instr.op {
+			match op {
 				.add {
 					asm_add_rax_rcx(mut g)
 				}
@@ -248,7 +293,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				.eq, .ne, .lt, .gt, .le, .ge {
 					asm_cmp_rax_rcx(mut g)
-					cc := match instr.op {
+					cc := match op {
 						.eq { cc_e }
 						.ne { cc_ne }
 						.lt { cc_l }
@@ -264,9 +309,24 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.store_reg_to_val(0, val_id)
 		}
 		.store {
-			g.load_val_to_reg(0, instr.operands[0]) // Val -> RAX
-			g.load_val_to_reg(1, instr.operands[1]) // Ptr -> RCX
-			asm_mov_mem_rcx_rax(mut g)
+			src_id := instr.operands[0]
+			src_typ := g.mod.values[src_id].typ
+			src_type_info := g.mod.type_store.types[src_typ]
+			src_size := g.type_size(src_typ)
+			if src_type_info.kind == .struct_t && src_size > 16 {
+				g.load_struct_src_address_to_reg(int(r10), src_id, src_typ)
+				g.load_val_to_reg(int(r11), instr.operands[1])
+				num_chunks := (src_size + 7) / 8
+				for i := 0; i < num_chunks; i++ {
+					disp := i * 8
+					asm_mov_rax_mem_base_disp(mut g, r10, disp)
+					asm_mov_mem_base_disp_rax(mut g, r11, disp)
+				}
+			} else {
+				g.load_val_to_reg(0, src_id) // Val -> RAX
+				g.load_val_to_reg(1, instr.operands[1]) // Ptr -> RCX
+				asm_mov_mem_rcx_rax(mut g)
+			}
 		}
 		.load {
 			g.load_val_to_reg(1, instr.operands[0]) // Ptr -> RCX
@@ -305,7 +365,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 				// Push in reverse order
 				for i := num_args; i > 6; i-- {
-					g.load_val_to_reg(0, instr.operands[i]) // RAX
+					g.load_call_arg_to_reg(0, instr.operands[i], i - 1, instr) // RAX
 					asm_push(mut g, rax)
 				}
 			}
@@ -313,7 +373,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load register arguments
 			for i in 1 .. instr.operands.len {
 				if i - 1 < 6 {
-					g.load_val_to_reg(abi_regs[i - 1], instr.operands[i])
+					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1,
+						instr)
 				}
 			}
 			fn_val := g.mod.values[instr.operands[0]]
@@ -321,12 +382,16 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// xor eax, eax (Clear AL for variadic function calls)
 			asm_xor_eax_eax(mut g)
 
-			asm_call_rel32(mut g)
-			sym_idx := g.elf.add_undefined(fn_val.name)
-
-			// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
-			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
-			g.emit_u32(0)
+			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
+				asm_call_rel32(mut g)
+				sym_idx := g.elf.add_undefined(fn_val.name)
+				// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
+				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				g.emit_u32(0)
+			} else {
+				g.load_val_to_reg(int(r10), instr.operands[0])
+				asm_call_r10(mut g)
+			}
 
 			// Clean up stack arguments
 			if stack_args > 0 {
@@ -340,6 +405,57 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
 				g.store_reg_to_val(0, val_id)
+			}
+		}
+		.call_sret {
+			// SysV x86_64: hidden sret pointer in RDI, then user args in RSI,RDX,RCX,R8,R9.
+			abi_regs := [6, 2, 1, 8, 9]
+			num_args := instr.operands.len - 1
+
+			// Load destination pointer to RDI.
+			g.load_address_of_val_to_reg(7, val_id)
+
+			// Push stack arguments in reverse order (args 6+ after hidden sret ptr).
+			mut stack_args := 0
+			if num_args > 5 {
+				stack_args = num_args - 5
+				if stack_args % 2 == 1 {
+					asm_push(mut g, rax)
+				}
+				for i := num_args; i > 5; i-- {
+					g.load_call_arg_to_reg(0, instr.operands[i], i - 1, instr) // RAX
+					asm_push(mut g, rax)
+				}
+			}
+
+			// Load register arguments.
+			for i := 1; i <= num_args && i <= 5; i++ {
+				g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1, instr)
+			}
+
+			fn_val := g.mod.values[instr.operands[0]]
+
+			// xor eax, eax (Clear AL for variadic function calls)
+			asm_xor_eax_eax(mut g)
+
+			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
+				asm_call_rel32(mut g)
+				sym_idx := g.elf.add_undefined(fn_val.name)
+				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				g.emit_u32(0)
+			} else {
+				g.load_val_to_reg(int(r10), instr.operands[0])
+				asm_call_r10(mut g)
+			}
+
+			// Clean up stack arguments
+			if stack_args > 0 {
+				cleanup := (stack_args + (stack_args % 2)) * 8
+				if cleanup <= 127 {
+					asm_add_rsp_imm8(mut g, u8(cleanup))
+				} else {
+					asm_add_rsp_imm32(mut g, u32(cleanup))
+				}
 			}
 		}
 		.call_indirect {
@@ -357,7 +473,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					asm_push(mut g, rax)
 				}
 				for i := num_args; i > 6; i-- {
-					g.load_val_to_reg(0, instr.operands[i])
+					g.load_call_arg_to_reg(0, instr.operands[i], i - 1, instr)
 					asm_push(mut g, rax)
 				}
 			}
@@ -365,7 +481,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Load register arguments
 			for i in 1 .. instr.operands.len {
 				if i - 1 < 6 {
-					g.load_val_to_reg(abi_regs[i - 1], instr.operands[i])
+					g.load_call_arg_to_reg(abi_regs[i - 1], instr.operands[i], i - 1,
+						instr)
 				}
 			}
 
@@ -393,7 +510,26 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.ret {
-			if instr.operands.len > 0 {
+			if g.cur_func_abi_ret_indirect {
+				if g.sret_save_offset != 0 {
+					asm_load_reg_rbp_disp(mut g, rdi, g.sret_save_offset)
+				}
+				if instr.operands.len > 0 {
+					ret_val_id := instr.operands[0]
+					ret_size := g.type_size(g.cur_func_ret_type)
+					if ret_size > 0 {
+						g.load_struct_src_address_to_reg(int(r10), ret_val_id, g.cur_func_ret_type)
+						num_chunks := (ret_size + 7) / 8
+						for i := 0; i < num_chunks; i++ {
+							disp := i * 8
+							asm_mov_rax_mem_base_disp(mut g, r10, disp)
+							asm_mov_mem_base_disp_rax(mut g, rdi, disp)
+						}
+					}
+				}
+				// SysV returns sret pointer in RAX.
+				asm_mov_reg_reg(mut g, rax, rdi)
+			} else if instr.operands.len > 0 {
 				g.load_val_to_reg(0, instr.operands[0])
 			}
 			// Cleanup Stack
@@ -474,8 +610,39 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_ud2(mut g)
 		}
 		else {
-			eprintln('x64: unknown op ${instr.op}')
+			eprintln('x64: unknown op ${op} (${instr.selected_op})')
 		}
+	}
+}
+
+fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
+	if instr.selected_op == '' {
+		return instr.op
+	}
+	suffix := if instr.selected_op.contains('.') {
+		instr.selected_op.all_after('.')
+	} else {
+		instr.selected_op
+	}
+	return match suffix {
+		'add_rr' { .add }
+		'sub_rr' { .sub }
+		'mul_rr' { .mul }
+		'sdiv_rr' { .sdiv }
+		'and_rr' { .and_ }
+		'or_rr' { .or_ }
+		'xor_rr' { .xor }
+		'load_mr' { .load }
+		'store_rm' { .store }
+		'call' { .call }
+		'call_indirect' { .call_indirect }
+		'call_sret' { .call_sret }
+		'ret' { .ret }
+		'br' { .br }
+		'jmp' { .jmp }
+		'switch' { .switch_ }
+		'copy' { .assign }
+		else { instr.op }
 	}
 }
 
@@ -487,6 +654,48 @@ fn (mut g Gen) emit_jmp(target_idx int) {
 	} else {
 		g.record_pending_label(target_idx)
 		g.emit_u32(0)
+	}
+}
+
+fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.Instruction) {
+	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
+		&& instr.abi_arg_class[arg_idx] == .indirect
+	if is_indirect {
+		g.load_address_of_val_to_reg(reg, val_id)
+		return
+	}
+	g.load_val_to_reg(reg, val_id)
+}
+
+fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ int) {
+	val := g.mod.values[val_id]
+	if val.typ > 0 && val.typ < g.mod.type_store.types.len {
+		val_typ := g.mod.type_store.types[val.typ]
+		if val_typ.kind == .ptr_t && val_typ.elem_type == expected_struct_typ {
+			g.load_val_to_reg(reg, val_id)
+			return
+		}
+	}
+	g.load_address_of_val_to_reg(reg, val_id)
+}
+
+fn (mut g Gen) copy_indirect_param_from_reg(param_id int, src_reg int) {
+	param_typ := g.mod.values[param_id].typ
+	param_size := g.type_size(param_typ)
+	if param_size <= 0 {
+		offset := g.stack_map[param_id]
+		asm_store_rbp_disp_reg(mut g, offset, Reg(src_reg))
+		return
+	}
+	if src_reg != int(r10) {
+		asm_mov_reg_reg(mut g, r10, Reg(src_reg))
+	}
+	g.load_address_of_val_to_reg(int(r11), param_id)
+	num_chunks := (param_size + 7) / 8
+	for i := 0; i < num_chunks; i++ {
+		disp := i * 8
+		asm_mov_rax_mem_base_disp(mut g, r10, disp)
+		asm_mov_mem_base_disp_rax(mut g, r11, disp)
 	}
 }
 
@@ -564,6 +773,69 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	}
 }
 
+fn (g Gen) type_size(typ_id ssa.TypeID) int {
+	if typ_id == 0 {
+		return 0
+	}
+	if typ_id < 0 || typ_id >= g.mod.type_store.types.len {
+		return 8
+	}
+	typ := g.mod.type_store.types[typ_id]
+	match typ.kind {
+		.void_t {
+			return 0
+		}
+		.int_t {
+			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+		}
+		.float_t {
+			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+		}
+		.ptr_t {
+			return 8
+		}
+		.array_t {
+			return typ.len * g.type_size(typ.elem_type)
+		}
+		.struct_t {
+			mut total := 0
+			for field_typ in typ.fields {
+				if total % 8 != 0 {
+					total = (total + 7) & ~7
+				}
+				total += g.type_size(field_typ)
+			}
+			if total % 8 != 0 {
+				total = (total + 7) & ~7
+			}
+			return if total > 0 { total } else { 8 }
+		}
+		.func_t {
+			return 8
+		}
+		.label_t, .metadata_t {
+			return 0
+		}
+	}
+}
+
+fn (mut g Gen) load_address_of_val_to_reg(reg int, val_id int) {
+	offset := g.stack_map[val_id]
+	if offset != 0 {
+		if offset >= -128 && offset <= 127 {
+			asm_lea_rax_rbp_disp8(mut g, i8(offset))
+		} else {
+			asm_lea_rax_rbp_disp32(mut g, offset)
+		}
+		if reg != 0 {
+			asm_mov_reg_reg(mut g, Reg(reg), rax)
+		}
+		return
+	}
+	// Fallback: value already holds a pointer.
+	g.load_val_to_reg(reg, val_id)
+}
+
 fn (g Gen) map_reg(r int) u8 {
 	return u8(r)
 }
@@ -599,21 +871,25 @@ pub fn (mut g Gen) write_file(path string) {
 
 // Register Allocation Logic
 
-fn (mut g Gen) allocate_registers(func ssa.Function) {
+fn (mut g Gen) allocate_registers(func mir.Function) {
 	mut intervals := map[int]&Interval{}
 	mut instr_idx := 0
 
-	for pid in func.params {
+	// Track which values are alloca results - don't register allocate these
+	// as they hold addresses that may be needed across the function
+	mut alloca_vals := map[int]bool{}
+
+	for i, pid in func.params {
+		if i < func.abi_param_class.len && func.abi_param_class[i] == .indirect {
+			alloca_vals[pid] = true
+			continue
+		}
 		intervals[pid] = &Interval{
 			val_id: pid
 			start:  0
 			end:    0
 		}
 	}
-
-	// Track which values are alloca results - don't register allocate these
-	// as they hold addresses that may be needed across the function
-	mut alloca_vals := map[int]bool{}
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
@@ -630,7 +906,7 @@ fn (mut g Gen) allocate_registers(func ssa.Function) {
 			}
 			instr := g.mod.instrs[val.index]
 			// Mark alloca results as non-register-allocatable
-			if instr.op == .alloca {
+			if instr.op in [.alloca, .call_sret] {
 				alloca_vals[val_id] = true
 			}
 			for op in instr.operands {
