@@ -3,10 +3,10 @@
 
 main() ->
     Blocksize = 256,
-    Size = 'string.int'(option(arguments(), <<"-size">>, <<"80">>)),
-    Repeats = 'string.int'(option(arguments(), <<"-repeats">>, <<"4">>)),
+    Size = 'string.int'(option('v.os':'arguments'(), <<"-size">>, <<"80">>)),
+    Repeats = 'string.int'(option('v.os':'arguments'(), <<"-repeats">>, <<"4">>)),
     Sb = lists:foldl(fun(_, SbAcc) ->
         SbOut = new_builder(Blocksize),
-        % TODO: for {
-        SbOut
+        % TODO: unhandled stmt type
+        ok        SbOut
     end, Sb, lists:seq(0, Repeats - 1)),

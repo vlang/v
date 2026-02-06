@@ -14,4 +14,4 @@ main() ->
         vbeam_io:println(<<(H)/binary, "  ", (Fpath)/binary>>),
         ok.
         ok
-    end, lists:nth(todo + 1, arguments())),
+    end, lists:nth(todo + 1, 'v.os':'arguments'())),

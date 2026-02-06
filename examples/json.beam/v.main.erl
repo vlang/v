@@ -11,7 +11,7 @@ main() ->
     io:format("~s~n", [<<"">>]),
     lists:foreach(fun(User) ->
         vbeam_io:println(<<(integer_to_binary(I))/binary, ") ", (maps:get(name, User))/binary>>),
-        case !'User.can_register'(User) of
+        case not 'User.can_register'(User) of
             true -> vbeam_io:println(<<"Cannot register ", (maps:get(name, User))/binary, ", they are too young">>);
             false -> begin
                 'User.register'(lists:nth(I + 1, Users)),

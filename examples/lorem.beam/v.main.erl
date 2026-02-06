@@ -2,7 +2,7 @@
 -export([main/0]).
 
 main() ->
-    Fp = new_flag_parser(lists:nth(todo + 1, arguments())),
+    Fp = new_flag_parser(lists:nth(todo + 1, 'v.os':'arguments'())),
     'FlagParser.application'(Fp, <<"lorem">>),
     'FlagParser.version'(Fp, <<"1.0">>),
     'FlagParser.description'(Fp, <<"Random text generator using a Markov chain">>),

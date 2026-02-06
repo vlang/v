@@ -3,44 +3,37 @@
 
 'KvStore.create'(S, Key, Value) ->
     'RwMutex.lock'(maps:get(mu, S)),
-    % TODO: defer {s.mu.unlock();}
-    case Key in maps:get(store, S) of
+    % TODO: unhandled stmt type
+    ok    case lists:member(Key, maps:get(store, S)) of
         true -> false;
-        false -> ok
-    end,
-    true.
+        false -> begin
+            true
+        end
+        end.
 
 'KvStore.get'(S, Key) ->
     'RwMutex.rlock'(maps:get(mu, S)),
-    % TODO: defer {s.mu.runlock();}
-    case todo of
+    % TODO: unhandled stmt type
+    ok    case todo of
         true -> Value;
-        false -> ok
-    end,
-    todo.
+        false -> todo
+        end.
 
 'KvStore.update'(S, Key, Value) ->
     'RwMutex.lock'(maps:get(mu, S)),
-    % TODO: defer {s.mu.unlock();}
-    case Key in maps:get(store, S) of
-        true -> begin
-            true
-        end;
-        false -> ok
-    end,
-    false.
+    % TODO: unhandled stmt type
+    ok    case lists:member(Key, maps:get(store, S)) of
+        true -> true;
+        false -> false
+        end.
 
 'KvStore.delete'(S, Key) ->
     'RwMutex.lock'(maps:get(mu, S)),
-    % TODO: defer {s.mu.unlock();}
-    case Key in maps:get(store, S) of
-        true -> begin
-            'map[string]string.delete'(maps:get(store, S), Key),
-            true
-        end;
-        false -> ok
-    end,
-    false.
+    % TODO: unhandled stmt type
+    ok    case lists:member(Key, maps:get(store, S)) of
+        true -> true;
+        false -> false
+        end.
 
 'KvStore.dump'(S) ->
     maps:get(store, S).
@@ -48,20 +41,15 @@
 'KvHandler.handle_create'(H, Req, Wr) ->
     P = 'Request.decode_params'(Req),
     case length(maps:get(key, P)) == 0 of
-        true -> begin
-            'ResponseWriter.write_error'(Wr, 'net.jsonrpc.error_with_code'(<<"Invalid params">>, -32602)),
-        end;
-        false -> ok
-    end,
-    warn(<<"params=", (P)/binary>>),
-    case !'KvStore.create'(maps:get(store, H), maps:get(key, P), maps:get(value, P)) of
-        true -> begin
-            'ResponseWriter.write_error'(Wr, #{code => -32010, message => <<"Key already exists">>, data => maps:get(key, P), {vbeam, type} => 'ResponseError'}),
-        end;
-        false -> ok
-    end,
-    'ResponseWriter.write'(Wr, #{<<"ok">> => true}),
-    ok.
+        true -> ok;
+        false -> begin
+            warn(<<"params=", (P)/binary>>),
+            case not 'KvStore.create'(maps:get(store, H), maps:get(key, P), maps:get(value, P)) of
+                true -> ok;
+                false -> 'ResponseWriter.write'(Wr, #{<<"ok">> => true})
+                        end
+        end
+        end.
 
 'KvHandler.handle_get'(H, Req, Wr) ->
     P = 'Request.decode_params'(Req),
@@ -71,30 +59,22 @@
 
 'KvHandler.handle_update'(H, Req, Wr) ->
     P = 'Request.decode_params'(Req),
-    case !'KvStore.update'(maps:get(store, H), maps:get(key, P), maps:get(value, P)) of
-        true -> begin
-            'ResponseWriter.write_error'(Wr, #{code => -32004, message => <<"Not found">>, data => maps:get(key, P), {vbeam, type} => 'ResponseError'}),
-        end;
-        false -> ok
-    end,
-    'ResponseWriter.write'(Wr, #{<<"ok">> => true}),
-    ok.
+    case not 'KvStore.update'(maps:get(store, H), maps:get(key, P), maps:get(value, P)) of
+        true -> ok;
+        false -> 'ResponseWriter.write'(Wr, #{<<"ok">> => true})
+        end.
 
 'KvHandler.handle_delete'(H, Req, Wr) ->
     P = 'Request.decode_params'(Req),
-    case !'KvStore.delete'(maps:get(store, H), maps:get(key, P)) of
-        true -> begin
-            'ResponseWriter.write_error'(Wr, #{code => -32004, message => <<"Not found">>, data => maps:get(key, P), {vbeam, type} => 'ResponseError'}),
-        end;
-        false -> ok
-    end,
-    'ResponseWriter.write'(Wr, #{<<"ok">> => true}),
-    ok.
+    case not 'KvStore.delete'(maps:get(store, H), maps:get(key, P)) of
+        true -> ok;
+        false -> 'ResponseWriter.write'(Wr, #{<<"ok">> => true})
+        end.
 
 'KvHandler.handle_list'(H, _req, Wr) ->
     Items = [],
     lists:foreach(fun(V) ->
-        Items << #{key => K, value => V, {vbeam, type} => 'KvItem'},
+        Items bsl #{key => K, value => V, {vbeam, type} => 'KvItem'},
         ok
     end, 'KvStore.dump'(maps:get(store, H))),
     'KvItem.sort'(Items, maps:get(key, A) < maps:get(key, B)),
@@ -102,8 +82,8 @@
     ok.
 
 handle_conn(Conn, H) ->
-    % TODO: defer {conn.close();}
-    Log_inter = #{{vbeam, type} => 'LoggingInterceptor'},
+    % TODO: unhandled stmt type
+    ok    Log_inter = #{{vbeam, type} => 'LoggingInterceptor'},
     Inters = #{event => [maps:get(on_event, Log_inter)], encoded_request => [maps:get(on_encoded_request, Log_inter)], request => [maps:get(on_request, Log_inter)], response => [maps:get(on_response, Log_inter)], encoded_response => [maps:get(on_encoded_response, Log_inter)], {vbeam, type} => 'Interceptors'},
     Srv = new_server(#{stream => Conn, handler => H, interceptors => Inters, {vbeam, type} => 'ServerConfig'}),
     dispatch_event(maps:get(event, Inters), <<"start">>, <<"server started">>),
@@ -122,4 +102,5 @@ main() ->
     Addr = <<"127.0.0.1:42228">>,
     L = listen_tcp(ip, Addr),
     vbeam_io:println(<<"TCP JSON-RPC server on ", (Addr)/binary, " (Content-Length framing)">>),
-    % TODO: for {
+    % TODO: unhandled stmt type
+    ok

@@ -6,7 +6,7 @@ import strings
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
-		ast.IntegerLiteral { g.write(node.val) }
+		ast.IntegerLiteral { g.integer_literal(node) }
 		ast.FloatLiteral { g.write(node.val) }
 		ast.StringLiteral { g.string_literal(node) }
 		ast.BoolLiteral { g.write(if node.val { 'true' } else { 'false' }) }
@@ -26,6 +26,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.EnumVal { g.enum_val(node) }
 		ast.ComptimeSelector { g.comptime_selector(node) }
 		else { g.write('todo') }
+	}
+}
+
+fn (mut g Gen) integer_literal(node ast.IntegerLiteral) {
+	val := node.val
+	// Convert V hex literals (0x...) to Erlang format (16#...)
+	if val.len > 2 && val[0] == `0` && (val[1] == `x` || val[1] == `X`) {
+		g.write('16#${val[2..]}')
+	} else if val.len > 2 && val[0] == `0` && (val[1] == `o` || val[1] == `O`) {
+		// Octal: 0o77 -> 8#77
+		g.write('8#${val[2..]}')
+	} else if val.len > 2 && val[0] == `0` && (val[1] == `b` || val[1] == `B`) {
+		// Binary: 0b1010 -> 2#1010
+		g.write('2#${val[2..]}')
+	} else {
+		g.write(val)
 	}
 }
 
@@ -72,14 +88,20 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if full_name == 'println' {
 		g.println_call(node)
 	} else {
-		// Extract short name if in same module
-		name := g.call_fn_name(full_name, node.mod)
-
-		// Regular function call
-		if g.needs_atom_quote(name) {
-			g.write("'${name}'(")
+		call_mod := node.mod
+		// Cross-module call: 'v.other_module':'fn_name'(args)
+		if call_mod != g.cur_mod && call_mod.len > 0 {
+			erl_mod := g.v_mod_to_erl_mod(call_mod)
+			short_name := full_name.all_after_last('.')
+			g.write("'${erl_mod}':'${short_name}'(")
 		} else {
-			g.write('${name}(')
+			// Same-module call: fn_name(args)
+			name := g.call_fn_name(full_name, call_mod)
+			if g.needs_atom_quote(name) {
+				g.write("'${name}'(")
+			} else {
+				g.write('${name}(')
+			}
 		}
 		for i, arg in node.args {
 			if i > 0 {
@@ -245,6 +267,26 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	}
 
+	// Handle 'in' operator: x in list -> lists:member(X, List)
+	if node.op == .key_in {
+		g.write('lists:member(')
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
+		return
+	}
+
+	// Handle 'not in' operator: x !in list -> not lists:member(X, List)
+	if node.op == .not_in {
+		g.write('(not lists:member(')
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write('))')
+		return
+	}
+
 	// Default: output with translated operator
 	g.expr(node.left)
 	// Translate V operators to Erlang equivalents
@@ -301,9 +343,20 @@ fn (g Gen) is_float_type_or_literal(expr ast.Expr, typ ast.Type) bool {
 // erlang_operator translates V operator tokens to Erlang equivalents
 fn (g Gen) erlang_operator(op token.Kind) string {
 	return match op {
-		.le { '=<' }
-		.ne { '/=' }
-		.mod { 'rem' }
+		// Comparison operators
+		.le { '=<' } // V's <= -> Erlang's =<
+		.ne { '/=' } // V's != -> Erlang's /=
+		// Arithmetic operators
+		.mod { 'rem' } // V's % -> Erlang's rem
+		// Logical operators (short-circuit)
+		.and { 'andalso' } // V's && -> Erlang's andalso
+		.logical_or { 'orelse' } // V's || -> Erlang's orelse
+		// Bitwise operators
+		.amp { 'band' } // V's & (bitwise AND) -> Erlang's band
+		.pipe { 'bor' } // V's | (bitwise OR) -> Erlang's bor
+		.xor { 'bxor' } // V's ^ (bitwise XOR) -> Erlang's bxor
+		.left_shift { 'bsl' } // V's << -> Erlang's bsl
+		.right_shift { 'bsr' } // V's >> -> Erlang's bsr
 		else { op.str() }
 	}
 }
@@ -553,8 +606,34 @@ fn (mut g Gen) par_expr(node ast.ParExpr) {
 }
 
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
-	g.write('${node.op}')
-	g.expr(node.right)
+	// Handle V prefix operators that differ in Erlang
+	match node.op {
+		.not {
+			// V's !x -> Erlang's not X
+			g.write('not ')
+			g.expr(node.right)
+		}
+		.amp {
+			// V's &x (address-of) - in Erlang, just output the value
+			// Since Erlang has no pointers, we pass by value
+			g.expr(node.right)
+		}
+		.minus {
+			// Unary minus
+			g.write('-')
+			g.expr(node.right)
+		}
+		.bit_not {
+			// V's ~x (bitwise NOT) -> Erlang's bnot X
+			g.write('bnot ')
+			g.expr(node.right)
+		}
+		else {
+			// Other prefix operators
+			g.write('${node.op}')
+			g.expr(node.right)
+		}
+	}
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {

@@ -1,8 +1,5 @@
 -module('v.toml.ast.walker').
 -export(['Inspector.visit'/2, inspect/3, walk/2, walk_and_modify/2]).
-% TODO: [unhandled stmt str type: v.ast.InterfaceDecl ]
-% TODO: [unhandled stmt str type: v.ast.InterfaceDecl ]
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 'Inspector.visit'(I, Value) ->
     'Inspector.inspector_callback'(I, Value, maps:get(data, I)),
@@ -17,7 +14,7 @@ walk(Visitor, Value) ->
         true -> begin
             Value_map = todo,
             lists:foreach(fun(Val) ->
-                walk(Visitor, &Val),
+                walk(Visitor, Val),
                 ok
             end, Value_map),
         end;
@@ -27,7 +24,7 @@ walk(Visitor, Value) ->
         true -> begin
             Value_array = todo,
             lists:foreach(fun(Val) ->
-                walk(Visitor, &Val),
+                walk(Visitor, Val),
                 ok
             end, Value_array),
         end;
@@ -40,7 +37,7 @@ walk_and_modify(Modifier, Value) ->
         true -> begin
             Value_map = todo,
             lists:foreach(fun(Val) ->
-                walk_and_modify(Modifier, &Val),
+                walk_and_modify(Modifier, Val),
                 ok
             end, Value_map),
         end;
@@ -50,7 +47,7 @@ walk_and_modify(Modifier, Value) ->
         true -> begin
             Value_array = todo,
             lists:foreach(fun(Val) ->
-                walk_and_modify(Modifier, &Val),
+                walk_and_modify(Modifier, Val),
                 ok
             end, Value_array),
         end;

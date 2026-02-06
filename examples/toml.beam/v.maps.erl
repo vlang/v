@@ -15,7 +15,7 @@ filter(M, F) ->
 to_array(M, F) ->
     A = [],
     lists:foreach(fun(V) ->
-        A << f(K, V),
+        A bsl f(K, V),
         ok
     end, M),
     A.
@@ -23,7 +23,7 @@ to_array(M, F) ->
 flat_map(M, F) ->
     A = [],
     lists:foreach(fun(V) ->
-        A << f(K, V),
+        A bsl f(K, V),
         ok
     end, M),
     A.
@@ -53,14 +53,12 @@ from_array(Array) ->
 
 merge_in_place(M1, M2) ->
     lists:foreach(fun(V) ->
-        .
         ok
     end, M2),
 
 merge(M1, M2) ->
     Res = 'unknown.clone'(M1),
     lists:foreach(fun(V) ->
-        ,
         ok
     end, M2),
     Res.

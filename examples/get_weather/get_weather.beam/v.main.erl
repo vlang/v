@@ -1,10 +1,9 @@
 -module('v.main').
 -export([main/0, translate/3]).
-% TODO: const config = net.http.FetchConfig{....};
 
 main() ->
-    Dest_lang = case length(arguments()) > 1 of
-        true -> lists:nth(2, arguments());
+    Dest_lang = case length('v.os':'arguments'()) > 1 of
+        true -> lists:nth(2, 'v.os':'arguments'());
         false -> <<"en">>
     end,
     Rnd = f32(),

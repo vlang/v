@@ -17,8 +17,8 @@ linearrelationship(Independent_variable, Dependent_variable) ->
         Sum_r2_y1 = Yi * Yi,
         ok
     end, Dependent_variable),
-    X_means = Sum_x1 / length(Independent_variable),
-    Y_means = Sum_y1 / length(Dependent_variable),
+    X_means = Sum_x1 div length(Independent_variable),
+    Y_means = Sum_y1 div length(Dependent_variable),
     lists:foreach(fun(X_value) ->
         Sum_xy1 = X_value * lists:nth(Index + 1, Dependent_variable),
         ok

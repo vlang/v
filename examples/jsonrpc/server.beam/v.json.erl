@@ -1,7 +1,5 @@
 -module('v.json').
 -export([decode/1, decode_with_type/2, encode/1, encode_pretty/1, raw_decode/1, fast_raw_decode/1, decode_int/1, decode_i8/1, decode_i16/1, decode_i64/1, decode_u8/1, decode_u16/1, decode_u32/1, decode_u64/1, decode_f32/1, decode_f64/1, decode_string/1, decode_bool/1, 'Any.str'/1, 'Any.int'/1, 'Any.i64'/1, 'Any.f64'/1, 'Any.bool'/1, 'Any.as_array'/1, 'Any.as_map'/1, 'Null.str'/1]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
-% TODO: const null = json.Null{....};
 
 decode(S) ->
     error(<<"json.decode: not implemented at runtime (compiler builtin)">>).
@@ -24,21 +22,20 @@ fast_raw_decode(S) ->
 decode_int(Root) ->
     case Root is todo of
         true -> Root;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> 'string.int'(Root);
-        false -> ok
-    end,
-    0.
+        false -> 
+            case Root is todo of
+                true -> todo;
+                false -> 
+                    case Root is todo of
+                        true -> todo;
+                        false -> 
+                            case Root is todo of
+                                true -> 'string.int'(Root);
+                                false -> 0
+                                                        end
+                                                                end
+                                        end
+                end.
 
 decode_i8(Root) ->
     todo.
@@ -49,21 +46,20 @@ decode_i16(Root) ->
 decode_i64(Root) ->
     case Root is todo of
         true -> Root;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> 'string.i64'(Root);
-        false -> ok
-    end,
-    0.
+        false -> 
+            case Root is todo of
+                true -> todo;
+                false -> 
+                    case Root is todo of
+                        true -> todo;
+                        false -> 
+                            case Root is todo of
+                                true -> 'string.i64'(Root);
+                                false -> 0
+                                                        end
+                                                                end
+                                        end
+                end.
 
 decode_u8(Root) ->
     todo.
@@ -77,73 +73,68 @@ decode_u32(Root) ->
 decode_u64(Root) ->
     case Root is todo of
         true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    0.
+        false -> 
+            case Root is todo of
+                true -> todo;
+                false -> 
+                    case Root is todo of
+                        true -> todo;
+                        false -> 0
+                                        end
+                                        end
+                end.
 
 decode_f32(Root) ->
     case Root is todo of
         true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> 'string.f32'(Root);
-        false -> ok
-    end,
-    0.0.
+        false -> 
+            case Root is todo of
+                true -> todo;
+                false -> 
+                    case Root is todo of
+                        true -> todo;
+                        false -> 
+                            case Root is todo of
+                                true -> 'string.f32'(Root);
+                                false -> 0.0
+                                                        end
+                                                                end
+                                        end
+                end.
 
 decode_f64(Root) ->
     case Root is todo of
         true -> Root;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> todo;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> 'string.f64'(Root);
-        false -> ok
-    end,
-    0.0.
+        false -> 
+            case Root is todo of
+                true -> todo;
+                false -> 
+                    case Root is todo of
+                        true -> todo;
+                        false -> 
+                            case Root is todo of
+                                true -> 'string.f64'(Root);
+                                false -> 0.0
+                                                        end
+                                                                end
+                                        end
+                end.
 
 decode_string(Root) ->
     case Root is todo of
         true -> Root;
-        false -> ok
-    end,
-    <<"">>.
+        false -> <<"">>
+        end.
 
 decode_bool(Root) ->
     case Root is todo of
         true -> Root;
-        false -> ok
-    end,
-    case Root is todo of
-        true -> Root == <<"true">>;
-        false -> ok
-    end,
-    false.
+        false -> 
+            case Root is todo of
+                true -> Root == <<"true">>;
+                false -> false
+                        end
+                end.
 
 'Any.str'(A) ->
     case A of
@@ -167,9 +158,9 @@ decode_bool(Root) ->
                 end;
                 false -> ok
             end,
-            % TODO: for val > 0 {
-            case Neg1 of
-                true -> <<"-">> + S;
+            % TODO: unhandled stmt type
+            ok            case Neg1 of
+                true -> <<(<<"-">>)/binary, (S)/binary>>;
                 false -> S
             end
         end;
@@ -188,9 +179,9 @@ decode_bool(Root) ->
                 end;
                 false -> ok
             end,
-            % TODO: for val > 0 {
-            case Neg3 of
-                true -> <<"-">> + S1;
+            % TODO: unhandled stmt type
+            ok            case Neg3 of
+                true -> <<(<<"-">>)/binary, (S1)/binary>>;
                 false -> S1
             end
         end;
@@ -215,16 +206,14 @@ decode_bool(Root) ->
 'Any.as_array'(A) ->
     case A is todo of
         true -> A;
-        false -> ok
-    end,
-    [].
+        false -> []
+        end.
 
 'Any.as_map'(A) ->
     case A is todo of
         true -> A;
-        false -> ok
-    end,
-    #{}.
+        false -> #{}
+        end.
 
 'Null.str'(N) ->
     <<"null">>.

@@ -2,7 +2,7 @@
 -export([evala/2, times/2, times_trans/2, a_times_transp/2, main/0]).
 
 evala(I, J) ->
-    (I + J) * (I + J + 1) / 2 + I + 1.
+    (I + J) * (I + J + 1) div 2 + I + 1.
 
 times(V, U) ->
     A = lists:foldl(fun(I, AAcc) ->
@@ -32,7 +32,7 @@ a_times_transp(V, U) ->
 
 main() ->
     N = 0,
-    case length(arguments()) == 2 of
+    case length('v.os':'arguments'()) == 2 of
         true -> ok;
         false -> ok
     end,

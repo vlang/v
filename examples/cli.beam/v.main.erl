@@ -9,7 +9,7 @@ main() ->
     'Command.add_flag'(Greet_cmd, #{flag => string_array, name => <<"fun">>, description => <<"Just a dumby flags to show multiple.">>, {vbeam, type} => 'Flag'}),
     'Command.add_command'(Cmd, Greet_cmd),
     'Command.setup'(Cmd),
-    'Command.parse'(Cmd, arguments()),
+    'Command.parse'(Cmd, 'v.os':'arguments'()),
     ok.
 
 greet_func(Cmd) ->
@@ -24,8 +24,8 @@ greet_func(Cmd) ->
             _ -> begin
                 io:format("~s~n", [<<"Unsupported language">>]),
                 io:format("~s~n", [<<"Supported languages are `english`, `german` and `dutch`.">>]),
-                % TODO: break
-            end
+                % TODO: unhandled stmt type
+                ok            end
         end,
         ok
     end, lists:seq(0, Times - 1)),

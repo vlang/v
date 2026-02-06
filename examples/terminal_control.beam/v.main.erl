@@ -14,8 +14,9 @@ main() ->
 
 sleeping_line(X, Y, Size, Ch) ->
     I = 0,
-    % TODO: for i < size {
-
+    % TODO: unhandled stmt type
+    ok
 standing_line(X, Y, Size, Ch) ->
     I = 0,
-    % TODO: for i < size {
+    % TODO: unhandled stmt type
+    ok

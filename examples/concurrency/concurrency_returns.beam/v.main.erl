@@ -7,7 +7,7 @@ expensive_computing(I) ->
 main() ->
     Threads = [],
     lists:foreach(fun(I) ->
-        Threads << todo,
+        Threads bsl todo,
         ok
     end, lists:seq(1, 10 - 1)),
     R = '[]thread int.wait'(Threads),

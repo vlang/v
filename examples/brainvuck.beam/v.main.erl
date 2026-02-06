@@ -1,16 +1,15 @@
 -module('v.main').
 -export(['BFState__static__new'/1, 'BFState.show'/2, 'BFState.find_matching_pairs'/1, 'BFState.panic_for_bracket'/3, 'BFState.run'/1, show_usage/0, main/0]).
-% TODO: const show_state = os.getenv('VERBOSE') != '';
 
 'BFState__static__new'(Program) ->
-    State = &#{program => Program, {vbeam, type} => 'BFState'},
+    State = #{program => Program, {vbeam, type} => 'BFState'},
     'BFState.find_matching_pairs'(State),
     State.
 
 'BFState.show'(State, Suffix) ->
     Max_non_zero_address = -1,
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    vbeam_io:println(<<"PC: ", (integer_to_binary(maps:get(pc, State)))/binary, " | Address: ", (integer_to_binary(maps:get(address, State)))/binary, " | Memory: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | Memory[Address]: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | ", (Suffix)/binary>>),
+    % TODO: unhandled stmt type
+    ok    vbeam_io:println(<<"PC: ", (integer_to_binary(maps:get(pc, State)))/binary, " | Address: ", (integer_to_binary(maps:get(address, State)))/binary, " | Memory: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | Memory[Address]: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | ", (Suffix)/binary>>),
     ok.
 
 'BFState.find_matching_pairs'(State) ->
@@ -18,7 +17,7 @@
     Pi = lists:foldl(fun(I, PiAcc) ->
         PiOut = lists:nth(I + 1, maps:get(program, State)),
         case Pi of
-            todo -> Stack << I;
+            todo -> Stack bsl I;
             todo -> begin
                 case length(Stack) == 0 of
                     true -> begin
@@ -54,8 +53,8 @@
 
 'BFState.run'(State) ->
     I = 0,
-    % TODO: for state.pc < state.program.len {
-    ok.
+    % TODO: unhandled stmt type
+    ok    ok.
 
 show_usage() ->
     eprintln(<<"you need to supply a brainfuck program/expression as a string argument,">>),
@@ -64,18 +63,18 @@ show_usage() ->
     ok.
 
 main() ->
-    case length(arguments()) < 2 of
+    case length('v.os':'arguments'()) < 2 of
         true -> show_usage();
         false -> ok
     end,
-    Program = lists:nth(2, arguments()),
-    case 'string.ends_with'(Program, <<".b">>) || 'string.ends_with'(Program, <<".bf">>) of
+    Program = lists:nth(2, 'v.os':'arguments'()),
+    case 'string.ends_with'(Program, <<".b">>) orelse 'string.ends_with'(Program, <<".bf">>) of
         true -> ok;
         false -> ok
     end,
     State = 'BFState__static__new'(Program),
     'BFState.run'(State),
-    case getenv(<<"VERBOSE">>) != <<"">> of
+    case getenv(<<"VERBOSE">>) /= <<"">> of
         true -> 'BFState.show'(State, <<"FINAL">>);
         false -> ok
     end.

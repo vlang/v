@@ -6,8 +6,8 @@ exec(Path) ->
     Line = <<"">>,
     Cmd = #{path => Path, {vbeam, type} => 'Command'},
     'Command.start'(Cmd),
-    % TODO: for {
-    Out.
+    % TODO: unhandled stmt type
+    ok    Out.
 
 main() ->
     Out = <<"">>,
@@ -15,4 +15,5 @@ main() ->
     Out1 = exec(<<"echo to stdout">>),
     Out2 = exec(<<"echo to stderr 1>&2">>),
     vbeam_io:println(<<"'", (Out2)/binary, "'">>),
-    % TODO: assert out == 'to stderr'
+    % TODO: unhandled stmt type
+    ok

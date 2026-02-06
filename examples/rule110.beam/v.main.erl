@@ -3,7 +3,7 @@
 
 main() ->
     Arg = <<"31">>,
-    case length(arguments()) != 2 of
+    case length('v.os':'arguments'()) /= 2 of
         true -> begin
             io:format("~s~n", [<<"Usage: rule110 [<n>]">>]),
             io:format("~s~n", [<<"Using default `n` value: 31">>])
@@ -11,7 +11,7 @@ main() ->
         false -> ok
     end,
     N = 'string.int'(Arg),
-    case N > 200 || N < 3 of
+    case N > 200 orelse N < 3 of
         true -> begin
             eprintln(<<"`n` must be between 3 and 200!">>),
             exit(1)
@@ -26,12 +26,12 @@ main() ->
             lists:foreach(fun(_) ->
                 print(<<"=">>),
                 ok
-            end, lists:seq(0, (N - Title_len) / 2 - 1)),
+            end, lists:seq(0, (N - Title_len) div 2 - 1)),
             print(Title),
             lists:foreach(fun(_) ->
                 print(<<"=">>),
                 ok
-            end, lists:seq(0, (N - Title_len) / 2 - 1)),
+            end, lists:seq(0, (N - Title_len) div 2 - 1)),
         end;
         false -> vbeam_io:println(lists:nth(todo + 1, Title))
     end,
@@ -63,12 +63,12 @@ next_generation(Gen) ->
     Curr = 0,
     Next = 0,
     {Curr1, Next1} = lists:foldl(fun(I, {CurrAcc, NextAcc}) ->
-        case (I - 1) % length(Gen) < 0 of
+        case (I - 1) rem length(Gen) < 0 of
             true -> ok;
             false -> ok
         end,
         CurrOut = lists:nth(I + 1, Gen),
-        NextOut = lists:nth((I + 1) % length(Gen) + 1, Gen),
+        NextOut = lists:nth((I + 1) rem length(Gen) + 1, Gen),
         case Prev == 1 of
             true -> case Curr1 == 1 of
                 true -> case Next1 == 1 of

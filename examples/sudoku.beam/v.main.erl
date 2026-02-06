@@ -14,23 +14,24 @@ main() ->
     end.
 
 is_valid(Grid, Row, Col, Num) ->
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    Start_row = Row - Row % 3,
-    Start_col = Col - Col % 3,
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    true.
+    % TODO: unhandled stmt type
+    ok    % TODO: unhandled stmt type
+    ok    Start_row = Row - Row rem 3,
+    Start_col = Col - Col rem 3,
+    % TODO: unhandled stmt type
+    ok    true.
 
 find_empty(Grid) ->
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    todo.
+    % TODO: unhandled stmt type
+    ok    todo.
 
 solve_sudoku(Grid) ->
     Row = element(1, find_empty(Grid)),
     Col = element(2, find_empty(Grid)),
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    false.
+    % TODO: unhandled stmt type
+    ok    false.
 
 print_grid(Label, Grid) ->
     vbeam_io:println(Label),
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
+    % TODO: unhandled stmt type
+    ok

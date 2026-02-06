@@ -1,7 +1,5 @@
 -module('v.main').
 -export([main/0, rain/0, update_rain_column/3, random_rain_column/2, print_rain_column/2, print_at/3, random_symbol/0, random_dim/1, init_terminal/0]).
-% TODO: const snooze = time.millisecond * 70;
-% TODO: const symbols = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz';
 
 main() ->
     init_terminal(),
@@ -12,8 +10,8 @@ rain() ->
     Rain_columns = [],
     Width = 0,
     Height = 0,
-    % TODO: for {
-
+    % TODO: unhandled stmt type
+    ok
 update_rain_column(Rc, Width, Height) ->
     case maps:get(head, Rc) > Height + length(Rc) of
         true -> ok;
@@ -21,14 +19,14 @@ update_rain_column(Rc, Width, Height) ->
     end.
 
 random_rain_column(Max_col, Max_height) ->
-    #{col => int_in_range(1, Max_col + 1), len => int_in_range(4, Max_height / 4 * 3), {vbeam, type} => 'RainColumn'}.
+    #{col => int_in_range(1, Max_col + 1), len => int_in_range(4, Max_height div 4 * 3), {vbeam, type} => 'RainColumn'}.
 
 print_rain_column(Rc, Height) ->
-    case maps:get(head, Rc) <= Height of
+    case maps:get(head, Rc) =< Height of
         true -> print_at(gray(random_symbol()), maps:get(col, Rc), maps:get(head, Rc));
         false -> ok
     end,
-    case (maps:get(head, Rc) - 1) <= Height of
+    case (maps:get(head, Rc) - 1) =< Height of
         true -> begin
             Symbol = random_dim(green(random_symbol())),
             print_at(Symbol, maps:get(col, Rc), maps:get(head, Rc) - 1)
@@ -36,7 +34,7 @@ print_rain_column(Rc, Height) ->
         false -> ok
     end,
     Tail = maps:get(head, Rc) - length(Rc) + 1,
-    case Tail > 0 && Tail <= Height of
+    case Tail > 0 andalso Tail =< Height of
         true -> print_at(<<" ">>, maps:get(col, Rc), Tail);
         false -> ok
     end.

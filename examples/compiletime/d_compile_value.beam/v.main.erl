@@ -1,16 +1,5 @@
 -module('v.main').
 -export([println_padded/1, main/0]).
-% TODO: const pad = $d('pad', 5);
-% TODO: const pad_char = $d('pad_char', `-`);
-% TODO: const footer = '
-Available compile time flags:
- -d pad=<i64>
- -d pad_char=<character>
- -d id="<string>"
- -d jobs=<i64>
- -d header=<bool>
-You can turn this message off with:
- -d footer=false';
 
 println_padded(Str) ->
     lists:foreach(fun(_) ->

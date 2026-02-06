@@ -4,9 +4,8 @@
 factorial(N) ->
     case todo of
         true -> todo;
-        false -> ok
-    end,
-    todo.
+        false -> todo
+        end.
 
 main() ->
     vbeam_io:println(integer_to_binary(factorial(5))),

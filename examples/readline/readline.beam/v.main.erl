@@ -6,5 +6,4 @@ main() ->
     ok.
 
 run() ->
-    ,
     ok.

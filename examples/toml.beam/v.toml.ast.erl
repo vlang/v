@@ -1,8 +1,12 @@
 -module('v.toml.ast').
--export(['Key.str'/1, 'Value.str'/1, 'DateTimeType.str'/1, 'Comment.str'/1, 'Null.str'/1, 'Quoted.str'/1, 'Bare.str'/1, 'Bool.str'/1, 'Number.str'/1, 'Number.i64'/1, 'Number.f64'/1, 'Date.str'/1, 'Time.str'/1, 'DateTime.str'/1, 'EOF.str'/1]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
+-export(['Root.str'/1, 'Key.str'/1, 'Value.str'/1, 'DateTimeType.str'/1, 'Comment.str'/1, 'Null.str'/1, 'Quoted.str'/1, 'Bare.str'/1, 'Bool.str'/1, 'Number.str'/1, 'Number.i64'/1, 'Number.f64'/1, 'Date.str'/1, 'Time.str'/1, 'DateTime.str'/1, 'EOF.str'/1]).
+
+'Root.str'(R) ->
+    S = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
+    S1 = <<"  input:  ", (maps:get(input, R))/binary, "\\n">>,
+    S2 = <<"  table:  ", (maps:get(table, R))/binary, "\\n">>,
+    S3 = <<"}">>,
+    S3.
 
 'Key.str'(K) ->
     maps:get(text, K).
@@ -37,7 +41,7 @@
     maps:get(text, Dtt).
 
 'Comment.str'(C) ->
-    S = maps:get(name, todo) + <<"{\\n">>,
+    S = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     S1 = <<"  text:  \\'", (maps:get(text, C))/binary, "\\'\\n">>,
     S2 = <<"  pos:  ", (maps:get(pos, C))/binary, "\\n">>,
     S3 = <<"}">>,
@@ -47,7 +51,7 @@
     maps:get(text, N).
 
 'Quoted.str'(Q) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, Q))/binary, "\\'\\n">>,
     Str2 = <<"  pos:  ", (maps:get(pos, Q))/binary, "\\n">>,
     Str3 = <<"  is_multiline:  ", (atom_to_binary(maps:get(is_multiline, Q)))/binary, "\\n">>,
@@ -56,21 +60,21 @@
     Str5.
 
 'Bare.str'(B) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, B))/binary, "\\'\\n">>,
     Str2 = <<"  pos:  ", (maps:get(pos, B))/binary, "\\n">>,
     Str3 = <<"}">>,
     Str3.
 
 'Bool.str'(B) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, B))/binary, "\\'\\n">>,
     Str2 = <<"  pos:  ", (maps:get(pos, B))/binary, "\\n">>,
     Str3 = <<"}">>,
     Str3.
 
 'Number.str'(N) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, N))/binary, "\\'\\n">>,
     Str2 = <<"  pos:  ", (maps:get(pos, N))/binary, "\\n">>,
     Str3 = <<"}">>,
@@ -102,14 +106,14 @@
     'string.f64'('string.replace'(maps:get(text, N), <<"_">>, <<"">>)).
 
 'Date.str'(D) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, D))/binary, "\\'\\n">>,
     Str2 = <<"  pos:  ", (maps:get(pos, D))/binary, "\\n">>,
     Str3 = <<"}">>,
     Str3.
 
 'Time.str'(T) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, T))/binary, "\\'\\n">>,
     Str2 = <<"  offset:  \\'", (integer_to_binary(maps:get(offset, T)))/binary, "\\'\\n">>,
     Str3 = <<"  pos:  ", (maps:get(pos, T))/binary, "\\n">>,
@@ -117,7 +121,7 @@
     Str4.
 
 'DateTime.str'(Dt) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  text:  \\'", (maps:get(text, Dt))/binary, "\\'\\n">>,
     Str2 = <<"  date:  \\'", (maps:get(date, Dt))/binary, "\\'\\n">>,
     Str3 = <<"  time:  \\'", (maps:get(time, Dt))/binary, "\\'\\n">>,
@@ -126,7 +130,7 @@
     Str5.
 
 'EOF.str'(E) ->
-    Str = maps:get(name, todo) + <<"{\\n">>,
+    Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,
     Str1 = <<"  pos:  ", (maps:get(pos, E))/binary, "\\n">>,
     Str2 = <<"}">>,
     Str2.

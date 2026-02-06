@@ -1,10 +1,5 @@
 -module('v.main').
 -export([worker_sleep/3, logger/0, main/0]).
-% TODO: const args = arguments();
-% TODO: const nitems = args[1].int();
-% TODO: const njobs = args[2].int();
-% TODO: const delay = args[3].int();
-% TODO: __global msgs = ast.ChanInit;
 
 worker_sleep(P, Item_idx, Worker_id) ->
     Item = 'PoolProcessor.get_item'(P, Item_idx),
@@ -14,8 +9,8 @@ worker_sleep(P, Item_idx, Worker_id) ->
     todo.
 
 logger() ->
-    % TODO: for {
-
+    % TODO: unhandled stmt type
+    ok
 main() ->
     T = todo,
     Msgs <- <<">>> nitems: ", (integer_to_binary('string.int'(lists:nth(2, arguments()))))/binary, " | njobs: ", (integer_to_binary('string.int'(lists:nth(3, arguments()))))/binary, " | delay_ms: ", (integer_to_binary('string.int'(lists:nth(4, arguments()))))/binary>>,

@@ -1,6 +1,5 @@
 -module('v.toml.to').
 -export([json/1, any_to_json/1, json_any/1]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 json(Doa) ->
     case Doa of
@@ -67,7 +66,7 @@ json_any(A) ->
         todo -> begin
             Jarr = [],
             lists:foreach(fun(Val) ->
-                Jarr << json_any(Val),
+                Jarr bsl json_any(Val),
                 ok.
                 ok
             end, A),

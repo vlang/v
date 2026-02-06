@@ -1,6 +1,5 @@
 -module('v.main').
 -export(['Mars.dust_storm'/1, 'Lander.deorbit'/1, 'Lander.open_parachutes'/2, wait/0, 'Lander.land'/2, main/0]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 'Mars.dust_storm'(M) ->
     int() >= 0.

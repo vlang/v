@@ -1,6 +1,5 @@
 -module('v.main').
 -export(['Tree.size'/1, 'Tree.insert'/2, 'Tree.search'/2, 'Tree.min'/1, 'Tree.delete'/2, main/0]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 'Tree.size'(Tree) ->
     case Tree of
@@ -44,7 +43,7 @@
 'Tree.delete'(Tree, X) ->
     case Tree of
         todo -> Tree;
-        todo -> case maps:get(left, Tree) !is todo && maps:get(right, Tree) !is todo of
+        todo -> case maps:get(left, Tree) !is todo andalso maps:get(right, Tree) !is todo of
             true -> case X < maps:get(value, Tree) of
                 true -> #{left => 'Tree.delete'(maps:get(left, Tree), X), {vbeam, type} => 'Node'};
                 false -> case X > maps:get(value, Tree) of
@@ -81,7 +80,7 @@ main() ->
     print(<<"[2] after deletion tree size is ", (integer_to_binary('Tree[f64].size'(Tree2)))/binary, ", ">>),
     print(<<"and these elements were deleted: ">>),
     lists:foreach(fun(I) ->
-        case !'Tree[f64].search'(Tree2, I) of
+        case not 'Tree[f64].search'(Tree2, I) of
             true -> print(<<(float_to_binary(I))/binary, " ">>);
             false -> ok
         end,

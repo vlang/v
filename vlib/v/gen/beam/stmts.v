@@ -15,13 +15,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.EnumDecl {} // Skip enum declarations (enums become atoms)
 		ast.Module {} // Module declaration handled in gen_file
 		ast.Import {} // Import statements handled differently
-		else { g.writeln('% TODO: ${node}') }
+		else {
+			// Only emit TODO inside function bodies (cur_fn is set)
+			if g.cur_fn != unsafe { nil } {
+				g.writeln('% TODO: unhandled stmt type')
+			}
+		}
 	}
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.cur_fn = unsafe { &node }
 	g.var_versions.clear()
+	g.in_block = false // function top level is never a block
 
 	name := g.fn_name(node)
 	g.writeln('')
@@ -176,7 +182,10 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 					if g.is_early_return_if(stmt.expr) {
 						g.out.writeln('')
 						g.indent++
+						old_in_block := g.in_block
+						g.in_block = true // nested case is inside outer case branch
 						g.gen_early_return_case(stmt.expr, []ast.Stmt{})
+						g.in_block = old_in_block
 						g.indent--
 						g.write_indent()
 					} else {
@@ -191,7 +200,10 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 			else {
 				g.out.writeln('')
 				g.indent++
+				old_in_block := g.in_block
+				g.in_block = true // inside case branch
 				g.gen_fn_body_with_early_returns(remaining_stmts)
+				g.in_block = old_in_block
 				g.indent--
 				g.write_indent()
 			}
@@ -205,14 +217,20 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 					// Nested early return - recurse
 					g.out.writeln('')
 					g.indent++
+					old_in_block2 := g.in_block
+					g.in_block = true // nested case is inside outer case branch
 					g.gen_early_return_case(first.expr, remaining_stmts[1..])
+					g.in_block = old_in_block2
 					g.indent--
 					g.write_indent()
 				} else {
 					// Regular if, use begin/end block
 					g.out.writeln('begin')
 					g.indent++
+					old_in_block := g.in_block
+					g.in_block = true
 					g.gen_fn_body_with_early_returns(remaining_stmts)
+					g.in_block = old_in_block
 					g.indent--
 					g.write_indent()
 					g.write('end')
@@ -222,7 +240,10 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 				// Not an if, use begin/end block
 				g.out.writeln('begin')
 				g.indent++
+				old_in_block := g.in_block
+				g.in_block = true
 				g.gen_fn_body_with_early_returns(remaining_stmts)
+				g.in_block = old_in_block
 				g.indent--
 				g.write_indent()
 				g.write('end')
@@ -232,7 +253,10 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 			// Use begin/end block for multiple statements
 			g.out.writeln('begin')
 			g.indent++
+			old_in_block := g.in_block
+			g.in_block = true
 			g.gen_fn_body_with_early_returns(remaining_stmts)
+			g.in_block = old_in_block
 			g.indent--
 			g.write_indent()
 			g.write('end')
@@ -242,7 +266,11 @@ fn (mut g Gen) gen_early_return_case(if_expr ast.IfExpr, remaining_stmts []ast.S
 
 	g.indent--
 	g.write_indent()
-	g.writeln('end.')
+	if g.in_block {
+		g.writeln('end')
+	} else {
+		g.writeln('end.')
+	}
 }
 
 // gen_branch_return_value extracts and generates the return value from a branch
@@ -262,6 +290,9 @@ fn (mut g Gen) gen_branch_return_value(branch ast.IfBranch) {
 // handling commas vs periods and implicit return
 fn (mut g Gen) gen_fn_stmt(stmt ast.Stmt) {
 	is_last := g.is_last_stmt
+	// When inside a begin/end or case branch, never emit '.' (period)
+	// The enclosing block handles its own termination
+	terminator := if is_last && !g.in_block { '.' } else if is_last && g.in_block { '' } else { ',' }
 
 	match stmt {
 		ast.Return {
@@ -269,9 +300,17 @@ fn (mut g Gen) gen_fn_stmt(stmt ast.Stmt) {
 			if stmt.exprs.len > 0 {
 				g.write_indent()
 				g.expr(stmt.exprs[0])
-				g.out.writeln('.')
+				if terminator.len > 0 {
+					g.out.writeln(terminator)
+				} else {
+					g.out.writeln('')
+				}
 			} else {
-				g.writeln('ok.')
+				if terminator.len > 0 {
+					g.writeln('ok${terminator}')
+				} else {
+					g.writeln('ok')
+				}
 			}
 		}
 		ast.ExprStmt {
@@ -279,34 +318,61 @@ fn (mut g Gen) gen_fn_stmt(stmt ast.Stmt) {
 			// Use match instead of 'is' for proper sum type dispatch
 			match stmt.expr {
 				ast.IfExpr {
+					// Track output length before anything to handle comptime that produces nothing
+					len_before := g.out.len
 					g.write_indent()
+					len_after_indent := g.out.len
 					g.if_expr(stmt.expr)
-					if is_last {
-						g.out.writeln('.')
+					// If no actual output was generated after indent, roll back the indent
+					if g.out.len == len_after_indent {
+						// Nothing was generated - truncate to remove the indent
+						g.out.go_back(g.out.len - len_before)
 					} else {
-						g.out.writeln(',')
+						// Real output was generated - add terminator
+						if terminator.len > 0 {
+							g.out.writeln(terminator)
+						} else {
+							g.out.writeln('')
+						}
 					}
 				}
 				ast.MatchExpr {
 					g.write_indent()
 					g.match_expr(stmt.expr)
-					if is_last {
-						g.out.writeln('.')
+					if terminator.len > 0 {
+						g.out.writeln(terminator)
 					} else {
-						g.out.writeln(',')
+						g.out.writeln('')
 					}
 				}
 				else {
+					// Track output length before to handle expressions that produce nothing
+					len_before := g.out.len
 					g.write_indent()
+					len_after_indent := g.out.len
 					// Check if it's a call that returns a value we should use as implicit return
 					if is_last {
 						// Last statement - its value is the return value
 						g.expr(stmt.expr)
-						g.out.writeln(',')
-						g.writeln('ok.')
+						// If no actual output was generated after indent, roll back
+						if g.out.len == len_after_indent {
+							g.out.go_back(g.out.len - len_before)
+						} else {
+							g.out.writeln(',')
+							if g.in_block {
+								g.writeln('ok')
+							} else {
+								g.writeln('ok.')
+							}
+						}
 					} else {
 						g.expr(stmt.expr)
-						g.out.writeln(',')
+						// If no actual output was generated after indent, roll back
+						if g.out.len == len_after_indent {
+							g.out.go_back(g.out.len - len_before)
+						} else {
+							g.out.writeln(',')
+						}
 					}
 				}
 			}
@@ -315,18 +381,31 @@ fn (mut g Gen) gen_fn_stmt(stmt ast.Stmt) {
 			g.gen_assign_stmt(stmt, is_last)
 		}
 		else {
+			len_before := g.out.len
 			g.stmt(stmt)
+			// If stmt only generated a comment (or nothing), we need a valid expression
+			if is_last {
+				g.write_indent()
+				if g.in_block {
+					g.writeln('ok')
+				} else {
+					g.writeln('ok.')
+				}
+			} else if g.out.len > len_before {
+				// Something was generated (comment) - it's not last, just continue
+			}
 		}
 	}
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
+	term := if g.in_block { '' } else { '.' }
 	if node.exprs.len > 0 {
 		g.write_indent()
 		g.expr(node.exprs[0])
-		g.out.writeln('.')
+		g.out.writeln(term)
 	} else {
-		g.writeln('ok.')
+		g.writeln('ok${term}')
 	}
 }
 

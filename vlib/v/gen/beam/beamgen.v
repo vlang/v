@@ -29,6 +29,9 @@ mut:
 	cur_fn       &ast.FnDecl = unsafe { nil }
 	// Track if we're in the last statement of a function body
 	is_last_stmt bool
+	// Track if we're inside a begin/end or case branch block
+	// (prevents emitting '.' period inside nested blocks)
+	in_block bool
 	// Compile-time reflection environment stack
 	comptime_stack []ComptimeEnv
 }
@@ -46,41 +49,64 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, prefs_ &pref
 		os.mkdir_all(g.out_dir) or {}
 	}
 
+	// Group files by module name so all functions from the same module
+	// end up in a single .erl file (avoids overwrites when V splits a
+	// module across multiple source files)
+	mut module_files := map[string][]&ast.File{}
 	for file in files {
-		g.gen_file(file)
+		mod_name := file.mod.name
+		if mod_name in module_files {
+			module_files[mod_name] << file
+		} else {
+			module_files[mod_name] = [file]
+		}
+	}
+
+	// Generate one .erl per module
+	for mod_name, mod_files in module_files {
+		g.gen_module(mod_name, mod_files)
 	}
 }
 
-fn (mut g Gen) gen_file(file &ast.File) {
-	mod_name := g.v_mod_to_erl_mod(file.mod.name)
-	g.cur_mod = file.mod.name
-	g.cur_file = file.path
+// gen_module generates a single .erl file for all V files belonging to one module.
+// This ensures that a V module split across multiple source files (e.g. builtin/)
+// produces one Erlang module containing every function.
+fn (mut g Gen) gen_module(v_mod string, files []&ast.File) {
+	erl_mod := g.v_mod_to_erl_mod(v_mod)
+	g.cur_mod = v_mod
 
-	// Reset state for new file
+	// Reset state for new module
 	g.out.clear()
 	g.fn_infos.clear()
 	g.var_versions.clear()
 
-	// First pass: collect function info
-	for stmt in file.stmts {
-		if stmt is ast.FnDecl {
-			g.collect_fn_info(stmt)
+	// First pass: collect function info from ALL files in this module
+	for file in files {
+		g.cur_file = file.path
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				g.collect_fn_info(stmt)
+			}
 		}
 	}
 
-	// Generate module header
-	g.writeln("-module('${mod_name}').")
+	// Generate module header (once)
+	g.writeln("-module('${erl_mod}').")
 	g.gen_exports()
 
-	// Second pass: generate code
-	for stmt in file.stmts {
-		g.stmt(stmt)
+	// Second pass: generate code from ALL files
+	for file in files {
+		g.cur_file = file.path
+		g.var_versions.clear() // reset SSA per file (functions are independent)
+		for stmt in file.stmts {
+			g.stmt(stmt)
+		}
 	}
 
 	erl_source := g.out.str()
 
 	// Write to file
-	erl_filename := '${g.out_dir}/${mod_name}.erl'
+	erl_filename := '${g.out_dir}/${erl_mod}.erl'
 	os.write_file(erl_filename, erl_source) or {
 		eprintln('Error writing ${erl_filename}: ${err}')
 	}

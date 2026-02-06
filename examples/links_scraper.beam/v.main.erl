@@ -4,4 +4,5 @@
 main() ->
     Html = get_text(<<"https://news.ycombinator.com">>),
     Pos = 0,
-    % TODO: for {
+    % TODO: unhandled stmt type
+    ok
