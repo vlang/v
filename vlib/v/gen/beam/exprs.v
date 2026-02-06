@@ -85,32 +85,50 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 
 	full_name := node.name
+	short_name := full_name.all_after_last('.')
 	if full_name == 'println' {
 		g.println_call(node)
-	} else {
-		call_mod := node.mod
-		// Cross-module call: 'v.other_module':'fn_name'(args)
-		if call_mod != g.cur_mod && call_mod.len > 0 {
-			erl_mod := g.v_mod_to_erl_mod(call_mod)
-			short_name := full_name.all_after_last('.')
-			g.write("'${erl_mod}':'${short_name}'(")
-		} else {
-			// Same-module call: fn_name(args)
-			name := g.call_fn_name(full_name, call_mod)
-			if g.needs_atom_quote(name) {
-				g.write("'${name}'(")
-			} else {
-				g.write('${name}(')
-			}
-		}
-		for i, arg in node.args {
-			if i > 0 {
-				g.write(', ')
-			}
-			g.expr(arg.expr)
-		}
-		g.write(')')
+		return
 	}
+	// V builtins with special handling
+	if short_name == 'print' {
+		g.print_call(node)
+		return
+	}
+	if short_name == 'eprintln' {
+		g.eprintln_call(node)
+		return
+	}
+	if short_name == 'eprint' {
+		g.eprint_call(node)
+		return
+	}
+	if g.erl_builtin_call(short_name, node) {
+		return
+	}
+
+	call_mod := node.mod
+	// Cross-module call: 'v.other_module':'fn_name'(args)
+	if call_mod != g.cur_mod && call_mod.len > 0 {
+		erl_mod := g.v_mod_to_erl_mod(call_mod)
+		fn_name := full_name.all_after_last('.')
+		g.write("'${erl_mod}':'${fn_name}'(")
+	} else {
+		// Same-module call: fn_name(args)
+		name := g.call_fn_name(full_name, call_mod)
+		if g.needs_atom_quote(name) {
+			g.write("'${name}'(")
+		} else {
+			g.write('${name}(')
+		}
+	}
+	for i, arg in node.args {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.expr(arg.expr)
+	}
+	g.write(')')
 }
 
 fn (mut g Gen) call_fn_name(full_name string, call_mod string) string {
@@ -177,6 +195,27 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
+	// Handle string methods
+	if type_sym.kind == .string || type_sym.name == 'string' {
+		if g.erl_string_method(node) {
+			return
+		}
+	}
+
+	// Handle array methods
+	if type_sym.kind == .array || type_sym.name.starts_with('[]') {
+		if g.erl_array_method(node) {
+			return
+		}
+	}
+
+	// Handle map methods
+	if type_sym.kind == .map || type_sym.name.starts_with('map[') {
+		if g.erl_map_method(node) {
+			return
+		}
+	}
+
 	// Use short type name (without module prefix)
 	short_type := type_sym.name.all_after_last('.')
 	method_name := "'${short_type}.${node.name}'"
@@ -188,6 +227,243 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(arg.expr)
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) erl_string_method(node ast.CallExpr) bool {
+	match node.name {
+		'int' {
+			g.write('binary_to_integer(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'f64' {
+			g.write('binary_to_float(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'split' {
+			if node.args.len > 0 {
+				g.write('binary:split(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(', [global])')
+				return true
+			}
+			return false
+		}
+		'split_into_lines' {
+			g.write('binary:split(')
+			g.expr(node.left)
+			g.write(', <<\"\\n\">>, [global])')
+			return true
+		}
+		'contains' {
+			if node.args.len > 0 {
+				g.write('case binary:match(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(') of nomatch -> false; _ -> true end')
+				return true
+			}
+			return false
+		}
+		'starts_with' {
+			if node.args.len > 0 {
+				g.write('case string:prefix(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(') of nomatch -> false; _ -> true end')
+				return true
+			}
+			return false
+		}
+		'ends_with' {
+			if node.args.len > 0 {
+				g.write('case binary:longest_common_suffix([')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(']) of 0 -> false; _ -> true end')
+				return true
+			}
+			return false
+		}
+		'to_lower' {
+			g.write('string:lowercase(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'to_upper' {
+			g.write('string:uppercase(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'trim_space', 'trim' {
+			g.write('string:trim(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'replace' {
+			if node.args.len >= 2 {
+				g.write('binary:replace(')
+				g.expr(node.left)
+				g.write(', ')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.args[1].expr)
+				g.write(', [global])')
+				return true
+			}
+			return false
+		}
+		'bytes' {
+			g.write('binary_to_list(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) erl_array_method(node ast.CallExpr) bool {
+	match node.name {
+		'reverse' {
+			g.write('lists:reverse(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'sort' {
+			g.write('lists:sort(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'clone' {
+			g.expr(node.left)
+			return true
+		}
+		'first' {
+			g.write('hd(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'last' {
+			g.write('lists:last(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'join' {
+			if node.args.len > 0 {
+				g.write('iolist_to_binary(lists:join(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write('))')
+				return true
+			}
+			return false
+		}
+		'delete' {
+			if node.args.len > 0 {
+				g.write('lists:delete(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write(')')
+				return true
+			}
+			return false
+		}
+		'contains' {
+			if node.args.len > 0 {
+				g.write('lists:member(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write(')')
+				return true
+			}
+			return false
+		}
+		'filter' {
+			if node.args.len > 0 {
+				g.write('lists:filter(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write(')')
+				return true
+			}
+			return false
+		}
+		'map' {
+			if node.args.len > 0 {
+				g.write('lists:map(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write(')')
+				return true
+			}
+			return false
+		}
+		'wait' {
+			g.write('ok')
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) erl_map_method(node ast.CallExpr) bool {
+	match node.name {
+		'keys' {
+			g.write('maps:keys(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'values' {
+			g.write('maps:values(')
+			g.expr(node.left)
+			g.write(')')
+			return true
+		}
+		'clone' {
+			g.expr(node.left)
+			return true
+		}
+		'delete' {
+			if node.args.len > 0 {
+				g.write('maps:remove(')
+				g.expr(node.args[0].expr)
+				g.write(', ')
+				g.expr(node.left)
+				g.write(')')
+				return true
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut g Gen) println_call(node ast.CallExpr) {
@@ -226,6 +502,102 @@ fn (mut g Gen) println_call(node ast.CallExpr) {
 			g.write('vbeam_io:println(')
 			g.expr(arg.expr)
 			g.write(')')
+		}
+	}
+}
+
+fn (mut g Gen) print_call(node ast.CallExpr) {
+	if node.args.len == 0 {
+		g.write('ok')
+		return
+	}
+	arg := node.args[0]
+	arg_type := arg.typ
+	if arg.expr is ast.StringLiteral {
+		g.write('io:format("~s", [')
+		g.expr(arg.expr)
+		g.write('])')
+	} else if int(arg_type) != 0 {
+		g.write('io:format("~s", [')
+		g.to_binary_expr(arg.expr, arg_type)
+		g.write('])')
+	} else {
+		g.write('io:format("~s", [')
+		g.expr(arg.expr)
+		g.write('])')
+	}
+}
+
+fn (mut g Gen) eprintln_call(node ast.CallExpr) {
+	if node.args.len == 0 {
+		g.write('io:format(standard_error, "~n", [])')
+		return
+	}
+	arg := node.args[0]
+	arg_type := arg.typ
+	if arg.expr is ast.StringLiteral {
+		g.write('io:format(standard_error, "~s~n", [')
+		g.expr(arg.expr)
+		g.write('])')
+	} else if int(arg_type) != 0 {
+		g.write('io:format(standard_error, "~s~n", [')
+		g.to_binary_expr(arg.expr, arg_type)
+		g.write('])')
+	} else {
+		g.write('io:format(standard_error, "~s~n", [')
+		g.expr(arg.expr)
+		g.write('])')
+	}
+}
+
+fn (mut g Gen) eprint_call(node ast.CallExpr) {
+	if node.args.len == 0 {
+		g.write('ok')
+		return
+	}
+	g.write('io:format(standard_error, "~s", [')
+	g.expr(node.args[0].expr)
+	g.write('])')
+}
+
+fn (mut g Gen) erl_builtin_call(name string, node ast.CallExpr) bool {
+	match name {
+		'panic' {
+			g.write('erlang:error({panic, ')
+			if node.args.len > 0 {
+				g.expr(node.args[0].expr)
+			} else {
+				g.write('panic')
+			}
+			g.write('})')
+			return true
+		}
+		'sleep' {
+			g.write('timer:sleep(')
+			if node.args.len > 0 {
+				g.expr(node.args[0].expr)
+			} else {
+				g.write('0')
+			}
+			g.write(')')
+			return true
+		}
+		'sqrt' {
+			g.write('math:sqrt(')
+			if node.args.len > 0 {
+				g.expr(node.args[0].expr)
+			} else {
+				g.write('0')
+			}
+			g.write(')')
+			return true
+		}
+		'arguments' {
+			g.write('init:get_plain_arguments()')
+			return true
+		}
+		else {
+			return false
 		}
 	}
 }
