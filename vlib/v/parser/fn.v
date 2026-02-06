@@ -766,6 +766,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type = p.parse_type()
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
+		return_sym := p.table.sym(return_type)
+		if return_sym.info is ast.ArrayFixed {
+			// Disallow [T] as return type
+			gen_typ := return_sym.name.find_between('[', ']')
+			if gen_typ.len == 1 && gen_typ[0].is_capital() {
+				p.error_with_pos('invalid generic return, use `${gen_typ}` instead', return_type_pos)
+			}
+		}
 
 		if p.tok.kind in [.question, .not] {
 			ret_type_sym := p.table.sym(return_type)
