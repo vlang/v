@@ -375,3 +375,79 @@ pub fn pmac160(data []u8, key []u8) []u8 {
 	d.write(data) or { panic(err) }
 	return d.checksum_internal() or { panic(err) }
 }
+
+// sum returns the Blake2b checksum of the data with the specified output length (1-64 bytes).
+pub fn sum(data []u8, outlen int) []u8 {
+	if outlen < 1 || outlen > size512 {
+		panic('blake2b: invalid output length ${outlen}, must be between 1 and ${size512}')
+	}
+	mut d := new_digest(u8(outlen), []u8{}) or { panic(err) }
+	d.write(data) or { panic(err) }
+	return d.checksum_internal() or { panic(err) }
+}
+
+// blake2b_long produces a hash of arbitrary length using the Blake2b extension mechanism.
+// This is used by Argon2 for variable-length output greater than 64 bytes.
+// For outputs <= 64 bytes, it's equivalent to sum().
+// For outputs > 64 bytes, it uses iterative hashing as specified in the Argon2 RFC.
+pub fn blake2b_long(data []u8, outlen int) []u8 {
+	if outlen < 1 {
+		return []u8{}
+	}
+
+	// Prepend output length as little-endian u32
+	outlen_bytes := [
+		u8(outlen & 0xFF),
+		u8((outlen >> 8) & 0xFF),
+		u8((outlen >> 16) & 0xFF),
+		u8((outlen >> 24) & 0xFF),
+	]
+
+	mut full_input := outlen_bytes.clone()
+	full_input << data
+
+	if outlen <= size512 {
+		// Simple case: hash outlen_bytes || input
+		return sum(full_input, outlen)
+	}
+
+	// For longer outputs, implement the extension mechanism
+	mut out := []u8{len: outlen}
+	mut toproduce := outlen
+
+	// First, hash to get initial output
+	out_buffer := sum512(full_input)
+
+	// Copy first half to output
+	copy_len := size512 / 2
+	for i in 0 .. copy_len {
+		out[i] = out_buffer[i]
+	}
+
+	mut offset := copy_len
+	toproduce -= copy_len
+	mut in_buffer := out_buffer.clone()
+
+	// Generate additional output by iterative hashing
+	for toproduce > size512 {
+		out_buffer2 := sum512(in_buffer)
+
+		// Copy half of the output
+		for i in 0 .. size512 / 2 {
+			out[offset + i] = out_buffer2[i]
+		}
+		offset += size512 / 2
+		toproduce -= size512 / 2
+		in_buffer = out_buffer2.clone()
+	}
+
+	// Final iteration
+	if toproduce > 0 {
+		final_output := sum(in_buffer, toproduce)
+		for i in 0 .. toproduce {
+			out[offset + i] = final_output[i]
+		}
+	}
+
+	return out
+}
