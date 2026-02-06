@@ -2405,7 +2405,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		s += expr_code
-		s += ';// new af2 pre'
+		s += ';'
 		g.strs_to_free0 << s
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
@@ -2630,18 +2630,22 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
 		if i < expected_types.len {
-			if use_tmp_var_autofree {
-				if arg.is_tmp_autofree { // && !g.is_js_call {
-					// We saved expressions in temp variables so that they can be freed later.
-					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
-					// g.write('_arg_expr_${g.called_fn_name}_${i}')
-					// Use these variables here.
-					fn_name := node.name.replace('.', '_')
-					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
-					name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
+			mut wrote_tmp_arg := false
+			if use_tmp_var_autofree && arg.is_tmp_autofree { // && !g.is_js_call {
+				// We saved expressions in temp variables so that they can be freed later.
+				// `foo(str + str2) => x := str + str2; foo(x); x.free()`
+				// g.write('_arg_expr_${g.called_fn_name}_${i}')
+				// Use these variables here.
+				fn_name := node.name.replace('.', '_')
+				// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
+				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
+				scope := g.file.scope.innermost(node.pos.pos)
+				if !g.is_autofree_tmp || scope.known_var(name) {
 					g.write('/*autofree arg*/' + name)
+					wrote_tmp_arg = true
 				}
-			} else {
+			}
+			if !wrote_tmp_arg {
 				g.ref_or_deref_arg(arg, expected_types[i], node.language, is_smartcast)
 			}
 		} else {

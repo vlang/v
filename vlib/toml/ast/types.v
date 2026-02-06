@@ -13,7 +13,7 @@ pub type Key = Bare | Bool | Null | Number | Quoted
 // str returns the string representation of the key. This is implemented
 // by all the variants of Key.
 pub fn (k Key) str() string {
-	return k.text
+	return k.text.clone()
 }
 
 // Value is a sumtype representing all possible value types
