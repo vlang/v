@@ -1,6 +1,5 @@
 -module('v.main').
 -export([size/1, main/0]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 size(Tree) ->
     case Tree of

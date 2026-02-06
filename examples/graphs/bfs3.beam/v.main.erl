@@ -6,8 +6,8 @@ find_pattern(Adj, Start, Target) ->
     Queue = #{{vbeam, type} => 'Queue[[]string]'},
     Res = [],
     'Queue[[]string].push'(Queue, [Start]),
-    % TODO: for !queue.is_empty() {
-    Res.
+    % TODO: unhandled stmt type
+    ok    Res.
 
 print_pattern(Pat) ->
     lists:foreach(fun(P) ->

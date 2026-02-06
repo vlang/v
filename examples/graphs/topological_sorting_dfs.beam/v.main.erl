@@ -10,7 +10,7 @@ dfs_recursive(U, Visited, Graph, Top_sorting) ->
         end,
         ok
     end, maps:get(U, Graph)),
-    Top_sorting << U,
+    Top_sorting bsl U,
     ok.
 
 visited_init(A_graph) ->
@@ -33,7 +33,7 @@ main() ->
         Visited = visited_init(Graph1),
         Top_sorting = [],
         lists:foreach(fun(I) ->
-            case maps:get(I, Visited) != true of
+            case maps:get(I, Visited) /= true of
                 true -> dfs_recursive(I, Visited, Graph1, Top_sorting);
                 false -> ok
             end.

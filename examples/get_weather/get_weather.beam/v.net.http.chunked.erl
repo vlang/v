@@ -3,15 +3,15 @@
 
 'ChunkScanner.read_chunk_size'(S) ->
     N = todo,
-    % TODO: for {
-    N.
+    % TODO: unhandled stmt type
+    ok    N.
 
 unhex(C) ->
-    case todo <= C && C <= todo of
+    case todo =< C andalso C =< todo of
         true -> C - todo;
-        false -> case todo <= C && C <= todo of
+        false -> case todo =< C andalso C =< todo of
             true -> C - todo + 10;
-            false -> case todo <= C && C <= todo of
+            false -> case todo =< C andalso C =< todo of
                 true -> C - todo + 10;
                 false -> ok
             end
@@ -25,13 +25,12 @@ unhex(C) ->
     Startpos = maps:get(pos, S),
     case maps:get(pos, S) > length(maps:get(text, S)) of
         true -> error(<<"invalid chunksize">>);
-        false -> ok
-    end,
-    lists:nth(todo + 1, maps:get(text, S)).
+        false -> lists:nth(todo + 1, maps:get(text, S))
+        end.
 
 decode(Text) ->
     Sb = new_builder(100),
     Cscanner = #{pos => 0, text => Text, {vbeam, type} => 'ChunkScanner'},
-    % TODO: for {
-    'ChunkScanner.skip_crlf'(Cscanner),
+    % TODO: unhandled stmt type
+    ok    'ChunkScanner.skip_crlf'(Cscanner),
     'Builder.str'(Sb).

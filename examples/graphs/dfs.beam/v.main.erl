@@ -14,9 +14,9 @@ depth_first_search_path(Graph, Start, Target) ->
     Path = [],
     Stack = [],
     Visited = visited_init(Graph),
-    Stack << Start,
-    % TODO: for stack.len > 0 {
-    Path1 = [<<"Path not found, problem in the Graph, start or end nodes! ">>],
+    Stack bsl Start,
+    % TODO: unhandled stmt type
+    ok    Path1 = [<<"Path not found, problem in the Graph, start or end nodes! ">>],
     Path1.
 
 visited_init(A_graph) ->
@@ -31,6 +31,6 @@ build_path_reverse(Graph, Start, Final, Visited) ->
     Array_of_nodes = 'map[string][]string.keys'(Graph),
     Current = Final,
     Path = [],
-    Path << Current,
-    % TODO: for current != start {
-    Path.
+    Path bsl Current,
+    % TODO: unhandled stmt type
+    ok    Path.

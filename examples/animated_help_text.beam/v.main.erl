@@ -1,7 +1,5 @@
 -module('v.main').
 -export([event/2, frame/1, main/0]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 event(E, _app) ->
     case maps:get(typ, E) of
@@ -21,12 +19,12 @@ event(E, _app) ->
 frame(App) ->
     'Context.clear'(maps:get(tui, App)),
     todo,
-    case maps:get(frame, App) % 4 == 0 of
+    case maps:get(frame, App) rem 4 == 0 of
         true -> begin
         end;
         false -> ok
     end,
-    case maps:get(frame, App) % 100 == 0 of
+    case maps:get(frame, App) rem 100 == 0 of
         true -> case maps:get(direction, App) > 0 of
             true -> ok;
             false -> ok
@@ -40,6 +38,6 @@ frame(App) ->
     ok.
 
 main() ->
-    App = &#{{vbeam, type} => 'App'},
+    App = #{{vbeam, type} => 'App'},
     'Context.run'(maps:get(tui, App)),
     ok.

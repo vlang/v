@@ -5,11 +5,11 @@ is_key_char(C) ->
     'u8.is_letter'(C).
 
 is_ascii_control_character(Byte_char) ->
-    (Byte_char >= 0 && Byte_char <= 0x1f) || Byte_char == 0x7f.
+    (Byte_char >= 0 andalso Byte_char =< 16#1f) orelse Byte_char == 16#7f.
 
 is_illegal_ascii_control_character(Byte_char) ->
-    Byte_char != 0x09 && is_ascii_control_character(Byte_char).
+    Byte_char /= 16#09 andalso is_ascii_control_character(Byte_char).
 
 printdbg(Id, Message) ->
-    eprintln(Id + <<" ">> + Message),
+    eprintln(<<(<<(Id)/binary, (<<" ">>)/binary>>)/binary, (Message)/binary>>),
     ok.

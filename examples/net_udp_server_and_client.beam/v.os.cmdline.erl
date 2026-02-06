@@ -6,7 +6,7 @@ options(Args, Param) ->
     lists:foreach(fun(V) ->
         case V == Param of
             true -> case I + 1 < length(Args) of
-                true -> Flags << lists:nth(I + 1 + 1, Args);
+                true -> Flags bsl lists:nth(I + 1 + 1, Args);
                 false -> ok
             end;
             false -> ok
@@ -32,11 +32,11 @@ option(Args, Param, Def) ->
 options_before(Args, What) ->
     Args_before = [],
     lists:foreach(fun(A) ->
-        case A in What of
+        case lists:member(A, What) of
             true -> ok;
             false -> ok
         end,
-        Args_before << A,
+        Args_before bsl A,
         ok
     end, Args),
     Args_before.
@@ -45,15 +45,15 @@ options_after(Args, What) ->
     Found = false,
     Args_after = [],
     lists:foreach(fun(A) ->
-        case A in What of
+        case lists:member(A, What) of
             true -> begin
                 Found1 = true,
-                % TODO: continue
-            end;
+                % TODO: unhandled stmt type
+                ok            end;
             false -> ok
         end,
         case Found1 of
-            true -> Args_after << A;
+            true -> Args_after bsl A;
             false -> ok
         end,
         ok
@@ -61,7 +61,7 @@ options_after(Args, What) ->
     Args_after.
 
 only_non_options(Args) ->
-    '[]string.filter'(Args, !'string.starts_with'(It, <<"-">>)).
+    '[]string.filter'(Args, not 'string.starts_with'(It, <<"-">>)).
 
 only_options(Args) ->
     '[]string.filter'(Args, 'string.starts_with'(It, <<"-">>)).

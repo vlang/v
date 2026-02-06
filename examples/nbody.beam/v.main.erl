@@ -1,16 +1,13 @@
 -module('v.main').
 -export([advance/2, offsetmomentum/1, energy/1, arr_momentum/0, arr_position/0, main/0]).
-% TODO: const solar_mass = 39.47841760435743197;
-% TODO: const days_per_year = 365.24;
-% TODO: const c_n = 5;
 
 advance(Sys, Dt) ->
     {Vx, Vy, Vz} = lists:foldl(fun(I, {VxAcc, VyAcc, VzAcc}) ->
         VxOut = maps:get(x, lists:nth(I + 1, maps:get(v, Sys))),
         VyOut = maps:get(y, lists:nth(I + 1, maps:get(v, Sys))),
         VzOut = maps:get(z, lists:nth(I + 1, maps:get(v, Sys))),
-        % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-        {VxOut, VyOut, VzOut}
+        % TODO: unhandled stmt type
+        ok        {VxOut, VyOut, VzOut}
     end, {Vx, Vy, Vz}, lists:seq(0, 5 - 1 - 1)),
     lists:foreach(fun(I) ->
         ok
@@ -31,8 +28,8 @@ energy(Sys) ->
     E = todo,
     E1 = lists:foldl(fun(I, EAcc) ->
         EOut = todo * maps:get(m, lists:nth(I + 1, maps:get(v, Sys))) * (maps:get(x, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(x, lists:nth(I + 1, maps:get(v, Sys))) + maps:get(y, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(y, lists:nth(I + 1, maps:get(v, Sys))) + maps:get(z, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(z, lists:nth(I + 1, maps:get(v, Sys)))),
-        % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-        EOut
+        % TODO: unhandled stmt type
+        ok        EOut
     end, E, lists:seq(0, 5 - 1)),
     E1.
 
@@ -43,7 +40,7 @@ arr_position() ->
     [#{x => 0.0, y => 0.0, z => 0.0, {vbeam, type} => 'Position'}, #{x => 4.84143144246472090e+00, y => -1.16032004402742839e+00, z => -1.03622044471123109e-01, {vbeam, type} => 'Position'}, #{x => 8.34336671824457987e+00, y => 4.12479856412430479e+00, z => -4.03523417114321381e-01, {vbeam, type} => 'Position'}, #{x => 1.28943695621391310e+01, y => -1.51111514016986312e+01, z => -2.23307578892655734e-01, {vbeam, type} => 'Position'}, #{x => 1.53796971148509165e+01, y => -2.59193146099879641e+01, z => 1.79258772950371181e-01, {vbeam, type} => 'Position'}].
 
 main() ->
-    Sys = &#{v => arr_momentum(), s => arr_position(), {vbeam, type} => 'System'},
+    Sys = #{v => arr_momentum(), s => arr_position(), {vbeam, type} => 'System'},
     offsetmomentum(Sys),
     vbeam_io:println(float_to_binary(energy(Sys))),
     lists:foreach(fun(_) ->

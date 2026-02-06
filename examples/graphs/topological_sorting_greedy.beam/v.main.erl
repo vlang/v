@@ -9,17 +9,17 @@ topog_sort_greedy(Graph) ->
     print(<<"V Degree ", (V_degree)/binary>>),
     Small_degree = min_degree(V_degree),
     New_graph = remove_node_from_graph(Small_degree, Graph),
-    Top_order << Small_degree,
+    Top_order bsl Small_degree,
     todo,
-    % TODO: for (count < n_nodes) {
-    Top_order.
+    % TODO: unhandled stmt type
+    ok    Top_order.
 
 all_fathers(Node, A_map) ->
     Array_of_keys = 'map[string][]string.keys'(A_map),
     All_incident = [],
     lists:foreach(fun(I) ->
-        case Node in maps:get(I, A_map) of
-            true -> All_incident << I;
+        case lists:member(Node, maps:get(I, A_map)) of
+            true -> All_incident bsl I;
             false -> ok
         end,
         ok

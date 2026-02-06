@@ -13,14 +13,9 @@ new(Input) ->
 
 'TextScanner.next'(Ss) ->
     case maps:get(pos, Ss) < maps:get(ilen, Ss) of
-        true -> begin
-            Opos = maps:get(pos, Ss),
-            todo,
-            lists:nth(Opos + 1, maps:get(input, Ss))
-        end;
-        false -> ok
-    end,
-    -1.
+        true -> lists:nth(Opos + 1, maps:get(input, Ss));
+        false -> -1
+        end.
 
 'TextScanner.skip'(Ss) ->
     case maps:get(pos, Ss) < maps:get(ilen, Ss) of
@@ -37,30 +32,26 @@ new(Input) ->
 'TextScanner.peek'(Ss) ->
     case maps:get(pos, Ss) < maps:get(ilen, Ss) of
         true -> lists:nth(maps:get(pos, Ss) + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    -1.
+        false -> -1
+        end.
 
 'TextScanner.peek_u8'(Ss) ->
     case maps:get(pos, Ss) < maps:get(ilen, Ss) of
         true -> lists:nth(maps:get(pos, Ss) + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    0.
+        false -> 0
+        end.
 
 'TextScanner.peek_n'(Ss, N) ->
     case maps:get(pos, Ss) + N < maps:get(ilen, Ss) of
         true -> lists:nth(maps:get(pos, Ss) + N + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    -1.
+        false -> -1
+        end.
 
 'TextScanner.peek_n_u8'(Ss, N) ->
     case maps:get(pos, Ss) + N < maps:get(ilen, Ss) of
         true -> lists:nth(maps:get(pos, Ss) + N + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    0.
+        false -> 0
+        end.
 
 'TextScanner.back'(Ss) ->
     case maps:get(pos, Ss) > 0 of
@@ -85,20 +76,19 @@ new(Input) ->
     Offset = N + 1,
     case maps:get(pos, Ss) >= Offset of
         true -> lists:nth(maps:get(pos, Ss) - Offset + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    -1.
+        false -> -1
+        end.
 
 'TextScanner.current'(Ss) ->
     case maps:get(pos, Ss) > 0 of
         true -> lists:nth(maps:get(pos, Ss) - 1 + 1, maps:get(input, Ss));
-        false -> ok
-    end,
-    -1.
+        false -> -1
+        end.
 
 'TextScanner.reset'(Ss) ->
 
 'TextScanner.goto_end'(Ss) ->
 
 'TextScanner.skip_whitespace'(Ss) ->
-    % TODO: for ss.ilen - ss.pos > 0 && ss.peek_u8().is_space() {
+    % TODO: unhandled stmt type
+    ok

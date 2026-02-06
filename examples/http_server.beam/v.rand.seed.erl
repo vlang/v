@@ -10,7 +10,7 @@ time_seed_array(Count) ->
     Seed_data = [],
     Seed1 = lists:foldl(fun(_, SeedAcc) ->
         SeedOut = nr_next(Seed1),
-        Seed_data << nr_next(Seed1),
+        Seed_data bsl nr_next(Seed1),
         SeedOut
     end, Seed, lists:seq(0, Count - 1)),
     Seed_data.
@@ -26,5 +26,5 @@ time_seed_64() ->
     Lower = todo,
     Upper = todo,
     todo,
-    Res = Lower | (Upper << 32),
+    Res = Lower bor (Upper bsl 32),
     Res.

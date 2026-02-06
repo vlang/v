@@ -11,6 +11,7 @@ main() ->
         end
     end,
     Sieve = [],
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
-    C = 0,
-    % TODO: [unhandled stmt str type: v.ast.ForCStmt ]
+    % TODO: unhandled stmt type
+    ok    C = 0,
+    % TODO: unhandled stmt type
+    ok

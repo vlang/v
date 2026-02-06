@@ -4,9 +4,9 @@
 main() ->
     lists:foreach(fun(N) ->
         vbeam_io:println(if
-            N % 15 == 0 -> <<"FizzBuzz">>;
-            N % 5 == 0 -> <<"Buzz">>;
-            N % 3 == 0 -> <<"Fizz">>;
+            N rem 15 == 0 -> <<"FizzBuzz">>;
+            N rem 5 == 0 -> <<"Buzz">>;
+            N rem 3 == 0 -> <<"Fizz">>;
             true -> integer_to_binary(N)
         end),
         ok.

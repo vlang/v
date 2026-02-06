@@ -6,7 +6,7 @@ main() ->
     F = create(<<"file_list.txt">>),
     lists:foreach(fun(File) ->
         case is_file(File) of
-            true -> 'File.write_string'(F, File + <<"\\r\\n">>);
+            true -> 'File.write_string'(F, <<(File)/binary, (<<"\\r\\n">>)/binary>>);
             false -> ok
         end,
         ok

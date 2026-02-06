@@ -1,6 +1,5 @@
 -module('v.main').
 -export([build_map_edges_from_graph/1, print_sol/1, bellman_ford/2, main/0]).
-% TODO: const large = 999999;
 
 build_map_edges_from_graph(G) ->
     N = length(G),
@@ -8,7 +7,7 @@ build_map_edges_from_graph(G) ->
     Edge = 0,
     lists:foreach(fun(I) ->
         lists:foreach(fun(J) ->
-            case lists:nth(J + 1, lists:nth(I + 1, G)) != 0 of
+            case lists:nth(J + 1, lists:nth(I + 1, G)) /= 0 of
                 true -> begin
                     todo
                 end;
@@ -39,7 +38,7 @@ bellman_ford(Graph, Src) ->
             UOut = maps:get(src, maps:get(J, Edges)),
             VOut = maps:get(dest, maps:get(J, Edges)),
             WeightOut = maps:get(weight, maps:get(J, Edges)),
-            case lists:nth(U + 1, Dist) != 999999 && lists:nth(U + 1, Dist) + Weight < lists:nth(V + 1, Dist) of
+            case lists:nth(U + 1, Dist) /= 999999 andalso lists:nth(U + 1, Dist) + Weight < lists:nth(V + 1, Dist) of
                 true -> ok;
                 false -> ok
             end,
@@ -51,7 +50,7 @@ bellman_ford(Graph, Src) ->
         UOut = maps:get(src, maps:get(J, Edges)),
         VOut = maps:get(dest, maps:get(J, Edges)),
         WeightOut = maps:get(weight, maps:get(J, Edges)),
-        case lists:nth(U1 + 1, Dist) != 999999 && lists:nth(U1 + 1, Dist) + Weight1 < lists:nth(V1 + 1, Dist) of
+        case lists:nth(U1 + 1, Dist) /= 999999 andalso lists:nth(U1 + 1, Dist) + Weight1 < lists:nth(V1 + 1, Dist) of
             true -> begin
                 print(<<"\\n Graph contains negative weight cycle">>),
             end;

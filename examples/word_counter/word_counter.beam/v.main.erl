@@ -3,7 +3,7 @@
 
 main() ->
     Path = <<"cinderella.txt">>,
-    case length(arguments()) != 2 of
+    case length('v.os':'arguments'()) /= 2 of
         true -> begin
             io:format("~s~n", [<<"usage: word_counter [text_file]">>]),
             vbeam_io:println(<<"using ", (Path)/binary>>)
@@ -29,8 +29,8 @@ extract_words(Contents) ->
     Splits = [],
     lists:foreach(fun(Space_split) ->
         case 'string.contains'(Space_split, <<"\\n">>) of
-            true -> Splits << 'string.split'(Space_split, <<"\\n">>);
-            false -> Splits << Space_split
+            true -> Splits bsl 'string.split'(Space_split, <<"\\n">>);
+            false -> Splits bsl Space_split
         end,
         ok
     end, 'string.split'('string.to_lower'(Contents), <<" ">>)),
@@ -41,19 +41,20 @@ extract_words(Contents) ->
             true -> ok;
             false -> ok
         end,
-        Results << Result,
+        Results bsl Result,
         ok
     end, Splits),
     Results.
 
 filter_word(Word) ->
-    case Word == <<"">> || Word == <<" ">> of
+    case Word == <<"">> orelse Word == <<" ">> of
         true -> <<"">>;
-        false -> ok
-    end,
-    I = 0,
-    % TODO: for i < word.len && !word[i].is_letter() {
-    Start = I,
-    % TODO: for i < word.len && word[i].is_letter() {
-    End = I,
-    lists:nth(todo + 1, Word).
+        false -> begin
+            I = 0,
+            % TODO: unhandled stmt type
+            ok            Start = I,
+            % TODO: unhandled stmt type
+            ok            End = I,
+            lists:nth(todo + 1, Word)
+        end
+        end.

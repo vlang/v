@@ -3,8 +3,8 @@
 
 main() ->
     Conn = dial_tcp(<<"google.com:80">>),
-    % TODO: defer {conn.close();}
-    vbeam_io:println(<<" peer: ", ('TcpConn.peer_addr'(Conn))/binary>>),
+    % TODO: unhandled stmt type
+    ok    vbeam_io:println(<<" peer: ", ('TcpConn.peer_addr'(Conn))/binary>>),
     vbeam_io:println(<<"local: ", ('TcpConn.addr'(Conn))/binary>>),
     'TcpConn.write_string'(Conn, <<"HEAD /index.html HTTP/1.0\\r\\n\\r\\n">>),
     Result = read_all(#{reader => Conn, {vbeam, type} => 'ReadAllConfig'}),

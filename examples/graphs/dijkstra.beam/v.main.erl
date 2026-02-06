@@ -5,16 +5,16 @@ push_pq(Prior_queue, Data, Priority) ->
     Temp = [],
     Pq_len = length(Prior_queue),
     I = 0,
-    % TODO: for i < pq_len && priority > prior_queue[i].priority {
-    Temp << #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
-    % TODO: for i < pq_len {
-    Prior_queue = '[]T.clone'(Temp),
+    % TODO: unhandled stmt type
+    ok    Temp bsl #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
+    % TODO: unhandled stmt type
+    ok    Prior_queue = '[]T.clone'(Temp),
 
 updating_priority(Prior_queue, Search_data, New_priority) ->
     I = 0,
     Pq_len = length(Prior_queue),
-    % TODO: for i < pq_len {
-
+    % TODO: unhandled stmt type
+    ok
 departure_priority(Prior_queue) ->
     X = maps:get(data, lists:nth(1, Prior_queue)),
     '[]T.delete'(Prior_queue, 0),
@@ -24,7 +24,7 @@ all_adjacents(G, V) ->
     Temp = [],
     lists:foreach(fun(I) ->
         case lists:nth(I + 1, lists:nth(V + 1, G)) > 0 of
-            true -> Temp << I;
+            true -> Temp bsl I;
             false -> ok
         end,
         ok
@@ -45,8 +45,8 @@ print_paths_dist(Path, Dist) ->
         print(<<"\\n ", (integer_to_binary(Node))/binary, " ">>),
         ok.
         IOut = Node,
-        % TODO: for path[i] != -1 {
-        print(<<"\\t PATH COST: ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>),
+        % TODO: unhandled stmt type
+        ok        print(<<"\\t PATH COST: ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>),
         ok.
         IOut
     end, I, lists:seq(1, (length(Path)) - 1)),
@@ -57,8 +57,8 @@ dijkstra(G, S) ->
     N = length(G),
     Dist = [],
     Path = [],
-    % TODO: for pq_queue.len != 0 {
-    print_solution(Dist),
+    % TODO: unhandled stmt type
+    ok    print_solution(Dist),
     print_paths_dist(Path, Dist),
     ok.
 

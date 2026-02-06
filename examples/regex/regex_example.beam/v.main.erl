@@ -19,11 +19,11 @@ convert_html_rgb(In_col) ->
     case Start >= 0 of
         true -> begin
             Group_list = 'RE.get_group_list'(Re),
-            R = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
-            G = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
-            B = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
+            R = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
+            G = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
+            B = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
             vbeam_io:println(<<"r: ", (integer_to_binary(R))/binary, " g: ", (integer_to_binary(G))/binary, " b: ", (integer_to_binary(B))/binary>>),
-            Res1 = R << 16 | G << 8 | B,
+            Res1 = R bsl 16 bor G bsl 8 bor B,
         end;
         false -> ok
     end,
@@ -48,15 +48,15 @@ convert_html_rgb_n(In_col) ->
         true -> begin
             Red_s = element(1, 'RE.get_group_bounds_by_name'(Re, <<"red">>)),
             Red_e = element(2, 'RE.get_group_bounds_by_name'(Re, <<"red">>)),
-            R = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
+            R = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
             Green_s = element(1, 'RE.get_group_bounds_by_name'(Re, <<"green">>)),
             Green_e = element(2, 'RE.get_group_bounds_by_name'(Re, <<"green">>)),
-            G = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
+            G = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
             Blue_s = element(1, 'RE.get_group_bounds_by_name'(Re, <<"blue">>)),
             Blue_e = element(2, 'RE.get_group_bounds_by_name'(Re, <<"blue">>)),
-            B = 'string.u32'((<<"0x">> + lists:nth(todo + 1, In_col))) << Col_mul,
+            B = 'string.u32'((<<(<<"0x">>)/binary, (lists:nth(todo + 1, In_col))/binary>>)) bsl Col_mul,
             vbeam_io:println(<<"r: ", (integer_to_binary(R))/binary, " g: ", (integer_to_binary(G))/binary, " b: ", (integer_to_binary(B))/binary>>),
-            Res1 = R << 16 | G << 8 | B,
+            Res1 = R bsl 16 bor G bsl 8 bor B,
         end;
         false -> ok
     end,

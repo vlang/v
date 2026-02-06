@@ -1,12 +1,11 @@
 -module('v.main').
 -export([producer/3, consumer/3, heavy_processing/1, main/0]).
-% TODO: [unhandled stmt str type: v.ast.TypeDecl ]
 
 producer(Producer_name, Arr, Mtx) ->
     lists:foreach(fun(I) ->
         'Mutex.lock'(Mtx),
         ok.
-        Arr << todo,
+        Arr bsl todo,
         ok.
         vbeam_io:println(<<"Produced: ", (integer_to_binary(I))/binary>>),
         ok.
@@ -18,8 +17,8 @@ producer(Producer_name, Arr, Mtx) ->
     end, lists:seq(1, 5 - 1)),
 
 consumer(Consumer_name, Arr, Mtx) ->
-    % TODO: for {
-
+    % TODO: unhandled stmt type
+    ok
 heavy_processing(Queue_id) ->
     vbeam_io:println(<<"One more: ", (Queue_id)/binary>>),
     sleep(500 * todo),
@@ -31,11 +30,11 @@ main() ->
     Producer_threads = [todo, todo, todo, todo, todo],
     Consumer_threads = [todo],
     lists:foreach(fun(I) ->
-        Consumer_threads << todo,
+        Consumer_threads bsl todo,
         ok
     end, lists:seq(1, 16 - 1)),
     'Mutex.lock'(Mtx),
-    Arr << Main.heavy_processing,
+    Arr bsl Main.heavy_processing,
     'Mutex.unlock'(Mtx),
     lists:foreach(fun(T) ->
         'thread.wait'(T),

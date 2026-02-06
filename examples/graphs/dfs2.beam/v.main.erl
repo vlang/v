@@ -20,17 +20,17 @@ depth_first_search_path(Adj, Start, Target) ->
     maps:get(pattern, Sol).
 
 'Solution.find_pattern'(S, Adj, Visited, Node, Target, Path) ->
-    Path << Node,
+    Path bsl Node,
     case Node == Target of
         true -> begin
             print(<<"\\n Founded pattern: ", (Path)/binary>>),
-            maps:get(pattern, S) << [Path]
+            maps:get(pattern, S) bsl [Path]
         end;
         false -> ok
     end,
     print(<<"\\n Exploring of node ", (Node)/binary, " (true/false): ", (maps:get(Node, Adj))/binary>>),
     lists:foreach(fun(_) ->
-        case !maps:get(lists:nth(I + 1, maps:get(Node, Adj)), Visited) of
+        case not maps:get(lists:nth(I + 1, maps:get(Node, Adj)), Visited) of
             true -> begin
                 Temp = '[]string.clone'(Path),
                 'Solution.find_pattern'(S, Adj, Visited, lists:nth(I + 1, maps:get(Node, Adj)), Target, Temp)

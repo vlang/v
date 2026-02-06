@@ -9,9 +9,9 @@ expensive_computing(Id, Duration) ->
 
 main() ->
     Threads = [],
-    Threads << todo,
-    Threads << todo,
-    Threads << todo,
+    Threads bsl todo,
+    Threads bsl todo,
+    Threads bsl todo,
     '[]thread.wait'(Threads),
     io:format("~s~n", [<<"All jobs finished!">>]),
     ok.

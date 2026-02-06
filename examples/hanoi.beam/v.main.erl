@@ -1,6 +1,5 @@
 -module('v.main').
 -export([main/0, move/3, hanoi/4]).
-% TODO: const num = 7;
 
 main() ->
     hanoi(7, <<"A">>, <<"B">>, <<"C">>),
