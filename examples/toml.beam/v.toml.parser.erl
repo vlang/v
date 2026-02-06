@@ -62,12 +62,12 @@ new_parser(Config) ->
 'Parser.next'(P) ->
     case length(maps:get(tokens, P)) > 0 of
         true -> begin
-            'Token.delete'(maps:get(tokens, P), 0),
+            lists:delete(0, maps:get(tokens, P)),
             'Parser.peek'(P, 1)
         end;
         false -> begin
             'Parser.peek'(P, 1),
-            'Token.delete'(maps:get(tokens, P), 0)
+            lists:delete(0, maps:get(tokens, P))
         end
     end,
     ok.
@@ -84,7 +84,7 @@ new_parser(Config) ->
                     Count = N - length(maps:get(tokens, P)),
                     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"buffering ", (integer_to_binary(Count))/binary, " tokens...">>),
                     % TODO: unhandled stmt type
-                    ok                    Token_
+                    Token_
                 end
             end
         end
@@ -123,12 +123,13 @@ new_parser(Config) ->
 
 'Parser.ignore_while_peek'(P, Tokens) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Parser.peek_over'(P, I, Tokens) ->
     Peek_tok = maps:get(peek_tok, P),
     Peek_i = I,
     % TODO: unhandled stmt type
-    ok    Peek_tok.
+    Peek_tok.
 
 'Parser.is_at'(P, Expected_token) ->
     maps:get(kind, maps:get(tok, P)) == Expected_token.
@@ -216,7 +217,7 @@ todo_msvc_astring2dkey(S) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"locating \"", (Key)/binary, "\" in map ", (ptr_str(Table))/binary>>),
     T = todo,
     % TODO: unhandled stmt type
-    ok    printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"returning map ", (ptr_str(T))/binary, "\"">>),
+    printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"returning map ", (ptr_str(T))/binary, "\"">>),
     T.
 
 is_all_tables(Table, Dotted_key) ->
@@ -224,7 +225,7 @@ is_all_tables(Table, Dotted_key) ->
         true -> false;
         false -> begin
             % TODO: unhandled stmt type
-            ok            true
+            true
         end
         end.
 
@@ -237,13 +238,13 @@ is_all_tables(Table, Dotted_key) ->
     end,
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"locating \"", (Key)/binary, "\" in map ", (ptr_str(T))/binary>>),
     % TODO: unhandled stmt type
-    ok    error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<"no key `", (Key)/binary, "` found in map ", (ptr_str(T))/binary, "\"">>)/binary>>).
+    error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<"no key `", (Key)/binary, "` found in map ", (ptr_str(T))/binary, "\"">>)/binary>>).
 
 'Parser.allocate_in_table'(P, Table, Key) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"allocating \"", (Key)/binary, "\" in map ", (ptr_str(Table))/binary>>),
     T = todo,
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Parser.dotted_key'(P) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsing dotted key...">>),
@@ -252,14 +253,14 @@ is_all_tables(Table, Dotted_key) ->
     'Parser.ignore_while_peek'(P, [whitespace, tab]),
     Dotted_key bsl 'Key.str'(Key),
     % TODO: unhandled stmt type
-    ok    'Parser.next'(P),
+    'Parser.next'(P),
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsed dotted key `", (Dotted_key)/binary, "` now at \"", (maps:get(kind, maps:get(tok, P)))/binary, "\" \"", (maps:get(lit, maps:get(tok, P)))/binary, "\"">>),
     Dotted_key.
 
 'Parser.root_table'(P) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsing root table...">>),
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Parser.excerpt'(P) ->
     'Scanner.excerpt'(maps:get(scanner, P), maps:get(pos, maps:get(tok, P)), 10).
@@ -267,14 +268,14 @@ is_all_tables(Table, Dotted_key) ->
 'Parser.table_contents'(P, Tbl) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsing table contents...">>),
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Parser.inline_table'(P, Tbl) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsing inline table into ", (ptr_str(Tbl))/binary, "...">>),
     % TODO: unhandled stmt type
-    ok    Previous_token_was_value = false,
+    Previous_token_was_value = false,
     % TODO: unhandled stmt type
-    ok    error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" unexpected end of inline-table \"", (maps:get(kind, maps:get(tok, P)))/binary, "\" \"", (maps:get(lit, maps:get(tok, P)))/binary, "\" at this (excerpt): \"...", ('Parser.excerpt'(P))/binary, "...\"">>)/binary>>).
+    error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" unexpected end of inline-table \"", (maps:get(kind, maps:get(tok, P)))/binary, "\" \"", (maps:get(lit, maps:get(tok, P)))/binary, "\" at this (excerpt): \"...", ('Parser.excerpt'(P))/binary, "...\"">>)/binary>>).
 
 'Parser.array_of_tables'(P, Table) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsing array of tables \"", (maps:get(kind, maps:get(tok, P)))/binary, "\" \"", (maps:get(lit, maps:get(tok, P)))/binary, "\"">>),
@@ -296,8 +297,8 @@ is_all_tables(Table, Dotted_key) ->
             Dotted_key_str = 'DottedKey.str'(Dotted_key),
             'Parser.check_explicitly_declared'(P, Dotted_key),
             % TODO: unhandled stmt type
-            ok            % TODO: unhandled stmt type
-            ok            ok
+            % TODO: unhandled stmt type
+            ok
         end
         end.
 
@@ -330,7 +331,7 @@ is_all_tables(Table, Dotted_key) ->
             T_arr = todo,
             T_map = todo,
             % TODO: unhandled stmt type
-            ok            ok
+            ok
         end
         end.
 
@@ -341,7 +342,7 @@ is_all_tables(Table, Dotted_key) ->
     Peeked_over = 0,
     Peek_tok = maps:get(peek_tok, P),
     % TODO: unhandled stmt type
-    ok    Arr = [],
+    Arr = [],
     Arr bsl Tbl,
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsed array of tables ", (todo)/binary, ". leaving at \"", (maps:get(kind, maps:get(tok, P)))/binary, "\" \"", (maps:get(lit, maps:get(tok, P)))/binary, "\"">>),
     Arr.
@@ -352,9 +353,9 @@ is_all_tables(Table, Dotted_key) ->
     'Parser.expect'(P, lsbr),
     Previous_token_was_value = false,
     % TODO: unhandled stmt type
-    ok    'Parser.expect'(P, rsbr),
+    'Parser.expect'(P, rsbr),
     % TODO: unhandled stmt type
-    ok    Arr.
+    Arr.
 
 'Parser.comment'(P) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"parsed hash comment \"#", (maps:get(lit, maps:get(tok, P)))/binary, "\"">>),
@@ -370,7 +371,7 @@ is_all_tables(Table, Dotted_key) ->
                     Lits = maps:get(lit, maps:get(tok, P)),
                     Pos = 'Token.pos'(maps:get(tok, P)),
                     % TODO: unhandled stmt type
-                    ok                    todo
+                    todo
                 end;
                 false -> ok
             end,
@@ -509,7 +510,7 @@ is_all_tables(Table, Dotted_key) ->
     Lits = maps:get(lit, maps:get(tok, P)),
     Pos = 'Token.pos'(maps:get(tok, P)),
     % TODO: unhandled stmt type
-    ok    #{text => Lits, pos => Pos, {vbeam, type} => 'Bare'}.
+    #{text => Lits, pos => Pos, {vbeam, type} => 'Bare'}.
 
 'Parser.quoted'(P) ->
     Quote = lists:nth(1, maps:get(lit, maps:get(tok, P))),
@@ -545,10 +546,10 @@ is_all_tables(Table, Dotted_key) ->
         true -> begin
             Date1 = 'Parser.date'(P),
             Lit1 = maps:get(text, Date1),
-            case (maps:get(kind, maps:get(peek_tok, P)) == bare andalso ('string.starts_with'(maps:get(lit, maps:get(peek_tok, P)), <<"T">>) orelse 'string.starts_with'(maps:get(lit, maps:get(peek_tok, P)), <<"t">>))) orelse maps:get(kind, maps:get(peek_tok, P)) == whitespace of
+            case (maps:get(kind, maps:get(peek_tok, P)) == bare andalso (case string:prefix(maps:get(lit, maps:get(peek_tok, P)), <<"T">>) of nomatch -> false; _ -> true end orelse case string:prefix(maps:get(lit, maps:get(peek_tok, P)), <<"t">>) of nomatch -> false; _ -> true end)) orelse maps:get(kind, maps:get(peek_tok, P)) == whitespace of
                 true -> begin
                     'Parser.next'(P),
-                    case 'string.starts_with'(maps:get(lit, maps:get(tok, P)), <<"T">>) orelse 'string.starts_with'(maps:get(lit, maps:get(tok, P)), <<"t">>) of
+                    case case string:prefix(maps:get(lit, maps:get(tok, P)), <<"T">>) of nomatch -> false; _ -> true end orelse case string:prefix(maps:get(lit, maps:get(tok, P)), <<"t">>) of nomatch -> false; _ -> true end of
                         true -> ok;
                         false -> begin
                             Peek = 'Parser.peek'(P, 0),
@@ -596,11 +597,11 @@ is_all_tables(Table, Dotted_key) ->
 'Parser.time'(P) ->
     Lit = maps:get(lit, maps:get(tok, P)),
     Pos = 'Token.pos'(maps:get(tok, P)),
-    case 'Parser.is_at'(P, bare) andalso ('string.starts_with'(Lit, <<"T">>) orelse 'string.starts_with'(Lit, <<"t">>)) of
+    case 'Parser.is_at'(P, bare) andalso (case string:prefix(Lit, <<"T">>) of nomatch -> false; _ -> true end orelse case string:prefix(Lit, <<"t">>) of nomatch -> false; _ -> true end) of
         true -> begin
-            case 'string.starts_with'(maps:get(lit, maps:get(tok, P)), <<"T">>) of
+            case case string:prefix(maps:get(lit, maps:get(tok, P)), <<"T">>) of nomatch -> false; _ -> true end of
                 true -> ok;
-                false -> case 'string.starts_with'(maps:get(lit, maps:get(tok, P)), <<"t">>) of
+                false -> case case string:prefix(maps:get(lit, maps:get(tok, P)), <<"t">>) of nomatch -> false; _ -> true end of
                     true -> ok;
                     false -> ok
                 end
@@ -660,7 +661,7 @@ is_all_tables(Table, Dotted_key) ->
     Exd_i = 'DottedKey.index'(maps:get(explicit_declared, P), Dotted_key),
     case Exd_i > -1 of
         true -> begin
-            'DottedKey.delete'(maps:get(explicit_declared, P), Exd_i),
+            lists:delete(Exd_i, maps:get(explicit_declared, P)),
             'DottedKey.clear'(maps:get(last_aot, P))
         end;
         false -> ok

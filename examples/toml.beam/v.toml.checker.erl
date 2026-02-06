@@ -31,7 +31,7 @@ toml_parse_time(S) ->
     'Scanner.excerpt'(maps:get(scanner, C), maps:get(pos, Tp), 10).
 
 is_hex_bin_oct_prefixed(Hbo) ->
-    length(Hbo) > 2 andalso ('string.starts_with'(Hbo, <<"0x">>) orelse 'string.starts_with'(Hbo, <<"0o">>) orelse 'string.starts_with'(Hbo, <<"0b">>)).
+    length(Hbo) > 2 andalso (case string:prefix(Hbo, <<"0x">>) of nomatch -> false; _ -> true end orelse case string:prefix(Hbo, <<"0o">>) of nomatch -> false; _ -> true end orelse case string:prefix(Hbo, <<"0b">>) of nomatch -> false; _ -> true end).
 
 has_repeating(Str, Repeats) ->
     lists:foreach(fun(R) ->
@@ -48,17 +48,17 @@ has_repeating(Str, Repeats) ->
 
 'Checker.check_number'(C, Num) ->
     Lit = maps:get(text, Num),
-    Lit_lower_case = 'string.to_lower'(Lit),
+    Lit_lower_case = string:lowercase(Lit),
     case lists:member(Lit, [<<"0">>, <<"0.0">>, <<"+0">>, <<"-0">>, <<"+0.0">>, <<"-0.0">>, <<"0e0">>, <<"+0e0">>, <<"-0e0">>, <<"0e00">>]) of
         true -> ok;
         false -> begin
-            case 'string.contains'(Lit, <<"_">>) of
+            case case binary:match(Lit, <<"_">>) of nomatch -> false; _ -> true end of
                 true -> begin
-                    case 'string.starts_with'(Lit, <<"_">>) orelse 'string.ends_with'(Lit, <<"_">>) of
+                    case case string:prefix(Lit, <<"_">>) of nomatch -> false; _ -> true end orelse case binary:longest_common_suffix([Lit, <<"_">>]) of 0 -> false; _ -> true end of
                         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" can not start or end with `_` in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                         false -> ok
                     end,
-                    case 'string.contains'(Lit, <<"__">>) of
+                    case case binary:match(Lit, <<"__">>) of nomatch -> false; _ -> true end of
                         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" can not have more than one underscore (`_`) in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                         false -> ok
                     end
@@ -69,8 +69,8 @@ has_repeating(Str, Repeats) ->
             Is_bin = false,
             Is_oct = false,
             Is_hex = false,
-            Is_float = 'string.contains'('string.all_before'(Lit_lower_case, <<"e">>), <<".">>),
-            Has_exponent_notation = 'string.contains'(Lit_lower_case, <<"e">>),
+            Is_float = case binary:match('string.all_before'(Lit_lower_case, <<"e">>), <<".">>) of nomatch -> false; _ -> true end,
+            Has_exponent_notation = case binary:match(Lit_lower_case, <<"e">>) of nomatch -> false; _ -> true end,
             Float_decimal_index = 'string.index_'(Lit, <<".">>),
             Ascii = 'u8.ascii_str'(todo),
             Is_sign_prefixed = lists:member(lists:nth(1, Lit), [todo, todo]),
@@ -86,7 +86,7 @@ has_repeating(Str, Repeats) ->
                         end;
                         false -> ok
                     end,
-                    case length(Lit) > 1 andalso 'string.starts_with'(Lit_sans_sign1, <<"0">>) andalso not 'string.starts_with'(Lit_sans_sign1, <<"0.">>) of
+                    case length(Lit) > 1 andalso case string:prefix(Lit_sans_sign1, <<"0">>) of nomatch -> false; _ -> true end andalso not case string:prefix(Lit_sans_sign1, <<"0.">>) of nomatch -> false; _ -> true end of
                         true -> begin
                             Ascii2 = 'u8.ascii_str'(todo),
                             error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" can not start with `", (Ascii2)/binary, "` in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>)
@@ -119,11 +119,11 @@ has_repeating(Str, Repeats) ->
                 false -> begin
                     case Hex_bin_oct1 of
                         true -> begin
-                            Is_bin1 = 'string.starts_with'(Lit_sans_sign1, <<"0b">>),
-                            Is_oct1 = 'string.starts_with'(Lit_sans_sign1, <<"0o">>),
-                            Is_hex1 = 'string.starts_with'(Lit_sans_sign1, <<"0x">>),
+                            Is_bin1 = case string:prefix(Lit_sans_sign1, <<"0b">>) of nomatch -> false; _ -> true end,
+                            Is_oct1 = case string:prefix(Lit_sans_sign1, <<"0o">>) of nomatch -> false; _ -> true end,
+                            Is_hex1 = case string:prefix(Lit_sans_sign1, <<"0x">>) of nomatch -> false; _ -> true end,
                             Lit_sans_sign_and_type_prefix = lists:nth(todo + 1, Lit_sans_sign1),
-                            case 'string.starts_with'(Lit_sans_sign_and_type_prefix, <<"_">>) orelse 'string.ends_with'(Lit_sans_sign_and_type_prefix, <<"_">>) of
+                            case case string:prefix(Lit_sans_sign_and_type_prefix, <<"_">>) of nomatch -> false; _ -> true end orelse case binary:longest_common_suffix([Lit_sans_sign_and_type_prefix, <<"_">>]) of 0 -> false; _ -> true end of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" can not start or end with `_` in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                                 false -> ok
                             end,
@@ -148,11 +148,11 @@ has_repeating(Str, Repeats) ->
                     end,
                     case Has_exponent_notation of
                         true -> begin
-                            case 'string.starts_with'('string.all_after'(Lit_lower_case, <<"e">>), <<"_">>) orelse 'string.ends_with'('string.all_before'(Lit_lower_case, <<"e">>), <<"_">>) of
+                            case case string:prefix('string.all_after'(Lit_lower_case, <<"e">>), <<"_">>) of nomatch -> false; _ -> true end orelse case binary:longest_common_suffix(['string.all_before'(Lit_lower_case, <<"e">>), <<"_">>]) of 0 -> false; _ -> true end of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" the exponent in \"", (Lit)/binary, "\" can not start nor end with an underscore in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                                 false -> ok
                             end,
-                            case 'string.contains'('string.all_after'(Lit_lower_case, <<"e">>), <<".">>) of
+                            case case binary:match('string.all_after'(Lit_lower_case, <<"e">>), <<".">>) of nomatch -> false; _ -> true end of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" (with exponent) can not have a decimal point in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                                 false -> ok
                             end,
@@ -177,11 +177,11 @@ has_repeating(Str, Repeats) ->
                                 end;
                                 false -> ok
                             end,
-                            case 'string.contains'(Lit, <<"_.">>) orelse 'string.contains'(Lit, <<"._">>) of
+                            case case binary:match(Lit, <<"_.">>) of nomatch -> false; _ -> true end orelse case binary:match(Lit, <<"._">>) of nomatch -> false; _ -> true end of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" (float) can not have underscores before or after the decimal point in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                                 false -> ok
                             end,
-                            case 'string.contains'(Lit_lower_case, <<"e.">>) orelse 'string.contains'(Lit, <<".e">>) of
+                            case case binary:match(Lit_lower_case, <<"e.">>) of nomatch -> false; _ -> true end orelse case binary:match(Lit, <<".e">>) of nomatch -> false; _ -> true end of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" (float) can not have decimal points on either side of the exponent notation in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>);
                                 false -> ok
                             end,
@@ -193,7 +193,7 @@ has_repeating(Str, Repeats) ->
                                 ok
                             end, Lit),
                         end;
-                        false -> case length(Lit) > 1 andalso 'string.starts_with'(Lit, <<"0">>) andalso (not lists:member(lists:nth(2, Lit), [todo, todo, todo])) of
+                        false -> case length(Lit) > 1 andalso case string:prefix(Lit, <<"0">>) of nomatch -> false; _ -> true end andalso (not lists:member(lists:nth(2, Lit), [todo, todo, todo])) of
                             true -> begin
                                 Ascii4 = 'u8.ascii_str'(todo),
                                 error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" numbers like \"", (Lit)/binary, "\" can not start with `", (Ascii4)/binary, "` in ...", ('Checker.excerpt'(C, maps:get(pos, Num)))/binary, "...">>)/binary>>)
@@ -259,15 +259,15 @@ has_repeating(Str, Repeats) ->
 'Checker.check_date_time'(C, Dt) ->
     Lit = maps:get(text, Dt),
     Split = [],
-    case 'string.contains_any'('string.to_lower'(Lit), <<" _t">>) of
+    case 'string.contains_any'(string:lowercase(Lit), <<" _t">>) of
         true -> begin
-            case 'string.contains'(Lit, <<" ">>) of
+            case case binary:match(Lit, <<" ">>) of nomatch -> false; _ -> true end of
                 true -> ok;
-                false -> case 'string.contains'(Lit, <<"_">>) of
+                false -> case case binary:match(Lit, <<"_">>) of nomatch -> false; _ -> true end of
                     true -> ok;
-                    false -> case 'string.contains'(Lit, <<"T">>) of
+                    false -> case case binary:match(Lit, <<"T">>) of nomatch -> false; _ -> true end of
                         true -> ok;
-                        false -> case 'string.contains'(Lit, <<"t">>) of
+                        false -> case case binary:match(Lit, <<"t">>) of nomatch -> false; _ -> true end of
                             true -> ok;
                             false -> ok
                         end
@@ -286,7 +286,7 @@ has_repeating(Str, Repeats) ->
                     true -> begin
                         Has_time_offset1 = true,
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 ok
@@ -304,7 +304,7 @@ has_repeating(Str, Repeats) ->
 
 'Checker.check_date'(C, Date) ->
     Lit = maps:get(text, Date),
-    Parts = 'string.split'(Lit, <<"-">>),
+    Parts = binary:split(Lit, <<"-">>, [global]),
     case length(Parts) /= 3 of
         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" \"", (Lit)/binary, "\" is not a valid RFC 3339 Date format string in ...", ('Checker.excerpt'(C, maps:get(pos, Date)))/binary, "...">>)/binary>>);
         false -> begin
@@ -320,13 +320,13 @@ has_repeating(Str, Repeats) ->
                             case length(Dd) /= 2 of
                                 true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" \"", (Lit)/binary, "\" does not have a valid RFC 3339 day indication in ...", ('Checker.excerpt'(C, maps:get(pos, Date)))/binary, "...">>)/binary>>);
                                 false -> begin
-                                    case 'string.int'(Mm) == 2 of
+                                    case binary_to_integer(Mm) == 2 of
                                         true -> begin
-                                            Ddi = 'string.int'(Dd),
+                                            Ddi = binary_to_integer(Dd),
                                             case Ddi > 28 of
                                                 true -> case Ddi == 29 of
                                                     true -> begin
-                                                        Yyyyi = 'string.int'(Yyyy),
+                                                        Yyyyi = binary_to_integer(Yyyy),
                                                         case not (Yyyyi rem 4 == 0 andalso (Yyyyi rem 100 /= 0 orelse Yyyyi rem 400 == 0)) of
                                                             true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" \"", (Lit)/binary, "\" is not a valid RFC 3339 date: ", (Yyyy)/binary, " is not a leap year so February can not have 29 days in it ...", ('Checker.excerpt'(C, maps:get(pos, Date)))/binary, "...">>)/binary>>);
                                                             false -> ok
@@ -352,14 +352,14 @@ has_repeating(Str, Repeats) ->
 
 'Checker.check_time'(C, T) ->
     Lit = maps:get(text, T),
-    Offset_splitter = case 'string.contains'(Lit, <<"+">>) of
+    Offset_splitter = case case binary:match(Lit, <<"+">>) of nomatch -> false; _ -> true end of
         true -> <<"+">>;
         false -> <<"-">>
     end,
-    Parts = 'string.split'(Lit, Offset_splitter),
+    Parts = binary:split(Lit, Offset_splitter, [global]),
     Hhmmss = 'string.all_before'(lists:nth(1, Parts), <<".">>),
     Check_length = 8,
-    case 'string.ends_with'('string.to_upper'(Hhmmss), <<"Z">>) of
+    case case binary:longest_common_suffix([string:uppercase(Hhmmss), <<"Z">>]) of 0 -> false; _ -> true end of
         true -> todo;
         false -> ok
     end,
@@ -368,12 +368,12 @@ has_repeating(Str, Repeats) ->
         false -> begin
             case length(Parts) > 1 of
                 true -> begin
-                    Offset_parts = 'string.split'(lists:nth(2, Parts), <<":">>),
+                    Offset_parts = binary:split(lists:nth(2, Parts), <<":">>, [global]),
                     case length(Offset_parts) /= 2 of
                         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" \"", (lists:nth(2, Parts))/binary, "\" is not a valid RFC 3339 time offset specifier in ...", ('Checker.excerpt'(C, maps:get(pos, T)))/binary, "...">>)/binary>>);
                         false -> ok
                     end,
-                    Hh = 'string.int'(lists:nth(1, Offset_parts)),
+                    Hh = binary_to_integer(lists:nth(1, Offset_parts)),
                     case Hh < 0 orelse Hh > 24 of
                         true -> begin
                             Pos = #{pos => maps:get(pos, maps:get(pos, T)) + Check_length, {vbeam, type} => 'Pos'},
@@ -381,7 +381,7 @@ has_repeating(Str, Repeats) ->
                         end;
                         false -> ok
                     end,
-                    Mm = 'string.int'(lists:nth(2, Offset_parts)),
+                    Mm = binary_to_integer(lists:nth(2, Offset_parts)),
                     case Mm < 0 orelse Mm > 59 of
                         true -> begin
                             Pos1 = #{pos => maps:get(pos, maps:get(pos, T)) + Check_length, {vbeam, type} => 'Pos'},
@@ -398,7 +398,7 @@ has_repeating(Str, Repeats) ->
                     true -> begin
                         Has_time_offset1 = true,
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 ok
@@ -417,7 +417,7 @@ has_repeating(Str, Repeats) ->
     Lit = maps:get(text, Q),
     Quote = 'u8.ascii_str'(maps:get(quote, Q)),
     Triple_quote = <<(<<(Quote)/binary, (Quote)/binary>>)/binary, (Quote)/binary>>,
-    case maps:get(is_multiline, Q) andalso 'string.ends_with'(Lit, Triple_quote) andalso not 'string.ends_with'(Lit, <<(<<"\\\\">>)/binary, (Triple_quote)/binary>>) of
+    case maps:get(is_multiline, Q) andalso case binary:longest_common_suffix([Lit, Triple_quote]) of 0 -> false; _ -> true end andalso not case binary:longest_common_suffix([Lit, <<(<<"\\\\">>)/binary, (Triple_quote)/binary>>]) of 0 -> false; _ -> true end of
         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" string values like \"", (Lit)/binary, "\" has unbalanced quote literals `", (Quote)/binary, "` in ...", ('Checker.excerpt'(C, maps:get(pos, Q)))/binary, "...">>)/binary>>);
         false -> begin
             'Checker.check_quoted_escapes'(C, Q),
@@ -429,9 +429,9 @@ has_repeating(Str, Repeats) ->
 'Checker.check_quoted_escapes'(C, Q) ->
     S = new_simple_text(maps:get(text, Q)),
     Is_basic = maps:get(quote, Q) == todo,
-    Contains_newlines = 'string.contains'(maps:get(text, Q), <<"\\n">>),
+    Contains_newlines = case binary:match(maps:get(text, Q), <<"\\n">>) of nomatch -> false; _ -> true end,
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Checker.check_utf8_validity'(C, Q) ->
     Lit = maps:get(text, Q),
@@ -448,7 +448,7 @@ validate_utf8_codepoint_string(Str) ->
             case not ((Int_val >= 16#0000 andalso Int_val =< 16#D7FF) orelse (Int_val >= 16#E000 andalso Int_val =< 16#10FFFF)) of
                 true -> error(<<"Unicode code point `", (Str)/binary, "` is not a valid Unicode scalar value.">>);
                 false -> begin
-                    Bytes = 'string.bytes'(Str),
+                    Bytes = binary_to_list(Str),
                     case not validate(maps:get(data, Bytes), length(Bytes)) of
                         true -> error(<<"Unicode code point `", (Str)/binary, "` is not a valid UTF-8 code point.">>);
                         false -> ok
@@ -458,10 +458,10 @@ validate_utf8_codepoint_string(Str) ->
                 end.
 
 'Checker.check_unicode_escape'(C, Esc_unicode) ->
-    case length(Esc_unicode) < 5 orelse not 'string.starts_with'('string.to_lower'(Esc_unicode), <<"u">>) of
+    case length(Esc_unicode) < 5 orelse not case string:prefix(string:lowercase(Esc_unicode), <<"u">>) of nomatch -> false; _ -> true end of
         true -> error(<<"`", (Esc_unicode)/binary, "` is not a valid escaped Unicode sequence.">>);
         false -> begin
-            Is_long_esc_type = 'string.starts_with'(Esc_unicode, <<"U">>),
+            Is_long_esc_type = case string:prefix(Esc_unicode, <<"U">>) of nomatch -> false; _ -> true end,
             Sequence = lists:nth(todo + 1, Esc_unicode),
             Hex_digits_len = case Is_long_esc_type of
                 true -> 8;
@@ -471,7 +471,7 @@ validate_utf8_codepoint_string(Str) ->
                 true -> error(<<"Unicode escape sequence `", (Esc_unicode)/binary, "` should be at least ", (integer_to_binary(Hex_digits_len))/binary, " in length.">>);
                 false -> begin
                     Sequence1 = lists:nth(todo + 1, Sequence),
-                    validate_utf8_codepoint_string('string.to_upper'(Sequence1)),
+                    validate_utf8_codepoint_string(string:uppercase(Sequence1)),
                     case Is_long_esc_type of
                         true -> ok;
                         false -> ok
@@ -486,7 +486,7 @@ validate_utf8_codepoint_string(Str) ->
     Lit = maps:get(text, Comment),
     S = new_simple_text(Lit),
     % TODO: unhandled stmt type
-    ok    case not validate_str(Lit) of
+    case not validate_str(Lit) of
         true -> error(<<(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<" comment \"", (Lit)/binary, "\" is not valid UTF-8 in ...", ('Checker.excerpt'(C, maps:get(pos, Comment)))/binary, "...">>)/binary>>);
         false -> ok
         end.

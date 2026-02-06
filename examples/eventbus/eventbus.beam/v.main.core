@@ -1,0 +1,38 @@
+module 'v.main' ['main'/0,
+                'on_foo'/3,
+                'on_bar'/3,
+                'on_baz'/3,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Sub> =
+            apply 'get_subscriber'/0()
+        in  let <R> =
+                ~{{'vbeam','type'}=>'Receiver'}~
+            in  do  apply 'Subscriber[string].subscribe_method'/4(Sub, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#, fun (_fref0, _fref1, _fref2) -> apply 'on_foo'/3(_fref0, _fref1, _fref2), R)
+                    do  apply 'Subscriber[string].subscribe'/3(Sub, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#, fun (_fref0, _fref1, _fref2) -> apply 'on_bar'/3(_fref0, _fref1, _fref2))
+                        do  apply 'Subscriber[string].subscribe'/3(Sub, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']])}#, fun (_fref0, _fref1, _fref2) -> apply 'on_baz'/3(_fref0, _fref1, _fref2))
+                            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('ok', R))|[]]])|[]])
+                                do  apply 'do_work'/0()
+                                    call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('ok', R))|[]]])|[]])
+'on_foo'/3 =
+    fun (Receiver, E, _sender) ->
+        do  'true'
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('message', E)|[]]])|[]])
+'on_bar'/3 =
+    fun (_receiver, E, _sender) ->
+        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('message', E)|[]]])|[]])
+'on_baz'/3 =
+    fun (_receiver, _event, D) ->
+        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('hours', D))|[]]])|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

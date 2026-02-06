@@ -77,11 +77,11 @@ main() ->
         Tree2 = 'Tree[f64].delete'(Tree1, I),
         ok
     end, Del_vals),
-    print(<<"[2] after deletion tree size is ", (integer_to_binary('Tree[f64].size'(Tree2)))/binary, ", ">>),
-    print(<<"and these elements were deleted: ">>),
+    io:format("~s", [<<"[2] after deletion tree size is ", (integer_to_binary('Tree[f64].size'(Tree2)))/binary, ", ">>]),
+    io:format("~s", [<<"and these elements were deleted: ">>]),
     lists:foreach(fun(I) ->
         case not 'Tree[f64].search'(Tree2, I) of
-            true -> print(<<(float_to_binary(I))/binary, " ">>);
+            true -> io:format("~s", [<<(float_to_binary(I))/binary, " ">>]);
             false -> ok
         end,
         ok

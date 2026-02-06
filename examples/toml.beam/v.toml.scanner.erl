@@ -21,7 +21,7 @@ new_simple_file(Path) ->
 'Scanner.scan'(S) ->
     'Scanner.validate_and_skip_headers'(S),
     % TODO: unhandled stmt type
-    ok    printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"unknown character code at ", (integer_to_binary(maps:get(pos, S)))/binary, " (", (integer_to_binary(maps:get(line_nr, S)))/binary, ",", (integer_to_binary(maps:get(col, S)))/binary, ") near ...", ('Scanner.excerpt'(S, maps:get(pos, S), 5))/binary, "...">>),
+    printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"unknown character code at ", (integer_to_binary(maps:get(pos, S)))/binary, " (", (integer_to_binary(maps:get(line_nr, S)))/binary, ",", (integer_to_binary(maps:get(col, S)))/binary, ") near ...", ('Scanner.excerpt'(S, maps:get(pos, S), 5))/binary, "...">>),
     'Scanner.new_token'(S, unknown, <<"">>, 0).
 
 'Scanner.free'(S) ->
@@ -84,7 +84,7 @@ new_simple_file(Path) ->
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<" ignoring until EOL...">>),
     Start = maps:get(pos, S),
     % TODO: unhandled stmt type
-    ok    lists:nth(todo + 1, maps:get(text, S)).
+    lists:nth(todo + 1, maps:get(text, S)).
 
 'Scanner.inc_line_number'(S) ->
     todo,
@@ -94,7 +94,7 @@ new_simple_file(Path) ->
     todo,
     Start = maps:get(pos, S),
     % TODO: unhandled stmt type
-    ok    Key = lists:nth(todo + 1, maps:get(text, S)),
+    Key = lists:nth(todo + 1, maps:get(text, S)),
     Key.
 
 'Scanner.extract_string'(S) ->
@@ -108,7 +108,7 @@ new_simple_file(Path) ->
         true -> Mls;
         false -> begin
             % TODO: unhandled stmt type
-            ok            Lit
+            Lit
         end
         end.
 
@@ -118,7 +118,7 @@ new_simple_file(Path) ->
     Lit = <<(<<('u8.ascii_str'(Quote))/binary, ('u8.ascii_str'(Quote))/binary>>)/binary, ('u8.ascii_str'(Quote))/binary>>,
     printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"multi-line `", ('u8.ascii_str'(Quote))/binary, ('u8.ascii_str'(lists:nth(maps:get(pos, S) + 1 + 1, maps:get(text, S))))/binary, ('u8.ascii_str'(lists:nth(maps:get(pos, S) + 2 + 1, maps:get(text, S))))/binary, "` string started at pos ", (integer_to_binary(Start))/binary, " (", (integer_to_binary(maps:get(line_nr, S)))/binary, ",", (integer_to_binary(maps:get(col, S)))/binary, ") (quote type: ", ('u8.ascii_str'(Quote))/binary, " / ", (integer_to_binary(Quote))/binary, ")">>),
     % TODO: unhandled stmt type
-    ok    Lit.
+    Lit.
 
 'Scanner.handle_escapes'(S, Quote, Is_multiline) ->
     C = todo,
@@ -175,7 +175,7 @@ new_simple_file(Path) ->
             todo,
             todo,
             % TODO: unhandled stmt type
-            ok            Key = lists:nth(todo + 1, maps:get(text, S)),
+            Key = lists:nth(todo + 1, maps:get(text, S)),
             printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"identified number \"", (Key)/binary, "\" in range [", (integer_to_binary(Start))/binary, " .. ", (integer_to_binary(maps:get(pos, S)))/binary, "]">>),
             Key
         end
@@ -192,7 +192,7 @@ new_simple_file(Path) ->
             todo,
             todo,
             % TODO: unhandled stmt type
-            ok            Key = lists:nth(todo + 1, maps:get(text, S)),
+            Key = lists:nth(todo + 1, maps:get(text, S)),
             printdbg(<<(<<(<<(<<(todo)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>)/binary, (<<".">>)/binary>>)/binary, (todo)/binary>>, <<"identified special number \"", (Key)/binary, "\" in range [", (integer_to_binary(Start))/binary, " .. ", (integer_to_binary(maps:get(pos, S)))/binary, "]">>),
             Key
         end
@@ -207,7 +207,7 @@ new_simple_file(Path) ->
         true -> Pos + Margin;
         false -> length(maps:get(text, S))
     end,
-    'string.replace'(lists:nth(todo + 1, maps:get(text, S)), <<"\\n">>, <<"\\n">>).
+    binary:replace(lists:nth(todo + 1, maps:get(text, S)), <<"\\n">>, <<"\\n">>, [global]).
 
 'Scanner.state'(S) ->
     #{col => maps:get(col, S), line_nr => maps:get(line_nr, S), pos => maps:get(pos, S), {vbeam, type} => 'State'}.

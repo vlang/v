@@ -1,0 +1,81 @@
+module 'v.main' ['linearrelationship'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'linearrelationship'/2 =
+    fun (Independent_variable, Dependent_variable) ->
+        let <Sum_r2_x> =
+            0
+        in  let <Sum_r2_y> =
+                0
+            in  let <Sum_xy> =
+                    0
+                in  let <Sum_x> =
+                        0
+                    in  let <Sum_y> =
+                            0
+                        in  let <Sum_x_1> =
+                                let <_2> =
+                                    fun (I, _6) ->
+                                        let <Sum_xAcc> =
+                                            call 'erlang':'element'(1, _6)
+                                        in                                          let <Sum_r2_xAcc> =
+                                            call 'erlang':'element'(2, _6)
+                                        in  
+                                        let <Sum_xOut_4> =
+                                            I
+                                        in                                          let <Sum_r2_xOut_5> =
+                                            call 'erlang':'*'(I, I)
+                                        in  {Sum_xOut_4, Sum_r2_xOut_5}
+                                in  call 'lists':'foldl'(_2, {Sum_x, Sum_r2_x}, Independent_variable)
+                            in  let <Sum_y_7> =
+                                    let <_8> =
+                                        fun (Yi, _12) ->
+                                            let <Sum_yAcc> =
+                                                call 'erlang':'element'(1, _12)
+                                            in                                              let <Sum_r2_yAcc> =
+                                                call 'erlang':'element'(2, _12)
+                                            in  
+                                            let <Sum_yOut_10> =
+                                                Yi
+                                            in                                              let <Sum_r2_yOut_11> =
+                                                call 'erlang':'*'(Yi, Yi)
+                                            in  {Sum_yOut_10, Sum_r2_yOut_11}
+                                    in  call 'lists':'foldl'(_8, {Sum_y, Sum_r2_y}, Dependent_variable)
+                                in  let <X_means> =
+                                        call 'erlang':'div'(Sum_x_1, call 'erlang':'length'(Independent_variable))
+                                    in  let <Y_means> =
+                                            call 'erlang':'div'(Sum_y_7, call 'erlang':'length'(Dependent_variable))
+                                        in  let <Sum_xy_13> =
+                                                let <_14> =
+                                                    fun (X_value, Sum_xyAcc) ->
+                                                        let <Sum_xyOut_16> =
+                                                            call 'erlang':'*'(X_value, call 'lists':'nth'(call 'erlang':'+'(Index, 1), Dependent_variable))
+                                                        in  Sum_xyOut_16
+                                                in  call 'lists':'foldl'(_14, Sum_xy, Independent_variable)
+                                            in  let <Slope_value> =
+                                                    call 'erlang':'/'('todo', 'todo')
+                                                in  let <Intercept_value> =
+                                                        call 'erlang':'/'('todo', 'todo')
+                                                    in  let <R2_value> =
+                                                            call 'erlang':'/'('todo', call 'math':'sqrt'(call 'erlang':'*'('todo', 'todo')))
+                                                        in  ~{'r2'=>R2_value,'intercept'=>Intercept_value,'slope'=>Slope_value,'independent_variable_means'=>X_means,'dependent_variable_means'=>Y_means,{'vbeam','type'}=>'LinearResult'}~
+'main'/0 =
+    fun () ->
+        let <Independent_variable> =
+            [4|[5|[6|[7|[10|[]]]]]]
+        in  let <Dependent_variable> =
+                [3|[8|[20|[30|[12|[]]]]]]
+            in  let <Result> =
+                    apply 'linearrelationship'/2(Independent_variable, Dependent_variable)
+                in  call 'io':'format'([126|[115|[126|[110|[]]]]], [Result|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

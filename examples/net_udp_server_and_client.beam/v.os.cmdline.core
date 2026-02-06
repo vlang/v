@@ -1,0 +1,71 @@
+module 'v.os.cmdline' ['options'/2,
+                'option'/3,
+                'options_before'/2,
+                'options_after'/2,
+                'only_non_options'/1,
+                'only_options'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'options'/2 =
+    fun (Args, Param) ->
+        let <Flags> =
+            []
+        in  do  let <_1> =
+                fun (V, I) ->
+                    do  case call 'erlang':'=:='(V, Param) of <'true'> when 'true' -> case call 'erlang':'<'(call 'erlang':'+'(I, 1), call 'erlang':'length'(Args)) of <'true'> when 'true' -> call 'erlang':'bsl'(Flags, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(I, 1), 1), Args)) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Args)
+                Flags
+'option'/3 =
+    fun (Args, Param, Def) ->
+        let <Found> =
+            'false'
+        in  let <Found_1> =
+                let <_2> =
+                    fun (Arg, FoundAcc) ->
+                        let <FoundOut_4> =
+                            case FoundAcc of <'true'> when 'true' -> FoundAcc <'false'> when 'true' -> case call 'erlang':'=:='(Param, Arg) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> FoundAcc end end
+                        in  FoundOut_4
+                in  call 'lists':'foldl'(_2, Found, Args)
+            in  Def
+'options_before'/2 =
+    fun (Args, What) ->
+        let <Args_before> =
+            []
+        in  do  let <_1> =
+                fun (A) ->
+                    do  case call 'lists':'member'(A, What) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'bsl'(Args_before, A)
+            in  call 'lists':'foreach'(_1, Args)
+                Args_before
+'options_after'/2 =
+    fun (Args, What) ->
+        let <Found> =
+            'false'
+        in  let <Args_after> =
+                []
+            in  let <Found_1> =
+                    let <_2> =
+                        fun (A, FoundAcc) ->
+                            let <FoundOut_4> =
+                                case call 'lists':'member'(A, What) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> FoundAcc end
+                            in                              do  case FoundOut_4 of <'true'> when 'true' -> call 'erlang':'bsl'(Args_after, A) <'false'> when 'true' -> 'ok' end
+FoundOut_4
+                    in  call 'lists':'foldl'(_2, Found, Args)
+                in  Args_after
+'only_non_options'/1 =
+    fun (Args) ->
+        call 'lists':'filter'(call 'erlang':'not'(case call 'string':'prefix'(It, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end), Args)
+'only_options'/1 =
+    fun (Args) ->
+        call 'lists':'filter'(case call 'string':'prefix'(It, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end, Args)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.os.cmdline')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.os.cmdline', _0)
+end

@@ -1,0 +1,21 @@
+module 'v.no_main' ['puts'/1,
+                'hello'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'puts'/1 =
+    fun (Const_msg) ->
+        'ok'
+'hello'/0 =
+    fun () ->
+        do  apply 'puts'/1(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+            0
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.no_main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.no_main', _0)
+end

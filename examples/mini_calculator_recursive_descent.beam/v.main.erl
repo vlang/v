@@ -4,12 +4,12 @@
 'Parser.expr'(P) ->
     Result = 'Parser.term'(P),
     % TODO: unhandled stmt type
-    ok    Result.
+    Result.
 
 'Parser.term'(P) ->
     Result = 'Parser.factor'(P),
     % TODO: unhandled stmt type
-    ok    Result.
+    Result.
 
 'Parser.factor'(P) ->
     'Parser.skip_whitespace'(P),
@@ -35,9 +35,9 @@
 'Parser.number'(P) ->
     Start = maps:get(pos, P),
     % TODO: unhandled stmt type
-    ok    atof64(lists:nth(todo + 1, maps:get(input, P)), #{{vbeam, type} => 'AtoF64Param'}).
+    atof64(lists:nth(todo + 1, maps:get(input, P)), #{{vbeam, type} => 'AtoF64Param'}).
 
 main() ->
     io:format("~s~n", [<<"Enter expressions to calculate, e.g. `2 * (5-1)` or `exit` to quit.">>]),
     % TODO: unhandled stmt type
-    ok
+        ok.

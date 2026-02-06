@@ -7,3 +7,4 @@ main() ->
         ok.
         ok
     end, lists:seq(0, 3 - 1)),
+        ok.

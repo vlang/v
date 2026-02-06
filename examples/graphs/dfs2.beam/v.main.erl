@@ -23,23 +23,23 @@ depth_first_search_path(Adj, Start, Target) ->
     Path bsl Node,
     case Node == Target of
         true -> begin
-            print(<<"\\n Founded pattern: ", (Path)/binary>>),
+            io:format("~s", [<<"\\n Founded pattern: ", (Path)/binary>>]),
             maps:get(pattern, S) bsl [Path]
         end;
         false -> ok
     end,
-    print(<<"\\n Exploring of node ", (Node)/binary, " (true/false): ", (maps:get(Node, Adj))/binary>>),
+    io:format("~s", [<<"\\n Exploring of node ", (Node)/binary, " (true/false): ", (maps:get(Node, Adj))/binary>>]),
     lists:foreach(fun(_) ->
         case not maps:get(lists:nth(I + 1, maps:get(Node, Adj)), Visited) of
             true -> begin
-                Temp = '[]string.clone'(Path),
+                Temp = Path,
                 'Solution.find_pattern'(S, Adj, Visited, lists:nth(I + 1, maps:get(Node, Adj)), Target, Temp)
             end;
             false -> ok
         end,
         ok
     end, maps:get(Node, Adj)),
-    print(<<"\\n Current: ", (Node)/binary, " (only not visited) \\n Visited: ", (Visited)/binary>>),
+    io:format("~s", [<<"\\n Current: ", (Node)/binary, " (only not visited) \\n Visited: ", (Visited)/binary>>]),
     ok.
 
 print_pattern(Pat) ->
@@ -48,6 +48,7 @@ print_pattern(Pat) ->
         ok.
         ok
     end, Pat),
+        ok.
 
 visited_init(Adj) ->
     Temp = #{},

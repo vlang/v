@@ -1,0 +1,100 @@
+module 'v.main' ['push_pq'/3,
+                'updating_priority'/3,
+                'departure_priority'/1,
+                'all_adjacents'/2,
+                'print_solution'/1,
+                'print_paths_dist'/2,
+                'dijkstra'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'push_pq'/3 =
+    fun (Prior_queue, Data, Priority) ->
+        let <Temp> =
+            []
+        in  let <Pq_len> =
+                call 'erlang':'length'(Prior_queue)
+            in  let <I> =
+                    0
+                in  do  call 'erlang':'bsl'(Temp, ~{'data'=>Data,'priority'=>Priority,{'vbeam','type'}=>'NODE'}~)
+                        let <Prior_queue_1> =
+                            Temp
+                        in  Prior_queue_1
+'updating_priority'/3 =
+    fun (Prior_queue, Search_data, New_priority) ->
+        let <I> =
+            0
+        in  let <Pq_len> =
+                call 'erlang':'length'(Prior_queue)
+            in  'ok'
+'departure_priority'/1 =
+    fun (Prior_queue) ->
+        let <X> =
+            call 'erlang':'map_get'('data', call 'lists':'nth'(1, Prior_queue))
+        in  do  call 'lists':'delete'(0, Prior_queue)
+                X
+'all_adjacents'/2 =
+    fun (G, V) ->
+        let <Temp> =
+            []
+        in  do  let <_1> =
+                fun (I) ->
+                    case call 'erlang':'>'(call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'lists':'nth'(call 'erlang':'+'(V, 1), G)), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Temp, I) <'false'> when 'true' -> 'ok' end
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(G), 1))
+                in  call 'lists':'foreach'(_1, _2)
+                Temp
+'print_solution'/1 =
+    fun (Dist) ->
+        do  call 'io':'format'([86|[101|[114|[116|[101|[120|[32|[92|[116|[68|[105|[115|[116|[97|[110|[99|[101|[32|[102|[114|[111|[109|[32|[83|[111|[117|[114|[99|[101|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+            'ok'
+'print_paths_dist'/2 =
+    fun (Path, Dist) ->
+        do  call 'io':'format'([92|[110|[32|[82|[101|[97|[100|[32|[116|[104|[101|[32|[110|[111|[100|[101|[115|[32|[102|[114|[111|[109|[32|[114|[105|[103|[104|[116|[32|[116|[111|[32|[108|[101|[102|[116|[32|[40|[97|[32|[112|[97|[116|[104|[41|[58|[32|[92|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+            'ok'
+'dijkstra'/2 =
+    fun (G, S) ->
+        let <Pq_queue> =
+            []
+        in  do  apply 'push_pq'/3(Pq_queue, S, 0)
+                let <N> =
+                    call 'erlang':'length'(G)
+                in  let <Dist> =
+                        []
+                    in  let <Path> =
+                            []
+                        in  do  0
+                                do  apply 'print_solution'/1(Dist)
+                                    apply 'print_paths_dist'/2(Path, Dist)
+'main'/0 =
+    fun () ->
+        let <Graph_01> =
+            [[0|[4|[0|[0|[0|[0|[0|[8|[0|[]]]]]]]]]]|[[4|[0|[8|[0|[0|[0|[0|[11|[0|[]]]]]]]]]]|[[0|[8|[0|[7|[0|[4|[0|[0|[2|[]]]]]]]]]]|[[0|[0|[7|[0|[9|[14|[0|[0|[0|[]]]]]]]]]]|[[0|[0|[0|[9|[0|[10|[0|[0|[0|[]]]]]]]]]]|[[0|[0|[4|[14|[10|[0|[2|[0|[0|[]]]]]]]]]]|[[0|[0|[0|[0|[0|[2|[0|[1|[6|[]]]]]]]]]]|[[8|[11|[0|[0|[0|[0|[1|[0|[7|[]]]]]]]]]]|[[0|[0|[2|[0|[0|[0|[6|[7|[0|[]]]]]]]]]]|[]]]]]]]]]]
+        in  let <Graph_02> =
+                [[0|[2|[0|[6|[0|[]]]]]]|[[2|[0|[3|[8|[5|[]]]]]]|[[0|[3|[0|[0|[7|[]]]]]]|[[6|[8|[0|[0|[9|[]]]]]]|[[0|[5|[7|[9|[0|[]]]]]]|[]]]]]]
+            in  let <Graph_03> =
+                    [[0|[10|[6|[5|[]]]]]|[[10|[0|[0|[15|[]]]]]|[[6|[0|[0|[4|[]]]]]|[[5|[15|[4|[0|[]]]]]|[]]]]]
+                in  let <Graph> =
+                        []
+                    in  let <Graph_1> =
+                            let <_2> =
+                                fun (G_value, GraphAcc) ->
+                                    let <GraphOut_4> =
+                                        G_value
+                                    in                                      let <Start_node> =
+                                        0
+                                    in                                      do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(Index, 1))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Start_node)|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])|[]])
+                                        do  apply 'dijkstra'/2(GraphOut_4, Start_node)
+GraphOut_4
+                            in  call 'lists':'foldl'(_2, Graph, [Graph_01|[Graph_02|[Graph_03|[]]]])
+                        in  call 'io':'format'([92|[110|[32|[66|[89|[69|[32|[45|[45|[32|[79|[75|[126|[110|[]]]]]]]]]]]]]]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

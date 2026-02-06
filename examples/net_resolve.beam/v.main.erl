@@ -14,7 +14,10 @@ main() ->
                 ok.
                 ok
             end, Addrs),
+                        ok.
             ok
         end, [tcp, udp]),
+                ok.
         ok
     end, [<<"vlang.io:80">>, <<"google.com:80">>, <<"steampowered.com:80">>, <<"api.steampowered.com:80">>]),
+        ok.

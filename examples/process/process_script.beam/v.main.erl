@@ -12,7 +12,7 @@ exec(Path, Redirect) ->
     'Process.set_redirect_stdio'(Cmd),
     'Process.run'(Cmd),
     % TODO: unhandled stmt type
-    ok    case maps:get(code, Cmd) > 0 of
+    case maps:get(code, Cmd) > 0 of
         true -> begin
             io:format("~s~n", [<<"ERROR:">>]),
             vbeam_io:println(Cmd)

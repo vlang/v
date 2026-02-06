@@ -32,19 +32,24 @@ new() ->
 
 'FdEventType.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdEventType.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdEventType.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdEventType.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdEventType.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdEventType__static__zero'() ->
     todo.
 
@@ -62,19 +67,24 @@ new() ->
 
 'FdConfigFlags.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdConfigFlags.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdConfigFlags.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdConfigFlags.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdConfigFlags.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FdConfigFlags__static__zero'() ->
     todo.
 

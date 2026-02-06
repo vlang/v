@@ -1,0 +1,42 @@
+module 'v.term.termios' ['flag'/1,
+                'invert'/1,
+                'tcgetattr'/2,
+                'tcsetattr'/3,
+                'ioctl'/3,
+                'set_state'/2,
+                'Termios.disable_echo'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'flag'/1 =
+    fun (Value) ->
+        'todo'
+'invert'/1 =
+    fun (Value) ->
+        call 'erlang':'bnot'('todo')
+'tcgetattr'/2 =
+    fun (Fd, Termios_p) ->
+        0
+'tcsetattr'/3 =
+    fun (Fd, Optional_actions, Termios_p) ->
+        0
+'ioctl'/3 =
+    fun (Fd, Request, Arg) ->
+        -1
+'set_state'/2 =
+    fun (Fd, New_state) ->
+        let <X> =
+            New_state
+        in  apply 'tcsetattr'/3(0, 0, X)
+'Termios.disable_echo'/1 =
+    fun (T) ->
+        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.term.termios')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.term.termios', _0)
+end

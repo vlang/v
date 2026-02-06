@@ -104,7 +104,7 @@ common_parse_uint2(S, _base, _bit_size) ->
                             false -> ok
                         end,
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 Sub_countOut = 0,
@@ -164,7 +164,7 @@ common_parse_int(_s, Base, _bit_size, Error_on_non_digit, Error_on_high_digit) -
                     true -> begin
                         Neg1 = true,
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end
             end,
@@ -234,7 +234,7 @@ atoi_common(S, Type_min, Type_max) ->
                 end,
                 Underscored1 = true,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> begin
                 case C > 9 of
                     true -> error(<<"strconv.atoi: parsing \"", (S)/binary, "\": invalid radix 10 character">>);
@@ -282,7 +282,7 @@ atoi64(S) ->
                 end,
                 Underscored1 = true,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> begin
                 case C > 9 of
                     true -> error(<<"strconv.atoi64: parsing \"", (S)/binary, "\": invalid radix 10 character">>);
@@ -356,7 +356,7 @@ atou_common(S, Type_max) ->
                 end,
                 Underscored1 = true,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> begin
                 case C > 9 of
                     true -> error(<<"strconv.atou: parsing \"", (S)/binary, "\": invalid radix 10 character">>);
@@ -400,7 +400,7 @@ format_str(S, P) ->
                 false -> begin
                     Res = new_builder(length(S) + Dif),
                     % TODO: unhandled stmt type
-                    ok                    case maps:get(align, P) == right of
+                    case maps:get(align, P) == right of
                         true -> ok;
                         false -> ok
                     end,
@@ -486,7 +486,7 @@ v_sprintf(Str, Pt) ->
 
 assert1(T, Msg) ->
     case not T of
-        true -> panic(Msg);
+        true -> erlang:error({panic, Msg});
         false -> ok
     end.
 
@@ -544,7 +544,7 @@ mul_pow5_div_pow2(M, I, J) ->
 pow5_factor_32(I_v) ->
     V = I_v,
     % TODO: unhandled stmt type
-    ok    V.
+    V.
 
 multiple_of_power_of_five_32(V, P) ->
     pow5_factor_32(V) >= P.
@@ -585,7 +585,7 @@ mul_shift_64(M, Mul, Shift) ->
 pow5_factor_64(V_i) ->
     V = V_i,
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 multiple_of_power_of_five_64(V, P) ->
     pow5_factor_64(V) >= P.

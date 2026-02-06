@@ -1,0 +1,72 @@
+module 'v.main' ['evala'/2,
+                'times'/2,
+                'times_trans'/2,
+                'a_times_transp'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'evala'/2 =
+        fun (I, J) ->
+            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'div'(call 'erlang':'*'(call 'erlang':'+'(I, J), call 'erlang':'+'(call 'erlang':'+'(I, J), 1)), 2), I), 1)
+    'times'/2 =
+        fun (V, U) ->
+            'ok'
+    'times_trans'/2 =
+        fun (V, U) ->
+            'ok'
+    'a_times_transp'/2 =
+        fun (V, U) ->
+            let <X> =
+                []
+            in  do  apply 'times'/2(X, U)
+                    apply 'times_trans'/2(V, X)
+    'main'/0 =
+        fun () ->
+            let <N> =
+                0
+            in  let <N_1> =
+                    case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of <'true'> when 'true' -> apply 'atoi'/1(call 'lists':'nth'(2, call 'init':'get_plain_arguments'())) <'false'> when 'true' -> 0 end
+                in  let <U> =
+                        []
+                    in  let <V> =
+                            []
+                        in  do  let <_2> =
+                                fun (_) ->
+                                    do  apply 'a_times_transp'/2(V, U)
+                                        apply 'a_times_transp'/2(U, V)
+                            in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(10, 1))
+                                in  call 'lists':'foreach'(_2, _3)
+                                let <Vbv> =
+                                    'todo'
+                                in  let <Vv> =
+                                        'todo'
+                                    in  let <Vbv_4> =
+                                            let <_5> =
+                                                fun (I, _9) ->
+                                                    let <VbvAcc> =
+                                                        call 'erlang':'element'(1, _9)
+                                                    in                                                      let <VvAcc> =
+                                                        call 'erlang':'element'(2, _9)
+                                                    in  
+                                                    let <VbvOut_7> =
+                                                        call 'erlang':'*'(call 'lists':'nth'(call 'erlang':'+'(I, 1), U), call 'lists':'nth'(call 'erlang':'+'(I, 1), V))
+                                                    in                                                      let <VvOut_8> =
+                                                        call 'erlang':'*'(call 'lists':'nth'(call 'erlang':'+'(I, 1), V), call 'lists':'nth'(call 'erlang':'+'(I, 1), V))
+                                                    in  {VbvOut_7, VvOut_8}
+                                            in  let <_6> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(N_1, 1))
+                                            in  call 'lists':'foldl'(_5, {Vbv, Vv}, _6)
+                                        in  let <Ans> =
+                                                call 'math':'sqrt'(call 'erlang':'/'(Vbv_4, Vv))
+                                            in  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'float_to_binary'(Ans)|[]])
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

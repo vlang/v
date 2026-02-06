@@ -1,0 +1,1553 @@
+module 'v.os' ['args_after'/1,
+                'args_before'/1,
+                'start_new_command'/1,
+                'Command.start'/1,
+                'Command.read_line'/1,
+                'Command.close'/1,
+                'fd_close'/1,
+                'fd_write'/2,
+                'fd_slurp'/1,
+                'fd_read'/2,
+                'fd_is_pending'/1,
+                'is_abs_path'/1,
+                'abs_path'/1,
+                'norm_path'/1,
+                'existing_path'/1,
+                'clean_path'/1,
+                'to_slash'/1,
+                'from_slash'/1,
+                'win_volume_len'/1,
+                'is_slash'/1,
+                'is_unc_path'/1,
+                'has_drive_letter'/1,
+                'starts_w_slash_slash'/1,
+                'is_drive_rooted'/1,
+                'is_normal_path'/1,
+                'is_curr_dir_ref'/3,
+                'windows_volume'/1,
+                'stdin'/0,
+                'stdout'/0,
+                'stderr'/0,
+                'File.close'/1,
+                'File.write'/2,
+                'File.writeln'/2,
+                'File.write_string'/2,
+                'File.write_ptr'/3,
+                'File.write_full_buffer'/3,
+                'File.flush'/1,
+                'File.seek'/3,
+                'File.tell'/1,
+                'File.read'/2,
+                'File.read_bytes_with_newline'/2,
+                'File.read_into_ptr'/3,
+                'File.eof'/1,
+                'error_file_not_opened'/0,
+                'getwd'/0,
+                'chdir'/1,
+                'exists'/1,
+                'is_dir'/1,
+                'is_link'/1,
+                'is_executable'/1,
+                'is_writable'/1,
+                'is_readable'/1,
+                'mkdir'/2,
+                'rmdir'/1,
+                'ls'/1,
+                'read_file'/1,
+                'read_bytes'/1,
+                'write_bytes'/2,
+                'rm'/1,
+                'cp'/3,
+                'rename'/2,
+                'rename_dir'/2,
+                'open'/1,
+                'create'/1,
+                'vfopen'/2,
+                'stat'/1,
+                'lstat'/1,
+                'file_size'/1,
+                'file_last_mod_unix'/1,
+                'truncate'/2,
+                'getenv'/1,
+                'getenv_opt'/1,
+                'setenv'/3,
+                'unsetenv'/1,
+                'environ'/0,
+                'real_path'/1,
+                'symlink'/2,
+                'readlink'/1,
+                'link'/2,
+                'executable'/0,
+                'getpid'/0,
+                'getppid'/0,
+                'getuid'/0,
+                'geteuid'/0,
+                'getgid'/0,
+                'getegid'/0,
+                'system'/1,
+                'execute'/1,
+                'fork'/0,
+                'wait'/0,
+                'hostname'/0,
+                'loginname'/0,
+                'uname'/0,
+                'flush'/0,
+                'get_raw_line'/0,
+                'get_raw_stdin'/0,
+                'fileno'/1,
+                'is_atty'/1,
+                'chmod'/2,
+                'chown'/3,
+                'glob'/1,
+                'posix_get_error_msg'/1,
+                'get_error_msg'/1,
+                'last_error'/0,
+                'error_posix'/1,
+                'page_size'/0,
+                'disk_usage'/1,
+                'native_glob_pattern'/2,
+                'kind_of_existing_path'/1,
+                'input_password'/1,
+                'execve'/3,
+                'open_file'/3,
+                'open_append'/1,
+                'File.reopen'/3,
+                'signal_opt'/2,
+                'signal_ignore'/1,
+                'is_main_thread'/0,
+                'signal_ignore_internal'/1,
+                'Result.free'/1,
+                'executable_fallback'/0,
+                'cp_all'/3,
+                'mv_by_cp'/3,
+                'mv'/3,
+                'read_lines'/1,
+                'write_lines'/2,
+                'sigint_to_signal_name'/1,
+                'rmdir_all'/1,
+                'is_dir_empty'/1,
+                'file_ext'/1,
+                'dir'/1,
+                'base'/1,
+                'file_name'/1,
+                'split_path'/1,
+                'input_opt'/1,
+                'input'/1,
+                'get_line'/0,
+                'get_lines'/0,
+                'get_lines_joined'/0,
+                'get_raw_lines'/0,
+                'get_raw_lines_joined'/0,
+                'get_trimmed_lines'/0,
+                'user_os'/0,
+                'user_names'/0,
+                'home_dir'/0,
+                'expand_tilde_to_home'/1,
+                'write_file'/2,
+                'ExecutableNotFoundError.msg'/1,
+                'error_failed_to_find_executable'/0,
+                'find_abs_path_of_executable'/1,
+                'exists_in_system_path'/1,
+                'is_file'/1,
+                'join_path'/2,
+                'join_path_single'/2,
+                'normalize_path_in_builder'/1,
+                'walk_ext'/3,
+                'impl_walk_ext'/4,
+                'walk'/2,
+                'walk_with_context'/3,
+                'log'/1,
+                'mkdir_all'/2,
+                'create_folder_when_it_does_not_exist'/1,
+                'xdg_home_folder'/2,
+                'cache_dir'/0,
+                'data_dir'/0,
+                'state_dir'/0,
+                'local_bin_dir'/0,
+                'temp_dir'/0,
+                'vtmp_dir'/0,
+                'default_vmodules_path'/0,
+                'vmodules_dir'/0,
+                'vmodules_paths'/0,
+                'resource_abs_path'/1,
+                'execute_or_panic'/1,
+                'execute_or_exit'/1,
+                'execute_opt'/1,
+                'quoted_path'/1,
+                'config_dir'/0,
+                'Process.signal_kill'/1,
+                'Process.signal_term'/1,
+                'Process.signal_pgkill'/1,
+                'Process.signal_stop'/1,
+                'Process.signal_continue'/1,
+                'Process.wait'/1,
+                'Process.close'/1,
+                'Process.free'/1,
+                'Process._spawn'/1,
+                'Process.is_alive'/1,
+                'Process.set_redirect_stdio'/1,
+                'Process.stdin_write'/2,
+                'Process.stdout_slurp'/1,
+                'Process.stderr_slurp'/1,
+                'Process.stdout_read'/1,
+                'Process.stderr_read'/1,
+                'Process.pipe_read'/2,
+                'Process.is_pending'/2,
+                'Process.run'/1,
+                'new_process'/1,
+                'Process.set_args'/2,
+                'Process.set_work_folder'/2,
+                'Process.set_environment'/2,
+                'sleep_ms'/1,
+                'SeekMode__static__from'/1,
+                'ChildProcessPipeKind__static__from'/1,
+                'ProcessState__static__from'/1,
+                'Signal__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'args_after'/1 =
+    fun (Cut_word) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 0) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                let <Cargs> =
+                    []
+                in  let <Cargs_1> =
+                        case call 'erlang':'not'(call 'lists':'member'(Cut_word, call 'init':'get_plain_arguments'())) of <'true'> when 'true' -> call 'init':'get_plain_arguments'() <'false'> when 'true' -> Cargs end
+                    in  Cargs_1
+        end
+'args_before'/1 =
+    fun (Cut_word) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 0) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                let <Cargs> =
+                    []
+                in  let <Cargs_1> =
+                        case call 'erlang':'not'(call 'lists':'member'(Cut_word, call 'init':'get_plain_arguments'())) of <'true'> when 'true' -> call 'init':'get_plain_arguments'() <'false'> when 'true' -> Cargs end
+                    in  Cargs_1
+        end
+'start_new_command'/1 =
+    fun (Cmd) ->
+        let <Res> =
+            ~{'path'=>Cmd,{'vbeam','type'}=>'Command'}~
+        in  do  apply 'Command.start'/1(Res)
+                Res
+'Command.start'/1 =
+    fun (C) ->
+        'ok'
+'Command.read_line'/1 =
+    fun (C) ->
+        do  'true'
+            #{  }#
+'Command.close'/1 =
+    fun (C) ->
+        do  0
+            'ok'
+'fd_close'/1 =
+    fun (Fd) ->
+        case call 'erlang':'=:='(Fd, -1) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                0
+        end
+'fd_write'/2 =
+    fun (Fd, S) ->
+        case call 'erlang':'=:='(Fd, -1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'fd_slurp'/1 =
+    fun (Fd) ->
+        let <Res> =
+            []
+        in  case call 'erlang':'=:='(Fd, -1) of
+                <'true'> when 'true' -> Res
+                <'false'> when 'true' -> 
+                    Res
+            end
+'fd_read'/2 =
+    fun (Fd, Maxbytes) ->
+        case call 'erlang':'=:='(Fd, -1) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                #{  }#
+        end
+'fd_is_pending'/1 =
+    fun (Fd) ->
+        'false'
+'is_abs_path'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                call 'erlang':'=:='(call 'lists':'nth'(1, Path), 'todo')
+        end
+'abs_path'/1 =
+    fun (Path) ->
+        let <Wd> =
+            apply 'getwd'/0()
+        in  case call 'erlang':'=:='(Path, #{  }#) of
+                <'true'> when 'true' -> Wd
+                <'false'> when 'true' -> 
+                    let <Npath> =
+                        apply 'norm_path'/1(Path)
+                    in  case call 'erlang':'=:='(Npath, #{#<46>(8,1,'integer',['unsigned'|['big']])}#) of
+                            <'true'> when 'true' -> Wd
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'not'(apply 'is_abs_path'/1(Npath)) of
+                                    <'true'> when 'true' -> apply 'norm_path'/1(apply 'Builder.str'/1(Sb))
+                                    <'false'> when 'true' -> 
+                                        Npath
+                                end
+                        end
+            end
+'norm_path'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}#
+            <'false'> when 'true' -> 
+                let <Rooted> =
+                    apply 'is_abs_path'/1(Path)
+                in  let <Volume_len> =
+                        apply 'win_volume_len'/1(Path)
+                    in  let <Volume> =
+                            call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                        in  let <Volume_1> =
+                                case call 'erlang':'and'(call 'erlang':'=/='(Volume_len, 0), case call 'binary':'match'(Volume, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end) of <'true'> when 'true' -> call 'binary':'replace'(Volume, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]) <'false'> when 'true' -> Volume end
+                            in  let <Cpath> =
+                                    apply 'clean_path'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path))
+                                in  case call 'erlang':'and'(call 'erlang':'=:='(Cpath, #{  }#), call 'erlang':'=:='(Volume_len, 0)) of
+                                        <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}#
+                                        <'false'> when 'true' -> 
+                                            let <Spath> =
+                                                call 'binary':'split'(Cpath, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                            in  case call 'erlang':'not'(call 'lists':'member'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, Spath)) of
+                                                    <'true'> when 'true' -> case call 'erlang':'=/='(Volume_len, 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([Volume_1|[Cpath|[]]]) <'false'> when 'true' -> Cpath end
+                                                    <'false'> when 'true' -> 
+                                                        let <Spath_len> =
+                                                            call 'erlang':'length'(Spath)
+                                                        in  let <Sb> =
+                                                                apply 'new_builder'/1(call 'erlang':'length'(Cpath))
+                                                            in  do  case Rooted of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                                                    let <New_path> =
+                                                                        []
+                                                                    in  let <Backlink_count> =
+                                                                            0
+                                                                        in  do  case call 'erlang':'and'(call 'erlang':'=/='(Backlink_count, 0), call 'erlang':'not'(Rooted)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                                do  apply 'Builder.write_string'/2(Sb, call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<47>(8,1,'integer',['unsigned'|['big']])}#, New_path)))
+                                                                                    let <Res> =
+                                                                                        apply 'Builder.str'/1(Sb)
+                                                                                    in  case call 'erlang':'=:='(call 'erlang':'length'(Res), 0) of
+                                                                                            <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}#
+                                                                                            <'false'> when 'true' -> 
+                                                                                                case call 'erlang':'=/='(Volume_len, 0) of
+                                                                                                    <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([Volume_1|[Res|[]]])
+                                                                                                    <'false'> when 'true' -> 
+                                                                                                        Res
+                                                                                                end
+                                                                                        end
+                                                end
+                                    end
+        end
+'existing_path'/1 =
+    fun (Path) ->
+        let <Err> =
+            call 'erlang':'error'(#{#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+        in  case call 'erlang':'=:='(Path, #{  }#) of
+                <'true'> when 'true' -> Err
+                <'false'> when 'true' -> 
+                    case apply 'exists'/1(Path) of
+                        <'true'> when 'true' -> Path
+                        <'false'> when 'true' -> 
+                            let <Volume_len> =
+                                0
+                            in  do  case call 'erlang':'and'(call 'erlang':'>'(Volume_len, 0), apply 'is_slash'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(Volume_len, 1), 1), Path))) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                    let <Sc> =
+                                        apply 'new'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path))
+                                    in  let <Recent_path> =
+                                            call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                                        in  Err
+                    end
+            end
+'clean_path'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                let <Sb> =
+                    apply 'new_builder'/1(call 'erlang':'length'(Path))
+                in  let <Sc> =
+                        apply 'new'/1(Path)
+                    in  let <Res> =
+                            apply 'Builder.str'/1(Sb)
+                        in  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Res), 1), apply 'is_slash'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Res), 1), 1), Res))) of
+                                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Res)
+                                <'false'> when 'true' -> 
+                                    Res
+                            end
+        end
+'to_slash'/1 =
+    fun (Path) ->
+        'ok'
+'from_slash'/1 =
+    fun (Path) ->
+        'ok'
+'win_volume_len'/1 =
+    fun (Path) ->
+        case call 'erlang':'not'(Windows) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                let <Plen> =
+                    call 'erlang':'length'(Path)
+                in  case call 'erlang':'<'(Plen, 2) of
+                        <'true'> when 'true' -> 0
+                        <'false'> when 'true' -> 
+                            case apply 'has_drive_letter'/1(Path) of
+                                <'true'> when 'true' -> 2
+                                <'false'> when 'true' -> 
+                                    do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(Plen, 5), apply 'starts_w_slash_slash'/1(Path)), call 'erlang':'not'(apply 'is_slash'/1(call 'lists':'nth'(3, Path)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        0
+                            end
+                    end
+        end
+'is_slash'/1 =
+    fun (B) ->
+        call 'erlang':'=:='(B, 'todo')
+'is_unc_path'/1 =
+    fun (Path) ->
+        call 'erlang':'and'(call 'erlang':'>='(apply 'win_volume_len'/1(Path), 5), apply 'starts_w_slash_slash'/1(Path))
+'has_drive_letter'/1 =
+    fun (Path) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'length'(Path), 2), apply 'u8.is_letter'/1(call 'lists':'nth'(1, Path))), call 'erlang':'=:='(call 'lists':'nth'(2, Path), 'todo'))
+'starts_w_slash_slash'/1 =
+    fun (Path) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'length'(Path), 2), apply 'is_slash'/1(call 'lists':'nth'(1, Path))), apply 'is_slash'/1(call 'lists':'nth'(2, Path)))
+'is_drive_rooted'/1 =
+    fun (Path) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'length'(Path), 3), apply 'has_drive_letter'/1(Path)), apply 'is_slash'/1(call 'lists':'nth'(3, Path)))
+'is_normal_path'/1 =
+    fun (Path) ->
+        let <Plen> =
+            call 'erlang':'length'(Path)
+        in  case call 'erlang':'=:='(Plen, 0) of
+                <'true'> when 'true' -> 'false'
+                <'false'> when 'true' -> 
+                    call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'=:='(Plen, 1), apply 'is_slash'/1(call 'lists':'nth'(1, Path))), call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(Plen, 2), apply 'is_slash'/1(call 'lists':'nth'(1, Path))), call 'erlang':'not'(apply 'is_slash'/1(call 'lists':'nth'(2, Path)))))
+            end
+'is_curr_dir_ref'/3 =
+    fun (Byte_one, Byte_two, Byte_three) ->
+        case call 'erlang':'=/='('todo', 'todo') of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                call 'erlang':'and'(call 'erlang':'or'(call 'erlang':'<'(Byte_one, 0), apply 'is_slash'/1('todo')), call 'erlang':'or'(call 'erlang':'<'(Byte_three, 0), apply 'is_slash'/1('todo')))
+        end
+'windows_volume'/1 =
+    fun (Path) ->
+        let <Volume_len> =
+            apply 'win_volume_len'/1(Path)
+        in  case call 'erlang':'=:='(Volume_len, 0) of
+                <'true'> when 'true' -> #{  }#
+                <'false'> when 'true' -> 
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+            end
+'stdin'/0 =
+    fun () ->
+        ~{'fd'=>0,'cfile'=>'todo','is_opened'=>'true',{'vbeam','type'}=>'File'}~
+'stdout'/0 =
+    fun () ->
+        ~{'fd'=>1,'cfile'=>'todo','is_opened'=>'true',{'vbeam','type'}=>'File'}~
+'stderr'/0 =
+    fun () ->
+        ~{'fd'=>2,'cfile'=>'todo','is_opened'=>'true',{'vbeam','type'}=>'File'}~
+'File.close'/1 =
+    fun (F) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'File.write'/2 =
+    fun (F, Buf) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                call 'erlang':'length'(Buf)
+        end
+'File.writeln'/2 =
+    fun (F, S) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                call 'erlang':'+'(call 'erlang':'length'(S), 1)
+        end
+'File.write_string'/2 =
+    fun (F, S) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                call 'erlang':'length'(S)
+        end
+'File.write_ptr'/3 =
+    fun (F, Data, Size) ->
+        Size
+'File.write_full_buffer'/3 =
+    fun (F, Buffer, Buffer_len) ->
+        'ok'
+'File.flush'/1 =
+    fun (F) ->
+        'ok'
+'File.seek'/3 =
+    fun (F, Pos, Mode) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'File.tell'/1 =
+    fun (F) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                0
+        end
+'File.read'/2 =
+    fun (F, Buf) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                0
+        end
+'File.read_bytes_with_newline'/2 =
+    fun (F, Buf) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'length'(Buf), 0) of
+                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'(['todo'|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+                    <'false'> when 'true' -> 
+                        0
+                end
+        end
+'File.read_into_ptr'/3 =
+    fun (F, P, Max) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_opened', F)) of
+            <'true'> when 'true' -> apply 'error_file_not_opened'/0()
+            <'false'> when 'true' -> 
+                0
+        end
+'File.eof'/1 =
+    fun (F) ->
+        'true'
+'error_file_not_opened'/0 =
+    fun () ->
+        call 'erlang':'error'(#{#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+'getwd'/0 =
+    fun () ->
+        #{#<47>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#
+'chdir'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'exists'/1 =
+    fun (Path) ->
+        'false'
+'is_dir'/1 =
+    fun (Path) ->
+        'false'
+'is_link'/1 =
+    fun (Path) ->
+        'false'
+'is_executable'/1 =
+    fun (Path) ->
+        'false'
+'is_writable'/1 =
+    fun (Path) ->
+        'false'
+'is_readable'/1 =
+    fun (Path) ->
+        'false'
+'mkdir'/2 =
+    fun (Path, Params) ->
+        case call 'erlang':'=:='(Path, #{#<46>(8,1,'integer',['unsigned'|['big']])}#) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'rmdir'/1 =
+    fun (Path) ->
+        'ok'
+'ls'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                []
+        end
+'read_file'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'read_bytes'/1 =
+    fun (Path) ->
+        let <Content> =
+            apply 'read_file'/1(Path)
+        in  call 'erlang':'binary_to_list'(Content)
+'write_bytes'/2 =
+    fun (Path, Bytes) ->
+        'ok'
+'rm'/1 =
+    fun (Path) ->
+        'ok'
+'cp'/3 =
+    fun (Src, Dst, Config) ->
+        'ok'
+'rename'/2 =
+    fun (Src, Dst) ->
+        'ok'
+'rename_dir'/2 =
+    fun (Src, Dst) ->
+        do  apply 'rename'/2(Src, Dst)
+            'ok'
+'open'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'create'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'vfopen'/2 =
+    fun (Path, Mode) ->
+        call 'erlang':'error'(#{#<118>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'stat'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'lstat'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'file_size'/1 =
+    fun (Path) ->
+        0
+'file_last_mod_unix'/1 =
+    fun (Path) ->
+        0
+'truncate'/2 =
+    fun (Path, Len) ->
+        'ok'
+'getenv'/1 =
+    fun (Key) ->
+        apply 'getenv_opt'/1(Key)
+'getenv_opt'/1 =
+    fun (Key) ->
+        'todo'
+'setenv'/3 =
+    fun (Name, Value, Overwrite) ->
+        0
+'unsetenv'/1 =
+    fun (Name) ->
+        0
+'environ'/0 =
+    fun () ->
+        ~{}~
+'real_path'/1 =
+    fun (Fpath) ->
+        Fpath
+'symlink'/2 =
+    fun (Target, Link_name) ->
+        'ok'
+'readlink'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'link'/2 =
+    fun (Origin, Target) ->
+        'ok'
+'executable'/0 =
+    fun () ->
+        #{  }#
+'getpid'/0 =
+    fun () ->
+        0
+'getppid'/0 =
+    fun () ->
+        0
+'getuid'/0 =
+    fun () ->
+        0
+'geteuid'/0 =
+    fun () ->
+        0
+'getgid'/0 =
+    fun () ->
+        0
+'getegid'/0 =
+    fun () ->
+        0
+'system'/1 =
+    fun (Cmd) ->
+        0
+'execute'/1 =
+    fun (Cmd) ->
+        ~{'exit_code'=>0,'output'=>#{  }#,{'vbeam','type'}=>'Result'}~
+'fork'/0 =
+    fun () ->
+        -1
+'wait'/0 =
+    fun () ->
+        -1
+'hostname'/0 =
+    fun () ->
+        #{  }#
+'loginname'/0 =
+    fun () ->
+        apply 'getenv'/1(#{#<85>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}#)
+'uname'/0 =
+    fun () ->
+        ~{'sysname'=>#{#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#,'nodename'=>#{  }#,'release'=>#{  }#,'version'=>#{  }#,'machine'=>#{  }#,{'vbeam','type'}=>'Uname'}~
+'flush'/0 =
+    fun () ->
+        'ok'
+'get_raw_line'/0 =
+    fun () ->
+        #{  }#
+'get_raw_stdin'/0 =
+    fun () ->
+        []
+'fileno'/1 =
+    fun (Cfile) ->
+        -1
+'is_atty'/1 =
+    fun (Fd) ->
+        0
+'chmod'/2 =
+    fun (Path, Mode) ->
+        'ok'
+'chown'/3 =
+    fun (Path, Owner, Group) ->
+        'ok'
+'glob'/1 =
+    fun (Patterns) ->
+        []
+'posix_get_error_msg'/1 =
+    fun (Code) ->
+        call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Code)|[]]])
+'get_error_msg'/1 =
+    fun (Code) ->
+        apply 'posix_get_error_msg'/1(Code)
+'last_error'/0 =
+    fun () ->
+        call 'erlang':'error'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)
+'error_posix'/1 =
+    fun (E) ->
+        let <Message> =
+            case call 'erlang':'=:='(call 'erlang':'map_get'('msg', E), #{  }#) of <'true'> when 'true' -> #{#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> call 'erlang':'map_get'('msg', E) end
+        in  apply 'error_with_code'/2(Message, call 'erlang':'map_get'('code', E))
+'page_size'/0 =
+    fun () ->
+        4096
+'disk_usage'/1 =
+    fun (Path) ->
+        ~{'total'=>0,'available'=>0,'used'=>0,{'vbeam','type'}=>'DiskUsage'}~
+'native_glob_pattern'/2 =
+    fun (Pattern, Matches) ->
+        'ok'
+'kind_of_existing_path'/1 =
+    fun (Path) ->
+        ~{{'vbeam','type'}=>'PathKind'}~
+'input_password'/1 =
+    fun (Prompt) ->
+        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'execve'/3 =
+    fun (Cmdpath, Cmdargs, Envs) ->
+        call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'open_file'/3 =
+    fun (Path, Mode, Options) ->
+        call 'erlang':'error'(#{#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+'open_append'/1 =
+    fun (Path) ->
+        ~{'fd'=>-1,'cfile'=>'todo','is_opened'=>'true',{'vbeam','type'}=>'File'}~
+'File.reopen'/3 =
+    fun (F, Path, Mode) ->
+        do  apply 'File.close'/1(F)
+            do  'true'
+                'ok'
+'signal_opt'/2 =
+    fun (Signum, Handler) ->
+        Handler
+'signal_ignore'/1 =
+    fun (Args) ->
+        'ok'
+'is_main_thread'/0 =
+    fun () ->
+        'true'
+'signal_ignore_internal'/1 =
+    fun (Args) ->
+        'ok'
+'Result.free'/1 =
+    fun (Result) ->
+        'todo'
+'executable_fallback'/0 =
+    fun () ->
+        case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 0) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                let <Exepath> =
+                    call 'lists':'nth'(1, call 'init':'get_plain_arguments'())
+                in  do  case call 'erlang':'not'(apply 'is_abs_path'/1(Exepath)) of <'true'> when 'true' -> 
+                        let <Other_separator> =
+                            'ok'
+                        in  let <Rexepath> =
+                                call 'binary':'replace'(Exepath, Other_separator, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                            in  case case call 'binary':'match'(Rexepath, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                                    let <Foundpath> =
+                                        apply 'find_abs_path_of_executable'/1(Exepath)
+                                    in  case call 'erlang':'=/='(Foundpath, #{  }#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                 end
+                     <'false'> when 'true' -> 'ok' end
+                        let <Exepath_1> =
+                            apply 'real_path'/1(Exepath)
+                        in  Exepath_1
+        end
+'cp_all'/3 =
+    fun (Src, Dst, Overwrite) ->
+        let <Source_path> =
+            apply 'real_path'/1(Src)
+        in  let <Dest_path> =
+                apply 'real_path'/1(Dst)
+            in  case call 'erlang':'not'(apply 'exists'/1(Source_path)) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'not'(apply 'is_dir'/1(Source_path)) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                do  case call 'erlang':'not'(apply 'exists'/1(Dest_path)) of <'true'> when 'true' -> apply 'mkdir'/2(Dest_path, ~{{'vbeam','type'}=>'MkdirParams'}~) <'false'> when 'true' -> 'ok' end
+                                    case call 'erlang':'not'(apply 'is_dir'/1(Dest_path)) of
+                                        <'true'> when 'true' -> call 'erlang':'error'(#{#<68>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+                                        <'false'> when 'true' -> 
+                                            let <Files> =
+                                                apply 'ls'/1(Source_path)
+                                            in  do  let <_1> =
+                                                    fun (File) ->
+                                                        let <Sp> =
+                                                            apply 'join_path_single'/2(Source_path, File)
+                                                        in  let <Dp> =
+                                                                apply 'join_path_single'/2(Dest_path, File)
+                                                            in  do  case apply 'is_dir'/1(Sp) of <'true'> when 'true' -> case call 'erlang':'not'(apply 'exists'/1(Dp)) of <'true'> when 'true' -> apply 'mkdir'/2(Dp, ~{{'vbeam','type'}=>'MkdirParams'}~) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                                                    apply 'cp_all'/3(Sp, Dp, Overwrite)
+                                                in  call 'lists':'foreach'(_1, Files)
+                                                    'ok'
+                                    end
+                        end
+                end
+'mv_by_cp'/3 =
+    fun (Source, Target, Opts) ->
+        do  apply 'cp_all'/3(Source, Target, call 'erlang':'map_get'('overwrite', Opts))
+            case apply 'is_dir'/1(Source) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  apply 'rm'/1(Source)
+                        'ok'
+            end
+'mv'/3 =
+    fun (Source, Target, Opts) ->
+        case call 'erlang':'and'(call 'erlang':'not'(call 'erlang':'map_get'('overwrite', Opts)), apply 'exists'/1(Target)) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                do  apply 'rename'/2(Source, Target)
+                    'ok'
+        end
+'read_lines'/1 =
+    fun (Path) ->
+        let <Buf> =
+            apply 'read_file'/1(Path)
+        in  let <Res> =
+                call 'binary':'split'(Buf, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+            in  do  'todo'
+                    Res
+'write_lines'/2 =
+    fun (Path, Lines) ->
+        let <F> =
+            apply 'create'/1(Path)
+        in  do  let <_1> =
+                fun (Line) ->
+                    apply 'File.writeln'/2(F, Line)
+            in  call 'lists':'foreach'(_1, Lines)
+                'ok'
+'sigint_to_signal_name'/1 =
+    fun (Si) ->
+        do  case Si of <1> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']])}# <2> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}# <3> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<81>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}# <4> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}# <6> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}# <8> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}# <9> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}# <11> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']])}# <13> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}# <14> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}# <15> when 'true' -> #{#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}# <_> when 'true' -> 'ok' end
+            #{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+'rmdir_all'/1 =
+    fun (Path) ->
+        let <Err_msg> =
+            #{  }#
+        in  let <Err_code> =
+                -1
+            in  let <Items> =
+                    apply 'ls'/1(Path)
+                in  do  let <_1> =
+                        fun (Item) ->
+                            let <Fullpath> =
+                                apply 'join_path_single'/2(Path, Item)
+                            in  case call 'erlang':'and'(apply 'is_dir'/1(Fullpath), call 'erlang':'not'(apply 'is_link'/1(Fullpath))) of <'true'> when 'true' -> apply 'rmdir_all'/1(Fullpath) <'false'> when 'true' -> apply 'rm'/1(Fullpath) end
+                    in  call 'lists':'foreach'(_1, Items)
+                        do  apply 'rmdir'/1(Path)
+                            case call 'erlang':'=/='(Err_msg, #{  }#) of
+                                <'true'> when 'true' -> apply 'error_with_code'/2(Err_msg, Err_code)
+                                <'false'> when 'true' -> 
+                                    'ok'
+                            end
+'is_dir_empty'/1 =
+    fun (Path) ->
+        let <Items> =
+            apply 'ls'/1(Path)
+        in  let <Res> =
+                call 'erlang':'=:='(call 'erlang':'length'(Items), 0)
+            in  do  'todo'
+                    Res
+'file_ext'/1 =
+    fun (Opath) ->
+        case call 'erlang':'<'(call 'erlang':'length'(Opath), 3) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                let <Path> =
+                    apply 'file_name'/1(Opath)
+                in  let <Pos> =
+                        apply 'string.last_index_u8'/2(Path, 'todo')
+                    in  case call 'erlang':'=:='(Pos, -1) of
+                            <'true'> when 'true' -> #{  }#
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'or'(call 'erlang':'>='(call 'erlang':'+'(Pos, 1), call 'erlang':'length'(Path)), call 'erlang':'=:='(Pos, 0)) of
+                                    <'true'> when 'true' -> #{  }#
+                                    <'false'> when 'true' -> 
+                                        call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                                end
+                        end
+        end
+'dir'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}#
+            <'false'> when 'true' -> 
+                let <Detected_path_separator> =
+                    case case call 'binary':'match'(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']])}# end
+                in  let <Pos> =
+                        apply 'string.last_index'/2(Path, Detected_path_separator)
+                    in  case call 'erlang':'=:='(Pos, 0) of
+                            <'true'> when 'true' -> Detected_path_separator
+                            <'false'> when 'true' -> 
+                                call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                        end
+        end
+'base'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{  }#) of
+            <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}#
+            <'false'> when 'true' -> 
+                let <Detected_path_separator> =
+                    case case call 'binary':'match'(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']])}# end
+                in  case call 'erlang':'=:='(Path, Detected_path_separator) of
+                        <'true'> when 'true' -> Detected_path_separator
+                        <'false'> when 'true' -> 
+                            case case call 'binary':'longest_common_suffix'([Path|[Detected_path_separator|[]]]) of <0> when 'true' -> 'false' <_> when 'true' -> 'true' end of
+                                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path2)
+                                <'false'> when 'true' -> 
+                                    let <Pos> =
+                                        apply 'string.last_index'/2(Path, Detected_path_separator)
+                                    in  call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                            end
+                    end
+        end
+'file_name'/1 =
+    fun (Path) ->
+        let <Detected_path_separator> =
+            case case call 'binary':'match'(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']])}# end
+        in  apply 'string.all_after_last'/2(Path, Detected_path_separator)
+'split_path'/1 =
+    fun (Path) ->
+        do  case call 'erlang':'=:='(Path, #{  }#) of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case call 'erlang':'=:='(Path, #{#<46>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case call 'erlang':'=:='(Path, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> 'ok' end end end
+            let <Detected_path_separator> =
+                case case call 'binary':'match'(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']])}# end
+            in  case call 'erlang':'=:='(Path, Detected_path_separator) of
+                    <'true'> when 'true' -> Detected_path_separator
+                    <'false'> when 'true' -> 
+                        case case call 'binary':'longest_common_suffix'([Path|[Detected_path_separator|[]]]) of <0> when 'true' -> 'false' <_> when 'true' -> 'true' end of
+                            <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path)
+                            <'false'> when 'true' -> 
+                                let <Dir> =
+                                    #{#<46>(8,1,'integer',['unsigned'|['big']])}#
+                                in  let <Pos> =
+                                        apply 'string.last_index'/2(Path, Detected_path_separator)
+                                    in  let <Dir_1> =
+                                            case call 'erlang':'=:='(Pos, -1) of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case call 'erlang':'=:='(Pos, 0) of <'true'> when 'true' -> Detected_path_separator <'false'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Path) end end
+                                        in  let <File_name> =
+                                                apply 'string.all_after_last'/2(Path, Detected_path_separator)
+                                            in  let <Pos_ext> =
+                                                    apply 'string.last_index_u8'/2(File_name, 'todo')
+                                                in  case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(Pos_ext, -1), call 'erlang':'=:='(Pos_ext, 0)), call 'erlang':'>='(call 'erlang':'+'(Pos_ext, 1), call 'erlang':'length'(File_name))) of
+                                                        <'true'> when 'true' -> Dir_1
+                                                        <'false'> when 'true' -> 
+                                                            Dir_1
+                                                    end
+                        end
+                end
+'input_opt'/1 =
+    fun (Prompt) ->
+        do  call 'io':'format'([126|[115|[]]], [Prompt|[]])
+            do  apply 'flush'/0()
+                let <Res> =
+                    apply 'get_raw_line'/0()
+                in  case call 'erlang':'>'(call 'erlang':'length'(Res), 0) of
+                        <'true'> when 'true' -> apply 'string.trim_right'/2(Res, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            'todo'
+                    end
+'input'/1 =
+    fun (Prompt) ->
+        let <Res> =
+            apply 'input_opt'/1(Prompt)
+        in  Res
+'get_line'/0 =
+    fun () ->
+        let <Str> =
+            apply 'get_raw_line'/0()
+        in  apply 'string.trim_right'/2(Str, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+'get_lines'/0 =
+    fun () ->
+        let <Line> =
+            #{  }#
+        in  let <Inputstr> =
+                []
+            in  Inputstr
+'get_lines_joined'/0 =
+    fun () ->
+        call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{  }#, apply 'get_lines'/0()))
+'get_raw_lines'/0 =
+    fun () ->
+        let <Line> =
+            #{  }#
+        in  let <Lines> =
+                []
+            in  Lines
+'get_raw_lines_joined'/0 =
+    fun () ->
+        call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{  }#, apply 'get_raw_lines'/0()))
+'get_trimmed_lines'/0 =
+    fun () ->
+        let <Lines> =
+            []
+        in  Lines
+'user_os'/0 =
+    fun () ->
+        case call 'erlang':'=/='(apply 'getenv'/1(#{#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<88>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']])}#), #{  }#) of
+            <'true'> when 'true' -> #{#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#
+            <'false'> when 'true' -> 
+                #{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+        end
+'user_names'/0 =
+    fun () ->
+        'ok'
+'home_dir'/0 =
+    fun () ->
+        'ok'
+'expand_tilde_to_home'/1 =
+    fun (Path) ->
+        case call 'erlang':'=:='(Path, #{#<126>(8,1,'integer',['unsigned'|['big']])}#) of
+            <'true'> when 'true' -> apply 'string.trim_right'/2(Hdir, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Source> =
+                    call 'erlang':'iolist_to_binary'([#{#<126>(8,1,'integer',['unsigned'|['big']])}#|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                in  case case call 'string':'prefix'(Path, Source) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of
+                        <'true'> when 'true' -> Result
+                        <'false'> when 'true' -> 
+                            Path
+                    end
+        end
+'write_file'/2 =
+    fun (Path, Text) ->
+        let <F> =
+            apply 'create'/1(Path)
+        in  do  'todo'
+                do  apply 'File.close'/1(F)
+                    'ok'
+'ExecutableNotFoundError.msg'/1 =
+    fun (Err) ->
+        #{#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+'error_failed_to_find_executable'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'ExecutableNotFoundError'}~
+'find_abs_path_of_executable'/1 =
+    fun (Exe_name) ->
+        case call 'erlang':'=:='(Exe_name, #{  }#) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                do  let <_1> =
+                    fun (Suffix) ->
+                        let <Fexepath> =
+                            call 'erlang':'iolist_to_binary'([Exe_name|[Suffix|[]]])
+                        in  case apply 'is_abs_path'/1(Fexepath) of
+                                <'true'> when 'true' -> Fexepath
+                                <'false'> when 'true' -> 
+                                    let <Res> =
+                                        #{  }#
+                                    in  let <Path> =
+                                            apply 'getenv'/1(#{#<80>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']])}#)
+                                        in  let <Paths> =
+                                                call 'binary':'split'(Path, #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                            in  let <Res_2> =
+                                                    let <_3> =
+                                                        fun (P, ResAcc) ->
+                                                            let <Found_abs_path> =
+                                                                apply 'join_path_single'/2(P, Fexepath)
+                                                            in                                                              do  'ok'
+                                                                let <ResOut_5> =
+                                                                    case call 'erlang':'and'(apply 'is_file'/1(Found_abs_path), apply 'is_executable'/1(Found_abs_path)) of <'true'> when 'true' -> Found_abs_path <'false'> when 'true' -> ResAcc end
+                                                                in  ResOut_5
+                                                        in  call 'lists':'foldl'(_3, Res, Paths)
+                                                    in  case call 'erlang':'>'(call 'erlang':'length'(Res_2), 0) of <'true'> when 'true' -> apply 'abs_path'/1(Res_2) <'false'> when 'true' -> 'ok' end
+                                end
+                    in  call 'lists':'foreach'(_1, [#{  }#|[]])
+                        apply 'error_failed_to_find_executable'/0()
+            end
+    'exists_in_system_path'/1 =
+        fun (Prog) ->
+            do  apply 'find_abs_path_of_executable'/1(Prog)
+                'true'
+    'is_file'/1 =
+        fun (Path) ->
+            call 'erlang':'and'(apply 'exists'/1(Path), call 'erlang':'not'(apply 'is_dir'/1(Path)))
+    'join_path'/2 =
+        fun (Base, Dirs) ->
+            let <Sb> =
+                apply 'new_builder'/1(call 'erlang':'+'(call 'erlang':'length'(Base), call 'erlang':'*'(call 'erlang':'length'(Dirs), 50)))
+            in  let <Sbase> =
+                    apply 'string.trim_right'/2(Base, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                in  do  apply 'Builder.write_string'/2(Sb, Sbase)
+                        do  let <_1> =
+                            fun (D) ->
+                                case call 'erlang':'=/='(D, #{  }#) of <'true'> when 'true' -> 
+                                    do  apply 'Builder.write_string'/2(Sb, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                        apply 'Builder.write_string'/2(Sb, D)
+                                 <'false'> when 'true' -> 'ok' end
+                        in  call 'lists':'foreach'(_1, Dirs)
+                            do  apply 'normalize_path_in_builder'/1(Sb)
+                                let <Res> =
+                                    apply 'Builder.str'/1(Sb)
+                                in  let <Res_2> =
+                                        case call 'erlang':'=:='(Base, #{  }#) of <'true'> when 'true' -> apply 'string.trim_left'/2(Res, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> Res end
+                                    in  Res_2
+    'join_path_single'/2 =
+        fun (Base, Elem) ->
+            let <Sb> =
+                apply 'new_builder'/1(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(Base), call 'erlang':'length'(Elem)), 1))
+            in  let <Sbase> =
+                    apply 'string.trim_right'/2(Base, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                in  do  apply 'Builder.write_string'/2(Sb, Sbase)
+                        do  case call 'erlang':'=/='(Elem, #{  }#) of <'true'> when 'true' -> 
+                            do  apply 'Builder.write_string'/2(Sb, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                apply 'Builder.write_string'/2(Sb, Elem)
+                         <'false'> when 'true' -> 'ok' end
+                            do  apply 'normalize_path_in_builder'/1(Sb)
+                                let <Res> =
+                                    apply 'Builder.str'/1(Sb)
+                                in  let <Res_1> =
+                                        case call 'erlang':'=:='(Base, #{  }#) of <'true'> when 'true' -> apply 'string.trim_left'/2(Res, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> Res end
+                                    in  Res_1
+    'normalize_path_in_builder'/1 =
+        fun (Sb) ->
+            let <Fs> =
+                'todo'
+            in  let <Rs> =
+                    'todo'
+                in  do  let <_1> =
+                        fun (Idx) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Sb), 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        'ok'
+    'walk_ext'/3 =
+        fun (Path, Ext, Opts) ->
+            let <Res> =
+                []
+            in  do  apply 'impl_walk_ext'/4(Path, Ext, Res, Opts)
+                    Res
+    'impl_walk_ext'/4 =
+        fun (Path, Ext, Out, Opts) ->
+            case call 'erlang':'not'(apply 'is_dir'/1(Path)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Files> =
+                        apply 'ls'/1(Path)
+                    in  let <Separator> =
+                            case case call 'binary':'longest_common_suffix'([Path|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[]]]) of <0> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# end
+                        in  'ok'
+            end
+    'walk'/2 =
+        fun (Path, F) ->
+            case call 'erlang':'=:='(Path, #{  }#) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'not'(apply 'is_dir'/1(Path)) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Remaining> =
+                                []
+                            in  let <Clean_path> =
+                                    apply 'string.trim_right'/2(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                in  do  'ok'
+                                        'ok'
+                    end
+            end
+    'walk_with_context'/3 =
+        fun (Path, Context, Fcb) ->
+            case call 'erlang':'=:='(Path, #{  }#) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'not'(apply 'is_dir'/1(Path)) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Remaining> =
+                                []
+                            in  let <Clean_path> =
+                                    apply 'string.trim_right'/2(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                in  do  'ok'
+                                        let <Loops> =
+                                            0
+                                        in  'ok'
+                    end
+            end
+    'log'/1 =
+        fun (S) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]])|[]])
+    'mkdir_all'/2 =
+        fun (Opath, Params) ->
+            case apply 'exists'/1(Opath) of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[Opath|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                <'false'> when 'true' -> 
+                    let <Other_separator> =
+                        'ok'
+                    in  let <Path> =
+                            call 'binary':'replace'(Opath, Other_separator, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                        in  let <P> =
+                                case case call 'string':'prefix'(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{  }# end
+                            in  let <Path_parts> =
+                                    call 'binary':'split'(apply 'string.trim_left'/2(Path, #{#<47>(8,1,'integer',['unsigned'|['big']])}#), #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                in  let <P_1> =
+                                        let <_2> =
+                                            fun (Subdir, PAcc) ->
+                                                let <POut_4> =
+                                                    call 'erlang':'iolist_to_binary'([Subdir|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                                                in                                                  do  case call 'erlang':'and'(apply 'exists'/1(POut_4), apply 'is_dir'/1(POut_4)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                    do  apply 'mkdir'/2(POut_4, Params)
+POut_4
+                                        in  call 'lists':'foldl'(_2, P, Path_parts)
+                                    in  'ok'
+            end
+    'create_folder_when_it_does_not_exist'/1 =
+        fun (Path) ->
+            case call 'erlang':'or'(apply 'is_dir'/1(Path), apply 'is_link'/1(Path)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Error_msg> =
+                        #{  }#
+                    in  do  let <_1> =
+                            fun (_) ->
+                                do  apply 'mkdir_all'/2(Path, ~{'mode'=>8#700,{'vbeam','type'}=>'MkdirParams'}~)
+                                    'ok'
+                        in  let <_2> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(10, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            case call 'erlang':'or'(apply 'is_dir'/1(Path), apply 'is_link'/1(Path)) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    call 'erlang':'error'({'panic', Error_msg})
+                            end
+            end
+    'xdg_home_folder'/2 =
+        fun (Ename, Lpath) ->
+            let <Xdg_folder> =
+                apply 'getenv'/1(Ename)
+            in  let <Dir> =
+                    case call 'erlang':'=/='(Xdg_folder, #{  }#) of <'true'> when 'true' -> Xdg_folder <'false'> when 'true' -> apply 'join_path_single'/2(apply 'home_dir'/0(), Lpath) end
+                in  do  apply 'create_folder_when_it_does_not_exist'/1(Dir)
+                        Dir
+    'cache_dir'/0 =
+        fun () ->
+            apply 'xdg_home_folder'/2(#{#<88>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}#, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'data_dir'/0 =
+        fun () ->
+            apply 'xdg_home_folder'/2(#{#<88>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}#, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'state_dir'/0 =
+        fun () ->
+            apply 'xdg_home_folder'/2(#{#<88>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}#, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'local_bin_dir'/0 =
+        fun () ->
+            apply 'xdg_home_folder'/2(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}#, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+    'temp_dir'/0 =
+        fun () ->
+            let <Path> =
+                apply 'getenv'/1(#{#<84>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}#)
+            in  let <Path_1> =
+                    case call 'erlang':'=:='(Path, #{  }#) of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Path end
+                in  Path_1
+    'vtmp_dir'/0 =
+        fun () ->
+            let <Vtmp> =
+                apply 'getenv'/1(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']])}#)
+            in  case call 'erlang':'>'(call 'erlang':'length'(Vtmp), 0) of
+                    <'true'> when 'true' -> Vtmp
+                    <'false'> when 'true' -> 
+                        let <Uid> =
+                            apply 'getuid'/0()
+                        in  let <Vtmp_1> =
+                                apply 'join_path_single'/2(apply 'temp_dir'/0(), call 'erlang':'iolist_to_binary'([#{#<118>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Uid)|[]]]))
+                            in  do  apply 'create_folder_when_it_does_not_exist'/1(Vtmp_1)
+                                    do  apply 'setenv'/3(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']])}#, Vtmp_1, 'true')
+                                        Vtmp_1
+                end
+    'default_vmodules_path'/0 =
+        fun () ->
+            let <Hdir> =
+                apply 'home_dir'/0()
+            in  let <Res> =
+                    apply 'join_path_single'/2(Hdir, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#)
+                in  Res
+    'vmodules_dir'/0 =
+        fun () ->
+            let <Paths> =
+                apply 'vmodules_paths'/0()
+            in  case call 'erlang':'>'(call 'erlang':'length'(Paths), 0) of
+                    <'true'> when 'true' -> call 'lists':'nth'(1, Paths)
+                    <'false'> when 'true' -> 
+                        apply 'default_vmodules_path'/0()
+                end
+    'vmodules_paths'/0 =
+        fun () ->
+            let <Path> =
+                apply 'getenv'/1(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']])}#)
+            in  let <Path_1> =
+                    case call 'erlang':'=:='(Path, #{  }#) of <'true'> when 'true' -> apply 'default_vmodules_path'/0() <'false'> when 'true' -> Path end
+                in  let <Splitted> =
+                        call 'binary':'split'(Path_1, #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                    in  let <List> =
+                            []
+                        in  do  let <_2> =
+                                fun (I) ->
+                                    let <Si> =
+                                        call 'lists':'nth'(call 'erlang':'+'(I, 1), Splitted)
+                                    in  let <Trimmed> =
+                                            apply 'string.trim_right'/2(Si, #{#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                        in  call 'erlang':'bsl'(List, Trimmed)
+                            in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Splitted), 1))
+                                in  call 'lists':'foreach'(_2, _3)
+                                List
+    'resource_abs_path'/1 =
+        fun (Path) ->
+            let <Exe> =
+                apply 'executable'/0()
+            in  let <Dexe> =
+                    apply 'dir'/1(Exe)
+                in  let <Base_path> =
+                        apply 'real_path'/1(Dexe)
+                    in  let <Vresource> =
+                            apply 'getenv'/1(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']])}#)
+                        in  let <Base_path_1> =
+                                case call 'erlang':'=/='(call 'erlang':'length'(Vresource), 0) of <'true'> when 'true' -> do  'todo' Vresource <'false'> when 'true' -> Base_path end
+                            in  let <Fp> =
+                                    apply 'join_path_single'/2(Base_path_1, Path)
+                                in  let <Res> =
+                                        apply 'real_path'/1(Fp)
+                                    in  Res
+    'execute_or_panic'/1 =
+        fun (Cmd) ->
+            let <Res> =
+                apply 'execute'/1(Cmd)
+            in  do  case call 'erlang':'=/='(call 'erlang':'map_get'('exit_code', Res), 0) of <'true'> when 'true' -> 
+                    do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Cmd|[]]])|[]])
+                        do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('exit_code', Res))|[]]])|[]])
+                            call 'erlang':'error'({'panic', call 'erlang':'map_get'('output', Res)})
+                 <'false'> when 'true' -> 'ok' end
+                    Res
+    'execute_or_exit'/1 =
+        fun (Cmd) ->
+            let <Res> =
+                apply 'execute'/1(Cmd)
+            in  do  case call 'erlang':'=/='(call 'erlang':'map_get'('exit_code', Res), 0) of <'true'> when 'true' -> 
+                    do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Cmd|[]]])|[]])
+                        do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('exit_code', Res))|[]]])|[]])
+                            do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'map_get'('output', Res)|[]])
+                                call 'erlang':'halt'(1)
+                 <'false'> when 'true' -> 'ok' end
+                    Res
+    'execute_opt'/1 =
+        fun (Cmd) ->
+            let <Res> =
+                apply 'execute'/1(Cmd)
+            in  case call 'erlang':'=/='(call 'erlang':'map_get'('exit_code', Res), 0) of
+                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'map_get'('output', Res))
+                    <'false'> when 'true' -> 
+                        Res
+                end
+    'quoted_path'/1 =
+        fun (Path) ->
+            'ok'
+    'config_dir'/0 =
+        fun () ->
+            do  'ok'
+                call 'erlang':'error'(#{#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+    'Process.signal_kill'/1 =
+        fun (P) ->
+            case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('status', P), ['running'|['stopped'|[]]])) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'ok'
+            end
+    'Process.signal_term'/1 =
+        fun (P) ->
+            case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('status', P), ['running'|['stopped'|[]]])) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Process.signal_pgkill'/1 =
+        fun (P) ->
+            case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('status', P), ['running'|['stopped'|[]]])) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Process.signal_stop'/1 =
+        fun (P) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'running') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'ok'
+            end
+    'Process.signal_continue'/1 =
+        fun (P) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'stopped') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'ok'
+            end
+    'Process.wait'/1 =
+        fun (P) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('status', P), 'not_started') of <'true'> when 'true' -> apply 'Process._spawn'/1(P) <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('status', P), ['running'|['stopped'|[]]])) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        do  'exited'
+                            'ok'
+                end
+    'Process.close'/1 =
+        fun (P) ->
+            case call 'lists':'member'(call 'erlang':'map_get'('status', P), ['not_started'|['closed'|[]]]) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'ok'
+            end
+    'Process.free'/1 =
+        fun (P) ->
+            apply 'Process.close'/1(P)
+    'Process._spawn'/1 =
+        fun (P) ->
+            do  case call 'erlang':'not'(call 'erlang':'map_get'('env_is_custom', P)) of <'true'> when 'true' -> 
+                do  []
+                    let <Current_environment> =
+                        apply 'environ'/0()
+                    in  'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  0
+                    do  'running'
+                        0
+    'Process.is_alive'/1 =
+        fun (P) ->
+            call 'lists':'member'(call 'erlang':'map_get'('status', P), ['running'|['stopped'|[]]])
+    'Process.set_redirect_stdio'/1 =
+        fun (P) ->
+            'ok'
+    'Process.stdin_write'/2 =
+        fun (P, S) ->
+            'ok'
+    'Process.stdout_slurp'/1 =
+        fun (P) ->
+            #{  }#
+    'Process.stderr_slurp'/1 =
+        fun (P) ->
+            #{  }#
+    'Process.stdout_read'/1 =
+        fun (P) ->
+            #{  }#
+    'Process.stderr_read'/1 =
+        fun (P) ->
+            #{  }#
+    'Process.pipe_read'/2 =
+        fun (P, Pkind) ->
+            'todo'
+    'Process.is_pending'/2 =
+        fun (P, Pkind) ->
+            'false'
+    'Process.run'/1 =
+        fun (P) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'not_started') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Process._spawn'/1(P)
+            end
+    'new_process'/1 =
+        fun (Filename) ->
+            ~{'filename'=>Filename,'stdio_fd'=>[-1|[-1|[-1|[]]]],{'vbeam','type'}=>'Process'}~
+    'Process.set_args'/2 =
+        fun (P, Pargs) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'not_started') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  Pargs
+                        'ok'
+            end
+    'Process.set_work_folder'/2 =
+        fun (P, Path) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'not_started') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  apply 'real_path'/1(Path)
+                        'ok'
+            end
+    'Process.set_environment'/2 =
+        fun (P, Envs) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('status', P), 'not_started') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'true'
+                        do  []
+                            do  let <_1> =
+                                fun (V, K) ->
+                                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('env', P), call 'erlang':'iolist_to_binary'([K|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[V|[]]]]))
+                                        call 'erlang':'+'(K, 1)
+                            in  call 'lists':'foldl'(_1, 0, Envs)
+                                'ok'
+            end
+    'sleep_ms'/1 =
+        fun (Ms) ->
+            'ok'
+    'SeekMode__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'ChildProcessPipeKind__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'ProcessState__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Signal__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.os')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.os', _0)
+    end

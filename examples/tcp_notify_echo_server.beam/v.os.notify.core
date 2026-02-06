@@ -1,0 +1,123 @@
+module 'v.os.notify' ['new'/0,
+                'BeamFdNotifier.add'/4,
+                'BeamFdNotifier.modify'/4,
+                'BeamFdNotifier.remove'/2,
+                'BeamFdNotifier.wait'/2,
+                'BeamFdNotifier.close'/1,
+                'FdEventType.is_empty'/1,
+                'FdEventType.has'/2,
+                'FdEventType.all'/2,
+                'FdEventType.set'/2,
+                'FdEventType.set_all'/1,
+                'FdEventType.clear'/2,
+                'FdEventType.clear_all'/1,
+                'FdEventType.toggle'/2,
+                'FdEventType__static__zero'/0,
+                'FdEventType__static__from'/1,
+                'FdConfigFlags.is_empty'/1,
+                'FdConfigFlags.has'/2,
+                'FdConfigFlags.all'/2,
+                'FdConfigFlags.set'/2,
+                'FdConfigFlags.set_all'/1,
+                'FdConfigFlags.clear'/2,
+                'FdConfigFlags.clear_all'/1,
+                'FdConfigFlags.toggle'/2,
+                'FdConfigFlags__static__zero'/0,
+                'FdConfigFlags__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new'/0 =
+        fun () ->
+            ~{'fds'=>[],{'vbeam','type'}=>'BeamFdNotifier'}~
+    'BeamFdNotifier.add'/4 =
+        fun (N, Fd, Events, Conf) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('fds', N), Fd)
+                'ok'
+    'BeamFdNotifier.modify'/4 =
+        fun (N, Fd, Events, Conf) ->
+            'ok'
+    'BeamFdNotifier.remove'/2 =
+        fun (N, Fd) ->
+            do  call 'lists':'filter'(call 'erlang':'=/='(It, Fd), call 'erlang':'map_get'('fds', N))
+                'ok'
+    'BeamFdNotifier.wait'/2 =
+        fun (N, Timeout) ->
+            []
+    'BeamFdNotifier.close'/1 =
+        fun (N) ->
+            do  apply '[]int.clear'/1(call 'erlang':'map_get'('fds', N))
+                'ok'
+    'FdEventType.is_empty'/1 =
+        fun (E) ->
+            call 'erlang':'=:='('todo', 0)
+    'FdEventType.has'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=/='(call 'erlang':'band'('todo', 'todo'), 0)
+    'FdEventType.all'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=:='(call 'erlang':'band'('todo', 'todo'), 'todo')
+    'FdEventType.set'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdEventType.set_all'/1 =
+        fun (E) ->
+            'ok'
+    'FdEventType.clear'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdEventType.clear_all'/1 =
+        fun (E) ->
+            'ok'
+    'FdEventType.toggle'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdEventType__static__zero'/0 =
+        fun () ->
+            'todo'
+    'FdEventType__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'FdConfigFlags.is_empty'/1 =
+        fun (E) ->
+            call 'erlang':'=:='('todo', 0)
+    'FdConfigFlags.has'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=/='(call 'erlang':'band'('todo', 'todo'), 0)
+    'FdConfigFlags.all'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=:='(call 'erlang':'band'('todo', 'todo'), 'todo')
+    'FdConfigFlags.set'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdConfigFlags.set_all'/1 =
+        fun (E) ->
+            'ok'
+    'FdConfigFlags.clear'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdConfigFlags.clear_all'/1 =
+        fun (E) ->
+            'ok'
+    'FdConfigFlags.toggle'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'FdConfigFlags__static__zero'/0 =
+        fun () ->
+            'todo'
+    'FdConfigFlags__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.os.notify')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.os.notify', _0)
+    end

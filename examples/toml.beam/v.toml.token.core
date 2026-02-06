@@ -1,0 +1,22 @@
+module 'v.toml.token' ['Token.pos'/1,
+                'Kind__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'Token.pos'/1 =
+    fun (Tok) ->
+        ~{'len'=>call 'erlang':'length'(Tok),'line_nr'=>call 'erlang':'-'(call 'erlang':'map_get'('line_nr', Tok), 1),'pos'=>call 'erlang':'map_get'('pos', Tok),'col'=>call 'erlang':'-'(call 'erlang':'map_get'('col', Tok), 1),{'vbeam','type'}=>'Pos'}~
+'Kind__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.toml.token')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.toml.token', _0)
+end

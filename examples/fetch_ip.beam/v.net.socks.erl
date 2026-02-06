@@ -47,9 +47,9 @@ handshake(Con, Host, Username, Password) ->
                     '[]u8.clear'(V),
                     V bsl todo,
                     V bsl todo,
-                    V bsl 'string.bytes'(Username),
+                    V bsl binary_to_list(Username),
                     V bsl todo,
-                    V bsl 'string.bytes'(Password),
+                    V bsl binary_to_list(Password),
                     'Connection.write'(Con, V),
                     Resp = [],
                     'Connection.read'(Con, Resp),
@@ -89,7 +89,7 @@ handshake(Con, Host, Username, Password) ->
                         false -> begin
                             V1 bsl todo,
                             V1 bsl todo,
-                            V1 bsl 'string.bytes'(Address)
+                            V1 bsl binary_to_list(Address)
                         end
                     end
                 end
@@ -125,5 +125,5 @@ parse_ipv4(Addr) ->
     lists:foreach(fun(Part) ->
         Ip bsl 'string.u8'(Part),
         ok
-    end, 'string.split'(Addr, <<".">>)),
+    end, binary:split(Addr, <<".">>, [global])),
     Ip.

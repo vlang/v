@@ -2,7 +2,7 @@
 -export([dfs_recursive/4, visited_init/1, main/0]).
 
 dfs_recursive(U, Visited, Graph, Top_sorting) ->
-    print(<<" Visiting: ", (U)/binary, " -> ">>),
+    io:format("~s", [<<" Visiting: ", (U)/binary, " -> ">>]),
     lists:foreach(fun(V) ->
         case maps:get(V, Visited) == false of
             true -> dfs_recursive(V, Visited, Graph, Top_sorting);
@@ -14,7 +14,7 @@ dfs_recursive(U, Visited, Graph, Top_sorting) ->
     ok.
 
 visited_init(A_graph) ->
-    Array_of_keys = 'map[string][]string.keys'(A_graph),
+    Array_of_keys = maps:keys(A_graph),
     Temp = #{},
     lists:foreach(fun(I) ->
         ok
@@ -29,7 +29,7 @@ main() ->
     lists:foreach(fun(G_value) ->
         vbeam_io:println(<<"Topological sorting for the graph ", (integer_to_binary(Index))/binary, " using a DFS recursive">>),
         ok.
-        Graph1 = 'map[string][]string.clone'(G_value),
+        Graph1 = G_value,
         Visited = visited_init(Graph1),
         Top_sorting = [],
         lists:foreach(fun(I) ->
@@ -38,12 +38,14 @@ main() ->
                 false -> ok
             end.
             ok
-        end, 'map[string][]string.keys'(Graph1)),
-        print(<<"\\n A topological sorting of graph ", (integer_to_binary(Index))/binary, " : ">>),
+        end, maps:keys(Graph1)),
+                ok.
+        io:format("~s", [<<"\\n A topological sorting of graph ", (integer_to_binary(Index))/binary, " : ">>]),
         ok.
-        vbeam_io:println('[]string.reverse'(Top_sorting)),
+        vbeam_io:println(lists:reverse(Top_sorting)),
         ok.
         io:format("~s~n", [<<"">>]),
         ok.
         ok
     end, [Graph_01, Graph_02, Graph_03]),
+        ok.

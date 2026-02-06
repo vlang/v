@@ -4,182 +4,217 @@
 big_endian_u16(B) ->
     _ = lists:nth(2, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u16_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 1 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u16_end(B) ->
     big_endian_u16_at(B, length(B) - 2).
 
 big_endian_put_u16(B, V) ->
     _ = lists:nth(2, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u16_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 1 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u16_end(B, V) ->
     big_endian_put_u16_at(B, V, length(B) - 2),
     ok.
 
 big_endian_get_u16(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u32(B) ->
     _ = lists:nth(4, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u32_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 3 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u32_end(B) ->
     big_endian_u32_at(B, length(B) - 4).
 
 big_endian_put_u32(B, V) ->
     _ = lists:nth(4, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u32_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 3 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u32_end(B, V) ->
     big_endian_put_u32_at(B, V, length(B) - 4),
     ok.
 
 big_endian_get_u32(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u64(B) ->
     _ = lists:nth(8, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u64_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 7 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u64_end(B) ->
     big_endian_u64_at(B, length(B) - 8).
 
 big_endian_put_u64(B, V) ->
     _ = lists:nth(8, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u64_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 7 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u64_end(B, V) ->
     big_endian_put_u64_at(B, V, length(B) - 8),
     ok.
 
 big_endian_get_u64(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u16_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u16_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u32_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u32_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_u64_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 big_endian_put_u64_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u16(B) ->
     _ = lists:nth(2, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u16_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 1 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u16_end(B) ->
     little_endian_u16_at(B, length(B) - 2).
 
 little_endian_put_u16(B, V) ->
     _ = lists:nth(2, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u16_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 1 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u16_end(B, V) ->
     little_endian_put_u16_at(B, V, length(B) - 2),
     ok.
 
 little_endian_get_u16(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u32(B) ->
     _ = lists:nth(4, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u32_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 3 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u32_end(B) ->
     little_endian_u32_at(B, length(B) - 4).
 
 little_endian_put_u32(B, V) ->
     _ = lists:nth(4, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u32_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 3 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u32_end(B, V) ->
     little_endian_put_u32_at(B, V, length(B) - 4),
     ok.
 
 little_endian_get_u32(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u64(B) ->
     _ = lists:nth(8, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u64_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 7 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u64_end(B) ->
     little_endian_u64_at(B, length(B) - 8).
 
 little_endian_put_u64(B, V) ->
     _ = lists:nth(8, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u64_at(B, V, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 7 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u64_end(B, V) ->
     little_endian_put_u64_at(B, V, length(B) - 8),
     ok.
@@ -188,33 +223,42 @@ little_endian_f32_at(B, O) ->
     _ = lists:nth(O + 1, B),
     _1 = lists:nth(O + 3 + 1, B),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_get_u64(V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u16_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u16_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u32_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u32_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_u64_fixed(B) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 little_endian_put_u64_fixed(B, V) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 encode_binary(Obj, Config) ->
     S = #{b => [], big_endian => maps:get(big_endian, Config), {vbeam, type} => 'EncodeState'},
     maps:get(b, S).
 
 encode_struct(S, Obj) ->
+        ok.
 
 encode_primitive(S, Value) ->
 
@@ -223,7 +267,7 @@ encode_array(S, Arr) ->
 
 encode_string(S, Str) ->
     'EncodeState.put_u64'(S, todo),
-    maps:get(b, S) bsl 'string.bytes'(Str),
+    maps:get(b, S) bsl binary_to_list(Str),
     ok.
 
 encode_map(S, M) ->
@@ -231,6 +275,7 @@ encode_map(S, M) ->
     lists:foreach(fun(V) ->
         ok
     end, M),
+        ok.
 
 decode_binary(B, Config) ->
     S = #{b => B, big_endian => maps:get(big_endian, Config), {vbeam, type} => 'DecodeState'},
@@ -281,7 +326,7 @@ decode_map(S, _) ->
         true -> error(<<(todo)/binary, "(): bytes length is not enough for u64">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case maps:get(big_endian, S) of
+            case maps:get(big_endian, S) of
                 true -> big_endian_u64_at(maps:get(b, S), maps:get(offset, S));
                 false -> little_endian_u64_at(maps:get(b, S), maps:get(offset, S))
             end
@@ -293,7 +338,7 @@ decode_map(S, _) ->
         true -> error(<<(todo)/binary, "(): bytes length is not enough for u32">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case maps:get(big_endian, S) of
+            case maps:get(big_endian, S) of
                 true -> big_endian_u32_at(maps:get(b, S), maps:get(offset, S));
                 false -> little_endian_u32_at(maps:get(b, S), maps:get(offset, S))
             end
@@ -305,7 +350,7 @@ decode_map(S, _) ->
         true -> error(<<(todo)/binary, "(): bytes length is not enough for u16">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case maps:get(big_endian, S) of
+            case maps:get(big_endian, S) of
                 true -> big_endian_u16_at(maps:get(b, S), maps:get(offset, S));
                 false -> little_endian_u16_at(maps:get(b, S), maps:get(offset, S))
             end
@@ -317,7 +362,7 @@ decode_map(S, _) ->
         true -> error(<<(todo)/binary, "(): bytes length is not enough for u8">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            lists:nth(maps:get(offset, S) + 1, maps:get(b, S))
+            lists:nth(maps:get(offset, S) + 1, maps:get(b, S))
         end
         end.
 

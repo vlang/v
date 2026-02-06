@@ -1,0 +1,106 @@
+module 'v.main' ['topog_sort_greedy'/1,
+                'all_fathers'/2,
+                'min_degree'/1,
+                'in_degree'/1,
+                'remove_node_from_graph'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'topog_sort_greedy'/1 =
+    fun (Graph) ->
+        let <N_nodes> =
+            call 'maps':'size'(Graph)
+        in  let <Top_order> =
+                []
+            in  let <Count> =
+                    0
+                in  let <V_degree> =
+                        apply 'in_degree'/1(Graph)
+                    in  do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[V_degree|[]]])|[]])
+                            let <Small_degree> =
+                                apply 'min_degree'/1(V_degree)
+                            in  let <New_graph> =
+                                    apply 'remove_node_from_graph'/2(Small_degree, Graph)
+                                in  do  call 'erlang':'bsl'(Top_order, Small_degree)
+                                        do  'todo'
+                                            Top_order
+'all_fathers'/2 =
+    fun (Node, A_map) ->
+        let <Array_of_keys> =
+            call 'maps':'keys'(A_map)
+        in  let <All_incident> =
+                []
+            in  do  let <_1> =
+                    fun (I) ->
+                        case call 'lists':'member'(Node, call 'erlang':'map_get'(I, A_map)) of <'true'> when 'true' -> call 'erlang':'bsl'(All_incident, I) <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, Array_of_keys)
+                    All_incident
+'min_degree'/1 =
+    fun (A_map) ->
+        let <Array_of_keys> =
+            call 'maps':'keys'(A_map)
+        in  let <Key_min> =
+                call 'erlang':'hd'(Array_of_keys)
+            in  let <Val_min> =
+                    call 'erlang':'map_get'(Key_min, A_map)
+                in  let <Val_min_1> =
+                        let <_2> =
+                            fun (I, _6) ->
+                                let <Val_minAcc> =
+                                    call 'erlang':'element'(1, _6)
+                                in                                  let <Key_minAcc> =
+                                    call 'erlang':'element'(2, _6)
+                                in  
+                                let <Val_minOut_4> =
+                                    case call 'erlang':'>'(Val_minAcc, call 'erlang':'map_get'(I, A_map)) of <'true'> when 'true' -> call 'erlang':'map_get'(I, A_map) <'false'> when 'true' -> Val_minAcc end
+                                in                                  let <Key_minOut_5> =
+                                    case call 'erlang':'>'(Val_minOut_4, call 'erlang':'map_get'(I, A_map)) of <'true'> when 'true' -> let <Val_min_7> = call 'erlang':'map_get'(I, A_map) in I <'false'> when 'true' -> Key_minAcc end
+                                in  {Val_min_7, Key_minOut_5}
+                        in  call 'lists':'foldl'(_2, {Val_min, Key_min}, Array_of_keys)
+                    in  Key_min
+'in_degree'/1 =
+    fun (A_map) ->
+        let <Array_of_keys> =
+            call 'maps':'keys'(A_map)
+        in  let <Degree> =
+                ~{}~
+            in  do  let <_1> =
+                    fun (I) ->
+                        'ok'
+                in  call 'lists':'foreach'(_1, Array_of_keys)
+                    Degree
+'remove_node_from_graph'/2 =
+    fun (Node, A_map) ->
+        let <New_graph> =
+            A_map
+        in  do  call 'maps':'remove'(Node, New_graph)
+                let <All_nodes> =
+                    call 'maps':'keys'(New_graph)
+                in  do  let <_1> =
+                        fun (Key) ->
+                            let <I> =
+                                apply '[]string.index'/2(call 'erlang':'map_get'(Key, New_graph), Node)
+                            in  case call 'erlang':'>='(I, 0) of <'true'> when 'true' -> call 'lists':'delete'(I, call 'erlang':'map_get'(Key, New_graph)) <'false'> when 'true' -> 'ok' end
+                    in  call 'lists':'foreach'(_1, All_nodes)
+                        New_graph
+'main'/0 =
+    fun () ->
+        let <Graph_01> =
+            ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+        in  let <Graph_02> =
+                ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<71>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<69>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<70>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<71>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<72>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+            in  let <Graph_03> =
+                    ~{#{#<53>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<55>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#|[#{#<56>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<51>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<56>(8,1,'integer',['unsigned'|['big']])}#|[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<50>(8,1,'integer',['unsigned'|['big']])}#|[#{#<57>(8,1,'integer',['unsigned'|['big']])}#|[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<56>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<57>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<50>(8,1,'integer',['unsigned'|['big']])}#=>[],#{#<57>(8,1,'integer',['unsigned'|['big']])}#=>[],#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+                in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'topog_sort_greedy'/1(Graph_01)|[]]])|[]])
+                        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'topog_sort_greedy'/1(Graph_02)|[]]])|[]])
+                            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'topog_sort_greedy'/1(Graph_03)|[]]])|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

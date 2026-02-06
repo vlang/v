@@ -1,0 +1,624 @@
+module 'v.arrays' ['min'/1,
+                'max'/1,
+                'idx_min'/1,
+                'idx_max'/1,
+                'merge'/2,
+                'append'/2,
+                'group'/1,
+                'chunk'/2,
+                'chunk_while'/2,
+                'window'/2,
+                'sum'/1,
+                'reduce'/2,
+                'reduce_indexed'/2,
+                'filter_indexed'/2,
+                'fold'/3,
+                'fold_indexed'/3,
+                'flatten'/1,
+                'flat_map'/2,
+                'flat_map_indexed'/2,
+                'map_indexed'/2,
+                'group_by'/2,
+                'concat'/2,
+                'lower_bound'/2,
+                'upper_bound'/2,
+                'binary_search'/2,
+                'rotate_left'/2,
+                'rotate_right'/2,
+                'ptr_rotate'/3,
+                'raw_array_cap'/0,
+                'raw_array_malloc_size'/0,
+                'memswap'/3,
+                'swap_nonoverlapping'/3,
+                'copy'/2,
+                'can_copy_bits'/0,
+                'carray_to_varray'/2,
+                'find_first'/2,
+                'find_last'/2,
+                'join_to_string'/3,
+                'partition'/2,
+                'each'/2,
+                'each_indexed'/2,
+                'index_of_first'/2,
+                'index_of_last'/2,
+                'map_of_indexes'/1,
+                'map_of_counts'/1,
+                'reverse_iterator'/1,
+                'ReverseIterator.next'/1,
+                'ReverseIterator.free'/1,
+                'uniq'/1,
+                'uniq_only'/1,
+                'uniq_only_repeated'/1,
+                'uniq_all_repeated'/1,
+                'distinct'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'min'/1 =
+    fun (Array) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Val> =
+                    call 'lists':'nth'(1, Array)
+                in  let <Val_1> =
+                        let <_2> =
+                            fun (E, ValAcc) ->
+                                let <ValOut_4> =
+                                    case call 'erlang':'<'(E, ValAcc) of <'true'> when 'true' -> E <'false'> when 'true' -> ValAcc end
+                                in  ValOut_4
+                        in  call 'lists':'foldl'(_2, Val, Array)
+                    in  Val_1
+        end
+'max'/1 =
+    fun (Array) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Val> =
+                    call 'lists':'nth'(1, Array)
+                in  let <Val_1> =
+                        let <_2> =
+                            fun (E, ValAcc) ->
+                                let <ValOut_4> =
+                                    case call 'erlang':'>'(E, ValAcc) of <'true'> when 'true' -> E <'false'> when 'true' -> ValAcc end
+                                in  ValOut_4
+                        in  call 'lists':'foldl'(_2, Val, Array)
+                    in  Val_1
+        end
+'idx_min'/1 =
+    fun (Array) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Idx> =
+                    0
+                in  let <Val> =
+                        call 'lists':'nth'(1, Array)
+                    in  let <Val_1> =
+                            let <_2> =
+                                fun (E, _6) ->
+                                    let <ValAcc> =
+                                        call 'erlang':'element'(1, _6)
+                                    in                                      let <IdxAcc> =
+                                        call 'erlang':'element'(2, _6)
+                                    in  
+                                    let <ValOut_4> =
+                                        case call 'erlang':'<'(E, ValAcc) of <'true'> when 'true' -> E <'false'> when 'true' -> ValAcc end
+                                    in                                      let <IdxOut_5> =
+                                        case call 'erlang':'<'(E, ValOut_4) of <'true'> when 'true' -> let <Val_7> = E in I <'false'> when 'true' -> IdxAcc end
+                                    in  {Val_7, IdxOut_5}
+                            in  call 'lists':'foldl'(_2, {Val, Idx}, Array)
+                        in  Idx
+        end
+'idx_max'/1 =
+    fun (Array) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Idx> =
+                    0
+                in  let <Val> =
+                        call 'lists':'nth'(1, Array)
+                    in  let <Val_1> =
+                            let <_2> =
+                                fun (E, _6) ->
+                                    let <ValAcc> =
+                                        call 'erlang':'element'(1, _6)
+                                    in                                      let <IdxAcc> =
+                                        call 'erlang':'element'(2, _6)
+                                    in  
+                                    let <ValOut_4> =
+                                        case call 'erlang':'>'(E, ValAcc) of <'true'> when 'true' -> E <'false'> when 'true' -> ValAcc end
+                                    in                                      let <IdxOut_5> =
+                                        case call 'erlang':'>'(E, ValOut_4) of <'true'> when 'true' -> let <Val_7> = E in I <'false'> when 'true' -> IdxAcc end
+                                    in  {Val_7, IdxOut_5}
+                            in  call 'lists':'foldl'(_2, {Val, Idx}, Array)
+                        in  Idx
+        end
+'merge'/2 =
+    fun (A, B) ->
+        let <M> =
+            []
+        in  let <Ia> =
+                0
+            in  let <Ib> =
+                    0
+                in  let <J> =
+                        0
+                    in  M
+'append'/2 =
+    fun (A, B) ->
+        let <M> =
+            []
+        in  do  call 'erlang':'bsl'(M, A)
+                do  call 'erlang':'bsl'(M, B)
+                    M
+'group'/1 =
+    fun (Arrs) ->
+        let <Length> =
+            case call 'erlang':'>'(call 'erlang':'length'(Arrs), 0) of <'true'> when 'true' -> call 'erlang':'length'(call 'lists':'nth'(1, Arrs)) <'false'> when 'true' -> 0 end
+        in  let <Length_1> =
+                let <_2> =
+                    fun (Ndx, LengthAcc) ->
+                        let <LengthOut_4> =
+                            case call 'erlang':'<'(call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(Ndx, 1), Arrs)), LengthAcc) of <'true'> when 'true' -> call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(Ndx, 1), Arrs)) <'false'> when 'true' -> LengthAcc end
+                        in  LengthOut_4
+                in  let <_3> =
+                    call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(Arrs), 1))
+                in  call 'lists':'foldl'(_2, Length, _3)
+            in  case call 'erlang':'>'(Length_1, 0) of
+                    <'true'> when 'true' -> Arr
+                    <'false'> when 'true' -> 
+                        []
+                end
+'chunk'/2 =
+    fun (Array, Size) ->
+        let <Chunks> =
+            []
+        in  Chunks
+'chunk_while'/2 =
+    fun (A, Predicate) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(A), 0) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                let <Chunks> =
+                    []
+                in  let <Chunk> =
+                        [call 'lists':'nth'(1, A)|[]]
+                    in  let <I> =
+                            0
+                        in  do  case call 'erlang':'>'(call 'erlang':'length'(Chunk), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Chunks, Chunk) <'false'> when 'true' -> 'ok' end
+                                Chunks
+        end
+'window'/2 =
+    fun (Array, Attr) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                let <Windows> =
+                    []
+                in  Windows
+        end
+'sum'/1 =
+    fun (Array) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of <'true'> when 'true' -> call 'erlang':'error'(#{#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 
+            let <Head> =
+                call 'lists':'nth'(1, Array)
+            in  let <Head_1> =
+                    let <_2> =
+                        fun (E, HeadAcc) ->
+                            let <HeadOut_4> =
+                                E
+                            in  HeadOut_4
+                    in  call 'lists':'foldl'(_2, Head, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Array))
+                in  Head_1
+         end
+'reduce'/2 =
+    fun (Array, Reduce_op) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of <'true'> when 'true' -> call 'erlang':'error'(#{#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 
+            let <Value> =
+                call 'lists':'nth'(1, Array)
+            in  let <Value_1> =
+                    let <_2> =
+                        fun (E, ValueAcc) ->
+                            let <ValueOut_4> =
+                                apply 'reduce_op'/2(ValueAcc, E)
+                            in  ValueOut_4
+                    in  call 'lists':'foldl'(_2, Value, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Array))
+                in  Value_1
+         end
+'reduce_indexed'/2 =
+    fun (Array, Reduce_op) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of <'true'> when 'true' -> call 'erlang':'error'(#{#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 
+            let <Value> =
+                call 'lists':'nth'(1, Array)
+            in  let <Value_1> =
+                    let <_2> =
+                        fun (E, ValueAcc) ->
+                            let <ValueOut_4> =
+                                case call 'erlang':'=:='(I, 0) of <'true'> when 'true' -> ValueAcc <'false'> when 'true' -> apply 'reduce_op'/3(I, ValueAcc, E) end
+                            in  ValueOut_4
+                    in  call 'lists':'foldl'(_2, Value, Array)
+                in  Value_1
+         end
+'filter_indexed'/2 =
+    fun (Array, Predicate) ->
+        let <Result> =
+            []
+        in  do  let <_1> =
+                fun (E, I) ->
+                    do  case apply 'predicate'/2(I, E) of <'true'> when 'true' -> call 'erlang':'bsl'(Result, E) <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                Result
+'fold'/3 =
+    fun (Array, Init, Fold_op) ->
+        let <Value> =
+            ~{{'vbeam','type'}=>'R'}~
+        in  let <Value_1> =
+                case call 'erlang':'is'('todo', 'todo') of <'true'> when 'true' -> apply 'unknown.clone'/1(Init) <'false'> when 'true' -> Init end
+            in  let <Value_2> =
+                    let <_3> =
+                        fun (E, ValueAcc) ->
+                            let <ValueOut_5> =
+                                apply 'fold_op'/2(ValueAcc, E)
+                            in  ValueOut_5
+                    in  call 'lists':'foldl'(_3, Value_1, Array)
+                in  Value_2
+'fold_indexed'/3 =
+    fun (Array, Init, Fold_op) ->
+        let <Value> =
+            Init
+        in  let <Value_1> =
+                let <_2> =
+                    fun (E, ValueAcc) ->
+                        let <ValueOut_4> =
+                            apply 'fold_op'/3(I, ValueAcc, E)
+                        in  ValueOut_4
+                in  call 'lists':'foldl'(_2, Value, Array)
+            in  Value_1
+'flatten'/1 =
+    fun (Array) ->
+        let <Required_size> =
+            0
+        in  do  let <_1> =
+                fun (E1) ->
+                    'ok'
+            in  call 'lists':'foreach'(_1, Array)
+                let <Result> =
+                    []
+                in  do  let <_2> =
+                        fun (E1) ->
+                            'ok'
+                    in  call 'lists':'foreach'(_2, Array)
+                        Result
+'flat_map'/2 =
+    fun (Array, Transform) ->
+        let <Result> =
+            []
+        in  do  let <_1> =
+                fun (V) ->
+                    call 'erlang':'bsl'(Result, apply 'transform'/1(V))
+            in  call 'lists':'foreach'(_1, Array)
+                apply 'flatten'/1(Result)
+'flat_map_indexed'/2 =
+    fun (Array, Transform) ->
+        let <Result> =
+            []
+        in  do  let <_1> =
+                fun (V, I) ->
+                    do  call 'erlang':'bsl'(Result, apply 'transform'/2(I, V))
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                apply 'flatten'/1(Result)
+'map_indexed'/2 =
+    fun (Array, Transform) ->
+        let <Result> =
+            []
+        in  do  let <_1> =
+                fun (V, I) ->
+                    do  call 'erlang':'bsl'(Result, apply 'transform'/2(I, V))
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                Result
+'group_by'/2 =
+    fun (Array, Grouping_op) ->
+        let <Result> =
+            ~{}~
+        in  do  let <_1> =
+                fun (V) ->
+                    let <Key> =
+                        apply 'grouping_op'/1(V)
+                    in  case call 'lists':'member'(Key, Result) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(Key, 1), Result), V) <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Array)
+                Result
+'concat'/2 =
+    fun (A, B) ->
+        let <M> =
+            []
+        in  do  call 'erlang':'bsl'(M, A)
+                do  call 'erlang':'bsl'(M, B)
+                    M
+'lower_bound'/2 =
+    fun (Array, Val) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Left> =
+                    0
+                in  let <Right> =
+                        call 'erlang':'-'(call 'erlang':'length'(Array), 1)
+                    in  case call 'erlang':'>='(Left, call 'erlang':'length'(Array)) of <'true'> when 'true' -> call 'erlang':'error'(#{  }#) <'false'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Left, 1), Array) end
+        end
+'upper_bound'/2 =
+    fun (Array, Val) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Left> =
+                    0
+                in  let <Right> =
+                        call 'erlang':'-'(call 'erlang':'length'(Array), 1)
+                    in  case call 'erlang':'<'(Right, 0) of <'true'> when 'true' -> call 'erlang':'error'(#{  }#) <'false'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Right, 1), Array) end
+        end
+'binary_search'/2 =
+    fun (Array, Target) ->
+        let <Left> =
+            0
+        in  let <Right> =
+                call 'erlang':'-'(call 'erlang':'length'(Array), 1)
+            in  call 'erlang':'error'(#{  }#)
+'rotate_left'/2 =
+    fun (Array, Mid) ->
+        let <K> =
+            call 'erlang':'-'(call 'erlang':'length'(Array), Mid)
+        in  let <P> =
+                'todo'
+            in  'todo'
+'rotate_right'/2 =
+    fun (Array, K) ->
+        let <Mid> =
+            call 'erlang':'-'(call 'erlang':'length'(Array), K)
+        in  let <P> =
+                'todo'
+            in  'todo'
+'ptr_rotate'/3 =
+    fun (Left_, Mid, Right_) ->
+        let <Sz> =
+            'todo'
+        in  let <Left> =
+                'todo'
+            in  let <Right> =
+                    'todo'
+                in  let <Limit> =
+                        apply 'raw_array_cap'/0()
+                    in  'ok'
+'raw_array_cap'/0 =
+    fun () ->
+        let <Size> =
+            'todo'
+        in  case call 'erlang':'>'(Size, Extra_size) of <'true'> when 'true' -> 1 <'false'> when 'true' -> call 'erlang':'/'(Extra_size, Size) end
+'raw_array_malloc_size'/0 =
+    fun () ->
+        let <Size> =
+            'todo'
+        in  case call 'erlang':'>'(Size, Extra_size) of <'true'> when 'true' -> call 'erlang':'*'(Size, 2) <'false'> when 'true' -> Extra_size end
+'memswap'/3 =
+    fun (X, Y, Len) ->
+        let <Block_size> =
+            'todo'
+        in  let <I> =
+                'todo'
+            in  case call 'erlang':'<'(I, Len) of <'true'> when 'true' -> 
+                    let <T_> =
+                        ~{{'vbeam','type'}=>'UnalignedBlock'}~
+                    in  let <T> =
+                            'todo'
+                        in  let <Rem> =
+                                'todo'
+                            in  let <Xi> =
+                                    call 'erlang':'+'('todo', I)
+                                in  let <Yi> =
+                                        call 'erlang':'+'('todo', I)
+                                    in  'ok'
+                 <'false'> when 'true' -> 'ok' end
+'swap_nonoverlapping'/3 =
+    fun (X_, Y_, Count) ->
+        let <X> =
+            'todo'
+        in  let <Y> =
+                'todo'
+            in  let <Len> =
+                    call 'erlang':'*'('todo', 'todo')
+                in  'todo'
+'copy'/2 =
+    fun (Dst, Src) ->
+        let <Min> =
+            case call 'erlang':'<'(call 'erlang':'length'(Dst), call 'erlang':'length'(Src)) of <'true'> when 'true' -> call 'erlang':'length'(Dst) <'false'> when 'true' -> call 'erlang':'length'(Src) end
+        in  case call 'erlang':'=<'(Min, 0) of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    do  case apply 'can_copy_bits'/0() of <'true'> when 'true' -> 
+                        let <Blen> =
+                            call 'erlang':'*'(Min, 'todo')
+                        in  'todo'
+                     <'false'> when 'true' -> 'ok' end
+                        Min
+            end
+'can_copy_bits'/0 =
+    fun () ->
+        case call 'lists':'member'(call 'lists':'nth'(1, call 'erlang':'map_get'('name', T)), ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]]]]) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                'false'
+        end
+'carray_to_varray'/2 =
+    fun (C_array_data, Items) ->
+        let <V_array> =
+            []
+        in  let <Total_size> =
+                call 'erlang':'*'(Items, 'todo')
+            in  do  'todo'
+                    V_array
+'find_first'/2 =
+    fun (Array, Predicate) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                do  let <_1> =
+                    fun (Item) ->
+                        case apply 'predicate'/1(Item) of <'true'> when 'true' -> Item <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, Array)
+                    'todo'
+        end
+'find_last'/2 =
+    fun (Array, Predicate) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Array), 0) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                'todo'
+        end
+'join_to_string'/3 =
+    fun (Array, Separator, Transform) ->
+        let <Sb> =
+            apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'length'(Array), 2))
+        in  do  let <_1> =
+                fun (Item, I) ->
+                    do  apply 'transform'/1(Item)
+                        do  apply 'unknown.write_string'/2(Sb, X)
+                            do  'todo'
+                                do  case call 'erlang':'<'(I, call 'erlang':'-'(call 'erlang':'length'(Array), 1)) of <'true'> when 'true' -> apply 'unknown.write_string'/2(Sb, Separator) <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                apply 'unknown.str'/1(Sb)
+'partition'/2 =
+    fun (Array, Predicate) ->
+        let <Matching> =
+            []
+        in  let <Non_matching> =
+                []
+            in  do  let <_1> =
+                    fun (Item) ->
+                        case apply 'predicate'/1(Item) of <'true'> when 'true' -> call 'erlang':'bsl'(Matching, Item) <'false'> when 'true' -> call 'erlang':'bsl'(Non_matching, Item) end
+                in  call 'lists':'foreach'(_1, Array)
+                    Matching
+'each'/2 =
+    fun (A, Cb) ->
+        'ok'
+'each_indexed'/2 =
+    fun (A, Cb) ->
+        'ok'
+'index_of_first'/2 =
+    fun (Array, Predicate) ->
+        do  let <_1> =
+            fun (E, I) ->
+                do  case apply 'predicate'/2(I, E) of <'true'> when 'true' -> I <'false'> when 'true' -> 'ok' end
+                    call 'erlang':'+'(I, 1)
+        in  call 'lists':'foldl'(_1, 0, Array)
+            -1
+'index_of_last'/2 =
+    fun (Array, Predicate) ->
+        -1
+'map_of_indexes'/1 =
+    fun (Array) ->
+        let <Result> =
+            ~{}~
+        in  do  let <_1> =
+                fun (E, I) ->
+                    do  case 'todo' of <'true'> when 'true' -> call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(E, 1), Result), I) <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                Result
+'map_of_counts'/1 =
+    fun (Array) ->
+        let <Result> =
+            ~{}~
+        in  do  let <_1> =
+                fun (E) ->
+                    'todo'
+            in  call 'lists':'foreach'(_1, Array)
+                Result
+'reverse_iterator'/1 =
+    fun (A) ->
+        ~{'a'=>A,'i'=>call 'erlang':'length'(A),{'vbeam','type'}=>'ReverseIterator'}~
+'ReverseIterator.next'/1 =
+    fun (Iter) ->
+        do  'todo'
+            case call 'erlang':'<'(call 'erlang':'map_get'('i', Iter), 0) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    'todo'
+            end
+'ReverseIterator.free'/1 =
+    fun (Iter) ->
+        'ok'
+'uniq'/1 =
+    fun (A) ->
+        let <Res> =
+            []
+        in  let <J> =
+                -1
+            in  let <J_1> =
+                    case call 'erlang':'>'(call 'erlang':'length'(A), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> J end
+                in  let <J_2> =
+                        let <_3> =
+                            fun (E, JAcc) ->
+                                do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(JAcc, 1), A), E) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    let <JOut_5> =
+                                        Idx
+                                    in                                      do  call 'erlang':'bsl'(Res, E)
+JOut_5
+                        in  call 'lists':'foldl'(_3, J_1, A)
+                    in  Res
+'uniq_only'/1 =
+    fun (A) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(A), 0) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'length'(A), 1) of
+                    <'true'> when 'true' -> apply 'unknown.clone'/1(A)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'=:='(call 'erlang':'length'(A), 2) of
+                            <'true'> when 'true' -> []
+                            <'false'> when 'true' -> 
+                                let <Res> =
+                                    []
+                                in  do  case call 'erlang':'=/='(call 'lists':'nth'(1, A), call 'lists':'nth'(2, A)) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, call 'lists':'nth'(1, A)) <'false'> when 'true' -> 'ok' end
+                                        do  case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 2), 1), A), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 1), 1), A)) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 1), 1), A)) <'false'> when 'true' -> 'ok' end
+                                            Res
+                        end
+                end
+        end
+'uniq_only_repeated'/1 =
+    fun (A) ->
+        case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'length'(A), 0), call 'erlang':'=:='(call 'erlang':'length'(A), 1)) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                let <Res> =
+                    []
+                in  do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 2), 1), A), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 1), 1), A)) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(A), 1), 1), A)) <'false'> when 'true' -> 'ok' end
+                        Res
+        end
+'uniq_all_repeated'/1 =
+    fun (A) ->
+        case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'length'(A), 0), call 'erlang':'=:='(call 'erlang':'length'(A), 1)) of
+            <'true'> when 'true' -> []
+            <'false'> when 'true' -> 
+                do  case call 'erlang':'=:='(call 'erlang':'length'(A), 2) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'lists':'nth'(1, A), call 'lists':'nth'(2, A)) of <'true'> when 'true' -> apply 'unknown.clone'/1(A) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                    let <Res> =
+                        []
+                    in  Res
+        end
+'distinct'/1 =
+    fun (A) ->
+        apply 'uniq'/1(apply 'unknown.sorted'/2(A, call 'erlang':'<'(A, B)))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.arrays')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.arrays', _0)
+end

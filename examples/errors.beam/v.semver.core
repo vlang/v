@@ -1,0 +1,357 @@
+module 'v.semver' ['version_satisfies'/2,
+                'compare_eq'/2,
+                'compare_gt'/2,
+                'compare_lt'/2,
+                'compare_ge'/2,
+                'compare_le'/2,
+                'parse'/1,
+                'RawVersion.is_valid'/1,
+                'RawVersion.is_missing'/2,
+                'RawVersion.coerce'/1,
+                'RawVersion.complete'/1,
+                'RawVersion.validate'/1,
+                'RawVersion.to_version'/1,
+                'Range.satisfies'/2,
+                'ComparatorSet.satisfies'/2,
+                'Comparator.satisfies'/2,
+                'parse_range'/1,
+                'parse_comparator_set'/1,
+                'parse_comparator'/1,
+                'parse_xrange'/1,
+                'can_expand'/1,
+                'expand_comparator_set'/1,
+                'expand_tilda'/1,
+                'expand_caret'/1,
+                'expand_hyphen'/1,
+                'expand_xrange'/1,
+                'make_comparator_set_ge_lt'/2,
+                'make_comparator_set_ge_le'/2,
+                'EmptyInputError.msg'/1,
+                'InvalidVersionFormatError.msg'/1,
+                'from'/1,
+                'build'/3,
+                'Version.increment'/2,
+                'Version.satisfies'/2,
+                'Version.=='/2,
+                'Version.<'/2,
+                'Version.str'/1,
+                'coerce'/1,
+                'is_valid'/1,
+                'is_version_valid'/1,
+                'coerce_version'/1,
+                'increment_version'/2,
+                'is_valid_string'/1,
+                'is_valid_number'/1,
+                'Operator__static__from'/1,
+                'Increment__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'version_satisfies'/2 =
+    fun (Ver, Input) ->
+        let <Range> =
+            apply 'parse_range'/1(Input)
+        in  apply 'Range.satisfies'/2(Range, Ver)
+'compare_eq'/2 =
+    fun (V1, V2) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('major', V1), call 'erlang':'map_get'('major', V2)), call 'erlang':'=:='(call 'erlang':'map_get'('minor', V1), call 'erlang':'map_get'('minor', V2))), call 'erlang':'=:='(call 'erlang':'map_get'('patch', V1), call 'erlang':'map_get'('patch', V2))), call 'erlang':'=:='(call 'erlang':'map_get'('prerelease', V1), call 'erlang':'map_get'('prerelease', V2)))
+'compare_gt'/2 =
+    fun (V1, V2) ->
+        case call 'erlang':'<'(call 'erlang':'map_get'('major', V1), call 'erlang':'map_get'('major', V2)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('major', V1), call 'erlang':'map_get'('major', V2)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('minor', V1), call 'erlang':'map_get'('minor', V2)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('minor', V1), call 'erlang':'map_get'('minor', V2)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> call 'erlang':'>'(call 'erlang':'map_get'('patch', V1), call 'erlang':'map_get'('patch', V2)) end end end end
+'compare_lt'/2 =
+    fun (V1, V2) ->
+        case call 'erlang':'>'(call 'erlang':'map_get'('major', V1), call 'erlang':'map_get'('major', V2)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('major', V1), call 'erlang':'map_get'('major', V2)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('minor', V1), call 'erlang':'map_get'('minor', V2)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('minor', V1), call 'erlang':'map_get'('minor', V2)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> call 'erlang':'<'(call 'erlang':'map_get'('patch', V1), call 'erlang':'map_get'('patch', V2)) end end end end
+'compare_ge'/2 =
+    fun (V1, V2) ->
+        case apply 'compare_eq'/2(V1, V2) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> apply 'compare_gt'/2(V1, V2) end
+'compare_le'/2 =
+    fun (V1, V2) ->
+        case apply 'compare_eq'/2(V1, V2) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> apply 'compare_lt'/2(V1, V2) end
+'parse'/1 =
+    fun (Input) ->
+        let <Raw_version> =
+            Input
+        in  let <Prerelease> =
+                #{  }#
+            in  let <Metadata> =
+                    #{  }#
+                in  let <Plus_idx> =
+                        apply 'string.last_index_u8'/2(Raw_version, 'todo')
+                    in  let <Metadata_1> =
+                            case call 'erlang':'>'(Plus_idx, 0) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version) <'false'> when 'true' -> Metadata end
+                        in  let <Raw_version_2> =
+                                case call 'erlang':'>'(Plus_idx, 0) of <'true'> when 'true' -> let <Metadata_3> = call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version) in call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version) <'false'> when 'true' -> Raw_version end
+                            in  let <Hyphen_idx> =
+                                    apply 'string.index_'/2(Raw_version_2, #{#<45>(8,1,'integer',['unsigned'|['big']])}#)
+                                in  let <Prerelease_4> =
+                                        case call 'erlang':'>'(Hyphen_idx, 0) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version_2) <'false'> when 'true' -> Prerelease end
+                                    in  let <Raw_version_5> =
+                                            case call 'erlang':'>'(Hyphen_idx, 0) of <'true'> when 'true' -> let <Prerelease_6> = call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version_2) in call 'lists':'nth'(call 'erlang':'+'('todo', 1), Raw_version_2) <'false'> when 'true' -> Raw_version_2 end
+                                        in  let <Raw_ints> =
+                                                call 'binary':'split'(Raw_version_5, #{#<46>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                            in  ~{'prerelease'=>Prerelease_6,'metadata'=>Metadata_3,'raw_ints'=>Raw_ints,{'vbeam','type'}=>'RawVersion'}~
+'RawVersion.is_valid'/1 =
+    fun (Ver) ->
+        case call 'erlang':'=/='(call 'erlang':'length'(call 'erlang':'map_get'('raw_ints', Ver)), 3) of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(apply 'is_valid_number'/1(call 'lists':'nth'(call 'erlang':'+'(0, 1), call 'erlang':'map_get'('raw_ints', Ver))), apply 'is_valid_number'/1(call 'lists':'nth'(call 'erlang':'+'(1, 1), call 'erlang':'map_get'('raw_ints', Ver)))), apply 'is_valid_number'/1(call 'lists':'nth'(call 'erlang':'+'(2, 1), call 'erlang':'map_get'('raw_ints', Ver)))), apply 'is_valid_string'/1(call 'erlang':'map_get'('prerelease', Ver))), apply 'is_valid_string'/1(call 'erlang':'map_get'('metadata', Ver)))
+        end
+'RawVersion.is_missing'/2 =
+    fun (Ver, Typ) ->
+        call 'erlang':'>='(Typ, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('raw_ints', Ver)), 1))
+'RawVersion.coerce'/1 =
+    fun (Raw_ver) ->
+        let <Ver> =
+            apply 'RawVersion.complete'/1(Raw_ver)
+        in  case call 'erlang':'not'(apply 'is_valid_number'/1(call 'lists':'nth'(call 'erlang':'+'(0, 1), call 'erlang':'map_get'('raw_ints', Ver)))) of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('raw_ints', Ver)|[#{#<91>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                <'false'> when 'true' -> 
+                    apply 'RawVersion.to_version'/1(Ver)
+            end
+'RawVersion.complete'/1 =
+    fun (Raw_ver) ->
+        let <Raw_ints> =
+            call 'erlang':'map_get'('raw_ints', Raw_ver)
+        in  ~{'prerelease'=>call 'erlang':'map_get'('prerelease', Raw_ver),'metadata'=>call 'erlang':'map_get'('metadata', Raw_ver),'raw_ints'=>Raw_ints,{'vbeam','type'}=>'RawVersion'}~
+'RawVersion.validate'/1 =
+    fun (Raw_ver) ->
+        case call 'erlang':'not'(apply 'RawVersion.is_valid'/1(Raw_ver)) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                apply 'RawVersion.to_version'/1(Raw_ver)
+        end
+'RawVersion.to_version'/1 =
+    fun (Raw_ver) ->
+        ~{'major'=>call 'erlang':'binary_to_integer'(call 'lists':'nth'(call 'erlang':'+'(0, 1), call 'erlang':'map_get'('raw_ints', Raw_ver))),'minor'=>call 'erlang':'binary_to_integer'(call 'lists':'nth'(call 'erlang':'+'(1, 1), call 'erlang':'map_get'('raw_ints', Raw_ver))),'patch'=>call 'erlang':'binary_to_integer'(call 'lists':'nth'(call 'erlang':'+'(2, 1), call 'erlang':'map_get'('raw_ints', Raw_ver))),'prerelease'=>call 'erlang':'map_get'('prerelease', Raw_ver),'metadata'=>call 'erlang':'map_get'('metadata', Raw_ver),{'vbeam','type'}=>'Version'}~
+'Range.satisfies'/2 =
+    fun (R, Ver) ->
+        apply 'ComparatorSet.any'/2(call 'erlang':'map_get'('comparator_sets', R), apply 'ComparatorSet.satisfies'/2(It, Ver))
+'ComparatorSet.satisfies'/2 =
+    fun (Set, Ver) ->
+        do  let <_1> =
+            fun (Comp) ->
+                case call 'erlang':'not'(apply 'Comparator.satisfies'/2(Comp, Ver)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('comparators', Set))
+            'true'
+'Comparator.satisfies'/2 =
+    fun (C, Ver) ->
+        case call 'erlang':'map_get'('op', C) of <'gt'> when 'true' -> call 'erlang':'>'(Ver, call 'erlang':'map_get'('ver', C)) <'lt'> when 'true' -> call 'erlang':'<'(Ver, call 'erlang':'map_get'('ver', C)) <'ge'> when 'true' -> call 'erlang':'>='(Ver, call 'erlang':'map_get'('ver', C)) <'le'> when 'true' -> call 'erlang':'=<'(Ver, call 'erlang':'map_get'('ver', C)) <'eq'> when 'true' -> call 'erlang':'=:='(Ver, call 'erlang':'map_get'('ver', C)) end
+'parse_range'/1 =
+    fun (Input) ->
+        let <Raw_comparator_sets> =
+            call 'binary':'split'(Input, #{#<32>(8,1,'integer',['unsigned'|['big']]),#<124>(8,1,'integer',['unsigned'|['big']]),#<124>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+        in  let <Comparator_sets> =
+                []
+            in  do  let <_1> =
+                    fun (Raw_comp_set) ->
+                        case apply 'can_expand'/1(Raw_comp_set) of <'true'> when 'true' -> 
+                            let <S> =
+                                apply 'expand_comparator_set'/1(Raw_comp_set)
+                            in  call 'erlang':'bsl'(Comparator_sets, S)
+                         <'false'> when 'true' -> 
+                            let <S_2> =
+                                apply 'parse_comparator_set'/1(Raw_comp_set)
+                            in  call 'erlang':'bsl'(Comparator_sets, S_2)
+                         end
+                in  call 'lists':'foreach'(_1, Raw_comparator_sets)
+                    ~{'comparator_sets'=>Comparator_sets,{'vbeam','type'}=>'Range'}~
+'parse_comparator_set'/1 =
+    fun (Input) ->
+        let <Raw_comparators> =
+            call 'binary':'split'(Input, #{#<32>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+        in  case call 'erlang':'>'(call 'erlang':'length'(Raw_comparators), 2) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Comparators> =
+                        []
+                    in  do  let <_1> =
+                            fun (Raw_comp) ->
+                                let <C> =
+                                    apply 'parse_comparator'/1(Raw_comp)
+                                in  call 'erlang':'bsl'(Comparators, C)
+                        in  call 'lists':'foreach'(_1, Raw_comparators)
+                            ~{'comparators'=>Comparators,{'vbeam','type'}=>'ComparatorSet'}~
+            end
+'parse_comparator'/1 =
+    fun (Input) ->
+        let <Op> =
+            'eq'
+        in  let <Raw_version> =
+                case case call 'string':'prefix'(Input, #{#<62>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input) <'false'> when 'true' -> case case call 'string':'prefix'(Input, #{#<60>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input) <'false'> when 'true' -> case case call 'string':'prefix'(Input, #{#<62>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input) <'false'> when 'true' -> case case call 'string':'prefix'(Input, #{#<60>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input) <'false'> when 'true' -> case case call 'string':'prefix'(Input, #{#<61>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input) <'false'> when 'true' -> Input end end end end end
+            in  let <Version> =
+                    apply 'coerce_version'/1(Raw_version)
+                in  ~{'ver'=>Version,'op'=>Op,{'vbeam','type'}=>'Comparator'}~
+'parse_xrange'/1 =
+    fun (Input) ->
+        let <Raw_ver> =
+            apply 'RawVersion.complete'/1(apply 'parse'/1(Input))
+        in  do  let <_1> =
+                fun (Typ) ->
+                    do  case call 'erlang':'=:='(apply 'string.index_any'/2(call 'lists':'nth'(call 'erlang':'+'(Typ, 1), call 'erlang':'map_get'('raw_ints', Raw_ver)), #{#<88>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#), -1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        case Typ of <Semver.ver_major> when 'true' -> 'ok' <Semver.ver_minor> when 'true' -> 'ok' <Semver.ver_patch> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, [0|[1|[2|[]]]])
+                apply 'RawVersion.validate'/1(Raw_ver)
+'can_expand'/1 =
+    fun (Input) ->
+        call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(1, Input), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(1, Input), 'todo')), case call 'binary':'match'(Input, #{#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end), call 'erlang':'>'(apply 'string.index_any'/2(Input, #{#<88>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#), -1))
+'expand_comparator_set'/1 =
+    fun (Input) ->
+        do  case call 'lists':'nth'(1, Input) of <'todo'> when 'true' -> apply 'expand_tilda'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input)) <'todo'> when 'true' -> apply 'expand_caret'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Input)) <_> when 'true' -> 'ok' end
+            case case call 'binary':'match'(Input, #{#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of
+                <'true'> when 'true' -> apply 'expand_hyphen'/1(Input)
+                <'false'> when 'true' -> 
+                    apply 'expand_xrange'/1(Input)
+            end
+'expand_tilda'/1 =
+    fun (Raw_version) ->
+        let <Min_ver> =
+            apply 'coerce_version'/1(Raw_version)
+        in  let <Max_ver> =
+                case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('minor', Min_ver), 0), call 'erlang':'=:='(call 'erlang':'map_get'('patch', Min_ver), 0)) of <'true'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'major') <'false'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'minor') end
+            in  apply 'make_comparator_set_ge_lt'/2(Min_ver, Max_ver)
+'expand_caret'/1 =
+    fun (Raw_version) ->
+        let <Min_ver> =
+            apply 'coerce_version'/1(Raw_version)
+        in  let <Max_ver> =
+                case call 'erlang':'=:='(call 'erlang':'map_get'('major', Min_ver), 0) of <'true'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'minor') <'false'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'major') end
+            in  apply 'make_comparator_set_ge_lt'/2(Min_ver, Max_ver)
+'expand_hyphen'/1 =
+    fun (Raw_range) ->
+        let <Raw_versions> =
+            call 'binary':'split'(Raw_range, #{#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+        in  case call 'erlang':'=/='(call 'erlang':'length'(Raw_versions), 2) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Min_ver> =
+                        apply 'coerce_version'/1(call 'lists':'nth'(1, Raw_versions))
+                    in  let <Raw_max_ver> =
+                            apply 'parse'/1(call 'lists':'nth'(2, Raw_versions))
+                        in  case apply 'RawVersion.is_missing'/2(Raw_max_ver, 0) of
+                                <'true'> when 'true' -> 'todo'
+                                <'false'> when 'true' -> 
+                                    case apply 'RawVersion.is_missing'/2(Raw_max_ver, 1) of
+                                        <'true'> when 'true' -> apply 'make_comparator_set_ge_lt'/2(Min_ver, Max_ver)
+                                        <'false'> when 'true' -> 
+                                            let <Max_ver_1> =
+                                                apply 'RawVersion.coerce'/1(Raw_max_ver)
+                                            in  apply 'make_comparator_set_ge_le'/2(Min_ver, Max_ver_1)
+                                    end
+                            end
+            end
+'expand_xrange'/1 =
+    fun (Raw_range) ->
+        let <Min_ver> =
+            apply 'parse_xrange'/1(Raw_range)
+        in  case call 'erlang':'=:='(call 'erlang':'map_get'('major', Min_ver), 0) of
+                <'true'> when 'true' -> ~{'comparators'=>[~{'ver'=>Min_ver,'op'=>'ge',{'vbeam','type'}=>'Comparator'}~|[]],{'vbeam','type'}=>'ComparatorSet'}~
+                <'false'> when 'true' -> 
+                    let <Max_ver> =
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('minor', Min_ver), 0) of <'true'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'major') <'false'> when 'true' -> apply 'Version.increment'/2(Min_ver, 'minor') end
+                    in  apply 'make_comparator_set_ge_lt'/2(Min_ver, Max_ver)
+            end
+'make_comparator_set_ge_lt'/2 =
+    fun (Min, Max) ->
+        ~{'comparators'=>[~{'ver'=>Min,'op'=>'ge',{'vbeam','type'}=>'Comparator'}~|[~{'ver'=>Max,'op'=>'lt',{'vbeam','type'}=>'Comparator'}~|[]]],{'vbeam','type'}=>'ComparatorSet'}~
+'make_comparator_set_ge_le'/2 =
+    fun (Min, Max) ->
+        ~{'comparators'=>[~{'ver'=>Min,'op'=>'ge',{'vbeam','type'}=>'Comparator'}~|[~{'ver'=>Max,'op'=>'le',{'vbeam','type'}=>'Comparator'}~|[]]],{'vbeam','type'}=>'ComparatorSet'}~
+'EmptyInputError.msg'/1 =
+    fun (Err) ->
+        #{#<69>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#
+'InvalidVersionFormatError.msg'/1 =
+    fun (Err) ->
+        call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('input', Err)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+'from'/1 =
+    fun (Input) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(Input), 0) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Raw_version> =
+                    apply 'parse'/1(Input)
+                in  apply 'RawVersion.validate'/1(Raw_version)
+        end
+'build'/3 =
+    fun (Major, Minor, Patch) ->
+        ~{'major'=>Major,'minor'=>Minor,'patch'=>Patch,'prerelease'=>#{  }#,'metadata'=>#{  }#,{'vbeam','type'}=>'Version'}~
+'Version.increment'/2 =
+    fun (Ver, Typ) ->
+        apply 'increment_version'/2(Ver, Typ)
+'Version.satisfies'/2 =
+    fun (Ver, Input) ->
+        apply 'version_satisfies'/2(Ver, Input)
+'Version.=='/2 =
+    fun (V1, V2) ->
+        apply 'compare_eq'/2(V1, V2)
+'Version.<'/2 =
+    fun (V1, V2) ->
+        apply 'compare_lt'/2(V1, V2)
+'Version.str'/1 =
+    fun (Ver) ->
+        let <Common_string> =
+            call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('major', Ver))|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('minor', Ver))|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('patch', Ver))|[]]]]]])
+        in  let <Prerelease_string> =
+                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('prerelease', Ver)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('prerelease', Ver)|[]]]) <'false'> when 'true' -> #{  }# end
+            in  let <Metadata_string> =
+                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('metadata', Ver)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('metadata', Ver)|[]]]) <'false'> when 'true' -> #{  }# end
+                in  call 'erlang':'iolist_to_binary'([Common_string|[Prerelease_string|[Metadata_string|[]]]])
+'coerce'/1 =
+    fun (Input) ->
+        apply 'coerce_version'/1(Input)
+'is_valid'/1 =
+    fun (Input) ->
+        apply 'is_version_valid'/1(Input)
+'is_version_valid'/1 =
+    fun (Input) ->
+        let <Raw_ver> =
+            apply 'parse'/1(Input)
+        in  apply 'RawVersion.is_valid'/1(Raw_ver)
+'coerce_version'/1 =
+    fun (Input) ->
+        let <Raw_ver> =
+            apply 'parse'/1(Input)
+        in  apply 'RawVersion.coerce'/1(Raw_ver)
+'increment_version'/2 =
+    fun (Ver, Typ) ->
+        let <Major> =
+            call 'erlang':'map_get'('major', Ver)
+        in  let <Minor> =
+                call 'erlang':'map_get'('minor', Ver)
+            in  let <Patch> =
+                    call 'erlang':'map_get'('patch', Ver)
+                in  do  case Typ of <'major'> when 'true' -> 'ok' <'minor'> when 'true' -> 'ok' <'patch'> when 'true' -> 'todo' end
+                        ~{'major'=>Major,'minor'=>Minor,'patch'=>Patch,'prerelease'=>call 'erlang':'map_get'('prerelease', Ver),'metadata'=>call 'erlang':'map_get'('metadata', Ver),{'vbeam','type'}=>'Version'}~
+'is_valid_string'/1 =
+    fun (Input) ->
+        do  let <_1> =
+            fun (C) ->
+                case call 'erlang':'not'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(apply 'u8.is_letter'/1(C), apply 'u8.is_digit'/1(C)), call 'erlang':'=:='(C, 'todo')), call 'erlang':'=:='(C, 'todo'))) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+        in  call 'lists':'foreach'(_1, Input)
+            'true'
+'is_valid_number'/1 =
+    fun (Input) ->
+        do  let <_1> =
+            fun (C) ->
+                case call 'erlang':'not'(apply 'u8.is_digit'/1(C)) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+        in  call 'lists':'foreach'(_1, Input)
+            'true'
+'Operator__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Increment__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.semver')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.semver', _0)
+end

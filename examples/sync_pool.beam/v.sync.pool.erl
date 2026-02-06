@@ -3,10 +3,11 @@
 
 empty_cb(_p, _idx, _task_id) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 new_pool_processor(Context) ->
     case maps:get(callback, Context) == todo of
-        true -> panic(<<"You need to pass a valid callback to new_pool_processor.">>);
+        true -> erlang:error({panic, <<"You need to pass a valid callback to new_pool_processor.">>});
         false -> ok
     end,
     Pool = #{items => [], results => [], shared_context => todo, thread_contexts => [], njobs => maps:get(maxjobs, Context), ntask => 0, thread_cb => todo, {vbeam, type} => 'PoolProcessor'},
@@ -34,14 +35,14 @@ new_pool_processor(Context) ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    'WaitGroup.wait'(maps:get(waitgroup, Pool)),
+    'WaitGroup.wait'(maps:get(waitgroup, Pool)),
     ok.
 
 process_in_thread(Pool, Task_id) ->
     Cb = todo,
     Ilen = length(maps:get(items, Pool)),
     % TODO: unhandled stmt type
-    ok    'WaitGroup.done'(maps:get(waitgroup, Pool)),
+    'WaitGroup.done'(maps:get(waitgroup, Pool)),
     ok.
 
 atomic_fetch_add_ntask(Pool) ->

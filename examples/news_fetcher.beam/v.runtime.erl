@@ -12,8 +12,8 @@ free_memory() ->
 
 nr_jobs() ->
     % TODO: unhandled stmt type
-    ok    Cpus = nr_cpus() - 1,
-    Vjobs = 'string.int'(getenv(<<"VJOBS">>)),
+    Cpus = nr_cpus() - 1,
+    Vjobs = binary_to_integer(getenv(<<"VJOBS">>)),
     case Vjobs > 0 of
         true -> ok;
         false -> ok
@@ -25,7 +25,7 @@ nr_jobs() ->
 
 is_32bit() ->
     % TODO: unhandled stmt type
-    ok    false.
+    false.
 
 is_64bit() ->
     case X64 of
@@ -41,4 +41,4 @@ is_little_endian() ->
 
 is_big_endian() ->
     % TODO: unhandled stmt type
-    ok    false.
+    false.

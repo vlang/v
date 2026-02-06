@@ -1,0 +1,28 @@
+module 'v.main' ['filter'/2,
+                'uppercase'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'filter'/2 =
+    fun (S, F) ->
+        apply 'f'/1(S)
+'uppercase'/1 =
+    fun (S) ->
+        call 'string':'uppercase'(S)
+'main'/0 =
+    fun () ->
+        let <My_filter> =
+            'todo'
+        in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'filter'/2(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, My_filter)|[]])
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'filter'/2(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, fun (_fref0) -> apply 'uppercase'/1(_fref0))|[]])
+                    call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'filter'/2(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, 'todo')|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

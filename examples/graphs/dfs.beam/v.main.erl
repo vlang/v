@@ -5,9 +5,9 @@ main() ->
     Graph_01 = #{<<"A">> => [<<"B">>, <<"C">>], <<"B">> => [<<"A">>, <<"D">>, <<"E">>], <<"C">> => [<<"A">>, <<"F">>], <<"D">> => [<<"B">>], <<"E">> => [<<"F">>, <<"B">>, <<"F">>], <<"F">> => [<<"C">>, <<"E">>]},
     Graph_02 = #{<<"A">> => [<<"B">>, <<"C">>, <<"D">>], <<"B">> => [<<"E">>], <<"C">> => [<<"F">>], <<"D">> => [<<"E">>], <<"E">> => [<<"H">>], <<"F">> => [<<"H">>], <<"G">> => [<<"H">>], <<"H">> => [<<"E">>, <<"F">>, <<"G">>]},
     Path_01 = depth_first_search_path(Graph_01, <<"A">>, <<"F">>),
-    vbeam_io:println(<<"\\n Graph_01: a first path from node A to node F is: ", ('[]string.reverse'(Path_01))/binary>>),
+    vbeam_io:println(<<"\\n Graph_01: a first path from node A to node F is: ", (lists:reverse(Path_01))/binary>>),
     Path_02 = depth_first_search_path(Graph_02, <<"A">>, <<"H">>),
-    vbeam_io:println(<<"\\n Graph_02: a first path from node A to node H is: ", ('[]string.reverse'(Path_02))/binary>>),
+    vbeam_io:println(<<"\\n Graph_02: a first path from node A to node H is: ", (lists:reverse(Path_02))/binary>>),
     ok.
 
 depth_first_search_path(Graph, Start, Target) ->
@@ -16,7 +16,7 @@ depth_first_search_path(Graph, Start, Target) ->
     Visited = visited_init(Graph),
     Stack bsl Start,
     % TODO: unhandled stmt type
-    ok    Path1 = [<<"Path not found, problem in the Graph, start or end nodes! ">>],
+    Path1 = [<<"Path not found, problem in the Graph, start or end nodes! ">>],
     Path1.
 
 visited_init(A_graph) ->
@@ -27,10 +27,10 @@ visited_init(A_graph) ->
     Temp.
 
 build_path_reverse(Graph, Start, Final, Visited) ->
-    print(<<"\\n\\n Nodes visited (true) or no (false): ", (Visited)/binary>>),
-    Array_of_nodes = 'map[string][]string.keys'(Graph),
+    io:format("~s", [<<"\\n\\n Nodes visited (true) or no (false): ", (Visited)/binary>>]),
+    Array_of_nodes = maps:keys(Graph),
     Current = Final,
     Path = [],
     Path bsl Current,
     % TODO: unhandled stmt type
-    ok    Path.
+    Path.

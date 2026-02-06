@@ -6,4 +6,4 @@ main() ->
     'TcpConn.write_string'(Conn, <<"GET /index.html HTTP/1.0\\r\\n\\r\\n">>),
     R = new_buffered_reader(#{reader => Conn, {vbeam, type} => 'BufferedReaderConfig'}),
     % TODO: unhandled stmt type
-    ok
+        ok.

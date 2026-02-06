@@ -1,0 +1,28 @@
+module 'v.main' ['psignw_example'/3,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'psignw_example'/3 =
+    fun (A, B, Result) ->
+        'ok'
+'main'/0 =
+    fun () ->
+        let <A0> =
+            ['todo'|[-2|[3|[-4|[5|[-6|[7|[-8|[]]]]]]]]]
+        in  let <B0> =
+                ['todo'|[-1|[1|[-1|[1|[-1|[1|[-1|[]]]]]]]]]
+            in  let <Result0> =
+                    []
+                in  do  apply 'psignw_example'/3(call 'lists':'nth'(1, A0), call 'lists':'nth'(1, B0), call 'lists':'nth'(1, Result0))
+                        do  'todo'
+                            'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

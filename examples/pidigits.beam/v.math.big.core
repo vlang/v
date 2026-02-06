@@ -1,0 +1,1621 @@
+module 'v.math.big' ['compare_digit_array'/2,
+                'add_digit_array'/3,
+                'subtract_digit_array'/3,
+                'multiply_digit_array'/3,
+                'simple_multiply_digit_array'/3,
+                'multiply_array_by_digit'/3,
+                'divide_digit_array'/4,
+                'divide_array_by_digit'/4,
+                'divide_array_by_array'/4,
+                'shift_digits_left'/3,
+                'shift_digits_right'/3,
+                'bitwise_or_digit_array'/3,
+                'bitwise_and_digit_array'/3,
+                'bitwise_xor_digit_array'/3,
+                'bitwise_not_digit_array'/2,
+                'bit_set'/2,
+                'knuth_divide_array_by_array'/4,
+                'greater_than'/4,
+                'Integer.montgomery'/1,
+                'Integer.mont_odd'/3,
+                'Integer.mont_even'/3,
+                'Integer.exp_binary'/3,
+                'get_window_size'/1,
+                'Integer.mont_mul'/3,
+                'Integer.to_mont'/2,
+                'Integer.from_mont'/2,
+                'Integer.free'/1,
+                'Integer.clone'/1,
+                'int_signum'/1,
+                'integer_from_int'/1,
+                'integer_from_u32'/1,
+                'integer_from_i64'/1,
+                'integer_from_u64'/1,
+                'integer_from_bytes'/2,
+                'integer_from_string'/1,
+                'integer_from_radix'/2,
+                'validate_string'/2,
+                'integer_from_regular_string'/2,
+                'regular_string_to_radix'/2,
+                'Integer.abs'/1,
+                'Integer.neg'/1,
+                'Integer.+'/2,
+                'Integer.-'/2,
+                'Integer.add'/2,
+                'Integer.subtract'/2,
+                'Integer.*'/2,
+                'Integer.div_mod_internal'/2,
+                'Integer.div_mod'/2,
+                'Integer.div_mod_checked'/2,
+                'Integer./'/2,
+                'Integer.%'/2,
+                'Integer.div_checked'/2,
+                'Integer.mod_checked'/2,
+                'Integer.mod_euclid'/2,
+                'Integer.mod_euclid_checked'/2,
+                'Integer.mask_bits'/2,
+                'Integer.pow'/2,
+                'Integer.mod_pow'/3,
+                'Integer.big_mod_pow'/3,
+                'Integer.inc'/1,
+                'Integer.dec'/1,
+                'Integer.=='/2,
+                'Integer.abs_cmp'/2,
+                'Integer.<'/2,
+                'Integer.get_bit'/2,
+                'Integer.set_bit'/3,
+                'Integer.bitwise_or'/2,
+                'Integer.bitwise_and'/2,
+                'Integer.bitwise_not'/1,
+                'Integer.bitwise_com'/1,
+                'Integer.bitwise_xor'/2,
+                'Integer.left_shift'/2,
+                'Integer.right_shift'/2,
+                'Integer.bin_str'/1,
+                'Integer.hex'/1,
+                'Integer.radix_str'/2,
+                'Integer.general_radix_str'/2,
+                'general_str'/3,
+                'Integer.str'/1,
+                'Integer.int'/1,
+                'Integer.bytes'/1,
+                'Integer.factorial'/1,
+                'Integer.isqrt'/1,
+                'Integer.isqrt_checked'/1,
+                'bi_min'/2,
+                'bi_max'/2,
+                'Integer.gcd'/2,
+                'Integer.gcd_binary'/2,
+                'Integer.gcd_euclid'/2,
+                'Integer.mod_inverse'/2,
+                'Integer.mod_inv'/2,
+                'Integer.rsh_to_set_bit'/1,
+                'Integer.is_odd'/1,
+                'Integer.is_power_of_2'/1,
+                'Integer.bit_len'/1,
+                'Integer.from_json_number'/2,
+                'Integer.to_json'/1,
+                'imax'/2,
+                'imin'/2,
+                'umax'/2,
+                'umin'/2,
+                'iabs'/1,
+                'shrink_tail_zeros'/1,
+                'Integer.shrink_tail_zeros'/1,
+                'debug_u64_str'/1,
+                'debug_u32_str'/1,
+                'found_multiplication_base_case'/3,
+                'karatsuba_multiply_digit_array'/3,
+                'toom3_multiply_digit_array'/3,
+                'pow2'/1,
+                'left_shift_digits_in_place'/2,
+                'right_shift_digits_in_place'/2,
+                'add_in_place'/2,
+                'subtract_in_place'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'compare_digit_array'/2 =
+        fun (Operand_a, Operand_b) ->
+            let <A_len> =
+                call 'erlang':'length'(Operand_a)
+            in  let <B_len> =
+                    call 'erlang':'length'(Operand_b)
+                in  case call 'erlang':'=/='(A_len, B_len) of
+                        <'true'> when 'true' -> case call 'erlang':'<'(A_len, B_len) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+                        <'false'> when 'true' -> 
+                            0
+                    end
+    'add_digit_array'/3 =
+        fun (Operand_a, Operand_b, Sum) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Operand_a), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'length'(Operand_b), 0) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <A> =
+                                case call 'erlang':'>='(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                            in  let <B> =
+                                    case call 'erlang':'>='(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                                in  let <Carry> =
+                                        'todo'
+                                    in  let <Carry_1> =
+                                            let <_2> =
+                                                fun (Index, CarryAcc) ->
+                                                    let <Partial> =
+                                                        call 'erlang':'+'(call 'erlang':'+'(CarryAcc, call 'lists':'nth'(call 'erlang':'+'(Index, 1), A)), call 'lists':'nth'(call 'erlang':'+'(Index, 1), B))
+                                                    in                                                      let <CarryOut_4> =
+                                                        call 'erlang':'bsr'(Partial, 60)
+                                                    in  CarryOut_4
+                                            in  let <_3> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(B), 1))
+                                            in  call 'lists':'foldl'(_2, Carry, _3)
+                                        in  let <Partial_5> =
+                                                let <_6> =
+                                                    fun (Index, _10) ->
+                                                        let <PartialAcc> =
+                                                            call 'erlang':'element'(1, _10)
+                                                        in                                                          let <CarryAcc> =
+                                                            call 'erlang':'element'(2, _10)
+                                                        in  
+                                                        let <PartialOut_8> =
+                                                            call 'erlang':'+'(CarryAcc, call 'lists':'nth'(call 'erlang':'+'(Index, 1), A))
+                                                        in                                                          let <CarryOut_9> =
+                                                            call 'erlang':'bsr'(PartialOut_8, 60)
+                                                        in  {PartialOut_8, CarryOut_9}
+                                                in  let <_7> =
+                                                    call 'lists':'seq'(call 'erlang':'length'(B), call 'erlang':'-'(call 'erlang':'length'(A), 1))
+                                                in  call 'lists':'foldl'(_6, {Partial, Carry_1}, _7)
+                                            in  do  Carry_1
+                                                    apply 'shrink_tail_zeros'/1(Sum)
+                    end
+            end
+    'subtract_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Operand_a), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'length'(Operand_b), 0) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Borrow> =
+                                'todo'
+                            in  let <Borrow_1> =
+                                    let <_2> =
+                                        fun (Index, BorrowAcc) ->
+                                            let <A> =
+                                                call 'lists':'nth'(call 'erlang':'+'(Index, 1), Operand_a)
+                                            in                                              let <B> =
+                                                call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Operand_b), BorrowAcc)
+                                            in                                              let <Diff> =
+                                                call 'erlang':'-'(A, B)
+                                            in                                              let <BorrowOut_4> =
+                                                call 'erlang':'band'(call 'erlang':'bsr'(Diff, 60), 1)
+                                            in  BorrowOut_4
+                                    in  let <_3> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_b), 1))
+                                    in  call 'lists':'foldl'(_2, Borrow, _3)
+                                in  let <Diff_5> =
+                                        let <_6> =
+                                            fun (Index, _10) ->
+                                                let <DiffAcc> =
+                                                    call 'erlang':'element'(1, _10)
+                                                in                                                  let <BorrowAcc> =
+                                                    call 'erlang':'element'(2, _10)
+                                                in  
+                                                let <DiffOut_8> =
+                                                    call 'erlang':'-'(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Operand_a), BorrowAcc)
+                                                in                                                  let <BorrowOut_9> =
+                                                    call 'erlang':'band'(call 'erlang':'bsr'(DiffOut_8, 60), 1)
+                                                in  {DiffOut_8, BorrowOut_9}
+                                        in  let <_7> =
+                                            call 'lists':'seq'(call 'erlang':'length'(Operand_b), call 'erlang':'-'(call 'erlang':'length'(Operand_a), 1))
+                                        in  call 'lists':'foldl'(_6, {Diff, Borrow_1}, _7)
+                                    in  apply 'shrink_tail_zeros'/1(Storage)
+                    end
+            end
+    'multiply_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            let <Max_len> =
+                case call 'erlang':'>='(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> call 'erlang':'length'(Operand_a) <'false'> when 'true' -> call 'erlang':'length'(Operand_b) end
+            in  case call 'erlang':'>='(Max_len, 360) of <'true'> when 'true' -> apply 'toom3_multiply_digit_array'/3(Operand_a, Operand_b, Storage) <'false'> when 'true' -> case call 'erlang':'>='(Max_len, 70) of <'true'> when 'true' -> apply 'karatsuba_multiply_digit_array'/3(Operand_a, Operand_b, Storage) <'false'> when 'true' -> apply 'simple_multiply_digit_array'/3(Operand_a, Operand_b, Storage) end end
+    'simple_multiply_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            do  let <_1> =
+                fun (B_index) ->
+                    let <Hi> =
+                        'todo'
+                    in  let <Lo> =
+                            'todo'
+                        in  let <Hi_3> =
+                                let <_4> =
+                                    fun (A_index, _8) ->
+                                        let <HiAcc> =
+                                            call 'erlang':'element'(1, _8)
+                                        in                                          let <LoAcc> =
+                                            call 'erlang':'element'(2, _8)
+                                        in  
+                                        let <HiOut_6> =
+                                            apply 'mul_add_64'/3(call 'lists':'nth'(call 'erlang':'+'(A_index, 1), Operand_a), call 'lists':'nth'(call 'erlang':'+'(B_index, 1), Operand_b), call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(A_index, B_index), 1), Storage), HiAcc))
+                                        in                                          let <LoOut_7> =
+                                            apply 'mul_add_64'/3(call 'lists':'nth'(call 'erlang':'+'(A_index, 1), Operand_a), call 'lists':'nth'(call 'erlang':'+'(B_index, 1), Operand_b), call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(A_index, B_index), 1), Storage), HiOut_6))
+                                        in                                          let <HiOut_6> =
+                                            call 'erlang':'bor'(call 'erlang':'bsl'(HiOut_6, 4), call 'erlang':'bsr'(LoOut_7, 60))
+                                        in  {HiOut_6, LoOut_7}
+                                in  let <_5> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_a), 1))
+                                in  call 'lists':'foldl'(_4, {Hi, Lo}, _5)
+                            in  case call 'erlang':'=/='(Hi_3, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_b), 1))
+                in  call 'lists':'foreach'(_1, _2)
+                apply 'shrink_tail_zeros'/1(Storage)
+    'multiply_array_by_digit'/3 =
+        fun (Operand_a, Value, Storage) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Value, 1) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Hi> =
+                                'todo'
+                            in  let <Lo> =
+                                    'todo'
+                                in  let <Hi_1> =
+                                        let <_2> =
+                                            fun (Index, _6) ->
+                                                let <HiAcc> =
+                                                    call 'erlang':'element'(1, _6)
+                                                in                                                  let <LoAcc> =
+                                                    call 'erlang':'element'(2, _6)
+                                                in  
+                                                let <HiOut_4> =
+                                                    apply 'mul_add_64'/3(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Operand_a), Value, HiAcc)
+                                                in                                                  let <LoOut_5> =
+                                                    apply 'mul_add_64'/3(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Operand_a), Value, HiOut_4)
+                                                in                                                  let <HiOut_4> =
+                                                    call 'erlang':'+'(call 'erlang':'bsl'(HiOut_4, 4), call 'erlang':'bsr'(LoOut_5, 60))
+                                                in  {HiOut_4, LoOut_5}
+                                        in  let <_3> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_a), 1))
+                                        in  call 'lists':'foldl'(_2, {Hi, Lo}, _3)
+                                    in  do  case call 'erlang':'>'(Hi_1, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            apply 'shrink_tail_zeros'/1(Storage)
+                    end
+            end
+    'divide_digit_array'/4 =
+        fun (Operand_a, Operand_b, Quotient, Remainder) ->
+            let <Cmp_result> =
+                apply 'compare_digit_array'/2(Operand_a, Operand_b)
+            in  case call 'erlang':'=:='(Cmp_result, 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'<'(Cmp_result, 0) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'=:='(call 'erlang':'length'(Operand_b), 1) of <'true'> when 'true' -> apply 'divide_array_by_digit'/4(Operand_a, call 'lists':'nth'(1, Operand_b), Quotient, Remainder) <'false'> when 'true' -> apply 'divide_array_by_array'/4(Operand_a, Operand_b, Quotient, Remainder) end
+                        end
+                end
+    'divide_array_by_digit'/4 =
+        fun (Operand_a, Divisor, Quotient, Remainder) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Operand_a), 1) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Rem> =
+                        'todo'
+                    in  let <Quo> =
+                            'todo'
+                        in  do  apply 'shrink_tail_zeros'/1(Quotient)
+                                do  Rem
+                                    apply 'shrink_tail_zeros'/1(Remainder)
+            end
+    'divide_array_by_array'/4 =
+        fun (Operand_a, Operand_b, Quotient, Remainder) ->
+            apply 'knuth_divide_array_by_array'/4(Operand_a, Operand_b, Quotient, Remainder)
+    'shift_digits_left'/3 =
+        fun (Original, Amount, Storage) ->
+            let <Leftover> =
+                'todo'
+            in  let <Offset> =
+                    call 'erlang':'-'(60, Amount)
+                in  let <Leftover_1> =
+                        let <_2> =
+                            fun (Index, LeftoverAcc) ->
+                                let <Value> =
+                                    call 'erlang':'band'(call 'erlang':'bor'(LeftoverAcc, call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Original), Amount)), call 'erlang':'-'(call 'erlang':'bsl'('todo', 60), 'todo'))
+                                in                                  let <LeftoverOut_4> =
+                                    call 'erlang':'bsr'(call 'erlang':'band'(call 'lists':'nth'(call 'erlang':'+'(Index, 1), Original), call 'erlang':'bsl'('todo', Offset)), Offset)
+                                in  LeftoverOut_4
+                        in  let <_3> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Original), 1))
+                        in  call 'lists':'foldl'(_2, Leftover, _3)
+                    in  case call 'erlang':'=/='(Leftover_1, 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Storage, Leftover_1) <'false'> when 'true' -> 'ok' end
+    'shift_digits_right'/3 =
+        fun (Original, Amount, Storage) ->
+            let <Moveover> =
+                'todo'
+            in  let <Mask> =
+                    call 'erlang':'-'(call 'erlang':'bsl'('todo', Amount), 1)
+                in  let <Offset> =
+                        call 'erlang':'-'(60, Amount)
+                    in  apply 'shrink_tail_zeros'/1(Storage)
+    'bitwise_or_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            let <Lower> =
+                case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+            in  let <Upper> =
+                    case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                in  let <Bigger> =
+                        case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                    in  do  let <_1> =
+                            fun (Index) ->
+                                'ok'
+                        in  let <_2> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(Lower, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            do  let <_3> =
+                                fun (Index) ->
+                                    'ok'
+                            in  let <_4> =
+                                    call 'lists':'seq'(Lower, call 'erlang':'-'(Upper, 1))
+                                in  call 'lists':'foreach'(_3, _4)
+                                apply 'shrink_tail_zeros'/1(Storage)
+    'bitwise_and_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            let <Lower> =
+                apply 'imin'/2(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b))
+            in  do  let <_1> =
+                    fun (Index) ->
+                        'ok'
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(Lower, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    apply 'shrink_tail_zeros'/1(Storage)
+    'bitwise_xor_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            let <Lower> =
+                case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+            in  let <Upper> =
+                    case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                in  let <Bigger> =
+                        case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                    in  do  let <_1> =
+                            fun (Index) ->
+                                'ok'
+                        in  let <_2> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(Lower, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            do  let <_3> =
+                                fun (Index) ->
+                                    'ok'
+                            in  let <_4> =
+                                    call 'lists':'seq'(Lower, call 'erlang':'-'(Upper, 1))
+                                in  call 'lists':'foreach'(_3, _4)
+                                apply 'shrink_tail_zeros'/1(Storage)
+    'bitwise_not_digit_array'/2 =
+        fun (Original, Storage) ->
+            do  let <_1> =
+                fun (Index) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Original), 1))
+                in  call 'lists':'foreach'(_1, _2)
+                apply 'shrink_tail_zeros'/1(Storage)
+    'bit_set'/2 =
+        fun (A, N) ->
+            let <Byte_offset> =
+                call 'erlang':'div'(N, 60)
+            in  let <Mask> =
+                    call 'erlang':'bsl'('todo', 'todo')
+                in  'ok'
+    'knuth_divide_array_by_array'/4 =
+        fun (Operand_a, Operand_b, Quotient, Remainder) ->
+            let <M> =
+                call 'erlang':'-'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b))
+            in  let <N> =
+                    call 'erlang':'length'(Operand_b)
+                in  let <U> =
+                        []
+                    in  let <V> =
+                            []
+                        in  let <Leading_zeros> =
+                                call 'erlang':'-'(apply 'leading_zeros_64'/1(call 'lists':'last'(Operand_b)), 4)
+                            in  do  case call 'erlang':'>'(Leading_zeros, 0) of <'true'> when 'true' -> 
+                                    let <Carry> =
+                                        'todo'
+                                    in  let <Amount> =
+                                            call 'erlang':'-'(60, Leading_zeros)
+                                        in  let <Carry_1> =
+                                                let <_2> =
+                                                    fun (I, CarryAcc) ->
+                                                        let <Temp> =
+                                                            call 'erlang':'bor'(call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Operand_a), Leading_zeros), CarryAcc)
+                                                        in                                                          let <CarryOut_4> =
+                                                            call 'erlang':'bsr'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Operand_a), Amount)
+                                                        in  CarryOut_4
+                                                in  let <_3> =
+                                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_a), 1))
+                                                in  call 'lists':'foldl'(_2, Carry, _3)
+                                            in  do  Carry_1
+                                                    let <Carry_5> =
+                                                        0
+                                                    in  'ok'
+                                 <'false'> when 'true' -> 
+                                    do  let <_6> =
+                                        fun (I) ->
+                                            'ok'
+                                    in  let <_7> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Operand_a), 1))
+                                        in  call 'lists':'foreach'(_6, _7)
+                                        'ok'
+                                 end
+                                    let <Remainder_8> =
+                                        case call 'erlang':'>='(call 'erlang':'length'(Remainder), call 'erlang':'+'(N, 1)) of <'true'> when 'true' -> do  apply '[]u64.trim'/2(Remainder, call 'erlang':'+'(N, 1)) Remainder <'false'> when 'true' -> [] end
+                                    in  let <V_n_1> =
+                                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(N, 1), 1), V)
+                                        in  let <V_n_2> =
+                                                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(N, 2), 1), V)
+                                            in  do  apply '[]u64.delete_last'/1(Remainder_8)
+                                                    let <Carry_9> =
+                                                        case call 'erlang':'>'(Leading_zeros, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> Carry_5 end
+                                                    in  do  apply 'shrink_tail_zeros'/1(Quotient)
+                                                            apply 'shrink_tail_zeros'/1(Remainder_8)
+    'greater_than'/4 =
+        fun (X1, X2, Y1, Y2) ->
+            call 'erlang':'or'(call 'erlang':'>'(X1, Y1), call 'erlang':'and'(call 'erlang':'=:='(X1, Y1), call 'erlang':'>'(X2, Y2)))
+    'Integer.montgomery'/1 =
+        fun (M) ->
+            let <N> =
+                apply 'Integer.abs'/1(M)
+            in  let <B> =
+                    'todo'
+                in  ~{'n'=>N,'ni'=>call 'erlang':'/'(call 'erlang':'-'(apply 'Integer.left_shift'/2(apply 'Integer.mod_inv'/2(apply 'Integer.left_shift'/2(~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~, B), N), B), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~), N),'rr'=>call 'erlang':'rem'(apply 'Integer.left_shift'/2(~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~, call 'erlang':'*'(B, 2)), N),{'vbeam','type'}=>'MontgomeryContext'}~
+    'Integer.mont_odd'/3 =
+        fun (A, X, M) ->
+            let <Window> =
+                apply 'get_window_size'/1('todo')
+            in  let <Table> =
+                    []
+                in  let <Ctx> =
+                        apply 'Integer.montgomery'/1(M)
+                    in  let <Aa> =
+                            case call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'map_get'('signum', A), 0), call 'erlang':'>='(apply 'Integer.abs_cmp'/2(A, M), 0)) of <'true'> when 'true' -> call 'erlang':'rem'(A, M) <'false'> when 'true' -> A end
+                        in  do  apply 'Integer.to_mont'/2(Aa, Ctx)
+                                let <R> =
+                                    case call 'erlang':'=/='(call 'erlang':'band'(call 'lists':'last'(call 'erlang':'map_get'('digits', M)), call 'erlang':'bsl'('todo', 59)), 0) of <'true'> when 'true' -> 
+                                        let <Rdigits> =
+                                            []
+                                        in  do  call 'erlang':'band'(call 'erlang':'-'(call 'lists':'nth'(1, call 'erlang':'map_get'('digits', M))), call 'erlang':'-'(call 'erlang':'bsl'('todo', 60), 'todo'))
+                                                ~{'digits'=>Rdigits,'signum'=>1,{'vbeam','type'}=>'Integer'}~
+                                     <'false'> when 'true' -> apply 'Integer.to_mont'/2(~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~, Ctx) end
+                                in  let <Start> =
+                                        'true'
+                                    in  let <Wstart> =
+                                            call 'erlang':'-'(apply 'Integer.bit_len'/1(X), 1)
+                                        in  let <Wvalue> =
+                                                0
+                                            in  let <Wend> =
+                                                    0
+                                                in  apply 'Integer.from_mont'/2(R, Ctx)
+    'Integer.mont_even'/3 =
+        fun (A, X, M) ->
+            let <M1> =
+                apply 'Integer.rsh_to_set_bit'/1(M)
+            in  let <J> =
+                    apply 'Integer.rsh_to_set_bit'/1(M)
+                in  let <M2> =
+                        apply 'Integer.left_shift'/2(~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~, J)
+                    in  let <X1> =
+                            apply 'Integer.mont_odd'/3(A, X, M1)
+                        in  let <X2> =
+                                apply 'Integer.exp_binary'/3(A, X, M2)
+                            in  let <M2n> =
+                                    call 'erlang':'-'('todo', 1)
+                                in  let <M1i> =
+                                        apply 'Integer.mod_inv'/2(M1, M2)
+                                    in  let <T1> =
+                                            apply 'Integer.mask_bits'/2(X1, M2n)
+                                        in  let <T2> =
+                                                apply 'Integer.mask_bits'/2(X2, M2n)
+                                            in  let <T> =
+                                                    apply 'Integer.mask_bits'/2(call 'erlang':'*'(case call 'erlang':'>='(apply 'Integer.abs_cmp'/2(T2, T1), 0) of <'true'> when 'true' -> apply 'Integer.mask_bits'/2(call 'erlang':'-'(T2, T1), M2n) <'false'> when 'true' -> call 'erlang':'+'(apply 'Integer.mask_bits'/2(apply 'Integer.bitwise_not'/1(apply 'Integer.abs'/1(call 'erlang':'-'(T1, T2))), M2n), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) end, M1i), M2n)
+                                                in  call 'erlang':'+'(X1, call 'erlang':'*'(M1, T))
+    'Integer.exp_binary'/3 =
+        fun (A, X, M) ->
+            let <N> =
+                call 'erlang':'-'('todo', 1)
+            in  let <Window> =
+                    apply 'get_window_size'/1('todo')
+                in  let <Table> =
+                        []
+                    in  do  apply 'Integer.mask_bits'/2(A, N)
+                            let <D> =
+                                apply 'Integer.mask_bits'/2(call 'erlang':'*'(call 'lists':'nth'(1, Table), call 'lists':'nth'(1, Table)), N)
+                            in  let <R> =
+                                    ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                in  let <Start> =
+                                        'true'
+                                    in  let <Wstart> =
+                                            call 'erlang':'-'(apply 'Integer.bit_len'/1(X), 1)
+                                        in  let <Wend> =
+                                                0
+                                            in  let <Wvalue> =
+                                                    1
+                                                in  apply 'Integer.mask_bits'/2(R, N)
+    'get_window_size'/1 =
+        fun (N) ->
+            case call 'erlang':'>'(N, 768) of <'true'> when 'true' -> 6 <'false'> when 'true' -> case call 'erlang':'>'(N, 256) of <'true'> when 'true' -> 5 <'false'> when 'true' -> case call 'erlang':'>'(N, 32) of <'true'> when 'true' -> 4 <'false'> when 'true' -> 3 end end end
+    'Integer.mont_mul'/3 =
+        fun (A, B, Ctx) ->
+            case call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'length'(call 'erlang':'map_get'('digits', A)), call 'erlang':'length'(call 'erlang':'map_get'('digits', B))), call 'erlang':'*'(2, call 'erlang':'length'(call 'erlang':'map_get'('digits', call 'erlang':'map_get'('n', Ctx))))) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <T> =
+                        call 'erlang':'*'(A, B)
+                    in  apply 'Integer.from_mont'/2(T, Ctx)
+            end
+    'Integer.to_mont'/2 =
+        fun (A, Ctx) ->
+            apply 'Integer.mont_mul'/3(A, call 'erlang':'map_get'('rr', Ctx), Ctx)
+    'Integer.from_mont'/2 =
+        fun (A, Ctx) ->
+            let <Log2n> =
+                'todo'
+            in  let <R> =
+                    apply 'Integer.right_shift'/2(call 'erlang':'+'(A, call 'erlang':'*'(apply 'Integer.mask_bits'/2(call 'erlang':'*'(apply 'Integer.mask_bits'/2(A, Log2n), call 'erlang':'map_get'('ni', Ctx)), Log2n), call 'erlang':'map_get'('n', Ctx))), Log2n)
+                in  case call 'erlang':'>='(apply 'Integer.abs_cmp'/2(R, call 'erlang':'map_get'('n', Ctx)), 0) of <'true'> when 'true' -> call 'erlang':'-'(R, call 'erlang':'map_get'('n', Ctx)) <'false'> when 'true' -> R end
+    'Integer.free'/1 =
+        fun (X) ->
+            case call 'erlang':'map_get'('is_const', X) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'todo'
+            end
+    'Integer.clone'/1 =
+        fun (X) ->
+            ~{'digits'=>call 'erlang':'map_get'('digits', X),'signum'=>call 'erlang':'map_get'('signum', X),'is_const'=>'false',{'vbeam','type'}=>'Integer'}~
+    'int_signum'/1 =
+        fun (Value) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    case call 'erlang':'<'(Value, 0) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+            end
+    'integer_from_int'/1 =
+        fun (Value) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Value, 'todo') of <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>-1,{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>apply 'int_signum'/1(Value),{'vbeam','type'}=>'Integer'}~ end
+            end
+    'integer_from_u32'/1 =
+        fun (Value) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    ~{'digits'=>['todo'|[]],'signum'=>1,{'vbeam','type'}=>'Integer'}~
+            end
+    'integer_from_i64'/1 =
+        fun (Value) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <Signum_value> =
+                        case call 'erlang':'<'(Value, 0) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+                    in  let <Abs_value> =
+                            case call 'erlang':'=:='(Value, 'todo') of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                        in  let <Lower> =
+                                'todo'
+                            in  let <Upper> =
+                                    'todo'
+                                in  case call 'erlang':'=:='(Upper, 0) of <'true'> when 'true' -> ~{'digits'=>[Lower|[]],'signum'=>Signum_value,{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> ~{'digits'=>[Lower|[Upper|[]]],'signum'=>Signum_value,{'vbeam','type'}=>'Integer'}~ end
+            end
+    'integer_from_u64'/1 =
+        fun (Value) ->
+            case call 'erlang':'=:='(Value, 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <Lower> =
+                        'todo'
+                    in  let <Upper> =
+                            'todo'
+                        in  case call 'erlang':'=:='(Upper, 0) of <'true'> when 'true' -> ~{'digits'=>[Lower|[]],'signum'=>1,{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> ~{'digits'=>[Lower|[Upper|[]]],'signum'=>1,{'vbeam','type'}=>'Integer'}~ end
+            end
+    'integer_from_bytes'/2 =
+        fun (Oinput, Config) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Oinput), 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <First_non_zero_index> =
+                        -1
+                    in  let <First_non_zero_index_1> =
+                            let <_2> =
+                                fun (I, First_non_zero_indexAcc) ->
+                                    let <First_non_zero_indexOut_4> =
+                                        case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(I, 1), Oinput), 0) of <'true'> when 'true' -> I <'false'> when 'true' -> First_non_zero_indexAcc end
+                                    in  First_non_zero_indexOut_4
+                            in  let <_3> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Oinput), 1))
+                            in  call 'lists':'foldl'(_2, First_non_zero_index, _3)
+                        in  case call 'erlang':'=:='(First_non_zero_index_1, -1) of
+                                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                <'false'> when 'true' -> 
+                                    let <Input> =
+                                        call 'lists':'nth'(call 'erlang':'+'('todo', 1), Oinput)
+                                    in  let <Carry_bits> =
+                                            0
+                                        in  let <Carry_value> =
+                                                'todo'
+                                            in  let <Digits> =
+                                                    []
+                                                in  do  case call 'erlang':'>'(Carry_bits, 0) of <'true'> when 'true' -> 
+                                                        let <Remaining_shift> =
+                                                            call 'erlang':'-'(60, Carry_bits)
+                                                        in  call 'erlang':'bsl'(Digits, call 'erlang':'bsr'(Carry_value, Remaining_shift))
+                                                     <'false'> when 'true' -> 'ok' end
+                                                        do  apply 'shrink_tail_zeros'/1(Digits)
+                                                            case call 'erlang':'=:='(call 'erlang':'length'(Digits), 0) of
+                                                                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                                                <'false'> when 'true' -> 
+                                                                    ~{'digits'=>Digits,'signum'=>call 'erlang':'map_get'('signum', Config),{'vbeam','type'}=>'Integer'}~
+                                                            end
+                            end
+            end
+    'integer_from_string'/1 =
+        fun (Characters) ->
+            apply 'integer_from_radix'/2(Characters, 10)
+    'integer_from_radix'/2 =
+        fun (All_characters, Radix) ->
+            case call 'erlang':'or'(call 'erlang':'<'(Radix, 2), call 'erlang':'>'(Radix, 36)) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Characters> =
+                        call 'string':'lowercase'(All_characters)
+                    in  do  apply 'validate_string'/2(Characters, Radix)
+                            apply 'integer_from_regular_string'/2(Characters, Radix)
+            end
+    'validate_string'/2 =
+        fun (Characters, Radix) ->
+            let <Sign_present> =
+                call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Characters), 0), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(1, Characters), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(1, Characters), 'todo')))
+            in  let <Start_index> =
+                    case Sign_present of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                in  'ok'
+    'integer_from_regular_string'/2 =
+        fun (Characters, Radix) ->
+            let <Sign_present> =
+                call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Characters), 0), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(1, Characters), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(1, Characters), 'todo')))
+            in  let <Signum> =
+                    case Sign_present of <'true'> when 'true' -> case call 'erlang':'=:='(call 'lists':'nth'(1, Characters), 'todo') of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end <'false'> when 'true' -> 1 end
+                in  let <Start_index> =
+                        case Sign_present of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                    in  let <Result> =
+                            ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                        in  let <Radix_int> =
+                                apply 'integer_from_u32'/1(Radix)
+                            in  let <Pow> =
+                                    call 'erlang':'map_get'('todo', ~{2=>59,3=>37,4=>29,5=>25,6=>23,7=>21,8=>19,9=>18,10=>18,11=>17,12=>16,13=>16,14=>15,15=>15,16=>14,17=>14,18=>14,19=>14,20=>13,21=>13,22=>13,23=>13,24=>13,25=>12,26=>12,27=>12,28=>12,29=>12,30=>12,31=>12,32=>11,33=>11,34=>11,35=>11,36=>11}~)
+                                in  let <Radix_pow> =
+                                        apply 'Integer.pow'/2(Radix_int, 'todo')
+                                    in  ~{'digits'=>call 'erlang':'map_get'('digits', Result),'signum'=>call 'erlang':'*'(call 'erlang':'map_get'('signum', Result), Signum),{'vbeam','type'}=>'Integer'}~
+    'regular_string_to_radix'/2 =
+        fun (Characters, Radix) ->
+            let <Result> =
+                'todo'
+            in  let <Result_1> =
+                    let <_2> =
+                        fun (C, ResultAcc) ->
+                            let <ResultOut_4> =
+                                call 'erlang':'+'(call 'erlang':'*'(ResultAcc, Radix), 'todo')
+                            in  ResultOut_4
+                    in  call 'lists':'foldl'(_2, Result, Characters)
+                in  Result_1
+    'Integer.abs'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> ~{'digits'=>call 'erlang':'map_get'('digits', A),'signum'=>1,{'vbeam','type'}=>'Integer'}~ end
+    'Integer.neg'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> ~{'digits'=>call 'erlang':'map_get'('digits', A),'signum'=>call 'erlang':'-'(call 'erlang':'map_get'('signum', A)),{'vbeam','type'}=>'Integer'}~ end
+    'Integer.+'/2 =
+        fun (Augend, Addend) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Augend), 0) of
+                <'true'> when 'true' -> apply 'Integer.clone'/1(Addend)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Addend), 0) of
+                        <'true'> when 'true' -> apply 'Integer.clone'/1(Augend)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Augend), call 'erlang':'map_get'('signum', Addend)) of
+                                <'true'> when 'true' -> apply 'Integer.add'/2(Augend, Addend)
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'<'(apply 'Integer.abs_cmp'/2(Augend, Addend), 0) of <'true'> when 'true' -> apply 'Integer.neg'/1(apply 'Integer.subtract'/2(Augend, Addend)) <'false'> when 'true' -> apply 'Integer.subtract'/2(Augend, Addend) end
+                            end
+                    end
+            end
+    'Integer.-'/2 =
+        fun (Minuend, Subtrahend) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Minuend), 0) of
+                <'true'> when 'true' -> apply 'Integer.neg'/1(Subtrahend)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Subtrahend), 0) of
+                        <'true'> when 'true' -> apply 'Integer.clone'/1(Minuend)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Minuend), call 'erlang':'map_get'('signum', Subtrahend)) of
+                                <'true'> when 'true' -> apply 'Integer.subtract'/2(Minuend, Subtrahend)
+                                <'false'> when 'true' -> 
+                                    apply 'Integer.add'/2(Minuend, Subtrahend)
+                            end
+                    end
+            end
+    'Integer.add'/2 =
+        fun (Integer, Addend) ->
+            let <A> =
+                call 'erlang':'map_get'('digits', Integer)
+            in  let <B> =
+                    call 'erlang':'map_get'('digits', Addend)
+                in  let <Storage> =
+                        []
+                    in  do  apply 'add_digit_array'/3(A, B, Storage)
+                            ~{'signum'=>call 'erlang':'map_get'('signum', Integer),'digits'=>Storage,{'vbeam','type'}=>'Integer'}~
+    'Integer.subtract'/2 =
+        fun (Integer, Subtrahend) ->
+            let <Cmp> =
+                apply 'Integer.abs_cmp'/2(Integer, Subtrahend)
+            in  case call 'erlang':'=:='(Cmp, 0) of
+                    <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                    <'false'> when 'true' -> 
+                        let <A> =
+                            case call 'erlang':'>'(Cmp, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                        in  let <B> =
+                                case call 'erlang':'>'(Cmp, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                            in  let <Storage> =
+                                    []
+                                in  do  apply 'subtract_digit_array'/3(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B), Storage)
+                                        ~{'signum'=>call 'erlang':'*'(Cmp, call 'erlang':'map_get'('signum', A)),'digits'=>Storage,{'vbeam','type'}=>'Integer'}~
+                end
+    'Integer.*'/2 =
+        fun (Multiplicand, Multiplier) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('signum', Multiplicand), 0), call 'erlang':'=:='(call 'erlang':'map_get'('signum', Multiplier), 0)) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Multiplicand, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) of
+                        <'true'> when 'true' -> apply 'Integer.clone'/1(Multiplier)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'=:='(Multiplier, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) of
+                                <'true'> when 'true' -> apply 'Integer.clone'/1(Multiplicand)
+                                <'false'> when 'true' -> 
+                                    let <Storage> =
+                                        []
+                                    in  do  apply 'multiply_digit_array'/3(call 'erlang':'map_get'('digits', Multiplicand), call 'erlang':'map_get'('digits', Multiplier), Storage)
+                                            ~{'signum'=>call 'erlang':'*'(call 'erlang':'map_get'('signum', Multiplicand), call 'erlang':'map_get'('signum', Multiplier)),'digits'=>Storage,{'vbeam','type'}=>'Integer'}~
+                            end
+                    end
+            end
+    'Integer.div_mod_internal'/2 =
+        fun (Dividend, Divisor) ->
+            let <Q> =
+                []
+            in  let <R> =
+                    []
+                in  let <Q_signum> =
+                        0
+                    in  let <R_signum> =
+                            0
+                        in  do  apply 'divide_digit_array'/4(call 'erlang':'map_get'('digits', Dividend), call 'erlang':'map_get'('digits', Divisor), Q, R)
+                                let <Q_signum_1> =
+                                    case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'>'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> 1 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'<'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> -1 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'>'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end end end
+                                in  let <R_signum_2> =
+                                        case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'>'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> let <Q_signum_3> = 1 in 1 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'<'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> let <Q_signum_4> = -1 in 1 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('signum', Dividend), 0), call 'erlang':'>'(call 'erlang':'map_get'('signum', Divisor), 0)) of <'true'> when 'true' -> let <Q_signum_5> = -1 in -1 <'false'> when 'true' -> let <Q_signum_6> = 1 in -1 end end end
+                                    in  let <Quotient> =
+                                            ~{'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(Q), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> Q_signum_6 end,'digits'=>Q,{'vbeam','type'}=>'Integer'}~
+                                        in  let <Remainder> =
+                                                ~{'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(R), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> R_signum_2 end,'digits'=>R,{'vbeam','type'}=>'Integer'}~
+                                            in  Quotient
+    'Integer.div_mod'/2 =
+        fun (Dividend, Divisor) ->
+            do  case 'todo' of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                apply 'Integer.div_mod_internal'/2(Dividend, Divisor)
+    'Integer.div_mod_checked'/2 =
+        fun (Dividend, Divisor) ->
+            case 'todo' of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    apply 'Integer.div_mod_internal'/2(Dividend, Divisor)
+            end
+    'Integer./'/2 =
+        fun (Dividend, Divisor) ->
+            let <Q> =
+                apply 'Integer.div_mod'/2(Dividend, Divisor)
+            in  do  apply 'Integer.div_mod'/2(Dividend, Divisor)
+                    Q
+    'Integer.%'/2 =
+        fun (Dividend, Divisor) ->
+            do  apply 'Integer.div_mod'/2(Dividend, Divisor)
+let <R> =
+                apply 'Integer.div_mod'/2(Dividend, Divisor)
+            in  R
+    'Integer.div_checked'/2 =
+        fun (Dividend, Divisor) ->
+            let <Q> =
+                apply 'Integer.div_mod_checked'/2(Dividend, Divisor)
+            in  do  apply 'Integer.div_mod_checked'/2(Dividend, Divisor)
+                    Q
+    'Integer.mod_checked'/2 =
+        fun (Dividend, Divisor) ->
+            do  apply 'Integer.div_mod_checked'/2(Dividend, Divisor)
+let <R> =
+                apply 'Integer.div_mod_checked'/2(Dividend, Divisor)
+            in  R
+    'Integer.mod_euclid'/2 =
+        fun (Dividend, Divisor) ->
+            let <R> =
+                call 'erlang':'rem'(Dividend, Divisor)
+            in  case call 'erlang':'<'(R, ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) of <'true'> when 'true' -> call 'erlang':'+'(R, apply 'Integer.abs'/1(Divisor)) <'false'> when 'true' -> R end
+    'Integer.mod_euclid_checked'/2 =
+        fun (Dividend, Divisor) ->
+            let <R> =
+                apply 'Integer.mod_checked'/2(Dividend, Divisor)
+            in  case call 'erlang':'<'(R, ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) of <'true'> when 'true' -> call 'erlang':'+'(R, apply 'Integer.abs'/1(Divisor)) <'false'> when 'true' -> R end
+    'Integer.mask_bits'/2 =
+        fun (A, N) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('digits', A)), 0), call 'erlang':'=:='(N, 0)) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <W> =
+                        call 'erlang':'div'(N, 60)
+                    in  let <B> =
+                            call 'erlang':'rem'(N, 60)
+                        in  case call 'erlang':'>='(W, call 'erlang':'length'(call 'erlang':'map_get'('digits', A))) of
+                                <'true'> when 'true' -> A
+                                <'false'> when 'true' -> 
+                                    ~{'digits'=>case call 'erlang':'=:='(B, 0) of <'true'> when 'true' -> 
+                                        let <Storage> =
+                                            []
+                                        in  Storage
+                                     <'false'> when 'true' -> 
+                                        let <Storage_1> =
+                                            []
+                                        in  do  call 'erlang':'bnot'(call 'erlang':'bsl'('todo', B))
+                                                Storage_1
+                                     end,'signum'=>1,{'vbeam','type'}=>'Integer'}~
+                            end
+            end
+    'Integer.pow'/2 =
+        fun (Base, Exponent) ->
+            case call 'erlang':'=:='(Exponent, 0) of
+                <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Exponent, 1) of
+                        <'true'> when 'true' -> apply 'Integer.clone'/1(Base)
+                        <'false'> when 'true' -> 
+                            let <N> =
+                                Exponent
+                            in  let <X> =
+                                    Base
+                                in  let <Y> =
+                                        ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                    in  call 'erlang':'*'(X, Y)
+                    end
+            end
+    'Integer.mod_pow'/3 =
+        fun (Base, Exponent, Modulus) ->
+            case call 'erlang':'=:='(Exponent, 0) of
+                <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Exponent, 1) of
+                        <'true'> when 'true' -> call 'erlang':'rem'(Base, Modulus)
+                        <'false'> when 'true' -> 
+                            let <N> =
+                                Exponent
+                            in  let <X> =
+                                    call 'erlang':'rem'(Base, Modulus)
+                                in  let <Y> =
+                                        ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                    in  call 'erlang':'rem'(call 'erlang':'*'(X, Y), Modulus)
+                    end
+            end
+    'Integer.big_mod_pow'/3 =
+        fun (Base, Exponent, Modulus) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('signum', Exponent), 0) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=<'(apply 'Integer.bit_len'/1(Modulus), 1) of
+                        <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('signum', Exponent), 0), call 'erlang':'=:='(apply 'Integer.bit_len'/1(Base), 1)) of
+                                <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Base), 0) of
+                                        <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                        <'false'> when 'true' -> 
+                                            case call 'erlang':'=:='(apply 'Integer.bit_len'/1(Exponent), 1) of
+                                                <'true'> when 'true' -> call 'erlang':'rem'(Base, Modulus)
+                                                <'false'> when 'true' -> 
+                                                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('digits', Exponent)), 1) of <'true'> when 'true' -> case apply 'Integer.is_odd'/1(Modulus) of <'true'> when 'true' -> apply 'Integer.mont_odd'/3(Base, Exponent, Modulus) <'false'> when 'true' -> case apply 'Integer.is_power_of_2'/1(Modulus) of <'true'> when 'true' -> apply 'Integer.exp_binary'/3(Base, Exponent, Modulus) <'false'> when 'true' -> apply 'Integer.mont_even'/3(Base, Exponent, Modulus) end end <'false'> when 'true' -> apply 'Integer.mod_pow'/3(Base, call 'lists':'nth'(1, call 'erlang':'map_get'('digits', Exponent)), Modulus) end
+                                            end
+                                    end
+                            end
+                    end
+            end
+    'Integer.inc'/1 =
+        fun (A) ->
+            let <A_1> =
+                call 'erlang':'+'(A, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+            in  A_1
+    'Integer.dec'/1 =
+        fun (A) ->
+            let <A_1> =
+                call 'erlang':'-'(A, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+            in  A_1
+    'Integer.=='/2 =
+        fun (A, B) ->
+            call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), call 'erlang':'map_get'('signum', B)), call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('digits', A)), call 'erlang':'length'(call 'erlang':'map_get'('digits', B)))), call 'erlang':'=:='(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B)))
+    'Integer.abs_cmp'/2 =
+        fun (A, B) ->
+            apply 'compare_digit_array'/2(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B))
+    'Integer.<'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('signum', A), call 'erlang':'map_get'('signum', B)) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'>'(call 'erlang':'map_get'('signum', A), call 'erlang':'map_get'('signum', B)) of
+                        <'true'> when 'true' -> 'false'
+                        <'false'> when 'true' -> 
+                            let <Signum> =
+                                call 'erlang':'map_get'('signum', A)
+                            in  case call 'erlang':'=:='(Signum, 0) of
+                                    <'true'> when 'true' -> 'false'
+                                    <'false'> when 'true' -> 
+                                        let <Cmp> =
+                                            apply 'Integer.abs_cmp'/2(A, B)
+                                        in  case call 'erlang':'<'(Signum, 0) of <'true'> when 'true' -> call 'erlang':'>'(Cmp, 0) <'false'> when 'true' -> call 'erlang':'<'(Cmp, 0) end
+                                end
+                    end
+            end
+    'Integer.get_bit'/2 =
+        fun (A, I) ->
+            let <Target_index> =
+                call 'erlang':'div'(I, 60)
+            in  let <Offset> =
+                    call 'erlang':'rem'(I, 60)
+                in  case call 'erlang':'>='(Target_index, call 'erlang':'length'(call 'erlang':'map_get'('digits', A))) of
+                        <'true'> when 'true' -> 'false'
+                        <'false'> when 'true' -> 
+                            call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'bsr'(call 'lists':'nth'(call 'erlang':'+'(Target_index, 1), call 'erlang':'map_get'('digits', A)), Offset), 1), 0)
+                    end
+    'Integer.set_bit'/3 =
+        fun (A, I, Value) ->
+            let <Target_index> =
+                call 'erlang':'div'(I, 60)
+            in  let <Offset> =
+                    call 'erlang':'rem'(I, 60)
+                in  case call 'erlang':'>='(Target_index, call 'erlang':'length'(call 'erlang':'map_get'('digits', A))) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Copy> =
+                                call 'erlang':'map_get'('digits', A)
+                            in  do  case Value of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    let <A_1> =
+                                        ~{'signum'=>call 'erlang':'map_get'('signum', A),'digits'=>Copy,{'vbeam','type'}=>'Integer'}~
+                                    in  A_1
+                    end
+    'Integer.bitwise_or'/2 =
+        fun (A, B) ->
+            let <Result> =
+                []
+            in  do  apply 'bitwise_or_digit_array'/3(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B), Result)
+                    ~{'digits'=>Result,'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(Result), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+    'Integer.bitwise_and'/2 =
+        fun (A, B) ->
+            let <Result> =
+                []
+            in  do  apply 'bitwise_and_digit_array'/3(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B), Result)
+                    ~{'digits'=>Result,'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(Result), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+    'Integer.bitwise_not'/1 =
+        fun (A) ->
+            let <Result> =
+                []
+            in  do  apply 'bitwise_not_digit_array'/2(call 'erlang':'map_get'('digits', A), Result)
+                    ~{'digits'=>Result,'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(Result), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+    'Integer.bitwise_com'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), -1) of <'true'> when 'true' -> call 'erlang':'-'(apply 'Integer.abs'/1(A), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) <'false'> when 'true' -> apply 'Integer.neg'/1(call 'erlang':'+'(A, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)) end
+    'Integer.bitwise_xor'/2 =
+        fun (A, B) ->
+            let <Result> =
+                []
+            in  do  apply 'bitwise_xor_digit_array'/3(call 'erlang':'map_get'('digits', A), call 'erlang':'map_get'('digits', B), Result)
+                    ~{'digits'=>Result,'signum'=>case call 'erlang':'=:='(call 'erlang':'length'(Result), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+    'Integer.left_shift'/2 =
+        fun (A, Amount) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> A
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Amount, 0) of
+                        <'true'> when 'true' -> A
+                        <'false'> when 'true' -> 
+                            let <Normalised_amount> =
+                                call 'erlang':'rem'(Amount, 60)
+                            in  let <Digit_offset> =
+                                    'todo'
+                                in  let <New_array> =
+                                        []
+                                    in  do  let <_1> =
+                                            fun (Index) ->
+                                                'ok'
+                                        in  let <_2> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('digits', A)), 1))
+                                            in  call 'lists':'foreach'(_1, _2)
+                                            do  case call 'erlang':'>'(Normalised_amount, 0) of <'true'> when 'true' -> apply 'shift_digits_left'/3(New_array, Normalised_amount, New_array) <'false'> when 'true' -> 'ok' end
+                                                ~{'digits'=>New_array,'signum'=>call 'erlang':'map_get'('signum', A),{'vbeam','type'}=>'Integer'}~
+                    end
+            end
+    'Integer.right_shift'/2 =
+        fun (A, Amount) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> A
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(Amount, 0) of
+                        <'true'> when 'true' -> A
+                        <'false'> when 'true' -> 
+                            let <Normalised_amount> =
+                                call 'erlang':'rem'(Amount, 60)
+                            in  let <Digit_offset> =
+                                    'todo'
+                                in  case call 'erlang':'>='(Digit_offset, call 'erlang':'length'(call 'erlang':'map_get'('digits', A))) of
+                                        <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                        <'false'> when 'true' -> 
+                                            let <New_array> =
+                                                []
+                                            in  do  let <_1> =
+                                                    fun (Index) ->
+                                                        'ok'
+                                                in  let <_2> =
+                                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(New_array), 1))
+                                                    in  call 'lists':'foreach'(_1, _2)
+                                                    do  case call 'erlang':'>'(Normalised_amount, 0) of <'true'> when 'true' -> apply 'shift_digits_right'/3(New_array, Normalised_amount, New_array) <'false'> when 'true' -> 'ok' end
+                                                        ~{'digits'=>New_array,'signum'=>case call 'erlang':'>'(call 'erlang':'length'(New_array), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('signum', A) <'false'> when 'true' -> 0 end,{'vbeam','type'}=>'Integer'}~
+                                    end
+                    end
+            end
+    'Integer.bin_str'/1 =
+        fun (Integer) ->
+            apply 'Integer.radix_str'/2(Integer, 2)
+    'Integer.hex'/1 =
+        fun (Integer) ->
+            apply 'Integer.radix_str'/2(Integer, 16)
+    'Integer.radix_str'/2 =
+        fun (Integer, Radix) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('signum', Integer), 0), call 'erlang':'=:='(Radix, 0)) of
+                <'true'> when 'true' -> #{#<48>(8,1,'integer',['unsigned'|['big']])}#
+                <'false'> when 'true' -> 
+                    apply 'Integer.general_radix_str'/2(Integer, 'todo')
+            end
+    'Integer.general_radix_str'/2 =
+        fun (Integer, Radix) ->
+            let <Divisor> =
+                apply 'Integer.pow'/2(apply 'integer_from_int'/1(Radix), 'todo')
+            in  let <Current> =
+                    apply 'Integer.abs'/1(Integer)
+                in  let <Digit> =
+                        ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                    in  let <Sb> =
+                            apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('digits', Integer)), call 'erlang':'map_get'(Radix, ~{2=>59,3=>37,4=>29,5=>25,6=>23,7=>21,8=>19,9=>18,10=>18,11=>17,12=>16,13=>16,14=>15,15=>15,16=>14,17=>14,18=>14,19=>14,20=>13,21=>13,22=>13,23=>13,24=>13,25=>12,26=>12,27=>12,28=>12,29=>12,30=>12,31=>12,32=>11,33=>11,34=>11,35=>11,36=>11}~)))
+                        in  let <St> =
+                                []
+                            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('signum', Integer), -1) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                    apply 'Builder.str'/1(Sb)
+    'general_str'/3 =
+        fun (Quotient, Remainder, Radix) ->
+            case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('signum', Quotient), 0), call 'erlang':'=:='(call 'erlang':'map_get'('signum', Remainder), 0)) of
+                <'true'> when 'true' -> #{#<48>(8,1,'integer',['unsigned'|['big']])}#
+                <'false'> when 'true' -> 
+                    let <Divisor> =
+                        apply 'integer_from_int'/1(Radix)
+                    in  let <Current> =
+                            apply 'Integer.abs'/1(Remainder)
+                        in  let <Digit> =
+                                ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                            in  let <Sb> =
+                                    apply 'new_builder'/1(call 'erlang':'map_get'(Radix, ~{2=>59,3=>37,4=>29,5=>25,6=>23,7=>21,8=>19,9=>18,10=>18,11=>17,12=>16,13=>16,14=>15,15=>15,16=>14,17=>14,18=>14,19=>14,20=>13,21=>13,22=>13,23=>13,24=>13,25=>12,26=>12,27=>12,28=>12,29=>12,30=>12,31=>12,32=>11,33=>11,34=>11,35=>11,36=>11}~))
+                                in  let <St> =
+                                        []
+                                    in  do  case call 'erlang':'>'(call 'erlang':'map_get'('signum', Quotient), 0) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, apply 'repeat'/2(48, call 'erlang':'-'(call 'erlang':'map_get'(Radix, ~{2=>59,3=>37,4=>29,5=>25,6=>23,7=>21,8=>19,9=>18,10=>18,11=>17,12=>16,13=>16,14=>15,15=>15,16=>14,17=>14,18=>14,19=>14,20=>13,21=>13,22=>13,23=>13,24=>13,25=>12,26=>12,27=>12,28=>12,29=>12,30=>12,31=>12,32=>11,33=>11,34=>11,35=>11,36=>11}~), call 'erlang':'length'(St)))) <'false'> when 'true' -> 'ok' end
+                                            apply 'Builder.str'/1(Sb)
+            end
+    'Integer.str'/1 =
+        fun (Integer) ->
+            apply 'Integer.radix_str'/2(Integer, 'todo')
+    'Integer.int'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    case call 'erlang':'and'(call 'erlang':'>='(call 'lists':'nth'(1, call 'erlang':'map_get'('digits', A)), 2147483648), call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), -1)) of
+                        <'true'> when 'true' -> -2147483648
+                        <'false'> when 'true' -> 
+                            let <Value> =
+                                'todo'
+                            in  call 'erlang':'*'(Value, call 'erlang':'map_get'('signum', A))
+                    end
+            end
+    'Integer.bytes'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> []
+                <'false'> when 'true' -> 
+                    let <Bit_len> =
+                        apply 'Integer.bit_len'/1(A)
+                    in  let <Bytes> =
+                            []
+                        in  let <Current_byte> =
+                                'todo'
+                            in  let <Bits_in_byte> =
+                                    0
+                                in  let <Digit> =
+                                        call 'lists':'last'(call 'erlang':'map_get'('digits', A))
+                                    in  let <Bit> =
+                                            'todo'
+                                        in  let <Bits_in_byte_1> =
+                                                call 'erlang':'-'(8, call 'erlang':'rem'(Bit_len, 8))
+                                            in  let <Bits_in_byte_2> =
+                                                    case call 'erlang':'=:='(Bits_in_byte_1, 8) of <'true'> when 'true' -> 0 <'false'> when 'true' -> Bits_in_byte_1 end
+                                                in  let <Msb_bits> =
+                                                        call 'erlang':'rem'(Bit_len, 60)
+                                                    in  let <Msb_bits_3> =
+                                                            case call 'erlang':'=:='(Msb_bits, 0) of <'true'> when 'true' -> 60 <'false'> when 'true' -> Msb_bits end
+                                                        in  Bytes
+            end
+    'Integer.factorial'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <Product> =
+                        ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                    in  let <Current> =
+                            A
+                        in  Product
+            end
+    'Integer.isqrt'/1 =
+        fun (A) ->
+            apply 'Integer.isqrt_checked'/1(A)
+    'Integer.isqrt_checked'/1 =
+        fun (A) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                        <'true'> when 'true' -> A
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('digits', A)), 1), call 'erlang':'=:='(call 'lists':'last'(call 'erlang':'map_get'('digits', A)), 1)) of
+                                <'true'> when 'true' -> A
+                                <'false'> when 'true' -> 
+                                    let <Shift> =
+                                        apply 'Integer.bit_len'/1(A)
+                                    in  let <Shift_1> =
+                                            case call 'erlang':'=:='(call 'erlang':'band'(Shift, 1), 1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> Shift end
+                                        in  let <Result> =
+                                                ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                            in  Result
+                            end
+                    end
+            end
+    'bi_min'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'bi_max'/2 =
+        fun (A, B) ->
+            case call 'erlang':'>'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'Integer.gcd'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(call 'erlang':'length'(call 'erlang':'map_get'('digits', B)), 8) of
+                <'true'> when 'true' -> apply 'Integer.gcd_euclid'/2(A, B)
+                <'false'> when 'true' -> 
+                    apply 'Integer.gcd_binary'/2(A, B)
+            end
+    'Integer.gcd_binary'/2 =
+        fun (A, B) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> apply 'Integer.abs'/1(B)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', B), 0) of
+                        <'true'> when 'true' -> apply 'Integer.abs'/1(A)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'or'(call 'erlang':'=:='(apply 'Integer.abs_cmp'/2(A, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~), 0), call 'erlang':'=:='(apply 'Integer.abs_cmp'/2(B, ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~), 0)) of
+                                <'true'> when 'true' -> ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                                <'false'> when 'true' -> 
+                                    let <Aa> =
+                                        apply 'Integer.rsh_to_set_bit'/1(apply 'Integer.abs'/1(A))
+                                    in  let <Az> =
+                                            apply 'Integer.rsh_to_set_bit'/1(apply 'Integer.abs'/1(A))
+                                        in  let <Bb> =
+                                                apply 'Integer.rsh_to_set_bit'/1(apply 'Integer.abs'/1(B))
+                                            in  let <Bz> =
+                                                    apply 'Integer.rsh_to_set_bit'/1(apply 'Integer.abs'/1(B))
+                                                in  let <Shift> =
+                                                        apply 'umin'/2(Az, Bz)
+                                                    in  apply 'Integer.left_shift'/2(Bb, Shift)
+                            end
+                    end
+            end
+    'Integer.gcd_euclid'/2 =
+        fun (A, B) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', A), 0) of
+                <'true'> when 'true' -> apply 'Integer.abs'/1(B)
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('signum', B), 0) of
+                        <'true'> when 'true' -> apply 'Integer.abs'/1(A)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'<'(call 'erlang':'map_get'('signum', A), 0) of
+                                <'true'> when 'true' -> apply 'Integer.gcd_euclid'/2(apply 'Integer.neg'/1(A), B)
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'<'(call 'erlang':'map_get'('signum', B), 0) of
+                                        <'true'> when 'true' -> apply 'Integer.gcd_euclid'/2(A, apply 'Integer.neg'/1(B))
+                                        <'false'> when 'true' -> 
+                                            let <X> =
+                                                A
+                                            in  let <Y> =
+                                                    B
+                                                in  let <R> =
+                                                        call 'erlang':'rem'(X, Y)
+                                                    in  Y
+                                    end
+                            end
+                    end
+            end
+    'Integer.mod_inverse'/2 =
+        fun (A, N) ->
+            case call 'erlang':'=<'(apply 'Integer.bit_len'/1(N), 1) of <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> case call 'erlang':'=/='(apply 'Integer.gcd'/2(A, N), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~) of <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> apply 'Integer.mod_inv'/2(A, N) end end
+    'Integer.mod_inv'/2 =
+        fun (A, M) ->
+            let <N> =
+                ~{'digits'=>call 'erlang':'map_get'('digits', M),'signum'=>1,{'vbeam','type'}=>'Integer'}~
+            in  let <B> =
+                    A
+                in  let <X> =
+                        ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                    in  let <Y> =
+                            ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                        in  let <B_1> =
+                                case call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'map_get'('signum', B), 0), call 'erlang':'>='(apply 'Integer.abs_cmp'/2(B, N), 0)) of <'true'> when 'true' -> call 'erlang':'rem'(B, N) <'false'> when 'true' -> B end
+                            in  let <Sign> =
+                                    -1
+                                in  let <Y_2> =
+                                        case call 'erlang':'<'(Sign, 0) of <'true'> when 'true' -> call 'erlang':'-'(M, Y) <'false'> when 'true' -> Y end
+                                    in  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('signum', Y_2), 0), call 'erlang':'<'(apply 'Integer.abs_cmp'/2(Y_2, M), 0)) of <'true'> when 'true' -> Y_2 <'false'> when 'true' -> call 'erlang':'rem'(Y_2, M) end
+    'Integer.rsh_to_set_bit'/1 =
+        fun (X) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('digits', X)), 0) of
+                <'true'> when 'true' -> ~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~
+                <'false'> when 'true' -> 
+                    let <N> =
+                        'todo'
+                    in  let <N_1> =
+                            call 'erlang':'+'(call 'erlang':'*'(N, 60), 'todo')
+                        in  apply 'Integer.right_shift'/2(X, N_1)
+            end
+    'Integer.is_odd'/1 =
+        fun (X) ->
+            call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'length'(call 'erlang':'map_get'('digits', X)), 0), call 'erlang':'=:='(call 'erlang':'band'(call 'lists':'nth'(1, call 'erlang':'map_get'('digits', X)), 1), 1))
+    'Integer.is_power_of_2'/1 =
+        fun (X) ->
+            case call 'erlang':'=<'(call 'erlang':'map_get'('signum', X), 0) of
+                <'true'> when 'true' -> 'false'
+                <'false'> when 'true' -> 
+                    let <N> =
+                        call 'lists':'last'(call 'erlang':'map_get'('digits', X))
+                    in  call 'erlang':'=:='(call 'erlang':'band'(N, call 'erlang':'-'(N, 'todo')), 0)
+            end
+    'Integer.bit_len'/1 =
+        fun (X) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('signum', X), 0) of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('digits', X)), 0) of
+                        <'true'> when 'true' -> 0
+                        <'false'> when 'true' -> 
+                            call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('digits', X)), 60), call 'erlang':'-'(apply 'leading_zeros_64'/1(call 'lists':'last'(call 'erlang':'map_get'('digits', X))), 4))
+                    end
+            end
+    'Integer.from_json_number'/2 =
+        fun (Result, Raw_number) ->
+            let <Index> =
+                0
+            in  let <Is_negative> =
+                    'false'
+                in  let <Is_negative_1> =
+                        case call 'erlang':'=:='(call 'lists':'nth'(1, Raw_number), 'todo') of <'true'> when 'true' -> 'true' <'false'> when 'true' -> Is_negative end
+                    in  let <Ten> =
+                            apply 'integer_from_int'/1(10)
+                        in  let <Result_2> =
+                                case Is_negative_1 of <'true'> when 'true' -> call 'erlang':'*'(Result, apply 'integer_from_int'/1(-1)) <'false'> when 'true' -> Result end
+                            in  'ok'
+    'Integer.to_json'/1 =
+        fun (Result) ->
+            apply 'Integer.str'/1(Result)
+    'imax'/2 =
+        fun (A, B) ->
+            case call 'erlang':'>'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'imin'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'umax'/2 =
+        fun (A, B) ->
+            case call 'erlang':'>'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'umin'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+    'iabs'/1 =
+        fun (V) ->
+            case call 'erlang':'>'(V, 0) of <'true'> when 'true' -> V <'false'> when 'true' -> call 'erlang':'-'(V) end
+    'shrink_tail_zeros'/1 =
+        fun (A) ->
+            let <Alen> =
+                call 'erlang':'length'(A)
+            in  'ok'
+    'Integer.shrink_tail_zeros'/1 =
+        fun (I) ->
+            let <Alen> =
+                call 'erlang':'length'(call 'erlang':'map_get'('digits', I))
+            in  'ok'
+    'debug_u64_str'/1 =
+        fun (A) ->
+            let <Sb> =
+                apply 'new_builder'/1(30)
+            in  do  apply 'Builder.write_string'/2(Sb, #{#<91>(8,1,'integer',['unsigned'|['big']])}#)
+                    let <First> =
+                        'true'
+                    in  let <First_1> =
+                            let <_2> =
+                                fun (I, FirstAcc) ->
+                                    do  case call 'erlang':'not'(FirstAcc) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                        do  apply 'Builder.write_string'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u64.hex'/1(call 'lists':'nth'(call 'erlang':'+'(I, 1), A))|[]]]))
+                                            let <FirstOut_4> =
+                                                'false'
+                                            in  FirstOut_4
+                            in  let <_3> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(A), 1))
+                            in  call 'lists':'foldl'(_2, First, _3)
+                        in  do  apply 'Builder.write_string'/2(Sb, #{#<93>(8,1,'integer',['unsigned'|['big']])}#)
+                                apply 'Builder.str'/1(Sb)
+    'debug_u32_str'/1 =
+        fun (A) ->
+            let <B> =
+                []
+            in  let <Curr_u32> =
+                    'todo'
+                in  let <Bits_collected> =
+                        0
+                    in  do  let <_1> =
+                            fun (W) ->
+                                'ok'
+                        in  call 'lists':'foreach'(_1, A)
+                            do  case call 'erlang':'>'(Bits_collected, 0) of <'true'> when 'true' -> call 'erlang':'bsl'(B, Curr_u32) <'false'> when 'true' -> 'ok' end
+                                let <Blen> =
+                                    call 'erlang':'length'(B)
+                                in  let <Sb> =
+                                        apply 'new_builder'/1(30)
+                                    in  do  apply 'Builder.write_string'/2(Sb, #{#<91>(8,1,'integer',['unsigned'|['big']])}#)
+                                            let <First> =
+                                                'true'
+                                            in  let <First_2> =
+                                                    let <_3> =
+                                                        fun (I, FirstAcc) ->
+                                                            do  case call 'erlang':'not'(FirstAcc) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                                                do  apply 'Builder.write_string'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u32.hex'/1(call 'lists':'nth'(call 'erlang':'+'(I, 1), B))|[]]]))
+                                                                    let <FirstOut_5> =
+                                                                        'false'
+                                                                    in  FirstOut_5
+                                                    in  let <_4> =
+                                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(B), 1))
+                                                    in  call 'lists':'foldl'(_3, First, _4)
+                                                in  do  apply 'Builder.write_string'/2(Sb, #{#<93>(8,1,'integer',['unsigned'|['big']])}#)
+                                                        apply 'Builder.str'/1(Sb)
+    'found_multiplication_base_case'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'length'(Operand_a), 0), call 'erlang':'=:='(call 'erlang':'length'(Operand_b), 0)) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'<'(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)) of
+                        <'true'> when 'true' -> 'true'
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'=:='(call 'erlang':'length'(Operand_b), 1) of
+                                <'true'> when 'true' -> 'true'
+                                <'false'> when 'true' -> 
+                                    'false'
+                            end
+                    end
+            end
+    'karatsuba_multiply_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            case apply 'found_multiplication_base_case'/3(Operand_a, Operand_b, Storage) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Half> =
+                        call 'erlang':'div'(apply 'imax'/2(call 'erlang':'length'(Operand_a), call 'erlang':'length'(Operand_b)), 2)
+                    in  let <A_l> =
+                            'todo'
+                        in  let <A_h> =
+                                'todo'
+                            in  let <B_l> =
+                                    []
+                                in  let <B_h> =
+                                        []
+                                    in  let <B_l_1> =
+                                            case call 'erlang':'=<'(Half, call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                                        in  let <B_h_2> =
+                                                case call 'erlang':'=<'(Half, call 'erlang':'length'(Operand_b)) of <'true'> when 'true' -> let <B_l_3> = 'todo' in 'todo' <'false'> when 'true' -> B_h end
+                                            in  do  apply 'shrink_tail_zeros'/1(A_l)
+                                                    do  apply 'shrink_tail_zeros'/1(A_h)
+                                                        do  apply 'shrink_tail_zeros'/1(B_l_3)
+                                                            do  apply 'shrink_tail_zeros'/1(B_h_2)
+                                                                do  apply 'multiply_digit_array'/3(A_h, B_h_2, Storage)
+                                                                    let <P_3> =
+                                                                        []
+                                                                    in  do  apply 'multiply_digit_array'/3(A_l, B_l_3, P_3)
+                                                                            let <Tmp_1> =
+                                                                                []
+                                                                            in  let <Tmp_2> =
+                                                                                    []
+                                                                                in  do  apply 'add_digit_array'/3(A_h, A_l, Tmp_1)
+                                                                                        do  apply 'add_digit_array'/3(B_h_2, B_l_3, Tmp_2)
+                                                                                            let <P_2> =
+                                                                                                []
+                                                                                            in  do  apply 'multiply_digit_array'/3(Tmp_1, Tmp_2, P_2)
+                                                                                                    do  apply 'subtract_in_place'/2(P_2, Storage)
+                                                                                                        do  apply 'subtract_in_place'/2(P_2, P_3)
+                                                                                                            do  apply 'left_shift_digits_in_place'/2(Storage, call 'erlang':'*'(2, Half))
+                                                                                                                do  apply 'left_shift_digits_in_place'/2(P_2, Half)
+                                                                                                                    do  apply 'add_in_place'/2(Storage, P_2)
+                                                                                                                        do  apply 'add_in_place'/2(Storage, P_3)
+                                                                                                                            apply 'shrink_tail_zeros'/1(Storage)
+            end
+    'toom3_multiply_digit_array'/3 =
+        fun (Operand_a, Operand_b, Storage) ->
+            case apply 'found_multiplication_base_case'/3(Operand_a, Operand_b, Storage) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <K> =
+                        call 'erlang':'div'(call 'erlang':'+'(call 'erlang':'length'(Operand_a), 2), 3)
+                    in  let <K2> =
+                            call 'erlang':'*'(2, K)
+                        in  let <A0> =
+                                ~{'digits'=>'todo','signum'=>case apply '[]u64.all'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_a), call 'erlang':'=:='(It, 0)) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+                            in  do  apply 'Integer.shrink_tail_zeros'/1(A0)
+                                    let <A1> =
+                                        ~{'digits'=>'todo','signum'=>case apply '[]u64.all'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_a), call 'erlang':'=:='(It, 0)) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end,{'vbeam','type'}=>'Integer'}~
+                                    in  do  apply 'Integer.shrink_tail_zeros'/1(A1)
+                                            let <A2> =
+                                                ~{'digits'=>'todo','signum'=>1,{'vbeam','type'}=>'Integer'}~
+                                            in  let <B0> =
+                                                    apply 'Integer.clone'/1(~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+                                                in  let <B1> =
+                                                        apply 'Integer.clone'/1(~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+                                                    in  let <B2> =
+                                                            apply 'Integer.clone'/1(~{'digits'=>[],'signum'=>0,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+                                                        in  let <B0_1> =
+                                                                case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K) of <'true'> when 'true' -> ~{'digits'=>Operand_b,'signum'=>1,{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K2) of <'true'> when 'true' -> B0 <'false'> when 'true' -> B0 end end
+                                                            in  let <B1_2> =
+                                                                    case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K) of <'true'> when 'true' -> B1 <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K2) of <'true'> when 'true' -> do  case call 'erlang':'not'(apply '[]u64.all'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_b), call 'erlang':'=:='(It, 0))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end do  apply 'Integer.shrink_tail_zeros'/1(B0_1) ~{'digits'=>call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_b),'signum'=>1,{'vbeam','type'}=>'Integer'}~ <'false'> when 'true' -> B1 end end
+                                                                in  let <B2_3> =
+                                                                        case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K) of <'true'> when 'true' -> B2 <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'length'(Operand_b), K2) of <'true'> when 'true' -> B2 <'false'> when 'true' -> do  case call 'erlang':'not'(apply '[]u64.all'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_b), call 'erlang':'=:='(It, 0))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end do  apply 'Integer.shrink_tail_zeros'/1(B0_1) do  case call 'erlang':'not'(apply '[]u64.all'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_b), call 'erlang':'=:='(It, 0))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end do  apply 'Integer.shrink_tail_zeros'/1(B1_2) ~{'digits'=>call 'lists':'nth'(call 'erlang':'+'('todo', 1), Operand_b),'signum'=>1,{'vbeam','type'}=>'Integer'}~ end end
+                                                                    in  let <P0> =
+                                                                            call 'erlang':'*'(A0, B0_1)
+                                                                        in  let <Ptemp> =
+                                                                                call 'erlang':'+'(A2, A0)
+                                                                            in  let <Qtemp> =
+                                                                                    call 'erlang':'+'(B2_3, B0_1)
+                                                                                in  let <Vm1> =
+                                                                                        call 'erlang':'*'(call 'erlang':'-'(Ptemp, A1), call 'erlang':'-'(Qtemp, B1_2))
+                                                                                    in  let <Ptemp_4> =
+                                                                                            A1
+                                                                                        in  let <Qtemp_5> =
+                                                                                                B1_2
+                                                                                            in  let <P1> =
+                                                                                                    call 'erlang':'*'(Ptemp_4, Qtemp_5)
+                                                                                                in  let <P2> =
+                                                                                                        call 'erlang':'*'(call 'erlang':'-'(apply 'Integer.left_shift'/2(call 'erlang':'+'(Ptemp_4, A2), 1), A0), call 'erlang':'-'(apply 'Integer.left_shift'/2(call 'erlang':'+'(Qtemp_5, B2_3), 1), B0_1))
+                                                                                                    in  let <Pinf> =
+                                                                                                            call 'erlang':'*'(A2, B2_3)
+                                                                                                        in  let <T2> =
+                                                                                                                apply 'Integer.div_mod_internal'/2(call 'erlang':'-'(P2, Vm1), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+                                                                                                            in  do  apply 'Integer.div_mod_internal'/2(call 'erlang':'-'(P2, Vm1), ~{'digits'=>['todo'|[]],'signum'=>1,'is_const'=>'true',{'vbeam','type'}=>'Integer'}~)
+                                                                                                                    let <Tm1> =
+                                                                                                                        apply 'Integer.right_shift'/2(call 'erlang':'-'(P1, Vm1), 1)
+                                                                                                                    in  let <T1> =
+                                                                                                                            call 'erlang':'-'(P1, P0)
+                                                                                                                        in  let <T2_6> =
+                                                                                                                                apply 'Integer.right_shift'/2(call 'erlang':'-'(T2, T1), 1)
+                                                                                                                            in  let <T1_7> =
+                                                                                                                                    call 'erlang':'-'(call 'erlang':'-'(T1, Tm1), Pinf)
+                                                                                                                                in  let <T2_8> =
+                                                                                                                                        call 'erlang':'-'(T2_6, apply 'Integer.left_shift'/2(Pinf, 1))
+                                                                                                                                    in  let <Tm1_9> =
+                                                                                                                                            call 'erlang':'-'(Tm1, T2_8)
+                                                                                                                                        in  let <S> =
+                                                                                                                                                call 'erlang':'*'('todo', 60)
+                                                                                                                                            in  let <Result> =
+                                                                                                                                                    call 'erlang':'+'(apply 'Integer.left_shift'/2(call 'erlang':'+'(apply 'Integer.left_shift'/2(call 'erlang':'+'(apply 'Integer.left_shift'/2(call 'erlang':'+'(apply 'Integer.left_shift'/2(Pinf, S), T2_8), S), T1_7), S), Tm1_9), S), P0)
+                                                                                                                                                in  let <Storage_10> =
+                                                                                                                                                        call 'erlang':'map_get'('digits', Result)
+                                                                                                                                                    in  Storage_10
+            end
+    'pow2'/1 =
+        fun (K) ->
+            let <Ret> =
+                []
+            in  do  apply 'bit_set'/2(Ret, K)
+                    ~{'signum'=>1,'digits'=>Ret,{'vbeam','type'}=>'Integer'}~
+    'left_shift_digits_in_place'/2 =
+        fun (A, Amount) ->
+            let <Old_len> =
+                call 'erlang':'length'(A)
+            in  let <Elem_size> =
+                    call 'erlang':'map_get'('element_size', A)
+                in  'ok'
+    'right_shift_digits_in_place'/2 =
+        fun (A, Amount) ->
+            apply '[]u64.drop'/2(A, Amount)
+    'add_in_place'/2 =
+        fun (A, B) ->
+            let <Len_a> =
+                call 'erlang':'length'(A)
+            in  let <Len_b> =
+                    call 'erlang':'length'(B)
+                in  let <Max> =
+                        apply 'imax'/2(Len_a, Len_b)
+                    in  let <Min> =
+                            apply 'imin'/2(Len_a, Len_b)
+                        in  let <Carry> =
+                                'todo'
+                            in  let <Carry_1> =
+                                    let <_2> =
+                                        fun (Index, CarryAcc) ->
+                                            let <Partial> =
+                                                call 'erlang':'+'(call 'erlang':'+'(CarryAcc, call 'lists':'nth'(call 'erlang':'+'(Index, 1), A)), call 'lists':'nth'(call 'erlang':'+'(Index, 1), B))
+                                            in                                              let <CarryOut_4> =
+                                                'todo'
+                                            in  CarryOut_4
+                                    in  let <_3> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(Min, 1))
+                                    in  call 'lists':'foldl'(_2, Carry, _3)
+                                in  do  case call 'erlang':'>='(Len_a, Len_b) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        case call 'erlang':'>'(Carry_1, 0) of <'true'> when 'true' -> call 'erlang':'bsl'(A, Carry_1) <'false'> when 'true' -> 'ok' end
+    'subtract_in_place'/2 =
+        fun (A, B) ->
+            let <Len_a> =
+                call 'erlang':'length'(A)
+            in  let <Len_b> =
+                    call 'erlang':'length'(B)
+                in  let <Max> =
+                        apply 'imax'/2(Len_a, Len_b)
+                    in  let <Min> =
+                            apply 'imin'/2(Len_a, Len_b)
+                        in  let <Borrow> =
+                                'false'
+                            in  let <Borrow_1> =
+                                    let <_2> =
+                                        fun (Index, BorrowAcc) ->
+                                            let <A_digit> =
+                                                call 'lists':'nth'(call 'erlang':'+'(Index, 1), A)
+                                            in                                              let <B_digit> =
+                                                call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(Index, 1), B), case BorrowAcc of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end)
+                                            in                                              let <BorrowOut_4> =
+                                                call 'erlang':'<'(A_digit, B_digit)
+                                            in                                              do  case BorrowOut_4 of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+BorrowOut_4
+                                    in  let <_3> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(Min, 1))
+                                    in  call 'lists':'foldl'(_2, Borrow, _3)
+                                in  case call 'erlang':'>='(Len_a, Len_b) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> apply '[]u64.clear'/1(A) end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.math.big')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.math.big', _0)
+    end

@@ -1,0 +1,210 @@
+module 'v.arrays.diff' ['diff'/2,
+                'DiffContext.compare'/5,
+                'DiffContext.find_middle_snake'/5,
+                'DiffContext.result'/3,
+                'DiffContext.merge_changes'/2,
+                'DiffContext.generate_patch'/2,
+                'DiffContext.write_context'/5,
+                'DiffContext.write_change'/4,
+                'DiffContextFlag.is_empty'/1,
+                'DiffContextFlag.has'/2,
+                'DiffContextFlag.all'/2,
+                'DiffContextFlag.set'/2,
+                'DiffContextFlag.set_all'/1,
+                'DiffContextFlag.clear'/2,
+                'DiffContextFlag.clear_all'/1,
+                'DiffContextFlag.toggle'/2,
+                'DiffContextFlag__static__zero'/0,
+                'DiffContextFlag__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'diff'/2 =
+    fun (A, B) ->
+        let <C> =
+            ~{'a'=>A,'b'=>B,{'vbeam','type'}=>'DiffContext'}~
+        in  do  case call 'erlang':'>'(call 'erlang':'length'(A), call 'erlang':'length'(B)) of <'true'> when 'true' -> [] <'false'> when 'true' -> [] end
+                do  call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(A), call 'erlang':'length'(B)), 1)
+                    do  []
+                        do  []
+                            do  apply 'DiffContext.compare'/5(C, 0, 0, call 'erlang':'length'(A), call 'erlang':'length'(B))
+                                do  apply 'DiffContext.result'/3(C, call 'erlang':'length'(A), call 'erlang':'length'(B))
+                                    C
+'DiffContext.compare'/5 =
+    fun (C, Mut_aoffset, Mut_boffset, Mut_alimit, Mut_blimit) ->
+        let <Aoffset> =
+            Mut_aoffset
+        in  let <Boffset> =
+                Mut_boffset
+            in  let <Alimit> =
+                    Mut_alimit
+                in  let <Blimit> =
+                        Mut_blimit
+                    in  case call 'erlang':'=:='(Aoffset, Alimit) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'=:='(Boffset, Blimit) of
+                                    <'true'> when 'true' -> 'ok'
+                                    <'false'> when 'true' -> 
+                                        let <X> =
+                                            apply 'DiffContext.find_middle_snake'/5(C, Aoffset, Boffset, Alimit, Blimit)
+                                        in  let <Y> =
+                                                apply 'DiffContext.find_middle_snake'/5(C, Aoffset, Boffset, Alimit, Blimit)
+                                            in  do  apply 'DiffContext.compare'/5(C, Aoffset, Boffset, X, Y)
+                                                    apply 'DiffContext.compare'/5(C, X, Y, Alimit, Blimit)
+                                end
+                        end
+'DiffContext.find_middle_snake'/5 =
+    fun (C, Aoffset, Boffset, Alimit, Blimit) ->
+        let <Fmid> =
+            call 'erlang':'-'(Aoffset, Boffset)
+        in  let <Rmid> =
+                call 'erlang':'-'(Alimit, Blimit)
+            in  let <Foff> =
+                    call 'erlang':'-'(call 'erlang':'map_get'('max', C), Fmid)
+                in  let <Roff> =
+                        call 'erlang':'-'(call 'erlang':'map_get'('max', C), Rmid)
+                    in  let <Isodd> =
+                            call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'-'(Rmid, Fmid), 1), 0)
+                        in  let <Maxd> =
+                                call 'erlang':'div'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'-'(Alimit, Aoffset), Blimit), Boffset), 2), 2)
+                            in  do  Aoffset
+                                    do  Alimit
+                                        let <X> =
+                                            0
+                                        in  let <Y> =
+                                                0
+                                            in  call 'erlang':'error'({'panic', #{#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#})
+'DiffContext.result'/3 =
+    fun (C, N, M) ->
+        let <X> =
+            0
+        in  let <Y> =
+                0
+            in  let <Res> =
+                    []
+                in  Res
+'DiffContext.merge_changes'/2 =
+    fun (C, Context_lines) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('changes', C)), 0) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                let <Merged> =
+                    []
+                in  let <Current> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('changes', C))
+                    in  let <Current_1> =
+                            let <_2> =
+                                fun (I, CurrentAcc) ->
+                                    let <Next> =
+                                        call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('changes', C))
+                                    in                                      let <CurrentOut_4> =
+                                        case call 'erlang':'=<'(call 'erlang':'map_get'('a', Next), call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('a', CurrentAcc), call 'erlang':'map_get'('del', CurrentAcc)), Context_lines)) of <'true'> when 'true' -> ~{'a'=>call 'erlang':'map_get'('a', CurrentAcc),'b'=>call 'erlang':'map_get'('b', CurrentAcc),'del'=>call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'map_get'('a', Next), call 'erlang':'map_get'('del', Next)), call 'erlang':'map_get'('a', CurrentAcc)),'ins'=>call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'map_get'('b', Next), call 'erlang':'map_get'('ins', Next)), call 'erlang':'map_get'('b', CurrentAcc)),{'vbeam','type'}=>'DiffChange'}~ <'false'> when 'true' -> do  call 'erlang':'bsl'(Merged, CurrentAcc) Next end
+                                    in  CurrentOut_4
+                            in  let <_3> =
+                                call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('changes', C)), 1))
+                            in  call 'lists':'foldl'(_2, Current, _3)
+                        in  do  call 'erlang':'bsl'(Merged, Current_1)
+                                'ok'
+        end
+'DiffContext.generate_patch'/2 =
+    fun (C, Param) ->
+        let <Sb> =
+            apply 'new_builder'/1(100)
+        in  let <Unified> =
+                case call 'erlang':'<'(call 'erlang':'map_get'('unified', Param), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> call 'erlang':'map_get'('unified', Param) end
+            in  do  apply 'DiffContext.merge_changes'/2(C, Unified)
+                    case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('changes', C)), 0) of
+                        <'true'> when 'true' -> #{  }#
+                        <'false'> when 'true' -> 
+                            let <Prev_a_end> =
+                                0
+                            in  let <Prev_b_end> =
+                                    0
+                                in  let <Prev_a_end_1> =
+                                        let <_2> =
+                                            fun (Change, _6) ->
+                                                let <Prev_a_endAcc> =
+                                                    call 'erlang':'element'(1, _6)
+                                                in                                                  let <Prev_b_endAcc> =
+                                                    call 'erlang':'element'(2, _6)
+                                                in  
+                                                let <Ctx_start_a> =
+                                                    apply 'int_max'/2(Prev_a_endAcc, call 'erlang':'-'(call 'erlang':'map_get'('a', Change), Unified))
+                                                in                                                  let <Ctx_end_a> =
+                                                    call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('a', Change), call 'erlang':'map_get'('del', Change)), Unified)
+                                                in                                                  let <Ctx_start_b> =
+                                                    apply 'int_max'/2(Prev_b_endAcc, call 'erlang':'-'(call 'erlang':'map_get'('b', Change), Unified))
+                                                in                                                  let <Ctx_end_b> =
+                                                    call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('b', Change), call 'erlang':'map_get'('ins', Change)), Unified)
+                                                in                                                  do  case call 'erlang':'map_get'('block_header', Param) of <'true'> when 'true' -> 
+                                                    do  case call 'erlang':'map_get'('colorful', Param) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                                        do  apply 'Builder.writeln'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<64>(8,1,'integer',['unsigned'|['big']]),#<64>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(Ctx_start_a, 1))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'-'(Ctx_end_a, Ctx_start_a))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<43>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(Ctx_start_b, 1))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'-'(Ctx_end_b, Ctx_start_b))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<64>(8,1,'integer',['unsigned'|['big']]),#<64>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]]))
+                                                            case call 'erlang':'map_get'('colorful', Param) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Sb, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    do  apply 'DiffContext.write_context'/5(C, Sb, Ctx_start_b, call 'erlang':'map_get'('b', Change), Param)
+                                                        do  apply 'DiffContext.write_change'/4(C, Sb, Change, Param)
+                                                            do  apply 'DiffContext.write_context'/5(C, Sb, call 'erlang':'+'(call 'erlang':'map_get'('b', Change), call 'erlang':'map_get'('ins', Change)), Ctx_end_b, Param)
+                                                                let <Prev_a_endOut_4> =
+                                                                    Ctx_end_a
+                                                                in                                                                  let <Prev_b_endOut_5> =
+                                                                    Ctx_end_b
+                                                                in  {Prev_a_endOut_4, Prev_b_endOut_5}
+                                        in  call 'lists':'foldl'(_2, {Prev_a_end, Prev_b_end}, call 'erlang':'map_get'('changes', C))
+                                    in  apply 'Builder.str'/1(Sb)
+                    end
+'DiffContext.write_context'/5 =
+    fun (C, Sb, Start, End, Param) ->
+        'ok'
+'DiffContext.write_change'/4 =
+    fun (C, Sb, Change, Param) ->
+        do  let <_1> =
+            fun (I) ->
+                let <Line> =
+                    apply 'T.str'/1(call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('a', C)))
+                in  case call 'erlang':'map_get'('colorful', Param) of <'true'> when 'true' -> apply 'Builder.writeln'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#|[Line|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> apply 'Builder.writeln'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[Line|[]]])) end
+        in  let <_2> =
+                call 'lists':'seq'(call 'erlang':'map_get'('a', Change), call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'map_get'('a', Change), call 'erlang':'map_get'('del', Change)), 1))
+            in  call 'lists':'foreach'(_1, _2)
+            'ok'
+'DiffContextFlag.is_empty'/1 =
+    fun (E) ->
+        call 'erlang':'=:='('todo', 0)
+'DiffContextFlag.has'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=/='(call 'erlang':'band'('todo', 'todo'), 0)
+'DiffContextFlag.all'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=:='(call 'erlang':'band'('todo', 'todo'), 'todo')
+'DiffContextFlag.set'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'DiffContextFlag.set_all'/1 =
+    fun (E) ->
+        'ok'
+'DiffContextFlag.clear'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'DiffContextFlag.clear_all'/1 =
+    fun (E) ->
+        'ok'
+'DiffContextFlag.toggle'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'DiffContextFlag__static__zero'/0 =
+    fun () ->
+        'todo'
+'DiffContextFlag__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.arrays.diff')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.arrays.diff', _0)
+end

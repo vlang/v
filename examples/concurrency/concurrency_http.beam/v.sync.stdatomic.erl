@@ -3,40 +3,50 @@
 
 add_u64(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 sub_u64(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 add_i64(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 sub_i64(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 store_u64(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 load_u64(Ptr) ->
     *Ptr.
 
 store_i64(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 load_i64(Ptr) ->
     *Ptr.
 
 exchange_u64(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 exchange_i64(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 compare_exchange_strong_u64(Ptr, Expected, Desired) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 compare_exchange_strong_i64(Ptr, Expected, Desired) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 compare_exchange_weak_u64(Ptr, Expected, Desired) ->
     compare_exchange_strong_u64(Ptr, Expected, Desired).
 
@@ -45,22 +55,27 @@ compare_exchange_weak_i64(Ptr, Expected, Desired) ->
 
 add_u32(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 sub_u32(Ptr, Delta) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 store_u32(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 load_u32(Ptr) ->
     *Ptr.
 
 exchange_u32(Ptr, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 compare_exchange_strong_u32(Ptr, Expected, Desired) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 new_atomic(Val) ->
     todo.
 
@@ -69,21 +84,22 @@ new_atomic(Val) ->
 
 'AtomicVal.store'(A, Val) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'AtomicVal.add'(A, Delta) ->
     Old = maps:get(val, A),
     % TODO: unhandled stmt type
-    ok    Old.
+    Old.
 
 'AtomicVal.sub'(A, Delta) ->
     Old = maps:get(val, A),
     % TODO: unhandled stmt type
-    ok    Old.
+    Old.
 
 'AtomicVal.swap'(A, New) ->
     Old = maps:get(val, A),
     % TODO: unhandled stmt type
-    ok    Old.
+    Old.
 
 'AtomicVal.compare_and_swap'(A, Expected, New) ->
     case maps:get(val, A) == Expected of

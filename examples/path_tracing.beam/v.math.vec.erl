@@ -340,7 +340,7 @@ vec3(X, Y, Z) ->
     maps:get(x, V) == todo andalso maps:get(y, V) == todo andalso maps:get(z, V) == todo.
 
 'Vec3.distance'(V, U) ->
-    sqrt((maps:get(x, V) - maps:get(x, U)) * (maps:get(x, V) - maps:get(x, U)) + (maps:get(y, V) - maps:get(y, U)) * (maps:get(y, V) - maps:get(y, U)) + (maps:get(z, V) - maps:get(z, U)) * (maps:get(z, V) - maps:get(z, U))).
+    math:sqrt((maps:get(x, V) - maps:get(x, U)) * (maps:get(x, V) - maps:get(x, U)) + (maps:get(y, V) - maps:get(y, U)) * (maps:get(y, V) - maps:get(y, U)) + (maps:get(z, V) - maps:get(z, U)) * (maps:get(z, V) - maps:get(z, U))).
 
 'Vec3.manhattan_distance'(V, U) ->
     abs(maps:get(x, V) - maps:get(x, U)) + abs(maps:get(y, V) - maps:get(y, U)) + abs(maps:get(z, V) - maps:get(z, U)).
@@ -551,7 +551,7 @@ vec4(X, Y, Z, W) ->
     maps:get(x, V) == Scalar andalso maps:get(y, V) == todo andalso maps:get(z, V) == todo andalso maps:get(w, V) == todo.
 
 'Vec4.distance'(V, U) ->
-    sqrt((maps:get(x, V) - maps:get(x, U)) * (maps:get(x, V) - maps:get(x, U)) + (maps:get(y, V) - maps:get(y, U)) * (maps:get(y, V) - maps:get(y, U)) + (maps:get(z, V) - maps:get(z, U)) * (maps:get(z, V) - maps:get(z, U)) + (maps:get(w, V) - maps:get(w, U)) * (maps:get(w, V) - maps:get(w, U))).
+    math:sqrt((maps:get(x, V) - maps:get(x, U)) * (maps:get(x, V) - maps:get(x, U)) + (maps:get(y, V) - maps:get(y, U)) * (maps:get(y, V) - maps:get(y, U)) + (maps:get(z, V) - maps:get(z, U)) * (maps:get(z, V) - maps:get(z, U)) + (maps:get(w, V) - maps:get(w, U)) * (maps:get(w, V) - maps:get(w, U))).
 
 'Vec4.manhattan_distance'(V, U) ->
     abs(maps:get(x, V) - maps:get(x, U)) + abs(maps:get(y, V) - maps:get(y, U)) + abs(maps:get(z, V) - maps:get(z, U)) + abs(maps:get(w, V) - maps:get(w, U)).

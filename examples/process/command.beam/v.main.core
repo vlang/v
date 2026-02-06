@@ -1,0 +1,35 @@
+module 'v.main' ['exec'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'exec'/1 =
+        fun (Path) ->
+            let <Out> =
+                #{  }#
+            in  let <Line> =
+                    #{  }#
+                in  let <Cmd> =
+                        ~{'path'=>Path,{'vbeam','type'}=>'Command'}~
+                    in  do  apply 'Command.start'/1(Cmd)
+                            Out
+    'main'/0 =
+        fun () ->
+            let <Out> =
+                #{  }#
+            in  do  apply 'exec'/1(#{#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#)
+                    let <Out_1> =
+                        apply 'exec'/1(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  let <Out_2> =
+                            apply 'exec'/1(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<38>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+                        in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<39>(8,1,'integer',['unsigned'|['big']])}#|[Out_2|[#{#<39>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

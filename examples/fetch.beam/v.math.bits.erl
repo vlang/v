@@ -265,7 +265,7 @@ div_32(Hi, Lo, Y) ->
 
 div_32_default(Hi, Lo, Y) ->
     case Y /= 0 andalso Y =< Hi of
-        true -> panic(<<"Overflow Error">>);
+        true -> erlang:error({panic, <<"Overflow Error">>});
         false -> ok
     end,
     Z = (todo bsl 32) bor todo,
@@ -279,11 +279,11 @@ div_64(Hi, Lo, Y1) ->
 div_64_default(Hi, Lo, Y1) ->
     Y = Y1,
     case Y == 0 of
-        true -> panic(<<"Overflow Error">>);
+        true -> erlang:error({panic, <<"Overflow Error">>});
         false -> ok
     end,
     case Y =< Hi of
-        true -> panic(<<"Overflow Error">>);
+        true -> erlang:error({panic, <<"Overflow Error">>});
         false -> ok
     end,
     S = todo,
@@ -304,11 +304,11 @@ div_64_default(Hi, Lo, Y1) ->
     Q1 = Un32 div Yn1,
     Rhat = Un32 - (Q1 * Yn1),
     % TODO: unhandled stmt type
-    ok    Un21 = (Un32 * todo) + (Un1 - (Q1 * Y1)),
+    Un21 = (Un32 * todo) + (Un1 - (Q1 * Y1)),
     Q0 = Un21 div Yn1,
     Rhat1 = Un21 - Q0 * Yn1,
     % TODO: unhandled stmt type
-    ok    Qq = ((Q1 * todo) + Q0),
+    Qq = ((Q1 * todo) + Q0),
     Rr = ((Un21 * todo) + Un0 - (Q0 * Y1)) bsr S,
     Qq.
 

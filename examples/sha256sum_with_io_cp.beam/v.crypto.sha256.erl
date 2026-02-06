@@ -3,8 +3,9 @@
 
 'Digest.free'(D) ->
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.
+
 'Digest.init'(D) ->
     'Digest.reset'(D),
     ok.
@@ -18,7 +19,7 @@
     end,
 
 'Digest.clone'(D) ->
-    #{h => '[]u32.clone'(maps:get(h, D)), x => '[]u8.clone'(maps:get(x, D)), {vbeam, type} => 'Digest'}.
+    #{h => maps:get(h, D), x => maps:get(x, D), {vbeam, type} => 'Digest'}.
 
 new() ->
     D = #{{vbeam, type} => 'Digest'},
@@ -32,11 +33,12 @@ new224() ->
 
 'Digest.write'(D, P_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Digest.sum'(D, B_in) ->
     D0 = 'Digest.clone'(D),
     Hash = 'Digest.checksum'(D0),
-    B_out = '[]u8.clone'(B_in),
+    B_out = B_in,
     case maps:get(is224, D0) of
         true -> ok;
         false -> ok
@@ -54,7 +56,7 @@ new224() ->
     big_endian_put_u64(Tmp, Len1),
     'Digest.write'(D, lists:nth(todo + 1, Tmp)),
     case maps:get(nx, D) /= 0 of
-        true -> panic(<<"d.nx != 0">>);
+        true -> erlang:error({panic, <<"d.nx != 0">>});
         false -> ok
     end,
     Digest = [],
@@ -101,11 +103,11 @@ block(Dig, P) ->
     64.
 
 hexhash(S) ->
-    '[]u8.hex'(sum256('string.bytes'(S))).
+    '[]u8.hex'(sum256(binary_to_list(S))).
 
 hexhash_224(S) ->
-    '[]u8.hex'(sum224('string.bytes'(S))).
+    '[]u8.hex'(sum224(binary_to_list(S))).
 
 block_generic(Dig, P_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.

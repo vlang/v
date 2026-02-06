@@ -11,5 +11,5 @@ is_illegal_ascii_control_character(Byte_char) ->
     Byte_char /= 16#09 andalso is_ascii_control_character(Byte_char).
 
 printdbg(Id, Message) ->
-    eprintln(<<(<<(Id)/binary, (<<" ">>)/binary>>)/binary, (Message)/binary>>),
+    io:format(standard_error, "~s~n", [<<(<<(Id)/binary, (<<" ">>)/binary>>)/binary, (Message)/binary>>]),
     ok.

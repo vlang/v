@@ -1,0 +1,177 @@
+module 'v.toml.ast' ['Root.str'/1,
+                'Key.str'/1,
+                'Value.str'/1,
+                'DateTimeType.str'/1,
+                'Comment.str'/1,
+                'Null.str'/1,
+                'Quoted.str'/1,
+                'Bare.str'/1,
+                'Bool.str'/1,
+                'Number.str'/1,
+                'Number.i64'/1,
+                'Number.f64'/1,
+                'Date.str'/1,
+                'Time.str'/1,
+                'DateTime.str'/1,
+                'EOF.str'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Root.str'/1 =
+        fun (R) ->
+            let <S> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <S_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('input', R)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <S_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('table', R)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <S_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  S_3
+    'Key.str'/1 =
+        fun (K) ->
+            call 'erlang':'map_get'('text', K)
+    'Value.str'/1 =
+        fun (V) ->
+            case V of <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', V)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'todo'> when 'todo'> when 'todo'> when 'true' -> call 'erlang':'map_get'('text', V) <'todo'> when 'true' -> Str <'todo'> when 'true' -> Str end
+    'DateTimeType.str'/1 =
+        fun (Dtt) ->
+            call 'erlang':'map_get'('text', Dtt)
+    'Comment.str'/1 =
+        fun (C) ->
+            let <S> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <S_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', C)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <S_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', C)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <S_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  S_3
+    'Null.str'/1 =
+        fun (N) ->
+            call 'erlang':'map_get'('text', N)
+    'Quoted.str'/1 =
+        fun (Q) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', Q)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', Q)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('is_multiline', Q))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                        in  let <Str_4> =
+                                call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('quote', Q))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                            in  let <Str_5> =
+                                    #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                                in  Str_5
+    'Bare.str'/1 =
+        fun (B) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', B)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', B)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  Str_3
+    'Bool.str'/1 =
+        fun (B) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', B)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', B)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  Str_3
+    'Number.str'/1 =
+        fun (N) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', N)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', N)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  Str_3
+    'Number.i64'/1 =
+        fun (N) ->
+            do  case case call 'string':'prefix'(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 
+                let <Hex> =
+                    call 'binary':'replace'(call 'string':'uppercase'(apply 'string.all_after'/2(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#)), #{#<95>(8,1,'integer',['unsigned'|['big']])}#, #{  }#, ['global'|[]])
+                in  apply 'parse_int'/3(Hex, 16, 64)
+             <'false'> when 'true' -> case case call 'string':'prefix'(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 
+                let <Oct> =
+                    call 'binary':'replace'(apply 'string.all_after'/2(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#), #{#<95>(8,1,'integer',['unsigned'|['big']])}#, #{  }#, ['global'|[]])
+                in  apply 'parse_int'/3(Oct, 8, 64)
+             <'false'> when 'true' -> case case call 'string':'prefix'(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 
+                let <Bin> =
+                    call 'binary':'replace'(apply 'string.all_after'/2(call 'erlang':'map_get'('text', N), #{#<48>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']])}#), #{#<95>(8,1,'integer',['unsigned'|['big']])}#, #{  }#, ['global'|[]])
+                in  apply 'parse_int'/3(Bin, 2, 64)
+             <'false'> when 'true' -> 'ok' end end end
+                apply 'parse_int'/3(call 'erlang':'map_get'('text', N), 0, 64)
+    'Number.f64'/1 =
+        fun (N) ->
+            call 'erlang':'binary_to_float'(call 'binary':'replace'(call 'erlang':'map_get'('text', N), #{#<95>(8,1,'integer',['unsigned'|['big']])}#, #{  }#, ['global'|[]]))
+    'Date.str'/1 =
+        fun (D) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', D)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', D)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                        in  Str_3
+    'Time.str'/1 =
+        fun (T) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', T)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('offset', T))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', T)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                        in  let <Str_4> =
+                                #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                            in  Str_4
+    'DateTime.str'/1 =
+        fun (Dt) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('text', Dt)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('date', Dt)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                    in  let <Str_3> =
+                            call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('time', Dt)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                        in  let <Str_4> =
+                                call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', Dt)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                            in  let <Str_5> =
+                                    #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                                in  Str_5
+    'EOF.str'/1 =
+        fun (E) ->
+            let <Str> =
+                call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', 'todo')|[#{#<123>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            in  let <Str_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pos', E)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Str_2> =
+                        #{#<125>(8,1,'integer',['unsigned'|['big']])}#
+                    in  Str_2
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.toml.ast')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.toml.ast', _0)
+    end

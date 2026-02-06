@@ -1,0 +1,107 @@
+module 'v.sync.pool' ['empty_cb'/3,
+                'new_pool_processor'/1,
+                'PoolProcessor.set_max_jobs'/2,
+                'PoolProcessor.work_on_items'/2,
+                'PoolProcessor.work_on_pointers'/2,
+                'process_in_thread'/2,
+                'atomic_fetch_add_ntask'/1,
+                'PoolProcessor.get_item'/2,
+                'PoolProcessor.get_result'/2,
+                'PoolProcessor.get_results'/1,
+                'PoolProcessor.get_results_ref'/1,
+                'PoolProcessor.set_shared_context'/2,
+                'PoolProcessor.get_shared_context'/1,
+                'PoolProcessor.set_thread_context'/3,
+                'PoolProcessor.get_thread_context'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'empty_cb'/3 =
+        fun (_p, _idx, _task_id) ->
+            'ok'
+    'new_pool_processor'/1 =
+        fun (Context) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('callback', Context), 'todo') of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<89>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                let <Pool> =
+                    ~{'items'=>[],'results'=>[],'shared_context'=>'todo','thread_contexts'=>[],'njobs'=>call 'erlang':'map_get'('maxjobs', Context),'ntask'=>0,'thread_cb'=>'todo',{'vbeam','type'}=>'PoolProcessor'}~
+                in  do  apply 'WaitGroup.init'/1(call 'erlang':'map_get'('waitgroup', Pool))
+                        Pool
+    'PoolProcessor.set_max_jobs'/2 =
+        fun (Pool, Njobs) ->
+            'ok'
+    'PoolProcessor.work_on_items'/2 =
+        fun (Pool, Items) ->
+            apply 'PoolProcessor.work_on_pointers'/2(Pool, 'todo')
+    'PoolProcessor.work_on_pointers'/2 =
+        fun (Pool, Items) ->
+            let <Njobs> =
+                apply 'nr_jobs'/0()
+            in  let <Njobs_1> =
+                    case call 'erlang':'>'(call 'erlang':'map_get'('njobs', Pool), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('njobs', Pool) <'false'> when 'true' -> Njobs end
+                in  let <Njobs_2> =
+                        case call 'erlang':'>'(Njobs_1, call 'erlang':'length'(Items)) of <'true'> when 'true' -> call 'erlang':'length'(Items) <'false'> when 'true' -> Njobs_1 end
+                    in  let <Njobs_3> =
+                            case call 'erlang':'<'(Njobs_2, 1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> Njobs_2 end
+                        in  apply 'WaitGroup.wait'/1(call 'erlang':'map_get'('waitgroup', Pool))
+    'process_in_thread'/2 =
+        fun (Pool, Task_id) ->
+            let <Cb> =
+                'todo'
+            in  let <Ilen> =
+                    call 'erlang':'length'(call 'erlang':'map_get'('items', Pool))
+                in  apply 'WaitGroup.done'/1(call 'erlang':'map_get'('waitgroup', Pool))
+    'atomic_fetch_add_ntask'/1 =
+        fun (Pool) ->
+            let <Old> =
+                call 'erlang':'map_get'('ntask', Pool)
+            in  do  'todo'
+                    Old
+    'PoolProcessor.get_item'/2 =
+        fun (Pool, Idx) ->
+            'todo'
+    'PoolProcessor.get_result'/2 =
+        fun (Pool, Idx) ->
+            'todo'
+    'PoolProcessor.get_results'/1 =
+        fun (Pool) ->
+            let <Res> =
+                []
+            in  do  let <_1> =
+                    fun (I) ->
+                        'todo'
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('results', Pool)), 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    Res
+    'PoolProcessor.get_results_ref'/1 =
+        fun (Pool) ->
+            let <Res> =
+                []
+            in  do  let <_1> =
+                    fun (I) ->
+                        'todo'
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('results', Pool)), 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    Res
+    'PoolProcessor.set_shared_context'/2 =
+        fun (Pool, Context) ->
+            'ok'
+    'PoolProcessor.get_shared_context'/1 =
+        fun (Pool) ->
+            call 'erlang':'map_get'('shared_context', Pool)
+    'PoolProcessor.set_thread_context'/3 =
+        fun (Pool, Idx, Context) ->
+            'ok'
+    'PoolProcessor.get_thread_context'/2 =
+        fun (Pool, Idx) ->
+            call 'lists':'nth'(call 'erlang':'+'(Idx, 1), call 'erlang':'map_get'('thread_contexts', Pool))
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sync.pool')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sync.pool', _0)
+    end

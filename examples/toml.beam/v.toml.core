@@ -1,0 +1,399 @@
+module 'v.toml' ['Any.string'/1,
+                'Any.to_toml'/1,
+                'Any.int'/1,
+                'Any.i64'/1,
+                'Any.u64'/1,
+                'Any.f32'/1,
+                'Any.f64'/1,
+                'Any.array'/1,
+                'Any.as_map'/1,
+                'Any.bool'/1,
+                'Any.date'/1,
+                'Any.time'/1,
+                'Any.datetime'/1,
+                'Any.default_to'/2,
+                'Any.value'/2,
+                'Any.as_strings'/1,
+                'Any.to_toml'/1,
+                'Any.to_inline_toml'/1,
+                'Any.value'/2,
+                'Any.as_strings'/1,
+                'Any.to_toml'/1,
+                'Any.value'/2,
+                'Any.value_opt'/2,
+                'Any.value_'/3,
+                'Any.reflect'/1,
+                'decode'/1,
+                'decode_struct'/2,
+                'encode'/1,
+                'encode_struct'/1,
+                'to_any'/1,
+                'DateTime.str'/1,
+                'Date.str'/1,
+                'Time.str'/1,
+                'parse_file'/1,
+                'parse_text'/1,
+                'parse_dotted_key'/1,
+                'parse_array_key'/1,
+                'Doc.decode'/1,
+                'Doc.to_any'/1,
+                'Doc.reflect'/1,
+                'Doc.value'/2,
+                'Doc.value_opt'/2,
+                'Doc.value_'/3,
+                'ast_to_any'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Any.string'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> apply 'string.clone'/1('todo') <'todo'> when 'true' -> apply 'string.clone'/1(apply 'DateTime.str'/1(A)) <'todo'> when 'true' -> apply 'string.clone'/1(apply 'Date.str'/1(A)) <'todo'> when 'true' -> apply 'string.clone'/1(apply 'Time.str'/1(A)) <_> when 'true' -> apply 'string.clone'/1(apply 'Any.str'/1(A)) end
+    'Any.to_toml'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> apply 'Any.to_inline_toml'/1(A) <'todo'> when 'true' -> apply 'Any.to_toml'/1(A) <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> apply 'string.clone'/1(apply 'u64).str'/1(A)) <'todo'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.clone'/1('todo')|[]]])|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'todo'> when 'true' -> apply 'string.clone'/1(apply 'DateTime.str'/1(A)) <'todo'> when 'true' -> apply 'string.clone'/1(apply 'Date.str'/1(A)) <'todo'> when 'true' -> apply 'string.clone'/1(apply 'Time.str'/1(A)) <_> when 'true' -> apply 'string.clone'/1(apply 'Any.str'/1(A)) end
+    'Any.int'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <_> when 'true' -> 0 end
+    'Any.i64'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <_> when 'true' -> 0 end
+    'Any.u64'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <_> when 'true' -> 0 end
+    'Any.f32'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <_> when 'true' -> 0.0 end
+    'Any.f64'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <_> when 'true' -> 0.0 end
+    'Any.array'/1 =
+        fun (A) ->
+            do  case call 'erlang':'is'(A, 'todo') of <'true'> when 'true' -> A <'false'> when 'true' -> case call 'erlang':'is'(A, 'todo') of <'true'> when 'true' -> 
+                let <Arr> =
+                    []
+                in  do  let <_1> =
+                        fun (V) ->
+                            call 'erlang':'bsl'(Arr, V)
+                    in  call 'lists':'foreach'(_1, A)
+                        Arr
+             <'false'> when 'true' -> 'ok' end end
+                [A|[]]
+    'Any.as_map'/1 =
+        fun (A) ->
+            do  case call 'erlang':'is'(A, 'todo') of <'true'> when 'true' -> A <'false'> when 'true' -> case call 'erlang':'is'(A, 'todo') of <'true'> when 'true' -> 
+                let <Mp> =
+                    ~{}~
+                in  do  let <_1> =
+                        fun (Fi, I) ->
+                            do  Fi
+                                call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, A)
+                        Mp
+             <'false'> when 'true' -> 'ok' end end
+                ~{#{#<48>(8,1,'integer',['unsigned'|['big']])}#=>A}~
+    'Any.bool'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> A <'todo'> when 'true' -> apply 'string.bool'/1(A) <_> when 'true' -> 'false' end
+    'Any.date'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> ~{'date'=>apply 'string.clone'/1(apply 'Date.str'/1(A)),{'vbeam','type'}=>'Date'}~ <_> when 'true' -> ~{'date'=>#{  }#,{'vbeam','type'}=>'Date'}~ end
+    'Any.time'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> ~{'time'=>apply 'string.clone'/1(apply 'Time.str'/1(A)),{'vbeam','type'}=>'Time'}~ <_> when 'true' -> ~{'time'=>#{  }#,{'vbeam','type'}=>'Time'}~ end
+    'Any.datetime'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> ~{'datetime'=>apply 'string.clone'/1(apply 'DateTime.str'/1(A)),{'vbeam','type'}=>'DateTime'}~ <_> when 'true' -> ~{'datetime'=>#{  }#,{'vbeam','type'}=>'DateTime'}~ end
+    'Any.default_to'/2 =
+        fun (A, Value) ->
+            case A of <'todo'> when 'true' -> Value <_> when 'true' -> A end
+    'Any.value'/2 =
+        fun (M, Key) ->
+            apply 'Any.value'/2('todo', Key)
+    'Any.as_strings'/1 =
+        fun (M) ->
+            let <Result> =
+                ~{}~
+            in  do  let <_1> =
+                    fun (V, K) ->
+                        do  apply 'Any.string'/1(V)
+                            call 'erlang':'+'(K, 1)
+                in  call 'lists':'foldl'(_1, 0, M)
+                    Result
+    'Any.to_toml'/1 =
+        fun (M) ->
+            let <Toml_text> =
+                #{  }#
+            in  let <Toml_text_1> =
+                    let <_2> =
+                        fun (V, Toml_textAcc) ->
+                            let <Key> =
+                                case case call 'binary':'match'(K, #{#<32>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[K|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'false'> when 'true' -> K end
+                            in                              let <Toml_textOut_4> =
+                                call 'erlang':'iolist_to_binary'([Key|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Any.to_toml'/1(V)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]])
+                            in  Toml_textOut_4
+                    in  call 'lists':'foldl'(_2, Toml_text, M)
+                in  let <Toml_text_5> =
+                        apply 'string.trim_right'/2(Toml_text_1, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  Toml_text_5
+    'Any.to_inline_toml'/1 =
+        fun (M) ->
+            let <Toml_text> =
+                #{#<123>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <I> =
+                    1
+                in  let <Toml_text_1> =
+                        let <_2> =
+                            fun (V, Toml_textAcc) ->
+                                let <Key> =
+                                    case case call 'binary':'match'(K, #{#<32>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[K|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'false'> when 'true' -> K end
+                                in                                  let <Delimiter> =
+                                    case call 'erlang':'<'(I, call 'maps':'size'(M)) of <'true'> when 'true' -> #{#<44>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{  }# end
+                                in                                  let <Toml_textOut_4> =
+                                    call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Key|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Any.to_toml'/1(V)|[Delimiter|[]]]]]])
+                                in                                  do  'todo'
+Toml_textOut_4
+                        in  call 'lists':'foldl'(_2, Toml_text, M)
+                    in  call 'erlang':'iolist_to_binary'([Toml_text_1|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'Any.value'/2 =
+        fun (A, Key) ->
+            apply 'Any.value'/2('todo', Key)
+    'Any.as_strings'/1 =
+        fun (A) ->
+            let <Sa> =
+                []
+            in  do  let <_1> =
+                    fun (Any) ->
+                        call 'erlang':'bsl'(Sa, apply 'Any.string'/1(Any))
+                in  call 'lists':'foreach'(_1, A)
+                    Sa
+    'Any.to_toml'/1 =
+        fun (A) ->
+            let <Toml_text> =
+                #{#<91>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <Toml_text_1> =
+                    let <_2> =
+                        fun (Any, Toml_textAcc) ->
+                            let <Toml_textOut_4> =
+                                call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Any.to_toml'/1(Any)|[]]])|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                            in  Toml_textOut_4
+                    in  call 'lists':'foldl'(_2, Toml_text, A)
+                in  let <Toml_text_5> =
+                        apply 'string.trim_right'/2(Toml_text_1, #{#<44>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  call 'erlang':'iolist_to_binary'([Toml_text_5|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'Any.value'/2 =
+        fun (A, Key) ->
+            let <Key_split> =
+                apply 'parse_dotted_key'/1(Key)
+            in  apply 'Any.value_'/3(A, A, Key_split)
+    'Any.value_opt'/2 =
+        fun (A, Key) ->
+            let <Key_split> =
+                apply 'parse_dotted_key'/1(Key)
+            in  let <X> =
+                    apply 'Any.value_'/3(A, A, Key_split)
+                in  case call 'erlang':'is'(X, 'todo') of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            X
+                    end
+    'Any.value_'/3 =
+        fun (A, Value, Key) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Key), 0) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Any_value> =
+                        'todo'
+                    in  let <K> =
+                            apply 'parse_array_key'/1(call 'lists':'nth'(1, Key))
+                        in  let <Index> =
+                                apply 'parse_array_key'/1(call 'lists':'nth'(1, Key))
+                            in  let <Any_value_1> =
+                                    case call 'erlang':'=:='(K, #{  }#) of <'true'> when 'true' -> let <Arr> = 'todo' in call 'lists':'nth'(call 'erlang':'+'(Index, 1), Arr) <'false'> when 'true' -> Any_value end
+                                in  let <Any_value_2> =
+                                        case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> call 'erlang':'map_get'(K, Value) <'false'> when 'true' -> Any_value_1 end
+                                    in  case call 'erlang':'=<'(call 'erlang':'length'(Key), 1) of
+                                            <'true'> when 'true' -> Any_value_2
+                                            <'false'> when 'true' -> 
+                                                case Any_value_2 of <'todo'> when 'todo'> when 'true' -> apply 'Any.value_'/3(A, Any_value_2, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Key)) <_> when 'true' -> Value end
+                                        end
+            end
+    'Any.reflect'/1 =
+        fun (A) ->
+            let <Reflected> =
+                ~{{'vbeam','type'}=>'T'}~
+            in  Reflected
+    'decode'/1 =
+        fun (Toml_txt) ->
+            let <Doc> =
+                apply 'parse_text'/1(Toml_txt)
+            in  let <Typ> =
+                    ~{{'vbeam','type'}=>'T'}~
+                in  case call 'erlang':'!is'('todo', 'todo') of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            do  apply 'decode_struct'/2(apply 'unknown.to_any'/1(Doc), Typ)
+                                Typ
+                    end
+    'decode_struct'/2 =
+        fun (Doc, Typ) ->
+            'ok'
+    'encode'/1 =
+        fun (Typ) ->
+            do  'ok'
+                #{  }#
+    'encode_struct'/1 =
+        fun (Typ) ->
+            let <Mp> =
+                ~{}~
+            in  Mp
+    'to_any'/1 =
+        fun (Value) ->
+            'ok'
+    'DateTime.str'/1 =
+        fun (Dt) ->
+            call 'erlang':'map_get'('datetime', Dt)
+    'Date.str'/1 =
+        fun (D) ->
+            call 'erlang':'map_get'('date', D)
+    'Time.str'/1 =
+        fun (T) ->
+            call 'erlang':'map_get'('time', T)
+    'parse_file'/1 =
+        fun (Path) ->
+            let <Input_config> =
+                ~{'file_path'=>Path,{'vbeam','type'}=>'Config'}~
+            in  let <Scanner_config> =
+                    ~{'input'=>Input_config,{'vbeam','type'}=>'Config'}~
+                in  let <Parser_config> =
+                        ~{'scanner'=>apply 'new_scanner'/1(Scanner_config),{'vbeam','type'}=>'Config'}~
+                    in  let <P> =
+                            apply 'new_parser'/1(Parser_config)
+                        in  let <Ast_> =
+                                apply 'Parser.parse'/1(P)
+                            in  ~{'ast'=>Ast_,{'vbeam','type'}=>'Doc'}~
+    'parse_text'/1 =
+        fun (Text) ->
+            let <Input_config> =
+                ~{'text'=>Text,{'vbeam','type'}=>'Config'}~
+            in  let <Scanner_config> =
+                    ~{'input'=>Input_config,{'vbeam','type'}=>'Config'}~
+                in  let <Parser_config> =
+                        ~{'scanner'=>apply 'new_scanner'/1(Scanner_config),{'vbeam','type'}=>'Config'}~
+                    in  let <P> =
+                            apply 'new_parser'/1(Parser_config)
+                        in  let <Ast_> =
+                                apply 'Parser.parse'/1(P)
+                            in  ~{'ast'=>Ast_,{'vbeam','type'}=>'Doc'}~
+    'parse_dotted_key'/1 =
+        fun (Key) ->
+            let <Out> =
+                []
+            in  let <Buf> =
+                    #{  }#
+                in  let <In_string> =
+                        'false'
+                    in  let <Delim> =
+                            'todo'
+                        in  let <Delim_1> =
+                                let <_2> =
+                                    fun (Ch, _7) ->
+                                        let <DelimAcc> =
+                                            call 'erlang':'element'(1, _7)
+                                        in                                          let <In_stringAcc> =
+                                            call 'erlang':'element'(2, _7)
+                                        in                                          let <BufAcc> =
+                                            call 'erlang':'element'(3, _7)
+                                        in  
+                                        let <In_stringOut_5> =
+                                            case call 'lists':'member'(Ch, ['todo'|['todo'|[]]]) of <'true'> when 'true' -> do  case call 'erlang':'not'(In_stringAcc) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end call 'erlang':'and'(call 'erlang':'not'(In_stringAcc), call 'erlang':'=:='(Ch, DelimAcc)) <'false'> when 'true' -> In_stringAcc end
+                                        in                                          let <BufOut_6> =
+                                            apply 'u8.ascii_str'/1(Ch)
+                                        in                                          let <BufOut_6> =
+                                            case call 'erlang':'and'(call 'erlang':'not'(In_stringOut_5), call 'erlang':'=:='(Ch, 'todo')) of <'true'> when 'true' -> do  case call 'erlang':'and'(call 'erlang':'=/='(BufOut_6, #{  }#), call 'erlang':'=/='(BufOut_6, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> 
+                                                let <Buf_8> =
+                                                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), BufOut_6)
+                                                in  case call 'erlang':'and'(call 'erlang':'=/='(Buf_8, #{  }#), call 'erlang':'=/='(Buf_8, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> call 'erlang':'bsl'(Out, Buf_8) <'false'> when 'true' -> 'ok' end
+                                             <'false'> when 'true' -> 'ok' end #{  }# <'false'> when 'true' -> BufOut_6 end
+                                        in  {DelimAcc, In_stringOut_5, BufOut_6}
+                                in  call 'lists':'foldl'(_2, {Delim, In_string, Buf}, Key)
+                            in  do  case call 'erlang':'and'(call 'erlang':'=/='(Buf, #{  }#), call 'erlang':'=/='(Buf, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> call 'erlang':'bsl'(Out, Buf) <'false'> when 'true' -> 'ok' end
+                                    case In_string of
+                                        <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'(['todo'|[call 'erlang':'iolist_to_binary'([#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.ascii_str'/1(Delim_1)|[#{#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]]]))
+                                        <'false'> when 'true' -> 
+                                            Out
+                                    end
+    'parse_array_key'/1 =
+        fun (Key) ->
+            let <Index> =
+                -1
+            in  let <K> =
+                    Key
+                in  let <Index_1> =
+                        case case call 'binary':'match'(K, #{#<91>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'binary_to_integer'(apply 'string.all_before'/2(apply 'string.all_after'/2(K, #{#<91>(8,1,'integer',['unsigned'|['big']])}#), #{#<93>(8,1,'integer',['unsigned'|['big']])}#)) <'false'> when 'true' -> Index end
+                    in  K
+    'Doc.decode'/1 =
+        fun (D) ->
+            case call 'erlang':'!is'('todo', 'todo') of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<68>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Typ> =
+                        ~{{'vbeam','type'}=>'T'}~
+                    in  do  apply 'decode_struct'/2(apply 'unknown.to_any'/1(D), Typ)
+                            Typ
+            end
+    'Doc.to_any'/1 =
+        fun (D) ->
+            apply 'ast_to_any'/1(call 'erlang':'map_get'('table', call 'erlang':'map_get'('ast', D)))
+    'Doc.reflect'/1 =
+        fun (D) ->
+            apply 'unknown.reflect'/1(apply 'unknown.to_any'/1(D))
+    'Doc.value'/2 =
+        fun (D, Key) ->
+            let <Key_split> =
+                apply 'parse_dotted_key'/1(Key)
+            in  apply 'Doc.value_'/3(D, call 'erlang':'map_get'('table', call 'erlang':'map_get'('ast', D)), Key_split)
+    'Doc.value_opt'/2 =
+        fun (D, Key) ->
+            let <Key_split> =
+                apply 'parse_dotted_key'/1(Key)
+            in  let <X> =
+                    apply 'Doc.value_'/3(D, call 'erlang':'map_get'('table', call 'erlang':'map_get'('ast', D)), Key_split)
+                in  case call 'erlang':'is'(X, 'todo') of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            X
+                    end
+    'Doc.value_'/3 =
+        fun (D, Value, Key) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Key), 0) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Ast_value> =
+                        'todo'
+                    in  let <K> =
+                            apply 'parse_array_key'/1(call 'lists':'nth'(1, Key))
+                        in  let <Index> =
+                                apply 'parse_array_key'/1(call 'lists':'nth'(1, Key))
+                            in  let <Ast_value_1> =
+                                    case call 'erlang':'=:='(K, #{  }#) of <'true'> when 'true' -> let <A> = 'todo' in call 'lists':'nth'(call 'erlang':'+'(Index, 1), A) <'false'> when 'true' -> Ast_value end
+                                in  let <Ast_value_2> =
+                                        case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> call 'erlang':'map_get'(K, Value) <'false'> when 'true' -> Ast_value_1 end
+                                    in  case call 'erlang':'=<'(call 'erlang':'length'(Key), 1) of
+                                            <'true'> when 'true' -> apply 'ast_to_any'/1(Ast_value_2)
+                                            <'false'> when 'true' -> 
+                                                case Ast_value_2 of <'todo'> when 'todo'> when 'true' -> apply 'Doc.value_'/3(D, Ast_value_2, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Key)) <_> when 'true' -> apply 'ast_to_any'/1(Value) end
+                                        end
+            end
+    'ast_to_any'/1 =
+        fun (Value) ->
+            do  case Value of <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> Am <'todo'> when 'true' -> Aa <_> when 'true' -> 'todo' end
+                'todo'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.toml')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.toml', _0)
+    end

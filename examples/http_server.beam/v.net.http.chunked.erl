@@ -4,7 +4,7 @@
 'ChunkScanner.read_chunk_size'(S) ->
     N = todo,
     % TODO: unhandled stmt type
-    ok    N.
+    N.
 
 unhex(C) ->
     case todo =< C andalso C =< todo of
@@ -32,5 +32,5 @@ decode(Text) ->
     Sb = new_builder(100),
     Cscanner = #{pos => 0, text => Text, {vbeam, type} => 'ChunkScanner'},
     % TODO: unhandled stmt type
-    ok    'ChunkScanner.skip_crlf'(Cscanner),
+    'ChunkScanner.skip_crlf'(Cscanner),
     'Builder.str'(Sb).

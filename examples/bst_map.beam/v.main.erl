@@ -18,3 +18,4 @@ main() ->
         ok.
         ok
     end, 'KeyVal].in_order_traversal'(Bst)),
+        ok.

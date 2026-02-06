@@ -1,0 +1,151 @@
+module 'v.main' ['mmap'/6,
+                'munmap'/2,
+                'mmap_file'/1,
+                'MemoryMappedFile.unmap'/1,
+                'format_value'/1,
+                'print_results'/2,
+                'combine_results'/1,
+                'process_chunk'/3,
+                'process_in_parallel'/2,
+                'main'/0,
+                'ReadState__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'mmap'/6 =
+        fun (Addr, Len, Prot, Flags, Fd, Offset) ->
+            'ok'
+    'munmap'/2 =
+        fun (Addr, Len) ->
+            'ok'
+    'mmap_file'/1 =
+        fun (Path) ->
+            let <Mf> =
+                ~{'file'=>apply 'open_file'/3(Path, #{#<114>(8,1,'integer',['unsigned'|['big']])}#, 0),'size'=>apply 'file_size'/1(Path),'data'=>fun (_fref0) -> apply 'NULL'/1(_fref0),{'vbeam','type'}=>'MemoryMappedFile'}~
+            in  do  'todo'
+                    Mf
+    'MemoryMappedFile.unmap'/1 =
+        fun (Mf) ->
+            do  case call 'erlang':'=/='(apply 'munmap'/2(call 'erlang':'map_get'('data', Mf), call 'erlang':'map_get'('size', Mf)), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', call 'erlang':'iolist_to_binary'([#{#<40>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(fun (_fref0) -> apply 'errno'/1(_fref0))|[#{#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]])}) <'false'> when 'true' -> 'ok' end
+                apply 'File.close'/1(call 'erlang':'map_get'('file', Mf))
+    'format_value'/1 =
+        fun (Value) ->
+            call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(call 'erlang':'div'(Value, 10))|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'abs'(call 'erlang':'rem'(Value, 10)))|[]]]])
+    'print_results'/2 =
+        fun (Results, Print_nicely) ->
+            let <Output> =
+                []
+            in  let <Cities> =
+                    call 'maps':'keys'(Results)
+                in  do  call 'lists':'sort'(Cities)
+                        do  let <_1> =
+                            fun (City) ->
+                                let <V> =
+                                    call 'erlang':'map_get'(City, Results)
+                                in  let <Mean> =
+                                        call 'erlang':'/'(call 'erlang':'/'('todo', call 'erlang':'map_get'('count', V)), 10)
+                                    in  call 'erlang':'bsl'(Output, call 'erlang':'iolist_to_binary'([City|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[apply 'format_value'/1(call 'erlang':'map_get'('min', V))|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(Mean)|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[apply 'format_value'/1(call 'erlang':'map_get'('max', V))|[]]]]]]]]))
+                        in  call 'lists':'foreach'(_1, Cities)
+                            case Print_nicely of <'true'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, Output))|[]]) <'false'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<123>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#, Output))|[]]])|[#{#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]]) end
+    'combine_results'/1 =
+        fun (Results) ->
+            let <Combined_result> =
+                ~{}~
+            in  do  let <_1> =
+                    fun (Result) ->
+                        'ok'
+                in  call 'lists':'foreach'(_1, Results)
+                    Combined_result
+    'process_chunk'/3 =
+        fun (Addr, From, To) ->
+            let <Results> =
+                ~{}~
+            in  let <State> =
+                    'city'
+                in  let <City> =
+                        #{  }#
+                    in  let <Temp> =
+                            'todo'
+                        in  let <Mod> =
+                                'todo'
+                            in  let <J> =
+                                    'todo'
+                                in  do  let <_1> =
+                                        fun (I) ->
+                                            let <C> =
+                                                'todo'
+                                            in  case State of <'city'> when 'true' -> case C of <'todo'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end <'temp'> when 'true' -> case C of <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end end
+                                    in  let <_2> =
+                                            call 'lists':'seq'(From, call 'erlang':'-'(To, 1))
+                                        in  call 'lists':'foreach'(_1, _2)
+                                        Results
+    'process_in_parallel'/2 =
+        fun (Mf, Thread_count) ->
+            let <Threads> =
+                []
+            in  let <Approx_chunk_size> =
+                    call 'erlang':'div'(call 'erlang':'map_get'('size', Mf), Thread_count)
+                in  let <From> =
+                        'todo'
+                    in  let <To> =
+                            Approx_chunk_size
+                        in  let <From_1> =
+                                let <_2> =
+                                    fun (_, _6) ->
+                                        let <FromAcc> =
+                                            call 'erlang':'element'(1, _6)
+                                        in                                          let <ToAcc> =
+                                            call 'erlang':'element'(2, _6)
+                                        in  
+                                        do  'ok'
+                                            do  call 'erlang':'bsl'(Threads, 'todo')
+                                                let <FromOut_4> =
+                                                    call 'erlang':'+'(ToAcc, 1)
+                                                in                                                  let <ToOut_5> =
+                                                    call 'erlang':'+'(FromOut_4, Approx_chunk_size)
+                                                in  {FromOut_4, ToOut_5}
+                                    in  let <_3> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'-'(Thread_count, 1), 1))
+                                    in  call 'lists':'foldl'(_2, {From, To}, _3)
+                                in  let <To_7> =
+                                        call 'erlang':'map_get'('size', Mf)
+                                    in  do  call 'erlang':'bsl'(Threads, 'todo')
+                                            let <Res> =
+                                                'ok'
+                                            in  apply 'combine_results'/1(Res)
+        'main'/0 =
+            fun () ->
+                let <Fp> =
+                    apply 'new_flag_parser'/1(call 'init':'get_plain_arguments'())
+                in  do  apply 'FlagParser.version'/2(Fp, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+                        do  apply 'FlagParser.skip_executable'/1(Fp)
+                            do  apply 'FlagParser.application'/2(Fp, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  apply 'FlagParser.description'/2(Fp, #{#<84>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#)
+                                    let <Thread_count> =
+                                        'todo'
+                                    in  let <Print_nicely> =
+                                            apply 'FlagParser.bool'/6(Fp, #{#<104>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, 'todo', 'false', #{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']])}#, ~{{'vbeam','type'}=>'FlagConfig'}~)
+                                        in  let <Quiet> =
+                                                apply 'FlagParser.bool'/6(Fp, #{#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, 'todo', 'false', #{#<83>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#, ~{{'vbeam','type'}=>'FlagConfig'}~)
+                                            in  do  apply 'FlagParser.limit_free_args_to_exactly'/2(Fp, 1)
+                                                    let <Path> =
+                                                        call 'lists':'nth'(1, apply 'FlagParser.remaining_parameters'/1(Fp))
+                                                    in  let <Mf> =
+                                                            apply 'mmap_file'/1(Path)
+                                                        in  let <Results> =
+                                                                case call 'erlang':'>'(Thread_count, 1) of <'true'> when 'true' -> apply 'process_in_parallel'/2(Mf, Thread_count) <'false'> when 'true' -> apply 'process_chunk'/3(call 'erlang':'map_get'('data', Mf), 0, call 'erlang':'map_get'('size', Mf)) end
+                                                            in  case call 'erlang':'not'(Quiet) of <'true'> when 'true' -> apply 'print_results'/2(Results, Print_nicely) <'false'> when 'true' -> 'ok' end
+        'ReadState__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

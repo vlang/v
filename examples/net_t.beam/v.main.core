@@ -1,0 +1,30 @@
+module 'v.main' ['send_request'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'send_request'/1 =
+            fun (Wg) ->
+                let <Start> =
+                    apply 'ticks'/0()
+                in  let <Data> =
+                        call 'erlang':'get'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  let <Finish> =
+                            apply 'ticks'/0()
+                        in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<70>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'-'(Finish, Start))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                do  apply 'WaitGroup.done'/1(Wg)
+                                    call 'erlang':'map_get'('body', Data)
+        'main'/0 =
+            fun () ->
+                let <Wg> =
+                    apply 'new_waitgroup'/0()
+                in  apply 'WaitGroup.wait'/1(Wg)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

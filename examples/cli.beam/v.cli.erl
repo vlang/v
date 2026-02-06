@@ -49,7 +49,7 @@
         end
     end,
     Res bsl <<"}">>,
-    '[]string.join'(Res, <<"\\n">>).
+    iolist_to_binary(lists:join(<<"\\n">>, Res)).
 
 'Command.is_root'(Cmd) ->
     isnil(maps:get(parent, Cmd)).
@@ -72,10 +72,11 @@
         ok.
         ok
     end, Commands),
+        ok.
 
 'Command.add_command'(Cmd, Command) ->
     Subcmd = Command,
-    case 'Command.contains'(maps:get(commands, Cmd), maps:get(name, Subcmd)) of
+    case lists:member(maps:get(name, Subcmd), maps:get(commands, Cmd)) of
         true -> eprintln_exit(<<"Command with the name `", (maps:get(name, Subcmd))/binary, "` already exists">>);
         false -> ok
     end,
@@ -88,6 +89,7 @@
         ok.
         ok
     end, maps:get(commands, Cmd)),
+        ok.
 
 'Command.add_flags'(Cmd, Flags) ->
     lists:foreach(fun(Flag) ->
@@ -95,9 +97,10 @@
         ok.
         ok
     end, Flags),
+        ok.
 
 'Command.add_flag'(Cmd, Flag) ->
-    case 'Flag.contains'(maps:get(flags, Cmd), maps:get(name, Flag)) of
+    case lists:member(maps:get(name, Flag), maps:get(flags, Cmd)) of
         true -> eprintln_exit(<<"Flag with the name `", (maps:get(name, Flag))/binary, "` already exists">>);
         false -> ok
     end,
@@ -142,11 +145,11 @@
 'Command.parse'(Cmd, Args) ->
     'Command.parse_defaults'(Cmd),
     case maps:get(sort_flags, Cmd) of
-        true -> 'Flag.sort'(maps:get(flags, Cmd), maps:get(name, A) < maps:get(name, B));
+        true -> lists:sort(maps:get(flags, Cmd));
         false -> ok
     end,
     case maps:get(sort_commands, Cmd) of
-        true -> 'Command.sort'(maps:get(commands, Cmd), maps:get(name, A) < maps:get(name, B));
+        true -> lists:sort(maps:get(commands, Cmd));
         false -> ok
     end,
     case not maps:get(disable_flags, Cmd) of
@@ -157,44 +160,45 @@
     ok.
 
 'Command.add_default_flags'(Cmd) ->
-    case maps:get(flag, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not 'Flag.contains'(maps:get(flags, Cmd), <<"help">>) of
+    case maps:get(flag, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not lists:member(<<"help">>, maps:get(flags, Cmd)) of
         true -> begin
-            Use_help_abbrev = not 'Flag.contains'(maps:get(flags, Cmd), <<"h">>) andalso maps:get(posix_mode, Cmd),
+            Use_help_abbrev = not lists:member(<<"h">>, maps:get(flags, Cmd)) andalso maps:get(posix_mode, Cmd),
             'Command.add_flag'(Cmd, help_flag(Use_help_abbrev))
         end;
         false -> ok
     end,
-    case maps:get(flag, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso not 'Flag.contains'(maps:get(flags, Cmd), <<"version">>) of
+    case maps:get(flag, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso not lists:member(<<"version">>, maps:get(flags, Cmd)) of
         true -> begin
-            Use_version_abbrev = not 'Flag.contains'(maps:get(flags, Cmd), <<"v">>) andalso maps:get(posix_mode, Cmd),
+            Use_version_abbrev = not lists:member(<<"v">>, maps:get(flags, Cmd)) andalso maps:get(posix_mode, Cmd),
             'Command.add_flag'(Cmd, version_flag(Use_version_abbrev))
         end;
         false -> ok
     end,
-    case maps:get(flag, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not 'Flag.contains'(maps:get(flags, Cmd), <<"man">>) of
+    case maps:get(flag, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not lists:member(<<"man">>, maps:get(flags, Cmd)) of
         true -> 'Command.add_flag'(Cmd, man_flag());
         false -> ok
     end.
 
 'Command.add_default_commands'(Cmd) ->
-    case maps:get(command, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not 'Command.contains'(maps:get(commands, Cmd), <<"help">>) andalso 'Command.is_root'(Cmd) of
+    case maps:get(command, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not lists:member(<<"help">>, maps:get(commands, Cmd)) andalso 'Command.is_root'(Cmd) of
         true -> 'Command.add_command'(Cmd, help_cmd());
         false -> ok
     end,
-    case maps:get(command, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso not 'Command.contains'(maps:get(commands, Cmd), <<"version">>) of
+    case maps:get(command, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso not lists:member(<<"version">>, maps:get(commands, Cmd)) of
         true -> 'Command.add_command'(Cmd, version_cmd());
         false -> ok
     end,
-    case maps:get(command, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not 'Command.contains'(maps:get(commands, Cmd), <<"man">>) andalso 'Command.is_root'(Cmd) of
+    case maps:get(command, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso not lists:member(<<"man">>, maps:get(commands, Cmd)) andalso 'Command.is_root'(Cmd) of
         true -> 'Command.add_command'(Cmd, man_cmd());
         false -> ok
     end.
 
 'Command.parse_flags'(Cmd) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Command.parse_commands'(Cmd) ->
-    Global_flags = 'Flag.filter'(maps:get(flags, Cmd), maps:get(global, It)),
+    Global_flags = lists:filter(maps:get(global, It), maps:get(flags, Cmd)),
     'Command.check_help_flag'(Cmd),
     'Command.check_version_flag'(Cmd),
     'Command.check_man_flag'(Cmd),
@@ -251,7 +255,7 @@
     end.
 
 'Command.check_help_flag'(Cmd) ->
-    case maps:get(flag, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso 'Flag.contains'(maps:get(flags, Cmd), <<"help">>) of
+    case maps:get(flag, maps:get(help, maps:get(parsed, maps:get(defaults, Cmd)))) andalso lists:member(<<"help">>, maps:get(flags, Cmd)) of
         true -> begin
             Help_flag = 'Flag.get_bool'(maps:get(flags, Cmd), <<"help">>),
             case Help_flag of
@@ -266,7 +270,7 @@
     end.
 
 'Command.check_man_flag'(Cmd) ->
-    case maps:get(flag, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso 'Flag.contains'(maps:get(flags, Cmd), <<"man">>) of
+    case maps:get(flag, maps:get(man, maps:get(parsed, maps:get(defaults, Cmd)))) andalso lists:member(<<"man">>, maps:get(flags, Cmd)) of
         true -> begin
             Man_flag = 'Flag.get_bool'(maps:get(flags, Cmd), <<"man">>),
             case Man_flag of
@@ -281,7 +285,7 @@
     end.
 
 'Command.check_version_flag'(Cmd) ->
-    case maps:get(flag, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso 'Flag.contains'(maps:get(flags, Cmd), <<"version">>) of
+    case maps:get(flag, maps:get(version, maps:get(parsed, maps:get(defaults, Cmd)))) andalso maps:get(version, Cmd) /= <<"">> andalso lists:member(<<"version">>, maps:get(flags, Cmd)) of
         true -> begin
             Version_flag = 'Flag.get_bool'(maps:get(flags, Cmd), <<"version">>),
             case Version_flag of
@@ -306,9 +310,10 @@
         end.
         ok
     end, maps:get(flags, Cmd)),
+        ok.
 
 'Command.execute_help'(Cmd) ->
-    case 'Command.contains'(maps:get(commands, Cmd), <<"help">>) of
+    case lists:member(<<"help">>, maps:get(commands, Cmd)) of
         true -> begin
             Help_cmd = 'Command.get'(maps:get(commands, Cmd), <<"help">>),
             case not isnil(maps:get(execute, Help_cmd)) of
@@ -320,16 +325,16 @@
         end;
         false -> ok
     end,
-    print('Command.help_message'(Cmd)),
+    io:format("~s", ['Command.help_message'(Cmd)]),
     ok.
 
 'Command.execute_man'(Cmd) ->
-    case 'Command.contains'(maps:get(commands, Cmd), <<"man">>) of
+    case lists:member(<<"man">>, maps:get(commands, Cmd)) of
         true -> begin
             Man_cmd = 'Command.get'(maps:get(commands, Cmd), <<"man">>),
             'Command.execute'(Man_cmd, Man_cmd)
         end;
-        false -> print('Command.manpage'(Cmd))
+        false -> io:format("~s", ['Command.manpage'(Cmd)])
     end.
 
 'Command.get'(Cmds, Name) ->
@@ -353,12 +358,12 @@
     false.
 
 eprintln_exit(Message) ->
-    eprintln(Message),
+    io:format(standard_error, "~s~n", [Message]),
     exit(1),
     ok.
 
 'Flag.get_all_found'(Flags) ->
-    'Flag.filter'(Flags, maps:get(found, It)).
+    lists:filter(maps:get(found, It), Flags).
 
 'Flag.get_bool'(Flag) ->
     case maps:get(flag, Flag) /= bool of
@@ -380,7 +385,7 @@ eprintln_exit(Message) ->
             Val = 'Flag.get_value_or_default_value'(Flag),
             case length(Val) == 0 of
                 true -> 0;
-                false -> 'string.int'(lists:nth(1, Val))
+                false -> binary_to_integer(lists:nth(1, Val))
             end
         end
         end.
@@ -395,7 +400,7 @@ eprintln_exit(Message) ->
                 false -> begin
                     Values = [],
                     lists:foreach(fun(F) ->
-                        Values bsl 'string.int'(F),
+                        Values bsl binary_to_integer(F),
                         ok
                         ok
                     end, Val),
@@ -420,7 +425,7 @@ eprintln_exit(Message) ->
             Val = 'Flag.get_value_or_default_value'(Flag),
             case length(Val) == 0 of
                 true -> 0.0;
-                false -> 'string.f64'(lists:nth(1, Val))
+                false -> binary_to_float(lists:nth(1, Val))
             end
         end
         end.
@@ -435,7 +440,7 @@ eprintln_exit(Message) ->
                 false -> begin
                     Values = [],
                     lists:foreach(fun(F) ->
-                        Values bsl 'string.f64'(F),
+                        Values bsl binary_to_float(F),
                         ok
                         ok
                     end, Val),
@@ -498,12 +503,12 @@ eprintln_exit(Message) ->
         true -> <<"--">>;
         false -> <<"-">>
     end,
-    (maps:get(name, Flag) /= <<"">> andalso Arg == <<(Prefix)/binary, (maps:get(name, Flag))/binary>>) orelse (maps:get(name, Flag) /= <<"">> andalso 'string.starts_with'(Arg, <<(Prefix)/binary, (maps:get(name, Flag))/binary, "=">>)) orelse (maps:get(abbrev, Flag) /= <<"">> andalso Arg == <<"-", (maps:get(abbrev, Flag))/binary>>) orelse (maps:get(abbrev, Flag) /= <<"">> andalso 'string.starts_with'(Arg, <<"-", (maps:get(abbrev, Flag))/binary, "=">>)).
+    (maps:get(name, Flag) /= <<"">> andalso Arg == <<(Prefix)/binary, (maps:get(name, Flag))/binary>>) orelse (maps:get(name, Flag) /= <<"">> andalso case string:prefix(Arg, <<(Prefix)/binary, (maps:get(name, Flag))/binary, "=">>) of nomatch -> false; _ -> true end) orelse (maps:get(abbrev, Flag) /= <<"">> andalso Arg == <<"-", (maps:get(abbrev, Flag))/binary>>) orelse (maps:get(abbrev, Flag) /= <<"">> andalso case string:prefix(Arg, <<"-", (maps:get(abbrev, Flag))/binary, "=">>) of nomatch -> false; _ -> true end).
 
 'Flag.parse_raw'(Flag, Args) ->
-    case length(lists:nth(1, Args)) > length(maps:get(name, Flag)) andalso 'string.contains'(lists:nth(1, Args), <<"=">>) of
+    case length(lists:nth(1, Args)) > length(maps:get(name, Flag)) andalso case binary:match(lists:nth(1, Args), <<"=">>) of nomatch -> false; _ -> true end of
         true -> begin
-            maps:get(value, Flag) bsl lists:nth(2, 'string.split'(lists:nth(1, Args), <<"=">>)),
+            maps:get(value, Flag) bsl lists:nth(2, binary:split(lists:nth(1, Args), <<"=">>, [global])),
             lists:nth(todo + 1, Args)
         end;
         false -> case length(Args) >= 2 of
@@ -517,7 +522,7 @@ eprintln_exit(Message) ->
     error(<<"Missing argument for `", (maps:get(name, Flag))/binary, "`">>).
 
 'Flag.parse_bool'(Flag, Args) ->
-    case length(lists:nth(1, Args)) > length(maps:get(name, Flag)) andalso 'string.contains'(lists:nth(1, Args), <<"=">>) of
+    case length(lists:nth(1, Args)) > length(maps:get(name, Flag)) andalso case binary:match(lists:nth(1, Args), <<"=">>) of nomatch -> false; _ -> true end of
         true -> begin
             lists:nth(todo + 1, Args)
         end;
@@ -576,16 +581,16 @@ print_help_for_command(Cmd) ->
                 case maps:get(name, Sub_cmd) == lists:nth(1, maps:get(args, Cmd)) of
                     true -> begin
                         Cmd_ = todo,
-                        print('Command.help_message'(Cmd_)),
+                        io:format("~s", ['Command.help_message'(Cmd_)]),
                     end;
                     false -> ok
                 end,
                 ok
             end, maps:get(commands, Cmd)),
-            print(<<"Invalid command: ", ('[]string.join'(maps:get(args, Cmd), <<" ">>))/binary>>)
+            io:format("~s", [<<"Invalid command: ", (iolist_to_binary(lists:join(<<" ">>, maps:get(args, Cmd))))/binary>>])
         end;
         false -> case maps:get(parent, Cmd) /= todo of
-            true -> print('Command.help_message'(maps:get(parent, Cmd)));
+            true -> io:format("~s", ['Command.help_message'(maps:get(parent, Cmd))]);
             false -> ok
         end
     end,
@@ -705,13 +710,13 @@ pretty_description(S, Indent_len) ->
                 I = Chars_per_line - 2,
                 J = 0,
                 % TODO: unhandled stmt type
-                ok                case J /= 0 of
+                case J /= 0 of
                     true -> 'Builder.write_string'(Acc, Indent);
                     false -> ok
                 end,
-                'Builder.write_string'(Acc, 'string.trim_space'(lists:nth(todo + 1, Line))),
+                'Builder.write_string'(Acc, string:trim(lists:nth(todo + 1, Line))),
                 ok
-            end, 'string.split'(S, <<"\\n">>)),
+            end, binary:split(S, <<"\\n">>, [global])),
             'Builder.str'(Acc)
         end
         end.
@@ -736,16 +741,16 @@ print_manpage_for_command(Cmd) ->
                 case maps:get(name, Sub_cmd) == lists:nth(1, maps:get(args, Cmd)) of
                     true -> begin
                         Man_cmd = todo,
-                        print('Command.manpage'(Man_cmd)),
+                        io:format("~s", ['Command.manpage'(Man_cmd)]),
                     end;
                     false -> ok
                 end,
                 ok
             end, maps:get(commands, Cmd)),
-            print(<<"Invalid command: ", ('[]string.join'(maps:get(args, Cmd), <<" ">>))/binary>>)
+            io:format("~s", [<<"Invalid command: ", (iolist_to_binary(lists:join(<<" ">>, maps:get(args, Cmd))))/binary>>])
         end;
         false -> case maps:get(parent, Cmd) /= todo of
-            true -> print('Command.manpage'(maps:get(parent, Cmd)));
+            true -> io:format("~s", ['Command.manpage'(maps:get(parent, Cmd))]);
             false -> ok
         end
     end,
@@ -753,8 +758,8 @@ print_manpage_for_command(Cmd) ->
 
 'Command.manpage'(Cmd) ->
     Mdoc = <<".Dd ", ('Time.strftime'(now(), <<"%B %d, %Y">>))/binary, "\\n">>,
-    Mdoc1 = <<".Dt ", ('string.to_upper'('string.replace'('Command.full_name'(Cmd), <<" ">>, <<"-">>)))/binary, " 1\\n">>,
-    Mdoc2 = <<".Os\\n.Sh NAME\\n.Nm ", ('string.replace'('Command.full_name'(Cmd), <<" ">>, <<"-">>))/binary, "\\n.Nd ", (maps:get(description, Cmd))/binary, "\\n">>,
+    Mdoc1 = <<".Dt ", (string:uppercase(binary:replace('Command.full_name'(Cmd), <<" ">>, <<"-">>, [global])))/binary, " 1\\n">>,
+    Mdoc2 = <<".Os\\n.Sh NAME\\n.Nm ", (binary:replace('Command.full_name'(Cmd), <<" ">>, <<"-">>, [global]))/binary, "\\n.Nd ", (maps:get(description, Cmd))/binary, "\\n">>,
     Mdoc3 = <<".Sh SYNOPSIS\\n">>,
     Mdoc4 = <<".Nm ", (maps:get(name, 'Command.root'(Cmd)))/binary, "\\n">>,
     case todo of
@@ -764,7 +769,7 @@ print_manpage_for_command(Cmd) ->
                 true -> begin
                     'Command.prepend'(Parents, maps:get(parent, Cmd)),
                     % TODO: unhandled stmt type
-                    ok                    lists:foreach(fun(C) ->
+                    lists:foreach(fun(C) ->
                         Mdoc5 = <<".Ar ", (maps:get(name, C))/binary, "\\n">>,
                         ok
                     end, Parents),
@@ -806,7 +811,7 @@ print_manpage_for_command(Cmd) ->
                         true -> begin
                             'Command.prepend'(Parents1, maps:get(parent, Cmd)),
                             % TODO: unhandled stmt type
-                            ok                            lists:foreach(fun(C) ->
+                            lists:foreach(fun(C) ->
                                 Mdoc11 = <<".Ar ", (maps:get(name, C))/binary, "\\n">>,
                                 ok
                             end, Parents1),
@@ -875,14 +880,14 @@ print_manpage_for_command(Cmd) ->
             Mdoc24 = <<".Sh SEE ALSO\\n">>,
             Cmds = [],
             case todo of
-                true -> Cmds bsl 'string.replace'('Command.full_name'(maps:get(parent, Cmd)), <<" ">>, <<"-">>);
+                true -> Cmds bsl binary:replace('Command.full_name'(maps:get(parent, Cmd)), <<" ">>, <<"-">>, [global]);
                 false -> ok
             end,
             lists:foreach(fun(C) ->
-                Cmds bsl 'string.replace'('Command.full_name'(C), <<" ">>, <<"-">>),
+                Cmds bsl binary:replace('Command.full_name'(C), <<" ">>, <<"-">>, [global]),
                 ok
             end, maps:get(commands, Cmd)),
-            '[]string.sort'(Cmds),
+            lists:sort(Cmds),
             I = 1,
             lists:foreach(fun(C) ->
                 Mdoc25 = <<".Xr ", (C)/binary, " 1">>,
@@ -915,13 +920,13 @@ print_version_for_command(Cmd) ->
                 case maps:get(name, Sub_cmd) == lists:nth(1, maps:get(args, Cmd)) of
                     true -> begin
                         Version_cmd = todo,
-                        print('Command.version'(Version_cmd)),
+                        io:format("~s", ['Command.version'(Version_cmd)]),
                     end;
                     false -> ok
                 end,
                 ok
             end, maps:get(commands, Cmd)),
-            vbeam_io:println(<<"Invalid command: ", ('[]string.join'(maps:get(args, Cmd), <<" ">>))/binary>>)
+            vbeam_io:println(<<"Invalid command: ", (iolist_to_binary(lists:join(<<" ">>, maps:get(args, Cmd))))/binary>>)
         end;
         false -> case maps:get(parent, Cmd) /= todo of
             true -> vbeam_io:println('Command.version'(maps:get(parent, Cmd)));

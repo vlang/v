@@ -96,7 +96,7 @@
         true -> 0;
         false -> begin
             Last = lists:nth(length(A) - 1 + 1, A),
-            A = '[]u8.clone'(lists:nth(todo + 1, A)),
+            A = lists:nth(todo + 1, A),
             Last
         end
         end.
@@ -106,7 +106,7 @@
         true -> 0;
         false -> begin
             Last = lists:nth(length(A) - 1 + 1, A),
-            A = '[]u64.clone'(lists:nth(todo + 1, A)),
+            A = lists:nth(todo + 1, A),
             Last
         end
         end.
@@ -116,7 +116,7 @@
         true -> 0;
         false -> begin
             Last = lists:nth(length(A) - 1 + 1, A),
-            A = '[]int.clone'(lists:nth(todo + 1, A)),
+            A = lists:nth(todo + 1, A),
             Last
         end
         end.
@@ -126,7 +126,7 @@
         true -> <<"">>;
         false -> begin
             Last = lists:nth(length(A) - 1 + 1, A),
-            A = '[]string.clone'(lists:nth(todo + 1, A)),
+            A = lists:nth(todo + 1, A),
             Last
         end
         end.
@@ -176,10 +176,12 @@ eprint(S) ->
 
 exit(Code) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 panic(S) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 flush_stdout() ->
     ok.
 
@@ -196,17 +198,20 @@ arguments() ->
     [].
 
 panic_n(S, N) ->
-    panic(S),
+    erlang:error({panic, S}),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 panic_n2(S, Number1, Number2) ->
-    panic(S),
+    erlang:error({panic, S}),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 panic_n3(S, Number1, Number2, Number3) ->
-    panic(S),
+    erlang:error({panic, S}),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 vmemcpy(Dest, Const_src, N) ->
     Dest.
 
@@ -446,22 +451,22 @@ ptr_str(Ptr) ->
     ok.
 
 '__print_assert_failure'(I) ->
-    eprintln(<<(maps:get(fpath, I))/binary, ":", (integer_to_binary(maps:get(line_nr, I) + 1))/binary, ": FAIL: fn ", (maps:get(fn_name, I))/binary, ": assert ", (maps:get(src, I))/binary>>),
+    io:format(standard_error, "~s~n", [<<(maps:get(fpath, I))/binary, ":", (integer_to_binary(maps:get(line_nr, I) + 1))/binary, ": FAIL: fn ", (maps:get(fn_name, I))/binary, ": assert ", (maps:get(src, I))/binary>>]),
     case length(maps:get(op, I)) > 0 andalso maps:get(op, I) /= <<"call">> of
         true -> begin
             case maps:get(llabel, I) == maps:get(lvalue, I) of
-                true -> eprintln(<<"   left value: ", (maps:get(llabel, I))/binary>>);
-                false -> eprintln(<<"   left value: ", (maps:get(llabel, I))/binary, " = ", (maps:get(lvalue, I))/binary>>)
+                true -> io:format(standard_error, "~s~n", [<<"   left value: ", (maps:get(llabel, I))/binary>>]);
+                false -> io:format(standard_error, "~s~n", [<<"   left value: ", (maps:get(llabel, I))/binary, " = ", (maps:get(lvalue, I))/binary>>])
             end,
             case maps:get(rlabel, I) == maps:get(rvalue, I) of
-                true -> eprintln(<<"  right value: ", (maps:get(rlabel, I))/binary>>);
-                false -> eprintln(<<"  right value: ", (maps:get(rlabel, I))/binary, " = ", (maps:get(rvalue, I))/binary>>)
+                true -> io:format(standard_error, "~s~n", [<<"  right value: ", (maps:get(rlabel, I))/binary>>]);
+                false -> io:format(standard_error, "~s~n", [<<"  right value: ", (maps:get(rlabel, I))/binary, " = ", (maps:get(rvalue, I))/binary>>])
             end
         end;
         false -> ok
     end,
     case maps:get(has_msg, I) of
-        true -> eprintln(<<"      message: ", (maps:get(message, I))/binary>>);
+        true -> io:format(standard_error, "~s~n", [<<"      message: ", (maps:get(message, I))/binary>>]);
         false -> ok
     end.
 

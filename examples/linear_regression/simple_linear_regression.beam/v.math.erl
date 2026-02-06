@@ -13,7 +13,7 @@ nan() ->
 
 is_nan(F) ->
     % TODO: unhandled stmt type
-    ok    F /= F.
+    F /= F.
 
 is_inf(F, Sign) ->
     (Sign >= 0 andalso F > todo) orelse (Sign =< 0 andalso F < todo).
@@ -91,7 +91,7 @@ fmod(X, Y) ->
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok            case X < 0 of
+            case X < 0 of
                 true -> ok;
                 false -> ok
             end,
@@ -111,7 +111,7 @@ gcd(A_, B_) ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    A.
+    A.
 
 egcd(A, B) ->
     Old_r = A,
@@ -121,7 +121,7 @@ egcd(A, B) ->
     Old_t = todo,
     T = todo,
     % TODO: unhandled stmt type
-    ok    case Old_r < 0 of
+    case Old_r < 0 of
         true -> -Old_r;
         false -> Old_r
     end.
@@ -358,7 +358,7 @@ expm1(X) ->
                         Term1 = X / todo,
                         Sum1 = Term1,
                         % TODO: unhandled stmt type
-                        ok                        Sum1
+                        Sum1
                     end;
                     false -> exp(X) - 1
                 end
@@ -410,10 +410,10 @@ log_factorial_asymptotic_expansion(N) ->
     Log_factorial = todo - Xj + (Xj - todo) * log(Xj),
     I = 0,
     % TODO: unhandled stmt type
-    ok    Sum = lists:nth(M - 1 + 1, Term),
+    Sum = lists:nth(M - 1 + 1, Term),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    Log_factorial + Sum.
+    % TODO: unhandled stmt type
+    Log_factorial + Sum.
 
 factoriali(N) ->
     case N =< 0 of
@@ -498,7 +498,7 @@ round_sig(X, Sig_digits) ->
         16 -> ok;
         _ -> ok
     end,
-    'string.f64'(Ret_str).
+    binary_to_float(Ret_str).
 
 round_to_even(X) ->
     Bits = f64_bits(X),
@@ -568,9 +568,9 @@ gamma(A) ->
                                 false -> begin
                                     Z = 1.0,
                                     % TODO: unhandled stmt type
-                                    ok                                    % TODO: unhandled stmt type
-                                    ok                                    % TODO: unhandled stmt type
-                                    ok                                    case X == 2 of
+                                    % TODO: unhandled stmt type
+                                    % TODO: unhandled stmt type
+                                    case X == 2 of
                                         true -> Z;
                                         false -> begin
                                             X1 = X - 2,
@@ -862,7 +862,7 @@ hypot(X, Y) ->
                         true -> 0.0;
                         false -> begin
                             Q1 = Q / P,
-                            P * sqrt(1 + Q1 * Q1)
+                            P * math:sqrt(1 + Q1 * Q1)
                         end
                                         end
                 end
@@ -897,18 +897,18 @@ smootherstep(Edge0, Edge1, X) ->
 
 cubic_bezier(T, P) ->
     case length(P) /= 4 of
-        true -> panic(<<"invalid p.len">>);
+        true -> erlang:error({panic, <<"invalid p.len">>});
         false -> ok
     end,
     cubic_bezier_coords(T, maps:get(x, lists:nth(1, P)), maps:get(x, lists:nth(2, P)), maps:get(x, lists:nth(3, P)), maps:get(x, lists:nth(4, P)), maps:get(y, lists:nth(1, P)), maps:get(y, lists:nth(2, P)), maps:get(y, lists:nth(3, P)), maps:get(y, lists:nth(4, P))).
 
 cubic_bezier_a(T, X, Y) ->
     case length(X) /= 4 of
-        true -> panic(<<"invalid x.len">>);
+        true -> erlang:error({panic, <<"invalid x.len">>});
         false -> ok
     end,
     case length(Y) /= 4 of
-        true -> panic(<<"invalid y.len">>);
+        true -> erlang:error({panic, <<"invalid y.len">>});
         false -> ok
     end,
     cubic_bezier_coords(T, lists:nth(1, X), lists:nth(2, X), lists:nth(3, X), lists:nth(4, X), lists:nth(1, Y), lists:nth(2, Y), lists:nth(3, Y), lists:nth(4, Y)).
@@ -929,11 +929,11 @@ acosh(X) ->
     case X > todo of
         true -> log(X) + todo;
         false -> case X > todo of
-            true -> log(todo * X - todo / (sqrt(X * X - todo) + X));
+            true -> log(todo * X - todo / (math:sqrt(X * X - todo) + X));
             false -> case X > todo of
                 true -> begin
                     T = X - todo,
-                    log1p(T + sqrt(todo * T + T * T))
+                    log1p(T + math:sqrt(todo * T + T * T))
                 end;
                 false -> case X == todo of
                     true -> 0.0;
@@ -952,11 +952,11 @@ asinh(X) ->
     case A > todo of
         true -> S * (log(A) + todo);
         false -> case A > todo of
-            true -> S * log(todo * A + todo / (A + sqrt(A * A + todo)));
+            true -> S * log(todo * A + todo / (A + math:sqrt(A * A + todo)));
             false -> case A > todo of
                 true -> begin
                     A2 = A * A,
-                    S * log1p(A + A2 / (todo + sqrt(todo + A2)))
+                    S * log1p(A + A2 / (todo + math:sqrt(todo + A2)))
                 end;
                 false -> X
             end
@@ -1066,7 +1066,7 @@ asin(X_) ->
             case X1 > todo of
                 true -> nan();
                 false -> begin
-                    Temp = sqrt(todo - X1 * X1),
+                    Temp = math:sqrt(todo - X1 * X1),
                     case X1 > todo of
                         true -> ok;
                         false -> ok
@@ -1086,7 +1086,7 @@ acos(X) ->
         true -> nan();
         false -> 
             case X > todo of
-                true -> todo * asin(sqrt(todo - todo * X));
+                true -> todo * asin(math:sqrt(todo - todo * X));
                 false -> begin
                     Z = todo / todo - asin(X),
                     Z1 = Z + todo,
@@ -1285,7 +1285,7 @@ digits(Num, Params) ->
         true -> Res;
         false -> begin
             % TODO: unhandled stmt type
-            ok            case Sign1 == -1 of
+            case Sign1 == -1 of
                 true -> ok;
                 false -> ok
             end,
@@ -1304,7 +1304,7 @@ count_digits(Number) ->
         false -> begin
             C = 0,
             % TODO: unhandled stmt type
-            ok            C
+            C
         end
         end.
 
@@ -1415,7 +1415,7 @@ modf(F) ->
             I1 = Abs_f + todo,
             I2 = 4.503599627370496000e+15,
             % TODO: unhandled stmt type
-            ok            case F < todo of
+            case F < todo of
                 true -> ok;
                 false -> ok
             end
@@ -1512,7 +1512,7 @@ nextafter(X, Y) ->
 
 poly_n_eval(C, N, X) ->
     case length(C) == 0 of
-        true -> panic(<<"coeficients can not be empty">>);
+        true -> erlang:error({panic, <<"coeficients can not be empty">>});
         false -> ok
     end,
     Len = todo,
@@ -1525,7 +1525,7 @@ poly_n_eval(C, N, X) ->
 
 poly_n_1_eval(C, N, X) ->
     case length(C) == 0 of
-        true -> panic(<<"coeficients can not be empty">>);
+        true -> erlang:error({panic, <<"coeficients can not be empty">>});
         false -> ok
     end,
     Len = todo - 1,
@@ -1550,7 +1550,7 @@ poly_1_eval(C, X) ->
     E_ = 0.0,
     Temp = 0.0,
     % TODO: unhandled stmt type
-    ok    Temp1 = D,
+    Temp1 = D,
     D1 = Y * D - Dd + todo * lists:nth(1, maps:get(c, Cs)),
     E_1 = abs(Y * Temp1) + abs(Dd) + todo * abs(lists:nth(1, maps:get(c, Cs))),
     D1.
@@ -1586,7 +1586,7 @@ powi(A, B) ->
         end;
         false -> begin
             % TODO: unhandled stmt type
-            ok            V
+            V
         end
         end.
 
@@ -1649,9 +1649,9 @@ pow(X, Y) ->
                                         end
                                     end;
                                     false -> case Y == todo of
-                                        true -> sqrt(X);
+                                        true -> math:sqrt(X);
                                         false -> case Y == todo of
-                                            true -> 1 / sqrt(X);
+                                            true -> 1 / math:sqrt(X);
                                             false -> ok
                                         end
                                     end
@@ -1699,7 +1699,7 @@ pow(X, Y) ->
                     X1 = element(1, frexp(X)),
                     Xe = element(2, frexp(X)),
                     % TODO: unhandled stmt type
-                    ok                    case Y < 0 of
+                    case Y < 0 of
                         true -> begin
                             A12 = 1 / A11,
                             Ae1 = -Ae,
@@ -2024,8 +2024,8 @@ sqrti(A) ->
     Q = todo,
     R = todo,
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    R.
+    % TODO: unhandled stmt type
+    R.
 
 square(X) ->
     X * X.
@@ -2170,19 +2170,19 @@ tanh(X) ->
 
 f32_bits(F) ->
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 f32_from_bits(B) ->
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 f64_bits(F) ->
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 f64_from_bits(B) ->
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 with_set_low_word(F, Lo) ->
     Tmp = f64_bits(F),

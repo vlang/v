@@ -1,0 +1,31 @@
+module 'v.main' ['main'/0,
+                'handle_client'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Server> =
+            apply 'listen_tcp'/2('ip6', #{#<58>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#)
+        in  let <Laddr> =
+                apply 'TcpListener.addr'/1(Server)
+            in  do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Laddr|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                    'ok'
+'handle_client'/1 =
+    fun (Socket) ->
+        let <Client_addr> =
+            apply 'TcpConn.peer_addr'/1(Socket)
+        in  do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<62>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Client_addr|[]]])|[]])
+                let <Reader> =
+                    apply 'new_buffered_reader'/1(~{'reader'=>Socket,{'vbeam','type'}=>'BufferedReaderConfig'}~)
+                in  do  apply 'TcpConn.write_string'/2(Socket, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

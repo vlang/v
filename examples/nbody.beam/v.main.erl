@@ -7,11 +7,12 @@ advance(Sys, Dt) ->
         VyOut = maps:get(y, lists:nth(I + 1, maps:get(v, Sys))),
         VzOut = maps:get(z, lists:nth(I + 1, maps:get(v, Sys))),
         % TODO: unhandled stmt type
-        ok        {VxOut, VyOut, VzOut}
+        {VxOut, VyOut, VzOut}
     end, {Vx, Vy, Vz}, lists:seq(0, 5 - 1 - 1)),
     lists:foreach(fun(I) ->
         ok
     end, lists:seq(0, 5 - 1)),
+        ok.
 
 offsetmomentum(Sys) ->
     Px = todo,
@@ -29,7 +30,7 @@ energy(Sys) ->
     E1 = lists:foldl(fun(I, EAcc) ->
         EOut = todo * maps:get(m, lists:nth(I + 1, maps:get(v, Sys))) * (maps:get(x, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(x, lists:nth(I + 1, maps:get(v, Sys))) + maps:get(y, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(y, lists:nth(I + 1, maps:get(v, Sys))) + maps:get(z, lists:nth(I + 1, maps:get(v, Sys))) * maps:get(z, lists:nth(I + 1, maps:get(v, Sys)))),
         % TODO: unhandled stmt type
-        ok        EOut
+        EOut
     end, E, lists:seq(0, 5 - 1)),
     E1.
 

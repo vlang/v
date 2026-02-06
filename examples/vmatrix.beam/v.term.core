@@ -1,0 +1,552 @@
+module 'v.term' ['format_esc'/1,
+                'format'/3,
+                'format_rgb'/6,
+                'rgb'/4,
+                'bg_rgb'/4,
+                'hex'/2,
+                'bg_hex'/2,
+                'reset'/1,
+                'bold'/1,
+                'dim'/1,
+                'italic'/1,
+                'underline'/1,
+                'slow_blink'/1,
+                'rapid_blink'/1,
+                'inverse'/1,
+                'hidden'/1,
+                'strikethrough'/1,
+                'black'/1,
+                'red'/1,
+                'green'/1,
+                'yellow'/1,
+                'blue'/1,
+                'magenta'/1,
+                'cyan'/1,
+                'white'/1,
+                'bg_black'/1,
+                'bg_red'/1,
+                'bg_green'/1,
+                'bg_yellow'/1,
+                'bg_blue'/1,
+                'bg_magenta'/1,
+                'bg_cyan'/1,
+                'bg_white'/1,
+                'gray'/1,
+                'bright_black'/1,
+                'bright_red'/1,
+                'bright_green'/1,
+                'bright_yellow'/1,
+                'bright_blue'/1,
+                'bright_magenta'/1,
+                'bright_cyan'/1,
+                'bright_white'/1,
+                'bright_bg_black'/1,
+                'bright_bg_red'/1,
+                'bright_bg_green'/1,
+                'bright_bg_yellow'/1,
+                'bright_bg_blue'/1,
+                'bright_bg_magenta'/1,
+                'bright_bg_cyan'/1,
+                'bright_bg_white'/1,
+                'highlight_command'/1,
+                'write_color'/3,
+                'writeln_color'/3,
+                'set_cursor_position'/1,
+                'move'/2,
+                'cursor_up'/1,
+                'cursor_down'/1,
+                'cursor_forward'/1,
+                'cursor_back'/1,
+                'erase_display'/1,
+                'erase_toend'/0,
+                'erase_tobeg'/0,
+                'erase_clear'/0,
+                'erase_del_clear'/0,
+                'erase_line'/1,
+                'erase_line_toend'/0,
+                'erase_line_tobeg'/0,
+                'erase_line_clear'/0,
+                'show_cursor'/0,
+                'hide_cursor'/0,
+                'clear_previous_line'/0,
+                'get_terminal_size'/0,
+                'clear'/0,
+                'input_character'/0,
+                'supports_sixel'/0,
+                'enable_echo'/1,
+                'graphics_num_colors'/0,
+                'key_pressed'/0,
+                'can_show_color_on_stdout'/0,
+                'can_show_color_on_stderr'/0,
+                'failed'/1,
+                'ok_message'/1,
+                'fail_message'/1,
+                'warn_message'/1,
+                'colorize'/2,
+                'ecolorize'/2,
+                'strip_ansi'/1,
+                'h_divider'/1,
+                'header_left'/2,
+                'header'/2,
+                'imax'/2,
+                'supports_escape_sequences'/1,
+                'utf8_getchar'/0,
+                'utf8_len'/1,
+                'TextStyle__static__from'/1,
+                'FgColor__static__from'/1,
+                'BgColor__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'format_esc'/1 =
+        fun (Code) ->
+            call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Code|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+    'format'/3 =
+        fun (Msg, Open, Close) ->
+            call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Open|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[Msg|[#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Close|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]])
+    'format_rgb'/6 =
+        fun (R, G, B, Msg, Open, Close) ->
+            call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Open|[#{#<59>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(R)|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(G)|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(B)|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[Msg|[#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Close|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]]]]]])
+    'rgb'/4 =
+        fun (R, G, B, Msg) ->
+            apply 'format_rgb'/6(R, G, B, Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_rgb'/4 =
+        fun (R, G, B, Msg) ->
+            apply 'format_rgb'/6(R, G, B, Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'hex'/2 =
+        fun (Hex, Msg) ->
+            apply 'format_rgb'/6(call 'erlang':'bsr'(Hex, 16), call 'erlang':'band'(call 'erlang':'bsr'(Hex, 8), 16#FF), call 'erlang':'band'(Hex, 16#FF), Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_hex'/2 =
+        fun (Hex, Msg) ->
+            apply 'format_rgb'/6(call 'erlang':'bsr'(Hex, 16), call 'erlang':'band'(call 'erlang':'bsr'(Hex, 8), 16#FF), call 'erlang':'band'(Hex, 16#FF), Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'reset'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<48>(8,1,'integer',['unsigned'|['big']])}#, #{#<48>(8,1,'integer',['unsigned'|['big']])}#)
+    'bold'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+    'dim'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<50>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+    'italic'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#)
+    'underline'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)
+    'slow_blink'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<53>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#)
+    'rapid_blink'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<54>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#)
+    'inverse'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<55>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']])}#)
+    'hidden'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<56>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)
+    'strikethrough'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']])}#, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'black'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'red'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'green'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'yellow'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'blue'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'magenta'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'cyan'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'white'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_black'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_red'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_green'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_yellow'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_blue'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_magenta'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_cyan'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bg_white'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'gray'/1 =
+        fun (Msg) ->
+            apply 'bright_black'/1(Msg)
+    'bright_black'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_red'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_green'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_yellow'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_blue'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_magenta'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_cyan'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_white'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<57>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']])}#, #{#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_black'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_red'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_green'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_yellow'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_blue'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_magenta'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_cyan'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'bright_bg_white'/1 =
+        fun (Msg) ->
+            apply 'format'/3(Msg, #{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']])}#)
+    'highlight_command'/1 =
+        fun (Command) ->
+            apply 'bright_white'/1(apply 'bg_cyan'/1(call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Command|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]])))
+    'write_color'/3 =
+        fun (B, S, Config) ->
+            let <Codes> =
+                []
+            in  do  let <_1> =
+                    fun (Style) ->
+                        call 'erlang':'bsl'(Codes, call 'erlang':'integer_to_binary'('todo'))
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('styles', Config))
+                    do  case 'todo' of <'true'> when 'true' -> call 'erlang':'bsl'(Codes, call 'erlang':'integer_to_binary'('todo')) <'false'> when 'true' -> 'ok' end
+                        do  case 'todo' of <'true'> when 'true' -> call 'erlang':'bsl'(Codes, call 'erlang':'integer_to_binary'('todo')) <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'=/='(call 'erlang':'map_get'('custom', Config), #{  }#) of <'true'> when 'true' -> call 'erlang':'bsl'(Codes, call 'erlang':'map_get'('custom', Config)) <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'>'(call 'erlang':'length'(Codes), 0) of <'true'> when 'true' -> 
+                                    let <Code_str> =
+                                        call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<59>(8,1,'integer',['unsigned'|['big']])}#, Codes))
+                                    in  apply 'Builder.write_string'/2(B, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Code_str|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]))
+                                 <'false'> when 'true' -> apply 'Builder.write_string'/2(B, S) end
+    'writeln_color'/3 =
+        fun (B, S, Color) ->
+            do  apply 'write_color'/3(B, S, Color)
+                apply 'Builder.writeln'/2(B, #{  }#)
+    'set_cursor_position'/1 =
+        fun (C) ->
+            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('y', C))|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('x', C))|[]]]]])|[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                apply 'flush_stdout'/0()
+    'move'/2 =
+        fun (N, Direction) ->
+            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(N)|[Direction|[]]]])|[]])
+                apply 'flush_stdout'/0()
+    'cursor_up'/1 =
+        fun (N) ->
+            apply 'move'/2(N, #{#<65>(8,1,'integer',['unsigned'|['big']])}#)
+    'cursor_down'/1 =
+        fun (N) ->
+            apply 'move'/2(N, #{#<66>(8,1,'integer',['unsigned'|['big']])}#)
+    'cursor_forward'/1 =
+        fun (N) ->
+            apply 'move'/2(N, #{#<67>(8,1,'integer',['unsigned'|['big']])}#)
+    'cursor_back'/1 =
+        fun (N) ->
+            apply 'move'/2(N, #{#<68>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_display'/1 =
+        fun (T) ->
+            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[T|[]]])|[#{#<74>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                apply 'flush_stdout'/0()
+    'erase_toend'/0 =
+        fun () ->
+            apply 'erase_display'/1(#{#<48>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_tobeg'/0 =
+        fun () ->
+            apply 'erase_display'/1(#{#<49>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_clear'/0 =
+        fun () ->
+            do  call 'io':'format'([92|[48|[51|[51|[91|[72|[92|[48|[51|[51|[91|[74|[]]]]]]]]]]]]])
+                apply 'flush_stdout'/0()
+    'erase_del_clear'/0 =
+        fun () ->
+            apply 'erase_display'/1(#{#<51>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_line'/1 =
+        fun (T) ->
+            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[T|[]]])|[#{#<75>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                apply 'flush_stdout'/0()
+    'erase_line_toend'/0 =
+        fun () ->
+            apply 'erase_line'/1(#{#<48>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_line_tobeg'/0 =
+        fun () ->
+            apply 'erase_line'/1(#{#<49>(8,1,'integer',['unsigned'|['big']])}#)
+    'erase_line_clear'/0 =
+        fun () ->
+            apply 'erase_line'/1(#{#<50>(8,1,'integer',['unsigned'|['big']])}#)
+    'show_cursor'/0 =
+        fun () ->
+            do  call 'io':'format'([27|[91|[63|[50|[53|[104|[]]]]]]])
+                apply 'flush_stdout'/0()
+    'hide_cursor'/0 =
+        fun () ->
+            do  call 'io':'format'([27|[91|[63|[50|[53|[108|[]]]]]]])
+                apply 'flush_stdout'/0()
+    'clear_previous_line'/0 =
+        fun () ->
+            do  call 'io':'format'([92|[114|[27|[91|[49|[65|[27|[91|[50|[75|[]]]]]]]]]]])
+                apply 'flush_stdout'/0()
+    'get_terminal_size'/0 =
+        fun () ->
+            80
+    'clear'/0 =
+        fun () ->
+            do  call 'io':'format'([27|[91|[50|[74|[]]]]])
+                do  call 'io':'format'([27|[91|[72|[]]]])
+                    'true'
+    'input_character'/0 =
+        fun () ->
+            -1
+    'supports_sixel'/0 =
+        fun () ->
+            'false'
+    'enable_echo'/1 =
+        fun (Enable) ->
+            'ok'
+    'graphics_num_colors'/0 =
+        fun () ->
+            0
+    'key_pressed'/0 =
+        fun () ->
+            'todo'
+    'can_show_color_on_stdout'/0 =
+        fun () ->
+            do  case Can_show_color_on_stdout_cache of <1> when 'true' -> 'true' <-1> when 'true' -> 'false' <_> when 'true' -> 'ok' end
+                let <Status> =
+                    apply 'supports_escape_sequences'/1(1)
+                in  let <Can_show_color_on_stdout_cache_1> =
+                        case Status of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                    in  Status
+    'can_show_color_on_stderr'/0 =
+        fun () ->
+            do  case Can_show_color_on_stderr_cache of <1> when 'true' -> 'true' <-1> when 'true' -> 'false' <_> when 'true' -> 'ok' end
+                let <Status> =
+                    apply 'supports_escape_sequences'/1(2)
+                in  let <Can_show_color_on_stderr_cache_1> =
+                        case Status of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                    in  Status
+    'failed'/1 =
+        fun (S) ->
+            case apply 'can_show_color_on_stdout'/0() of
+                <'true'> when 'true' -> apply 'bg_red'/1(apply 'bold'/1(apply 'white'/1(S)))
+                <'false'> when 'true' -> 
+                    S
+            end
+    'ok_message'/1 =
+        fun (S) ->
+            case apply 'can_show_color_on_stdout'/0() of
+                <'true'> when 'true' -> apply 'green'/1(call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                <'false'> when 'true' -> 
+                    S
+            end
+    'fail_message'/1 =
+        fun (S) ->
+            apply 'failed'/1(call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+    'warn_message'/1 =
+        fun (S) ->
+            case apply 'can_show_color_on_stdout'/0() of
+                <'true'> when 'true' -> apply 'bright_yellow'/1(call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                <'false'> when 'true' -> 
+                    S
+            end
+    'colorize'/2 =
+        fun (Cfn, S) ->
+            case apply 'can_show_color_on_stdout'/0() of
+                <'true'> when 'true' -> apply 'cfn'/1(S)
+                <'false'> when 'true' -> 
+                    S
+            end
+    'ecolorize'/2 =
+        fun (Cfn, S) ->
+            case apply 'can_show_color_on_stderr'/0() of
+                <'true'> when 'true' -> apply 'cfn'/1(S)
+                <'false'> when 'true' -> 
+                    S
+            end
+    'strip_ansi'/1 =
+        fun (Text) ->
+            let <Input> =
+                apply 'new'/1(Text)
+            in  let <Output> =
+                    []
+                in  let <Ch> =
+                        0
+                    in  apply '[]u8.bytestr'/1(Output)
+    'h_divider'/1 =
+        fun (Divider) ->
+            let <Cols> =
+                apply 'get_terminal_size'/0()
+            in  do  apply 'get_terminal_size'/0()
+                    let <Result> =
+                        #{  }#
+                    in  let <Result_1> =
+                            case call 'erlang':'>'(call 'erlang':'length'(Divider), 0) of <'true'> when 'true' -> apply 'string.repeat'/2(Divider, call 'erlang':'+'(1, call 'erlang':'div'(Cols, call 'erlang':'length'(Divider)))) <'false'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'+'(1, Cols)) end
+                        in  call 'lists':'nth'(call 'erlang':'+'('todo', 1), Result_1)
+    'header_left'/2 =
+        fun (Text, Divider) ->
+            let <Plain_text> =
+                apply 'strip_ansi'/1(Text)
+            in  let <Xcols> =
+                    apply 'get_terminal_size'/0()
+                in  do  apply 'get_terminal_size'/0()
+                        let <Cols> =
+                            apply 'imax'/2(1, Xcols)
+                        in  let <Relement> =
+                                case call 'erlang':'>'(call 'erlang':'length'(Divider), 0) of <'true'> when 'true' -> Divider <'false'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']])}# end
+                            in  let <Hstart> =
+                                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), apply 'string.repeat'/2(Relement, 4))
+                                in  let <Remaining_cols> =
+                                        apply 'imax'/2(0, call 'erlang':'-'(Cols, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(Hstart), 1), call 'erlang':'length'(Plain_text)), 1)))
+                                    in  let <Hend> =
+                                            call 'lists':'nth'(call 'erlang':'+'('todo', 1), apply 'string.repeat'/2(Relement, call 'erlang':'div'(call 'erlang':'+'(Remaining_cols, 1), call 'erlang':'length'(Relement))))
+                                        in  call 'erlang':'iolist_to_binary'([Hstart|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Text|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Hend|[]]]]]])
+    'header'/2 =
+        fun (Text, Divider) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Text), 0) of
+                <'true'> when 'true' -> apply 'h_divider'/1(Divider)
+                <'false'> when 'true' -> 
+                    let <Xcols> =
+                        apply 'get_terminal_size'/0()
+                    in  do  apply 'get_terminal_size'/0()
+                            let <Cols> =
+                                apply 'imax'/2(1, Xcols)
+                            in  let <Tlimit> =
+                                    apply 'imax'/2(1, case call 'erlang':'>'(Cols, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(Text), 2), call 'erlang':'*'(2, call 'erlang':'length'(Divider)))) of <'true'> when 'true' -> call 'erlang':'length'(Text) <'false'> when 'true' -> call 'erlang':'-'(call 'erlang':'-'(Cols, 3), call 'erlang':'*'(2, call 'erlang':'length'(Divider))) end)
+                                in  let <Tlimit_aligned> =
+                                        case call 'erlang':'=/='(call 'erlang':'rem'(Tlimit, 2), call 'erlang':'rem'(Cols, 2)) of <'true'> when 'true' -> call 'erlang':'+'(Tlimit, 1) <'false'> when 'true' -> Tlimit end
+                                    in  let <Tstart> =
+                                            apply 'imax'/2(0, call 'erlang':'div'(call 'erlang':'-'(Cols, Tlimit_aligned), 2))
+                                        in  let <Ln> =
+                                                #{  }#
+                                            in  let <Ln_1> =
+                                                    case call 'erlang':'>'(call 'erlang':'length'(Divider), 0) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), apply 'string.repeat'/2(Divider, call 'erlang':'+'(1, call 'erlang':'div'(Cols, call 'erlang':'length'(Divider))))) <'false'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'+'(1, Cols)) end
+                                                in  case call 'erlang':'=:='(call 'erlang':'length'(Ln_1), 1) of
+                                                        <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([Ln_1|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'lists':'nth'(call 'erlang':'+'('todo', 1), Text)|[]]])|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[Ln_1|[]]])
+                                                        <'false'> when 'true' -> 
+                                                            call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'lists':'nth'(call 'erlang':'+'('todo', 1), Ln_1)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'lists':'nth'(call 'erlang':'+'('todo', 1), Text)|[]]])|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'lists':'nth'(call 'erlang':'+'('todo', 1), Ln_1)|[]]])
+                                                    end
+            end
+    'imax'/2 =
+        fun (X, Y) ->
+            case call 'erlang':'>'(X, Y) of <'true'> when 'true' -> X <'false'> when 'true' -> Y end
+    'supports_escape_sequences'/1 =
+        fun (Fd) ->
+            let <Vcolors_override> =
+                apply 'getenv'/1(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']])}#)
+            in  case call 'erlang':'=:='(Vcolors_override, #{#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'=:='(Vcolors_override, #{#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#) of
+                            <'true'> when 'true' -> 'false'
+                            <'false'> when 'true' -> 
+                                let <Env_term> =
+                                    apply 'getenv'/1(#{#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+                                in  case call 'erlang':'=:='(Env_term, #{#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']])}#) of
+                                        <'true'> when 'true' -> 'false'
+                                        <'false'> when 'true' -> 
+                                            'ok'
+                                    end
+                        end
+                end
+    'utf8_getchar'/0 =
+        fun () ->
+            let <C> =
+                apply 'input_character'/0()
+            in  case call 'erlang':'=:='(C, -1) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        let <Len> =
+                            apply 'utf8_len'/1('todo')
+                        in  case call 'erlang':'<'(C, 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> case call 'erlang':'=:='(Len, 0) of <'true'> when 'true' -> C <'false'> when 'true' -> case call 'erlang':'=:='(Len, 1) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 
+                                let <Uc> =
+                                    call 'erlang':'band'(C, call 'erlang':'-'(call 'erlang':'bsl'(1, call 'erlang':'-'(7, Len)), 1))
+                                in  Uc
+                             end end end
+                end
+    'utf8_len'/1 =
+        fun (C) ->
+            let <B> =
+                0
+            in  let <X> =
+                    C
+                in  let <X_1> =
+                        case call 'erlang':'=/='(call 'erlang':'band'(X, 240), 0) of <'true'> when 'true' -> 4 <'false'> when 'true' -> X end
+                    in  let <B_2> =
+                            case call 'erlang':'=/='(call 'erlang':'band'(X_1, 240), 0) of <'true'> when 'true' -> B <'false'> when 'true' -> 4 end
+                        in  let <X_3> =
+                                case call 'erlang':'=/='(call 'erlang':'band'(X_1, 12), 0) of <'true'> when 'true' -> 2 <'false'> when 'true' -> X_1 end
+                            in  let <B_4> =
+                                    case call 'erlang':'=/='(call 'erlang':'band'(X_3, 12), 0) of <'true'> when 'true' -> B_2 <'false'> when 'true' -> 2 end
+                                in  do  case call 'erlang':'=:='(call 'erlang':'band'(X_3, 2), 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                        B_4
+    'TextStyle__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'FgColor__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'BgColor__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.term')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.term', _0)
+    end

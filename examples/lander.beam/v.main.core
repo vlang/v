@@ -1,0 +1,43 @@
+module 'v.main' ['Mars.dust_storm'/1,
+                'Lander.deorbit'/1,
+                'Lander.open_parachutes'/2,
+                'wait'/0,
+                'Lander.land'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'Mars.dust_storm'/1 =
+    fun (M) ->
+        call 'erlang':'>='(apply 'int'/0(), 0)
+'Lander.deorbit'/1 =
+    fun (L) ->
+        call 'io':'format'([108|[101|[97|[118|[105|[110|[103|[32|[111|[114|[98|[105|[116|[126|[110|[]]]]]]]]]]]]]]]])
+'Lander.open_parachutes'/2 =
+    fun (L, N) ->
+        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(N)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+'wait'/0 =
+    fun () ->
+        do  call 'io':'format'([119|[97|[105|[116|[105|[110|[103|[46|[46|[46|[126|[110|[]]]]]]]]]]]]])
+            call 'timer':'sleep'(call 'erlang':'*'(1, 'todo'))
+'Lander.land'/2 =
+    fun (L, W) ->
+        do  case call 'erlang':'is'(W, 'todo') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            do  apply 'Lander.deorbit'/1(L)
+                do  case W of <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> apply 'Lander.open_parachutes'/2(L, 3) <'todo'> when 'true' -> apply 'Lander.open_parachutes'/2(L, 1) end
+                    call 'io':'format'([108|[97|[110|[100|[101|[100|[126|[110|[]]]]]]]]])
+'main'/0 =
+    fun () ->
+        let <L> =
+            ~{{'vbeam','type'}=>'Lander'}~
+        in  do  apply 'Lander.land'/2(L, ~{{'vbeam','type'}=>'Venus'}~)
+                apply 'Lander.land'/2(L, ~{{'vbeam','type'}=>'Mars'}~)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

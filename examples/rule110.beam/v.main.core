@@ -1,0 +1,97 @@
+module 'v.main' ['main'/0,
+                'print_generation'/1,
+                'next_generation'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Arg> =
+                #{#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <Arg_1> =
+                    case call 'erlang':'=/='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of <'true'> when 'true' -> Arg <'false'> when 'true' -> call 'lists':'nth'(2, call 'init':'get_plain_arguments'()) end
+                in  let <N> =
+                        call 'erlang':'binary_to_integer'(Arg_1)
+                    in  do  case call 'erlang':'or'(call 'erlang':'>'(N, 200), call 'erlang':'<'(N, 3)) of <'true'> when 'true' -> 
+                            do  call 'io':'format'('standard_error', [96|[110|[96|[32|[109|[117|[115|[116|[32|[98|[101|[32|[98|[101|[116|[119|[101|[101|[110|[32|[51|[32|[97|[110|[100|[32|[50|[48|[48|[33|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                                call 'erlang':'halt'(1)
+                         <'false'> when 'true' -> 'ok' end
+                            do  call 'io':'format'([92|[110|[]]])
+                                let <Title> =
+                                    #{#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#
+                                in  let <Title_len> =
+                                        call 'erlang':'length'(Title)
+                                    in  do  case call 'erlang':'>'(N, Title_len) of <'true'> when 'true' -> 
+                                            do  let <_2> =
+                                                fun (_) ->
+                                                    call 'io':'format'([61|[]])
+                                            in  let <_3> =
+                                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'div'(call 'erlang':'-'(N, Title_len), 2), 1))
+                                                in  call 'lists':'foreach'(_2, _3)
+                                                do  call 'io':'format'([126|[115|[]]], [Title|[]])
+                                                    'ok'
+                                         <'false'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'lists':'nth'(call 'erlang':'+'('todo', 1), Title)|[]]) end
+                                            let <Generation_bin> =
+                                                []
+                                            in  do  let <_4> =
+                                                    fun (I) ->
+                                                        'ok'
+                                                in  let <_5> =
+                                                        call 'lists':'seq'(0, call 'erlang':'-'(N, 1))
+                                                    in  call 'lists':'foreach'(_4, _5)
+                                                    do  call 'io':'format'([92|[110|[]]])
+                                                        'ok'
+    'print_generation'/1 =
+        fun (Arr) ->
+            let <Symbols> =
+                [#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<42>(8,1,'integer',['unsigned'|['big']])}#|[]]]
+            in  do  let <_1> =
+                    fun (I) ->
+                        call 'io':'format'([126|[115|[]]], [call 'lists':'nth'(call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Arr), 1), Symbols)|[]])
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Arr), 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    call 'io':'format'([92|[110|[]]])
+    'next_generation'/1 =
+        fun (Gen) ->
+            let <Arr> =
+                Gen
+            in  let <Prev> =
+                    0
+                in  let <Curr> =
+                        0
+                    in  let <Next> =
+                            0
+                        in  let <Prev_1> =
+                                let <_2> =
+                                    fun (I, _7) ->
+                                        let <PrevAcc> =
+                                            call 'erlang':'element'(1, _7)
+                                        in                                          let <CurrAcc> =
+                                            call 'erlang':'element'(2, _7)
+                                        in                                          let <NextAcc> =
+                                            call 'erlang':'element'(3, _7)
+                                        in  
+                                        let <PrevOut_4> =
+                                            case call 'erlang':'<'(call 'erlang':'rem'(call 'erlang':'-'(I, 1), call 'erlang':'length'(Gen)), 0) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Gen), 1), 1), Gen) <'false'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'(call 'erlang':'-'(I, 1), call 'erlang':'length'(Gen)), 1), Gen) end
+                                        in                                          let <CurrOut_5> =
+                                            call 'lists':'nth'(call 'erlang':'+'(I, 1), Gen)
+                                        in                                          let <NextOut_6> =
+                                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'(call 'erlang':'+'(I, 1), call 'erlang':'length'(Gen)), 1), Gen)
+                                        in                                          do  case call 'erlang':'=:='(PrevOut_4, 1) of <'true'> when 'true' -> case call 'erlang':'=:='(CurrOut_5, 1) of <'true'> when 'true' -> case call 'erlang':'=:='(NextOut_6, 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(NextOut_6, 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> case call 'erlang':'=:='(CurrOut_5, 1) of <'true'> when 'true' -> case call 'erlang':'=:='(NextOut_6, 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(NextOut_6, 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end end
+{PrevOut_4, CurrOut_5, NextOut_6}
+                                in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Arr), 1))
+                                in  call 'lists':'foldl'(_2, {Prev, Curr, Next}, _3)
+                            in  let <Gen_8> =
+                                    Arr
+                                in  Gen_8
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

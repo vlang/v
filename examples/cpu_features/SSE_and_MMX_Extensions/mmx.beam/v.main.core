@@ -1,0 +1,28 @@
+module 'v.main' ['add_vectors_mmx'/3,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'add_vectors_mmx'/3 =
+    fun (A, B, Result) ->
+        'ok'
+'main'/0 =
+    fun () ->
+        let <A> =
+            ['todo'|[2|[3|[4|[5|[6|[7|[8|[]]]]]]]]]
+        in  let <B> =
+                ['todo'|[7|[6|[5|[4|[3|[2|[1|[]]]]]]]]]
+            in  let <Result> =
+                    []
+                in  do  apply 'add_vectors_mmx'/3(call 'lists':'nth'(1, A), call 'lists':'nth'(1, B), call 'lists':'nth'(1, Result))
+                        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [Result|[]])
+                            'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

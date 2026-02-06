@@ -1,0 +1,306 @@
+module 'v.main' ['Vec.norm'/1,
+                'new_image'/2,
+                'Image.save_as_ppm'/2,
+                'Sphere.intersect'/2,
+                'clamp'/1,
+                'to_int'/1,
+                'intersect'/3,
+                'rand_f64'/0,
+                'new_tabs'/0,
+                'radiance'/3,
+                'ray_trace'/4,
+                'main'/0,
+                'Refl_t__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Vec.norm'/1 =
+        fun (V) ->
+            let <Tmp_norm> =
+                call 'erlang':'/'('todo', call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', V)))))
+            in  ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Tmp_norm),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Tmp_norm),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), Tmp_norm),{'vbeam','type'}=>'Vec'}~
+    'new_image'/2 =
+        fun (W, H) ->
+            let <Vecsize> =
+                'todo'
+            in  ~{'width'=>W,'height'=>H,'data'=>'todo',{'vbeam','type'}=>'Image'}~
+    'Image.save_as_ppm'/2 =
+        fun (Image, File_name) ->
+            let <Npixels> =
+                call 'erlang':'*'(call 'erlang':'map_get'('width', Image), call 'erlang':'map_get'('height', Image))
+            in  let <F_out> =
+                    apply 'create'/1(File_name)
+                in  do  apply 'File.writeln'/2(F_out, #{#<80>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#)
+                        do  apply 'File.writeln'/2(F_out, call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('width', Image))|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('height', Image))|[]]]]))
+                            do  apply 'File.writeln'/2(F_out, #{#<50>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  let <_1> =
+                                    fun (I) ->
+                                        let <C_r> =
+                                            apply 'to_int'/1(call 'erlang':'map_get'('x', 'todo'))
+                                        in  let <C_g> =
+                                                apply 'to_int'/1(call 'erlang':'map_get'('y', 'todo'))
+                                            in  let <C_b> =
+                                                    apply 'to_int'/1(call 'erlang':'map_get'('z', 'todo'))
+                                                in  apply 'File.write_string'/2(F_out, call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(C_r)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(C_g)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(C_b)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]))
+                                in  let <_2> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(Npixels, 1))
+                                    in  call 'lists':'foreach'(_1, _2)
+                                    apply 'File.close'/1(F_out)
+    'Sphere.intersect'/2 =
+        fun (Sp, R) ->
+            let <Op> =
+                call 'erlang':'-'(call 'erlang':'map_get'('p', Sp), call 'erlang':'map_get'('o', R))
+            in  let <B> =
+                    apply 'Vec.dot'/2(Op, call 'erlang':'map_get'('d', R))
+                in  let <Det> =
+                        call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'*'(B, B), apply 'Vec.dot'/2(Op, Op)), call 'erlang':'*'(call 'erlang':'map_get'('rad', Sp), call 'erlang':'map_get'('rad', Sp)))
+                    in  case call 'erlang':'<'(Det, 0) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                let <Det_1> =
+                                    call 'math':'sqrt'(Det)
+                                in  let <T> =
+                                        call 'erlang':'-'(B, Det_1)
+                                    in  case call 'erlang':'>'(T, 'todo') of
+                                            <'true'> when 'true' -> T
+                                            <'false'> when 'true' -> 
+                                                let <T_2> =
+                                                    call 'erlang':'+'(B, Det_1)
+                                                in  case call 'erlang':'>'(T_2, 'todo') of
+                                                        <'true'> when 'true' -> T_2
+                                                        <'false'> when 'true' -> 
+                                                            0
+                                                    end
+                                        end
+                        end
+    'clamp'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0) of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    case call 'erlang':'>'(X, 1) of
+                        <'true'> when 'true' -> 1
+                        <'false'> when 'true' -> 
+                            X
+                    end
+            end
+    'to_int'/1 =
+        fun (X) ->
+            let <P> =
+                apply 'pow'/2(apply 'clamp'/1(X), 0.45454545454545453)
+            in  'todo'
+    'intersect'/3 =
+        fun (R, Spheres, Nspheres) ->
+            let <D> =
+                0.0
+            in  let <T> =
+                    1.0e+10
+                in  let <Id> =
+                        0
+                    in  call 'erlang':'<'(T, 'todo')
+    'rand_f64'/0 =
+        fun () ->
+            let <X> =
+                call 'erlang':'band'(apply 'u32'/0(), 16#3FFFFFFF)
+            in  call 'erlang':'/'('todo', 'todo')
+    'new_tabs'/0 =
+        fun () ->
+            let <C> =
+                ~{{'vbeam','type'}=>'Cache'}~
+            in  let <Inv_len> =
+                    call 'erlang':'/'('todo', 'todo')
+                in  do  let <_1> =
+                        fun (I) ->
+                            let <X> =
+                                call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', 'todo'), 'todo'), Inv_len)
+                            in  do  apply 'sin'/1(X)
+                                    'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(65536, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        C
+    'radiance'/3 =
+        fun (R, Depthi, Scene_id) ->
+            case call 'erlang':'>'(Depthi, 1024) of
+                <'true'> when 'true' -> ~{{'vbeam','type'}=>'Vec'}~
+                <'false'> when 'true' -> 
+                    let <Depth> =
+                        Depthi
+                    in  let <T> =
+                            0.0
+                        in  let <Id> =
+                                0
+                            in  let <Res> =
+                                    'false'
+                                in  let <V_1> =
+                                        1.0
+                                    in  let <Scene> =
+                                            call 'lists':'nth'(call 'erlang':'+'(Scene_id, 1), [[~{'rad'=>1.0e+5,'p'=>~{'x'=>call 'erlang':'+'(1.0e+5, 1),'y'=>40.8,'z'=>81.6,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.75,'y'=>0.25,'z'=>0.25,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1.0e+5,'p'=>~{'x'=>call 'erlang':'+'(-1.0e+5, 99),'y'=>40.8,'z'=>81.6,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.25,'y'=>0.25,'z'=>0.75,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1.0e+5,'p'=>~{'x'=>50,'y'=>40.8,'z'=>1.0e+5,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.75,'y'=>0.75,'z'=>0.75,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1.0e+5,'p'=>~{'x'=>50,'y'=>40.8,'z'=>call 'erlang':'+'(-1.0e+5, 170),{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1.0e+5,'p'=>~{'x'=>50,'y'=>1.0e+5,'z'=>81.6,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.75,'y'=>0.75,'z'=>0.75,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1.0e+5,'p'=>~{'x'=>50,'y'=>-99918.4,'z'=>81.6,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.75,'y'=>0.75,'z'=>0.75,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>16.5,'p'=>~{'x'=>27,'y'=>16.5,'z'=>47,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.999),'refl'=>'spec',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>16.5,'p'=>~{'x'=>73,'y'=>16.5,'z'=>78,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.999),'refl'=>'refr',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>600,'p'=>~{'x'=>50,'y'=>681.33,'z'=>81.6,{'vbeam','type'}=>'Vec'}~,'e'=>~{'x'=>12,'y'=>12,'z'=>12,{'vbeam','type'}=>'Vec'}~,'c'=>~{{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[]]]]]]]]]]|[[~{'rad'=>1600,'p'=>apply 'Vec.mul_scalar'/2(~{'x'=>1.0,'y'=>0.0,'z'=>2.0,{'vbeam','type'}=>'Vec'}~, 3000),'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>1.0,'y'=>0.9,'z'=>0.8,{'vbeam','type'}=>'Vec'}~, call 'erlang':'*'(18.72, 2)),'c'=>~{{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>1560,'p'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>0,'z'=>2,{'vbeam','type'}=>'Vec'}~, 3500),'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>1.0,'y'=>0.5,'z'=>0.05,{'vbeam','type'}=>'Vec'}~, call 'erlang':'*'(74.88, 2)),'c'=>~{{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>10000,'p'=>call 'erlang':'+'(~{'x'=>50,'y'=>40.8,'z'=>-860,{'vbeam','type'}=>'Vec'}~, ~{'x'=>0,'y'=>0,'z'=>-200,{'vbeam','type'}=>'Vec'}~),'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>0.00063842,'y'=>0.02001478,'z'=>0.28923243,{'vbeam','type'}=>'Vec'}~, call 'erlang':'*'(6.0e-2, 8)),'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>0.7,'y'=>0.7,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.25),'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>100000,'p'=>~{'x'=>50,'y'=>-100000,'z'=>0,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.3,'y'=>0.3,'z'=>0.3,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>110000,'p'=>~{'x'=>50,'y'=>-110048.5,'z'=>0,{'vbeam','type'}=>'Vec'}~,'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>0.9,'y'=>0.5,'z'=>0.05,{'vbeam','type'}=>'Vec'}~, 4),'c'=>~{{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>4.0e+4,'p'=>~{'x'=>50,'y'=>call 'erlang':'-'(-4.0e+4, 30),'z'=>-3000,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>~{'x'=>0.2,'y'=>0.2,'z'=>0.2,{'vbeam','type'}=>'Vec'}~,'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>26.5,'p'=>~{'x'=>22,'y'=>26.5,'z'=>42,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.596),'refl'=>'spec',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>13,'p'=>~{'x'=>75,'y'=>13,'z'=>82,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>0.96,'y'=>0.96,'z'=>0.96,{'vbeam','type'}=>'Vec'}~, 0.96),'refl'=>'refr',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>22,'p'=>~{'x'=>87,'y'=>22,'z'=>24,{'vbeam','type'}=>'Vec'}~,'e'=>~{{'vbeam','type'}=>'Vec'}~,'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>0.6,'y'=>0.6,'z'=>0.6,{'vbeam','type'}=>'Vec'}~, 0.696),'refl'=>'refr',{'vbeam','type'}=>'Sphere'}~|[]]]]]]]]]]|[[~{'rad'=>150,'p'=>~{'x'=>125,'y'=>28,'z'=>62,{'vbeam','type'}=>'Vec'}~,'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.0e-3),'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>0.9,'z'=>0.8,{'vbeam','type'}=>'Vec'}~, 0.93),'refl'=>'refr',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>28,'p'=>~{'x'=>55,'y'=>-28,'z'=>62,{'vbeam','type'}=>'Vec'}~,'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 1.0e+1),'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0),'refl'=>'diff',{'vbeam','type'}=>'Sphere'}~|[~{'rad'=>300,'p'=>~{'x'=>50,'y'=>28,'z'=>62,{'vbeam','type'}=>'Vec'}~,'e'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.0e-3),'c'=>apply 'Vec.mul_scalar'/2(~{'x'=>1,'y'=>1,'z'=>1,{'vbeam','type'}=>'Vec'}~, 0.93),'refl'=>'spec',{'vbeam','type'}=>'Sphere'}~|[]]]]|[]]]])
+                                        in  let <Res_1> =
+                                                apply 'intersect'/3(R, call 'erlang':'map_get'('data', Scene), call 'erlang':'length'(Scene))
+                                            in  let <T_2> =
+                                                    apply 'intersect'/3(R, call 'erlang':'map_get'('data', Scene), call 'erlang':'length'(Scene))
+                                                in  let <Id_3> =
+                                                        apply 'intersect'/3(R, call 'erlang':'map_get'('data', Scene), call 'erlang':'length'(Scene))
+                                                    in  case call 'erlang':'not'(Res_1) of
+                                                            <'true'> when 'true' -> ~{{'vbeam','type'}=>'Vec'}~
+                                                            <'false'> when 'true' -> 
+                                                                let <Obj> =
+                                                                    call 'lists':'nth'(call 'erlang':'+'(Id_3, 1), Scene)
+                                                                in  let <X> =
+                                                                        call 'erlang':'+'(call 'erlang':'map_get'('o', R), apply 'Vec.mul_scalar'/2(call 'erlang':'map_get'('d', R), T_2))
+                                                                    in  let <N> =
+                                                                            apply 'Vec.norm'/1('todo')
+                                                                        in  let <Nl> =
+                                                                                case call 'erlang':'<'(apply 'Vec.dot'/2(N, call 'erlang':'map_get'('d', R)), 'todo') of <'true'> when 'true' -> N <'false'> when 'true' -> apply 'Vec.mul_scalar'/2(N, -1) end
+                                                                            in  let <F> =
+                                                                                    call 'erlang':'map_get'('c', Obj)
+                                                                                in  let <P> =
+                                                                                        call 'erlang':'map_get'('z', F)
+                                                                                    in  let <P_4> =
+                                                                                            case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('x', F), call 'erlang':'map_get'('y', F)), call 'erlang':'>'(call 'erlang':'map_get'('x', F), call 'erlang':'map_get'('z', F))) of <'true'> when 'true' -> call 'erlang':'map_get'('x', F) <'false'> when 'true' -> do  case call 'erlang':'>'(call 'erlang':'map_get'('y', F), call 'erlang':'map_get'('z', F)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end P end
+                                                                                        in  do  'todo'
+                                                                                                do  case call 'erlang':'>'(Depth, 5) of <'true'> when 'true' -> case call 'erlang':'<'(apply 'rand_f64'/0(), P_4) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> call 'erlang':'map_get'('e', Obj) end <'false'> when 'true' -> 'ok' end
+                                                                                                    do  case call 'erlang':'=:='(call 'erlang':'map_get'('refl', Obj), 'diff') of <'true'> when 'true' -> 
+                                                                                                        let <R1> =
+                                                                                                            call 'erlang':'band'(apply 'u32'/0(), 65535)
+                                                                                                        in  let <R2> =
+                                                                                                                apply 'rand_f64'/0()
+                                                                                                            in  let <R2s> =
+                                                                                                                    call 'math':'sqrt'(R2)
+                                                                                                                in  let <W> =
+                                                                                                                        Nl
+                                                                                                                    in  let <U> =
+                                                                                                                            case call 'erlang':'>'(call 'erlang':'abs'(call 'erlang':'map_get'('x', W)), 'todo') of <'true'> when 'true' -> ~{'x'=>0,'y'=>1,'z'=>0,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> ~{'x'=>1,'y'=>0,'z'=>0,{'vbeam','type'}=>'Vec'}~ end
+                                                                                                                        in  let <U_5> =
+                                                                                                                                apply 'Vec.norm'/1('todo')
+                                                                                                                            in  let <V> =
+                                                                                                                                    apply 'Vec.cross'/2(W, U_5)
+                                                                                                                                in  let <D> =
+                                                                                                                                        apply 'Vec.norm'/1('todo')
+                                                                                                                                    in  call 'erlang':'+'(call 'erlang':'map_get'('e', Obj), call 'erlang':'*'(F, apply 'radiance'/3(~{'o'=>X,'d'=>D,{'vbeam','type'}=>'Ray'}~, Depth, Scene_id)))
+                                                                                                     <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('refl', Obj), 'spec') of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('e', Obj), call 'erlang':'*'(F, apply 'radiance'/3(~{'o'=>X,'d'=>call 'erlang':'-'(call 'erlang':'map_get'('d', R), apply 'Vec.mul_scalar'/2(N, call 'erlang':'*'('todo', apply 'Vec.dot'/2(N, call 'erlang':'map_get'('d', R))))),{'vbeam','type'}=>'Ray'}~, Depth, Scene_id))) <'false'> when 'true' -> 'ok' end end
+                                                                                                        let <Refl_ray> =
+                                                                                                            ~{'o'=>X,'d'=>call 'erlang':'-'(call 'erlang':'map_get'('d', R), apply 'Vec.mul_scalar'/2(N, call 'erlang':'*'('todo', apply 'Vec.dot'/2(N, call 'erlang':'map_get'('d', R))))),{'vbeam','type'}=>'Ray'}~
+                                                                                                        in  let <Into> =
+                                                                                                                call 'erlang':'>'(apply 'Vec.dot'/2(N, Nl), 0)
+                                                                                                            in  let <Nc> =
+                                                                                                                    'todo'
+                                                                                                                in  let <Nt> =
+                                                                                                                        'todo'
+                                                                                                                    in  let <Nnt> =
+                                                                                                                            case Into of <'true'> when 'true' -> call 'erlang':'/'(Nc, Nt) <'false'> when 'true' -> call 'erlang':'/'(Nt, Nc) end
+                                                                                                                        in  let <Ddn> =
+                                                                                                                                apply 'Vec.dot'/2(call 'erlang':'map_get'('d', R), Nl)
+                                                                                                                            in  let <Cos2t> =
+                                                                                                                                    call 'erlang':'-'(V_1, call 'erlang':'*'(call 'erlang':'*'(Nnt, Nnt), call 'erlang':'-'(V_1, call 'erlang':'*'(Ddn, Ddn))))
+                                                                                                                                in  case call 'erlang':'<'(Cos2t, 'todo') of
+                                                                                                                                        <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('e', Obj), call 'erlang':'*'(F, apply 'radiance'/3(Refl_ray, Depth, Scene_id)))
+                                                                                                                                        <'false'> when 'true' -> 
+                                                                                                                                            let <Dirc> =
+                                                                                                                                                case Into of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+                                                                                                                                            in  let <Tdir> =
+                                                                                                                                                    apply 'Vec.norm'/1('todo')
+                                                                                                                                                in  let <A> =
+                                                                                                                                                        call 'erlang':'-'(Nt, Nc)
+                                                                                                                                                    in  let <B> =
+                                                                                                                                                            call 'erlang':'+'(Nt, Nc)
+                                                                                                                                                        in  let <R0> =
+                                                                                                                                                                call 'erlang':'/'(call 'erlang':'*'(A, A), call 'erlang':'*'(B, B))
+                                                                                                                                                            in  let <C> =
+                                                                                                                                                                    case Into of <'true'> when 'true' -> call 'erlang':'+'(V_1, Ddn) <'false'> when 'true' -> call 'erlang':'-'(V_1, apply 'Vec.dot'/2(Tdir, N)) end
+                                                                                                                                                                in  let <Re> =
+                                                                                                                                                                        call 'erlang':'+'(R0, call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(V_1, R0), C), C), C), C), C))
+                                                                                                                                                                    in  let <Tr> =
+                                                                                                                                                                            call 'erlang':'-'(V_1, Re)
+                                                                                                                                                                        in  let <Pp> =
+                                                                                                                                                                                call 'erlang':'+'('todo', call 'erlang':'*'('todo', Re))
+                                                                                                                                                                            in  let <Rp> =
+                                                                                                                                                                                    call 'erlang':'/'(Re, Pp)
+                                                                                                                                                                                in  let <Tp> =
+                                                                                                                                                                                        call 'erlang':'/'(Tr, call 'erlang':'-'(V_1, Pp))
+                                                                                                                                                                                    in  let <Tmp> =
+                                                                                                                                                                                            ~{{'vbeam','type'}=>'Vec'}~
+                                                                                                                                                                                        in  let <Tmp_6> =
+                                                                                                                                                                                                case call 'erlang':'>'(Depth, 2) of <'true'> when 'true' -> case call 'erlang':'<'(apply 'rand_f64'/0(), Pp) of <'true'> when 'true' -> apply 'Vec.mul_scalar'/2(apply 'radiance'/3(Refl_ray, Depth, Scene_id), Rp) <'false'> when 'true' -> apply 'Vec.mul_scalar'/2(apply 'radiance'/3(~{'o'=>X,'d'=>Tdir,{'vbeam','type'}=>'Ray'}~, Depth, Scene_id), Tp) end <'false'> when 'true' -> call 'erlang':'+'(apply 'Vec.mul_scalar'/2(apply 'radiance'/3(Refl_ray, Depth, Scene_id), Re), apply 'Vec.mul_scalar'/2(apply 'radiance'/3(~{'o'=>X,'d'=>Tdir,{'vbeam','type'}=>'Ray'}~, Depth, Scene_id), Tr)) end
+                                                                                                                                                                                            in  call 'erlang':'+'(call 'erlang':'map_get'('e', Obj), call 'erlang':'*'(F, Tmp_6))
+                                                                                                                                    end
+                                                        end
+            end
+    'ray_trace'/4 =
+        fun (W, H, Samps, Scene_id) ->
+            let <Image> =
+                apply 'new_image'/2(W, H)
+            in  let <W1> =
+                    'todo'
+                in  let <H1> =
+                        'todo'
+                    in  let <Samps1> =
+                            'todo'
+                        in  let <Cam> =
+                                ~{'o'=>~{'x'=>50,'y'=>52,'z'=>295.6,{'vbeam','type'}=>'Vec'}~,'d'=>apply 'Vec.norm'/1(~{'x'=>0,'y'=>-0.042612,'z'=>-1,{'vbeam','type'}=>'Vec'}~),{'vbeam','type'}=>'Ray'}~
+                            in  let <Cx> =
+                                    ~{'x'=>call 'erlang':'/'(call 'erlang':'*'('todo', 'todo'), 'todo'),'y'=>0,'z'=>0,{'vbeam','type'}=>'Vec'}~
+                                in  let <Cy> =
+                                        apply 'Vec.mul_scalar'/2(apply 'Vec.norm'/1('todo'), 0.5135)
+                                    in  let <R> =
+                                            ~{{'vbeam','type'}=>'Vec'}~
+                                        in  let <V_1> =
+                                                'todo'
+                                            in  let <V_2> =
+                                                    'todo'
+                                                in  Image
+    'main'/0 =
+        fun () ->
+            do  case call 'erlang':'>'(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 6) of <'true'> when 'true' -> 
+                do  call 'io':'format'('standard_error', [85|[115|[97|[103|[101|[58|[92|[110|[32|[32|[32|[32|[32|[112|[97|[116|[104|[95|[116|[114|[97|[99|[105|[110|[103|[32|[91|[115|[97|[109|[112|[108|[101|[115|[93|[32|[91|[105|[109|[97|[103|[101|[46|[112|[112|[109|[93|[32|[91|[115|[99|[101|[110|[101|[95|[110|[93|[32|[91|[119|[105|[100|[116|[104|[93|[32|[91|[104|[101|[105|[103|[104|[116|[93|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                    call 'erlang':'halt'(1)
+             <'false'> when 'true' -> 'ok' end
+                let <Width> =
+                    320
+                in  let <Height> =
+                        200
+                    in  let <Samples> =
+                            4
+                        in  let <Scene_id> =
+                                0
+                            in  let <File_name> =
+                                    #{#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#
+                                in  let <Samples_1> =
+                                        case call 'erlang':'>='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of <'true'> when 'true' -> call 'erlang':'div'(call 'erlang':'binary_to_integer'(call 'lists':'nth'(2, call 'init':'get_plain_arguments'())), 4) <'false'> when 'true' -> Samples end
+                                    in  let <File_name_2> =
+                                            case call 'erlang':'>='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 3) of <'true'> when 'true' -> call 'lists':'nth'(3, call 'init':'get_plain_arguments'()) <'false'> when 'true' -> File_name end
+                                        in  let <Scene_id_3> =
+                                                case call 'erlang':'>='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 4) of <'true'> when 'true' -> call 'erlang':'binary_to_integer'(call 'lists':'nth'(4, call 'init':'get_plain_arguments'())) <'false'> when 'true' -> Scene_id end
+                                            in  let <Width_4> =
+                                                    case call 'erlang':'>='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 5) of <'true'> when 'true' -> call 'erlang':'binary_to_integer'(call 'lists':'nth'(5, call 'init':'get_plain_arguments'())) <'false'> when 'true' -> Width end
+                                                in  let <Height_5> =
+                                                        case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 6) of <'true'> when 'true' -> call 'erlang':'binary_to_integer'(call 'lists':'nth'(6, call 'init':'get_plain_arguments'())) <'false'> when 'true' -> Height end
+                                                    in  do  apply 'seed'/1(['todo'|[0|[]]])
+                                                            do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Samples_1)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[File_name_2|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Scene_id_3)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Width_4)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Height_5)|[]]]]]]]]]]])|[]])
+                                                                do  call 'io':'format'('standard_error', [126|[110|[]]], [])
+                                                                    let <T1> =
+                                                                        apply 'ticks'/0()
+                                                                    in  let <Image> =
+                                                                            apply 'ray_trace'/4(Width_4, Height_5, Samples_1, Scene_id_3)
+                                                                        in  let <T2> =
+                                                                                apply 'ticks'/0()
+                                                                            in  do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'-'(T2, T1))|[#{#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                                                                    do  apply 'Image.save_as_ppm'/2(Image, File_name_2)
+                                                                                        let <T3> =
+                                                                                            apply 'ticks'/0()
+                                                                                        in  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[File_name_2|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'-'(T3, T2))|[#{#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])|[]])
+    'Refl_t__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

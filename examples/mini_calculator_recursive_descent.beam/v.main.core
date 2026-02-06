@@ -1,0 +1,53 @@
+module 'v.main' ['Parser.expr'/1,
+                'Parser.term'/1,
+                'Parser.factor'/1,
+                'Parser.number'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Parser.expr'/1 =
+        fun (P) ->
+            let <Result> =
+                apply 'Parser.term'/1(P)
+            in  Result
+    'Parser.term'/1 =
+        fun (P) ->
+            let <Result> =
+                apply 'Parser.factor'/1(P)
+            in  Result
+    'Parser.factor'/1 =
+        fun (P) ->
+            do  apply 'Parser.skip_whitespace'/1(P)
+                let <C> =
+                    apply 'Parser.peek_u8'/1(P)
+                in  do  case apply 'u8.is_digit'/1(C) of <'true'> when 'true' -> apply 'Parser.number'/1(P) <'false'> when 'true' -> case call 'erlang':'=:='(C, 'todo') of <'true'> when 'true' -> 
+                        do  apply 'Parser.next'/1(P)
+                            let <Result> =
+                                apply 'Parser.expr'/1(P)
+                            in  do  apply 'Parser.skip_whitespace'/1(P)
+                                    case call 'erlang':'=/='(apply 'Parser.next'/1(P), 'todo') of
+                                        <'true'> when 'true' -> call 'erlang':'error'(#{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#)
+                                        <'false'> when 'true' -> 
+                                            Result
+                                    end
+                     <'false'> when 'true' -> 'ok' end end
+                        call 'erlang':'error'(#{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#)
+    'Parser.number'/1 =
+        fun (P) ->
+            let <Start> =
+                call 'erlang':'map_get'('pos', P)
+            in  apply 'atof64'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('input', P)), ~{{'vbeam','type'}=>'AtoF64Param'}~)
+    'main'/0 =
+        fun () ->
+            do  call 'io':'format'([69|[110|[116|[101|[114|[32|[101|[120|[112|[114|[101|[115|[115|[105|[111|[110|[115|[32|[116|[111|[32|[99|[97|[108|[99|[117|[108|[97|[116|[101|[44|[32|[101|[46|[103|[46|[32|[96|[50|[32|[42|[32|[40|[53|[45|[49|[41|[96|[32|[111|[114|[32|[96|[101|[120|[105|[116|[96|[32|[116|[111|[32|[113|[117|[105|[116|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

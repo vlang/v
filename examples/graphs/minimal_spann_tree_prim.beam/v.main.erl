@@ -6,18 +6,19 @@ push_pq(Prior_queue, Data, Priority) ->
     Pg_len = length(Prior_queue),
     I = 0,
     % TODO: unhandled stmt type
-    ok    Temp bsl #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
+    Temp bsl #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
     % TODO: unhandled stmt type
-    ok    Prior_queue = '[]T.clone'(Temp),
+    Prior_queue = Temp,
 
 updating_priority(Prior_queue, Search_data, New_priority) ->
     I = 0,
     Pg_len = length(Prior_queue),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 departure_priority(Prior_queue) ->
     X = maps:get(data, lists:nth(1, Prior_queue)),
-    '[]T.delete'(Prior_queue, 0),
+    lists:delete(0, Prior_queue),
     X.
 
 all_adjacents(G, V) ->
@@ -32,19 +33,19 @@ all_adjacents(G, V) ->
     Temp.
 
 print_solution(Path, G) ->
-    print(<<"   Edge \\tWeight\\n">>),
+    io:format("~s", [<<"   Edge \\tWeight\\n">>]),
     Sum = 0,
     lists:foreach(fun(Node) ->
         case lists:nth(Node + 1, Path) == -1 of
-            true -> print(<<"\\n ", (integer_to_binary(Node))/binary, " <== reference or start node">>);
+            true -> io:format("~s", [<<"\\n ", (integer_to_binary(Node))/binary, " <== reference or start node">>]);
             false -> begin
-                print(<<"\\n ", (integer_to_binary(Node))/binary, " <--> ", (integer_to_binary(lists:nth(Node + 1, Path)))/binary, " \\t", (integer_to_binary(lists:nth(lists:nth(Node + 1, Path) + 1, lists:nth(Node + 1, G))))/binary>>),
+                io:format("~s", [<<"\\n ", (integer_to_binary(Node))/binary, " <--> ", (integer_to_binary(lists:nth(Node + 1, Path)))/binary, " \\t", (integer_to_binary(lists:nth(lists:nth(Node + 1, Path) + 1, lists:nth(Node + 1, G))))/binary>>]),
                 Sum1 = lists:nth(lists:nth(Node + 1, Path) + 1, lists:nth(Node + 1, G)),
             end
         end,
         ok
     end, lists:seq(0, (length(Path)) - 1)),
-    print(<<"\\n Minimum Cost Spanning Tree: ", (integer_to_binary(Sum1))/binary, "\\n\\n">>),
+    io:format("~s", [<<"\\n Minimum Cost Spanning Tree: ", (integer_to_binary(Sum1))/binary, "\\n\\n">>]),
     ok.
 
 prim_mst(G, S) ->
@@ -54,7 +55,7 @@ prim_mst(G, S) ->
     Dist = [],
     Path = [],
     % TODO: unhandled stmt type
-    ok    print_solution(Path, G),
+    print_solution(Path, G),
     ok.
 
 main() ->
@@ -64,7 +65,7 @@ main() ->
     Graph = [],
     lists:foreach(fun(G_value) ->
         vbeam_io:println(<<"\\n Minimal Spanning Tree of graph ", (integer_to_binary(Index + 1))/binary, " using PRIM algorithm">>),
-        Graph1 = '[][]int.clone'(G_value),
+        Graph1 = G_value,
         Start_node = 0,
         prim_mst(Graph1, Start_node),
         ok

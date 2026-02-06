@@ -1,0 +1,630 @@
+module 'v.regex' ['utf8util_char_len'/1,
+                'RE.get_char'/3,
+                'RE.get_charb'/3,
+                'is_alnum'/1,
+                'is_not_alnum'/1,
+                'is_space'/1,
+                'is_not_space'/1,
+                'is_digit'/1,
+                'is_not_digit'/1,
+                'is_lower'/1,
+                'is_upper'/1,
+                'RE.get_parse_error_string'/2,
+                'utf8_str'/1,
+                'simple_log'/1,
+                'Token.reset'/1,
+                'RE.reset'/1,
+                'RE.reset_src'/1,
+                'RE.parse_bsls'/3,
+                'RE.get_char_class'/2,
+                'RE.check_char_class'/3,
+                'RE.parse_char_class'/3,
+                'RE.parse_quantifier'/3,
+                'RE.parse_groups'/3,
+                'RE.impl_compile'/2,
+                'RE.get_code'/1,
+                'RE.get_query'/1,
+                'RE.group_continuous_save'/2,
+                'state_str'/1,
+                'RE.match_base'/3,
+                'RE.compile_opt'/2,
+                'new'/0,
+                'regex_opt'/1,
+                'regex_base'/1,
+                'RE.get_group_bounds_by_name'/2,
+                'RE.get_group_by_name'/3,
+                'RE.get_group_by_id'/3,
+                'RE.get_group_bounds_by_id'/2,
+                'RE.get_group_list'/1,
+                'RE.match_string'/2,
+                'RE.matches_string'/2,
+                'RE.find'/2,
+                'RE.find_from'/3,
+                'RE.find_all'/2,
+                'RE.split'/2,
+                'RE.find_all_str'/2,
+                'RE.replace_simple'/3,
+                'RE.replace_by_fn'/3,
+                'RE.parsed_replace_string'/3,
+                'RE.replace'/3,
+                'RE.replace_n'/4,
+                'BSLS_parse_state__static__from'/1,
+                'CharClass_parse_state__static__from'/1,
+                'Quant_parse_state__static__from'/1,
+                'Group_parse_state__static__from'/1,
+                'Match_state__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'utf8util_char_len'/1 =
+    fun (B) ->
+        call 'erlang':'+'(call 'erlang':'band'(call 'erlang':'bsr'(16#e5000000, call 'erlang':'band'(call 'erlang':'bsr'(B, 3), 16#1e)), 3), 1)
+'RE.get_char'/3 =
+    fun (Re, In_txt, I) ->
+        let <Ini> =
+            'todo'
+        in  case call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'map_get'('flag', Re), 16#00000200), 0), call 'erlang':'=:='(call 'erlang':'band'(Ini, 16#80), 0)) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Char_len> =
+                        apply 'utf8util_char_len'/1(Ini)
+                    in  let <Tmp> =
+                            0
+                        in  let <Ch> =
+                                'todo'
+                            in  Ch
+            end
+'RE.get_charb'/3 =
+    fun (Re, In_txt, I) ->
+        case call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'map_get'('flag', Re), 16#00000200), 0), call 'erlang':'=:='(call 'erlang':'band'('todo', 16#80), 0)) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Char_len> =
+                    apply 'utf8util_char_len'/1('todo')
+                in  let <Tmp> =
+                        0
+                    in  let <Ch> =
+                            'todo'
+                        in  Ch
+        end
+'is_alnum'/1 =
+    fun (In_char) ->
+        let <Tmp> =
+            call 'erlang':'-'(In_char, 'todo')
+        in  case call 'erlang':'=<'(Tmp, 25) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    let <Tmp_1> =
+                        call 'erlang':'-'(In_char, 'todo')
+                    in  case call 'erlang':'=<'(Tmp_1, 25) of
+                            <'true'> when 'true' -> 'true'
+                            <'false'> when 'true' -> 
+                                let <Tmp_2> =
+                                    call 'erlang':'-'(In_char, 'todo')
+                                in  case call 'erlang':'=<'(Tmp_2, 9) of
+                                        <'true'> when 'true' -> 'true'
+                                        <'false'> when 'true' -> 
+                                            case call 'erlang':'=:='(In_char, 'todo') of
+                                                <'true'> when 'true' -> 'true'
+                                                <'false'> when 'true' -> 
+                                                    'false'
+                                            end
+                                    end
+                        end
+            end
+'is_not_alnum'/1 =
+    fun (In_char) ->
+        call 'erlang':'not'(apply 'is_alnum'/1(In_char))
+'is_space'/1 =
+    fun (In_char) ->
+        call 'lists':'member'(In_char, ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]])
+'is_not_space'/1 =
+    fun (In_char) ->
+        call 'erlang':'not'(apply 'is_space'/1(In_char))
+'is_digit'/1 =
+    fun (In_char) ->
+        let <Tmp> =
+            call 'erlang':'-'(In_char, 'todo')
+        in  call 'erlang':'=<'(Tmp, 16#09)
+'is_not_digit'/1 =
+    fun (In_char) ->
+        call 'erlang':'not'(apply 'is_digit'/1(In_char))
+'is_lower'/1 =
+    fun (In_char) ->
+        let <Tmp> =
+            call 'erlang':'-'(In_char, 'todo')
+        in  call 'erlang':'=<'(Tmp, 25)
+'is_upper'/1 =
+    fun (In_char) ->
+        let <Tmp> =
+            call 'erlang':'-'(In_char, 'todo')
+        in  call 'erlang':'=<'(Tmp, 25)
+'RE.get_parse_error_string'/2 =
+    fun (Re, Err) ->
+        case Err of <Regex.compile_ok> when 'true' -> #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}# <Regex.no_match_found> when 'true' -> #{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_char_unknown> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_undefined> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_internal_error> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_cc_alloc_overflow> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_syntax_error> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_groups_overflow> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_groups_max_nested> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_group_not_balanced> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_group_qm_notation> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_invalid_or_with_cc> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_neg_group_quantifier> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}# <Regex.err_consecutive_dots> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}# <_> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# end
+'utf8_str'/1 =
+    fun (Ch) ->
+        let <I> =
+            4
+        in  let <Res> =
+                #{  }#
+            in  Res
+'simple_log'/1 =
+    fun (Txt) ->
+        call 'io':'format'([126|[115|[]]], [Txt|[]])
+'Token.reset'/1 =
+    fun (Tok) ->
+        'ok'
+'RE.reset'/1 =
+    fun (Re) ->
+        do  0
+            let <I> =
+                0
+            in  do  case call 'erlang':'>'(call 'erlang':'map_get'('group_count', Re), 0) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('groups', Re)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                    let <I_1> =
+                        0
+                    in  'ok'
+                 end <'false'> when 'true' -> 'ok' end
+                    do  case call 'erlang':'=:='(call 'erlang':'map_get'('group_csave_flag', Re), 'true') of <'true'> when 'true' -> apply '[]int.clear'/1(call 'erlang':'map_get'('group_csave', Re)) <'false'> when 'true' -> 'ok' end
+                        do  apply 'StateObj.clear'/1(call 'erlang':'map_get'('state_list', Re))
+                            'ok'
+'RE.reset_src'/1 =
+    fun (Re) ->
+        let <I> =
+            0
+        in  'ok'
+'RE.parse_bsls'/3 =
+    fun (Re, In_txt, In_i) ->
+        let <Status> =
+            'start'
+        in  let <I> =
+                In_i
+            in  let <Hex_max_len> =
+                    2
+                in  let <Hex_res> =
+                        'todo'
+                    in  let <Hex_count> =
+                            0
+                        in  -6
+'RE.get_char_class'/2 =
+    fun (Re, Pc) ->
+        let <Buf> =
+            []
+        in  let <Buf_ptr> =
+                'todo'
+            in  let <Cc_i> =
+                    call 'erlang':'map_get'('cc_index', call 'lists':'nth'(call 'erlang':'+'(Pc, 1), call 'erlang':'map_get'('prog', Re)))
+                in  let <I> =
+                        0
+                    in  let <Tmp> =
+                            0
+                        in  'todo'
+'RE.check_char_class'/3 =
+    fun (Re, Pc, Ch) ->
+        let <Cc_i> =
+            call 'erlang':'map_get'('cc_index', call 'lists':'nth'(call 'erlang':'+'(Pc, 1), call 'erlang':'map_get'('prog', Re)))
+        in  'false'
+'RE.parse_char_class'/3 =
+    fun (Re, In_txt, In_i) ->
+        let <Status> =
+            'start'
+        in  let <I> =
+                In_i
+            in  let <Tmp_index> =
+                    call 'erlang':'map_get'('cc_index', Re)
+                in  let <Res_index> =
+                        call 'erlang':'map_get'('cc_index', Re)
+                    in  let <Cc_type> =
+                            'todo'
+                        in  -6
+'RE.parse_quantifier'/3 =
+    fun (Re, In_txt, In_i) ->
+        let <Status> =
+            'start'
+        in  let <I> =
+                In_i
+            in  let <Q_min> =
+                    0
+                in  let <Q_max> =
+                        0
+                    in  let <Ch> =
+                            'todo'
+                        in  -6
+'RE.parse_groups'/3 =
+    fun (Re, In_txt, In_i) ->
+        let <Status> =
+            'start'
+        in  let <I> =
+                In_i
+            in  let <Name> =
+                    #{  }#
+                in  -2
+'RE.impl_compile'/2 =
+    fun (Re, In_txt) ->
+        let <I> =
+            0
+        in  let <Pc> =
+                0
+            in  let <Group_count> =
+                    -1
+                in  let <Group_stack> =
+                        []
+                    in  let <Group_stack_txt_index> =
+                            []
+                        in  let <Group_stack_index> =
+                                -1
+                            in  do  In_txt
+                                    let <I_1> =
+                                        0
+                                    in  do  'todo'
+                                            do  Pc
+                                                case call 'erlang':'=/='(Group_stack_index, -1) of
+                                                    <'true'> when 'true' -> -9
+                                                    <'false'> when 'true' -> 
+                                                        case call 'erlang':'and'(call 'erlang':'>'(Pc, 0), call 'erlang':'=:='(call 'erlang':'map_get'('ist', call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(Pc, 1), 1), call 'erlang':'map_get'('prog', Re))), 'todo')) of
+                                                            <'true'> when 'true' -> -6
+                                                            <'false'> when 'true' -> 
+                                                                do  call 'erlang':'+'(Group_count, 1)
+                                                                    let <Pc1> =
+                                                                        0
+                                                                    in  let <Dot_char_count> =
+                                                                            0
+                                                                        in  let <Last_dot_char_pc> =
+                                                                                -1
+                                                                            in  let <Pc1_2> =
+                                                                                    case call 'erlang':'>='(Last_dot_char_pc, 0) of <'true'> when 'true' -> call 'erlang':'+'(Last_dot_char_pc, 1) <'false'> when 'true' -> Pc1 end
+                                                                                in  let <Pc1_3> =
+                                                                                        0
+                                                                                    in  let <Bsls_char_count> =
+                                                                                            0
+                                                                                        in  let <Last_bsls_char_pc> =
+                                                                                                -1
+                                                                                            in  let <Pc1_4> =
+                                                                                                    case call 'erlang':'>='(Last_bsls_char_pc, 0) of <'true'> when 'true' -> call 'erlang':'+'(Last_bsls_char_pc, 1) <'false'> when 'true' -> Pc1_3 end
+                                                                                                in  let <Pc1_5> =
+                                                                                                        0
+                                                                                                    in  let <Cc_char_count> =
+                                                                                                            0
+                                                                                                        in  let <Last_cc_char_pc> =
+                                                                                                                -1
+                                                                                                            in  let <Pc1_6> =
+                                                                                                                    case call 'erlang':'>='(Last_cc_char_pc, 0) of <'true'> when 'true' -> call 'erlang':'+'(Last_cc_char_pc, 1) <'false'> when 'true' -> Pc1_5 end
+                                                                                                                in  let <Pc1_7> =
+                                                                                                                        0
+                                                                                                                    in  do  case call 'erlang':'>'(call 'erlang':'map_get'('debug', Re), 0) of <'true'> when 'true' -> 
+                                                                                                                            let <Gc> =
+                                                                                                                                apply 'RE.get_code'/1(Re)
+                                                                                                                            in  apply 'RE.log_func'/2(Re, Gc)
+                                                                                                                         <'false'> when 'true' -> 'ok' end
+                                                                                                                            0
+                                                        end
+                                                end
+'RE.get_code'/1 =
+    fun (Re) ->
+        let <Pc1> =
+            0
+        in  let <Res> =
+                apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('cc', Re)), 2), call 'erlang':'length'(call 'erlang':'map_get'('prog', Re))))
+            in  do  apply 'Builder.write_string'/2(Res, call 'erlang':'iolist_to_binary'([#{#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                    let <Stop_flag> =
+                        'false'
+                    in  do  apply 'Builder.write_string'/2(Res, #{#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                            apply 'Builder.str'/1(Res)
+'RE.get_query'/1 =
+    fun (Re) ->
+        let <Res> =
+            apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('query', Re)), 2))
+        in  do  case call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'map_get'('flag', Re), 16#00000002), 0) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Res, #{#<94>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                let <I> =
+                    0
+                in  do  case call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'map_get'('flag', Re), 16#00000004), 0) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Res, #{#<36>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                        apply 'Builder.str'/1(Res)
+'RE.group_continuous_save'/2 =
+    fun (Re, G_index) ->
+        case call 'erlang':'=:='(call 'erlang':'map_get'('group_csave_flag', Re), 'true') of <'true'> when 'true' -> 
+            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('group_csave', Re)), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('group_csave', Re), 0) <'false'> when 'true' -> 'ok' end
+                let <Gi> =
+                    call 'erlang':'bsr'(G_index, 1)
+                in  let <Start> =
+                        call 'lists':'nth'(call 'erlang':'+'(G_index, 1), call 'erlang':'map_get'('groups', Re))
+                    in  let <End> =
+                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(G_index, 1), 1), call 'erlang':'map_get'('groups', Re))
+                        in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'length'(call 'erlang':'map_get'('group_csave', Re)), 4), call 'erlang':'=:='(Gi, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('group_csave', Re)), 3), 1), call 'erlang':'map_get'('group_csave', Re)))), call 'erlang':'=:='(Start, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('group_csave', Re)), 2), 1), call 'erlang':'map_get'('group_csave', Re)))) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    do  'todo'
+                                        do  call 'erlang':'bsl'(call 'erlang':'map_get'('group_csave', Re), call 'erlang':'bsr'(G_index, 1))
+                                            do  call 'erlang':'bsl'(call 'erlang':'map_get'('group_csave', Re), call 'lists':'nth'(call 'erlang':'+'(G_index, 1), call 'erlang':'map_get'('groups', Re)))
+                                                call 'erlang':'bsl'(call 'erlang':'map_get'('group_csave', Re), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(G_index, 1), 1), call 'erlang':'map_get'('groups', Re)))
+                            end
+         <'false'> when 'true' -> 'ok' end
+'state_str'/1 =
+    fun (S) ->
+        case S of <'start'> when 'true' -> #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}# <'stop'> when 'true' -> #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}# <'end'> when 'true' -> #{#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <'new_line'> when 'true' -> #{#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}# <'ist_load'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}# <'ist_next'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}# <'ist_next_ks'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}# <'ist_quant_p'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}# <'ist_quant_n'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'ist_quant_pg'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}# <'ist_quant_ng'> when 'true' -> #{#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}# end
+'RE.match_base'/3 =
+    fun (Re, In_txt, In_txt_len) ->
+        let <Result> =
+            -1
+        in  let <Ch> =
+                'todo'
+            in  let <Char_len> =
+                    0
+                in  let <M_state> =
+                        'start'
+                    in  let <Src_end> =
+                            'false'
+                        in  let <Last_fnd_pc> =
+                                -1
+                            in  let <State> =
+                                    ~{{'vbeam','type'}=>'StateObj'}~
+                                in  let <Ist> =
+                                        'todo'
+                                    in  let <L_ist> =
+                                            'todo'
+                                        in  let <Step_count> =
+                                                0
+                                            in  let <Dbg_line> =
+                                                    0
+                                                in  do  apply 'RE.reset'/1(Re)
+                                                        do  case call 'erlang':'>'(call 'erlang':'map_get'('debug', Re), 0) of <'true'> when 'true' -> 
+                                                            let <H_buf> =
+                                                                apply 'new_builder'/1(32)
+                                                            in  do  apply 'Builder.write_string'/2(H_buf, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                    do  apply 'Builder.write_string'/2(H_buf, call 'binary':'replace'(call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('flag', Re)), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, #{#<48>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                                                        do  apply 'Builder.write_string'/2(H_buf, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                            let <Sss> =
+                                                                                apply 'Builder.str'/1(H_buf)
+                                                                            in  apply 'RE.log_func'/2(Re, Sss)
+                                                         <'false'> when 'true' -> 'ok' end
+                                                            do  case call 'erlang':'>='(call 'erlang':'map_get'('match_index', State), 0) of <'true'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('group_index', State), 0) of <'true'> when 'true' -> 
+                                                                do  case call 'erlang':'=:='(call 'erlang':'map_get'('ist', call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pc', State), 1), call 'erlang':'map_get'('prog', Re))), 'todo') of <'true'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'band'(call 'erlang':'map_get'('flag', Re), 16#00020000), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('first_match', State) <'false'> when 'true' -> 0 end <'false'> when 'true' -> 'ok' end
+                                                                    case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('ist', call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pc', State), 1), 1), call 'erlang':'map_get'('prog', Re))), 'todo'), call 'erlang':'=:='(call 'erlang':'map_get'('ist', call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pc', State), 1), call 'erlang':'map_get'('prog', Re))), 'todo')) of
+                                                                        <'true'> when 'true' -> -1
+                                                                        <'false'> when 'true' -> 
+                                                                            case Src_end of
+                                                                                <'true'> when 'true' -> call 'erlang':'map_get'('first_match', State)
+                                                                                <'false'> when 'true' -> 
+                                                                                    -1
+                                                                            end
+                                                                    end
+                                                             <'false'> when 'true' -> call 'erlang':'map_get'('first_match', State) end <'false'> when 'true' -> 'ok' end
+                                                                -1
+'RE.compile_opt'/2 =
+    fun (Re, Pattern) ->
+        let <Re_err> =
+            apply 'RE.impl_compile'/2(Re, Pattern)
+        in  let <Err_pos> =
+                apply 'RE.impl_compile'/2(Re, Pattern)
+            in  case call 'erlang':'=/='(Re_err, 0) of
+                    <'true'> when 'true' -> apply 'error_with_code'/2(apply 'Builder.str'/1(Err_msg), Re_err)
+                    <'false'> when 'true' -> 
+                        'ok'
+                end
+'new'/0 =
+    fun () ->
+        let <Re> =
+            ~{{'vbeam','type'}=>'RE'}~
+        in  do  []
+                do  []
+                    do  'false'
+                        do  128
+                            do  128
+                                do  []
+                                    do  []
+                                        Re
+'regex_opt'/1 =
+    fun (Pattern) ->
+        let <Re> =
+            ~{{'vbeam','type'}=>'RE'}~
+        in  do  []
+                do  []
+                    do  'false'
+                        do  call 'erlang':'bsr'(call 'erlang':'length'(Pattern), 1)
+                            do  call 'erlang':'bsr'(call 'erlang':'length'(Pattern), 1)
+                                do  []
+                                    do  []
+                                        do  apply 'RE.compile_opt'/2(Re, Pattern)
+                                            Re
+'regex_base'/1 =
+    fun (Pattern) ->
+        let <Re> =
+            ~{{'vbeam','type'}=>'RE'}~
+        in  do  []
+                do  []
+                    do  'false'
+                        do  call 'erlang':'bsr'(call 'erlang':'length'(Pattern), 1)
+                            do  call 'erlang':'bsr'(call 'erlang':'length'(Pattern), 1)
+                                do  []
+                                    do  []
+                                        let <Re_err> =
+                                            apply 'RE.impl_compile'/2(Re, Pattern)
+                                        in  let <Err_pos> =
+                                                apply 'RE.impl_compile'/2(Re, Pattern)
+                                            in  Re
+'RE.get_group_bounds_by_name'/2 =
+    fun (Re, Group_name) ->
+        case call 'lists':'member'(Group_name, call 'erlang':'map_get'('group_map', Re)) of
+            <'true'> when 'true' -> Start
+            <'false'> when 'true' -> 
+                -1
+        end
+'RE.get_group_by_name'/3 =
+    fun (Re, In_txt, Group_name) ->
+        do  case call 'lists':'member'(Group_name, call 'erlang':'map_get'('group_map', Re)) of <'true'> when 'true' -> 
+            let <Tmp_index> =
+                call 'erlang':'-'(call 'erlang':'map_get'(Group_name, call 'erlang':'map_get'('group_map', Re)), 1)
+            in  let <Start> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'*'(Tmp_index, 2), 1), call 'erlang':'map_get'('groups', Re))
+                in  let <End> =
+                        call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(Tmp_index, 2), 1), 1), call 'erlang':'map_get'('groups', Re))
+                    in  case call 'erlang':'and'(call 'erlang':'>='(Start, 0), call 'erlang':'>'(End, Start)) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt) <'false'> when 'true' -> 'ok' end
+         <'false'> when 'true' -> 'ok' end
+            #{  }#
+'RE.get_group_by_id'/3 =
+    fun (Re, In_txt, Group_id) ->
+        do  case call 'erlang':'<'(Group_id, call 'erlang':'bsr'(call 'erlang':'length'(call 'erlang':'map_get'('groups', Re)), 1)) of <'true'> when 'true' -> 
+            let <Index> =
+                call 'erlang':'*'(Group_id, 2)
+            in  let <Start> =
+                    call 'lists':'nth'(call 'erlang':'+'(Index, 1), call 'erlang':'map_get'('groups', Re))
+                in  let <End> =
+                        call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(Index, 1), 1), call 'erlang':'map_get'('groups', Re))
+                    in  case call 'erlang':'and'(call 'erlang':'>='(Start, 0), call 'erlang':'>'(End, Start)) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt) <'false'> when 'true' -> 'ok' end
+         <'false'> when 'true' -> 'ok' end
+            #{  }#
+'RE.get_group_bounds_by_id'/2 =
+    fun (Re, Group_id) ->
+        case call 'erlang':'<'(Group_id, call 'erlang':'map_get'('group_count', Re)) of
+            <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Index, 1), call 'erlang':'map_get'('groups', Re))
+            <'false'> when 'true' -> 
+                -1
+        end
+'RE.get_group_list'/1 =
+    fun (Re) ->
+        let <Res> =
+            []
+        in  let <Gi> =
+                0
+            in  Res
+'RE.match_string'/2 =
+    fun (Re, In_txt) ->
+        'ok'
+'RE.matches_string'/2 =
+    fun (Re, In_txt) ->
+        let <Start> =
+            apply 'RE.match_string'/2(Re, In_txt)
+        in  do  apply 'RE.match_string'/2(Re, In_txt)
+                call 'erlang':'=/='(Start, -1)
+'RE.find'/2 =
+    fun (Re, In_txt) ->
+        let <I> =
+            0
+        in  -1
+'RE.find_from'/3 =
+    fun (Re, In_txt, Start) ->
+        let <Old_flag> =
+            call 'erlang':'map_get'('flag', Re)
+        in  let <I> =
+                Start
+            in  case call 'erlang':'<'(I, 0) of
+                    <'true'> when 'true' -> -1
+                    <'false'> when 'true' -> 
+                        do  Old_flag
+                            -1
+                end
+'RE.find_all'/2 =
+    fun (Re, In_txt) ->
+        let <I> =
+            0
+        in  let <Res> =
+                []
+            in  Res
+'RE.split'/2 =
+    fun (Re, In_txt) ->
+        let <Pos> =
+            apply 'RE.find_all'/2(Re, In_txt)
+        in  let <Sections> =
+                []
+            in  case call 'erlang':'=:='(call 'erlang':'length'(Pos), 0) of
+                    <'true'> when 'true' -> [In_txt|[]]
+                    <'false'> when 'true' -> 
+                        do  call 'erlang':'bsl'(Sections, call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt))
+                            Sections
+                end
+'RE.find_all_str'/2 =
+    fun (Re, In_txt) ->
+        let <I> =
+            0
+        in  let <Res> =
+                []
+            in  Res
+'RE.replace_simple'/3 =
+    fun (Re, In_txt, Repl) ->
+        let <Pos> =
+            apply 'RE.find_all'/2(Re, In_txt)
+        in  case call 'erlang':'>'(call 'erlang':'length'(Pos), 0) of
+                <'true'> when 'true' -> Res
+                <'false'> when 'true' -> 
+                    In_txt
+            end
+'RE.replace_by_fn'/3 =
+    fun (Re, In_txt, Repl_fn) ->
+        let <I> =
+            0
+        in  let <Res> =
+                apply 'new_builder'/1(call 'erlang':'length'(In_txt))
+            in  let <Last_end> =
+                    0
+                in  do  case call 'erlang':'and'(call 'erlang':'>='(Last_end, 0), call 'erlang':'<'(Last_end, call 'erlang':'length'(In_txt))) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Res, call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt)) <'false'> when 'true' -> 'ok' end
+                        apply 'Builder.str'/1(Res)
+'RE.parsed_replace_string'/3 =
+    fun (Re, In_txt, Repl) ->
+        let <Str_lst> =
+            call 'binary':'split'(Repl, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+        in  let <Res> =
+                call 'lists':'nth'(1, Str_lst)
+            in  let <I> =
+                    1
+                in  Res
+'RE.replace'/3 =
+    fun (Re, In_txt, Repl_str) ->
+        let <I> =
+            0
+        in  let <Res> =
+                apply 'new_builder'/1(call 'erlang':'length'(In_txt))
+            in  let <Last_end> =
+                    0
+                in  do  case call 'erlang':'and'(call 'erlang':'>='(Last_end, 0), call 'erlang':'<'(Last_end, call 'erlang':'length'(In_txt))) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Res, call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt)) <'false'> when 'true' -> 'ok' end
+                        apply 'Builder.str'/1(Res)
+'RE.replace_n'/4 =
+    fun (Re, In_txt, Repl_str, Count) ->
+        let <I> =
+            0
+        in  let <Index> =
+                0
+            in  let <I_p> =
+                    0
+                in  let <Res> =
+                        apply 'new_builder'/1(call 'erlang':'length'(In_txt))
+                    in  let <Lst> =
+                            apply 'RE.find_all'/2(Re, In_txt)
+                        in  let <Lst_1> =
+                                case call 'erlang':'<'(Count, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> case call 'erlang':'>'(Count, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> case call 'erlang':'=:='(Count, 0) of <'true'> when 'true' -> Lst <'false'> when 'true' -> Lst end end end
+                            in  let <I_2> =
+                                    I_p
+                                in  do  apply 'Builder.write_string'/2(Res, call 'lists':'nth'(call 'erlang':'+'('todo', 1), In_txt))
+                                        apply 'Builder.str'/1(Res)
+'BSLS_parse_state__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'CharClass_parse_state__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Quant_parse_state__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Group_parse_state__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Match_state__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.regex')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.regex', _0)
+end

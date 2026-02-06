@@ -9,8 +9,8 @@ expr_to_rev_pol(Expr) ->
             Rev_pol = [],
             Pos = 0,
             % TODO: unhandled stmt type
-            ok            % TODO: unhandled stmt type
-            ok            Rev_pol
+            % TODO: unhandled stmt type
+            Rev_pol
         end
         end.
 
@@ -18,13 +18,13 @@ eval_rev_pol(Rev_pol) ->
     Stack = [],
     lists:foreach(fun(Item) ->
         case is_num_string(Item) of
-            true -> Stack bsl 'string.f64'(Item);
+            true -> Stack bsl binary_to_float(Item);
             false -> case length(Stack) >= 2 of
                 true -> begin
-                    Oprand_r = '[]f64.last'(Stack),
-                    '[]f64.delete'(Stack, length(Stack) - 1),
-                    Oprand_l = '[]f64.last'(Stack),
-                    '[]f64.delete'(Stack, length(Stack) - 1),
+                    Oprand_r = lists:last(Stack),
+                    lists:delete(length(Stack) - 1, Stack),
+                    Oprand_l = lists:last(Stack),
+                    lists:delete(length(Stack) - 1, Stack),
                     case Item of
                         <<"+">> -> Stack bsl Oprand_l + Oprand_r;
                         <<"-">> -> Stack bsl Oprand_l - Oprand_r;
@@ -61,4 +61,4 @@ main() ->
     io:format("~s~n", [<<"Enter 'exit' or 'EXIT' to quit.">>]),
     Expr_count = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.

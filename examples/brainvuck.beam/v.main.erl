@@ -9,7 +9,7 @@
 'BFState.show'(State, Suffix) ->
     Max_non_zero_address = -1,
     % TODO: unhandled stmt type
-    ok    vbeam_io:println(<<"PC: ", (integer_to_binary(maps:get(pc, State)))/binary, " | Address: ", (integer_to_binary(maps:get(address, State)))/binary, " | Memory: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | Memory[Address]: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | ", (Suffix)/binary>>),
+    vbeam_io:println(<<"PC: ", (integer_to_binary(maps:get(pc, State)))/binary, " | Address: ", (integer_to_binary(maps:get(address, State)))/binary, " | Memory: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | Memory[Address]: ", (lists:nth(todo + 1, maps:get(memory, State)))/binary, " | ", (Suffix)/binary>>),
     ok.
 
 'BFState.find_matching_pairs'(State) ->
@@ -21,9 +21,9 @@
             todo -> begin
                 case length(Stack) == 0 of
                     true -> begin
-                        eprintln(<<"> unmatched `]` found in the program, at position: ", (integer_to_binary(I))/binary>>),
-                        eprintln(<<"program so far:">>),
-                        eprintln(lists:nth(todo + 1, maps:get(program, State))),
+                        io:format(standard_error, "~s~n", [<<"> unmatched `]` found in the program, at position: ", (integer_to_binary(I))/binary>>]),
+                        io:format(standard_error, "~s~n", [<<"program so far:">>]),
+                        io:format(standard_error, "~s~n", [lists:nth(todo + 1, maps:get(program, State))]),
                         exit(1)
                     end;
                     false -> ok
@@ -36,9 +36,9 @@
     end, Pi, lists:seq(0, length(maps:get(program, State)) - 1)),
     case length(Stack) > 0 of
         true -> begin
-            eprintln(<<"> found ", (integer_to_binary(length(Stack)))/binary, " unmatched `[`:">>),
+            io:format(standard_error, "~s~n", [<<"> found ", (integer_to_binary(length(Stack)))/binary, " unmatched `[`:">>]),
             lists:foreach(fun(I) ->
-                eprintln(<<"  `[` at position: ", (integer_to_binary(I))/binary, ", program so far: `", (lists:nth(todo + 1, maps:get(program, State)))/binary, "`">>),
+                io:format(standard_error, "~s~n", [<<"  `[` at position: ", (integer_to_binary(I))/binary, ", program so far: `", (lists:nth(todo + 1, maps:get(program, State)))/binary, "`">>]),
                 ok.
                 ok
             end, Stack),
@@ -48,27 +48,27 @@
     end.
 
 'BFState.panic_for_bracket'(State, B1, B2) ->
-    panic(<<"unbalanced `", (B1)/binary, "` found, its target `", (B2)/binary, "` is not known; address: ", (integer_to_binary(maps:get(address, State)))/binary, ", pc: ", (integer_to_binary(maps:get(pc, State)))/binary>>),
+    erlang:error({panic, <<"unbalanced `", (B1)/binary, "` found, its target `", (B2)/binary, "` is not known; address: ", (integer_to_binary(maps:get(address, State)))/binary, ", pc: ", (integer_to_binary(maps:get(pc, State)))/binary>>}),
     ok.
 
 'BFState.run'(State) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 show_usage() ->
-    eprintln(<<"you need to supply a brainfuck program/expression as a string argument,">>),
-    eprintln(<<"or filename.b, if it is located in a file (note the `.b` or `.bf` extension).">>),
+    io:format(standard_error, "~s~n", [<<"you need to supply a brainfuck program/expression as a string argument,">>]),
+    io:format(standard_error, "~s~n", [<<"or filename.b, if it is located in a file (note the `.b` or `.bf` extension).">>]),
     exit(1),
     ok.
 
 main() ->
-    case length('v.os':'arguments'()) < 2 of
+    case length(init:get_plain_arguments()) < 2 of
         true -> show_usage();
         false -> ok
     end,
-    Program = lists:nth(2, 'v.os':'arguments'()),
-    case 'string.ends_with'(Program, <<".b">>) orelse 'string.ends_with'(Program, <<".bf">>) of
+    Program = lists:nth(2, init:get_plain_arguments()),
+    case case binary:longest_common_suffix([Program, <<".b">>]) of 0 -> false; _ -> true end orelse case binary:longest_common_suffix([Program, <<".bf">>]) of 0 -> false; _ -> true end of
         true -> ok;
         false -> ok
     end,

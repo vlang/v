@@ -1,0 +1,686 @@
+module 'v.cli' ['FnCommandCallback.str'/1,
+                'Command.str'/1,
+                'Command.is_root'/1,
+                'Command.root'/1,
+                'Command.full_name'/1,
+                'Command.add_commands'/2,
+                'Command.add_command'/2,
+                'Command.setup'/1,
+                'Command.add_flags'/2,
+                'Command.add_flag'/2,
+                'Command.parse_defaults'/1,
+                'Command.parse'/2,
+                'Command.add_default_flags'/1,
+                'Command.add_default_commands'/1,
+                'Command.parse_flags'/1,
+                'Command.parse_commands'/1,
+                'Command.handle_cb'/3,
+                'Command.check_help_flag'/1,
+                'Command.check_man_flag'/1,
+                'Command.check_version_flag'/1,
+                'Command.check_required_flags'/1,
+                'Command.execute_help'/1,
+                'Command.execute_man'/1,
+                'Command.get'/2,
+                'Command.contains'/2,
+                'eprintln_exit'/1,
+                'Flag.get_all_found'/1,
+                'Flag.get_bool'/1,
+                'Flag.get_bool'/2,
+                'Flag.get_int'/1,
+                'Flag.get_ints'/1,
+                'Flag.get_int'/2,
+                'Flag.get_ints'/2,
+                'Flag.get_float'/1,
+                'Flag.get_floats'/1,
+                'Flag.get_float'/2,
+                'Flag.get_floats'/2,
+                'Flag.get_string'/1,
+                'Flag.get_strings'/1,
+                'Flag.get_string'/2,
+                'Flag.get_strings'/2,
+                'Flag.parse'/3,
+                'Flag.matches'/3,
+                'Flag.parse_raw'/2,
+                'Flag.parse_bool'/2,
+                'Flag.get'/2,
+                'Flag.contains'/2,
+                'Flag.get_value_or_default_value'/1,
+                'help_flag'/1,
+                'help_cmd'/0,
+                'print_help_for_command'/1,
+                'Command.help_message'/1,
+                'pretty_description'/2,
+                'max'/2,
+                'man_flag'/0,
+                'man_cmd'/0,
+                'print_manpage_for_command'/1,
+                'Command.manpage'/1,
+                'version_flag'/1,
+                'version_cmd'/0,
+                'print_version_for_command'/1,
+                'Command.version'/1,
+                'FlagType__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'FnCommandCallback.str'/1 =
+        fun (F) ->
+            call 'erlang':'iolist_to_binary'([#{#<70>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}#|[apply 'ptr_str'/1(F)|[]]])
+    'Command.str'/1 =
+        fun (Cmd) ->
+            let <Res> =
+                []
+            in  do  call 'erlang':'bsl'(Res, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']])}#)
+                    do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Cmd)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                        do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('usage', Cmd)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                            do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('version', Cmd)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('description', Cmd)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                    do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('man_description', Cmd)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                        do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('disable_flags', Cmd))|[]]]))
+                                            do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('sort_flags', Cmd))|[]]]))
+                                                do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('sort_commands', Cmd))|[]]]))
+                                                    do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('execute', Cmd)|[]]]))
+                                                        do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('pre_execute', Cmd)|[]]]))
+                                                            do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('post_execute', Cmd)|[]]]))
+                                                                do  case 'todo' of <'true'> when 'true' -> call 'erlang':'bsl'(Res, #{#<9>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<38>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<38>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', call 'erlang':'map_get'('parent', Cmd))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) end
+                                                                    do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('commands', Cmd)|[]]]))
+                                                                        do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flags', Cmd)|[]]]))
+                                                                            do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('required_args', Cmd))|[]]]))
+                                                                                do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('args', Cmd)|[]]]))
+                                                                                    do  call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('posix_mode', Cmd))|[]]]))
+                                                                                        do  case call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd)) of <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd)))|[]]])) <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd))))|[]]])) end
+                                                                                            do  case call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd)) of <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd)))|[]]])) <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd))))|[]]])) end
+                                                                                                do  case call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd)) of <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd)))|[]]])) <'todo'> when 'true' -> call 'erlang':'bsl'(Res, call 'erlang':'iolist_to_binary'([#{#<9>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd))))|[]]])) end
+                                                                                                    do  call 'erlang':'bsl'(Res, #{#<125>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                                                        call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, Res))
+    'Command.is_root'/1 =
+        fun (Cmd) ->
+            apply 'isnil'/1(call 'erlang':'map_get'('parent', Cmd))
+    'Command.root'/1 =
+        fun (Cmd) ->
+            case apply 'Command.is_root'/1(Cmd) of
+                <'true'> when 'true' -> Cmd
+                <'false'> when 'true' -> 
+                    apply 'Command.root'/1(call 'erlang':'map_get'('parent', Cmd))
+            end
+    'Command.full_name'/1 =
+        fun (Cmd) ->
+            case apply 'Command.is_root'/1(Cmd) of
+                <'true'> when 'true' -> call 'erlang':'map_get'('name', Cmd)
+                <'false'> when 'true' -> 
+                    call 'erlang':'iolist_to_binary'([apply 'Command.full_name'/1(call 'erlang':'map_get'('parent', Cmd))|[call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Cmd)|[]]])|[]]])
+            end
+    'Command.add_commands'/2 =
+        fun (Cmd, Commands) ->
+            'ok'
+    'Command.add_command'/2 =
+        fun (Cmd, Command) ->
+            let <Subcmd> =
+                Command
+            in  do  case call 'lists':'member'(call 'erlang':'map_get'('name', Subcmd), call 'erlang':'map_get'('commands', Cmd)) of <'true'> when 'true' -> apply 'eprintln_exit'/1(call 'erlang':'iolist_to_binary'([#{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Subcmd)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                    do  'todo'
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('commands', Cmd), Subcmd)
+    'Command.setup'/1 =
+        fun (Cmd) ->
+            'ok'
+    'Command.add_flags'/2 =
+        fun (Cmd, Flags) ->
+            'ok'
+    'Command.add_flag'/2 =
+        fun (Cmd, Flag) ->
+            do  case call 'lists':'member'(call 'erlang':'map_get'('name', Flag), call 'erlang':'map_get'('flags', Cmd)) of <'true'> when 'true' -> apply 'eprintln_exit'/1(call 'erlang':'iolist_to_binary'([#{#<70>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                call 'erlang':'bsl'(call 'erlang':'map_get'('flags', Cmd), Flag)
+    'Command.parse_defaults'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'is'(call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                do  call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd))
+                    'ok'
+             <'false'> when 'true' -> case call 'erlang':'is'(call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                do  call 'erlang':'map_get'('flag', call 'erlang':'map_get'('help', call 'erlang':'map_get'('defaults', Cmd)))
+                    'ok'
+             <'false'> when 'true' -> 'ok' end end
+                do  case call 'erlang':'is'(call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                    do  call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd))
+                        'ok'
+                 <'false'> when 'true' -> case call 'erlang':'is'(call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                    do  call 'erlang':'map_get'('flag', call 'erlang':'map_get'('version', call 'erlang':'map_get'('defaults', Cmd)))
+                        'ok'
+                 <'false'> when 'true' -> 'ok' end end
+                    do  case call 'erlang':'is'(call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                        do  call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd))
+                            'ok'
+                     <'false'> when 'true' -> case call 'erlang':'is'(call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd)), 'todo') of <'true'> when 'true' -> 
+                        do  call 'erlang':'map_get'('flag', call 'erlang':'map_get'('man', call 'erlang':'map_get'('defaults', Cmd)))
+                            'ok'
+                     <'false'> when 'true' -> 'ok' end end
+                        do  case call 'erlang':'not'(call 'erlang':'map_get'('disable_flags', Cmd)) of <'true'> when 'true' -> apply 'Command.add_default_flags'/1(Cmd) <'false'> when 'true' -> 'ok' end
+                            apply 'Command.add_default_commands'/1(Cmd)
+    'Command.parse'/2 =
+        fun (Cmd, Args) ->
+            do  apply 'Command.parse_defaults'/1(Cmd)
+                do  case call 'erlang':'map_get'('sort_flags', Cmd) of <'true'> when 'true' -> call 'lists':'sort'(call 'erlang':'map_get'('flags', Cmd)) <'false'> when 'true' -> 'ok' end
+                    do  case call 'erlang':'map_get'('sort_commands', Cmd) of <'true'> when 'true' -> call 'lists':'sort'(call 'erlang':'map_get'('commands', Cmd)) <'false'> when 'true' -> 'ok' end
+                        do  call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+                            do  case call 'erlang':'not'(call 'erlang':'map_get'('disable_flags', Cmd)) of <'true'> when 'true' -> apply 'Command.parse_flags'/1(Cmd) <'false'> when 'true' -> 'ok' end
+                                apply 'Command.parse_commands'/1(Cmd)
+    'Command.add_default_flags'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('help', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'not'(call 'lists':'member'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd)))) of <'true'> when 'true' -> 
+                let <Use_help_abbrev> =
+                    call 'erlang':'and'(call 'erlang':'not'(call 'lists':'member'(#{#<104>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd))), call 'erlang':'map_get'('posix_mode', Cmd))
+                in  apply 'Command.add_flag'/2(Cmd, apply 'help_flag'/1(Use_help_abbrev))
+             <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('version', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'=/='(call 'erlang':'map_get'('version', Cmd), #{  }#)), call 'erlang':'not'(call 'lists':'member'(#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd)))) of <'true'> when 'true' -> 
+                    let <Use_version_abbrev> =
+                        call 'erlang':'and'(call 'erlang':'not'(call 'lists':'member'(#{#<118>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd))), call 'erlang':'map_get'('posix_mode', Cmd))
+                    in  apply 'Command.add_flag'/2(Cmd, apply 'version_flag'/1(Use_version_abbrev))
+                 <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('man', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'not'(call 'lists':'member'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd)))) of <'true'> when 'true' -> apply 'Command.add_flag'/2(Cmd, apply 'man_flag'/0()) <'false'> when 'true' -> 'ok' end
+    'Command.add_default_commands'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'map_get'('command', call 'erlang':'map_get'('help', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'not'(call 'lists':'member'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('commands', Cmd)))), apply 'Command.is_root'/1(Cmd)) of <'true'> when 'true' -> apply 'Command.add_command'/2(Cmd, apply 'help_cmd'/0()) <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'map_get'('command', call 'erlang':'map_get'('version', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'=/='(call 'erlang':'map_get'('version', Cmd), #{  }#)), call 'erlang':'not'(call 'lists':'member'(#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('commands', Cmd)))) of <'true'> when 'true' -> apply 'Command.add_command'/2(Cmd, apply 'version_cmd'/0()) <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'map_get'('command', call 'erlang':'map_get'('man', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'not'(call 'lists':'member'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('commands', Cmd)))), apply 'Command.is_root'/1(Cmd)) of <'true'> when 'true' -> apply 'Command.add_command'/2(Cmd, apply 'man_cmd'/0()) <'false'> when 'true' -> 'ok' end
+    'Command.parse_flags'/1 =
+        fun (Cmd) ->
+            'ok'
+    'Command.parse_commands'/1 =
+        fun (Cmd) ->
+            let <Global_flags> =
+                call 'lists':'filter'(call 'erlang':'map_get'('global', It), call 'erlang':'map_get'('flags', Cmd))
+            in  do  apply 'Command.check_help_flag'/1(Cmd)
+                    do  apply 'Command.check_version_flag'/1(Cmd)
+                        do  apply 'Command.check_man_flag'/1(Cmd)
+                            do  let <_1> =
+                                fun (I) ->
+                                    let <Arg> =
+                                        call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('args', Cmd))
+                                    in  'ok'
+                            in  let <_2> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('args', Cmd)), 1))
+                                in  call 'lists':'foreach'(_1, _2)
+                                do  case call 'erlang':'and'(apply 'Command.is_root'/1(Cmd), apply 'isnil'/1(call 'erlang':'map_get'('execute', Cmd))) of <'true'> when 'true' -> case call 'erlang':'map_get'('command', call 'erlang':'map_get'('help', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))) of <'true'> when 'true' -> 
+                                    do  apply 'Command.execute_help'/1(Cmd)
+                                        'ok'
+                                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                    do  case call 'erlang':'>'(call 'erlang':'map_get'('required_args', Cmd), 0) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('required_args', Cmd), call 'erlang':'length'(call 'erlang':'map_get'('args', Cmd))) of <'true'> when 'true' -> 
+                                        let <Descriptor> =
+                                            case call 'erlang':'=:='(call 'erlang':'map_get'('required_args', Cmd), 1) of <'true'> when 'true' -> #{#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}# end
+                                        in  apply 'eprintln_exit'/1(call 'erlang':'iolist_to_binary'([#{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Cmd)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('required_args', Cmd))|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Descriptor|[]]]]]]]))
+                                     <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                        do  apply 'Command.check_required_flags'/1(Cmd)
+                                            do  apply 'Command.handle_cb'/3(Cmd, call 'erlang':'map_get'('pre_execute', Cmd), #{#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                do  apply 'Command.handle_cb'/3(Cmd, call 'erlang':'map_get'('execute', Cmd), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                    apply 'Command.handle_cb'/3(Cmd, call 'erlang':'map_get'('post_execute', Cmd), #{#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+    'Command.handle_cb'/3 =
+        fun (Cmd, Cb, Label) ->
+            case call 'erlang':'not'(apply 'isnil'/1(Cb)) of <'true'> when 'true' -> apply 'cb'/1(Cmd) <'false'> when 'true' -> 'ok' end
+    'Command.check_help_flag'/1 =
+        fun (Cmd) ->
+            case call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('help', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'lists':'member'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd))) of <'true'> when 'true' -> 
+                let <Help_flag> =
+                    apply 'Flag.get_bool'/2(call 'erlang':'map_get'('flags', Cmd), #{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#)
+                in  case Help_flag of <'true'> when 'true' -> 
+                        do  apply 'Command.execute_help'/1(Cmd)
+                            call 'erlang':'halt'(0)
+                     <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end
+    'Command.check_man_flag'/1 =
+        fun (Cmd) ->
+            case call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('man', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'lists':'member'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd))) of <'true'> when 'true' -> 
+                let <Man_flag> =
+                    apply 'Flag.get_bool'/2(call 'erlang':'map_get'('flags', Cmd), #{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                in  case Man_flag of <'true'> when 'true' -> 
+                        do  apply 'Command.execute_man'/1(Cmd)
+                            call 'erlang':'halt'(0)
+                     <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end
+    'Command.check_version_flag'/1 =
+        fun (Cmd) ->
+            case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'map_get'('flag', call 'erlang':'map_get'('version', call 'erlang':'map_get'('parsed', call 'erlang':'map_get'('defaults', Cmd)))), call 'erlang':'=/='(call 'erlang':'map_get'('version', Cmd), #{  }#)), call 'lists':'member'(#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('flags', Cmd))) of <'true'> when 'true' -> 
+                let <Version_flag> =
+                    apply 'Flag.get_bool'/2(call 'erlang':'map_get'('flags', Cmd), #{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                in  case Version_flag of <'true'> when 'true' -> 
+                        do  apply 'print_version_for_command'/1(Cmd)
+                            call 'erlang':'halt'(0)
+                     <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end
+    'Command.check_required_flags'/1 =
+        fun (Cmd) ->
+            'ok'
+    'Command.execute_help'/1 =
+        fun (Cmd) ->
+            do  case call 'lists':'member'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('commands', Cmd)) of <'true'> when 'true' -> 
+                let <Help_cmd> =
+                    apply 'Command.get'/2(call 'erlang':'map_get'('commands', Cmd), #{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#)
+                in  case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('execute', Help_cmd))) of <'true'> when 'true' -> 
+                        do  apply 'Command.execute'/2(Help_cmd, Help_cmd)
+                            'ok'
+                     <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end
+                call 'io':'format'([126|[115|[]]], [apply 'Command.help_message'/1(Cmd)|[]])
+    'Command.execute_man'/1 =
+        fun (Cmd) ->
+            case call 'lists':'member'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('commands', Cmd)) of <'true'> when 'true' -> 
+                let <Man_cmd> =
+                    apply 'Command.get'/2(call 'erlang':'map_get'('commands', Cmd), #{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                in  apply 'Command.execute'/2(Man_cmd, Man_cmd)
+             <'false'> when 'true' -> call 'io':'format'([126|[115|[]]], [apply 'Command.manpage'/1(Cmd)|[]]) end
+    'Command.get'/2 =
+        fun (Cmds, Name) ->
+            do  let <_1> =
+                fun (Cmd) ->
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('name', Cmd), Name) of <'true'> when 'true' -> Cmd <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Cmds)
+                call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[Name|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Cmds|[]]]]]))
+    'Command.contains'/2 =
+        fun (Cmds, Name) ->
+            do  let <_1> =
+                fun (Cmd) ->
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('name', Cmd), Name) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Cmds)
+                'false'
+    'eprintln_exit'/1 =
+        fun (Message) ->
+            do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [Message|[]])
+                call 'erlang':'halt'(1)
+    'Flag.get_all_found'/1 =
+        fun (Flags) ->
+            call 'lists':'filter'(call 'erlang':'map_get'('found', It), Flags)
+    'Flag.get_bool'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'bool') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Val), 0), call 'erlang':'=:='(call 'lists':'nth'(1, Val), #{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#))
+            end
+    'Flag.get_bool'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_bool'/1(Flag)
+    'Flag.get_int'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'int') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> call 'erlang':'binary_to_integer'(call 'lists':'nth'(1, Val)) end
+            end
+    'Flag.get_ints'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'int_array') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> [] <'false'> when 'true' -> 
+                            let <Values> =
+                                []
+                            in  do  let <_1> =
+                                    fun (F) ->
+                                        call 'erlang':'bsl'(Values, call 'erlang':'binary_to_integer'(F))
+                                in  call 'lists':'foreach'(_1, Val)
+                                    Values
+                         end
+            end
+    'Flag.get_int'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_int'/1(Flag)
+    'Flag.get_ints'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_ints'/1(Flag)
+    'Flag.get_float'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'float') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> call 'erlang':'binary_to_float'(call 'lists':'nth'(1, Val)) end
+            end
+    'Flag.get_floats'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'float_array') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> [] <'false'> when 'true' -> 
+                            let <Values> =
+                                []
+                            in  do  let <_1> =
+                                    fun (F) ->
+                                        call 'erlang':'bsl'(Values, call 'erlang':'binary_to_float'(F))
+                                in  call 'lists':'foreach'(_1, Val)
+                                    Values
+                         end
+            end
+    'Flag.get_float'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_float'/1(Flag)
+    'Flag.get_floats'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_floats'/1(Flag)
+    'Flag.get_string'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'string') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> call 'lists':'nth'(1, Val) end
+            end
+    'Flag.get_strings'/1 =
+        fun (Flag) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('flag', Flag), 'string_array') of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Flag)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('flag', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]))
+                <'false'> when 'true' -> 
+                    let <Val> =
+                        apply 'Flag.get_value_or_default_value'/1(Flag)
+                    in  case call 'erlang':'=:='(call 'erlang':'length'(Val), 0) of <'true'> when 'true' -> [] <'false'> when 'true' -> Val end
+            end
+    'Flag.get_string'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_string'/1(Flag)
+    'Flag.get_strings'/2 =
+        fun (Flags, Name) ->
+            let <Flag> =
+                apply 'Flag.get'/2(Flags, Name)
+            in  apply 'Flag.get_strings'/1(Flag)
+    'Flag.parse'/3 =
+        fun (Flag, Args, Posix_mode) ->
+            case call 'erlang':'not'(apply 'Flag.matches'/3(Flag, call 'lists':'nth'(1, Args), Posix_mode)) of <'true'> when 'true' -> Args <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('flag', Flag), 'bool') of <'true'> when 'true' -> apply 'Flag.parse_bool'/2(Flag, Args) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('value', Flag)), 0), call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('flag', Flag), ['int_array'|['float_array'|['string_array'|[]]]]))) of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<84>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> apply 'Flag.parse_raw'/2(Flag, Args) end end end
+    'Flag.matches'/3 =
+        fun (Flag, Arg, Posix_mode) ->
+            let <Prefix> =
+                case Posix_mode of <'true'> when 'true' -> #{#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<45>(8,1,'integer',['unsigned'|['big']])}# end
+            in  call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('name', Flag), #{  }#), call 'erlang':'=:='(Arg, call 'erlang':'iolist_to_binary'([Prefix|[call 'erlang':'map_get'('name', Flag)|[]]]))), call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('name', Flag), #{  }#), case call 'string':'prefix'(Arg, call 'erlang':'iolist_to_binary'([Prefix|[call 'erlang':'map_get'('name', Flag)|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end)), call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('abbrev', Flag), #{  }#), call 'erlang':'=:='(Arg, call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('abbrev', Flag)|[]]])))), call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('abbrev', Flag), #{  }#), case call 'string':'prefix'(Arg, call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('abbrev', Flag)|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end))
+    'Flag.parse_raw'/2 =
+        fun (Flag, Args) ->
+            do  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'lists':'nth'(1, Args)), call 'erlang':'length'(call 'erlang':'map_get'('name', Flag))), case call 'binary':'match'(call 'lists':'nth'(1, Args), #{#<61>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end) of <'true'> when 'true' -> 
+                do  call 'erlang':'bsl'(call 'erlang':'map_get'('value', Flag), call 'lists':'nth'(2, call 'binary':'split'(call 'lists':'nth'(1, Args), #{#<61>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])))
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+             <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'length'(Args), 2) of <'true'> when 'true' -> 
+                do  call 'erlang':'bsl'(call 'erlang':'map_get'('value', Flag), call 'lists':'nth'(2, Args))
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+             <'false'> when 'true' -> 'ok' end end
+                call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<77>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Flag)|[#{#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+    'Flag.parse_bool'/2 =
+        fun (Flag, Args) ->
+            do  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'lists':'nth'(1, Args)), call 'erlang':'length'(call 'erlang':'map_get'('name', Flag))), case call 'binary':'match'(call 'lists':'nth'(1, Args), #{#<61>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end) of <'true'> when 'true' -> 
+                do  [call 'lists':'nth'(2, call 'binary':'split'(call 'lists':'nth'(1, Args), #{#<61>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))|[]]
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+             <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'length'(Args), 2) of <'true'> when 'true' -> case call 'lists':'member'(call 'lists':'nth'(2, Args), [#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]]]) of <'true'> when 'true' -> 
+                do  [call 'lists':'nth'(2, Args)|[]]
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+             <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end end
+                do  [#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]]
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Args)
+    'Flag.get'/2 =
+        fun (Flags, Name) ->
+            do  let <_1> =
+                fun (Flag) ->
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('name', Flag), Name) of <'true'> when 'true' -> Flag <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Flags)
+                call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<70>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[Name|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Flags|[]]]]]))
+    'Flag.contains'/2 =
+        fun (Flags, Name) ->
+            do  let <_1> =
+                fun (Flag) ->
+                    case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('name', Flag), Name), call 'erlang':'=:='(call 'erlang':'map_get'('abbrev', Flag), Name)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Flags)
+                'false'
+    'Flag.get_value_or_default_value'/1 =
+        fun (Flag) ->
+            case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('value', Flag)), 0), call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('default_value', Flag)), 0)) of <'true'> when 'true' -> call 'erlang':'map_get'('default_value', Flag) <'false'> when 'true' -> call 'erlang':'map_get'('value', Flag) end
+    'help_flag'/1 =
+        fun (With_abbrev) ->
+            let <Sabbrev> =
+                case With_abbrev of <'true'> when 'true' -> #{#<104>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{  }# end
+            in  ~{'flag'=>'bool','name'=>#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#,'abbrev'=>Sabbrev,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'Flag'}~
+    'help_cmd'/0 =
+        fun () ->
+            ~{'name'=>#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#,'usage'=>#{#<60>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}#,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,'execute'=>fun (_fref0) -> apply 'print_help_for_command'/1(_fref0),{'vbeam','type'}=>'Command'}~
+    'print_help_for_command'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('args', Cmd)), 0) of <'true'> when 'true' -> 
+                do  let <_1> =
+                    fun (Sub_cmd) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('name', Sub_cmd), call 'lists':'nth'(1, call 'erlang':'map_get'('args', Cmd))) of <'true'> when 'true' -> 
+                            let <Cmd_> =
+                                'todo'
+                            in  do  call 'io':'format'([126|[115|[]]], [apply 'Command.help_message'/1(Cmd_)|[]])
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('commands', Cmd))
+                    call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('args', Cmd)))|[]]])|[]])
+             <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'map_get'('parent', Cmd), 'todo') of <'true'> when 'true' -> call 'io':'format'([126|[115|[]]], [apply 'Command.help_message'/1(call 'erlang':'map_get'('parent', Cmd))|[]]) <'false'> when 'true' -> 'ok' end end
+                'ok'
+    'Command.help_message'/1 =
+        fun (Cmd) ->
+            let <Help> =
+                #{  }#
+            in  let <Help_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<85>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Command.full_name'/1(Cmd)|[]]])
+                in  let <Help_2> =
+                        case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('flags', Cmd)), 0) of <'true'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Help_1 end
+                    in  let <Help_3> =
+                            case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Help_2 end
+                        in  let <Help_4> =
+                                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('usage', Cmd)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('usage', Cmd)|[]]]) <'false'> when 'true' -> Help_3 end
+                            in  let <Help_5> =
+                                    #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                in  let <Help_6> =
+                                        case call 'erlang':'=/='(call 'erlang':'map_get'('description', Cmd), #{  }#) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('description', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'false'> when 'true' -> Help_5 end
+                                    in  let <Abbrev_len> =
+                                            0
+                                        in  let <Name_len> =
+                                                20
+                                            in  do  case call 'erlang':'map_get'('posix_mode', Cmd) of <'true'> when 'true' -> 
+                                                    let <Abbrev_len_7> =
+                                                        let <_8> =
+                                                            fun (Flag, _12) ->
+                                                                let <Abbrev_lenAcc> =
+                                                                    call 'erlang':'element'(1, _12)
+                                                                in                                                                  let <Name_lenAcc> =
+                                                                    call 'erlang':'element'(2, _12)
+                                                                in  
+                                                                let <Abbrev_lenOut_10> =
+                                                                    case call 'erlang':'=/='(call 'erlang':'map_get'('abbrev', Flag), #{  }#) of <'true'> when 'true' -> call 'erlang':'max'(Abbrev_lenAcc, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(call 'erlang':'map_get'('abbrev', Flag)), 2), 1)) <'false'> when 'true' -> Abbrev_lenAcc end
+                                                                in                                                                  let <Name_lenOut_11> =
+                                                                    call 'erlang':'max'(Name_lenAcc, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(Abbrev_lenOut_10, call 'erlang':'length'(call 'erlang':'map_get'('name', Flag))), 2), 2))
+                                                                in  {Abbrev_lenOut_10, Name_lenOut_11}
+                                                        in  call 'lists':'foldl'(_8, {Abbrev_len, Name_len}, call 'erlang':'map_get'('flags', Cmd))
+                                                    in  'ok'
+                                                 <'false'> when 'true' -> 
+                                                    let <Abbrev_len_13> =
+                                                        let <_14> =
+                                                            fun (Flag, _18) ->
+                                                                let <Abbrev_lenAcc> =
+                                                                    call 'erlang':'element'(1, _18)
+                                                                in                                                                  let <Name_lenAcc> =
+                                                                    call 'erlang':'element'(2, _18)
+                                                                in  
+                                                                let <Abbrev_lenOut_16> =
+                                                                    case call 'erlang':'=/='(call 'erlang':'map_get'('abbrev', Flag), #{  }#) of <'true'> when 'true' -> call 'erlang':'max'(Abbrev_lenAcc, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'length'(call 'erlang':'map_get'('abbrev', Flag)), 2), 1)) <'false'> when 'true' -> Abbrev_lenAcc end
+                                                                in                                                                  let <Name_lenOut_17> =
+                                                                    call 'erlang':'max'(Name_lenAcc, call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(Abbrev_lenOut_16, call 'erlang':'length'(call 'erlang':'map_get'('name', Flag))), 2), 1))
+                                                                in  {Abbrev_lenOut_16, Name_lenOut_17}
+                                                        in  call 'lists':'foldl'(_14, {Abbrev_len_7, Name_len}, call 'erlang':'map_get'('flags', Cmd))
+                                                    in  'ok'
+                                                 end
+                                                    let <Help_19> =
+                                                        case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('flags', Cmd)), 0) of <'true'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Help_6 end
+                                                    in  let <Help_20> =
+                                                            case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Help_19 end
+                                                        in  Help_20
+    'pretty_description'/2 =
+        fun (S, Indent_len) ->
+            let <Width> =
+                apply 'get_terminal_size'/0()
+            in  do  apply 'get_terminal_size'/0()
+                    case call 'erlang':'>'(Indent_len, Width) of
+                        <'true'> when 'true' -> S
+                        <'false'> when 'true' -> 
+                            let <Indent> =
+                                apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, Indent_len)
+                            in  let <Chars_per_line> =
+                                    call 'erlang':'-'(Width, Indent_len)
+                                in  let <Acc> =
+                                        apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'div'(call 'erlang':'length'(S), Chars_per_line), 1), call 'erlang':'+'(Width, 1)))
+                                    in  do  let <_1> =
+                                            fun (Line, K) ->
+                                                do  case call 'erlang':'=/='(K, 0) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Acc, call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[Indent|[]]])) <'false'> when 'true' -> 'ok' end
+                                                    do  call 'erlang':'-'(Chars_per_line, 2)
+                                                        do  0
+                                                            do  'ok'
+                                                                do  case call 'erlang':'=/='(J, 0) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Acc, Indent) <'false'> when 'true' -> 'ok' end
+                                                                    do  apply 'Builder.write_string'/2(Acc, call 'string':'trim'(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Line)))
+                                                                        call 'erlang':'+'(K, 1)
+                                        in  call 'lists':'foldl'(_1, 0, call 'binary':'split'(S, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                            apply 'Builder.str'/1(Acc)
+                    end
+    'max'/2 =
+        fun (A, B) ->
+            let <Res> =
+                case call 'erlang':'>'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+            in  Res
+    'man_flag'/0 =
+        fun () ->
+            ~{'flag'=>'bool','name'=>#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'Flag'}~
+    'man_cmd'/0 =
+        fun () ->
+            ~{'name'=>#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'usage'=>#{#<60>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}#,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,'execute'=>fun (_fref0) -> apply 'print_manpage_for_command'/1(_fref0),{'vbeam','type'}=>'Command'}~
+    'print_manpage_for_command'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('args', Cmd)), 0) of <'true'> when 'true' -> 
+                do  let <_1> =
+                    fun (Sub_cmd) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('name', Sub_cmd), call 'lists':'nth'(1, call 'erlang':'map_get'('args', Cmd))) of <'true'> when 'true' -> 
+                            let <Man_cmd> =
+                                'todo'
+                            in  do  call 'io':'format'([126|[115|[]]], [apply 'Command.manpage'/1(Man_cmd)|[]])
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('commands', Cmd))
+                    call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('args', Cmd)))|[]]])|[]])
+             <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'map_get'('parent', Cmd), 'todo') of <'true'> when 'true' -> call 'io':'format'([126|[115|[]]], [apply 'Command.manpage'/1(call 'erlang':'map_get'('parent', Cmd))|[]]) <'false'> when 'true' -> 'ok' end end
+                'ok'
+    'Command.manpage'/1 =
+        fun (Cmd) ->
+            let <Mdoc> =
+                call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Time.strftime'/2(apply 'now'/0(), #{#<37>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<37>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<37>(8,1,'integer',['unsigned'|['big']]),#<89>(8,1,'integer',['unsigned'|['big']])}#)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+            in  let <Mdoc_1> =
+                    call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'string':'uppercase'(call 'binary':'replace'(apply 'Command.full_name'/1(Cmd), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, #{#<45>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  let <Mdoc_2> =
+                        call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'binary':'replace'(apply 'Command.full_name'/1(Cmd), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, #{#<45>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('description', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])
+                    in  let <Mdoc_3> =
+                            #{#<46>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<89>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                        in  let <Mdoc_4> =
+                                call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', apply 'Command.root'/1(Cmd))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                            in  let <Mdoc_5> =
+                                    case 'todo' of <'true'> when 'true' -> let <Parents> = [] in do  case call 'erlang':'not'(apply 'Command.is_root'/1(call 'erlang':'map_get'('parent', Cmd))) of <'true'> when 'true' -> 
+                                        do  apply 'Command.prepend'/2(Parents, call 'erlang':'map_get'('parent', Cmd))
+                                            'ok'
+                                     <'false'> when 'true' -> 'ok' end call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'false'> when 'true' -> Mdoc_4 end
+                                in  let <Mdoc_6> =
+                                        let <_7> =
+                                            fun (Flag, MdocAcc) ->
+                                                let <MdocOut_9> =
+                                                    #{#<46>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#
+                                                in                                                  let <MdocOut_9> =
+                                                    case call 'erlang':'=/='(call 'erlang':'map_get'('abbrev', Flag), #{  }#) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('abbrev', Flag)|[]]]) <'false'> when 'true' -> do  case call 'erlang':'map_get'('posix_mode', Cmd) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end MdocOut_9 end
+                                                in                                                  do  case call 'erlang':'map_get'('flag', Flag) of <'int'> when 'float'> when 'int_array'> when 'float_array'> when 'true' -> 'ok' <'string'> when 'string_array'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+                                                    let <MdocOut_9> =
+                                                        #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                                    in  MdocOut_9
+                                        in  call 'lists':'foldl'(_7, Mdoc_5, call 'erlang':'map_get'('flags', Cmd))
+                                    in  let <Mdoc_10> =
+                                            let <_11> =
+                                                fun (I, MdocAcc) ->
+                                                    let <MdocOut_13> =
+                                                        call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(I)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                    in  MdocOut_13
+                                            in  let <_12> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('required_args', Cmd), 1))
+                                            in  call 'lists':'foldl'(_11, Mdoc_6, _12)
+                                        in  let <Mdoc_14> =
+                                                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> do  call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', apply 'Command.root'/1(Cmd))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) do  case 'todo' of <'true'> when 'true' -> 
+                                                    let <Parents_15> =
+                                                        []
+                                                    in  do  case call 'erlang':'not'(apply 'Command.is_root'/1(call 'erlang':'map_get'('parent', Cmd))) of <'true'> when 'true' -> 
+                                                            do  apply 'Command.prepend'/2(Parents_15, call 'erlang':'map_get'('parent', Cmd))
+                                                                'ok'
+                                                         <'false'> when 'true' -> 'ok' end
+                                                            let <Mdoc_16> =
+                                                                call 'erlang':'iolist_to_binary'([#{#<46>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                            in  Mdoc_16
+                                                 <'false'> when 'true' -> 'ok' end #{#<46>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Mdoc_10 end
+                                            in  let <Mdoc_17> =
+                                                    #{#<46>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                                in  let <Mdoc_18> =
+                                                        case call 'erlang':'=/='(call 'erlang':'map_get'('man_description', Cmd), #{  }#) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('man_description', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'map_get'('description', Cmd), #{  }#) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('description', Cmd)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> Mdoc_17 end end
+                                                    in  let <Mdoc_19> =
+                                                            case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('flags', Cmd)), 0) of <'true'> when 'true' -> do  #{#<46>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# do  #{#<46>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# #{#<46>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Mdoc_18 end
+                                                        in  let <Mdoc_20> =
+                                                                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> do  #{#<46>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# do  #{#<46>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# #{#<46>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Mdoc_19 end
+                                                            in  let <Mdoc_21> =
+                                                                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Mdoc_20 end
+                                                                in  let <I_22> =
+                                                                        case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('commands', Cmd)), 0) of <'true'> when 'true' -> let <Mdoc_23> = #{#<46>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}# in let <Cmds> = [] in do  case 'todo' of <'true'> when 'true' -> call 'erlang':'bsl'(Cmds, call 'binary':'replace'(apply 'Command.full_name'/1(call 'erlang':'map_get'('parent', Cmd)), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, #{#<45>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])) <'false'> when 'true' -> 'ok' end do  call 'lists':'sort'(Cmds) 1 <'false'> when 'true' -> I end
+                                                                    in  Mdoc_23
+    'version_flag'/1 =
+        fun (With_abbrev) ->
+            let <Sabbrev> =
+                case With_abbrev of <'true'> when 'true' -> #{#<118>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{  }# end
+            in  ~{'flag'=>'bool','name'=>#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'abbrev'=>Sabbrev,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'Flag'}~
+    'version_cmd'/0 =
+        fun () ->
+            ~{'name'=>#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'description'=>#{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,'execute'=>fun (_fref0) -> apply 'print_version_for_command'/1(_fref0),{'vbeam','type'}=>'Command'}~
+    'print_version_for_command'/1 =
+        fun (Cmd) ->
+            do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('args', Cmd)), 0) of <'true'> when 'true' -> 
+                do  let <_1> =
+                    fun (Sub_cmd) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('name', Sub_cmd), call 'lists':'nth'(1, call 'erlang':'map_get'('args', Cmd))) of <'true'> when 'true' -> 
+                            let <Version_cmd> =
+                                'todo'
+                            in  do  call 'io':'format'([126|[115|[]]], [apply 'Command.version'/1(Version_cmd)|[]])
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('commands', Cmd))
+                    call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('args', Cmd)))|[]]])|[]])
+             <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'map_get'('parent', Cmd), 'todo') of <'true'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Command.version'/1(call 'erlang':'map_get'('parent', Cmd))|[]]) <'false'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Command.version'/1(Cmd)|[]]) end end
+                'ok'
+    'Command.version'/1 =
+        fun (Cmd) ->
+            call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('name', Cmd)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('version', Cmd)|[]]]])
+    'FlagType__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.cli')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.cli', _0)
+    end

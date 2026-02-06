@@ -1,0 +1,29 @@
+module 'v.main' ['main'/0,
+                'my_print1'/0,
+                'my_print2'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Th> =
+            'todo'
+        in  do  apply 'thread.wait'/1(Th)
+                let <Th2> =
+                    'todo'
+                in  apply 'thread.wait'/1(Th2)
+'my_print1'/0 =
+    fun () ->
+        call 'io':'format'([104|[101|[108|[108|[111|[32|[119|[111|[114|[100|[126|[110|[]]]]]]]]]]]]])
+'my_print2'/0 =
+    fun () ->
+        call 'io':'format'([97|[104|[111|[106|[32|[115|[118|[101|[116|[126|[110|[]]]]]]]]]]]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

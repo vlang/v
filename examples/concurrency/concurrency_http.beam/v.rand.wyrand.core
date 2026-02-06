@@ -1,0 +1,88 @@
+module 'v.rand.wyrand' ['WyRandRNG.free'/1,
+                'WyRandRNG.u64'/1,
+                'WyRandRNG.seed'/2,
+                'WyRandRNG.u8'/1,
+                'WyRandRNG.u16'/1,
+                'WyRandRNG.u32'/1,
+                'WyRandRNG.block_size'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'WyRandRNG.free'/1 =
+        fun (Rng) ->
+            'ok'
+    'WyRandRNG.u64'/1 =
+        fun (Rng) ->
+            let <Seed1> =
+                call 'erlang':'map_get'('state', Rng)
+            in  let <Seed1_1> =
+                    call 'erlang':'+'(call 'erlang':'*'(Seed1, 'todo'), 'todo')
+                in  do  Seed1_1
+                        let <Result> =
+                            Seed1_1
+                        in  let <Result_2> =
+                                call 'erlang':'bsr'(Result, 33)
+                            in  let <Result_3> =
+                                    call 'erlang':'*'(Result_2, 'todo')
+                                in  let <Result_4> =
+                                        call 'erlang':'bsr'(Result_3, 33)
+                                    in  let <Result_5> =
+                                            call 'erlang':'*'(Result_4, 'todo')
+                                        in  let <Result_6> =
+                                                call 'erlang':'bsr'(Result_5, 33)
+                                            in  Result_6
+    'WyRandRNG.seed'/2 =
+        fun (Rng, Seed_data) ->
+            do  case call 'erlang':'=/='(call 'erlang':'length'(Seed_data), 2) of <'true'> when 'true' -> 
+                do  call 'io':'format'('standard_error', [87|[121|[82|[97|[110|[100|[82|[78|[71|[32|[110|[101|[101|[100|[115|[32|[50|[32|[51|[50|[45|[98|[105|[116|[32|[117|[110|[115|[105|[103|[110|[101|[100|[32|[105|[110|[116|[101|[103|[101|[114|[115|[32|[97|[115|[32|[116|[104|[101|[32|[115|[101|[101|[100|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                    call 'erlang':'halt'(1)
+             <'false'> when 'true' -> 'ok' end
+                do  call 'erlang':'bor'(call 'lists':'nth'(1, Seed_data), call 'erlang':'bsl'('todo', 32))
+                    do  0
+                        'ok'
+    'WyRandRNG.u8'/1 =
+        fun (Rng) ->
+            case call 'erlang':'>='(call 'erlang':'map_get'('bytes_left', Rng), 1) of
+                <'true'> when 'true' -> Value
+                <'false'> when 'true' -> 
+                    do  apply 'WyRandRNG.u64'/1(Rng)
+                        do  7
+                            let <Value_1> =
+                                'todo'
+                            in  do  8
+                                    Value_1
+            end
+    'WyRandRNG.u16'/1 =
+        fun (Rng) ->
+            case call 'erlang':'>='(call 'erlang':'map_get'('bytes_left', Rng), 2) of
+                <'true'> when 'true' -> Value
+                <'false'> when 'true' -> 
+                    let <Ans> =
+                        apply 'WyRandRNG.u64'/1(Rng)
+                    in  do  call 'erlang':'bsr'(Ans, 16)
+                            do  6
+                                'todo'
+            end
+    'WyRandRNG.u32'/1 =
+        fun (Rng) ->
+            case call 'erlang':'>='(call 'erlang':'map_get'('bytes_left', Rng), 4) of
+                <'true'> when 'true' -> Value
+                <'false'> when 'true' -> 
+                    let <Ans> =
+                        apply 'WyRandRNG.u64'/1(Rng)
+                    in  do  call 'erlang':'bsr'(Ans, 32)
+                            do  4
+                                'todo'
+            end
+    'WyRandRNG.block_size'/1 =
+        fun (Rng) ->
+            64
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.rand.wyrand')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.rand.wyrand', _0)
+    end

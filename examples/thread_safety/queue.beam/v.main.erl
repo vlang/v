@@ -9,19 +9,21 @@ producer(Producer_name, Arr, Mtx) ->
         ok.
         vbeam_io:println(<<"Produced: ", (integer_to_binary(I))/binary>>),
         ok.
-        sleep(50 * todo),
+        timer:sleep(50 * todo),
         ok.
         'Mutex.unlock'(Mtx),
         ok.
         ok
     end, lists:seq(1, 5 - 1)),
+        ok.
 
 consumer(Consumer_name, Arr, Mtx) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 heavy_processing(Queue_id) ->
     vbeam_io:println(<<"One more: ", (Queue_id)/binary>>),
-    sleep(500 * todo),
+    timer:sleep(500 * todo),
     ok.
 
 main() ->
@@ -45,3 +47,4 @@ main() ->
         ok.
         ok
     end, Consumer_threads),
+        ok.

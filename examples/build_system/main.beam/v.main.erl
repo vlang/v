@@ -2,5 +2,5 @@
 -export([main/0]).
 
 main() ->
-    vbeam_io:println(<<"Hello, ", (lists:nth(2, 'v.os':'arguments'()))/binary, "!">>),
+    vbeam_io:println(<<"Hello, ", (lists:nth(2, init:get_plain_arguments()))/binary, "!">>),
     ok.

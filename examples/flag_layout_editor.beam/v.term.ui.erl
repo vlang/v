@@ -102,7 +102,7 @@ init(Cfg) ->
     case length(maps:get(print_buf, Ctx)) > 0 of
         true -> begin
             S = todo,
-            print(S),
+            io:format("~s", [S]),
             flush_stdout(),
             '[]u8.clear'(maps:get(print_buf, Ctx))
         end;
@@ -163,7 +163,7 @@ flush_stdout() ->
     ok.
 
 'Context.set_window_title'(Ctx, S) ->
-    print(<<"]0;", (S)/binary, "">>),
+    io:format("~s", [<<"]0;", (S)/binary, "">>]),
     flush_stdout(),
     ok.
 
@@ -219,7 +219,8 @@ flush_stdout() ->
             end,
             Err = Dx + Dy,
             % TODO: unhandled stmt type
-            ok        end
+                        ok
+        end
         end.
 
 'Context.draw_dashed_line'(Ctx, X, Y, X2, Y2) ->
@@ -246,7 +247,8 @@ flush_stdout() ->
     Err = Dx + Dy,
     I = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Context.draw_rect'(Ctx, X, Y, X2, Y2) ->
     case Y == Y2 orelse X == X2 of
         true -> ok;
@@ -264,6 +266,7 @@ flush_stdout() ->
                 ok
                 ok
             end, lists:seq(Min_y, Max_y + 1 - 1)),
+                        ok
         end
         end.
 
@@ -340,19 +343,24 @@ flush_stdout() ->
 
 'Modifiers.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Modifiers.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Modifiers.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Modifiers.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Modifiers.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Modifiers__static__zero'() ->
     todo.
 

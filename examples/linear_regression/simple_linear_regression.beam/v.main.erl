@@ -25,7 +25,7 @@ linearrelationship(Independent_variable, Dependent_variable) ->
     end, Independent_variable),
     Slope_value = todo / todo,
     Intercept_value = todo / todo,
-    R2_value = todo / sqrt(todo * todo),
+    R2_value = todo / math:sqrt(todo * todo),
     #{r2 => R2_value, intercept => Intercept_value, slope => Slope_value, independent_variable_means => X_means, dependent_variable_means => Y_means, {vbeam, type} => 'LinearResult'}.
 
 main() ->

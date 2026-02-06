@@ -1,0 +1,26 @@
+module 'v.main' ['hash_file'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'hash_file'/1 =
+        fun (Path) ->
+            let <File> =
+                apply 'open'/1(Path)
+            in  let <Digest> =
+                    apply 'new'/0()
+                in  do  apply 'cp'/3(File, Digest, ~{'buffer_size'=>262144,{'vbeam','type'}=>'CopySettings'}~)
+                        do  apply 'File.close'/1(File)
+                            apply '[]u8.hex'/1(apply 'Digest.sum'/2(Digest, []))
+    'main'/0 =
+        fun () ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

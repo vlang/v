@@ -1,0 +1,156 @@
+module 'v.crypto.sha256' ['Digest.free'/1,
+                'Digest.init'/1,
+                'Digest.reset'/1,
+                'Digest.clone'/1,
+                'new'/0,
+                'new224'/0,
+                'Digest.write'/2,
+                'Digest.sum'/2,
+                'Digest.checksum'/1,
+                'sum'/1,
+                'sum256'/1,
+                'sum224'/1,
+                'block'/2,
+                'Digest.size'/1,
+                'Digest.block_size'/1,
+                'hexhash'/1,
+                'hexhash_224'/1,
+                'block_generic'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Digest.free'/1 =
+        fun (D) ->
+            'ok'
+    'Digest.init'/1 =
+        fun (D) ->
+            do  []
+                do  []
+                    apply 'Digest.reset'/1(D)
+    'Digest.reset'/1 =
+        fun (D) ->
+            do  case call 'erlang':'not'(call 'erlang':'map_get'('is224', D)) of <'true'> when 'true' -> 
+                do  'todo'
+                    do  'todo'
+                        do  'todo'
+                            do  'todo'
+                                do  'todo'
+                                    do  'todo'
+                                        do  'todo'
+                                            'ok'
+             <'false'> when 'true' -> 
+                do  'todo'
+                    do  'todo'
+                        do  'todo'
+                            do  'todo'
+                                do  'todo'
+                                    do  'todo'
+                                        do  'todo'
+                                            'ok'
+             end
+                do  0
+                    'ok'
+    'Digest.clone'/1 =
+        fun (D) ->
+            ~{'h'=>call 'erlang':'map_get'('h', D),'x'=>call 'erlang':'map_get'('x', D),{'vbeam','type'}=>'Digest'}~
+    'new'/0 =
+        fun () ->
+            let <D> =
+                ~{{'vbeam','type'}=>'Digest'}~
+            in  do  apply 'Digest.init'/1(D)
+                    D
+    'new224'/0 =
+        fun () ->
+            let <D> =
+                ~{{'vbeam','type'}=>'Digest'}~
+            in  do  'true'
+                    do  apply 'Digest.init'/1(D)
+                        D
+    'Digest.write'/2 =
+        fun (D, P_) ->
+            'ok'
+    'Digest.sum'/2 =
+        fun (D, B_in) ->
+            let <D0> =
+                apply 'Digest.clone'/1(D)
+            in  let <Hash> =
+                    apply 'Digest.checksum'/1(D0)
+                in  let <B_out> =
+                        B_in
+                    in  do  case call 'erlang':'map_get'('is224', D0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            B_out
+    'Digest.checksum'/1 =
+        fun (D) ->
+            let <Len> =
+                call 'erlang':'length'(D)
+            in  let <Tmp> =
+                    []
+                in  do  16#80
+                        do  case call 'erlang':'<'(call 'erlang':'rem'('todo', 64), 56) of <'true'> when 'true' -> apply 'Digest.write'/2(D, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Tmp)) <'false'> when 'true' -> apply 'Digest.write'/2(D, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Tmp)) end
+                            let <Len_1> =
+                                'todo'
+                            in  do  apply 'big_endian_put_u64'/2(Tmp, Len_1)
+                                    do  apply 'Digest.write'/2(D, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Tmp))
+                                        do  case call 'erlang':'=/='(call 'erlang':'map_get'('nx', D), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                                            let <Digest> =
+                                                []
+                                            in  do  apply 'big_endian_put_u32'/2(Digest, call 'lists':'nth'(1, call 'erlang':'map_get'('h', D)))
+                                                    do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(2, call 'erlang':'map_get'('h', D)))
+                                                        do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(3, call 'erlang':'map_get'('h', D)))
+                                                            do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(4, call 'erlang':'map_get'('h', D)))
+                                                                do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(5, call 'erlang':'map_get'('h', D)))
+                                                                    do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(6, call 'erlang':'map_get'('h', D)))
+                                                                        do  apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(7, call 'erlang':'map_get'('h', D)))
+                                                                            do  case call 'erlang':'not'(call 'erlang':'map_get'('is224', D)) of <'true'> when 'true' -> apply 'big_endian_put_u32'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digest), call 'lists':'nth'(8, call 'erlang':'map_get'('h', D))) <'false'> when 'true' -> 'ok' end
+                                                                                Digest
+    'sum'/1 =
+        fun (Data) ->
+            apply 'sum256'/1(Data)
+    'sum256'/1 =
+        fun (Data) ->
+            let <D> =
+                apply 'new'/0()
+            in  do  apply 'Digest.write'/2(D, Data)
+                    apply 'Digest.checksum'/1(D)
+    'sum224'/1 =
+        fun (Data) ->
+            let <D> =
+                apply 'new224'/0()
+            in  do  apply 'Digest.write'/2(D, Data)
+                    let <Sum> =
+                        apply 'Digest.checksum'/1(D)
+                    in  let <Sum224> =
+                            []
+                        in  do  apply 'copy'/2(Sum224, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Sum))
+                                Sum224
+    'block'/2 =
+        fun (Dig, P) ->
+            apply 'block_generic'/2(Dig, P)
+    'Digest.size'/1 =
+        fun (D) ->
+            case call 'erlang':'not'(call 'erlang':'map_get'('is224', D)) of
+                <'true'> when 'true' -> 32
+                <'false'> when 'true' -> 
+                    28
+            end
+    'Digest.block_size'/1 =
+        fun (D) ->
+            64
+    'hexhash'/1 =
+        fun (S) ->
+            apply '[]u8.hex'/1(apply 'sum256'/1(call 'erlang':'binary_to_list'(S)))
+    'hexhash_224'/1 =
+        fun (S) ->
+            apply '[]u8.hex'/1(apply 'sum224'/1(call 'erlang':'binary_to_list'(S)))
+    'block_generic'/2 =
+        fun (Dig, P_) ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.sha256')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.sha256', _0)
+    end

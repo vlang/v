@@ -1,0 +1,17 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'integer_to_binary'(apply 'add_xy'/2(2, 3))|[]])
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'integer_to_binary'(apply 'sub_xy'/2(10, 7))|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

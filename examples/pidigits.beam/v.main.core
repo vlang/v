@@ -1,0 +1,33 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  apply 'unbuffer_stdout'/0()
+                let <Digits_printed> =
+                    0
+                in  let <K> =
+                        apply 'integer_from_int'/1(1)
+                    in  let <N1> =
+                            apply 'integer_from_int'/1(4)
+                        in  let <N2> =
+                                apply 'integer_from_int'/1(3)
+                            in  let <D> =
+                                    apply 'integer_from_int'/1(1)
+                                in  let <U> =
+                                        apply 'integer_from_int'/1(0)
+                                    in  let <V> =
+                                            apply 'integer_from_int'/1(0)
+                                        in  let <W> =
+                                                apply 'integer_from_int'/1(0)
+                                            in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

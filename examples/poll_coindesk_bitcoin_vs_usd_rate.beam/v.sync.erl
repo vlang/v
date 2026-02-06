@@ -158,24 +158,24 @@ new_cond(M) ->
 'Cond.wait'(C) ->
     Sem = new_semaphore(),
     % TODO: unhandled stmt type
-    ok    'Mutex.lock'(maps:get(inner_mutex, C)),
+    'Mutex.lock'(maps:get(inner_mutex, C)),
     maps:get(waiters, C) bsl Sem,
     'Mutex.unlock'(maps:get(inner_mutex, C)),
     'Mutex.unlock'(maps:get(mutex, C)),
     'Semaphore.wait'(Sem),
     'Mutex.lock'(maps:get(inner_mutex, C)),
     % TODO: unhandled stmt type
-    ok    'Mutex.unlock'(maps:get(inner_mutex, C)),
+    'Mutex.unlock'(maps:get(inner_mutex, C)),
     'Mutex.lock'(maps:get(mutex, C)),
     ok.
 
 'Cond.signal'(C) ->
     'Mutex.lock'(maps:get(inner_mutex, C)),
     % TODO: unhandled stmt type
-    ok    case length(maps:get(waiters, C)) > 0 of
+    case length(maps:get(waiters, C)) > 0 of
         true -> begin
             Waiter = lists:nth(1, maps:get(waiters, C)),
-            'Semaphore.delete'(maps:get(waiters, C), 0),
+            lists:delete(0, maps:get(waiters, C)),
             'Semaphore.post'(Waiter)
         end;
         false -> ok
@@ -184,7 +184,7 @@ new_cond(M) ->
 'Cond.broadcast'(C) ->
     'Mutex.lock'(maps:get(inner_mutex, C)),
     % TODO: unhandled stmt type
-    ok    Waiter = lists:foldl(fun(I, WaiterAcc) ->
+    Waiter = lists:foldl(fun(I, WaiterAcc) ->
         WaiterOut = lists:nth(I + 1, maps:get(waiters, C)),
         'Semaphore.post'(Waiter),
         WaiterOut
@@ -195,14 +195,14 @@ new_cond(M) ->
 'Cond.timed_wait'(C, Timeout) ->
     Sem = new_semaphore(),
     % TODO: unhandled stmt type
-    ok    'Mutex.lock'(maps:get(inner_mutex, C)),
+    'Mutex.lock'(maps:get(inner_mutex, C)),
     maps:get(waiters, C) bsl Sem,
     'Mutex.unlock'(maps:get(inner_mutex, C)),
     'Mutex.unlock'(maps:get(mutex, C)),
     Result = 'Semaphore.timed_wait'(Sem, Timeout),
     'Mutex.lock'(maps:get(inner_mutex, C)),
     % TODO: unhandled stmt type
-    ok    'Mutex.unlock'(maps:get(inner_mutex, C)),
+    'Mutex.unlock'(maps:get(inner_mutex, C)),
     'Mutex.lock'(maps:get(mutex, C)),
     Result.
 
@@ -278,14 +278,16 @@ new_spin_lock() ->
     Max_spins = 100,
     Base_delay = 100,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'SpinLock.try_lock'(S) ->
     % TODO: unhandled stmt type
-    ok    false.
+    false.
 
 'SpinLock.unlock'(S) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'SpinLock.destroy'(S) ->
     ok.
 
@@ -298,7 +300,7 @@ new_mutex() ->
 
 'Mutex.lock'(M) ->
     % TODO: unhandled stmt type
-    ok
+
 'Mutex.try_lock'(M) ->
     case not maps:get(locked, M) of
         true -> true;
@@ -319,12 +321,12 @@ new_rwmutex() ->
 
 'RwMutex.rlock'(M) ->
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     ok.
 
 'RwMutex.lock'(M) ->
     % TODO: unhandled stmt type
-    ok
+
 'RwMutex.try_rlock'(M) ->
     case not maps:get(writer, M) of
         true -> true;
@@ -371,7 +373,7 @@ new_semaphore_init(N) ->
 
 'Semaphore.wait'(Sem) ->
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     ok.
 
 'Semaphore.try_wait'(Sem) ->
@@ -383,7 +385,7 @@ new_semaphore_init(N) ->
 'Semaphore.timed_wait'(Sem, Timeout) ->
     Start = now(),
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     true.
 
 'Semaphore.destroy'(Sem) ->
@@ -404,12 +406,12 @@ new_waitgroup() ->
         true -> ok;
         false -> case maps:get(task_count, Wg) >= todo of
             true -> ok;
-            false -> panic(<<"Negative number of jobs in waitgroup">>)
+            false -> erlang:error({panic, <<"Negative number of jobs in waitgroup">>})
         end
     end,
     New_nrjobs = Old_nrjobs + Delta,
     case New_nrjobs < 0 of
-        true -> panic(<<"Negative number of jobs in waitgroup">>);
+        true -> erlang:error({panic, <<"Negative number of jobs in waitgroup">>});
         false -> ok
     end,
     case New_nrjobs == 0 andalso maps:get(wait_count, Wg) > 0 of

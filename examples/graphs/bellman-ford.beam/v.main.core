@@ -1,0 +1,92 @@
+module 'v.main' ['build_map_edges_from_graph'/1,
+                'print_sol'/1,
+                'bellman_ford'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'build_map_edges_from_graph'/1 =
+    fun (G) ->
+        let <N> =
+            call 'erlang':'length'(G)
+        in  let <Edges_map> =
+                ~{}~
+            in  let <Edge> =
+                    0
+                in  do  let <_1> =
+                        fun (I) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(N, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        Edges_map
+'print_sol'/1 =
+    fun (Dist) ->
+        let <N_vertex> =
+            call 'erlang':'length'(Dist)
+        in  do  call 'io':'format'([92|[110|[32|[86|[101|[114|[116|[101|[120|[32|[32|[32|[68|[105|[115|[116|[97|[110|[99|[101|[32|[102|[114|[111|[109|[32|[83|[111|[117|[114|[99|[101|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                'ok'
+'bellman_ford'/2 =
+    fun (Graph, Src) ->
+        let <Edges> =
+            apply 'build_map_edges_from_graph'/1(Graph)
+        in  let <N_edges> =
+                call 'maps':'size'(Edges)
+            in  let <N_vertex> =
+                    call 'erlang':'length'(Graph)
+                in  let <Dist> =
+                        []
+                    in  do  0
+                            do  let <_1> =
+                                fun (_) ->
+                                    'ok'
+                            in  let <_2> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(N_vertex, 1))
+                                in  call 'lists':'foreach'(_1, _2)
+                                do  let <_3> =
+                                    fun (J) ->
+                                        let <U> =
+                                            call 'erlang':'map_get'('src', call 'erlang':'map_get'(J, Edges))
+                                        in  let <V> =
+                                                call 'erlang':'map_get'('dest', call 'erlang':'map_get'(J, Edges))
+                                            in  let <Weight> =
+                                                    call 'erlang':'map_get'('weight', call 'erlang':'map_get'(J, Edges))
+                                                in  case call 'erlang':'and'(call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(U, 1), Dist), 999999), call 'erlang':'<'(call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(U, 1), Dist), Weight), call 'lists':'nth'(call 'erlang':'+'(V, 1), Dist))) of <'true'> when 'true' -> 
+                                                        do  call 'io':'format'([92|[110|[32|[71|[114|[97|[112|[104|[32|[99|[111|[110|[116|[97|[105|[110|[115|[32|[110|[101|[103|[97|[116|[105|[118|[101|[32|[119|[101|[105|[103|[104|[116|[32|[99|[121|[99|[108|[101|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                                                            'ok'
+                                                     <'false'> when 'true' -> 'ok' end
+                                in  let <_4> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(N_vertex, 1))
+                                    in  call 'lists':'foreach'(_3, _4)
+                                    apply 'print_sol'/1(Dist)
+'main'/0 =
+    fun () ->
+        let <Graph_01> =
+            [[0|[-1|[4|[0|[0|[]]]]]]|[[0|[0|[3|[2|[2|[]]]]]]|[[0|[0|[0|[0|[0|[]]]]]]|[[0|[1|[5|[0|[0|[]]]]]]|[[0|[0|[0|[-3|[0|[]]]]]]|[]]]]]]
+        in  let <Graph_02> =
+                [[0|[2|[0|[6|[0|[]]]]]]|[[2|[0|[3|[8|[5|[]]]]]]|[[0|[3|[0|[0|[7|[]]]]]]|[[6|[8|[0|[0|[9|[]]]]]]|[[0|[5|[7|[9|[0|[]]]]]]|[]]]]]]
+            in  let <Graph_03> =
+                    [[0|[10|[6|[5|[]]]]]|[[10|[0|[0|[15|[]]]]]|[[6|[0|[0|[4|[]]]]]|[[5|[15|[4|[0|[]]]]]|[]]]]]
+                in  let <Graph> =
+                        []
+                    in  let <Graph_1> =
+                            let <_2> =
+                                fun (G_value, GraphAcc) ->
+                                    let <GraphOut_4> =
+                                        G_value
+                                    in                                      let <Start_node> =
+                                        0
+                                    in                                      do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(Index, 1))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Start_node)|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])|[]])
+                                        do  apply 'bellman_ford'/2(GraphOut_4, Start_node)
+GraphOut_4
+                            in  call 'lists':'foldl'(_2, Graph, [Graph_01|[Graph_02|[Graph_03|[]]]])
+                        in  call 'io':'format'([92|[110|[32|[66|[89|[69|[32|[45|[45|[32|[79|[75|[126|[110|[]]]]]]]]]]]]]]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

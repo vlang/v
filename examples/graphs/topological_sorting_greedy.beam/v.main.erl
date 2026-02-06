@@ -6,16 +6,16 @@ topog_sort_greedy(Graph) ->
     Top_order = [],
     Count = 0,
     V_degree = in_degree(Graph),
-    print(<<"V Degree ", (V_degree)/binary>>),
+    io:format("~s", [<<"V Degree ", (V_degree)/binary>>]),
     Small_degree = min_degree(V_degree),
     New_graph = remove_node_from_graph(Small_degree, Graph),
     Top_order bsl Small_degree,
     todo,
     % TODO: unhandled stmt type
-    ok    Top_order.
+    Top_order.
 
 all_fathers(Node, A_map) ->
-    Array_of_keys = 'map[string][]string.keys'(A_map),
+    Array_of_keys = maps:keys(A_map),
     All_incident = [],
     lists:foreach(fun(I) ->
         case lists:member(Node, maps:get(I, A_map)) of
@@ -27,8 +27,8 @@ all_fathers(Node, A_map) ->
     All_incident.
 
 min_degree(A_map) ->
-    Array_of_keys = 'map[string]int.keys'(A_map),
-    Key_min = '[]string.first'(Array_of_keys),
+    Array_of_keys = maps:keys(A_map),
+    Key_min = hd(Array_of_keys),
     Val_min = maps:get(Key_min, A_map),
     lists:foreach(fun(I) ->
         case Val_min > maps:get(I, A_map) of
@@ -43,7 +43,7 @@ min_degree(A_map) ->
     Key_min1.
 
 in_degree(A_map) ->
-    Array_of_keys = 'map[string][]string.keys'(A_map),
+    Array_of_keys = maps:keys(A_map),
     Degree = #{},
     lists:foreach(fun(I) ->
         ok
@@ -51,13 +51,13 @@ in_degree(A_map) ->
     Degree.
 
 remove_node_from_graph(Node, A_map) ->
-    New_graph = 'map[string][]string.clone'(A_map),
-    'map[string][]string.delete'(New_graph, Node),
-    All_nodes = 'map[string][]string.keys'(New_graph),
+    New_graph = A_map,
+    maps:remove(Node, New_graph),
+    All_nodes = maps:keys(New_graph),
     lists:foreach(fun(Key) ->
         I = '[]string.index'(maps:get(Key, New_graph), Node),
         case I >= 0 of
-            true -> '[]string.delete'(maps:get(Key, New_graph), I);
+            true -> lists:delete(I, maps:get(Key, New_graph));
             false -> ok
         end,
         ok

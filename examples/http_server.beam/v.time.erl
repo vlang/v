@@ -46,7 +46,7 @@ new_date_time_parser(Datetime, Format) ->
     Val = 'DateTimeParser.next'(P, Length),
     case not 'string.contains_only'(Val, <<"0123456789">>) of
         true -> error(<<"expected int, found: ", (Val)/binary>>);
-        false -> 'string.int'(Val)
+        false -> binary_to_integer(Val)
         end.
 
 'DateTimeParser.must_be_int_with_minimum_length'(P, Min, Max, Allow_leading_zero) ->
@@ -65,9 +65,9 @@ new_date_time_parser(Datetime, Format) ->
     case length(Val1) < Min of
         true -> error(<<"expected int with a minimum length of ", (integer_to_binary(Min))/binary, ", found: ", (integer_to_binary(length(Val1)))/binary>>);
         false -> 
-            case not Allow_leading_zero andalso 'string.starts_with'(Val1, <<"0">>) of
+            case not Allow_leading_zero andalso case string:prefix(Val1, <<"0">>) of nomatch -> false; _ -> true end of
                 true -> error(<<"0 is not allowed for this format">>);
-                false -> 'string.int'(Val1)
+                false -> binary_to_integer(Val1)
                         end
                 end.
 
@@ -112,7 +112,7 @@ new_date_time_parser(Datetime, Format) ->
         true -> begin
             Letters = lists:nth(todo + 1, maps:get(datetime, P)),
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     error_invalid_time(0, <<"invalid three letter month, at: ", (integer_to_binary(maps:get(current_pos_datetime, P)))/binary>>).
@@ -140,7 +140,7 @@ new_date_time_parser(Datetime, Format) ->
         true -> begin
             Letters = lists:nth(todo + 1, maps:get(datetime, P)),
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     error_invalid_time(0, <<"invalid two letter weekday, at: ", (integer_to_binary(maps:get(current_pos_datetime, P)))/binary>>).
@@ -150,7 +150,7 @@ new_date_time_parser(Datetime, Format) ->
         true -> begin
             Letters = lists:nth(todo + 1, maps:get(datetime, P)),
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     error_invalid_time(0, <<"invalid three letter weekday, at: ", (integer_to_binary(maps:get(current_pos_datetime, P)))/binary>>).
@@ -398,7 +398,7 @@ extract_tokens(S) ->
         true -> Res bsl <<(integer_to_binary(X2))/binary, "ns">>;
         false -> ok
     end,
-    <<"Duration: ", (Sign1)/binary, ('[]string.join'(Res, <<", ">>))/binary>>.
+    <<"Duration: ", (Sign1)/binary, (iolist_to_binary(lists:join(<<", ">>, Res)))/binary>>.
 
 'Duration.times'(D, X) ->
     todo * X.
@@ -420,7 +420,8 @@ int_to_byte_array_no_pad(Value, Arr, Size) ->
         false -> begin
             I = Size - 1,
             % TODO: unhandled stmt type
-            ok        end
+                        ok
+        end
         end.
 
 int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
@@ -430,13 +431,14 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
         false -> begin
             I = Arr_len - 1,
             % TODO: unhandled stmt type
-            ok        end
+                        ok
+        end
         end.
 
 'Time.format'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
+    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
     int_to_byte_array_no_pad(maps:get(month, T), Buf, 7),
     int_to_byte_array_no_pad(maps:get(day, T), Buf, 10),
     int_to_byte_array_no_pad(maps:get(hour, T), Buf, 13),
@@ -446,7 +448,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_ss'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
+    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
     int_to_byte_array_no_pad(maps:get(month, T), Buf, 7),
     int_to_byte_array_no_pad(maps:get(day, T), Buf, 10),
     int_to_byte_array_no_pad(maps:get(hour, T), Buf, 13),
@@ -457,7 +459,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_ss_milli'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
+    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
     int_to_byte_array_no_pad(maps:get(month, T), Buf, 7),
     int_to_byte_array_no_pad(maps:get(day, T), Buf, 10),
     int_to_byte_array_no_pad(maps:get(hour, T), Buf, 13),
@@ -470,7 +472,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_ss_micro'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
+    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
     int_to_byte_array_no_pad(maps:get(month, T), Buf, 7),
     int_to_byte_array_no_pad(maps:get(day, T), Buf, 10),
     int_to_byte_array_no_pad(maps:get(hour, T), Buf, 13),
@@ -483,7 +485,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_ss_nano'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
+    int_to_byte_array_no_pad(maps:get(year, T), Buf, 4),
     int_to_byte_array_no_pad(maps:get(month, T), Buf, 7),
     int_to_byte_array_no_pad(maps:get(day, T), Buf, 10),
     int_to_byte_array_no_pad(maps:get(hour, T), Buf, 13),
@@ -495,7 +497,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_rfc3339'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    T_ = time_with_unix(T),
+    T_ = time_with_unix(T),
     case maps:get(is_local, T_) of
         true -> begin
             Utc_time = 'Time.local_to_utc'(T_),
@@ -522,7 +524,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_rfc3339_micro'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    T_ = time_with_unix(T),
+    T_ = time_with_unix(T),
     case maps:get(is_local, T_) of
         true -> begin
             Utc_time = 'Time.local_to_utc'(T_),
@@ -549,7 +551,7 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.format_rfc3339_nano'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    T_ = time_with_unix(T),
+    T_ = time_with_unix(T),
     case maps:get(is_local, T_) of
         true -> begin
             Utc_time = 'Time.local_to_utc'(T_),
@@ -576,14 +578,14 @@ int_to_ptr_byte_array_no_pad(Value, Arr_prt, Arr_len) ->
 'Time.hhmm'(T) ->
     Buf = [todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(hour, T), Buf, 2),
+    int_to_byte_array_no_pad(maps:get(hour, T), Buf, 2),
     int_to_byte_array_no_pad(maps:get(minute, T), Buf, 5),
     '[]u8.bytestr'(Buf).
 
 'Time.hhmmss'(T) ->
     Buf = [todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    int_to_byte_array_no_pad(maps:get(hour, T), Buf, 2),
+    int_to_byte_array_no_pad(maps:get(hour, T), Buf, 2),
     int_to_byte_array_no_pad(maps:get(minute, T), Buf, 5),
     int_to_byte_array_no_pad(maps:get(second, T), Buf, 8),
     '[]u8.bytestr'(Buf).
@@ -614,7 +616,7 @@ ordinal_suffix(N) ->
 'Time.custom_format'(T, S) ->
     Tokens = [],
     % TODO: unhandled stmt type
-    ok    Sb = new_builder(128),
+    Sb = new_builder(128),
     lists:foreach(fun(Token) ->
         case Token of
             <<"M">> -> 'Builder.write_string'(Sb, integer_to_binary(maps:get(month, T)));
@@ -793,7 +795,7 @@ ordinal_suffix(N) ->
                 space -> <<" ">>;
                 no_delimiter -> <<"">>
             end,
-            Res1 = 'string.replace'(Res, <<"|">>, Del),
+            Res1 = binary:replace(Res, <<"|">>, Del, [global]),
             Res1
         end
         end.
@@ -830,7 +832,7 @@ ordinal_suffix(N) ->
     Month_str = 'Time.smonth'(T),
     Buf = [lists:nth(1, Day_str), lists:nth(2, Day_str), lists:nth(3, Day_str), todo, todo, todo, todo, todo, lists:nth(1, Month_str), lists:nth(2, Month_str), lists:nth(3, Month_str), todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo, todo],
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     ok.
 
 mceil(X) ->
@@ -963,12 +965,12 @@ parse(S) ->
         false -> begin
             Pos = 'string.index'(S, <<" ">>),
             Symd = lists:nth(todo + 1, S),
-            Ymd = 'string.split'(Symd, <<"-">>),
+            Ymd = binary:split(Symd, <<"-">>, [global]),
             case length(Ymd) /= 3 of
                 true -> error_invalid_time(2, <<"date must be in the form of y-m-d">>);
                 false -> begin
                     Shms = lists:nth(todo + 1, S),
-                    Hms = 'string.split'(Shms, <<":">>),
+                    Hms = binary:split(Shms, <<":">>, [global]),
                     case length(Hms) /= 3 of
                         true -> error_invalid_time(9, <<"time must be in the form of H:i:s">>);
                         false -> begin

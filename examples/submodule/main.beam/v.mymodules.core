@@ -1,0 +1,16 @@
+module 'v.mymodules' ['add_xy'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'add_xy'/2 =
+    fun (X, Y) ->
+        call 'erlang':'+'(X, Y)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.mymodules')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.mymodules', _0)
+end

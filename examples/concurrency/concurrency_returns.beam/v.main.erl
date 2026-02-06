@@ -10,6 +10,6 @@ main() ->
         Threads bsl todo,
         ok
     end, lists:seq(1, 10 - 1)),
-    R = '[]thread int.wait'(Threads),
+    R = ok,
     vbeam_io:println(<<"All jobs finished: ", (R)/binary>>),
     ok.

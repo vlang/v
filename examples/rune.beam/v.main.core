@@ -1,0 +1,21 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Grinning_face> =
+            'todo'
+        in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [Grinning_face|[]])
+                let <Commercial_at> =
+                    'todo'
+                in  call 'io':'format'([126|[115|[126|[110|[]]]]], [Commercial_at|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

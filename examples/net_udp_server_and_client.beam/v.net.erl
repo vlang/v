@@ -162,7 +162,7 @@ split_address(Addr) ->
     case todo of
         true -> begin
             Address = 'string.all_before_last'('string.all_after'(Addr, <<"[">>), <<"]">>),
-            Port = 'string.int'('string.all_after_last'(Addr, <<"]:">>)),
+            Port = binary_to_integer('string.all_after_last'(Addr, <<"]:">>)),
             P = validate_port(Port),
             Address
         end;
@@ -171,7 +171,7 @@ split_address(Addr) ->
                 true -> Addr;
                 false -> begin
                     Address1 = 'string.all_before_last'(Addr, <<":">>),
-                    Port1 = 'string.int'('string.all_after_last'(Addr, <<":">>)),
+                    Port1 = binary_to_integer('string.all_after_last'(Addr, <<":">>)),
                     P1 = validate_port(Port1),
                     Address1
                 end
@@ -179,7 +179,7 @@ split_address(Addr) ->
             false -> case todo of
                 true -> begin
                     Address2 = 'string.all_before_last'(Addr, <<":">>),
-                    P2 = validate_port('string.int'('string.all_after_last'(Addr, <<":">>))),
+                    P2 = validate_port(binary_to_integer('string.all_after_last'(Addr, <<":">>))),
                     Address2
                 end;
                 false -> Addr

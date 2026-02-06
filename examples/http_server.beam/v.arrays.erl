@@ -79,9 +79,9 @@ merge(A, B) ->
     Ib = 0,
     J = 0,
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    M.
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    M.
 
 append(A, B) ->
     M = [],
@@ -109,7 +109,7 @@ group(Arrs) ->
 chunk(Array, Size) ->
     Chunks = [],
     % TODO: unhandled stmt type
-    ok    Chunks.
+    Chunks.
 
 chunk_while(A, Predicate) ->
     case length(A) == 0 of
@@ -119,7 +119,7 @@ chunk_while(A, Predicate) ->
             Chunk = [lists:nth(1, A)],
             I = 0,
             % TODO: unhandled stmt type
-            ok            case length(Chunk) > 0 of
+            case length(Chunk) > 0 of
                 true -> Chunks bsl Chunk;
                 false -> ok
             end,
@@ -133,7 +133,7 @@ window(Array, Attr) ->
         false -> begin
             Windows = [],
             % TODO: unhandled stmt type
-            ok            Windows
+            Windows
         end
         end.
 
@@ -274,7 +274,7 @@ lower_bound(Array, Val) ->
             Left = 0,
             Right = length(Array) - 1,
             % TODO: unhandled stmt type
-            ok            case Left >= length(Array) of
+            case Left >= length(Array) of
                 true -> error(<<"">>);
                 false -> lists:nth(Left + 1, Array)
             end
@@ -288,7 +288,7 @@ upper_bound(Array, Val) ->
             Left = 0,
             Right = length(Array) - 1,
             % TODO: unhandled stmt type
-            ok            case Right < 0 of
+            case Right < 0 of
                 true -> error(<<"">>);
                 false -> lists:nth(Right + 1, Array)
             end
@@ -299,18 +299,18 @@ binary_search(Array, Target) ->
     Left = 0,
     Right = length(Array) - 1,
     % TODO: unhandled stmt type
-    ok    error(<<"">>).
+    error(<<"">>).
 
 rotate_left(Array, Mid) ->
     % TODO: unhandled stmt type
-    ok    K = length(Array) - Mid,
+    K = length(Array) - Mid,
     P = todo,
     todo,
     ok.
 
 rotate_right(Array, K) ->
     % TODO: unhandled stmt type
-    ok    Mid = length(Array) - K,
+    Mid = length(Array) - K,
     P = todo,
     todo,
     ok.
@@ -321,8 +321,9 @@ ptr_rotate(Left_, Mid, Right_) ->
     Right = todo,
     Limit = raw_array_cap(),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.
+
 raw_array_cap() ->
     Size = todo,
     case Size > Extra_size of
@@ -341,7 +342,7 @@ memswap(X, Y, Len) ->
     Block_size = todo,
     I = todo,
     % TODO: unhandled stmt type
-    ok    case I < Len of
+    case I < Len of
         true -> begin
             T_ = #{{vbeam, type} => 'UnalignedBlock'},
             T = todo,
@@ -349,7 +350,7 @@ memswap(X, Y, Len) ->
             Xi = todo + I,
             Yi = todo + I,
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end.
 
@@ -411,14 +412,14 @@ find_last(Array, Predicate) ->
         true -> todo;
         false -> begin
             % TODO: unhandled stmt type
-            ok            todo
+            todo
         end
         end.
 
 join_to_string(Array, Separator, Transform) ->
     Sb = new_builder(length(Array) * 2),
     % TODO: unhandled stmt type
-    ok    lists:foreach(fun(Item) ->
+    lists:foreach(fun(Item) ->
         X = transform(Item),
         'unknown.write_string'(Sb, X),
         todo,
@@ -448,6 +449,7 @@ each(A, Cb) ->
         ok.
         ok
     end, A),
+        ok.
 
 each_indexed(A, Cb) ->
     lists:foreach(fun(Item) ->
@@ -455,6 +457,7 @@ each_indexed(A, Cb) ->
         ok.
         ok
     end, A),
+        ok.
 
 index_of_first(Array, Predicate) ->
     lists:foreach(fun(E) ->
@@ -468,7 +471,7 @@ index_of_first(Array, Predicate) ->
 
 index_of_last(Array, Predicate) ->
     % TODO: unhandled stmt type
-    ok    -1.
+    -1.
 
 map_of_indexes(Array) ->
     Result = #{},
@@ -539,7 +542,7 @@ uniq_only(A) ->
                                 false -> ok
                             end,
                             % TODO: unhandled stmt type
-                            ok                            case lists:nth(length(A) - 2 + 1, A) /= lists:nth(length(A) - 1 + 1, A) of
+                            case lists:nth(length(A) - 2 + 1, A) /= lists:nth(length(A) - 1 + 1, A) of
                                 true -> Res bsl lists:nth(length(A) - 1 + 1, A);
                                 false -> ok
                             end,
@@ -555,7 +558,7 @@ uniq_only_repeated(A) ->
         false -> begin
             Res = [],
             % TODO: unhandled stmt type
-            ok            case lists:nth(length(A) - 2 + 1, A) == lists:nth(length(A) - 1 + 1, A) of
+            case lists:nth(length(A) - 2 + 1, A) == lists:nth(length(A) - 1 + 1, A) of
                 true -> Res bsl lists:nth(length(A) - 1 + 1, A);
                 false -> ok
             end,
@@ -576,7 +579,7 @@ uniq_all_repeated(A) ->
             end,
             Res = [],
             % TODO: unhandled stmt type
-            ok            Res
+            Res
         end
         end.
 

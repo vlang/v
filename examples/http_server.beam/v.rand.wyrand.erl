@@ -18,7 +18,7 @@
 'WyRandRNG.seed'(Rng, Seed_data) ->
     case length(Seed_data) /= 2 of
         true -> begin
-            eprintln(<<"WyRandRNG needs 2 32-bit unsigned integers as the seed.">>),
+            io:format(standard_error, "~s~n", [<<"WyRandRNG needs 2 32-bit unsigned integers as the seed.">>]),
             exit(1)
         end;
         false -> ok

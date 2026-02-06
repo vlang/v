@@ -2,7 +2,7 @@
 -export([main/0]).
 
 main() ->
-    N = 'string.int'(lists:nth(2, arguments())),
+    N = binary_to_integer(lists:nth(2, init:get_plain_arguments())),
     Sz = case N < 15 of
         true -> 50;
         false -> begin
@@ -12,6 +12,6 @@ main() ->
     end,
     Sieve = [],
     % TODO: unhandled stmt type
-    ok    C = 0,
+    C = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.

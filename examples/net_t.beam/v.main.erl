@@ -12,5 +12,5 @@ send_request(Wg) ->
 main() ->
     Wg = new_waitgroup(),
     % TODO: unhandled stmt type
-    ok    'WaitGroup.wait'(Wg),
+    'WaitGroup.wait'(Wg),
     ok.

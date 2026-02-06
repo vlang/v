@@ -1,0 +1,21 @@
+module 'v.main' ['main'/0,
+                'check_error'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        do  apply 'from'/1(#{#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+            apply 'from'/1(#{  }#)
+'check_error'/1 =
+    fun (Err) ->
+        case Err of <'todo'> when 'true' -> call 'io':'format'([119|[114|[111|[110|[103|[32|[102|[111|[114|[109|[97|[116|[126|[110|[]]]]]]]]]]]]]]]) <'todo'> when 'true' -> call 'io':'format'([101|[109|[112|[116|[121|[32|[105|[110|[112|[117|[116|[126|[110|[]]]]]]]]]]]]]]) <_> when 'true' -> call 'io':'format'([117|[110|[107|[110|[111|[119|[110|[32|[101|[114|[114|[111|[114|[126|[110|[]]]]]]]]]]]]]]]]) end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

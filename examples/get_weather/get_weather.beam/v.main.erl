@@ -2,8 +2,8 @@
 -export([main/0, translate/3]).
 
 main() ->
-    Dest_lang = case length('v.os':'arguments'()) > 1 of
-        true -> lists:nth(2, 'v.os':'arguments'());
+    Dest_lang = case length(init:get_plain_arguments()) > 1 of
+        true -> lists:nth(2, init:get_plain_arguments());
         false -> <<"en">>
     end,
     Rnd = f32(),
@@ -18,6 +18,7 @@ main() ->
         ok.
         ok
     end, [<<"未来两小时天气">>, maps:get(forecast_keypoint, maps:get(result, Weather))]),
+        ok.
 
 translate(Q, Sl, Tl) ->
     Url = <<"https://translate.googleapis.com/translate_a/single?client=gtx&sl=", (Sl)/binary, "&tl=", (Tl)/binary, "&dt=t&q=", (Q)/binary>>,

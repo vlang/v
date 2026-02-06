@@ -1,0 +1,111 @@
+module 'v.main' ['regex_match'/2,
+                'regex_match_core'/5,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'regex_match'/2 =
+        fun (Src, Pat) ->
+            let <Src_size> =
+                call 'erlang':'+'(call 'erlang':'length'(Src), 1)
+            in  let <Pat_size> =
+                    call 'erlang':'+'(call 'erlang':'length'(Pat), 1)
+                in  let <Memo> =
+                        []
+                    in  apply 'regex_match_core'/5(Src, Pat, 0, 0, Memo)
+    'regex_match_core'/5 =
+        fun (Src, Pat, Src_pos, Pat_pos, Memo) ->
+            case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(Pat_pos, 1), call 'lists':'nth'(call 'erlang':'+'(Src_pos, 1), Memo)), -1) of
+                <'true'> when 'true' -> call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Pat_pos, 1), call 'lists':'nth'(call 'erlang':'+'(Src_pos, 1), Memo)), 1)
+                <'false'> when 'true' -> 
+                    let <Spos> =
+                        Src_pos
+                    in  let <Ppos> =
+                            Pat_pos
+                        in  case call 'erlang':'and'(call 'erlang':'>='(Spos, call 'erlang':'length'(Src)), call 'erlang':'>='(Ppos, call 'erlang':'length'(Pat))) of <'true'> when 'true' -> 
+                                do  1
+                                    'true'
+                             <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(Spos, call 'erlang':'length'(Src)), call 'erlang':'>='(Ppos, call 'erlang':'length'(Pat))) of <'true'> when 'true' -> 
+                                do  0
+                                    'false'
+                             <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(Spos, call 'erlang':'length'(Src)), call 'erlang':'<'(Ppos, call 'erlang':'length'(Pat))) of <'true'> when 'true' -> 
+                                do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo') of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                    let <Res> =
+                                        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(Ppos, 1), call 'erlang':'length'(Pat)), call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(Ppos, 1), 1), Pat), ['todo'|['todo'|[]]])), apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo))
+                                    in  do  case Res of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                            Res
+                             <'false'> when 'true' -> 
+                                let <First_is_bslash> =
+                                    call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')
+                                in  do  case First_is_bslash of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                        let <First_bslash_and_match> =
+                                            call 'erlang':'and'(call 'erlang':'and'(First_is_bslash, call 'erlang':'<'(Ppos, call 'erlang':'length'(Pat))), call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src))), call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), call 'erlang':'not'(apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src))))), call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), apply 'u8.is_space'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src)))), call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), call 'erlang':'not'(apply 'u8.is_space'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src))))), call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), call 'erlang':'or'(call 'erlang':'or'(apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src)), apply 'u8.is_letter'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), 'todo')))), call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo'), call 'erlang':'not'(call 'erlang':'or'(call 'erlang':'or'(apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src)), apply 'u8.is_letter'/1(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), 'todo'))))), call 'erlang':'and'(call 'erlang':'and'(call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]]), call 'erlang':'<'(call 'erlang':'+'(Ppos, 1), call 'erlang':'length'(Pat))), call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(Ppos, 1), 1), Pat), ['todo'|['todo'|['todo'|[]]]]))), call 'erlang':'and'(call 'erlang':'not'(call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]])), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat)))))
+                                        in  do  case call 'erlang':'<'(call 'erlang':'+'(Ppos, 1), call 'erlang':'length'(Pat)) of <'true'> when 'true' -> case call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(Ppos, 1), 1), Pat) of <'todo'> when 'true' -> case First_bslash_and_match of <'true'> when 'true' -> 
+                                                let <Res_1> =
+                                                    call 'erlang':'or'(apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'-'(Ppos, 1), Memo), apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo))
+                                                in  do  case Res_1 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_1
+                                             <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat)), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')) of <'true'> when 'true' -> 
+                                                let <Res_2> =
+                                                    call 'erlang':'or'(apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), Ppos, Memo), apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo))
+                                                in  do  case Res_2 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_2
+                                             <'false'> when 'true' -> 
+                                                let <Res_3> =
+                                                    apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo)
+                                                in  do  case Res_3 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_3
+                                             end end <'todo'> when 'true' -> case First_bslash_and_match of <'true'> when 'true' -> 
+                                                let <Res_4> =
+                                                    call 'erlang':'or'(apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'-'(Ppos, 1), Memo), apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'+'(Ppos, 2), Memo))
+                                                in  do  case Res_4 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_4
+                                             <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat)), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')) of <'true'> when 'true' -> 
+                                                let <Res_5> =
+                                                    call 'erlang':'or'(apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), Ppos, Memo), apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'+'(Ppos, 2), Memo))
+                                                in  do  case Res_5 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_5
+                                             <'false'> when 'true' -> 
+                                                do  0
+                                                    'false'
+                                             end end <'todo'> when 'true' -> case call 'erlang':'or'(call 'erlang':'or'(First_bslash_and_match, call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')) of <'true'> when 'true' -> 
+                                                let <Res_6> =
+                                                    call 'erlang':'or'(apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'+'(Ppos, 2), Memo), apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo))
+                                                in  do  case Res_6 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_6
+                                             <'false'> when 'true' -> 
+                                                let <Res_7> =
+                                                    apply 'regex_match_core'/5(Src, Pat, Spos, call 'erlang':'+'(Ppos, 2), Memo)
+                                                in  do  case Res_7 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                        Res_7
+                                             end <_> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                                case First_is_bslash of <'true'> when 'true' -> 
+                                                    let <Res_8> =
+                                                        call 'erlang':'and'(First_bslash_and_match, apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'+'(Ppos, 1), Memo))
+                                                    in  do  case Res_8 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                            Res_8
+                                                 <'false'> when 'true' -> 
+                                                    let <Res_9> =
+                                                        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Spos, 1), Src), call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat)), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')), call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(Ppos, 1), Pat), 'todo')), apply 'regex_match_core'/5(Src, Pat, call 'erlang':'+'(Spos, 1), call 'erlang':'+'(Ppos, 1), Memo))
+                                                    in  do  case Res_9 of <'true'> when 'true' -> 1 <'false'> when 'true' -> 0 end
+                                                            Res_9
+                                                 end
+                             end end end
+            end
+    'main'/0 =
+        fun () ->
+            let <Cnt> =
+                0
+            in  do  call 'io':'format'([99|[117|[114|[114|[101|[110|[116|[108|[121|[32|[115|[117|[112|[112|[111|[114|[116|[101|[100|[32|[112|[97|[116|[116|[101|[114|[110|[115|[58|[32|[46|[32|[63|[32|[43|[32|[42|[32|[92|[92|[32|[92|[92|[100|[32|[92|[92|[68|[32|[92|[92|[115|[32|[92|[92|[83|[32|[92|[92|[119|[32|[92|[92|[87|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                    do  call 'io':'format'([101|[120|[97|[109|[112|[108|[101|[58|[32|[115|[111|[117|[114|[99|[101|[32|[96|[97|[100|[100|[114|[101|[115|[115|[64|[100|[111|[109|[97|[105|[110|[46|[110|[101|[116|[96|[32|[109|[97|[116|[99|[104|[101|[115|[32|[112|[97|[116|[116|[101|[114|[110|[32|[96|[92|[92|[119|[43|[64|[100|[111|[109|[97|[105|[110|[92|[92|[46|[110|[101|[116|[96|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                        do  call 'io':'format'([101|[110|[116|[101|[114|[32|[96|[101|[120|[105|[116|[96|[32|[116|[111|[32|[113|[117|[105|[116|[92|[110|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]])
+                            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

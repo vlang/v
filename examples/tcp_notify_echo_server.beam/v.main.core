@@ -1,0 +1,27 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  'ok'
+                let <Listener> =
+                    apply 'listen_tcp'/2('ip', #{#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#)
+                in  let <Addr> =
+                        apply 'TcpListener.addr'/1(Listener)
+                    in  do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Addr|[]]])|[]])
+                            do  call 'io':'format'('standard_error', [84|[121|[112|[101|[32|[96|[115|[116|[111|[112|[96|[32|[116|[111|[32|[115|[116|[111|[112|[32|[116|[104|[101|[32|[115|[101|[114|[118|[101|[114|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                                let <Notifier> =
+                                    apply 'new'/0()
+                                in  do  apply 'FdNotifier.add'/3(Notifier, call 'erlang':'map_get'('fd', apply 'stdin'/0()), 'read')
+                                        do  apply 'FdNotifier.add'/3(Notifier, call 'erlang':'map_get'('handle', call 'erlang':'map_get'('sock', Listener)), 'read')
+                                            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

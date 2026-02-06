@@ -1,0 +1,94 @@
+module 'v.maps' ['filter'/2,
+                'to_array'/2,
+                'flat_map'/2,
+                'to_map'/2,
+                'invert'/1,
+                'from_array'/1,
+                'merge_in_place'/2,
+                'merge'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'filter'/2 =
+    fun (M, F) ->
+        let <Mp> =
+            ~{}~
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  case apply 'f'/2(K, V) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M)
+                Mp
+'to_array'/2 =
+    fun (M, F) ->
+        let <A> =
+            []
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  call 'erlang':'bsl'(A, apply 'f'/2(K, V))
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M)
+                A
+'flat_map'/2 =
+    fun (M, F) ->
+        let <A> =
+            []
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  call 'erlang':'bsl'(A, apply 'f'/2(K, V))
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M)
+                A
+'to_map'/2 =
+    fun (M, F) ->
+        let <Mp> =
+            ~{}~
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  apply 'f'/2(K, V)
+                        do  Y
+                            call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M)
+                Mp
+'invert'/1 =
+    fun (M) ->
+        let <Mp> =
+            ~{}~
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  K
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M)
+                Mp
+'from_array'/1 =
+    fun (Array) ->
+        let <Mp> =
+            ~{}~
+        in  do  let <_1> =
+                fun (E, I) ->
+                    do  E
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Array)
+                Mp
+'merge_in_place'/2 =
+    fun (M1, M2) ->
+        'ok'
+'merge'/2 =
+    fun (M1, M2) ->
+        let <Res> =
+            apply 'unknown.clone'/1(M1)
+        in  do  let <_1> =
+                fun (V, K) ->
+                    do  'ok'
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, M2)
+                Res
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.maps')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.maps', _0)
+end

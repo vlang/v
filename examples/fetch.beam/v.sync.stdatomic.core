@@ -1,0 +1,147 @@
+module 'v.sync.stdatomic' ['add_u64'/2,
+                'sub_u64'/2,
+                'add_i64'/2,
+                'sub_i64'/2,
+                'store_u64'/2,
+                'load_u64'/1,
+                'store_i64'/2,
+                'load_i64'/1,
+                'exchange_u64'/2,
+                'exchange_i64'/2,
+                'compare_exchange_strong_u64'/3,
+                'compare_exchange_strong_i64'/3,
+                'compare_exchange_weak_u64'/3,
+                'compare_exchange_weak_i64'/3,
+                'add_u32'/2,
+                'sub_u32'/2,
+                'store_u32'/2,
+                'load_u32'/1,
+                'exchange_u32'/2,
+                'compare_exchange_strong_u32'/3,
+                'new_atomic'/1,
+                'AtomicVal.load'/1,
+                'AtomicVal.store'/2,
+                'AtomicVal.add'/2,
+                'AtomicVal.sub'/2,
+                'AtomicVal.swap'/2,
+                'AtomicVal.compare_and_swap'/3,
+                'thread_fence'/1,
+                'cpu_relax'/0,
+                'MemoryOrder__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'add_u64'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'sub_u64'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'add_i64'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'sub_i64'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'store_u64'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'load_u64'/1 =
+    fun (Ptr) ->
+        Ptr
+'store_i64'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'load_i64'/1 =
+    fun (Ptr) ->
+        Ptr
+'exchange_u64'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'exchange_i64'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'compare_exchange_strong_u64'/3 =
+    fun (Ptr, Expected, Desired) ->
+        'ok'
+'compare_exchange_strong_i64'/3 =
+    fun (Ptr, Expected, Desired) ->
+        'ok'
+'compare_exchange_weak_u64'/3 =
+    fun (Ptr, Expected, Desired) ->
+        apply 'compare_exchange_strong_u64'/3(Ptr, Expected, Desired)
+'compare_exchange_weak_i64'/3 =
+    fun (Ptr, Expected, Desired) ->
+        apply 'compare_exchange_strong_i64'/3(Ptr, Expected, Desired)
+'add_u32'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'sub_u32'/2 =
+    fun (Ptr, Delta) ->
+        'ok'
+'store_u32'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'load_u32'/1 =
+    fun (Ptr) ->
+        Ptr
+'exchange_u32'/2 =
+    fun (Ptr, Val) ->
+        'ok'
+'compare_exchange_strong_u32'/3 =
+    fun (Ptr, Expected, Desired) ->
+        'ok'
+'new_atomic'/1 =
+    fun (Val) ->
+        do  'ok'
+            'todo'
+'AtomicVal.load'/1 =
+    fun (A) ->
+        call 'erlang':'map_get'('val', A)
+'AtomicVal.store'/2 =
+    fun (A, Val) ->
+        'ok'
+'AtomicVal.add'/2 =
+    fun (A, Delta) ->
+        do  'ok'
+            let <Old> =
+                call 'erlang':'map_get'('val', A)
+            in  Old
+'AtomicVal.sub'/2 =
+    fun (A, Delta) ->
+        do  'ok'
+            let <Old> =
+                call 'erlang':'map_get'('val', A)
+            in  Old
+'AtomicVal.swap'/2 =
+    fun (A, New) ->
+        let <Old> =
+            call 'erlang':'map_get'('val', A)
+        in  Old
+'AtomicVal.compare_and_swap'/3 =
+    fun (A, Expected, New) ->
+        case call 'erlang':'=:='(call 'erlang':'map_get'('val', A), Expected) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                'false'
+        end
+'thread_fence'/1 =
+    fun (Order) ->
+        'ok'
+'cpu_relax'/0 =
+    fun () ->
+        'ok'
+'MemoryOrder__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.sync.stdatomic')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.sync.stdatomic', _0)
+end

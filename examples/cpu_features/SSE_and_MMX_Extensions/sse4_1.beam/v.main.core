@@ -1,0 +1,26 @@
+module 'v.main' ['round_floats_sse4_1'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'round_floats_sse4_1'/2 =
+    fun (A, Result) ->
+        'ok'
+'main'/0 =
+    fun () ->
+        let <A> =
+            ['todo'|[2.5|[3.8|[4.4|[]]]]]
+        in  let <Result> =
+                []
+            in  do  apply 'round_floats_sse4_1'/2(call 'lists':'nth'(1, A), call 'lists':'nth'(1, Result))
+                    do  call 'io':'format'([126|[115|[126|[110|[]]]]], [Result|[]])
+                        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

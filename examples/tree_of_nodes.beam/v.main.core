@@ -1,0 +1,27 @@
+module 'v.main' ['size'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'size'/1 =
+    fun (Tree) ->
+        case Tree of <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> call 'erlang':'+'(call 'erlang':'+'(1, apply 'size'/1(call 'erlang':'map_get'('left', Tree))), apply 'size'/1(call 'erlang':'map_get'('right', Tree))) end
+'main'/0 =
+    fun () ->
+        let <Node1> =
+            ~{'value'=>30,'left'=>~{{'vbeam','type'}=>'Empty'}~,'right'=>~{{'vbeam','type'}=>'Empty'}~,{'vbeam','type'}=>'Node'}~
+        in  let <Node2> =
+                ~{'value'=>20,'left'=>~{{'vbeam','type'}=>'Empty'}~,'right'=>~{{'vbeam','type'}=>'Empty'}~,{'vbeam','type'}=>'Node'}~
+            in  let <Tree> =
+                    ~{'value'=>10,'left'=>Node1,'right'=>Node2,{'vbeam','type'}=>'Node'}~
+                in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Tree|[]]])|[]])
+                        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'size'/1(Tree))|[]]])|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

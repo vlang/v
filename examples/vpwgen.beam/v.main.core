@@ -1,0 +1,22 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Blocksize> =
+                256
+            in  let <Size> =
+                    call 'erlang':'binary_to_integer'(apply 'option'/3(call 'init':'get_plain_arguments'(), #{#<45>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, #{#<56>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#))
+                in  let <Repeats> =
+                        call 'erlang':'binary_to_integer'(apply 'option'/3(call 'init':'get_plain_arguments'(), #{#<45>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, #{#<52>(8,1,'integer',['unsigned'|['big']])}#))
+                    in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

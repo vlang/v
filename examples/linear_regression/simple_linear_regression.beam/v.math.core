@@ -1,0 +1,1987 @@
+module 'v.math' ['inf'/1,
+                'nan'/0,
+                'is_nan'/1,
+                'is_inf'/2,
+                'is_finite'/1,
+                'normalize'/1,
+                'cbrt'/1,
+                'mod'/2,
+                'fmod'/2,
+                'gcd'/2,
+                'egcd'/2,
+                'lcm'/2,
+                'erf'/1,
+                'erfc'/1,
+                'exp'/1,
+                'exp2'/1,
+                'ldexp'/2,
+                'frexp'/1,
+                'expm1'/1,
+                'expmulti'/3,
+                'factorial'/1,
+                'log_factorial'/1,
+                'log_factorial_asymptotic_expansion'/1,
+                'factoriali'/1,
+                'floor'/1,
+                'floorf'/1,
+                'ceil'/1,
+                'trunc'/1,
+                'round'/1,
+                'round_sig'/2,
+                'round_to_even'/1,
+                'safe_shift'/2,
+                'is_neg_int'/1,
+                'stirling'/1,
+                'gamma'/1,
+                'gamma_too_small'/2,
+                'log_gamma'/1,
+                'log_gamma_sign'/1,
+                'sin_pi'/1,
+                'hypot'/2,
+                'mix'/3,
+                'exp_decay'/4,
+                'clip'/3,
+                'remap'/5,
+                'smoothstep'/3,
+                'smootherstep'/3,
+                'cubic_bezier'/2,
+                'cubic_bezier_a'/3,
+                'cubic_bezier_fa'/3,
+                'cubic_bezier_coords'/9,
+                'acosh'/1,
+                'asinh'/1,
+                'atanh'/1,
+                'xatan'/1,
+                'satan'/1,
+                'atan'/1,
+                'atan2'/2,
+                'asin'/1,
+                'acos'/1,
+                'maxof'/0,
+                'minof'/0,
+                'log_n'/2,
+                'log10'/1,
+                'log2'/1,
+                'log1p'/1,
+                'log_b'/1,
+                'ilog_b'/1,
+                'ilog_b_'/1,
+                'log'/1,
+                'aprox_sin'/1,
+                'aprox_cos'/1,
+                'copysign'/2,
+                'degrees'/1,
+                'radians'/1,
+                'angle_diff'/2,
+                'digits'/2,
+                'count_digits'/1,
+                'minmax'/2,
+                'clamp'/3,
+                'sign'/1,
+                'signi'/1,
+                'signbit'/1,
+                'tolerance'/3,
+                'close'/2,
+                'veryclose'/2,
+                'alike'/2,
+                'min'/2,
+                'max'/2,
+                'abs'/1,
+                'modf'/1,
+                'divide_truncated'/2,
+                'divide_euclid'/2,
+                'divide_floored'/2,
+                'modulo_truncated'/2,
+                'modulo_euclid'/2,
+                'modulo_floored'/2,
+                'nextafter32'/2,
+                'nextafter'/2,
+                'poly_n_eval'/3,
+                'poly_n_1_eval'/3,
+                'poly_eval'/2,
+                'poly_1_eval'/2,
+                'ChebSeries.eval_e'/2,
+                'powf'/2,
+                'pow10'/1,
+                'powi'/2,
+                'is_odd_int'/1,
+                'pow'/2,
+                'q_rsqrt'/1,
+                'scalbn'/2,
+                'sin'/1,
+                'cos'/1,
+                'cosf'/1,
+                'sinf'/1,
+                'sincos'/1,
+                'sinh'/1,
+                'cosh'/1,
+                'sqrt'/1,
+                'sqrtf'/1,
+                'sqrti'/1,
+                'square'/1,
+                'cube'/1,
+                'tan'/1,
+                'tanf'/1,
+                'cot'/1,
+                'tanh'/1,
+                'f32_bits'/1,
+                'f32_from_bits'/1,
+                'f64_bits'/1,
+                'f64_from_bits'/1,
+                'with_set_low_word'/2,
+                'with_set_high_word'/2,
+                'get_high_word'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'inf'/1 =
+    fun (Sign) ->
+        let <V> =
+            case call 'erlang':'>='(Sign, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+        in  apply 'f64_from_bits'/1(V)
+'nan'/0 =
+    fun () ->
+        apply 'f64_from_bits'/1('todo')
+'is_nan'/1 =
+    fun (F) ->
+        call 'erlang':'=/='(F, F)
+'is_inf'/2 =
+    fun (F, Sign) ->
+        call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>='(Sign, 0), call 'erlang':'>'(F, 'todo')), call 'erlang':'and'(call 'erlang':'=<'(Sign, 0), call 'erlang':'<'(F, 'todo')))
+'is_finite'/1 =
+    fun (F) ->
+        call 'erlang':'and'(call 'erlang':'not'(apply 'is_nan'/1(F)), call 'erlang':'not'(apply 'is_inf'/2(F, 0)))
+'normalize'/1 =
+    fun (X) ->
+        let <Smallest_normal> =
+            2.2250738585072014e-308
+        in  case call 'erlang':'<'(call 'erlang':'abs'(X), Smallest_normal) of
+                <'true'> when 'true' -> call 'erlang':'*'(X, 'todo')
+                <'false'> when 'true' -> 
+                    X
+            end
+'cbrt'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  let <B1> =
+                715094163
+            in  let <B2> =
+                    696219795
+                in  let <C> =
+                        5.42857142857142815906e-01
+                    in  let <D> =
+                            -7.05306122448979611050e-01
+                        in  let <E_> =
+                                1.41428571428571436819e+00
+                            in  let <F> =
+                                    1.60714285714285720630e+00
+                                in  let <G> =
+                                        3.57142857142857150787e-01
+                                    in  let <Smallest_normal> =
+                                            2.22507385850720138309e-308
+                                        in  case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(X, 'todo'), apply 'is_nan'/1(X)), apply 'is_inf'/2(X, 0)) of
+                                                <'true'> when 'true' -> X
+                                                <'false'> when 'true' -> 
+                                                    let <Sign> =
+                                                        'false'
+                                                    in  let <X_1> =
+                                                            case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                                        in  let <Sign_2> =
+                                                                case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Sign end
+                                                            in  let <T> =
+                                                                    apply 'f64_from_bits'/1(call 'erlang':'+'(call 'erlang':'div'(apply 'f64_bits'/1(X_3), 'todo'), call 'erlang':'bsl'('todo', 32)))
+                                                                in  let <T_4> =
+                                                                        case call 'erlang':'<'(X_3, Smallest_normal) of <'true'> when 'true' -> do  'todo' do  X_3 apply 'f64_from_bits'/1(call 'erlang':'+'(call 'erlang':'div'(apply 'f64_bits'/1(T), 'todo'), call 'erlang':'bsl'('todo', 32))) <'false'> when 'true' -> T end
+                                                                    in  let <R> =
+                                                                            call 'erlang':'/'(call 'erlang':'*'(T_4, T_4), X_3)
+                                                                        in  let <S> =
+                                                                                call 'erlang':'+'(C, call 'erlang':'*'(R, T_4))
+                                                                            in  let <T_5> =
+                                                                                    call 'erlang':'+'(G, call 'erlang':'/'(F, call 'erlang':'+'(call 'erlang':'+'(S, E_), call 'erlang':'/'(D, S))))
+                                                                                in  let <T_6> =
+                                                                                        apply 'f64_from_bits'/1(call 'erlang':'+'(call 'erlang':'band'(apply 'f64_bits'/1(T_5), call 'erlang':'bsl'('todo', 28)), call 'erlang':'bsl'('todo', 30)))
+                                                                                    in  let <S_7> =
+                                                                                            call 'erlang':'*'(T_6, T_6)
+                                                                                        in  let <R_8> =
+                                                                                                call 'erlang':'/'(X_3, S_7)
+                                                                                            in  let <W> =
+                                                                                                    call 'erlang':'+'(T_6, T_6)
+                                                                                                in  let <R_9> =
+                                                                                                        call 'erlang':'/'(call 'erlang':'-'(R_8, T_6), call 'erlang':'+'(W, R_8))
+                                                                                                    in  let <T_10> =
+                                                                                                            call 'erlang':'+'(T_6, call 'erlang':'*'(T_6, R_9))
+                                                                                                        in  let <T_11> =
+                                                                                                                case Sign_2 of <'true'> when 'true' -> call 'erlang':'-'(T_10) <'false'> when 'true' -> T_10 end
+                                                                                                            in  T_11
+                                            end
+'mod'/2 =
+    fun (X, Y) ->
+        apply 'fmod'/2(X, Y)
+'fmod'/2 =
+    fun (X, Y) ->
+        case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(Y, 0), apply 'is_inf'/2(X, 0)), apply 'is_nan'/1(X)), apply 'is_nan'/1(Y)) of
+            <'true'> when 'true' -> apply 'nan'/0()
+            <'false'> when 'true' -> 
+                let <Abs_y> =
+                    call 'erlang':'abs'(Y)
+                in  let <Abs_y_fr> =
+                        apply 'frexp'/1(Abs_y)
+                    in  let <Abs_y_exp> =
+                            apply 'frexp'/1(Abs_y)
+                        in  let <R> =
+                                X
+                            in  let <R_1> =
+                                    case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> R end
+                                in  let <R_2> =
+                                        case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(R_1) <'false'> when 'true' -> R_1 end
+                                    in  R_2
+        end
+'gcd'/2 =
+    fun (A_, B_) ->
+        let <A> =
+            A_
+        in  let <B> =
+                B_
+            in  let <A_1> =
+                    case call 'erlang':'<'(A, 0) of <'true'> when 'true' -> call 'erlang':'-'(A) <'false'> when 'true' -> A end
+                in  let <B_2> =
+                        case call 'erlang':'<'(B, 0) of <'true'> when 'true' -> call 'erlang':'-'(B) <'false'> when 'true' -> B end
+                    in  A_1
+'egcd'/2 =
+    fun (A, B) ->
+        let <Old_r> =
+            A
+        in  let <R> =
+                B
+            in  let <Old_s> =
+                    'todo'
+                in  let <S> =
+                        'todo'
+                    in  let <Old_t> =
+                            'todo'
+                        in  let <T> =
+                                'todo'
+                            in  case call 'erlang':'<'(Old_r, 0) of <'true'> when 'true' -> call 'erlang':'-'(Old_r) <'false'> when 'true' -> Old_r end
+'lcm'/2 =
+    fun (A, B) ->
+        case call 'erlang':'=:='(A, 0) of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                let <Res> =
+                    call 'erlang':'*'(A, call 'erlang':'div'(B, apply 'gcd'/2(B, A)))
+                in  case call 'erlang':'<'(Res, 0) of
+                        <'true'> when 'true' -> call 'erlang':'-'(Res)
+                        <'false'> when 'true' -> 
+                            Res
+                    end
+        end
+'erf'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  let <Very_tiny> =
+                2.848094538889218e-306
+            in  let <Small_> =
+                    call 'erlang':'/'('todo', 'todo')
+                in  case apply 'is_nan'/1(X) of
+                        <'true'> when 'true' -> apply 'nan'/0()
+                        <'false'> when 'true' -> 
+                            case apply 'is_inf'/2(X, 1) of
+                                <'true'> when 'true' -> 1.0
+                                <'false'> when 'true' -> 
+                                    case apply 'is_inf'/2(X, -1) of
+                                        <'true'> when 'true' -> 'todo'
+                                        <'false'> when 'true' -> 
+                                            let <Sign> =
+                                                'false'
+                                            in  let <X_1> =
+                                                    case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                                in  let <Sign_2> =
+                                                        case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Sign end
+                                                    in  case call 'erlang':'<'(X_3, 'todo') of
+                                                            <'true'> when 'true' -> Temp
+                                                            <'false'> when 'true' -> 
+                                                                case call 'erlang':'<'(X_3, 'todo') of
+                                                                    <'true'> when 'true' -> call 'erlang':'+'('todo', call 'erlang':'/'(P, Q))
+                                                                    <'false'> when 'true' -> 
+                                                                        case call 'erlang':'>='(X_3, 6) of
+                                                                            <'true'> when 'true' -> 1.0
+                                                                            <'false'> when 'true' -> 
+                                                                                let <S_> =
+                                                                                    call 'erlang':'/'('todo', call 'erlang':'*'(X_3, X_3))
+                                                                                in  let <R> =
+                                                                                        0.0
+                                                                                    in  let <S> =
+                                                                                            0.0
+                                                                                        in  let <R_4> =
+                                                                                                case call 'erlang':'<'(X_3, 'todo') of <'true'> when 'true' -> let <Tmp41> = call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo'))))) in call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', Tmp41))))))))) <'false'> when 'true' -> let <Tmp31> = call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo')))) in call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, Tmp31)))))))) end
+                                                                                            in  let <S_5> =
+                                                                                                    case call 'erlang':'<'(X_3, 'todo') of <'true'> when 'true' -> let <Tmp41_6> = call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo'))))) in let <R_7> = call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', Tmp41_6))))))))) in let <Tmp42> = call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo'))))))) in call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', Tmp42))))))))) <'false'> when 'true' -> let <Tmp31_8> = call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo')))) in let <R_9> = call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, Tmp31_8)))))))) in let <Tmp32> = call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, 'todo')))))) in call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, call 'erlang':'+'('todo', call 'erlang':'*'(S_, Tmp32)))))))) end
+                                                                                                in  let <Z> =
+                                                                                                        apply 'f64_from_bits'/1(call 'erlang':'band'(apply 'f64_bits'/1(X_3), 16#ffffffff00000000))
+                                                                                                    in  let <R_> =
+                                                                                                            call 'erlang':'*'(apply 'exp'/1(call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'-'(Z), Z), 'todo')), apply 'exp'/1(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'-'(Z, X_3), call 'erlang':'+'(Z, X_3)), call 'erlang':'/'(R_9, S_5))))
+                                                                                                        in  case Sign_2 of
+                                                                                                                <'true'> when 'true' -> call 'erlang':'-'(call 'erlang':'/'(R_, X_3), 'todo')
+                                                                                                                <'false'> when 'true' -> 
+                                                                                                                    call 'erlang':'-'('todo', call 'erlang':'/'(R_, X_3))
+                                                                                                            end
+                                                                        end
+                                                                end
+                                                        end
+                                    end
+                            end
+                    end
+'erfc'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  let <Tiny> =
+                call 'erlang':'/'('todo', 'todo')
+            in  case apply 'is_nan'/1(X) of
+                    <'true'> when 'true' -> apply 'nan'/0()
+                    <'false'> when 'true' -> 
+                        case apply 'is_inf'/2(X, 1) of
+                            <'true'> when 'true' -> 0.0
+                            <'false'> when 'true' -> 
+                                case apply 'is_inf'/2(X, -1) of
+                                    <'true'> when 'true' -> 2.0
+                                    <'false'> when 'true' -> 
+                                        let <Sign> =
+                                            'false'
+                                        in  let <X_1> =
+                                                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                            in  let <Sign_2> =
+                                                    case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Sign end
+                                                in  case call 'erlang':'<'(X_3, 'todo') of
+                                                        <'true'> when 'true' -> call 'erlang':'-'('todo', Temp)
+                                                        <'false'> when 'true' -> 
+                                                            case call 'erlang':'<'(X_3, 'todo') of
+                                                                <'true'> when 'true' -> call 'erlang':'-'('todo', call 'erlang':'/'(P, Q))
+                                                                <'false'> when 'true' -> 
+                                                                    case call 'erlang':'<'(X_3, 28) of
+                                                                        <'true'> when 'true' -> call 'erlang':'/'(R_, X_3)
+                                                                        <'false'> when 'true' -> 
+                                                                            case Sign_2 of
+                                                                                <'true'> when 'true' -> 2.0
+                                                                                <'false'> when 'true' -> 
+                                                                                    0.0
+                                                                            end
+                                                                    end
+                                                            end
+                                                    end
+                                end
+                        end
+                end
+'exp'/1 =
+    fun (X) ->
+        let <Log2e> =
+            1.44269504088896338700e+00
+        in  let <Overflow> =
+                7.09782712893383973096e+02
+            in  let <Underflow> =
+                    -7.45133219101941108420e+02
+                in  let <Near_zero> =
+                        call 'erlang':'/'(1.0, 268435456)
+                    in  case call 'erlang':'or'(apply 'is_nan'/1(X), apply 'is_inf'/2(X, 1)) of
+                            <'true'> when 'true' -> X
+                            <'false'> when 'true' -> 
+                                case apply 'is_inf'/2(X, -1) of
+                                    <'true'> when 'true' -> 0.0
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'>'(X, Overflow) of
+                                            <'true'> when 'true' -> apply 'inf'/1(1)
+                                            <'false'> when 'true' -> 
+                                                case call 'erlang':'<'(X, Underflow) of
+                                                    <'true'> when 'true' -> 0.0
+                                                    <'false'> when 'true' -> 
+                                                        case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'-'(Near_zero), X), call 'erlang':'<'(X, Near_zero)) of
+                                                            <'true'> when 'true' -> call 'erlang':'+'('todo', X)
+                                                            <'false'> when 'true' -> 
+                                                                let <K> =
+                                                                    0
+                                                                in  let <K_1> =
+                                                                        case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> K end
+                                                                    in  let <K_2> =
+                                                                            case call 'erlang':'>'(X, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> K_1 end
+                                                                        in  let <Hi> =
+                                                                                call 'erlang':'-'(X, call 'erlang':'*'('todo', 'todo'))
+                                                                            in  let <Lo> =
+                                                                                    call 'erlang':'*'('todo', 'todo')
+                                                                                in  apply 'expmulti'/3(Hi, Lo, K_2)
+                                                        end
+                                                end
+                                        end
+                                end
+                        end
+'exp2'/1 =
+    fun (X) ->
+        let <Overflow> =
+            1.0239999999999999e+03
+        in  let <Underflow> =
+                -1.0740e+03
+            in  case call 'erlang':'or'(apply 'is_nan'/1(X), apply 'is_inf'/2(X, 1)) of
+                    <'true'> when 'true' -> X
+                    <'false'> when 'true' -> 
+                        case apply 'is_inf'/2(X, -1) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'>'(X, Overflow) of
+                                    <'true'> when 'true' -> apply 'inf'/1(1)
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'<'(X, Underflow) of
+                                            <'true'> when 'true' -> 0
+                                            <'false'> when 'true' -> 
+                                                let <K> =
+                                                    0
+                                                in  let <K_1> =
+                                                        case call 'erlang':'>'(X, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> K end
+                                                    in  let <K_2> =
+                                                            case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> K_1 end
+                                                        in  let <T> =
+                                                                call 'erlang':'-'(X, 'todo')
+                                                            in  let <Hi> =
+                                                                    call 'erlang':'*'(T, 'todo')
+                                                                in  let <Lo> =
+                                                                        call 'erlang':'*'(call 'erlang':'-'(T), 'todo')
+                                                                    in  apply 'expmulti'/3(Hi, Lo, K_2)
+                                        end
+                                end
+                        end
+                end
+'ldexp'/2 =
+    fun (Frac, Exp) ->
+        apply 'scalbn'/2(Frac, Exp)
+'frexp'/1 =
+    fun (X) ->
+        let <Y> =
+            apply 'f64_bits'/1(X)
+        in  let <Ee> =
+                'todo'
+            in  do  case call 'erlang':'=:='(Ee, 0) of <'true'> when 'true' -> 
+                    case call 'erlang':'=/='(X, 'todo') of
+                        <'true'> when 'true' -> Z
+                        <'false'> when 'true' -> 
+                            X
+                    end
+                 <'false'> when 'true' -> case call 'erlang':'=:='(Ee, 16#7ff) of <'true'> when 'true' -> X <'false'> when 'true' -> 'ok' end end
+                    let <E_> =
+                        call 'erlang':'-'(Ee, 16#3fe)
+                    in  let <Y_1> =
+                            'todo'
+                        in  let <Y_2> =
+                                'todo'
+                            in  apply 'f64_from_bits'/1(Y_2)
+'expm1'/1 =
+    fun (X) ->
+        case call 'erlang':'or'(apply 'is_inf'/2(X, 1), apply 'is_nan'/1(X)) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                case apply 'is_inf'/2(X, -1) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'<'(call 'erlang':'abs'(X), 'todo') of <'true'> when 'true' -> 
+                            let <I> =
+                                1.0
+                            in  let <Sum> =
+                                    X
+                                in  let <Term> =
+                                        call 'erlang':'/'(X, 'todo')
+                                    in  do  'todo'
+                                            let <Term_1> =
+                                                call 'erlang':'/'(X, 'todo')
+                                            in  let <Sum_2> =
+                                                    Term_1
+                                                in  Sum_2
+                         <'false'> when 'true' -> call 'erlang':'-'(apply 'exp'/1(X), 1) end
+                end
+        end
+'expmulti'/3 =
+    fun (Hi, Lo, K) ->
+        let <Exp_p1> =
+            1.66666666666666657415e-01
+        in  let <Exp_p2> =
+                -2.77777777770155933842e-03
+            in  let <Exp_p3> =
+                    6.61375632143793436117e-05
+                in  let <Exp_p4> =
+                        -1.65339022054652515390e-06
+                    in  let <Exp_p5> =
+                            4.13813679705723846039e-08
+                        in  let <R> =
+                                call 'erlang':'-'(Hi, Lo)
+                            in  let <T> =
+                                    call 'erlang':'*'(R, R)
+                                in  let <C> =
+                                        call 'erlang':'-'(R, call 'erlang':'*'(T, call 'erlang':'+'(Exp_p1, call 'erlang':'*'(T, call 'erlang':'+'(Exp_p2, call 'erlang':'*'(T, call 'erlang':'+'(Exp_p3, call 'erlang':'*'(T, call 'erlang':'+'(Exp_p4, call 'erlang':'*'(T, Exp_p5))))))))))
+                                    in  let <Y> =
+                                            call 'erlang':'-'(1, call 'erlang':'-'(call 'erlang':'-'(Lo, call 'erlang':'/'(call 'erlang':'*'(R, C), call 'erlang':'-'(2, C))), Hi))
+                                        in  apply 'ldexp'/2(Y, K)
+'factorial'/1 =
+    fun (N) ->
+        case call 'erlang':'>='(N, call 'erlang':'length'([1.000000000000000000000e+0|[1.000000000000000000000e+0|[2.000000000000000000000e+0|[6.000000000000000000000e+0|[2.400000000000000000000e+1|[1.200000000000000000000e+2|[7.200000000000000000000e+2|[5.040000000000000000000e+3|[4.032000000000000000000e+4|[3.628800000000000000000e+5|[3.628800000000000000000e+6|[3.991680000000000000000e+7|[4.790016000000000000000e+8|[6.227020800000000000000e+9|[8.717829120000000000000e+10|[1.307674368000000000000e+12|[2.092278988800000000000e+13|[3.556874280960000000000e+14|[6.402373705728000000000e+15|[1.216451004088320000000e+17|[2.432902008176640000000e+18|[5.109094217170944000000e+19|[1.124000727777607680000e+21|[2.585201673888497664000e+22|[6.204484017332394393600e+23|[1.551121004333098598400e+25|[4.032914611266056355840e+26|[1.088886945041835216077e+28|[3.048883446117138605015e+29|[8.841761993739701954544e+30|[2.652528598121910586363e+32|[8.222838654177922817726e+33|[2.631308369336935301672e+35|[8.683317618811886495518e+36|[2.952327990396041408476e+38|[1.033314796638614492967e+40|[3.719933267899012174680e+41|[1.376375309122634504632e+43|[5.230226174666011117600e+44|[2.039788208119744335864e+46|[8.159152832478977343456e+47|[3.345252661316380710817e+49|[1.405006117752879898543e+51|[6.041526306337383563736e+52|[2.658271574788448768044e+54|[1.196222208654801945620e+56|[5.502622159812088949850e+57|[2.586232415111681806430e+59|[1.241391559253607267086e+61|[6.082818640342675608723e+62|[3.041409320171337804361e+64|[1.551118753287382280224e+66|[8.065817517094387857166e+67|[4.274883284060025564298e+69|[2.308436973392413804721e+71|[1.269640335365827592597e+73|[7.109985878048634518540e+74|[4.052691950487721675568e+76|[2.350561331282878571829e+78|[1.386831185456898357379e+80|[8.320987112741390144276e+81|[5.075802138772247988009e+83|[3.146997326038793752565e+85|[1.982608315404440064116e+87|[1.268869321858841641034e+89|[8.247650592082470666723e+90|[5.443449390774430640037e+92|[3.647111091818868528825e+94|[2.480035542436830599601e+96|[1.711224524281413113725e+98|[1.197857166996989179607e+100|[8.504785885678623175212e+101|[6.123445837688608686152e+103|[4.470115461512684340891e+105|[3.307885441519386412260e+107|[2.480914081139539809195e+109|[1.885494701666050254988e+111|[1.451830920282858696341e+113|[1.132428117820629783146e+115|[8.946182130782975286851e+116|[7.156945704626380229481e+118|[5.797126020747367985880e+120|[4.753643337012841748421e+122|[3.945523969720658651190e+124|[3.314240134565353266999e+126|[2.817104114380550276949e+128|[2.422709538367273238177e+130|[2.107757298379527717214e+132|[1.854826422573984391148e+134|[1.650795516090846108122e+136|[1.485715964481761497310e+138|[1.352001527678402962552e+140|[1.243841405464130725548e+142|[1.156772507081641574759e+144|[1.087366156656743080274e+146|[1.032997848823905926260e+148|[9.916779348709496892096e+149|[9.619275968248211985333e+151|[9.426890448883247745626e+153|[9.332621544394415268170e+155|[9.332621544394415268170e+157|[9.425947759838359420852e+159|[9.614466715035126609269e+161|[9.902900716486180407547e+163|[1.029901674514562762385e+166|[1.081396758240290900504e+168|[1.146280563734708354534e+170|[1.226520203196137939352e+172|[1.324641819451828974500e+174|[1.443859583202493582205e+176|[1.588245541522742940425e+178|[1.762952551090244663872e+180|[1.974506857221074023537e+182|[2.231192748659813646597e+184|[2.543559733472187557120e+186|[2.925093693493015690688e+188|[3.393108684451898201198e+190|[3.969937160808720895402e+192|[4.684525849754290656574e+194|[5.574585761207605881323e+196|[6.689502913449127057588e+198|[8.094298525273443739682e+200|[9.875044200833601362412e+202|[1.214630436702532967577e+205|[1.506141741511140879795e+207|[1.882677176888926099744e+209|[2.372173242880046885677e+211|[3.012660018457659544810e+213|[3.856204823625804217357e+215|[4.974504222477287440390e+217|[6.466855489220473672507e+219|[8.471580690878820510985e+221|[1.118248651196004307450e+224|[1.487270706090685728908e+226|[1.992942746161518876737e+228|[2.690472707318050483595e+230|[3.659042881952548657690e+232|[5.012888748274991661035e+234|[6.917786472619488492228e+236|[9.615723196941089004197e+238|[1.346201247571752460588e+241|[1.898143759076170969429e+243|[2.695364137888162776589e+245|[3.854370717180072770522e+247|[5.550293832739304789551e+249|[8.047926057471991944849e+251|[1.174997204390910823948e+254|[1.727245890454638911203e+256|[2.556323917872865588581e+258|[3.808922637630569726986e+260|[5.713383956445854590479e+262|[8.627209774233240431623e+264|[1.311335885683452545607e+267|[2.006343905095682394778e+269|[3.089769613847350887959e+271|[4.789142901463393876336e+273|[7.471062926282894447084e+275|[1.172956879426414428192e+278|[1.853271869493734796544e+280|[2.946702272495038326504e+282|[4.714723635992061322407e+284|[7.590705053947218729075e+286|[1.229694218739449434110e+289|[2.004401576545302577600e+291|[3.287218585534296227263e+293|[5.423910666131588774984e+295|[9.003691705778437366474e+297|[1.503616514864999040201e+300|[2.526075744973198387538e+302|[4.269068009004705274939e+304|[7.257415615307998967397e+306|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])) of
+            <'true'> when 'true' -> 1.797693134862315708145274237317043567981e+308
+            <'false'> when 'true' -> 
+                case call 'erlang':'and'(call 'erlang':'=:='(N, 'todo'), call 'erlang':'>='(N, 'todo')) of
+                    <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), [1.000000000000000000000e+0|[1.000000000000000000000e+0|[2.000000000000000000000e+0|[6.000000000000000000000e+0|[2.400000000000000000000e+1|[1.200000000000000000000e+2|[7.200000000000000000000e+2|[5.040000000000000000000e+3|[4.032000000000000000000e+4|[3.628800000000000000000e+5|[3.628800000000000000000e+6|[3.991680000000000000000e+7|[4.790016000000000000000e+8|[6.227020800000000000000e+9|[8.717829120000000000000e+10|[1.307674368000000000000e+12|[2.092278988800000000000e+13|[3.556874280960000000000e+14|[6.402373705728000000000e+15|[1.216451004088320000000e+17|[2.432902008176640000000e+18|[5.109094217170944000000e+19|[1.124000727777607680000e+21|[2.585201673888497664000e+22|[6.204484017332394393600e+23|[1.551121004333098598400e+25|[4.032914611266056355840e+26|[1.088886945041835216077e+28|[3.048883446117138605015e+29|[8.841761993739701954544e+30|[2.652528598121910586363e+32|[8.222838654177922817726e+33|[2.631308369336935301672e+35|[8.683317618811886495518e+36|[2.952327990396041408476e+38|[1.033314796638614492967e+40|[3.719933267899012174680e+41|[1.376375309122634504632e+43|[5.230226174666011117600e+44|[2.039788208119744335864e+46|[8.159152832478977343456e+47|[3.345252661316380710817e+49|[1.405006117752879898543e+51|[6.041526306337383563736e+52|[2.658271574788448768044e+54|[1.196222208654801945620e+56|[5.502622159812088949850e+57|[2.586232415111681806430e+59|[1.241391559253607267086e+61|[6.082818640342675608723e+62|[3.041409320171337804361e+64|[1.551118753287382280224e+66|[8.065817517094387857166e+67|[4.274883284060025564298e+69|[2.308436973392413804721e+71|[1.269640335365827592597e+73|[7.109985878048634518540e+74|[4.052691950487721675568e+76|[2.350561331282878571829e+78|[1.386831185456898357379e+80|[8.320987112741390144276e+81|[5.075802138772247988009e+83|[3.146997326038793752565e+85|[1.982608315404440064116e+87|[1.268869321858841641034e+89|[8.247650592082470666723e+90|[5.443449390774430640037e+92|[3.647111091818868528825e+94|[2.480035542436830599601e+96|[1.711224524281413113725e+98|[1.197857166996989179607e+100|[8.504785885678623175212e+101|[6.123445837688608686152e+103|[4.470115461512684340891e+105|[3.307885441519386412260e+107|[2.480914081139539809195e+109|[1.885494701666050254988e+111|[1.451830920282858696341e+113|[1.132428117820629783146e+115|[8.946182130782975286851e+116|[7.156945704626380229481e+118|[5.797126020747367985880e+120|[4.753643337012841748421e+122|[3.945523969720658651190e+124|[3.314240134565353266999e+126|[2.817104114380550276949e+128|[2.422709538367273238177e+130|[2.107757298379527717214e+132|[1.854826422573984391148e+134|[1.650795516090846108122e+136|[1.485715964481761497310e+138|[1.352001527678402962552e+140|[1.243841405464130725548e+142|[1.156772507081641574759e+144|[1.087366156656743080274e+146|[1.032997848823905926260e+148|[9.916779348709496892096e+149|[9.619275968248211985333e+151|[9.426890448883247745626e+153|[9.332621544394415268170e+155|[9.332621544394415268170e+157|[9.425947759838359420852e+159|[9.614466715035126609269e+161|[9.902900716486180407547e+163|[1.029901674514562762385e+166|[1.081396758240290900504e+168|[1.146280563734708354534e+170|[1.226520203196137939352e+172|[1.324641819451828974500e+174|[1.443859583202493582205e+176|[1.588245541522742940425e+178|[1.762952551090244663872e+180|[1.974506857221074023537e+182|[2.231192748659813646597e+184|[2.543559733472187557120e+186|[2.925093693493015690688e+188|[3.393108684451898201198e+190|[3.969937160808720895402e+192|[4.684525849754290656574e+194|[5.574585761207605881323e+196|[6.689502913449127057588e+198|[8.094298525273443739682e+200|[9.875044200833601362412e+202|[1.214630436702532967577e+205|[1.506141741511140879795e+207|[1.882677176888926099744e+209|[2.372173242880046885677e+211|[3.012660018457659544810e+213|[3.856204823625804217357e+215|[4.974504222477287440390e+217|[6.466855489220473672507e+219|[8.471580690878820510985e+221|[1.118248651196004307450e+224|[1.487270706090685728908e+226|[1.992942746161518876737e+228|[2.690472707318050483595e+230|[3.659042881952548657690e+232|[5.012888748274991661035e+234|[6.917786472619488492228e+236|[9.615723196941089004197e+238|[1.346201247571752460588e+241|[1.898143759076170969429e+243|[2.695364137888162776589e+245|[3.854370717180072770522e+247|[5.550293832739304789551e+249|[8.047926057471991944849e+251|[1.174997204390910823948e+254|[1.727245890454638911203e+256|[2.556323917872865588581e+258|[3.808922637630569726986e+260|[5.713383956445854590479e+262|[8.627209774233240431623e+264|[1.311335885683452545607e+267|[2.006343905095682394778e+269|[3.089769613847350887959e+271|[4.789142901463393876336e+273|[7.471062926282894447084e+275|[1.172956879426414428192e+278|[1.853271869493734796544e+280|[2.946702272495038326504e+282|[4.714723635992061322407e+284|[7.590705053947218729075e+286|[1.229694218739449434110e+289|[2.004401576545302577600e+291|[3.287218585534296227263e+293|[5.423910666131588774984e+295|[9.003691705778437366474e+297|[1.503616514864999040201e+300|[2.526075744973198387538e+302|[4.269068009004705274939e+304|[7.257415615307998967397e+306|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                    <'false'> when 'true' -> 
+                        apply 'gamma'/1(call 'erlang':'+'(N, 'todo'))
+                end
+        end
+'log_factorial'/1 =
+    fun (N) ->
+        case call 'erlang':'<'(N, 0) of
+            <'true'> when 'true' -> call 'erlang':'-'(1.797693134862315708145274237317043567981e+308)
+            <'false'> when 'true' -> 
+                do  case call 'erlang':'=/='(N, 'todo') of <'true'> when 'true' -> apply 'log_gamma'/1(call 'erlang':'+'(N, 1)) <'false'> when 'true' -> case call 'erlang':'<'(N, call 'erlang':'length'([0.000000000000000000000e+0|[0.000000000000000000000e+0|[6.931471805599453094172e-1|[1.791759469228055000812e+0|[3.178053830347945619647e+0|[4.787491742782045994248e+0|[6.579251212010100995060e+0|[8.525161361065414300166e+0|[1.060460290274525022842e+1|[1.280182748008146961121e+1|[1.510441257307551529523e+1|[1.750230784587388583929e+1|[1.998721449566188614952e+1|[2.255216385312342288557e+1|[2.519122118273868150009e+1|[2.789927138384089156609e+1|[3.067186010608067280376e+1|[3.350507345013688888401e+1|[3.639544520803305357622e+1|[3.933988418719949403622e+1|[4.233561646075348502966e+1|[4.538013889847690802616e+1|[4.847118135183522387964e+1|[5.160667556776437357045e+1|[5.478472939811231919009e+1|[5.800360522298051993929e+1|[6.126170176100200198477e+1|[6.455753862700633105895e+1|[6.788974313718153498289e+1|[7.125703896716800901007e+1|[7.465823634883016438549e+1|[7.809222355331531063142e+1|[8.155795945611503717850e+1|[8.505446701758151741396e+1|[8.858082754219767880363e+1|[9.213617560368709248333e+1|[9.571969454214320248496e+1|[9.933061245478742692933e+1|[1.029681986145138126988e+2|[1.066317602606434591262e+2|[1.103206397147573954291e+2|[1.140342117814617032329e+2|[1.177718813997450715388e+2|[1.215330815154386339623e+2|[1.253172711493568951252e+2|[1.291239336391272148826e+2|[1.329525750356163098828e+2|[1.368027226373263684696e+2|[1.406739236482342593987e+2|[1.445657439463448860089e+2|[1.484777669517730320675e+2|[1.524095925844973578392e+2|[1.563608363030787851941e+2|[1.603311282166309070282e+2|[1.643201122631951814118e+2|[1.683274454484276523305e+2|[1.723527971391628015638e+2|[1.763958484069973517152e+2|[1.804562914175437710518e+2|[1.845338288614494905025e+2|[1.886281734236715911873e+2|[1.927390472878449024360e+2|[1.968661816728899939914e+2|[2.010093163992815266793e+2|[2.051681994826411985358e+2|[2.093425867525368356464e+2|[2.135322414945632611913e+2|[2.177369341139542272510e+2|[2.219564418191303339501e+2|[2.261905483237275933323e+2|[2.304390435657769523214e+2|[2.347017234428182677427e+2|[2.389783895618343230538e+2|[2.432688490029827141829e+2|[2.475729140961868839366e+2|[2.518904022097231943772e+2|[2.562211355500095254561e+2|[2.605649409718632093053e+2|[2.649216497985528010421e+2|[2.692910976510198225363e+2|[2.736731242856937041486e+2|[2.780675734403661429141e+2|[2.824742926876303960274e+2|[2.868931332954269939509e+2|[2.913239500942703075662e+2|[2.957666013507606240211e+2|[3.002209486470141317540e+2|[3.046868567656687154726e+2|[3.091641935801469219449e+2|[3.136528299498790617832e+2|[3.181526396202093268500e+2|[3.226634991267261768912e+2|[3.271852877037752172008e+2|[3.317178871969284731381e+2|[3.362611819791984770344e+2|[3.408150588707990178690e+2|[3.453794070622668541074e+2|[3.499541180407702369296e+2|[3.545390855194408088492e+2|[3.591342053695753987760e+2|[3.637393755555634901441e+2|[3.683544960724047495950e+2|[3.729794688856890206760e+2|[3.776141978739186564468e+2|[3.822585887730600291111e+2|[3.869125491232175524822e+2|[3.915759882173296196258e+2|[3.962488170517915257991e+2|[4.009309482789157454921e+2|[4.056222961611448891925e+2|[4.103227765269373054205e+2|[4.150323067282496395563e+2|[4.197508055995447340991e+2|[4.244781934182570746677e+2|[4.292143918666515701285e+2|[4.339593239950148201939e+2|[4.387129141861211848399e+2|[4.434750881209189409588e+2|[4.482457727453846057188e+2|[4.530248962384961351041e+2|[4.578123879812781810984e+2|[4.626081785268749221865e+2|[4.674121995716081787447e+2|[4.722243839269805962399e+2|[4.770446654925856331047e+2|[4.818729792298879342285e+2|[4.867092611368394122258e+2|[4.915534482232980034989e+2|[4.964054784872176206648e+2|[5.012652908915792927797e+2|[5.061328253420348751997e+2|[5.110080226652360267439e+2|[5.158908245878223975982e+2|[5.207811737160441513633e+2|[5.256790135159950627324e+2|[5.305842882944334921812e+2|[5.354969431801695441897e+2|[5.404169241059976691050e+2|[5.453441777911548737966e+2|[5.502786517242855655538e+2|[5.552202941468948698523e+2|[5.601690540372730381305e+2|[5.651248810948742988613e+2|[5.700877257251342061414e+2|[5.750575390247102067619e+2|[5.800342727671307811636e+2|[5.850178793888391176022e+2|[5.900083119756178539038e+2|[5.950055242493819689670e+2|[6.000094705553274281080e+2|[6.050201058494236838580e+2|[6.100373856862386081868e+2|[6.150612662070848845750e+2|[6.200917041284773200381e+2|[6.251286567308909491967e+2|[6.301720818478101958172e+2|[6.352219378550597328635e+2|[6.402781836604080409209e+2|[6.453407786934350077245e+2|[6.504096828956552392500e+2|[6.554848567108890661717e+2|[6.605662610758735291676e+2|[6.656538574111059132426e+2|[6.707476076119126755767e+2|[6.758474740397368739994e+2|[6.809534195136374546094e+2|[6.860654073019939978423e+2|[6.911834011144107529496e+2|[6.963073650938140118743e+2|[7.014372638087370853465e+2|[7.065730622457873471107e+2|[7.117147258022900069535e+2|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'('todo', 1), [0.000000000000000000000e+0|[0.000000000000000000000e+0|[6.931471805599453094172e-1|[1.791759469228055000812e+0|[3.178053830347945619647e+0|[4.787491742782045994248e+0|[6.579251212010100995060e+0|[8.525161361065414300166e+0|[1.060460290274525022842e+1|[1.280182748008146961121e+1|[1.510441257307551529523e+1|[1.750230784587388583929e+1|[1.998721449566188614952e+1|[2.255216385312342288557e+1|[2.519122118273868150009e+1|[2.789927138384089156609e+1|[3.067186010608067280376e+1|[3.350507345013688888401e+1|[3.639544520803305357622e+1|[3.933988418719949403622e+1|[4.233561646075348502966e+1|[4.538013889847690802616e+1|[4.847118135183522387964e+1|[5.160667556776437357045e+1|[5.478472939811231919009e+1|[5.800360522298051993929e+1|[6.126170176100200198477e+1|[6.455753862700633105895e+1|[6.788974313718153498289e+1|[7.125703896716800901007e+1|[7.465823634883016438549e+1|[7.809222355331531063142e+1|[8.155795945611503717850e+1|[8.505446701758151741396e+1|[8.858082754219767880363e+1|[9.213617560368709248333e+1|[9.571969454214320248496e+1|[9.933061245478742692933e+1|[1.029681986145138126988e+2|[1.066317602606434591262e+2|[1.103206397147573954291e+2|[1.140342117814617032329e+2|[1.177718813997450715388e+2|[1.215330815154386339623e+2|[1.253172711493568951252e+2|[1.291239336391272148826e+2|[1.329525750356163098828e+2|[1.368027226373263684696e+2|[1.406739236482342593987e+2|[1.445657439463448860089e+2|[1.484777669517730320675e+2|[1.524095925844973578392e+2|[1.563608363030787851941e+2|[1.603311282166309070282e+2|[1.643201122631951814118e+2|[1.683274454484276523305e+2|[1.723527971391628015638e+2|[1.763958484069973517152e+2|[1.804562914175437710518e+2|[1.845338288614494905025e+2|[1.886281734236715911873e+2|[1.927390472878449024360e+2|[1.968661816728899939914e+2|[2.010093163992815266793e+2|[2.051681994826411985358e+2|[2.093425867525368356464e+2|[2.135322414945632611913e+2|[2.177369341139542272510e+2|[2.219564418191303339501e+2|[2.261905483237275933323e+2|[2.304390435657769523214e+2|[2.347017234428182677427e+2|[2.389783895618343230538e+2|[2.432688490029827141829e+2|[2.475729140961868839366e+2|[2.518904022097231943772e+2|[2.562211355500095254561e+2|[2.605649409718632093053e+2|[2.649216497985528010421e+2|[2.692910976510198225363e+2|[2.736731242856937041486e+2|[2.780675734403661429141e+2|[2.824742926876303960274e+2|[2.868931332954269939509e+2|[2.913239500942703075662e+2|[2.957666013507606240211e+2|[3.002209486470141317540e+2|[3.046868567656687154726e+2|[3.091641935801469219449e+2|[3.136528299498790617832e+2|[3.181526396202093268500e+2|[3.226634991267261768912e+2|[3.271852877037752172008e+2|[3.317178871969284731381e+2|[3.362611819791984770344e+2|[3.408150588707990178690e+2|[3.453794070622668541074e+2|[3.499541180407702369296e+2|[3.545390855194408088492e+2|[3.591342053695753987760e+2|[3.637393755555634901441e+2|[3.683544960724047495950e+2|[3.729794688856890206760e+2|[3.776141978739186564468e+2|[3.822585887730600291111e+2|[3.869125491232175524822e+2|[3.915759882173296196258e+2|[3.962488170517915257991e+2|[4.009309482789157454921e+2|[4.056222961611448891925e+2|[4.103227765269373054205e+2|[4.150323067282496395563e+2|[4.197508055995447340991e+2|[4.244781934182570746677e+2|[4.292143918666515701285e+2|[4.339593239950148201939e+2|[4.387129141861211848399e+2|[4.434750881209189409588e+2|[4.482457727453846057188e+2|[4.530248962384961351041e+2|[4.578123879812781810984e+2|[4.626081785268749221865e+2|[4.674121995716081787447e+2|[4.722243839269805962399e+2|[4.770446654925856331047e+2|[4.818729792298879342285e+2|[4.867092611368394122258e+2|[4.915534482232980034989e+2|[4.964054784872176206648e+2|[5.012652908915792927797e+2|[5.061328253420348751997e+2|[5.110080226652360267439e+2|[5.158908245878223975982e+2|[5.207811737160441513633e+2|[5.256790135159950627324e+2|[5.305842882944334921812e+2|[5.354969431801695441897e+2|[5.404169241059976691050e+2|[5.453441777911548737966e+2|[5.502786517242855655538e+2|[5.552202941468948698523e+2|[5.601690540372730381305e+2|[5.651248810948742988613e+2|[5.700877257251342061414e+2|[5.750575390247102067619e+2|[5.800342727671307811636e+2|[5.850178793888391176022e+2|[5.900083119756178539038e+2|[5.950055242493819689670e+2|[6.000094705553274281080e+2|[6.050201058494236838580e+2|[6.100373856862386081868e+2|[6.150612662070848845750e+2|[6.200917041284773200381e+2|[6.251286567308909491967e+2|[6.301720818478101958172e+2|[6.352219378550597328635e+2|[6.402781836604080409209e+2|[6.453407786934350077245e+2|[6.504096828956552392500e+2|[6.554848567108890661717e+2|[6.605662610758735291676e+2|[6.656538574111059132426e+2|[6.707476076119126755767e+2|[6.758474740397368739994e+2|[6.809534195136374546094e+2|[6.860654073019939978423e+2|[6.911834011144107529496e+2|[6.963073650938140118743e+2|[7.014372638087370853465e+2|[7.065730622457873471107e+2|[7.117147258022900069535e+2|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]) <'false'> when 'true' -> 'ok' end end
+                    apply 'log_factorial_asymptotic_expansion'/1('todo')
+        end
+'log_factorial_asymptotic_expansion'/1 =
+    fun (N) ->
+        let <M> =
+            6
+        in  let <Term> =
+                []
+            in  let <Xx> =
+                    'todo'
+                in  let <Xj> =
+                        'todo'
+                    in  let <Log_factorial> =
+                            call 'erlang':'+'(call 'erlang':'-'('todo', Xj), call 'erlang':'*'(call 'erlang':'-'(Xj, 'todo'), apply 'log'/1(Xj)))
+                        in  let <I> =
+                                0
+                            in  let <Sum> =
+                                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(M, 1), 1), Term)
+                                in  call 'erlang':'+'(Log_factorial, Sum)
+'factoriali'/1 =
+    fun (N) ->
+        case call 'erlang':'=<'(N, 0) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                case call 'erlang':'<'(N, 21) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        'todo'
+                end
+        end
+'floor'/1 =
+    fun (X) ->
+        case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(X, 0), apply 'is_nan'/1(X)), apply 'is_inf'/2(X, 0)) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                case call 'erlang':'<'(X, 0) of
+                    <'true'> when 'true' -> call 'erlang':'-'(D)
+                    <'false'> when 'true' -> 
+                        let <D_1> =
+                            apply 'modf'/1(X)
+                        in  do  apply 'modf'/1(X)
+                                D_1
+                end
+        end
+'floorf'/1 =
+    fun (X) ->
+        'todo'
+'ceil'/1 =
+    fun (X) ->
+        call 'erlang':'-'(apply 'floor'/1(call 'erlang':'-'(X)))
+'trunc'/1 =
+    fun (X) ->
+        case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(X, 0), apply 'is_nan'/1(X)), apply 'is_inf'/2(X, 0)) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                let <D> =
+                    apply 'modf'/1(X)
+                in  do  apply 'modf'/1(X)
+                        D
+        end
+'round'/1 =
+    fun (X) ->
+        let <Bits> =
+            apply 'f64_bits'/1(X)
+        in  let <E_> =
+                call 'erlang':'band'(call 'erlang':'bsr'(Bits, 52), 16#7FF)
+            in  let <Bits_1> =
+                    case call 'erlang':'<'(E_, 1023) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> case call 'erlang':'<'(E_, 1075) of <'true'> when 'true' -> let <Half> = call 'erlang':'bsl'('todo', 51) in let <E__2> = 1023 in do  call 'erlang':'bsr'(Half, E__2) call 'erlang':'bnot'(call 'erlang':'bsr'('todo', E__2)) <'false'> when 'true' -> Bits end end
+                in  let <E__3> =
+                        case call 'erlang':'<'(E__2, 1023) of <'true'> when 'true' -> E__2 <'false'> when 'true' -> case call 'erlang':'<'(E__2, 1075) of <'true'> when 'true' -> let <Half_4> = call 'erlang':'bsl'('todo', 51) in 1023 <'false'> when 'true' -> E__2 end end
+                    in  apply 'f64_from_bits'/1(Bits_1)
+'round_sig'/2 =
+    fun (X, Sig_digits) ->
+        let <Ret_str> =
+            call 'erlang':'float_to_binary'(X)
+        in  do  case Sig_digits of <0> when 'true' -> 'ok' <1> when 'true' -> 'ok' <2> when 'true' -> 'ok' <3> when 'true' -> 'ok' <4> when 'true' -> 'ok' <5> when 'true' -> 'ok' <6> when 'true' -> 'ok' <7> when 'true' -> 'ok' <8> when 'true' -> 'ok' <9> when 'true' -> 'ok' <10> when 'true' -> 'ok' <11> when 'true' -> 'ok' <12> when 'true' -> 'ok' <13> when 'true' -> 'ok' <14> when 'true' -> 'ok' <15> when 'true' -> 'ok' <16> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+                call 'erlang':'binary_to_float'(Ret_str)
+'round_to_even'/1 =
+    fun (X) ->
+        let <Bits> =
+            apply 'f64_bits'/1(X)
+        in  let <E_> =
+                call 'erlang':'band'(call 'erlang':'bsr'(Bits, 52), 16#7FF)
+            in  let <E__1> =
+                    case call 'erlang':'>='(E_, 1023) of <'true'> when 'true' -> let <Half_minus_ulp> = call 'erlang':'-'('todo', 1) in 'todo' <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(E_, 1022), call 'erlang':'=/='(call 'erlang':'band'(Bits, 'todo'), 0)) of <'true'> when 'true' -> E_ <'false'> when 'true' -> E_ end end
+                in  let <Bits_2> =
+                        case call 'erlang':'>='(E__1, 1023) of <'true'> when 'true' -> let <Half_minus_ulp_3> = call 'erlang':'-'('todo', 1) in let <E__4> = 'todo' in do  apply 'safe_shift'/2(call 'erlang':'+'(Half_minus_ulp_3, call 'erlang':'band'(apply 'safe_shift'/2(Bits, call 'erlang':'-'(52, E__4)), 1)), E__4) call 'erlang':'bnot'(apply 'safe_shift'/2('todo', E__4)) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(E__4, 1022), call 'erlang':'=/='(call 'erlang':'band'(Bits, 'todo'), 0)) of <'true'> when 'true' -> call 'erlang':'bor'(call 'erlang':'band'(Bits, 'todo'), 'todo') <'false'> when 'true' -> 'todo' end end
+                    in  apply 'f64_from_bits'/1(Bits_2)
+'safe_shift'/2 =
+    fun (Value, Shift) ->
+        case call 'erlang':'>'(Shift, 'todo') of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> call 'erlang':'bsr'(Value, Shift) end
+'is_neg_int'/1 =
+    fun (X) ->
+        case call 'erlang':'<'(X, 0) of
+            <'true'> when 'true' -> call 'erlang':'=:='(Xf, 0)
+            <'false'> when 'true' -> 
+                'false'
+        end
+'stirling'/1 =
+    fun (X) ->
+        case call 'erlang':'>'(X, 200) of
+            <'true'> when 'true' -> apply 'inf'/1(1)
+            <'false'> when 'true' -> 
+                let <W> =
+                    call 'erlang':'/'('todo', X)
+                in  let <W_1> =
+                        call 'erlang':'+'('todo', call 'erlang':'*'(W, call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, [7.87311395793093628397e-04|[-2.29549961613378126380e-04|[-2.68132617805781232825e-03|[3.47222221605458667310e-03|[8.33333333333482257126e-02|[]]]]]]), W), call 'lists':'nth'(2, [7.87311395793093628397e-04|[-2.29549961613378126380e-04|[-2.68132617805781232825e-03|[3.47222221605458667310e-03|[8.33333333333482257126e-02|[]]]]]])), W), call 'lists':'nth'(3, [7.87311395793093628397e-04|[-2.29549961613378126380e-04|[-2.68132617805781232825e-03|[3.47222221605458667310e-03|[8.33333333333482257126e-02|[]]]]]])), W), call 'lists':'nth'(4, [7.87311395793093628397e-04|[-2.29549961613378126380e-04|[-2.68132617805781232825e-03|[3.47222221605458667310e-03|[8.33333333333482257126e-02|[]]]]]])), W), call 'lists':'nth'(5, [7.87311395793093628397e-04|[-2.29549961613378126380e-04|[-2.68132617805781232825e-03|[3.47222221605458667310e-03|[8.33333333333482257126e-02|[]]]]]]))))
+                    in  let <Y1> =
+                            apply 'exp'/1(X)
+                        in  let <Y2> =
+                                1.0
+                            in  let <Y1_2> =
+                                    case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> let <V> = apply 'pow'/2(X, call 'erlang':'-'(call 'erlang':'*'('todo', X), 'todo')) in let <Y1_> = Y1 in V <'false'> when 'true' -> call 'erlang':'/'(apply 'pow'/2(X, call 'erlang':'-'(X, 'todo')), Y1) end
+                                in  let <Y2_3> =
+                                        case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> let <V_4> = apply 'pow'/2(X, call 'erlang':'-'(call 'erlang':'*'('todo', X), 'todo')) in let <Y1__5> = Y1_2 in let <Y1_6> = V_4 in call 'erlang':'/'(V_4, Y1__5) <'false'> when 'true' -> Y2 end
+                                    in  Y1_6
+        end
+'gamma'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  case call 'erlang':'or'(call 'erlang':'or'(apply 'is_neg_int'/1(X), apply 'is_inf'/2(X, -1)), apply 'is_nan'/1(X)) of
+                <'true'> when 'true' -> apply 'nan'/0()
+                <'false'> when 'true' -> 
+                    case apply 'is_inf'/2(X, 1) of
+                        <'true'> when 'true' -> apply 'inf'/1(1)
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'=:='(X, 'todo') of
+                                <'true'> when 'true' -> apply 'copysign'/2(apply 'inf'/1(1), X)
+                                <'false'> when 'true' -> 
+                                    let <Q> =
+                                        call 'erlang':'abs'(X)
+                                    in  let <P> =
+                                            apply 'floor'/1(Q)
+                                        in  case call 'erlang':'>'(Q, 33) of
+                                                <'true'> when 'true' -> call 'erlang':'*'('todo', Z)
+                                                <'false'> when 'true' -> 
+                                                    let <Z_1> =
+                                                        1.0
+                                                    in  case call 'erlang':'=:='(X, 2) of
+                                                            <'true'> when 'true' -> Z_1
+                                                            <'false'> when 'true' -> 
+                                                                let <X_2> =
+                                                                    call 'erlang':'-'(X, 2)
+                                                                in  let <P_3> =
+                                                                        call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(X_2, call 'lists':'nth'(1, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), call 'lists':'nth'(2, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), X_2), call 'lists':'nth'(3, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), X_2), call 'lists':'nth'(4, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), X_2), call 'lists':'nth'(5, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), X_2), call 'lists':'nth'(6, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]])), X_2), call 'lists':'nth'(7, [1.60119522476751861407e-04|[1.19135147006586384913e-03|[1.04213797561761569935e-02|[4.76367800457137231464e-02|[2.07448227648435975150e-01|[4.94214826801497100753e-01|[9.99999999999999996796e-01|[]]]]]]]]))
+                                                                    in  let <Q_4> =
+                                                                            call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(X_2, call 'lists':'nth'(1, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), call 'lists':'nth'(2, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(3, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(4, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(5, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(6, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(7, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]])), X_2), call 'lists':'nth'(8, [-2.31581873324120129819e-05|[5.39605580493303397842e-04|[-4.45641913851797240494e-03|[1.18139785222060435552e-02|[3.58236398605498653373e-02|[-2.34591795718243348568e-01|[7.14304917030273074085e-02|[1.00000000000000000320e+00|[]]]]]]]]]))
+                                                                        in  call 'erlang':'/'(call 'erlang':'*'(Z_1, P_3), Q_4)
+                                                        end
+                                            end
+                            end
+                    end
+            end
+'gamma_too_small'/2 =
+    fun (X, Z) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> apply 'inf'/1(1)
+            <'false'> when 'true' -> 
+                let <Euler> =
+                    0.57721566490153286060651209008240243104215933593992
+                in  call 'erlang':'/'(Z, call 'erlang':'*'(call 'erlang':'+'('todo', call 'erlang':'*'(Euler, X)), X))
+        end
+'log_gamma'/1 =
+    fun (X) ->
+        let <Y> =
+            apply 'log_gamma_sign'/1(X)
+        in  do  apply 'log_gamma_sign'/1(X)
+                Y
+'log_gamma_sign'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  let <Sign> =
+                1
+            in  case apply 'is_nan'/1(X) of
+                    <'true'> when 'true' -> X
+                    <'false'> when 'true' -> 
+                        case apply 'is_inf'/2(X, 1) of
+                            <'true'> when 'true' -> X
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'=:='(X, 'todo') of
+                                    <'true'> when 'true' -> apply 'inf'/1(1)
+                                    <'false'> when 'true' -> 
+                                        let <Neg> =
+                                            'false'
+                                        in  let <X_1> =
+                                                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                            in  let <Neg_2> =
+                                                    case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Neg end
+                                                in  case call 'erlang':'<'(X_3, apply 'exp2'/1(-70)) of
+                                                        <'true'> when 'true' -> call 'erlang':'-'(apply 'log'/1(X_3))
+                                                        <'false'> when 'true' -> 
+                                                            let <Nadj> =
+                                                                0.0
+                                                            in  let <Nadj_4> =
+                                                                    case Neg_2 of <'true'> when 'true' -> do  case call 'erlang':'>='(X_3, apply 'exp2'/1(52)) of <'true'> when 'true' -> apply 'inf'/1(1) <'false'> when 'true' -> 'ok' end let <T> = apply 'sin_pi'/1(X_3) in do  case call 'erlang':'=:='(T, 0) of <'true'> when 'true' -> apply 'inf'/1(1) <'false'> when 'true' -> 'ok' end apply 'log'/1(call 'erlang':'/'('todo', call 'erlang':'abs'(call 'erlang':'*'(T, X_3)))) <'false'> when 'true' -> Nadj end
+                                                                in  let <Lgamma> =
+                                                                        0.0
+                                                                    in  let <Lgamma_5> =
+                                                                            case call 'erlang':'or'(call 'erlang':'=:='(X_3, 1), call 'erlang':'=:='(X_3, 2)) of <'true'> when 'true' -> Lgamma <'false'> when 'true' -> case call 'erlang':'<'(X_3, 2) of <'true'> when 'true' -> Lgamma <'false'> when 'true' -> case call 'erlang':'<'(X_3, 8) of <'true'> when 'true' -> let <I> = 'todo' in let <Y> = call 'erlang':'-'(X_3, 'todo') in let <Tmp23456> = call 'erlang':'+'(call 'lists':'nth'(3, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(4, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(5, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(6, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, call 'lists':'nth'(7, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]))))))))) in let <P> = call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(1, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(2, [-7.72156649015328655494e-02|[2.14982415960608852501e-01|[3.25778796408930981787e-01|[1.46350472652464452805e-01|[2.66422703033638609560e-02|[1.84028451407337715652e-03|[3.19475326584100867617e-05|[]]]]]]]]), call 'erlang':'*'(Y, Tmp23456))))) in let <Tmpr23456> = call 'erlang':'+'(call 'lists':'nth'(3, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(4, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(5, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]), call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(6, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]), call 'erlang':'*'(Y, call 'lists':'nth'(7, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]))))))))) in let <Q> = call 'erlang':'+'('todo', call 'erlang':'*'(Y, call 'erlang':'+'(call 'lists':'nth'(2, [1.0|[1.39200533467621045958e+00|[7.21935547567138069525e-01|[1.71933865632803078993e-01|[1.86459191715652901344e-02|[7.77942496381893596434e-04|[7.32668430744625636189e-06|[]]]]]]]]), call 'erlang':'*'(Y, Tmpr23456)))) in call 'erlang':'+'(call 'erlang':'*'('todo', Y), call 'erlang':'/'(P, Q)) <'false'> when 'true' -> case call 'erlang':'<'(X_3, apply 'exp2'/1(58)) of <'true'> when 'true' -> let <T_6> = apply 'log'/1(X_3) in let <Z> = call 'erlang':'/'('todo', X_3) in let <Y_7> = call 'erlang':'*'(Z, Z) in let <W> = call 'erlang':'+'(call 'lists':'nth'(1, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Z, call 'erlang':'+'(call 'lists':'nth'(2, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Y_7, call 'erlang':'+'(call 'lists':'nth'(3, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Y_7, call 'erlang':'+'(call 'lists':'nth'(4, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Y_7, call 'erlang':'+'(call 'lists':'nth'(5, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Y_7, call 'erlang':'+'(call 'lists':'nth'(6, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]), call 'erlang':'*'(Y_7, call 'lists':'nth'(7, [4.18938533204672725052e-01|[8.33333333333329678849e-02|[-2.77777777728775536470e-03|[7.93650558643019558500e-04|[-5.95187557450339963135e-04|[8.36339918996282139126e-04|[-1.63092934096575273989e-03|[]]]]]]]]))))))))))))) in call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'-'(X_3, 'todo'), call 'erlang':'-'(T_6, 'todo')), W) <'false'> when 'true' -> call 'erlang':'*'(X_3, call 'erlang':'-'(apply 'log'/1(X_3), 'todo')) end end end end
+                                                                        in  let <T_8> =
+                                                                                case call 'erlang':'or'(call 'erlang':'=:='(X_3, 1), call 'erlang':'=:='(X_3, 2)) of <'true'> when 'true' -> T_6 <'false'> when 'true' -> case call 'erlang':'<'(X_3, 2) of <'true'> when 'true' -> T_6 <'false'> when 'true' -> case call 'erlang':'<'(X_3, 8) of <'true'> when 'true' -> T_6 <'false'> when 'true' -> case call 'erlang':'<'(X_3, apply 'exp2'/1(58)) of <'true'> when 'true' -> apply 'log'/1(X_3) <'false'> when 'true' -> T_6 end end end end
+                                                                            in  let <Lgamma_9> =
+                                                                                    case Neg_2 of <'true'> when 'true' -> call 'erlang':'-'(Nadj_4, Lgamma_5) <'false'> when 'true' -> Lgamma_5 end
+                                                                                in  Lgamma_9
+                                                    end
+                                end
+                        end
+                end
+'sin_pi'/1 =
+    fun (X_) ->
+        let <X> =
+            X_
+        in  case call 'erlang':'<'(X, 'todo') of
+                <'true'> when 'true' -> call 'erlang':'-'(apply 'sin'/1(call 'erlang':'*'('todo', X)))
+                <'false'> when 'true' -> 
+                    let <Z> =
+                        apply 'floor'/1(X)
+                    in  let <N> =
+                            0
+                        in  let <X_1> =
+                                case call 'erlang':'=/='(Z, X) of <'true'> when 'true' -> apply 'mod'/2(X, 2) <'false'> when 'true' -> do  case call 'erlang':'>='(X, apply 'exp2'/1(53)) of <'true'> when 'true' -> 
+                                    let <X_2> =
+                                        0
+                                    in  let <N_3> =
+                                            0
+                                        in  N_3
+                                 <'false'> when 'true' -> 
+                                    let <Two52> =
+                                        apply 'exp2'/1(52)
+                                    in  let <Z_4> =
+                                            case call 'erlang':'<'(X_2, Two52) of <'true'> when 'true' -> call 'erlang':'+'(X_2, Two52) <'false'> when 'true' -> Z end
+                                        in  let <N_5> =
+                                                call 'erlang':'band'(1, 'todo')
+                                            in  let <X_6> =
+                                                    'todo'
+                                                in  let <N_7> =
+                                                        2
+                                                    in  N_7
+                                 end X end
+                            in  let <N_8> =
+                                    case call 'erlang':'=/='(Z_4, X_1) of <'true'> when 'true' -> let <X_9> = apply 'mod'/2(X_9, 2) in 'todo' <'false'> when 'true' -> do  case call 'erlang':'>='(X_9, apply 'exp2'/1(53)) of <'true'> when 'true' -> 
+                                        let <X_10> =
+                                            0
+                                        in  let <N_11> =
+                                                0
+                                            in  N_11
+                                     <'false'> when 'true' -> 
+                                        let <Two52_12> =
+                                            apply 'exp2'/1(52)
+                                        in  let <Z_13> =
+                                                case call 'erlang':'<'(X_10, Two52_12) of <'true'> when 'true' -> call 'erlang':'+'(X_10, Two52_12) <'false'> when 'true' -> Z_4 end
+                                            in  let <N_14> =
+                                                    call 'erlang':'band'(1, 'todo')
+                                                in  let <X_15> =
+                                                        'todo'
+                                                    in  let <N_16> =
+                                                            2
+                                                        in  N_16
+                                     end N_7 end
+                                in  let <X_17> =
+                                        case call 'erlang':'=:='(N_8, 0) of <'true'> when 'true' -> apply 'sin'/1(call 'erlang':'*'('todo', X_15)) <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'=:='(N_8, 1), call 'erlang':'=:='(N_8, 2)) of <'true'> when 'true' -> apply 'cos'/1(call 'erlang':'*'('todo', call 'erlang':'-'('todo', X_15))) <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'=:='(N_8, 3), call 'erlang':'=:='(N_8, 4)) of <'true'> when 'true' -> apply 'sin'/1(call 'erlang':'*'('todo', call 'erlang':'-'('todo', X_15))) <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'=:='(N_8, 5), call 'erlang':'=:='(N_8, 6)) of <'true'> when 'true' -> call 'erlang':'-'(apply 'cos'/1(call 'erlang':'*'('todo', call 'erlang':'-'(X_15, 'todo')))) <'false'> when 'true' -> apply 'sin'/1(call 'erlang':'*'('todo', call 'erlang':'-'(X_15, 2))) end end end end
+                                    in  call 'erlang':'-'(X_17)
+            end
+'hypot'/2 =
+    fun (X, Y) ->
+        let <P> =
+            call 'erlang':'abs'(X)
+        in  let <Q> =
+                call 'erlang':'abs'(Y)
+            in  case call 'erlang':'or'(apply 'is_inf'/2(P, 1), apply 'is_inf'/2(Q, 1)) of
+                    <'true'> when 'true' -> apply 'inf'/1(1)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'or'(apply 'is_nan'/1(P), apply 'is_nan'/1(Q)) of
+                            <'true'> when 'true' -> apply 'nan'/0()
+                            <'false'> when 'true' -> 
+                                let <P_1> =
+                                    case call 'erlang':'<'(P, Q) of <'true'> when 'true' -> Qlet <Q_2> = P in  <'false'> when 'true' -> P end
+                                in  let <Q_3> =
+                                        case call 'erlang':'<'(P_1, Q_2) of <'true'> when 'true' -> let <P_4> = Q_2 in P_4 <'false'> when 'true' -> Q_2 end
+                                    in  case call 'erlang':'=:='(P_4, 'todo') of
+                                            <'true'> when 'true' -> 0.0
+                                            <'false'> when 'true' -> 
+                                                let <Q_5> =
+                                                    call 'erlang':'/'(Q_3, P_4)
+                                                in  call 'erlang':'*'(P_4, call 'math':'sqrt'(call 'erlang':'+'(1, call 'erlang':'*'(Q_5, Q_5))))
+                                        end
+                        end
+                end
+'mix'/3 =
+    fun (Start, End, T) ->
+        call 'erlang':'+'(call 'erlang':'*'(Start, call 'erlang':'-'(1, T)), call 'erlang':'*'(End, T))
+'exp_decay'/4 =
+    fun (A, B, Decay, Delta_time_seconds) ->
+        'todo'
+'clip'/3 =
+    fun (X, Min_value, Max_value) ->
+        case call 'erlang':'>'(X, Max_value) of <'true'> when 'true' -> Max_value <'false'> when 'true' -> case call 'erlang':'<'(X, Min_value) of <'true'> when 'true' -> Min_value <'false'> when 'true' -> X end end
+'remap'/5 =
+    fun (X, A, B, C, D) ->
+        call 'erlang':'+'(C, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'-'(D, C), call 'erlang':'-'(X, A)), call 'erlang':'-'(B, A)))
+'smoothstep'/3 =
+    fun (Edge0, Edge1, X) ->
+        let <V> =
+            apply 'clip'/3(call 'erlang':'/'(call 'erlang':'-'(X, Edge0), call 'erlang':'-'(Edge1, Edge0)), 0, 1)
+        in  call 'erlang':'*'(call 'erlang':'*'(V, V), call 'erlang':'-'(3, call 'erlang':'*'(2, V)))
+'smootherstep'/3 =
+    fun (Edge0, Edge1, X) ->
+        let <V> =
+            apply 'clip'/3(call 'erlang':'/'(call 'erlang':'-'(X, Edge0), call 'erlang':'-'(Edge1, Edge0)), 0, 1)
+        in  call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(V, V), V), call 'erlang':'+'(call 'erlang':'*'(V, call 'erlang':'-'(call 'erlang':'*'(6, V), 15)), 10))
+'cubic_bezier'/2 =
+    fun (T, P) ->
+        do  case call 'erlang':'=/='(call 'erlang':'length'(P), 4) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            apply 'cubic_bezier_coords'/9(T, call 'erlang':'map_get'('x', call 'lists':'nth'(1, P)), call 'erlang':'map_get'('x', call 'lists':'nth'(2, P)), call 'erlang':'map_get'('x', call 'lists':'nth'(3, P)), call 'erlang':'map_get'('x', call 'lists':'nth'(4, P)), call 'erlang':'map_get'('y', call 'lists':'nth'(1, P)), call 'erlang':'map_get'('y', call 'lists':'nth'(2, P)), call 'erlang':'map_get'('y', call 'lists':'nth'(3, P)), call 'erlang':'map_get'('y', call 'lists':'nth'(4, P)))
+'cubic_bezier_a'/3 =
+    fun (T, X, Y) ->
+        do  case call 'erlang':'=/='(call 'erlang':'length'(X), 4) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'=/='(call 'erlang':'length'(Y), 4) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                apply 'cubic_bezier_coords'/9(T, call 'lists':'nth'(1, X), call 'lists':'nth'(2, X), call 'lists':'nth'(3, X), call 'lists':'nth'(4, X), call 'lists':'nth'(1, Y), call 'lists':'nth'(2, Y), call 'lists':'nth'(3, Y), call 'lists':'nth'(4, Y))
+'cubic_bezier_fa'/3 =
+    fun (T, X, Y) ->
+        apply 'cubic_bezier_coords'/9(T, call 'lists':'nth'(1, X), call 'lists':'nth'(2, X), call 'lists':'nth'(3, X), call 'lists':'nth'(4, X), call 'lists':'nth'(1, Y), call 'lists':'nth'(2, Y), call 'lists':'nth'(3, Y), call 'lists':'nth'(4, Y))
+'cubic_bezier_coords'/9 =
+    fun (T, X0, X1, X2, X3, Y0, Y1, Y2, Y3) ->
+        let <P0> =
+            apply 'pow'/2(call 'erlang':'-'(1, T), 3)
+        in  let <P1> =
+                call 'erlang':'*'(call 'erlang':'*'(3, T), apply 'pow'/2(call 'erlang':'-'(1, T), 2))
+            in  let <P2> =
+                    call 'erlang':'*'(call 'erlang':'*'(3, call 'erlang':'-'(1, T)), apply 'pow'/2(T, 2))
+                in  let <P3> =
+                        apply 'pow'/2(T, 3)
+                    in  let <Xt> =
+                            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(P0, X0), call 'erlang':'*'(P1, X1)), call 'erlang':'*'(P2, X2)), call 'erlang':'*'(P3, X3))
+                        in  let <Yt> =
+                                call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(P0, Y0), call 'erlang':'*'(P1, Y1)), call 'erlang':'*'(P2, Y2)), call 'erlang':'*'(P3, Y3))
+                            in  ~{'x'=>Xt,'y'=>Yt,{'vbeam','type'}=>'BezierPoint'}~
+'acosh'/1 =
+    fun (X) ->
+        case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> call 'erlang':'+'(apply 'log'/1(X), 'todo') <'false'> when 'true' -> case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> apply 'log'/1(call 'erlang':'-'(call 'erlang':'*'('todo', X), call 'erlang':'/'('todo', call 'erlang':'+'(call 'math':'sqrt'(call 'erlang':'-'(call 'erlang':'*'(X, X), 'todo')), X)))) <'false'> when 'true' -> case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> 
+            let <T> =
+                call 'erlang':'-'(X, 'todo')
+            in  apply 'log1p'/1(call 'erlang':'+'(T, call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'*'('todo', T), call 'erlang':'*'(T, T)))))
+         <'false'> when 'true' -> case call 'erlang':'=:='(X, 'todo') of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> apply 'nan'/0() end end end end
+'asinh'/1 =
+    fun (X) ->
+        let <A> =
+            call 'erlang':'abs'(X)
+        in  let <S> =
+                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> -1.0 <'false'> when 'true' -> 1.0 end
+            in  case call 'erlang':'>'(A, 'todo') of <'true'> when 'true' -> call 'erlang':'*'(S, call 'erlang':'+'(apply 'log'/1(A), 'todo')) <'false'> when 'true' -> case call 'erlang':'>'(A, 'todo') of <'true'> when 'true' -> call 'erlang':'*'(S, apply 'log'/1(call 'erlang':'+'(call 'erlang':'*'('todo', A), call 'erlang':'/'('todo', call 'erlang':'+'(A, call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'*'(A, A), 'todo'))))))) <'false'> when 'true' -> case call 'erlang':'>'(A, 'todo') of <'true'> when 'true' -> 
+                    let <A2> =
+                        call 'erlang':'*'(A, A)
+                    in  call 'erlang':'*'(S, apply 'log1p'/1(call 'erlang':'+'(A, call 'erlang':'/'(A2, call 'erlang':'+'('todo', call 'math':'sqrt'(call 'erlang':'+'('todo', A2)))))))
+                 <'false'> when 'true' -> X end end end
+'atanh'/1 =
+    fun (X) ->
+        let <A> =
+            call 'erlang':'abs'(X)
+        in  let <S> =
+                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> -1.0 <'false'> when 'true' -> 1.0 end
+            in  case call 'erlang':'>'(A, 'todo') of <'true'> when 'true' -> apply 'nan'/0() <'false'> when 'true' -> case call 'erlang':'=:='(A, 'todo') of <'true'> when 'true' -> case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> apply 'inf'/1(-1) <'false'> when 'true' -> apply 'inf'/1(1) end <'false'> when 'true' -> case call 'erlang':'>='(A, 'todo') of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(S, 'todo'), apply 'log1p'/1(call 'erlang':'/'(call 'erlang':'*'('todo', A), call 'erlang':'-'('todo', A)))) <'false'> when 'true' -> case call 'erlang':'>'(A, 'todo') of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(S, 'todo'), apply 'log1p'/1(call 'erlang':'+'(call 'erlang':'*'('todo', A), call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'('todo', A), A), call 'erlang':'-'('todo', A))))) <'false'> when 'true' -> X end end end end
+'xatan'/1 =
+    fun (X) ->
+        let <Xatan_p0> =
+            -8.750608600031904122785e-01
+        in  let <Xatan_p1> =
+                -1.615753718733365076637e+01
+            in  let <Xatan_p2> =
+                    -7.500855792314704667340e+01
+                in  let <Xatan_p3> =
+                        -1.228866684490136173410e+02
+                    in  let <Xatan_p4> =
+                            -6.485021904942025371773e+01
+                        in  let <Xatan_q0> =
+                                2.485846490142306297962e+01
+                            in  let <Xatan_q1> =
+                                    1.650270098316988542046e+02
+                                in  let <Xatan_q2> =
+                                        4.328810604912902668951e+02
+                                    in  let <Xatan_q3> =
+                                            4.853903996359136964868e+02
+                                        in  let <Xatan_q4> =
+                                                1.945506571482613964425e+02
+                                            in  let <Z> =
+                                                    call 'erlang':'*'(X, X)
+                                                in  let <Z_1> =
+                                                        call 'erlang':'/'(call 'erlang':'*'(Z, call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(Xatan_p0, Z), Xatan_p1), Z), Xatan_p2), Z), Xatan_p3), Z), Xatan_p4)), call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(Z, Xatan_q0), Z), Xatan_q1), Z), Xatan_q2), Z), Xatan_q3), Z), Xatan_q4))
+                                                    in  let <Z_2> =
+                                                            call 'erlang':'+'(call 'erlang':'*'(X, Z_1), X)
+                                                        in  Z_2
+'satan'/1 =
+    fun (X) ->
+        case call 'erlang':'=<'(X, 'todo') of
+            <'true'> when 'true' -> apply 'xatan'/1(X)
+            <'false'> when 'true' -> 
+                case call 'erlang':'>'(X, 'todo') of
+                    <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'-'('todo', apply 'xatan'/1(call 'erlang':'/'('todo', X))), 'todo')
+                    <'false'> when 'true' -> 
+                        call 'erlang':'+'(call 'erlang':'+'('todo', apply 'xatan'/1(call 'erlang':'/'(call 'erlang':'-'(X, 'todo'), call 'erlang':'+'(X, 'todo')))), call 'erlang':'*'('todo', 'todo'))
+                end
+        end
+'atan'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                case call 'erlang':'>'(X, 0) of
+                    <'true'> when 'true' -> apply 'satan'/1(X)
+                    <'false'> when 'true' -> 
+                        call 'erlang':'-'(apply 'satan'/1(call 'erlang':'-'(X)))
+                end
+        end
+'atan2'/2 =
+    fun (Y, X) ->
+        case call 'erlang':'or'(apply 'is_nan'/1(Y), apply 'is_nan'/1(X)) of
+            <'true'> when 'true' -> apply 'nan'/0()
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(Y, 'todo') of
+                    <'true'> when 'true' -> apply 'copysign'/2(3.14159265358979323846264338327950288419716939937510582097494459, Y)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'=:='(X, 'todo') of
+                            <'true'> when 'true' -> apply 'copysign'/2(1.5707963267948966, Y)
+                            <'false'> when 'true' -> 
+                                case apply 'is_inf'/2(X, 0) of
+                                    <'true'> when 'true' -> apply 'copysign'/2(3.14159265358979323846264338327950288419716939937510582097494459, Y)
+                                    <'false'> when 'true' -> 
+                                        case apply 'is_inf'/2(Y, 0) of
+                                            <'true'> when 'true' -> apply 'copysign'/2(1.5707963267948966, Y)
+                                            <'false'> when 'true' -> 
+                                                let <Q> =
+                                                    apply 'atan'/1(call 'erlang':'/'(Y, X))
+                                                in  case call 'erlang':'<'(X, 0) of
+                                                        <'true'> when 'true' -> call 'erlang':'-'(Q, 'todo')
+                                                        <'false'> when 'true' -> 
+                                                            Q
+                                                    end
+                                        end
+                                end
+                        end
+                end
+        end
+'asin'/1 =
+    fun (X_) ->
+        let <X> =
+            X_
+        in  case call 'erlang':'=:='(X, 'todo') of
+                <'true'> when 'true' -> X
+                <'false'> when 'true' -> 
+                    let <Sign> =
+                        'false'
+                    in  let <X_1> =
+                            case call 'erlang':'<'(X, 'todo') of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                        in  let <Sign_2> =
+                                case call 'erlang':'<'(X_1, 'todo') of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Sign end
+                            in  case call 'erlang':'>'(X_3, 'todo') of
+                                    <'true'> when 'true' -> apply 'nan'/0()
+                                    <'false'> when 'true' -> 
+                                        let <Temp> =
+                                            call 'math':'sqrt'(call 'erlang':'-'('todo', call 'erlang':'*'(X_3, X_3)))
+                                        in  let <Temp_4> =
+                                                case call 'erlang':'>'(X_3, 'todo') of <'true'> when 'true' -> call 'erlang':'-'('todo', apply 'satan'/1(call 'erlang':'/'(Temp, X_3))) <'false'> when 'true' -> apply 'satan'/1(call 'erlang':'/'(X_3, Temp)) end
+                                            in  let <Temp_5> =
+                                                    case Sign_2 of <'true'> when 'true' -> call 'erlang':'-'(Temp_4) <'false'> when 'true' -> Temp_4 end
+                                                in  Temp_5
+                                end
+            end
+'acos'/1 =
+    fun (X) ->
+        case call 'erlang':'or'(call 'erlang':'<'(X, 'todo'), call 'erlang':'>'(X, 'todo')) of
+            <'true'> when 'true' -> apply 'nan'/0()
+            <'false'> when 'true' -> 
+                case call 'erlang':'>'(X, 'todo') of
+                    <'true'> when 'true' -> call 'erlang':'*'('todo', apply 'asin'/1(call 'math':'sqrt'(call 'erlang':'-'('todo', call 'erlang':'*'('todo', X)))))
+                    <'false'> when 'true' -> 
+                        let <Z> =
+                            call 'erlang':'-'(call 'erlang':'/'('todo', 'todo'), apply 'asin'/1(X))
+                        in  let <Z_1> =
+                                call 'erlang':'+'(Z, 'todo')
+                            in  let <Z_2> =
+                                    call 'erlang':'+'(Z_1, call 'erlang':'/'('todo', 'todo'))
+                                in  Z_2
+                end
+        end
+'maxof'/0 =
+    fun () ->
+        'ok'
+'minof'/0 =
+    fun () ->
+        'ok'
+'log_n'/2 =
+    fun (X, B) ->
+        let <Y> =
+            apply 'log'/1(X)
+        in  let <Z> =
+                apply 'log'/1(B)
+            in  call 'erlang':'/'(Y, Z)
+'log10'/1 =
+    fun (X) ->
+        let <X_> =
+            X
+        in  let <Hx> =
+                'todo'
+            in  let <K> =
+                    'todo'
+                in  let <K_1> =
+                        case call 'erlang':'<'(Hx, 'todo') of <'true'> when 'true' -> do  case call 'erlang':'=:='(call 'erlang':'band'(Hx, 16#7fffffffffffffff), 0) of <'true'> when 'true' -> apply 'inf'/1(-1) <'false'> when 'true' -> 'ok' end do  case call 'erlang':'<'(Hx, 0) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(X_, X_), call 'erlang':'-'(X_, X_)) <'false'> when 'true' -> 'ok' end call 'erlang':'-'(K, 54) <'false'> when 'true' -> K end
+                    in  let <X__2> =
+                            case call 'erlang':'<'(Hx, 'todo') of <'true'> when 'true' -> do  case call 'erlang':'=:='(call 'erlang':'band'(Hx, 16#7fffffffffffffff), 0) of <'true'> when 'true' -> apply 'inf'/1(-1) <'false'> when 'true' -> 'ok' end do  case call 'erlang':'<'(Hx, 0) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(X_, X_), call 'erlang':'-'(X_, X_)) <'false'> when 'true' -> 'ok' end let <K_3> = call 'erlang':'-'(K_3, 54) in 'todo' <'false'> when 'true' -> X_ end
+                        in  let <Hx_4> =
+                                case call 'erlang':'<'(Hx, 'todo') of <'true'> when 'true' -> do  case call 'erlang':'=:='(call 'erlang':'band'(Hx, 16#7fffffffffffffff), 0) of <'true'> when 'true' -> apply 'inf'/1(-1) <'false'> when 'true' -> 'ok' end do  case call 'erlang':'<'(Hx, 0) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(X__2, X__2), call 'erlang':'-'(X__2, X__2)) <'false'> when 'true' -> 'ok' end let <K_5> = call 'erlang':'-'(K_5, 54) in let <X__6> = 'todo' in 'todo' <'false'> when 'true' -> Hx end
+                            in  case call 'erlang':'>='(Hx_4, 'todo') of
+                                    <'true'> when 'true' -> call 'erlang':'+'(X__6, X__6)
+                                    <'false'> when 'true' -> 
+                                        let <K_7> =
+                                            call 'erlang':'+'(K_5, 'todo')
+                                        in  let <I> =
+                                                'todo'
+                                            in  let <Hx_8> =
+                                                    call 'erlang':'bor'(call 'erlang':'band'(Hx_4, 16#000fffffffffffff), call 'erlang':'bsl'('todo', 52))
+                                                in  let <Y> =
+                                                        'todo'
+                                                    in  let <X__9> =
+                                                            apply 'f64_from_bits'/1('todo')
+                                                        in  let <Z> =
+                                                                call 'erlang':'+'(call 'erlang':'*'(Y, 'todo'), call 'erlang':'*'('todo', apply 'log'/1(X__9)))
+                                                            in  call 'erlang':'+'(Z, call 'erlang':'*'(Y, 'todo'))
+                                end
+'log2'/1 =
+    fun (X) ->
+        let <Frac> =
+            apply 'frexp'/1(X)
+        in  let <Exp> =
+                apply 'frexp'/1(X)
+            in  case call 'erlang':'=:='(Frac, 'todo') of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        call 'erlang':'+'(call 'erlang':'*'(apply 'log'/1(Frac), 'todo'), 'todo')
+                end
+'log1p'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'+'('todo', X)
+        in  let <Z> =
+                call 'erlang':'-'(Y, 'todo')
+            in  call 'erlang':'-'(apply 'log'/1(Y), call 'erlang':'/'(call 'erlang':'-'(Z, X), Y))
+'log_b'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> apply 'inf'/1(-1)
+            <'false'> when 'true' -> 
+                case apply 'is_inf'/2(X, 0) of
+                    <'true'> when 'true' -> apply 'inf'/1(1)
+                    <'false'> when 'true' -> 
+                        case apply 'is_nan'/1(X) of
+                            <'true'> when 'true' -> X
+                            <'false'> when 'true' -> 
+                                'todo'
+                        end
+                end
+        end
+'ilog_b'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                case apply 'is_nan'/1(X) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        case apply 'is_inf'/2(X, 0) of
+                            <'true'> when 'true' -> 'todo'
+                            <'false'> when 'true' -> 
+                                apply 'ilog_b_'/1(X)
+                        end
+                end
+        end
+'ilog_b_'/1 =
+    fun (X_) ->
+        let <X> =
+            apply 'normalize'/1(X_)
+        in  let <Exp> =
+                apply 'normalize'/1(X_)
+            in  call 'erlang':'+'(call 'erlang':'-'('todo', 1023), Exp)
+'log'/1 =
+    fun (A) ->
+        let <Ln2_hi> =
+            6.93147180369123816490e-01
+        in  let <Ln2_lo> =
+                1.90821492927058770002e-10
+            in  let <L1> =
+                    6.666666666666735130e-01
+                in  let <L2> =
+                        3.999999999940941908e-01
+                    in  let <L3> =
+                            2.857142874366239149e-01
+                        in  let <L4> =
+                                2.222219843214978396e-01
+                            in  let <L5> =
+                                    1.818357216161805012e-01
+                                in  let <L6> =
+                                        1.531383769920937332e-01
+                                    in  let <L7> =
+                                            1.479819860511658591e-01
+                                        in  let <X> =
+                                                A
+                                            in  do  case call 'erlang':'or'(apply 'is_nan'/1(X), apply 'is_inf'/2(X, 1)) of <'true'> when 'true' -> X <'false'> when 'true' -> case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> apply 'nan'/0() <'false'> when 'true' -> case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> apply 'inf'/1(-1) <'false'> when 'true' -> 'ok' end end end
+                                                    let <F1> =
+                                                        apply 'frexp'/1(X)
+                                                    in  let <Ki> =
+                                                            apply 'frexp'/1(X)
+                                                        in  let <F1_1> =
+                                                                case call 'erlang':'<'(F1, 'todo') of <'true'> when 'true' -> 2 <'false'> when 'true' -> F1 end
+                                                            in  let <F> =
+                                                                    call 'erlang':'-'(F1_1, 1)
+                                                                in  let <K> =
+                                                                        'todo'
+                                                                    in  let <S> =
+                                                                            call 'erlang':'/'(F, call 'erlang':'+'(2, F))
+                                                                        in  let <S2> =
+                                                                                call 'erlang':'*'(S, S)
+                                                                            in  let <S4> =
+                                                                                    call 'erlang':'*'(S2, S2)
+                                                                                in  let <T1> =
+                                                                                        call 'erlang':'*'(S2, call 'erlang':'+'(L1, call 'erlang':'*'(S4, call 'erlang':'+'(L3, call 'erlang':'*'(S4, call 'erlang':'+'(L5, call 'erlang':'*'(S4, L7)))))))
+                                                                                    in  let <T2> =
+                                                                                            call 'erlang':'*'(S4, call 'erlang':'+'(L2, call 'erlang':'*'(S4, call 'erlang':'+'(L4, call 'erlang':'*'(S4, L6)))))
+                                                                                        in  let <R> =
+                                                                                                call 'erlang':'+'(T1, T2)
+                                                                                            in  let <Hfsq> =
+                                                                                                    call 'erlang':'*'(call 'erlang':'*'('todo', F), F)
+                                                                                                in  call 'erlang':'-'(call 'erlang':'*'(K, Ln2_hi), call 'erlang':'-'(call 'erlang':'-'(Hfsq, call 'erlang':'+'(call 'erlang':'*'(S, call 'erlang':'+'(Hfsq, R)), call 'erlang':'*'(K, Ln2_lo))), F))
+'aprox_sin'/1 =
+    fun (A) ->
+        let <A0> =
+            1.91059300966915117e-31
+        in  let <A1> =
+                1.00086760103908896
+            in  let <A2> =
+                    -1.21276126894734565e-2
+                in  let <A3> =
+                        -1.38078780785773762e-1
+                    in  let <A4> =
+                            -2.67353392911981221e-2
+                        in  let <A5> =
+                                2.08026600266304389e-2
+                            in  let <A6> =
+                                    -3.03996055049204407e-3
+                                in  let <A7> =
+                                        1.38235642404333740e-4
+                                    in  let <Tmp> =
+                                            call 'erlang':'+'(A4, call 'erlang':'*'(A, call 'erlang':'+'(A5, call 'erlang':'*'(A, call 'erlang':'+'(A6, call 'erlang':'*'(A, A7))))))
+                                        in  call 'erlang':'+'(A0, call 'erlang':'*'(A, call 'erlang':'+'(A1, call 'erlang':'*'(A, call 'erlang':'+'(A2, call 'erlang':'*'(A, call 'erlang':'+'(A3, call 'erlang':'*'(A, Tmp))))))))
+'aprox_cos'/1 =
+    fun (A) ->
+        let <A0> =
+            9.9995999154986614e-1
+        in  let <A1> =
+                1.2548995793001028e-3
+            in  let <A2> =
+                    -5.0648546280678015e-1
+                in  let <A3> =
+                        1.2942246466519995e-2
+                    in  let <A4> =
+                            2.8668384702547972e-2
+                        in  let <A5> =
+                                7.3726485210586547e-3
+                            in  let <A6> =
+                                    -3.8510875386947414e-3
+                                in  let <A7> =
+                                        4.7196604604366623e-4
+                                    in  let <A8> =
+                                            -1.8776444013090451e-5
+                                        in  let <Tmp> =
+                                                call 'erlang':'+'(A4, call 'erlang':'*'(A, call 'erlang':'+'(A5, call 'erlang':'*'(A, call 'erlang':'+'(A6, call 'erlang':'*'(A, call 'erlang':'+'(A7, call 'erlang':'*'(A, A8))))))))
+                                            in  call 'erlang':'+'(A0, call 'erlang':'*'(A, call 'erlang':'+'(A1, call 'erlang':'*'(A, call 'erlang':'+'(A2, call 'erlang':'*'(A, call 'erlang':'+'(A3, call 'erlang':'*'(A, Tmp))))))))
+'copysign'/2 =
+    fun (X, Y) ->
+        apply 'f64_from_bits'/1(call 'erlang':'bor'(call 'erlang':'band'(apply 'f64_bits'/1(X), call 'erlang':'bnot'('todo')), call 'erlang':'band'(apply 'f64_bits'/1(Y), 'todo')))
+'degrees'/1 =
+    fun (Radians) ->
+        call 'erlang':'*'(Radians, 'todo')
+'radians'/1 =
+    fun (Degrees) ->
+        call 'erlang':'*'(Degrees, 'todo')
+'angle_diff'/2 =
+    fun (Radian_a, Radian_b) ->
+        let <Delta> =
+            apply 'fmod'/2(call 'erlang':'-'(Radian_b, Radian_a), 6.28318530717958647692528676655900576839433879875021164194988918)
+        in  let <Delta_1> =
+                apply 'fmod'/2(call 'erlang':'+'(Delta, 'todo'), 6.28318530717958647692528676655900576839433879875021164194988918)
+            in  let <Delta_2> =
+                    3.141592653589793
+                in  Delta_2
+'digits'/2 =
+    fun (Num, Params) ->
+        let <B> =
+            call 'erlang':'map_get'('base', Params)
+        in  do  case call 'erlang':'<'(B, 2) of <'true'> when 'true' -> apply 'panic_n'/2(#{#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#, B) <'false'> when 'true' -> 'ok' end
+                let <N> =
+                    Num
+                in  let <Sign> =
+                        1
+                    in  let <Sign_1> =
+                            case call 'erlang':'<'(N, 0) of <'true'> when 'true' -> -1 <'false'> when 'true' -> Sign end
+                        in  let <N_2> =
+                                case call 'erlang':'<'(N, 0) of <'true'> when 'true' -> let <Sign_3> = -1 in call 'erlang':'-'(N) <'false'> when 'true' -> N end
+                            in  let <Res> =
+                                    []
+                                in  case call 'erlang':'=:='(N_2, 0) of
+                                        <'true'> when 'true' -> Res
+                                        <'false'> when 'true' -> 
+                                            do  case call 'erlang':'=:='(Sign_3, -1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                let <Res_4> =
+                                                    case call 'erlang':'map_get'('reverse', Params) of <'true'> when 'true' -> call 'lists':'reverse'(Res) <'false'> when 'true' -> Res end
+                                                in  Res_4
+                                    end
+'count_digits'/1 =
+    fun (Number) ->
+        let <N> =
+            Number
+        in  case call 'erlang':'=:='(N, 0) of
+                <'true'> when 'true' -> 1
+                <'false'> when 'true' -> 
+                    let <C> =
+                        0
+                    in  C
+            end
+'minmax'/2 =
+    fun (A, B) ->
+        case call 'erlang':'<'(A, B) of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                B
+        end
+'clamp'/3 =
+    fun (X, A, B) ->
+        case call 'erlang':'<'(X, A) of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                case call 'erlang':'>'(X, B) of
+                    <'true'> when 'true' -> B
+                    <'false'> when 'true' -> 
+                        X
+                end
+        end
+'sign'/1 =
+    fun (N) ->
+        case apply 'is_nan'/1(N) of
+            <'true'> when 'true' -> apply 'nan'/0()
+            <'false'> when 'true' -> 
+                apply 'copysign'/2(1.0, N)
+        end
+'signi'/1 =
+    fun (N) ->
+        'todo'
+'signbit'/1 =
+    fun (X) ->
+        call 'erlang':'=/='(call 'erlang':'band'(apply 'f64_bits'/1(X), 'todo'), 0)
+'tolerance'/3 =
+    fun (Actual, Expected, Tol) ->
+        case call 'erlang':'=:='(Actual, Expected) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                let <D> =
+                    call 'erlang':'-'(Actual, Expected)
+                in  let <D_1> =
+                        case call 'erlang':'<'(D, 0) of <'true'> when 'true' -> call 'erlang':'-'(D) <'false'> when 'true' -> D end
+                    in  let <Ee> =
+                            Tol
+                        in  let <Ee_2> =
+                                case call 'erlang':'=/='(Expected, 0) of <'true'> when 'true' -> Expected <'false'> when 'true' -> Ee end
+                            in  call 'erlang':'<'(D_1, Ee_2)
+        end
+'close'/2 =
+    fun (Actual, Expected) ->
+        apply 'tolerance'/3(Actual, Expected, 1.0e-14)
+'veryclose'/2 =
+    fun (Actual, Expected) ->
+        apply 'tolerance'/3(Actual, Expected, 4.0e-16)
+'alike'/2 =
+    fun (A, B) ->
+        case call 'erlang':'=:='(call 'erlang':'band'(apply 'f64_bits'/1(A), 16#FFFFFFFFFFFFFFFC), call 'erlang':'band'(apply 'f64_bits'/1(B), 16#FFFFFFFFFFFFFFFC)) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                case call 'erlang':'and'(call 'erlang':'=:='(A, -0), call 'erlang':'=:='(B, 0)) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'and'(call 'erlang':'=:='(A, 0), call 'erlang':'=:='(B, -0)) of
+                            <'true'> when 'true' -> 'true'
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'and'(apply 'is_nan'/1(A), apply 'is_nan'/1(B)) of
+                                    <'true'> when 'true' -> 'true'
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'=:='(A, B) of
+                                            <'true'> when 'true' -> call 'erlang':'=:='(apply 'signbit'/1(A), apply 'signbit'/1(B))
+                                            <'false'> when 'true' -> 
+                                                'false'
+                                        end
+                                end
+                        end
+                end
+        end
+'min'/2 =
+    fun (A, B) ->
+        case call 'erlang':'<'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+'max'/2 =
+    fun (A, B) ->
+        case call 'erlang':'>'(A, B) of <'true'> when 'true' -> A <'false'> when 'true' -> B end
+'abs'/1 =
+    fun (A) ->
+        case call 'erlang':'<'(A, 0) of <'true'> when 'true' -> call 'erlang':'-'(A) <'false'> when 'true' -> A end
+'modf'/1 =
+    fun (F) ->
+        let <Abs_f> =
+            call 'erlang':'abs'(F)
+        in  let <I> =
+                0.0
+            in  let <I_1> =
+                    case call 'erlang':'>='(Abs_f, 'todo') of <'true'> when 'true' -> F <'false'> when 'true' -> do  call 'erlang':'+'(Abs_f, 'todo') 4.503599627370496000e+15 end
+                in  I_1
+'divide_truncated'/2 =
+    fun (Numer, Denom) ->
+        ~{'quot'=>call 'erlang':'/'(Numer, Denom),'rem'=>call 'erlang':'rem'(Numer, Denom),{'vbeam','type'}=>'DivResult'}~
+'divide_euclid'/2 =
+    fun (Numer, Denom) ->
+        let <Q> =
+            call 'erlang':'/'(Numer, Denom)
+        in  let <R> =
+                call 'erlang':'rem'(Numer, Denom)
+            in  do  case call 'erlang':'<'(R, 0) of <'true'> when 'true' -> case call 'erlang':'>'(Denom, 0) of <'true'> when 'true' -> 
+                    let <Q_1> =
+                        call 'erlang':'-'(Q, 1)
+                    in  let <R_2> =
+                            call 'erlang':'+'(R, Denom)
+                        in  R_2
+                 <'false'> when 'true' -> 
+                    let <Q_3> =
+                        call 'erlang':'+'(Q_1, 1)
+                    in  let <R_4> =
+                            call 'erlang':'-'(R_2, Denom)
+                        in  R_4
+                 end <'false'> when 'true' -> 'ok' end
+                    ~{'quot'=>Q_3,'rem'=>R_4,{'vbeam','type'}=>'DivResult'}~
+'divide_floored'/2 =
+    fun (Numer, Denom) ->
+        let <Q> =
+            call 'erlang':'/'(Numer, Denom)
+        in  let <R> =
+                call 'erlang':'rem'(Numer, Denom)
+            in  let <Q_1> =
+                    case call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>'(R, 0), call 'erlang':'<'(Denom, 0)), call 'erlang':'and'(call 'erlang':'<'(R, 0), call 'erlang':'>'(Denom, 0))) of <'true'> when 'true' -> call 'erlang':'-'(Q, 1) <'false'> when 'true' -> Q end
+                in  let <R_2> =
+                        case call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>'(R, 0), call 'erlang':'<'(Denom, 0)), call 'erlang':'and'(call 'erlang':'<'(R, 0), call 'erlang':'>'(Denom, 0))) of <'true'> when 'true' -> let <Q_3> = call 'erlang':'-'(Q_3, 1) in call 'erlang':'+'(R, Denom) <'false'> when 'true' -> R end
+                    in  ~{'quot'=>Q_3,'rem'=>R_2,{'vbeam','type'}=>'DivResult'}~
+'modulo_truncated'/2 =
+    fun (Numer, Denom) ->
+        call 'erlang':'rem'(Numer, Denom)
+'modulo_euclid'/2 =
+    fun (Numer, Denom) ->
+        let <R> =
+            call 'erlang':'rem'(Numer, Denom)
+        in  case call 'erlang':'<'(R, 0) of <'true'> when 'true' -> case call 'erlang':'>'(Denom, 0) of <'true'> when 'true' -> call 'erlang':'+'(R, Denom) <'false'> when 'true' -> call 'erlang':'-'(R, Denom) end <'false'> when 'true' -> R end
+'modulo_floored'/2 =
+    fun (Numer, Denom) ->
+        let <R> =
+            call 'erlang':'rem'(Numer, Denom)
+        in  case call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>'(R, 0), call 'erlang':'<'(Denom, 0)), call 'erlang':'and'(call 'erlang':'<'(R, 0), call 'erlang':'>'(Denom, 0))) of <'true'> when 'true' -> call 'erlang':'+'(R, Denom) <'false'> when 'true' -> R end
+'nextafter32'/2 =
+    fun (X, Y) ->
+        let <R> =
+            'todo'
+        in  let <R_1> =
+                case call 'erlang':'or'(apply 'is_nan'/1('todo'), apply 'is_nan'/1('todo')) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> case call 'erlang':'=:='(X, Y) of <'true'> when 'true' -> X <'false'> when 'true' -> case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'>'(Y, X), call 'erlang':'>'(X, 0)) of <'true'> when 'true' -> apply 'f32_from_bits'/1(call 'erlang':'+'(apply 'f32_bits'/1(X), 1)) <'false'> when 'true' -> apply 'f32_from_bits'/1(call 'erlang':'-'(apply 'f32_bits'/1(X), 1)) end end end end
+            in  R_1
+'nextafter'/2 =
+    fun (X, Y) ->
+        let <R> =
+            0.0
+        in  let <R_1> =
+                case call 'erlang':'or'(apply 'is_nan'/1(X), apply 'is_nan'/1(Y)) of <'true'> when 'true' -> apply 'nan'/0() <'false'> when 'true' -> case call 'erlang':'=:='(X, Y) of <'true'> when 'true' -> X <'false'> when 'true' -> case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> apply 'copysign'/2(apply 'f64_from_bits'/1(1), Y) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'>'(Y, X), call 'erlang':'>'(X, 0)) of <'true'> when 'true' -> apply 'f64_from_bits'/1(call 'erlang':'+'(apply 'f64_bits'/1(X), 1)) <'false'> when 'true' -> apply 'f64_from_bits'/1(call 'erlang':'-'(apply 'f64_bits'/1(X), 1)) end end end end
+            in  R_1
+'poly_n_eval'/3 =
+    fun (C, N, X) ->
+        do  case call 'erlang':'=:='(call 'erlang':'length'(C), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            let <Len> =
+                'todo'
+            in  let <Ans> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(Len, 1), 1), C)
+                in  let <Ans_1> =
+                        let <_2> =
+                            fun (E_, AnsAcc) ->
+                                let <AnsOut_4> =
+                                    call 'erlang':'+'(E_, call 'erlang':'*'(X, AnsAcc))
+                                in  AnsOut_4
+                        in  call 'lists':'foldl'(_2, Ans, call 'lists':'nth'(call 'erlang':'+'('todo', 1), C))
+                    in  Ans_1
+'poly_n_1_eval'/3 =
+    fun (C, N, X) ->
+        do  case call 'erlang':'=:='(call 'erlang':'length'(C), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            let <Len> =
+                call 'erlang':'-'('todo', 1)
+            in  let <Ans> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(Len, 1), 1), C)
+                in  let <Ans_1> =
+                        let <_2> =
+                            fun (E_, AnsAcc) ->
+                                let <AnsOut_4> =
+                                    call 'erlang':'+'(E_, call 'erlang':'*'(X, AnsAcc))
+                                in  AnsOut_4
+                        in  call 'lists':'foldl'(_2, Ans, call 'lists':'nth'(call 'erlang':'+'('todo', 1), C))
+                    in  Ans_1
+'poly_eval'/2 =
+    fun (C, X) ->
+        apply 'poly_n_eval'/3(C, call 'erlang':'length'(C), X)
+'poly_1_eval'/2 =
+    fun (C, X) ->
+        apply 'poly_n_1_eval'/3(C, call 'erlang':'length'(C), X)
+'ChebSeries.eval_e'/2 =
+    fun (Cs, X) ->
+        let <D> =
+            0.0
+        in  let <Dd> =
+                0.0
+            in  let <Y> =
+                    call 'erlang':'/'(call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'*'('todo', X), call 'erlang':'map_get'('a', Cs)), call 'erlang':'map_get'('b', Cs)), call 'erlang':'-'(call 'erlang':'map_get'('b', Cs), call 'erlang':'map_get'('a', Cs)))
+                in  let <Y2> =
+                        call 'erlang':'*'('todo', Y)
+                    in  let <E_> =
+                            0.0
+                        in  let <Temp> =
+                                0.0
+                            in  let <Temp_1> =
+                                    D
+                                in  let <D_2> =
+                                        call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'*'(Y, D), Dd), call 'erlang':'*'('todo', call 'lists':'nth'(1, call 'erlang':'map_get'('c', Cs))))
+                                    in  let <E__3> =
+                                            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'abs'(call 'erlang':'*'(Y, Temp_1)), call 'erlang':'abs'(Dd)), call 'erlang':'*'('todo', call 'erlang':'abs'(call 'lists':'nth'(1, call 'erlang':'map_get'('c', Cs)))))
+                                        in  D_2
+'powf'/2 =
+    fun (A, B) ->
+        'todo'
+'pow10'/1 =
+    fun (N) ->
+        case call 'erlang':'and'(call 'erlang':'=<'(0, N), call 'erlang':'=<'(N, 308)) of
+            <'true'> when 'true' -> call 'erlang':'*'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'div'('todo', 32), 1), ['todo'|[1.0e+32|[1.0e+64|[1.0e+96|[1.0e+128|[1.0e+160|[1.0e+192|[1.0e+224|[1.0e+256|[1.0e+288|[]]]]]]]]]]]), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'('todo', 32), 1), ['todo'|[1.0e+01|[1.0e+02|[1.0e+03|[1.0e+04|[1.0e+05|[1.0e+06|[1.0e+07|[1.0e+08|[1.0e+09|[1.0e+10|[1.0e+11|[1.0e+12|[1.0e+13|[1.0e+14|[1.0e+15|[1.0e+16|[1.0e+17|[1.0e+18|[1.0e+19|[1.0e+20|[1.0e+21|[1.0e+22|[1.0e+23|[1.0e+24|[1.0e+25|[1.0e+26|[1.0e+27|[1.0e+28|[1.0e+29|[1.0e+30|[1.0e+31|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]))
+            <'false'> when 'true' -> 
+                case call 'erlang':'and'(call 'erlang':'=<'(-323, N), call 'erlang':'=<'(N, 0)) of
+                    <'true'> when 'true' -> call 'erlang':'/'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'div'('todo', 32), 1), ['todo'|[1.0e-32|[1.0e-64|[1.0e-96|[1.0e-128|[1.0e-160|[1.0e-192|[1.0e-224|[1.0e-256|[1.0e-288|[1.0e-320|[]]]]]]]]]]]]), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'('todo', 32), 1), ['todo'|[1.0e+01|[1.0e+02|[1.0e+03|[1.0e+04|[1.0e+05|[1.0e+06|[1.0e+07|[1.0e+08|[1.0e+09|[1.0e+10|[1.0e+11|[1.0e+12|[1.0e+13|[1.0e+14|[1.0e+15|[1.0e+16|[1.0e+17|[1.0e+18|[1.0e+19|[1.0e+20|[1.0e+21|[1.0e+22|[1.0e+23|[1.0e+24|[1.0e+25|[1.0e+26|[1.0e+27|[1.0e+28|[1.0e+29|[1.0e+30|[1.0e+31|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]))
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'>'(N, 0) of
+                            <'true'> when 'true' -> apply 'inf'/1(1)
+                            <'false'> when 'true' -> 
+                                0.0
+                        end
+                end
+        end
+'powi'/2 =
+    fun (A, B) ->
+        let <B_> =
+            B
+        in  let <P> =
+                A
+            in  let <V> =
+                    'todo'
+                in  case call 'erlang':'<'(B_, 0) of
+                        <'true'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'*'(A, A), 1) of <'true'> when 'true' -> 0 <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'band'(B_, 1), 0) of <'true'> when 'true' -> A <'false'> when 'true' -> 1 end end
+                        <'false'> when 'true' -> 
+                            V
+                    end
+'is_odd_int'/1 =
+    fun (X) ->
+        let <Xi> =
+            apply 'modf'/1(X)
+        in  let <Xf> =
+                apply 'modf'/1(X)
+            in  call 'erlang':'and'(call 'erlang':'=:='(Xf, 0), call 'erlang':'=:='(call 'erlang':'band'('todo', 1), 1))
+'pow'/2 =
+    fun (X, Y) ->
+        do  case call 'erlang':'or'(call 'erlang':'=:='(Y, 0), call 'erlang':'=:='(X, 1)) of <'true'> when 'true' -> 1 <'false'> when 'true' -> case call 'erlang':'=:='(Y, 1) of <'true'> when 'true' -> X <'false'> when 'true' -> case call 'erlang':'or'(apply 'is_nan'/1(X), apply 'is_nan'/1(Y)) of <'true'> when 'true' -> apply 'nan'/0() <'false'> when 'true' -> case call 'erlang':'=:='(Y, 2) of <'true'> when 'true' -> call 'erlang':'*'(X, X) <'false'> when 'true' -> case call 'erlang':'=:='(Y, 3) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(X, X), X) <'false'> when 'true' -> case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> case call 'erlang':'<'(Y, 0) of <'true'> when 'true' -> 
+            case apply 'is_odd_int'/1(Y) of
+                <'true'> when 'true' -> apply 'copysign'/2(apply 'inf'/1(1), X)
+                <'false'> when 'true' -> 
+                    apply 'inf'/1(1)
+            end
+         <'false'> when 'true' -> case call 'erlang':'>'(Y, 0) of <'true'> when 'true' -> 
+            case apply 'is_odd_int'/1(Y) of
+                <'true'> when 'true' -> X
+                <'false'> when 'true' -> 
+                    0
+            end
+         <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> case apply 'is_inf'/2(Y, 0) of <'true'> when 'true' -> case call 'erlang':'=:='(X, -1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'<'(call 'erlang':'abs'(X), 1), apply 'is_inf'/2(Y, 1)) of <'true'> when 'true' -> 0 <'false'> when 'true' -> apply 'inf'/1(1) end end <'false'> when 'true' -> case apply 'is_inf'/2(X, 0) of <'true'> when 'true' -> 
+            case apply 'is_inf'/2(X, -1) of
+                <'true'> when 'true' -> apply 'pow'/2(call 'erlang':'/'(1, X), call 'erlang':'-'(Y))
+                <'false'> when 'true' -> 
+                    case call 'erlang':'<'(Y, 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> case call 'erlang':'>'(Y, 0) of <'true'> when 'true' -> apply 'inf'/1(1) <'false'> when 'true' -> 'ok' end end
+            end
+         <'false'> when 'true' -> case call 'erlang':'=:='(Y, 'todo') of <'true'> when 'true' -> call 'math':'sqrt'(X) <'false'> when 'true' -> case call 'erlang':'=:='(Y, 'todo') of <'true'> when 'true' -> call 'erlang':'/'(1, call 'math':'sqrt'(X)) <'false'> when 'true' -> 'ok' end end end end end end end end end end
+            let <Yi> =
+                apply 'modf'/1(call 'erlang':'abs'(Y))
+            in  let <Yf> =
+                    apply 'modf'/1(call 'erlang':'abs'(Y))
+                in  case call 'erlang':'and'(call 'erlang':'=/='(Yf, 0), call 'erlang':'<'(X, 0)) of
+                        <'true'> when 'true' -> apply 'nan'/0()
+                        <'false'> when 'true' -> 
+                            do  case call 'erlang':'>='(Yi, call 'erlang':'bsl'('todo', 63)) of <'true'> when 'true' -> case call 'erlang':'=:='(X, -1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'<'(call 'erlang':'abs'(X), 1), call 'erlang':'>'(Y, 0)) of <'true'> when 'true' -> 0 <'false'> when 'true' -> apply 'inf'/1(1) end end <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'=:='(Yf, 'todo') of
+                                    <'true'> when 'true' -> call 'erlang':'/'(1, Result)
+                                    <'false'> when 'true' -> 
+                                        let <A1> =
+                                            1.0
+                                        in  let <Ae> =
+                                                0
+                                            in  let <A1_1> =
+                                                    case call 'erlang':'=/='(Yf, 0) of <'true'> when 'true' -> do  case call 'erlang':'>'(Yf, 'todo') of <'true'> when 'true' -> 
+                                                        do  'todo'
+                                                            'todo'
+                                                     <'false'> when 'true' -> 'ok' end apply 'exp'/1(call 'erlang':'*'(Yf, apply 'log'/1(X))) <'false'> when 'true' -> A1 end
+                                                in  let <X1> =
+                                                        apply 'frexp'/1(X)
+                                                    in  let <Xe> =
+                                                            apply 'frexp'/1(X)
+                                                        in  let <A1_2> =
+                                                                case call 'erlang':'<'(Y, 0) of <'true'> when 'true' -> call 'erlang':'/'(1, A1_1) <'false'> when 'true' -> A1_1 end
+                                                            in  let <Ae_3> =
+                                                                    case call 'erlang':'<'(Y, 0) of <'true'> when 'true' -> let <A1_4> = call 'erlang':'/'(1, A1_4) in call 'erlang':'-'(Ae) <'false'> when 'true' -> Ae end
+                                                                in  apply 'ldexp'/2(A1_4, Ae_3)
+                                end
+                    end
+'q_rsqrt'/1 =
+    fun (X) ->
+        let <X_half> =
+            call 'erlang':'*'('todo', X)
+        in  let <I> =
+                'todo'
+            in  let <I_1> =
+                    call 'erlang':'-'(16#5fe6eb50c7b537a9, call 'erlang':'bsr'(I, 1))
+                in  let <J> =
+                        apply 'f64_from_bits'/1('todo')
+                    in  let <J_2> =
+                            call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(X_half, J), J))
+                        in  let <J_3> =
+                                call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(X_half, J_2), J_2))
+                            in  J_3
+'scalbn'/2 =
+    fun (X, N_) ->
+        let <N> =
+            N_
+        in  let <X1p1023> =
+                apply 'f64_from_bits'/1('todo')
+            in  let <X1p53> =
+                    apply 'f64_from_bits'/1('todo')
+                in  let <X1p_1022> =
+                        apply 'f64_from_bits'/1('todo')
+                    in  let <Y> =
+                            X
+                        in  let <Y_1> =
+                                case call 'erlang':'>'(N, 1023) of <'true'> when 'true' -> X1p1023 <'false'> when 'true' -> case call 'erlang':'<'(N, -1022) of <'true'> when 'true' -> call 'erlang':'*'(X1p_1022, X1p53) <'false'> when 'true' -> Y end end
+                            in  let <N_2> =
+                                    case call 'erlang':'>'(N, 1023) of <'true'> when 'true' -> let <Y_3> = X1p1023 in 1023 <'false'> when 'true' -> case call 'erlang':'<'(N, -1022) of <'true'> when 'true' -> let <Y_4> = call 'erlang':'*'(X1p_1022, X1p53) in 969 <'false'> when 'true' -> N end end
+                                in  call 'erlang':'*'(Y_4, apply 'f64_from_bits'/1(call 'erlang':'bsl'('todo', 52)))
+'sin'/1 =
+    fun (X) ->
+        let <P1> =
+            7.85398125648498535156e-1
+        in  let <P2> =
+                3.77489470793079817668e-8
+            in  let <P3> =
+                    2.69515142907905952645e-15
+                in  let <Sgn_x> =
+                        case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+                    in  let <Abs_x> =
+                            call 'erlang':'abs'(X)
+                        in  case call 'erlang':'<'(Abs_x, 'todo') of <'true'> when 'true' -> 
+                                let <X2> =
+                                    call 'erlang':'*'(X, X)
+                                in  call 'erlang':'*'(X, call 'erlang':'-'('todo', call 'erlang':'/'(X2, 'todo')))
+                             <'false'> when 'true' -> 
+                                let <Sgn_result> =
+                                    Sgn_x
+                                in  let <Y> =
+                                        apply 'floor'/1(call 'erlang':'/'(Abs_x, 'todo'))
+                                    in  let <Octant> =
+                                            'todo'
+                                        in  let <Octant_1> =
+                                                case call 'erlang':'=:='(call 'erlang':'band'(Octant, 1), 1) of <'true'> when 'true' -> do  'todo' 7 <'false'> when 'true' -> Octant end
+                                            in  let <Y_2> =
+                                                    case call 'erlang':'=:='(call 'erlang':'band'(Octant_1, 1), 1) of <'true'> when 'true' -> do  'todo' let <Octant_3> = 7 in 1.0 <'false'> when 'true' -> Y end
+                                                in  let <Octant_4> =
+                                                        case call 'erlang':'>'(Octant_3, 3) of <'true'> when 'true' -> 4 <'false'> when 'true' -> Octant_3 end
+                                                    in  let <Sgn_result_5> =
+                                                            case call 'erlang':'>'(Octant_4, 3) of <'true'> when 'true' -> let <Octant_6> = 4 in call 'erlang':'-'(Sgn_result) <'false'> when 'true' -> Sgn_result end
+                                                        in  let <Z> =
+                                                                call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'-'(Abs_x, call 'erlang':'*'(Y_2, P1)), call 'erlang':'*'(Y_2, P2)), call 'erlang':'*'(Y_2, P3))
+                                                            in  let <Result> =
+                                                                    0.0
+                                                                in  let <Result_7> =
+                                                                        case call 'erlang':'=:='(Octant_6, 0) of <'true'> when 'true' -> let <T> = call 'erlang':'-'(call 'erlang':'/'(call 'erlang':'*'('todo', call 'erlang':'abs'(Z)), 'todo'), 'todo') in let <Sin_cs_val> = apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T) in let <_> = apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T) in call 'erlang':'*'(Z, call 'erlang':'+'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Sin_cs_val))) <'false'> when 'true' -> let <T_8> = call 'erlang':'-'(call 'erlang':'/'(call 'erlang':'*'('todo', call 'erlang':'abs'(Z)), 'todo'), 'todo') in let <Cos_cs_val> = apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T_8) in let <__9> = apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T_8) in call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', Z), Z), call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Cos_cs_val)))) end
+                                                                    in  let <Result_10> =
+                                                                            Sgn_result_5
+                                                                        in  Result_10
+                             end
+'cos'/1 =
+    fun (X) ->
+        let <P1> =
+            7.85398125648498535156e-1
+        in  let <P2> =
+                3.77489470793079817668e-8
+            in  let <P3> =
+                    2.69515142907905952645e-15
+                in  let <Abs_x> =
+                        call 'erlang':'abs'(X)
+                    in  case call 'erlang':'<'(Abs_x, 'todo') of <'true'> when 'true' -> 
+                            let <X2> =
+                                call 'erlang':'*'(X, X)
+                            in  call 'erlang':'-'('todo', call 'erlang':'*'('todo', X2))
+                         <'false'> when 'true' -> 
+                            let <Sgn_result> =
+                                1
+                            in  let <Y> =
+                                    apply 'floor'/1(call 'erlang':'/'(Abs_x, 'todo'))
+                                in  let <Octant> =
+                                        'todo'
+                                    in  let <Octant_1> =
+                                            case call 'erlang':'=:='(call 'erlang':'band'(Octant, 1), 1) of <'true'> when 'true' -> do  'todo' 7 <'false'> when 'true' -> Octant end
+                                        in  let <Y_2> =
+                                                case call 'erlang':'=:='(call 'erlang':'band'(Octant_1, 1), 1) of <'true'> when 'true' -> do  'todo' let <Octant_3> = 7 in 1.0 <'false'> when 'true' -> Y end
+                                            in  let <Octant_4> =
+                                                    case call 'erlang':'>'(Octant_3, 3) of <'true'> when 'true' -> 4 <'false'> when 'true' -> Octant_3 end
+                                                in  let <Sgn_result_5> =
+                                                        case call 'erlang':'>'(Octant_4, 3) of <'true'> when 'true' -> let <Octant_6> = 4 in call 'erlang':'-'(Sgn_result) <'false'> when 'true' -> Sgn_result end
+                                                    in  let <Sgn_result_7> =
+                                                            case call 'erlang':'>'(Octant_6, 1) of <'true'> when 'true' -> call 'erlang':'-'(Sgn_result_5) <'false'> when 'true' -> Sgn_result_5 end
+                                                        in  let <Z> =
+                                                                call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'-'(Abs_x, call 'erlang':'*'(Y_2, P1)), call 'erlang':'*'(Y_2, P2)), call 'erlang':'*'(Y_2, P3))
+                                                            in  let <Result> =
+                                                                    0.0
+                                                                in  let <Result_8> =
+                                                                        case call 'erlang':'=:='(Octant_6, 0) of <'true'> when 'true' -> let <T> = call 'erlang':'-'(call 'erlang':'/'(call 'erlang':'*'('todo', call 'erlang':'abs'(Z)), 'todo'), 'todo') in let <Cos_cs_val> = apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T) in let <_> = apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T) in call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', Z), Z), call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Cos_cs_val)))) <'false'> when 'true' -> let <T_9> = call 'erlang':'-'(call 'erlang':'/'(call 'erlang':'*'('todo', call 'erlang':'abs'(Z)), 'todo'), 'todo') in let <Sin_cs_val> = apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T_9) in let <__10> = apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T_9) in call 'erlang':'*'(Z, call 'erlang':'+'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Sin_cs_val))) end
+                                                                    in  let <Result_11> =
+                                                                            Sgn_result_7
+                                                                        in  Result_11
+                         end
+'cosf'/1 =
+    fun (A) ->
+        'todo'
+'sinf'/1 =
+    fun (A) ->
+        'todo'
+'sincos'/1 =
+    fun (X) ->
+        case apply 'is_nan'/1(X) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                let <P1> =
+                    7.85398125648498535156e-1
+                in  let <P2> =
+                        3.77489470793079817668e-8
+                    in  let <P3> =
+                            2.69515142907905952645e-15
+                        in  let <Sgn_x> =
+                                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+                            in  let <Abs_x> =
+                                    call 'erlang':'abs'(X)
+                                in  case apply 'is_inf'/2(X, Sgn_x) of
+                                        <'true'> when 'true' -> apply 'nan'/0()
+                                        <'false'> when 'true' -> 
+                                            case call 'erlang':'<'(Abs_x, 'todo') of <'true'> when 'true' -> 
+                                                let <X2> =
+                                                    call 'erlang':'*'(X, X)
+                                                in  call 'erlang':'*'(X, call 'erlang':'-'('todo', call 'erlang':'/'(X2, 'todo')))
+                                             <'false'> when 'true' -> 
+                                                let <Sgn_result_sin> =
+                                                    Sgn_x
+                                                in  let <Sgn_result_cos> =
+                                                        1
+                                                    in  let <Y> =
+                                                            apply 'floor'/1(call 'erlang':'/'(Abs_x, 'todo'))
+                                                        in  let <Octant> =
+                                                                'todo'
+                                                            in  let <Octant_1> =
+                                                                    case call 'erlang':'=:='(call 'erlang':'band'(Octant, 1), 1) of <'true'> when 'true' -> do  'todo' 7 <'false'> when 'true' -> Octant end
+                                                                in  let <Y_2> =
+                                                                        case call 'erlang':'=:='(call 'erlang':'band'(Octant_1, 1), 1) of <'true'> when 'true' -> do  'todo' let <Octant_3> = 7 in 1.0 <'false'> when 'true' -> Y end
+                                                                    in  let <Octant_4> =
+                                                                            case call 'erlang':'>'(Octant_3, 3) of <'true'> when 'true' -> 4 <'false'> when 'true' -> Octant_3 end
+                                                                        in  let <Sgn_result_sin_5> =
+                                                                                case call 'erlang':'>'(Octant_4, 3) of <'true'> when 'true' -> let <Octant_6> = 4 in call 'erlang':'-'(Sgn_result_sin) <'false'> when 'true' -> Sgn_result_sin end
+                                                                            in  let <Sgn_result_cos_7> =
+                                                                                    case call 'erlang':'>'(Octant_6, 3) of <'true'> when 'true' -> let <Octant_8> = 4 in let <Sgn_result_sin_9> = call 'erlang':'-'(Sgn_result_sin_9) in call 'erlang':'-'(Sgn_result_cos) <'false'> when 'true' -> Sgn_result_cos end
+                                                                                in  let <Sgn_result_cos_10> =
+                                                                                        case call 'erlang':'>'(Octant_8, 1) of <'true'> when 'true' -> call 'erlang':'-'(Sgn_result_cos_7) <'false'> when 'true' -> Sgn_result_cos_7 end
+                                                                                    in  let <Z> =
+                                                                                            call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'-'(Abs_x, call 'erlang':'*'(Y_2, P1)), call 'erlang':'*'(Y_2, P2)), call 'erlang':'*'(Y_2, P3))
+                                                                                        in  let <T> =
+                                                                                                call 'erlang':'-'(call 'erlang':'/'(call 'erlang':'*'('todo', call 'erlang':'abs'(Z)), 'todo'), 'todo')
+                                                                                            in  let <Sin_cs_val> =
+                                                                                                    apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T)
+                                                                                                in  do  apply 'ChebSeries.eval_e'/2(~{'c'=>[-0.3295190160663511504173|[0.0025374284671667991990|[0.0006261928782647355874|[-4.6495547521854042157541e-06|[-5.6917531549379706526677e-07|[3.7283335140973803627866e-09|[3.0267376484747473727186e-10|[-1.7400875016436622322022e-12|[-1.0554678305790849834462e-13|[5.3701981409132410797062e-16|[2.5984137983099020336115e-17|[-1.1821555255364833468288e-19|[]]]]]]]]]]]]],'order'=>11,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T)
+                                                                                                        let <Cos_cs_val> =
+                                                                                                            apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T)
+                                                                                                        in  do  apply 'ChebSeries.eval_e'/2(~{'c'=>[0.165391825637921473505668118136|[-0.00084852883845000173671196530195|[-0.000210086507222940730213625768083|[1.16582269619760204299639757584e-6|[1.43319375856259870334412701165e-7|[-7.4770883429007141617951330184e-10|[-6.0969994944584252706997438007e-11|[2.90748249201909353949854872638e-13|[1.77126739876261435667156490461e-14|[-7.6896421502815579078577263149e-17|[-3.7363121133079412079201377318e-18|[]]]]]]]]]]]],'order'=>10,'a'=>-1,'b'=>1,{'vbeam','type'}=>'ChebSeries'}~, T)
+                                                                                                                let <Result_sin> =
+                                                                                                                    0.0
+                                                                                                                in  let <Result_cos> =
+                                                                                                                        0.0
+                                                                                                                    in  let <Result_sin_11> =
+                                                                                                                            case call 'erlang':'=:='(Octant_8, 0) of <'true'> when 'true' -> call 'erlang':'*'(Z, call 'erlang':'+'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Sin_cs_val))) <'false'> when 'true' -> call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', Z), Z), call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Cos_cs_val)))) end
+                                                                                                                        in  let <Result_cos_12> =
+                                                                                                                                case call 'erlang':'=:='(Octant_8, 0) of <'true'> when 'true' -> let <Result_sin_13> = call 'erlang':'*'(Z, call 'erlang':'+'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Sin_cs_val))) in call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', Z), Z), call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Cos_cs_val)))) <'false'> when 'true' -> let <Result_sin_14> = call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'('todo', Z), Z), call 'erlang':'-'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Cos_cs_val)))) in call 'erlang':'*'(Z, call 'erlang':'+'('todo', call 'erlang':'*'(call 'erlang':'*'(Z, Z), Sin_cs_val))) end
+                                                                                                                            in  let <Result_sin_15> =
+                                                                                                                                    Sgn_result_sin_9
+                                                                                                                                in  let <Result_cos_16> =
+                                                                                                                                        Sgn_result_cos_10
+                                                                                                                                    in  Result_sin_15
+                                             end
+                                    end
+        end
+'sinh'/1 =
+    fun (X_) ->
+        let <X> =
+            X_
+        in  let <P0> =
+                -0.6307673640497716991184787251e+6
+            in  let <P1> =
+                    -0.8991272022039509355398013511e+5
+                in  let <P2> =
+                        -0.2894211355989563807284660366e+4
+                    in  let <P3> =
+                            -0.2630563213397497062819489e+2
+                        in  let <Q0> =
+                                -0.6307673640497716991212077277e+6
+                            in  let <Q1> =
+                                    0.1521517378790019070696485176e+5
+                                in  let <Q2> =
+                                        -0.173678953558233699533450911e+3
+                                    in  let <Sign> =
+                                            'false'
+                                        in  let <X_1> =
+                                                case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                            in  let <Sign_2> =
+                                                    case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in 'true' <'false'> when 'true' -> Sign end
+                                                in  let <Temp> =
+                                                        0.0
+                                                    in  let <Temp_4> =
+                                                            case call 'erlang':'>'(X_3, 21) of <'true'> when 'true' -> call 'erlang':'*'(apply 'exp'/1(X_3), 'todo') <'false'> when 'true' -> case call 'erlang':'>'(X_3, 'todo') of <'true'> when 'true' -> let <Ex> = apply 'exp'/1(X_3) in call 'erlang':'*'(call 'erlang':'-'(Ex, call 'erlang':'/'('todo', Ex)), 'todo') <'false'> when 'true' -> let <Sq> = call 'erlang':'*'(X_3, X_3) in do  call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(P3, Sq), P2), Sq), P1), Sq), P0), X_3) call 'erlang':'/'(Temp, call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(Sq, Q2), Sq), Q1), Sq), Q0)) end end
+                                                        in  let <Temp_5> =
+                                                                case Sign_2 of <'true'> when 'true' -> call 'erlang':'-'(Temp_4) <'false'> when 'true' -> Temp_4 end
+                                                            in  Temp_5
+'cosh'/1 =
+    fun (X) ->
+        let <Abs_x> =
+            call 'erlang':'abs'(X)
+        in  case call 'erlang':'>'(Abs_x, 21) of
+                <'true'> when 'true' -> call 'erlang':'*'(apply 'exp'/1(Abs_x), 'todo')
+                <'false'> when 'true' -> 
+                    let <Ex> =
+                        apply 'exp'/1(Abs_x)
+                    in  call 'erlang':'*'(call 'erlang':'+'(Ex, call 'erlang':'/'('todo', Ex)), 'todo')
+            end
+'sqrt'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(X, 'todo'), apply 'is_nan'/1(X)), apply 'is_inf'/2(X, 1)) of
+                <'true'> when 'true' -> X
+                <'false'> when 'true' -> 
+                    case call 'erlang':'<'(X, 'todo') of
+                        <'true'> when 'true' -> apply 'nan'/0()
+                        <'false'> when 'true' -> 
+                            let <Z> =
+                                apply 'frexp'/1(X)
+                            in  let <Ex> =
+                                    apply 'frexp'/1(X)
+                                in  let <W> =
+                                        X
+                                    in  let <X_1> =
+                                            call 'erlang':'+'('todo', call 'erlang':'*'('todo', Z))
+                                        in  let <X_2> =
+                                                case call 'erlang':'=/='(call 'erlang':'band'(Ex, 1), 0) of <'true'> when 'true' -> 1.41421356237309504880168872420969807856967187537694807317667974 <'false'> when 'true' -> X_1 end
+                                            in  let <X_3> =
+                                                    apply 'ldexp'/2(X_2, call 'erlang':'bsr'(Ex, 1))
+                                                in  let <X_4> =
+                                                        call 'erlang':'*'('todo', call 'erlang':'+'(X_3, call 'erlang':'/'(W, X_3)))
+                                                    in  let <X_5> =
+                                                            call 'erlang':'*'('todo', call 'erlang':'+'(X_4, call 'erlang':'/'(W, X_4)))
+                                                        in  let <X_6> =
+                                                                call 'erlang':'*'('todo', call 'erlang':'+'(X_5, call 'erlang':'/'(W, X_5)))
+                                                            in  X_6
+                    end
+            end
+'sqrtf'/1 =
+    fun (A) ->
+        'todo'
+'sqrti'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  let <Q> =
+                'todo'
+            in  let <R> =
+                    'todo'
+                in  R
+'square'/1 =
+    fun (X) ->
+        call 'erlang':'*'(X, X)
+'cube'/1 =
+    fun (X) ->
+        call 'erlang':'*'(call 'erlang':'*'(X, X), X)
+'tan'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  case call 'erlang':'or'(call 'erlang':'=:='(X, 'todo'), apply 'is_nan'/1(X)) of
+                <'true'> when 'true' -> X
+                <'false'> when 'true' -> 
+                    case apply 'is_inf'/2(X, 0) of
+                        <'true'> when 'true' -> apply 'nan'/0()
+                        <'false'> when 'true' -> 
+                            let <Sign> =
+                                1
+                            in  let <X_1> =
+                                    case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                                in  let <Sign_2> =
+                                        case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in -1 <'false'> when 'true' -> Sign end
+                                    in  case call 'erlang':'>'(X_3, 'todo') of
+                                            <'true'> when 'true' -> 0.0
+                                            <'false'> when 'true' -> 
+                                                let <Y> =
+                                                    apply 'floor'/1(call 'erlang':'/'(call 'erlang':'*'(X_3, 'todo'), 'todo'))
+                                                in  let <Z> =
+                                                        apply 'ldexp'/2(Y, -3)
+                                                    in  let <Z_4> =
+                                                            apply 'floor'/1(Z)
+                                                        in  let <Z_5> =
+                                                                call 'erlang':'-'(Y, apply 'ldexp'/2(Z_4, 3))
+                                                            in  let <Octant> =
+                                                                    'todo'
+                                                                in  let <Y_6> =
+                                                                        case call 'erlang':'=:='(call 'erlang':'band'(Octant, 1), 1) of <'true'> when 'true' -> do  'todo' 1.0 <'false'> when 'true' -> Y end
+                                                                    in  let <Z_7> =
+                                                                            call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'-'(X_3, call 'erlang':'*'(Y_6, 'todo')), call 'erlang':'*'(Y_6, 'todo')), call 'erlang':'*'(Y_6, 'todo'))
+                                                                        in  let <Zz> =
+                                                                                call 'erlang':'*'(Z_7, Z_7)
+                                                                            in  let <Y_8> =
+                                                                                    case call 'erlang':'>'(Zz, 'todo') of <'true'> when 'true' -> call 'erlang':'+'(Z_7, call 'erlang':'*'(Z_7, call 'erlang':'/'(call 'erlang':'*'(Zz, call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]]), Zz), call 'lists':'nth'(2, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]])), Zz), call 'lists':'nth'(3, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]]))), call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(Zz, call 'lists':'nth'(2, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(3, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(4, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(5, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]]))))) <'false'> when 'true' -> Z_7 end
+                                                                                in  let <Y_9> =
+                                                                                        case call 'erlang':'=:='(call 'erlang':'band'(Octant, 2), 2) of <'true'> when 'true' -> call 'erlang':'/'('todo', Y_8) <'false'> when 'true' -> Y_8 end
+                                                                                    in  let <Y_10> =
+                                                                                            case call 'erlang':'<'(Sign_2, 0) of <'true'> when 'true' -> call 'erlang':'-'(Y_9) <'false'> when 'true' -> Y_9 end
+                                                                                        in  Y_10
+                                        end
+                    end
+            end
+'tanf'/1 =
+    fun (A) ->
+        'todo'
+'cot'/1 =
+    fun (A) ->
+        let <X> =
+            A
+        in  case call 'erlang':'=:='(X, 'todo') of
+                <'true'> when 'true' -> apply 'inf'/1(1)
+                <'false'> when 'true' -> 
+                    let <Sign> =
+                        1
+                    in  let <X_1> =
+                            case call 'erlang':'<'(X, 0) of <'true'> when 'true' -> call 'erlang':'-'(X) <'false'> when 'true' -> X end
+                        in  let <Sign_2> =
+                                case call 'erlang':'<'(X_1, 0) of <'true'> when 'true' -> let <X_3> = call 'erlang':'-'(X_3) in -1 <'false'> when 'true' -> Sign end
+                            in  case call 'erlang':'>'(X_3, 'todo') of
+                                    <'true'> when 'true' -> 0.0
+                                    <'false'> when 'true' -> 
+                                        let <Y> =
+                                            apply 'floor'/1(call 'erlang':'/'(call 'erlang':'*'(X_3, 'todo'), 'todo'))
+                                        in  let <Z> =
+                                                apply 'ldexp'/2(Y, -3)
+                                            in  let <Z_4> =
+                                                    apply 'floor'/1(Z)
+                                                in  let <Z_5> =
+                                                        call 'erlang':'-'(Y, apply 'ldexp'/2(Z_4, 3))
+                                                    in  let <Octant> =
+                                                            'todo'
+                                                        in  let <Y_6> =
+                                                                case call 'erlang':'=:='(call 'erlang':'band'(Octant, 1), 1) of <'true'> when 'true' -> do  'todo' 1.0 <'false'> when 'true' -> Y end
+                                                            in  let <Z_7> =
+                                                                    call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'-'(X_3, call 'erlang':'*'(Y_6, 'todo')), call 'erlang':'*'(Y_6, 'todo')), call 'erlang':'*'(Y_6, 'todo'))
+                                                                in  let <Zz> =
+                                                                        call 'erlang':'*'(Z_7, Z_7)
+                                                                    in  let <Y_8> =
+                                                                            case call 'erlang':'>'(Zz, 'todo') of <'true'> when 'true' -> call 'erlang':'+'(Z_7, call 'erlang':'*'(Z_7, call 'erlang':'/'(call 'erlang':'*'(Zz, call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]]), Zz), call 'lists':'nth'(2, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]])), Zz), call 'lists':'nth'(3, [-1.30936939181383777646e+4|[1.15351664838587416140e+6|[-1.79565251976484877988e+7|[]]]]))), call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(Zz, call 'lists':'nth'(2, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(3, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(4, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]])), Zz), call 'lists':'nth'(5, [1.00000000000000000000e+0|[1.36812963470692954678e+4|[-1.32089234440210967447e+6|[2.50083801823357915839e+7|[-5.38695755929454629881e+7|[]]]]]]))))) <'false'> when 'true' -> Z_7 end
+                                                                        in  let <Y_9> =
+                                                                                case call 'erlang':'=:='(call 'erlang':'band'(Octant, 2), 2) of <'true'> when 'true' -> call 'erlang':'-'(Y_8) <'false'> when 'true' -> call 'erlang':'/'('todo', Y_8) end
+                                                                            in  let <Y_10> =
+                                                                                    case call 'erlang':'<'(Sign_2, 0) of <'true'> when 'true' -> call 'erlang':'-'(Y_9) <'false'> when 'true' -> Y_9 end
+                                                                                in  Y_10
+                                end
+            end
+'tanh'/1 =
+    fun (X) ->
+        let <Maxlog> =
+            8.8029691931113054295988e+01
+        in  let <Z> =
+                call 'erlang':'abs'(X)
+            in  let <Z_1> =
+                    case call 'erlang':'>'(Z, call 'erlang':'*'('todo', Maxlog)) of <'true'> when 'true' -> Z <'false'> when 'true' -> case call 'erlang':'>='(Z, 'todo') of <'true'> when 'true' -> let <S> = apply 'exp'/1(call 'erlang':'*'('todo', Z)) in call 'erlang':'-'('todo', call 'erlang':'/'('todo', call 'erlang':'+'(S, 'todo'))) <'false'> when 'true' -> do  case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> X <'false'> when 'true' -> 'ok' end let <S_2> = call 'erlang':'*'(X, X) in call 'erlang':'+'(X, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(X, S_2), call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, [-9.64399179425052238628e-1|[-9.92877231001918586564e+1|[-1.61468768441708447952e+3|[]]]]), S_2), call 'lists':'nth'(2, [-9.64399179425052238628e-1|[-9.92877231001918586564e+1|[-1.61468768441708447952e+3|[]]]])), S_2), call 'lists':'nth'(3, [-9.64399179425052238628e-1|[-9.92877231001918586564e+1|[-1.61468768441708447952e+3|[]]]]))), call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(S_2, call 'lists':'nth'(1, [1.12811678491632931402e+2|[2.23548839060100448583e+3|[4.84406305325125486048e+3|[]]]])), S_2), call 'lists':'nth'(2, [1.12811678491632931402e+2|[2.23548839060100448583e+3|[4.84406305325125486048e+3|[]]]])), S_2), call 'lists':'nth'(3, [1.12811678491632931402e+2|[2.23548839060100448583e+3|[4.84406305325125486048e+3|[]]]])))) end end
+                in  Z_1
+'f32_bits'/1 =
+    fun (F) ->
+        'todo'
+'f32_from_bits'/1 =
+    fun (B) ->
+        'todo'
+'f64_bits'/1 =
+    fun (F) ->
+        'todo'
+'f64_from_bits'/1 =
+    fun (B) ->
+        'todo'
+'with_set_low_word'/2 =
+    fun (F, Lo) ->
+        let <Tmp> =
+            apply 'f64_bits'/1(F)
+        in  let <Tmp_1> =
+                16#ffffffff00000000
+            in  let <Tmp_2> =
+                    'todo'
+                in  apply 'f64_from_bits'/1(Tmp_2)
+'with_set_high_word'/2 =
+    fun (F, Hi) ->
+        let <Tmp> =
+            apply 'f64_bits'/1(F)
+        in  let <Tmp_1> =
+                16#00000000ffffffff
+            in  let <Tmp_2> =
+                    call 'erlang':'bsl'('todo', 32)
+                in  apply 'f64_from_bits'/1(Tmp_2)
+'get_high_word'/1 =
+    fun (F) ->
+        'todo'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.math')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.math', _0)
+end

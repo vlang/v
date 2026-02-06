@@ -14,7 +14,7 @@
 
 wait() ->
     io:format("~s~n", [<<"waiting...">>]),
-    sleep(1 * todo),
+    timer:sleep(1 * todo),
     ok.
 
 'Lander.land'(L, W) ->

@@ -1,0 +1,16 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'lists':'nth'(2, call 'init':'get_plain_arguments'())|[#{#<33>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

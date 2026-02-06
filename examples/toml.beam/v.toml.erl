@@ -134,7 +134,7 @@
 'Any.to_toml'(M) ->
     Toml_text = <<"">>,
     lists:foreach(fun(V) ->
-        Key = case 'string.contains'(K, <<" ">>) of
+        Key = case case binary:match(K, <<" ">>) of nomatch -> false; _ -> true end of
             true -> <<"\"", (K)/binary, "\"">>;
             false -> K
         end,
@@ -148,7 +148,7 @@
     Toml_text = <<"{">>,
     I = 1,
     lists:foreach(fun(V) ->
-        Key = case 'string.contains'(K, <<" ">>) of
+        Key = case case binary:match(K, <<" ">>) of nomatch -> false; _ -> true end of
             true -> <<"\"", (K)/binary, "\"">>;
             false -> K
         end,
@@ -247,6 +247,7 @@ decode(Toml_txt) ->
         end.
 
 decode_struct(Doc, Typ) ->
+        ok.
 
 encode(Typ) ->
     <<"">>.
@@ -307,7 +308,7 @@ parse_dotted_key(Key) ->
                     false -> ok
                 end,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         Buf2 = 'u8.ascii_str'(Ch),
@@ -325,7 +326,7 @@ parse_dotted_key(Key) ->
                 end,
                 Buf4 = <<"">>,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         ok
@@ -342,10 +343,10 @@ parse_dotted_key(Key) ->
 parse_array_key(Key) ->
     Index = -1,
     K = Key,
-    case 'string.contains'(K, <<"[">>) of
+    case case binary:match(K, <<"[">>) of nomatch -> false; _ -> true end of
         true -> begin
-            Index1 = 'string.int'('string.all_before'('string.all_after'(K, <<"[">>), <<"]">>)),
-            case 'string.starts_with'(K, <<"[">>) of
+            Index1 = binary_to_integer('string.all_before'('string.all_after'(K, <<"[">>), <<"]">>)),
+            case case string:prefix(K, <<"[">>) of nomatch -> false; _ -> true end of
                 true -> ok;
                 false -> ok
             end
@@ -428,7 +429,7 @@ ast_to_any(Value) ->
         todo -> begin
             Val_text = maps:get(text, Value),
             case Val_text == <<"inf">> orelse Val_text == <<"+inf">> orelse Val_text == <<"-inf">> of
-                true -> case not 'string.starts_with'(Val_text, <<"-">>) of
+                true -> case not case string:prefix(Val_text, <<"-">>) of nomatch -> false; _ -> true end of
                     true -> todo;
                     false -> todo
                 end;
@@ -438,7 +439,7 @@ ast_to_any(Value) ->
                 true -> todo;
                 false -> ok
             end,
-            case not 'string.starts_with'(Val_text, <<"0x">>) andalso ('string.contains'(Val_text, <<".">>) orelse 'string.contains'('string.to_lower'(Val_text), <<"e">>)) of
+            case not case string:prefix(Val_text, <<"0x">>) of nomatch -> false; _ -> true end andalso (case binary:match(Val_text, <<".">>) of nomatch -> false; _ -> true end orelse case binary:match(string:lowercase(Val_text), <<"e">>) of nomatch -> false; _ -> true end) of
                 true -> todo;
                 false -> ok
             end,

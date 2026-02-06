@@ -5,7 +5,7 @@ filter(S, F) ->
     f(S).
 
 uppercase(S) ->
-    'string.to_upper'(S).
+    string:uppercase(S).
 
 main() ->
     My_filter = todo,

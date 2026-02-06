@@ -49,7 +49,7 @@ options_after(Args, What) ->
             true -> begin
                 Found1 = true,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case Found1 of
@@ -61,7 +61,7 @@ options_after(Args, What) ->
     Args_after.
 
 only_non_options(Args) ->
-    '[]string.filter'(Args, not 'string.starts_with'(It, <<"-">>)).
+    lists:filter(not case string:prefix(It, <<"-">>) of nomatch -> false; _ -> true end, Args).
 
 only_options(Args) ->
-    '[]string.filter'(Args, 'string.starts_with'(It, <<"-">>)).
+    lists:filter(case string:prefix(It, <<"-">>) of nomatch -> false; _ -> true end, Args).

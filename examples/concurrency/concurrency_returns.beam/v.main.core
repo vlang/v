@@ -1,0 +1,30 @@
+module 'v.main' ['expensive_computing'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'expensive_computing'/1 =
+    fun (I) ->
+        call 'erlang':'*'(I, I)
+'main'/0 =
+    fun () ->
+        let <Threads> =
+            []
+        in  do  let <_1> =
+                fun (I) ->
+                    call 'erlang':'bsl'(Threads, 'todo')
+            in  let <_2> =
+                    call 'lists':'seq'(1, call 'erlang':'-'(10, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                let <R> =
+                    'ok'
+                in  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<65>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[R|[]]])|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

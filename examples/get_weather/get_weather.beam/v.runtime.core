@@ -1,0 +1,62 @@
+module 'v.runtime' ['nr_cpus'/0,
+                'total_memory'/0,
+                'free_memory'/0,
+                'nr_jobs'/0,
+                'is_32bit'/0,
+                'is_64bit'/0,
+                'is_little_endian'/0,
+                'is_big_endian'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'nr_cpus'/0 =
+        fun () ->
+            4
+    'total_memory'/0 =
+        fun () ->
+            0
+    'free_memory'/0 =
+        fun () ->
+            call 'erlang':'error'(#{#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'nr_jobs'/0 =
+        fun () ->
+            let <Cpus> =
+                call 'erlang':'-'(apply 'nr_cpus'/0(), 1)
+            in  let <Vjobs> =
+                    call 'erlang':'binary_to_integer'(apply 'getenv'/1(#{#<86>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']])}#))
+                in  let <Cpus_1> =
+                        case call 'erlang':'>'(Vjobs, 0) of <'true'> when 'true' -> Vjobs <'false'> when 'true' -> Cpus end
+                    in  case call 'erlang':'=:='(Cpus_1, 0) of
+                            <'true'> when 'true' -> 1
+                            <'false'> when 'true' -> 
+                                Cpus_1
+                        end
+    'is_32bit'/0 =
+        fun () ->
+            'false'
+    'is_64bit'/0 =
+        fun () ->
+            case X64 of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'is_little_endian'/0 =
+        fun () ->
+            case Little_endian of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'is_big_endian'/0 =
+        fun () ->
+            'false'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.runtime')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.runtime', _0)
+    end

@@ -1,0 +1,40 @@
+module 'v.main' ['main'/0,
+                'decode'/1,
+                'get_string'/2,
+                'get_int'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Data> =
+            #{#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#
+        in  let <User> =
+                apply 'decode'/1(Data)
+            in  call 'io':'format'([126|[115|[126|[110|[]]]]], [User|[]])
+'decode'/1 =
+    fun (Data) ->
+        let <Result> =
+            ~{{'vbeam','type'}=>'T'}~
+        in  Result
+'get_string'/2 =
+    fun (Data, Field_name) ->
+        do  let <_1> =
+            fun (Line) ->
+                let <Key_val> =
+                    call 'binary':'split'(Line, #{#<61>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                in  case call 'erlang':'=:='(call 'lists':'nth'(1, Key_val), Field_name) of <'true'> when 'true' -> call 'lists':'nth'(2, Key_val) <'false'> when 'true' -> 'ok' end
+        in  call 'lists':'foreach'(_1, call 'binary':'split'(Data, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+            #{  }#
+'get_int'/2 =
+    fun (Data, Field) ->
+        call 'erlang':'binary_to_integer'(apply 'get_string'/2(Data, Field))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end
