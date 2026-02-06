@@ -83,29 +83,44 @@ fn (mut g CoreGen) core_ident(node ast.Ident) {
 
 	name := node.name
 
-	// Handle function references like Main.func_name or Type.method
+	// Handle function references like Main.func_name, Type.method, or term.green
 	// In Core Erlang, these become anonymous function wrappers:
-	// fun (_0, _1) -> apply 'func'/2(_0, _1)
+	// fun (_0, _1) -> apply 'func'/2(_0, _1)          (same-module)
+	// fun (_0) -> call 'v.term':'green'(_0)            (cross-module)
 	if name.contains('.') {
-		parts := name.split('.')
-		if parts.len == 2 {
-			fn_name := parts[1]
-			// Look up arity in fn_infos
-			mut arity := 1 // default
-			for info in g.fn_infos {
-				if info.name == fn_name {
-					arity = info.arity
-					break
-				}
+		fn_name := name.all_after_last('.')
+		mod_prefix := name.all_before_last('.')
+		// Look up arity in fn_infos
+		mut arity := 1 // default
+		for info in g.fn_infos {
+			if info.name == fn_name {
+				arity = info.arity
+				break
 			}
-			// Generate lambda wrapper: fun (_0, ...) -> apply 'fn'/arity(_0, ...)
-			mut params := []string{}
-			for i in 0 .. arity {
-				params << '_fref${i}'
-			}
-			g.write_core('fun (${params.join(', ')}) -> apply ' + "'${fn_name}'/${arity}(${params.join(', ')})")
-			return
 		}
+		// Generate lambda wrapper parameters
+		mut params := []string{}
+		for i in 0 .. arity {
+			params << '_fref${i}'
+		}
+		// Check if mod_prefix is an imported module (not a type in current module)
+		// If it doesn't match any local fn_info type, treat as cross-module reference
+		mut is_local_type := false
+		for info in g.fn_infos {
+			if info.name.starts_with('${mod_prefix}.') {
+				is_local_type = true
+				break
+			}
+		}
+		if !is_local_type && mod_prefix.len > 0 {
+			// Cross-module function reference
+			erl_mod := g.core_v_mod_to_erl_mod(mod_prefix)
+			g.write_core("fun (${params.join(', ')}) -> call '${erl_mod}':'${fn_name}'(${params.join(', ')})")
+		} else {
+			// Same-module function or method reference
+			g.write_core('fun (${params.join(', ')}) -> apply ' + "'${fn_name}'/${arity}(${params.join(', ')})")
+		}
+		return
 	}
 
 	// Look up Core Erlang variable name
@@ -159,9 +174,22 @@ fn (mut g CoreGen) core_call_expr(node ast.CallExpr) {
 	}
 
 	call_mod := node.mod
-	if call_mod != g.cur_mod && call_mod.len > 0 {
+	// Detect cross-module calls: V resolves imported functions like
+	// mymodules.add_xy with node.mod still set to the calling module.
+	// Check if full_name has a module prefix different from cur_mod.
+	mut is_cross_module := call_mod != g.cur_mod && call_mod.len > 0
+	mut cross_mod_name := call_mod
+	if !is_cross_module && full_name.contains('.') {
+		// full_name is like "mymodules.add_xy" or "mymodules.submodule.sub_xy"
+		mod_prefix := full_name.all_before_last('.')
+		if mod_prefix != g.cur_mod && mod_prefix.len > 0 {
+			is_cross_module = true
+			cross_mod_name = mod_prefix
+		}
+	}
+	if is_cross_module {
 		// Cross-module: call 'v.mod':'fn'(args)
-		erl_mod := g.core_v_mod_to_erl_mod(call_mod)
+		erl_mod := g.core_v_mod_to_erl_mod(cross_mod_name)
 		fn_name := full_name.all_after_last('.')
 		g.write_core("call '${erl_mod}':'${fn_name}'(")
 	} else {
