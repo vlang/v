@@ -1,0 +1,22 @@
+/*
+this is a very long comment
+that is on multiple lines
+   and has some formatting in it
+ that should be
+   preserved.
+*/
+fn main() {
+	println('hello')
+	/*
+	this comment also
+	has multiple lines
+	but it's difference
+	is that it is indented !
+	*/
+	if true {
+		/*
+		this one is even more
+		indented !
+		*/
+	}
+}

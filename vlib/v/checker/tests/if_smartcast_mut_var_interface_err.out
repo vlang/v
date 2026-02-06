@@ -1,0 +1,7 @@
+vlib/v/checker/tests/if_smartcast_mut_var_interface_err.vv:13:5: error: smart casting a mutable interface value requires `if mut foo_mut is ...`
+   11 | fn main() {
+   12 |     mut foo_mut := Foo(Bar{})
+   13 |     if foo_mut is Bar {
+      |        ~~~~~~~
+   14 |         println(json.encode(foo_mut))
+   15 |     }

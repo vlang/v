@@ -1,0 +1,14 @@
+// vtest vflags: -autofree
+struct SomeStruct {
+	val int
+	arg ?string
+}
+
+x := 'xyz'
+s := SomeStruct{
+	arg: x
+}
+$if autofree {
+	println('autofree is on')
+}
+println(s)

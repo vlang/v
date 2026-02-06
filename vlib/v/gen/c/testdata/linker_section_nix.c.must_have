@@ -1,0 +1,1 @@
+VV_LOC void main__test(void) __attribute__ ((section ("foo")));

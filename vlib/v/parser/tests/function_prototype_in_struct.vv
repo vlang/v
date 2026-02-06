@@ -1,0 +1,9 @@
+module main
+
+struct Ok {
+	alibaba fn (Ok, ) = unsafe { nil }
+}
+
+struct OkInt {
+	a fn (int, ) = unsafe { nil }
+}

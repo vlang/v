@@ -1,0 +1,13 @@
+// vtest vflags: -no-skip-unused
+struct Config {
+	id    int
+	name  &char
+	valid bool
+}
+
+@[cinit]
+const conf = Config{
+	id: 123
+	name: c'test_config'
+	valid: true
+}

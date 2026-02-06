@@ -1,0 +1,31 @@
+fn print_1(s string) {
+	dump(s)
+}
+
+fn print_2(s string, t string) {
+	dump('${s} ${t}')
+}
+
+fn print_3(s string, t string, u string) {
+	dump('${s} ${t} ${u}')
+}
+
+fn print_4(s string, t string, u string, v string) {
+	dump('${s} ${t} ${u} ${v}')
+}
+
+fn main() {
+  array := ['a', 'b', 'c']
+
+  print_1(array[0])
+
+  print_1(...array)
+  print_2(...array)
+  print_3(...array)
+
+  print_1(...array[1..2])
+  print_2(...array[1..])
+
+  println('================ V panic ================')
+  print_4(...array)
+}

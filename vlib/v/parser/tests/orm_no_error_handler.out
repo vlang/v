@@ -1,0 +1,7 @@
+vlib/v/parser/tests/orm_no_error_handler.vv:10:7: error: ORM returns a result, so it should have either an `or {}` block, or `!` at the end
+    8 |     db := sqlite.connect(':memory:')!
+    9 | 
+   10 |     _ := sql db {
+      |          ~~~~~~~~
+   11 |         select from User
+   12 |     }

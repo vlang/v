@@ -1,0 +1,28 @@
+type Fn[T] = fn (arg T) bool
+
+struct Foo[T] {
+	f ?Fn[T]
+}
+
+@[params]
+struct Bar {}
+
+fn (mut f Foo[T]) method(arg T) {
+	mut b := false
+	if f.f != none {
+		b = f.f or { panic(err) }
+	} else {
+		b = true
+	}
+	if b {
+	}
+}
+
+fn main() {
+	mut foo := Foo[Bar]{
+		f: fn (arg Bar) bool {
+			return true
+		}
+	}
+	foo.method(Bar{})
+}

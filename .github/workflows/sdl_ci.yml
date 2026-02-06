@@ -1,0 +1,73 @@
+name: sdl CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: sdl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v-compiles-sdl-examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc tcc
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make && sudo ./v symlink
+
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh		
+          v retry 'sudo apt update'
+          v retry 'sudo apt install -y libsdl2-dev libsdl2-ttf-dev'
+          v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
+
+      - name: Clone sdl into .vmodules
+        run: |
+          v retry 'git clone --filter=blob:none https://github.com/vlang/sdl'
+          cd sdl
+          mkdir -p ~/.vmodules
+          ln -s "$(pwd)" ~/.vmodules/sdl
+
+      - name: Ensure SDL setup works
+        run: ./v ~/.vmodules/sdl/setup.vsh
+
+      - name: Run tests
+        run: ./v test sdl
+
+      - name: Build sdl shared
+        run: ./v -shared -g sdl
+
+      - name: Build sdl examples
+        run: |
+          v shader sdl/examples/sdl_opengl_and_sokol
+          v should-compile-all sdl/examples/
+          ~/.vmodules/sdl/examples/versions/main
+
+      - name: Check SDL works, when installed through vpm
+        run: |
+          rm -rf sdl/
+          rm -rf ~/.vmodules/sdl
+          v retry 'v install sdl'
+          ls -la ~/.vmodules/sdl/
+          v ~/.vmodules/sdl/setup.vsh
+          v run ~/.vmodules/sdl/examples/versions

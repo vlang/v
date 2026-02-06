@@ -1,0 +1,1 @@
+println(arguments()#[1..])

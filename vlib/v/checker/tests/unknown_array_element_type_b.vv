@@ -1,0 +1,8 @@
+struct Aaa {
+	a []abc
+}
+
+fn main() {
+	s := Aaa{}
+	println(s)
+}

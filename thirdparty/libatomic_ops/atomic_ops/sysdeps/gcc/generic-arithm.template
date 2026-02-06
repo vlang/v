@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) 1991-1994 by Xerox Corporation.  All rights reserved.
+ * Copyright (c) 1996-1999 by Silicon Graphics.  All rights reserved.
+ * Copyright (c) 2003-2011 Hewlett-Packard Development Company, L.P.
+ *
+ *
+ * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
+ * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
+ *
+ * Permission is hereby granted to use or copy this program
+ * for any purpose, provided the above notices are retained on all copies.
+ * Permission to modify the code and to distribute modified code is granted,
+ * provided the above notices are retained, and a notice that the code was
+ * modified is included with the above copyright notice.
+ *
+ */
+
+#ifndef AO_NO_XSIZE_ARITHM
+
+AO_INLINE XCTYPE
+AO_XSIZE_fetch_and_add_XBAR(volatile XCTYPE *addr, XCTYPE incr)
+{
+  return __atomic_fetch_add(addr, incr, __ATOMIC_XGCCBAR);
+}
+#define AO_HAVE_XSIZE_fetch_and_add_XBAR
+
+#ifndef AO_SKIPATOMIC_ANY_and_ANY
+  AO_INLINE void
+  AO_XSIZE_and_XBAR(volatile XCTYPE *addr, XCTYPE value)
+  {
+    (void)__atomic_and_fetch(addr, value, __ATOMIC_XGCCBAR);
+  }
+# define AO_HAVE_XSIZE_and_XBAR
+#endif
+
+#ifndef AO_SKIPATOMIC_ANY_or_ANY
+  AO_INLINE void
+  AO_XSIZE_or_XBAR(volatile XCTYPE *addr, XCTYPE value)
+  {
+    (void)__atomic_or_fetch(addr, value, __ATOMIC_XGCCBAR);
+  }
+# define AO_HAVE_XSIZE_or_XBAR
+#endif
+
+#ifndef AO_SKIPATOMIC_ANY_xor_ANY
+  AO_INLINE void
+  AO_XSIZE_xor_XBAR(volatile XCTYPE *addr, XCTYPE value)
+  {
+    (void)__atomic_xor_fetch(addr, value, __ATOMIC_XGCCBAR);
+  }
+# define AO_HAVE_XSIZE_xor_XBAR
+#endif
+
+#endif /* !AO_NO_XSIZE_ARITHM */

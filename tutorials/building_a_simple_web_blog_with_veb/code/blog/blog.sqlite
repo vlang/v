@@ -1,0 +1,17 @@
+drop table if exists Article;
+
+create table Article (
+	id integer primary key,
+	title text default "",
+	text text default ""
+);
+
+insert into Article (title, text) values (
+	"Hello, world!",
+	"V is great."
+);
+
+insert into Article (title, text) values (
+	"Second post.",
+	"Hm... what should I write about?"
+);

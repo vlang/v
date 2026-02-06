@@ -1,0 +1,5 @@
+import time
+
+fn main() {
+	_ := time.NonExistingEnum.black
+}

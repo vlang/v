@@ -1,0 +1,319 @@
+name: Sanitized CI
+
+## Running these jobs is slow (over ~1 hour, sometimes even 2)
+## so we run them only when there is a chance that the generated
+## C code could have changed, or for some critical vlib modules,
+## like `builtin`, `os`, `sync`, where they have demonstrated
+## their usefulness by catching actual very hard to find bugs.
+## The cost of this selective running is delayed feedback when
+## there are bugs in other V modules.
+## The positive is *much faster CI runs* for most V contributors,
+## that make PRs that are not concerning V itself, or the critical
+## V modules.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '!**'
+      - '!**.md'
+      - '!**.yml'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/math/**.v'
+      - 'vlib/math/big/**.v'
+      - 'vlib/arrays/**.v'
+      - 'vlib/crypto/ecdsa/**.v'
+      - 'vlib/datatypes/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
+      - 'vlib/x/json2/**.v'
+      - '**/sanitized_ci.yml'
+  pull_request:
+    paths:
+      - '!**'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/math/**.v'
+      - 'vlib/math/big/**.v'
+      - 'vlib/arrays/**.v'
+      - 'vlib/crypto/ecdsa/**.v'
+      - 'vlib/datatypes/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
+      - 'vlib/x/json2/**.v'
+      - '**/sanitized_ci.yml'
+
+concurrency:
+  group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize-undefined-clang:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: |
+          ./v -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined -silent test-self vlib
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 -silent build-examples
+
+  sanitize-undefined-gcc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: |
+          ./v  -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined -silent test-self vlib
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 -silent build-examples
+
+  sanitize-address-clang:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
+        run: |
+          ./v -cflags -fsanitize=address -o v cmd/v
+          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ./v -silent build-examples
+
+  sanitize-address-msvc:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc msvc
+      VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          .\v.exe self
+      - name: V doctor
+        run: .\v.exe doctor
+      - name: Ensure code is well formatted
+        run: .\v.exe -silent test-cleancode
+        # - name: Install dependencies
+        #   run: |
+        #     .\v.exe setup-freetype
+        #     .\.github\workflows\windows-install-sqlite.bat
+        # - name: Self tests (/fsanitize=address) # TODO:
+        #   run: .\v.exe -cflags "/fsanitize=address" -silent test-self vlib
+
+  sanitize-address-gcc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ./v -cflags -fsanitize=address -silent test-self vlib
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
+        run: |
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ./v -silent build-examples
+
+  sanitize-memory-clang:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with clang and -cstrict
+        run: ./v -cc clang -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=memory)
+        run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
+        run: |
+          ./v -cflags -fsanitize=memory -o v cmd/v
+          ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
+      - name: Build examples (V compiled with -fsanitize=memory)
+        run: ./v -silent build-examples
+
+  sanitize-address-clang-without-gc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      LSAN_OPTIONS: detect_leaks=0
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: V doctor
+        run: ./v doctor
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ./v -cflags -fsanitize=address -silent test-self vlib

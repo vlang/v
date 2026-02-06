@@ -1,0 +1,17 @@
+struct Aaa { mut: v int }  struct Bbb { a Aaa }  struct Ccc { mut: b Bbb } struct Ddd { mut: c Ccc }
+mut b := Bbb{} b = Bbb{Aaa{2}}
+b.a.v = 1   // Error (field a immutable)
+b.a = Aaa{}   // Error (field a immutable)
+===output===
+cannot modify immutable field `a` (type `Bbb`)
+declare the field with `mut:`
+struct Bbb {
+mut:
+	a Aaa
+}
+cannot modify immutable field `a` (type `Bbb`)
+declare the field with `mut:`
+struct Bbb {
+mut:
+	a Aaa
+}

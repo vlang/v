@@ -1,0 +1,10 @@
+import cli { Command }
+import os
+
+fn main() {
+	mut cmd := Command{}
+	cmd.defaults = struct {
+		man: false
+	}
+	cmd.parse(os.args)
+}

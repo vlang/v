@@ -1,0 +1,56 @@
+vlib/v/checker/tests/call_empty_or_block_err.vv:9:2: warning: unused variable: `a`
+    7 | 
+    8 | fn main() {
+    9 |     a := foo() or { foo() or {} }
+      |     ^
+   10 | 
+   11 |     // must be error
+vlib/v/checker/tests/call_empty_or_block_err.vv:12:2: warning: unused variable: `y`
+   10 | 
+   11 |     // must be error
+   12 |     y := if c := foo() {
+      |     ^
+   13 |         dump(c)
+   14 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:20:2: warning: unused variable: `z`
+   18 | 
+   19 |     // ok
+   20 |     z := if d := foo() {
+      |     ^
+   21 |         dump(d)
+   22 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:29:2: warning: unused variable: `w`
+   27 | 
+   28 |     // ok
+   29 |     w := foo() or {
+      |     ^
+   30 |         bar() or {}
+   31 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:35:2: warning: unused variable: `b`
+   33 | 
+   34 |     // ok
+   35 |     b := foo() or {
+      |     ^
+   36 |         foo() or {}
+   37 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:9:24: error: expression requires a non empty `or {}` block
+    7 | 
+    8 | fn main() {
+    9 |     a := foo() or { foo() or {} }
+      |                           ~~~~~
+   10 | 
+   11 |     // must be error
+vlib/v/checker/tests/call_empty_or_block_err.vv:14:9: error: expression requires a non empty `or {}` block
+   12 |     y := if c := foo() {
+   13 |         dump(c)
+   14 |         bar() or {}
+      |               ~~~~~
+   15 |     } else {
+   16 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:14:3: error: the final expression in `if` or `match`, must have a value of a non-void type
+   12 |     y := if c := foo() {
+   13 |         dump(c)
+   14 |         bar() or {}
+      |         ~~~~~
+   15 |     } else {
+   16 |         false

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/assign_type_mismatch_with_generics_err.vv:13:11: error: unexpected `or` block, the field `f` is not an Option or a Result
+   11 |     mut b := false
+   12 |     if f.f != none {
+   13 |         b = f.f or { panic(err) }
+      |                 ~~~~~~~~~~~~~~~~~
+   14 |     } else {
+   15 |         b = true
+vlib/v/checker/tests/assign_type_mismatch_with_generics_err.vv:13:9: error: cannot assign to `b`: expected `bool`, not `fn (Bar) bool`
+   11 |     mut b := false
+   12 |     if f.f != none {
+   13 |         b = f.f or { panic(err) }
+      |               ^
+   14 |     } else {
+   15 |         b = true

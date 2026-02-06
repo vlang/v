@@ -1,0 +1,30 @@
+struct Test {
+	a int
+}
+
+struct Test2 {
+	a int
+}
+
+struct Test3 {
+	a int
+}
+
+interface ITest {
+	a int
+}
+
+type TestSum = Test | Test2 | Test3
+
+fn main() {
+	a := TestSum(Test{
+		a: 123
+	})
+	match a {
+		Test, Test2 {
+			dump(a.a)
+			$dbg;
+		}
+		else {}
+	}
+}

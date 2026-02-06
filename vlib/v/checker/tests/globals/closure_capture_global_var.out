@@ -1,0 +1,7 @@
+vlib/v/checker/tests/globals/closure_capture_global_var.vv:12:12: error: no need to capture global variable `number` in closure
+   10 |
+   11 | fn main() {
+   12 |     f1 := fn [number] () {
+      |               ~~~~~~
+   13 |         println(number)
+   14 |     }

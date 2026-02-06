@@ -1,0 +1,25 @@
+prefix=/usr
+libdir=${prefix}/lib/x86_64-linux-gnu
+includedir=${prefix}/include
+
+datadir=${prefix}/share
+schemasdir=${datadir}/glib-2.0/schemas
+bindir=${prefix}/bin
+giomoduledir=${libdir}/gio/modules
+gio=${bindir}/gio
+gio_querymodules=${bindir}/gio-querymodules
+glib_compile_schemas=${libdir}/glib-2.0/glib-compile-schemas
+glib_compile_resources=${bindir}/glib-compile-resources
+gdbus=${bindir}/gdbus
+gdbus_codegen=${bindir}/gdbus-codegen
+gresource=${bindir}/gresource
+gsettings=${bindir}/gsettings
+
+Name: GIO
+Description: glib I/O library
+Version: 2.64.3
+Requires: glib-2.0,gobject-2.0
+Requires.private: gmodule-no-export-2.0, zlib
+Libs: -L${libdir} -lgio-2.0
+Libs.private: -ldl -pthread -lresolv
+Cflags: -I${includedir}

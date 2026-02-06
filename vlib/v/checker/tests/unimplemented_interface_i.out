@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unimplemented_interface_i.vv:11:13: error: `Cat` incorrectly implements field `name` of interface `Animal`, expected `string`, got `int`
+    9 | fn main() {
+   10 |     mut animals := []Animal{}
+   11 |     animals << Cat{}
+      |                ~~~~~
+   12 | }

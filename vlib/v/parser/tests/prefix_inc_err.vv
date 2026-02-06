@@ -1,0 +1,3 @@
+mut mp := map[string]int{}
+mp["a"] = 1
+--mp["a"]

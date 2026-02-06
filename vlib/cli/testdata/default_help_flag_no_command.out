@@ -1,0 +1,8 @@
+Usage: foo [flags] [commands]
+
+Flags:
+  -help               Prints help information.
+  -man                Prints the auto-generated manpage.
+
+Commands:
+  man                 Prints the auto-generated manpage.

@@ -1,0 +1,10 @@
+Failed to extract frames: os.execute() cmd output
+Video{
+    path: '/path/to/some/mp4'
+    tmp_dir: '/tmp'
+    frame_count: 0
+    frame_format: bmp
+    extract_frames_thread: thread(string)
+    frames: []
+    framerate: 24.0
+}

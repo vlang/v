@@ -1,0 +1,3 @@
+struct St {
+	fsa [$env('size')]int
+}

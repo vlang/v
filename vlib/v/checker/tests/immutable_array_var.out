@@ -1,0 +1,6 @@
+vlib/v/checker/tests/immutable_array_var.vv:3:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    1 | fn main() {
+    2 |     a := [1, 2]
+    3 |     a << 3
+      |     ^
+    4 | }

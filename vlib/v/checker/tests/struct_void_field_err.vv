@@ -1,0 +1,19 @@
+module main
+
+struct Foo {
+mut:
+	bar voidptr = 1
+}
+
+fn main() {
+	n := 1
+	_ := Foo{
+		bar: n
+	}
+	_ := Foo{
+		bar: 0
+	}
+	_ := Foo{
+		bar: 1
+	}
+}

@@ -1,0 +1,55 @@
+vlib/v/checker/tests/go_wait_or.vv:18:16: error: unexpected `?`, the function `wait` does not return an Option
+   16 |         spawn d(1),
+   17 |     ]
+   18 |     r := tg.wait()?
+      |                   ^
+   19 |     println(r)
+   20 |     s := tg[0].wait() or { panic('problem') }
+vlib/v/checker/tests/go_wait_or.vv:20:20: error: unexpected `or` block, the function `wait` does not return an Option or a Result
+   18 |     r := tg.wait()?
+   19 |     println(r)
+   20 |     s := tg[0].wait() or { panic('problem') }
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~
+   21 |     println(s)
+   22 |     tg2 := [
+vlib/v/checker/tests/go_wait_or.vv:26:13: error: unexpected `or` block, the function `wait` does not return an Option or a Result
+   24 |         spawn e(1),
+   25 |     ]
+   26 |     tg2.wait() or { panic('problem') }
+      |                ~~~~~~~~~~~~~~~~~~~~~~~
+   27 |     tg2[0].wait()?
+   28 |     tg3 := [
+vlib/v/checker/tests/go_wait_or.vv:27:15: error: unexpected `?`, the function `wait` does not return an Option
+   25 |     ]
+   26 |     tg2.wait() or { panic('problem') }
+   27 |     tg2[0].wait()?
+      |                  ^
+   28 |     tg3 := [
+   29 |         spawn f(0),
+vlib/v/checker/tests/go_wait_or.vv:32:6: error: `.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.
+   30 |         spawn f(1),
+   31 |     ]
+   32 |     tg3.wait() or { panic('problem') }
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   33 |     for t in tg3 {
+   34 |         a := t.wait()
+vlib/v/checker/tests/go_wait_or.vv:32:13: error: unexpected `or` block, the function `wait` does not return an Option or a Result
+   30 |         spawn f(1),
+   31 |     ]
+   32 |     tg3.wait() or { panic('problem') }
+      |                ~~~~~~~~~~~~~~~~~~~~~~~
+   33 |     for t in tg3 {
+   34 |         a := t.wait()
+vlib/v/checker/tests/go_wait_or.vv:45:6: error: `.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.
+   43 |         spawn g(1),
+   44 |     ]
+   45 |     tg4.wait()
+      |         ~~~~~~
+   46 |     tg4[0].wait()
+   47 |     spawn g(3) or { panic('problem') }
+vlib/v/checker/tests/go_wait_or.vv:47:13: error: option handling cannot be done in `spawn` call. Do it when calling `.wait()`
+   45 |     tg4.wait()
+   46 |     tg4[0].wait()
+   47 |     spawn g(3) or { panic('problem') }
+      |                ~~~~~~~~~~~~~~~~~~~~~~~
+   48 | }

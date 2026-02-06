@@ -1,0 +1,14 @@
+fn foo() ! {
+	return error('error')
+}
+
+fn main() {
+	a := if r := foo() {
+		println(r)
+		true
+	} else {
+		false
+	}
+
+	println(a)
+}

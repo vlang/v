@@ -1,0 +1,99 @@
+// Keep empty lines between types
+type Expr = IfExpr | IntegerLiteral
+
+type Node2 = Expr | string
+type MyInt = int
+
+// Keep empty lines in const blocks
+const _ = SomeStruct{
+	val: 'Multiline field exprs should cause no problems'
+}
+const _ = 1
+
+const _ = 'Keep this empty line before'
+// Comment before a field
+const _ = 2
+
+// The empty line above should stay too
+const _ = 3
+
+// This comment doesn't really belong anywhere
+
+const _ = 'A multiline string with a StringInterLiteral...
+	${foo}
+	...and the ending brace on a newline had a wrong pos.last_line.
+	'
+const _ = 4
+
+fn keep_single_empty_line() {
+	println('a')
+	println('b')
+
+	println('c')
+
+	dump('d')
+
+	d := 0
+
+	if true {
+		println('e')
+	}
+
+	dump('f')
+	f := 0
+	arr << MyStruct{}
+
+	arr2 := [1, 2]
+}
+
+fn prevent_empty_line_after_multi_line_statements() {
+	// line1
+	/*
+	block1
+	*/
+	/*
+	block2
+	*/
+	if test {
+		println('a')
+	}
+	println('b')
+	for test {
+		println('c')
+	}
+	c := fn (s string) {
+		println('s')
+	}
+}
+
+fn between_orm_blocks() {
+	sql db {
+		insert upper_1 into Upper
+	}
+
+	upper_s := sql db {
+		select from Upper where id == 1
+	}
+}
+
+fn no_empty_lines() {
+	_ := $embed_file('testy.v')
+	mut files := map[string][]FileData{}
+	code := 'foo
+bar'
+	params[0] = IfExpr{
+		...params[0]
+		typ: params[0].typ.set_nr_muls(1)
+	}
+	env_value = environ()[env_lit] or {
+		return error('the environment variable "${env_lit}" does not exist.')
+	}
+	assert '${mr_one_two()}' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
+	r := m[key]!
+	compile_time_env := $env('ENV_VAR')
+	func()
+}

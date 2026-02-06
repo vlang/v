@@ -1,0 +1,10 @@
+enum MyEnum {
+	a
+	b
+}
+
+struct MyStruct {
+	s string
+	i int
+	e MyEnum @[required] = .a
+}

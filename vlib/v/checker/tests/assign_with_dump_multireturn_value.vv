@@ -1,0 +1,6 @@
+fn two_returns() (string, string) {
+	return 'hello', 'world'
+}
+
+x := dump(two_returns())
+println(x)

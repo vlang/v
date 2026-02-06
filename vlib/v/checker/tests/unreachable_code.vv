@@ -1,0 +1,34 @@
+fn foo(condition bool) int {
+	for _ in 0 .. 1 {
+		if condition {
+			continue // scope should not cause errors.
+		}
+		if !condition {
+			break
+		}
+		eprintln('done')
+		break
+	}
+	for _ in 0 .. 2 {
+		continue
+		// ...
+		eprintln('continue')
+	}
+	for _ in 0 .. 3 {
+		if condition {
+			break
+			// ...
+			eprintln('done')
+		}
+		break
+		// ...
+		return 3
+	}
+	return if 1 == 1 { 1 } else { 2 }
+	a := 1
+	println(a)
+}
+
+fn main() {
+	foo(true)
+}

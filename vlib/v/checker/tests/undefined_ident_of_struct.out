@@ -1,0 +1,28 @@
+vlib/v/checker/tests/undefined_ident_of_struct.vv:4:2: error: undefined ident: `f`
+    2 | 
+    3 | fn get() {
+    4 |     f.a = 'test'
+      |     ^
+    5 | }
+    6 |
+vlib/v/checker/tests/undefined_ident_of_struct.vv:4:4: error: `f` does not return a value
+    2 | 
+    3 | fn get() {
+    4 |     f.a = 'test'
+      |       ^
+    5 | }
+    6 |
+vlib/v/checker/tests/undefined_ident_of_struct.vv:4:4: error: unexpected symbol `void`
+    2 | 
+    3 | fn get() {
+    4 |     f.a = 'test'
+      |       ^
+    5 | }
+    6 |
+vlib/v/checker/tests/undefined_ident_of_struct.vv:4:8: error: cannot assign to `f.a`: expected `void`, not `string`
+    2 | 
+    3 | fn get() {
+    4 |     f.a = 'test'
+      |           ~~~~~~
+    5 | }
+    6 |

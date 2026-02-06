@@ -1,0 +1,14 @@
+struct Foo {}
+
+// inside a unsafe block it is valid
+fn insert_helper_unsafe(mut node Foo) {
+	if unsafe { node == 0 } {
+	}
+}
+
+fn insert_helper(mut node Foo) {
+	if node == 0 {
+	}
+}
+
+fn main() {}

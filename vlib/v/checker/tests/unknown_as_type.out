@@ -1,0 +1,15 @@
+vlib/v/checker/tests/unknown_as_type.vv:8:9: error: unknown type `Stringg`.
+Did you mean `String`?
+    6 | 
+    7 | fn foo(e Expr) {
+    8 |     x := e as Stringg
+      |            ~~
+    9 |     println(x)
+   10 | }
+vlib/v/checker/tests/unknown_as_type.vv:8:9: error: cannot cast `Expr` to `Stringg`
+    6 | 
+    7 | fn foo(e Expr) {
+    8 |     x := e as Stringg
+      |            ~~
+    9 |     println(x)
+   10 | }

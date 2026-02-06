@@ -1,0 +1,7 @@
+vlib/v/parser/tests/comptime_for_invalid_expr_err.vv:19:12: error: invalid expr, use `MyStruct` instead
+   17 |     }
+   18 | 
+   19 |     $for f in $MyStruct.fields {
+      |               ^
+   20 |         assert a.${f.field_name} == b.${f.field_name}
+   21 |     }

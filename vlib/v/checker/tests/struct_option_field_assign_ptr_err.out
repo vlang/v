@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_option_field_assign_ptr_err.vv:10:3: error: cannot assign a pointer to option struct field
+    8 |     name := 'Bilbo'
+    9 |     a := Abc{
+   10 |         age: &age
+      |         ~~~~~~
+   11 |     }
+   12 |     b := Abc{
+vlib/v/checker/tests/struct_option_field_assign_ptr_err.vv:13:3: error: cannot assign a pointer to option struct field
+   11 |     }
+   12 |     b := Abc{
+   13 |         name: &name
+      |         ~~~~~~~
+   14 |     }
+   15 |     dump(a)

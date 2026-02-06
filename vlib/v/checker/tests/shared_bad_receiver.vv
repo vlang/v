@@ -1,0 +1,17 @@
+module main
+
+struct Counter {
+mut:
+	value int
+}
+
+fn (shared c Counter) inc() {
+	lock c {
+		c.value += 1
+	}
+}
+
+fn main() {
+	mut c := Counter{1}
+	c.inc()
+}

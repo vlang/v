@@ -1,0 +1,5 @@
+vlib/v/checker/tests/missing_export_attr_arg_err.vv:1:1: error: missing argument for @[export] attribute
+    1 | @[export]
+      | ~~~~~~~~~
+    2 | fn foo() string {
+    3 |     return 'foo'

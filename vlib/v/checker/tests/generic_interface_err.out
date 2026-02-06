@@ -1,0 +1,21 @@
+vlib/v/checker/tests/generic_interface_err.vv:10:1: warning: unused variable: `i`
+    8 | 
+    9 | s := Struct{7}
+   10 | i := Interface(s)
+      | ^
+vlib/v/checker/tests/generic_interface_err.vv:9:6: error: could not infer generic type `T` in generic struct `Struct[T]`
+    7 | }
+    8 | 
+    9 | s := Struct{7}
+      |      ~~~~~~~~~
+   10 | i := Interface(s)
+vlib/v/checker/tests/generic_interface_err.vv:10:6: error: can not find method `method` on `Struct`, needed for interface: `Interface`
+    8 | 
+    9 | s := Struct{7}
+   10 | i := Interface(s)
+      |      ~~~~~~~~~~~~
+vlib/v/checker/tests/generic_interface_err.vv:10:6: error: `Struct` does not implement interface `Interface`, cannot cast `Struct` to interface `Interface`
+    8 | 
+    9 | s := Struct{7}
+   10 | i := Interface(s)
+      |      ~~~~~~~~~~~~

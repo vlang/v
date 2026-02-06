@@ -1,0 +1,13 @@
+vlib/v/checker/tests/immutable_field_postfix.vv:7:4: error: field `i` of struct `Aaa` is immutable
+    5 | fn main() {
+    6 |     mut a := Aaa{}
+    7 |     a.i++
+      |       ^
+    8 |     a.i--
+    9 | }
+vlib/v/checker/tests/immutable_field_postfix.vv:8:4: error: field `i` of struct `Aaa` is immutable
+    6 |     mut a := Aaa{}
+    7 |     a.i++
+    8 |     a.i--
+      |       ^
+    9 | }

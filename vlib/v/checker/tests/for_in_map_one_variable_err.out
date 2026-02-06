@@ -1,0 +1,8 @@
+vlib/v/checker/tests/for_in_map_one_variable_err.vv:5:6: error: declare a key and a value variable when ranging a map: `for key, val in map {`
+use `_` if you do not need the variable
+    3 |         'foo': 'bar'
+    4 |     }
+    5 |     for k in kvs {
+      |         ^
+    6 |         println('${k}')
+    7 |     }

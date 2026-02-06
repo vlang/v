@@ -1,0 +1,39 @@
+import time
+
+fn fibonacci(c chan int, quit chan int) {
+	println('fibonacci')
+	mut x, mut y := 0, 1
+
+	for {
+		select {
+			c <- x {
+				println('send')
+				x, y = y, x + y
+			}
+			_ = <-quit {
+				println('quit')
+				return
+			}
+			2 * time.second {
+				println('timeout')
+				return
+			}
+		}
+	}
+}
+
+fn main() {
+	ch := chan int{}
+	quit := chan int{}
+
+	spawn fn [ch, quit] () {
+		for _ in 0 .. 5 {
+			println('pop')
+			println(<-ch)
+		}
+		println('quit')
+		quit <- 0
+	}()
+
+	fibonacci(ch, quit)
+}

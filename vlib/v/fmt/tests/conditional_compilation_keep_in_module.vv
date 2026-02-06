@@ -1,0 +1,15 @@
+module log
+
+const (
+	debug = 'debug'
+	prod  = 'prod'
+)
+
+fn log() {
+	$if debug {
+		println('debug')
+	}
+	$if !prod {
+		println('prod')
+	}
+}

@@ -1,0 +1,19 @@
+enum Info {
+	aa = 1 // aa
+	bbb // bbb
+
+	cccc  = 5 /* cccc
+	--- cccc
+	*/
+	ddddd = 10 // ddddd
+
+	// before
+	ee  = 20
+	fff = 30
+
+	// before comment1
+	// before comment2
+	gg
+}
+
+fn main() {}

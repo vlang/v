@@ -1,0 +1,2 @@
+pthread_attr_setstacksize(&thread__t3_attributes, 65536); // fn: main.my_print2
+pthread_attr_setstacksize(&thread__t5_attributes, 131072); // fn: main.my_print3

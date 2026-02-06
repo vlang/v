@@ -1,0 +1,14 @@
+interface Animal {
+	name() string
+}
+
+struct Cat {}
+
+fn (c Cat) name() {}
+
+fn foo(a Animal) {}
+
+fn main() {
+	c := Cat{}
+	foo(c)
+}

@@ -1,0 +1,10 @@
+struct Aaa {
+mut:
+	i int
+}
+
+fn main() {
+	a := Aaa{}
+	a.i++
+	a.i--
+}

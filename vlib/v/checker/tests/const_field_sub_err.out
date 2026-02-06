@@ -1,0 +1,6 @@
+vlib/v/checker/tests/const_field_sub_err.vv:4:2: error: cannot modify constant `a`
+    2 | 
+    3 | fn main() {
+    4 |     a -= 1
+      |     ^
+    5 | }

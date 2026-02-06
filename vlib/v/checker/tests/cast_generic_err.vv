@@ -1,0 +1,9 @@
+fn decode[T]() {
+	_ := T(0)
+}
+
+fn main() {
+	decode[[2]u8]()
+	decode[[]u8]()
+	decode[map[int]u8]()
+}

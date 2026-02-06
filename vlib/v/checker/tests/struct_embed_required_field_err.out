@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_embed_required_field_err.vv:12:7: error: field `Bar.bar` must be initialized
+   10 | 
+   11 | fn main() {
+   12 |     b := Bar{
+      |          ~~~~
+   13 |         foo: 1
+   14 |     }
+vlib/v/checker/tests/struct_embed_required_field_err.vv:12:7: error: field `Foo.bar` must be initialized
+   10 | 
+   11 | fn main() {
+   12 |     b := Bar{
+      |          ~~~~
+   13 |         foo: 1
+   14 |     }

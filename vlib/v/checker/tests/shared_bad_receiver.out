@@ -1,0 +1,6 @@
+vlib/v/checker/tests/shared_bad_receiver.vv:16:2: error: cannot use shared method `inc` as `c` is not a shared var
+   14 | fn main() {
+   15 |     mut c := Counter{1}
+   16 |     c.inc()
+      |     ^
+   17 | }

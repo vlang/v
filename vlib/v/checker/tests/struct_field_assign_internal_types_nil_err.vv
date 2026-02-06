@@ -1,0 +1,22 @@
+type String = string
+
+struct Bar {}
+
+struct Foo {
+	name    string
+	bar     Bar
+	name2   String
+	arr     []int
+	mp      map[string]string
+	arr_fix [3]int
+}
+
+a := &Foo{
+	name:    unsafe { nil }
+	bar:     unsafe { nil }
+	name2:   unsafe { nil }
+	arr:     unsafe { nil }
+	mp:      unsafe { nil }
+	arr_fix: unsafe { nil }
+}
+println(a)

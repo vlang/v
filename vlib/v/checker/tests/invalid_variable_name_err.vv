@@ -1,0 +1,19 @@
+fn main() {
+	string := 'hello, world'
+	println(string)
+
+	bool := true
+	println(bool)
+
+	int := 22
+	println(int)
+
+	u64 := 222
+	println(u64)
+
+	f64 := 2.22
+	println(f64)
+
+	map := map[string]string{}
+	println(map)
+}

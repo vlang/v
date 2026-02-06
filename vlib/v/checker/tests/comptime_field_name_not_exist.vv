@@ -1,0 +1,16 @@
+@[foo: 123]
+@[bar]
+fn abc() {
+}
+
+fn main() {
+        mut c := 0
+        $for f in abc.attributes {
+                $if f.has_xdargfdsafsdfx {
+                        c++
+                        println('has_arg')
+                }
+        }
+        assert c == 0
+}
+

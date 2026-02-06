@@ -1,0 +1,3 @@
+fn (a map[string]string) get_number() int { 
+	return 1
+}

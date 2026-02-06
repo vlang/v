@@ -1,0 +1,6 @@
+vlib/v/parser/tests/invalid_using_shared.vv:2:5: error: the `shared` keyword is invalid here
+    1 | fn main() {
+    2 |     if shared true {
+      |        ~~~~~~
+    3 |         println(true)
+    4 |     }

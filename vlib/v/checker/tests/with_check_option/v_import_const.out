@@ -1,0 +1,59 @@
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:25: notice: script mode started here
+    1 | import abc.def { const, global }
+      |                         ~~~~~~
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:18: error: import syntax error, please specify a valid fn or type name
+    1 | import abc.def { const, global }
+      |                  ~~~~~
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:23: error: cannot import multiple modules at a time
+    1 | import abc.def { const, global }
+      |                       ^
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:25: error: `global` evaluated but not used
+    1 | import abc.def { const, global }
+      |                         ~~~~~~
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:32: error: invalid expression: unexpected token `}`
+    1 | import abc.def { const, global }
+      |                                ^
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:32: error: expression evaluated but not used
+    1 | import abc.def { const, global }
+      |                                ^
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:4:4: error: all definitions must occur before code in script mode
+    2 | import xyz.qwe
+    3 | 
+    4 | fn abc() {
+      |    ~~~
+    5 | }
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:8: error: undefined ident: `xyz`
+    1 | import abc.def { const, global }
+    2 | import xyz.qwe
+      |        ~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:12: error: `xyz` does not return a value
+    1 | import abc.def { const, global }
+    2 | import xyz.qwe
+      |            ~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:1: error: invalid return type in fn ``
+    1 | import abc.def { const, global }
+      | ^
+    2 | import xyz.qwe
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:4:8: error: unknown function: 
+    2 | import xyz.qwe
+    3 | 
+    4 | fn abc() {
+      |        ^
+    5 | }

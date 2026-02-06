@@ -1,0 +1,11 @@
+struct Bar {}
+
+fn in_both_mut_ref(mut arr []&Bar, mut bar &Bar) {
+	assert bar !in arr
+}
+
+fn main() {
+	mut arr := []&Bar{}
+	mut bar := Bar{}
+	in_both_mut_ref(mut &arr, mut &bar)
+}

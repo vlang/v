@@ -1,0 +1,7 @@
+vlib/v/checker/tests/opt_is_op_check_err.vv:13:7: error: t.a is an Optional, it needs to be unwrapped first
+   11 |         a: s
+   12 |     }
+   13 |     if t.a is string {
+      |          ^
+   14 |         r(t.a)
+   15 |     }

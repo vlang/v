@@ -1,0 +1,6 @@
+// vtest vflags: -os wasi
+pub fn exported_function(x int, y int) int {
+	return x + y
+}
+
+println(exported_function(123, 456))

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/void_method_call.vv:5:14: cgen error: checker bug; CallExpr.receiver_type is 0 in method_call
+    3 | 
+    4 | fn main() {
+    5 |     simple_fn().method()
+      |                 ~~~~~~~~
+    6 | }

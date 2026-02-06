@@ -1,0 +1,43 @@
+struct Data {
+	name ?string
+}
+
+fn f() ?string {
+	return none
+}
+
+fn g() ?int {
+	return none
+}
+
+_ = '' + f()
+_ = f() + ''
+_ = f() + f()
+
+_ = 4 + g()
+_ = int(0) + g()
+_ = g() + int(3)
+_ = g() + 3
+
+// binary operands
+_ = 1 && 2
+_ = true || 2
+
+// boolean expressions
+_ = 1 == 1 && 2 == 2 || 3 == 3
+_ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
+_ = 1 + println('')
+
+// struct members
+data := Data {
+  'a name'
+}
+name := 'a name'
+_ := data.name == 'a name'
+_ := 'a name' == data.name
+_ := data.name == name
+_ := name == data.name
+
+// these should not error
+_ := data.name == none
+_ := none == data.name

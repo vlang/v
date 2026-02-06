@@ -1,0 +1,7 @@
+struct IError {
+	msg string
+}
+
+fn main() {
+	println('Hello World')
+}

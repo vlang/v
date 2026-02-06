@@ -1,0 +1,10 @@
+interface SomeInterface {}
+
+struct Foo {
+	bar SomeInterface = unsafe { nil }
+}
+
+fn main() {
+	foo := Foo{}
+	dump(foo)
+}

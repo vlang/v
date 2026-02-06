@@ -1,0 +1,22 @@
+struct Foo {
+	f int = 123
+}
+
+struct Bar {
+	f &Foo = &Foo(0)
+}
+
+struct Zar {
+	f Foo
+}
+
+fn main() {
+	b := &Bar{
+		f: &Foo(32)
+	}
+	c := &Zar{
+		f: Foo{456}
+	}
+	assert ptr_str(b.f) == '20'
+	assert c.f.f == 456
+}

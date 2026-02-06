@@ -1,0 +1,24 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module hash
+
+pub interface Hash {
+mut:
+	// Sum appends the current hash to b and returns the resulting array.
+	// It does not change the underlying hash state.
+	sum(b []u8) []u8
+	size() int
+	block_size() int
+	free()
+	reset()
+	write(p []u8) !int
+}
+
+interface Hash32er {
+	sum32() u32
+}
+
+interface Hash64er {
+	sum64() u64
+}

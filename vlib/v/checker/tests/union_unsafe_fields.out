@@ -1,0 +1,20 @@
+vlib/v/checker/tests/union_unsafe_fields.vv:12:9: warning: reading a union field (or its address) requires `unsafe`
+   10 |     }
+   11 |     u.f = 3.3 // ok
+   12 |     _ := u.u
+      |            ^
+   13 |     return &u.f
+   14 | }
+vlib/v/checker/tests/union_unsafe_fields.vv:13:12: warning: reading a union field (or its address) requires `unsafe`
+   11 |     u.f = 3.3 // ok
+   12 |     _ := u.u
+   13 |     return &u.f
+      |               ^
+   14 | }
+vlib/v/checker/tests/union_unsafe_fields.vv:13:9: error: fn `f` expects you to return a non reference type `f32`, but you are returning `&f32` instead
+   11 |     u.f = 3.3 // ok
+   12 |     _ := u.u
+   13 |     return &u.f
+      |            ^
+   14 | }
+Details: use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`

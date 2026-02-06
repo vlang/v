@@ -1,0 +1,7 @@
+vlib/v/checker/tests/asm_immutable_err.vv:9:9: error: `c` is immutable, declare it with `mut` to make it mutable
+    7 |         add eax, b
+    8 |         mov c, eax
+    9 |         ; =r (c) // output 
+      |               ^
+   10 |         ; r (a) // input 
+   11 |           r (b)

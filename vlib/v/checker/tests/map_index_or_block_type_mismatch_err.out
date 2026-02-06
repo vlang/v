@@ -1,0 +1,13 @@
+vlib/v/checker/tests/map_index_or_block_type_mismatch_err.vv:4:20: error: `or` block must provide a value of type `int`, not `none`
+    2 | fn index_got_none_from_or_block() {
+    3 |     m := map[string]int{}
+    4 |     _ = m['key'] or { none }
+      |                       ~~~~
+    5 |     _ = m['key'] or { ?int(none) }
+    6 | }
+vlib/v/checker/tests/map_index_or_block_type_mismatch_err.vv:5:21: error: `or` block must provide a value of type `int`, not `?int`
+    3 |     m := map[string]int{}
+    4 |     _ = m['key'] or { none }
+    5 |     _ = m['key'] or { ?int(none) }
+      |                        ~~~~~~~~~
+    6 | }

@@ -1,0 +1,8 @@
+interface Animal {
+	Age int
+	Foo &int
+	Bar []string
+}
+
+fn main() {
+}

@@ -1,0 +1,10 @@
+struct Abc {
+	f fn (voidptr)
+}
+
+fn main() {
+	a := Abc{
+		f: fn (data voidptr) ? {}
+	}
+	println(a)
+}

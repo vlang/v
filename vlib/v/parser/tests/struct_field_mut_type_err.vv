@@ -1,0 +1,9 @@
+struct Foo {
+mut:
+	foo mut string
+}
+
+fn main() {
+	f := Foo{}
+	println(f)
+}

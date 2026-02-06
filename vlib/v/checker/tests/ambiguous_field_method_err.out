@@ -1,0 +1,39 @@
+vlib/v/checker/tests/ambiguous_field_method_err.vv:25:2: warning: unused variable: `n`
+   23 |     b := Bar{}
+   24 |     b.test()
+   25 |     n := b.name
+      |     ^
+   26 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:24:4: error: ambiguous method `test`
+   22 | fn main() {
+   23 |     b := Bar{}
+   24 |     b.test()
+      |       ~~~~~~
+   25 |     n := b.name
+   26 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:24:4: error: unknown method or field: `Bar.test`
+   22 | fn main() {
+   23 |     b := Bar{}
+   24 |     b.test()
+      |       ~~~~~~
+   25 |     n := b.name
+   26 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:25:9: error: ambiguous field `name`
+   23 |     b := Bar{}
+   24 |     b.test()
+   25 |     n := b.name
+      |            ~~~~
+   26 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:25:9: error: type `Bar` has no field named `name`.
+2 possibilities: `Foo2`, `Foo`.
+   23 |     b := Bar{}
+   24 |     b.test()
+   25 |     n := b.name
+      |            ~~~~
+   26 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:25:4: error: assignment mismatch: 1 variable 0 values
+   23 |     b := Bar{}
+   24 |     b.test()
+   25 |     n := b.name
+      |       ~~
+   26 | }

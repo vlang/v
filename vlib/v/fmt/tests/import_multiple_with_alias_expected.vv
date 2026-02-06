@@ -1,0 +1,11 @@
+import os
+import math
+
+fn main() {
+	// println(m.pi)
+	println(os.path_separator)
+	println(math.pi)
+	// math as m
+	// import math.complex as c
+	// num := c.Complex{} TODO
+}

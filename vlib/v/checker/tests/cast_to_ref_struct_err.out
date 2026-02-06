@@ -1,0 +1,7 @@
+vlib/v/checker/tests/cast_to_ref_struct_err.vv:9:16: error: cannot cast `string` to `&SomeError`
+    7 |
+    8 | fn main() {
+    9 |     a := unsafe { &SomeError('yo') }
+      |                   ~~~~~~~~~~~~~~~~
+   10 |     println(a)
+   11 | }

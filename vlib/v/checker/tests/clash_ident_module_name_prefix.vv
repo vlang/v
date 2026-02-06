@@ -1,0 +1,23 @@
+import time
+
+// builtin__ prefix should always produce an error
+// time is imported so the time__ prefix should always produce an error
+// os is not imported so the os__ prefix should not produce an error
+
+fn builtin__string_str() {
+}
+
+fn time__utc() {
+}
+
+fn os__getwd() {
+}
+
+fn main() {
+	builtin__string_str := 'Hello V!'.str()
+	time__now := time.now()
+	os__log := 'Hello V!'
+	println(builtin__string_str)
+	println(time__now)
+	println(os__log)
+}

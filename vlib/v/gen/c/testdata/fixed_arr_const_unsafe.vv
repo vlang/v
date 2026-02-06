@@ -1,0 +1,15 @@
+// vtest vflags: -no-skip-unused
+
+const key_weapon1 = 1
+const key_weapon2 = 1
+const key_weapon3 = 1
+const key_weapon4 = 1
+const key_weapon5 = 1
+const key_weapon6 = 1
+const key_weapon7 = 1
+const key_weapon8 = 1
+
+@[export: 'weapon_keys']
+const weapon_keys = [unsafe { &key_weapon1 }, unsafe { &key_weapon2 }, unsafe { &key_weapon3 },
+	unsafe { &key_weapon4 }, unsafe { &key_weapon5 }, unsafe { &key_weapon6 }, unsafe { &key_weapon7 },
+	unsafe { &key_weapon8 }]!

@@ -1,0 +1,18 @@
+pub struct Struct1 {
+pub mut:
+	strings ?[]string
+}
+
+@[params]
+pub struct Struct2 {
+	Struct1
+}
+
+fn my_func(args Struct2) {
+	mut s1 := args.Struct1
+	s1.strings << ['hi']
+}
+
+s2 := Struct2{}
+
+my_func(s2)

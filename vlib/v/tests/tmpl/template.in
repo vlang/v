@@ -1,0 +1,3 @@
+someval: @{s.someval('huh')}
+
+someotherval: @{s.m['hah']}

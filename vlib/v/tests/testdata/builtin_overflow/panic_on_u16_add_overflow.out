@@ -1,0 +1,8 @@
+65534
+65535
+================ V panic ================
+   module: builtin.overflow
+ function: add_u16()
+  message: attempt to add with overflow(u16(65535) + u16(1))
+     file: vlib/builtin/overflow/overflow.v
+

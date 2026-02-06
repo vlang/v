@@ -1,0 +1,10 @@
+fn some_fn() (int, int) {
+	return 0, 0
+}
+
+fn some_fn2() {
+	ret := some_fn()
+	some_fn3(ret)
+}
+
+fn some_fn3(param int) {}

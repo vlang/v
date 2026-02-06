@@ -1,0 +1,11 @@
+interface Speaker {
+	speak()
+}
+
+fn my_fn(s Speaker) {}
+
+fn main() {
+	my_fn(
+		speak: 1
+	)
+}

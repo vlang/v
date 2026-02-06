@@ -1,0 +1,6 @@
+vlib/v/parser/tests/invalid_using_mut.vv:2:5: error: the `mut` keyword is invalid here
+    1 | fn main() {
+    2 |     if mut true {
+      |        ~~~
+    3 |         println(true)
+    4 |     }

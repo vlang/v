@@ -1,0 +1,12 @@
+fn f(mut par []int) {
+}
+
+fn g(par []int) {
+}
+
+f([3, 4])
+mut a := [1, 2]
+f(a)
+
+g(mut [3, 4])
+g(mut a)

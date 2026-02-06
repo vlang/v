@@ -1,0 +1,9 @@
+struct Foo[T] {}
+
+fn main() {
+	bar[Foo]()
+}
+
+fn bar[T]() {
+	
+}

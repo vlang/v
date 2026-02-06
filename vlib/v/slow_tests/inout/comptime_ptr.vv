@@ -1,0 +1,56 @@
+struct Encoder {}
+
+struct Writer {}
+
+struct StructTypePointer[T] {
+mut:
+	val &T
+}
+
+struct StructTypePointerPointer[T] {
+mut:
+	val &&T
+}
+
+pub fn (e &Encoder) encode_value[T](val T, mut wr Writer) ! {
+	e.encode_struct[T](val, 1, mut wr)!
+}
+
+pub fn (e &Encoder) encode_value_with_level[T](val T, mut wr Writer) ! {
+	e.encode_struct[T](val, 1, mut wr)!
+	dump(val)
+}
+
+fn (e &Encoder) encode_struct[U](val U, level int, mut wr Writer) ! {
+	$for field in U.fields {
+		$if field.indirections > 0 {
+			$if field.indirections == 1 {
+				e.encode_value_with_level(*val.$(field.name), mut wr)!
+			}
+			$if field.indirections == 2 {
+				e.encode_value_with_level(**val.$(field.name), mut wr)!
+			}
+			$if field.indirections == 3 {
+				e.encode_value_with_level(***val.$(field.name), mut wr)!
+			}
+		}
+	}
+}
+
+fn main() {
+	e := Encoder{}
+	mut sb := Writer{}
+
+	mut string_initialized_with_reference := 'ads'
+	mut bool_initialized_with_reference := false
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {}
+	e.encode_value(StructTypePointer[bool]{ val: &bool_initialized_with_reference }, mut
+		sb) or {}
+
+	bool_val := true
+	ptr_bool := &bool_val
+
+	e.encode_value(StructTypePointerPointer[bool]{ val: &ptr_bool }, mut sb) or {}
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/void_function_assign_to_string.vv:6:4: error: assignment mismatch: 1 variable but `x()` returns 0 values
+    4 | fn main() {
+    5 |     mut a := ''
+    6 |     a = x(1, 2) // hello
+      |       ^
+    7 |     eprintln('a: ${a}')
+    8 | }

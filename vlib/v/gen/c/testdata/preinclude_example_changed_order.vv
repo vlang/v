@@ -1,0 +1,8 @@
+#include "@VEXEROOT/vlib/v/gen/c/testdata/preinclude_header.h"
+#preinclude "@VEXEROOT/vlib/v/gen/c/testdata/preinclude_header2.h"
+
+fn main() {
+	a := int(C.MYNUMBER)
+	println(a)
+	assert a == 999
+}

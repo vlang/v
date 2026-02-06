@@ -1,0 +1,15 @@
+vlib/v/checker/tests/slice_clone_notice.vv:4:13: notice: an implicit clone of the slice was done here
+    2 |     xs := [1, 2, 3, 4, 5, 6, 7, 8]
+    3 |
+    4 |     mut s := xs[1..]
+      |                ~~~~~
+    5 |
+    6 |     s.sort(a > b)
+Details: vlib/v/checker/tests/slice_clone_notice.vv:4:13: details: To silence this notice, use either an explicit `a[..].clone()`,
+or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.
+    2 |     xs := [1, 2, 3, 4, 5, 6, 7, 8]
+    3 |
+    4 |     mut s := xs[1..]
+      |                ~~~~~
+    5 |
+    6 |     s.sort(a > b)

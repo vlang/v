@@ -1,0 +1,30 @@
+#define _VPROD (1)
+
+// V embedded data:
+static const unsigned char _v_embed_blob_0[171] = {
+0x2f,0x2f,0x20,0x76,0x74,0x65,0x73,0x74,0x20,0x76,0x66,0x6c,0x61,0x67,0x73,0x3a,
+
+const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {
+	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, (byteptr)_v_embed_blob_0},
+	{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}
+};
+
+typedef struct v__embed_file__EmbedFileData v__embed_file__EmbedFileData;
+typedef struct v__embed_file__EmbedFileIndexEntry v__embed_file__EmbedFileIndexEntry;
+
+struct v__embed_file__EmbedFileData {
+struct v__embed_file__EmbedFileIndexEntry {
+
+string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed);
+void v__embed_file__EmbedFileData_free(v__embed_file__EmbedFileData* ed);
+u8* v__embed_file__EmbedFileData_data(v__embed_file__EmbedFileData* ed);
+v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo);
+
+string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed) {
+string v__embed_file__EmbedFileData_to_string(v__embed_file__EmbedFileData* original) {
+v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo) {
+
+v__embed_file__EmbedFileData my_source = _v_embed_file_metadata(
+res.path = _S("embed.vv");
+res.apath = _S("");
+res.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _S("embed.vv"), _S("none"))->data;

@@ -1,0 +1,4 @@
+fn main() {
+	value := nil
+	println(value)
+}

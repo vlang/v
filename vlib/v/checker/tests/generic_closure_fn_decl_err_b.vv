@@ -1,0 +1,20 @@
+struct MyPlugin {
+}
+
+fn (p MyPlugin) on_update() {
+	println('[MyPlugin.on_update]')
+}
+
+fn foo[T](my_plugin T) {
+	println('[foo]')
+	println(T.name) // MyPlugin
+	println(typeof(my_plugin).name) // MyPlugin
+
+	fn [my_plugin] () {
+		my_plugin.on_update()
+	}()
+}
+
+fn main() {
+	foo[MyPlugin](MyPlugin{})
+}

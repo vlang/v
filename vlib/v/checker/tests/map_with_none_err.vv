@@ -1,0 +1,15 @@
+fn main() {
+	mut a := {
+		'bar': none
+	}
+
+	mut b := {
+		'foo': 1
+		'bar': none
+	}
+
+	mut c := {
+		'foo': ?int(none)
+		'bar': none
+	}
+}

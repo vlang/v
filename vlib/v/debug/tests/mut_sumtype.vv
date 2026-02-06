@@ -1,0 +1,14 @@
+struct Test2 {}
+
+struct Test3 {}
+
+type Test = Test2 | Test3
+
+fn (f Test) test(mut t Test) {
+	$dbg;
+}
+
+fn main() {
+	mut a := Test(Test2{})
+	a.test(mut a)
+}

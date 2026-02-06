@@ -1,0 +1,2 @@
+for (size_t ix = 0;; ++ix) {
+while (1) {

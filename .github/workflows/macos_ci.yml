@@ -1,0 +1,83 @@
+name: CI macOS
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/macos_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/macos_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-macos:
+    strategy:
+      matrix:
+        os: [macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 151
+    env:
+      VFLAGS: -cc clang
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Test symlink
+        run: v run ci/macos_ci.vsh test_symlink
+      - name: v doctor
+        run: v run ci/macos_ci.vsh v_doctor
+      - name: Build v with -prealloc
+        run: v run ci/macos_ci.vsh build_v_with_prealloc
+      - name: Test cross compilation to Linux
+        run: v run ci/macos_ci.vsh test_cross_compilation
+      - name: Test inline assembly on macos
+        run: v run ci/macos_ci.vsh test_inline_assembly
+      - name: Build V with -cstrict
+        run: v run ci/macos_ci.vsh build_with_cstrict
+      - name: All code is formatted
+        run: v run ci/macos_ci.vsh all_code_is_formatted
+      - name: Run sanitizers
+        run: v run ci/macos_ci.vsh run_sanitizers
+      - name: Build V using V
+        run: v run ci/macos_ci.vsh build_using_v
+      - name: Verify `v test` works
+        run: v run ci/macos_ci.vsh verify_v_test_works
+      - name: Install iconv for encoding.iconv
+        run: v run ci/macos_ci.vsh install_iconv
+      - name: Test pure V math module
+        run: v run ci/macos_ci.vsh test_pure_v_math_module
+      - name: Self tests
+        run: v run ci/macos_ci.vsh self_tests
+      - name: Build examples
+        run: v run ci/macos_ci.vsh build_examples
+      - name: Build tetris with -autofree
+        run: v run ci/macos_ci.vsh build_tetris_autofree
+      - name: Build blog tutorial with -autofree
+        run: v run ci/macos_ci.vsh build_blog_autofree
+      - name: Build examples with -prod
+        run: v run ci/macos_ci.vsh build_examples_prod
+      - name: Build examples with V build with tcc
+        run: v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
+      ##      - name: V self compilation with -usecache
+      ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
+      - name: V self compilation with -parallel-cc
+        run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
+      - name: Test password input
+        run: v run ci/macos_ci.vsh test_password_input
+      - name: Test readline
+        run: v run ci/macos_ci.vsh test_readline

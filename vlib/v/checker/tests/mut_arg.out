@@ -1,0 +1,65 @@
+vlib/v/checker/tests/mut_arg.vv:7:3: warning: automatic referencing/dereferencing is deprecated and will be removed soon (got: 0 references, expected: 1 references)
+    5 | }
+    6 | 
+    7 | f([3, 4])
+      |   ~~~~~~
+    8 | mut a := [1, 2]
+    9 | f(a)
+vlib/v/checker/tests/mut_arg.vv:9:3: warning: automatic referencing/dereferencing is deprecated and will be removed soon (got: 0 references, expected: 1 references)
+    7 | f([3, 4])
+    8 | mut a := [1, 2]
+    9 | f(a)
+      |   ^
+   10 | 
+   11 | g(mut [3, 4])
+vlib/v/checker/tests/mut_arg.vv:7:3: error: function `f` parameter `par` is `mut`, so use `mut [3, 4]` instead
+    5 | }
+    6 | 
+    7 | f([3, 4])
+      |   ~~~~~~
+    8 | mut a := [1, 2]
+    9 | f(a)
+vlib/v/checker/tests/mut_arg.vv:7:3: error: cannot use `[]int` as `&[]int` in argument 1 to `f`
+    5 | }
+    6 | 
+    7 | f([3, 4])
+      |   ~~~~~~
+    8 | mut a := [1, 2]
+    9 | f(a)
+vlib/v/checker/tests/mut_arg.vv:9:3: error: function `f` parameter `par` is `mut`, so use `mut a` instead
+    7 | f([3, 4])
+    8 | mut a := [1, 2]
+    9 | f(a)
+      |   ^
+   10 | 
+   11 | g(mut [3, 4])
+vlib/v/checker/tests/mut_arg.vv:9:3: error: cannot use `[]int` as `&[]int` in argument 1 to `f`
+    7 | f([3, 4])
+    8 | mut a := [1, 2]
+    9 | f(a)
+      |   ^
+   10 | 
+   11 | g(mut [3, 4])
+vlib/v/checker/tests/mut_arg.vv:11:7: error: array literal can not be modified
+    9 | f(a)
+   10 | 
+   11 | g(mut [3, 4])
+      |       ~~~~~~
+   12 | g(mut a)
+vlib/v/checker/tests/mut_arg.vv:11:7: error: cannot pass expression as `mut`
+    9 | f(a)
+   10 | 
+   11 | g(mut [3, 4])
+      |       ~~~~~~
+   12 | g(mut a)
+vlib/v/checker/tests/mut_arg.vv:11:7: error: `g` parameter `par` is not `mut`, `mut` is not needed`
+    9 | f(a)
+   10 | 
+   11 | g(mut [3, 4])
+      |       ~~~~~~
+   12 | g(mut a)
+vlib/v/checker/tests/mut_arg.vv:12:7: error: `g` parameter `par` is not `mut`, `mut` is not needed`
+   10 | 
+   11 | g(mut [3, 4])
+   12 | g(mut a)
+      |       ^

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_field_with_any_type_err.vv:2:6: error: cannot use type `any` here
+    1 | struct My_type {
+    2 |     fld any
+      |         ~~~
+    3 | }
+    4 |

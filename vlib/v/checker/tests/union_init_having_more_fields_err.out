@@ -1,0 +1,14 @@
+vlib/v/checker/tests/union_init_having_more_fields_err.vv:23:7: error: embed union `Head` can have only one field initialised
+   21 | 
+   22 | fn union_embed__having_more_fields_used() {
+   23 |     _ := Message{
+      |          ~~~~~~~~
+   24 |         from: 1
+   25 |         src:  1
+vlib/v/checker/tests/union_init_having_more_fields_err.vv:30:7: error: union `Head` can have only one field initialised
+   28 | 
+   29 | fn union_having_more_fields_used() {
+   30 |     _ := Head{
+      |          ~~~~~
+   31 |         from: 1
+   32 |         src:  1

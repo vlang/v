@@ -1,0 +1,5 @@
+pub enum PubEnum{
+	foo
+    bar
+}
+enum PrivateEnum { foo bar }

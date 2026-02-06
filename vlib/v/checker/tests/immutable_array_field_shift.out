@@ -1,0 +1,6 @@
+vlib/v/checker/tests/immutable_array_field_shift.vv:14:4: error: field `a` of struct `Bbb` is immutable
+   12 |         a: Aaa{}
+   13 |     }
+   14 |     b.a.i << 3
+      |       ^
+   15 | }

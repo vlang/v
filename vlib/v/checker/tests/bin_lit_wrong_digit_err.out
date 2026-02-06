@@ -1,0 +1,5 @@
+vlib/v/checker/tests/bin_lit_wrong_digit_err.vv:2:18: error: this binary number has unsuitable digit `2`
+    1 | fn main() {
+    2 |     println(0b1112)
+      |                  ^
+    3 | }

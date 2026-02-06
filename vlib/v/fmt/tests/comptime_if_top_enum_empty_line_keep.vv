@@ -1,0 +1,16 @@
+$if new_c_1 ? {
+	pub enum Enum1 {
+		enum1_a
+		enum1_b
+	}
+} $else $if new_c_2 ? {
+	pub enum Enum1 {
+		enum1_c
+		enum1_d
+	}
+} $else {
+	pub enum Enum1 {
+		enum1_e
+		enum1_f
+	}
+}

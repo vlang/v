@@ -1,0 +1,15 @@
+vlib/v/checker/tests/unknown_struct_field_suggest_name.vv:10:13: error: type `Points` has no field named `xxxa`.
+Did you mean `xxxx`?
+    8 |     p := Points{[1], [2], [3]}
+    9 |     println('p: ${p}')
+   10 |     for x in p.xxxa {
+      |                ~~~~
+   11 |         println('x: ${x}')
+   12 |     }
+vlib/v/checker/tests/unknown_struct_field_suggest_name.vv:11:17: error: expression does not return a value
+    9 |     println('p: ${p}')
+   10 |     for x in p.xxxa {
+   11 |         println('x: ${x}')
+      |                       ^
+   12 |     }
+   13 | }

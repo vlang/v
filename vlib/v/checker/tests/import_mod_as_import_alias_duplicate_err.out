@@ -1,0 +1,6 @@
+vlib/v/checker/tests/import_mod_as_import_alias_duplicate_err.vv:2:8: error: A module `json` was already imported on line 1`.
+    1 | import json
+    2 | import x.json2 as json
+      |        ~~~~~~~
+    3 | 
+    4 | numbers := {

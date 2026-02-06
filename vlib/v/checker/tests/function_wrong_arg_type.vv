@@ -1,0 +1,9 @@
+fn f(x int) int {
+	return x + x
+}
+
+fn main() {
+	a := 12.3
+	q := f(a)
+	println('${q}')
+}

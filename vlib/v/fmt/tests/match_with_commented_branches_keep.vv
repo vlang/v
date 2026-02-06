@@ -1,0 +1,57 @@
+module ast
+
+pub fn (stmt Stmt) pos() Pos {
+	match stmt {
+		AssertStmt { return stmt.pos }
+		AssignStmt { return stmt.pos }
+		/*
+		// Attr {
+		// }
+		// Block {
+		// }
+		// BranchStmt {
+		// }
+		*/
+		Comment { return stmt.pos }
+		ConstDecl { return stmt.pos }
+		/*
+		// DeferStmt {
+		// }
+		*/
+		EnumDecl { return stmt.pos }
+		ExprStmt { return stmt.pos }
+		FnDecl { return stmt.pos }
+		ForCStmt { return stmt.pos }
+		ForInStmt { return stmt.pos }
+		ForStmt { return stmt.pos }
+		/*
+		// GlobalDecl {
+		// }
+		// GoStmt {
+		// }
+		// GotoLabel {
+		// }
+		// GotoStmt {
+		// }
+		// HashStmt {
+		// }
+		*/
+		Import { return stmt.pos }
+		/*
+		// InterfaceDecl {
+		// }
+		// Module {
+		// }
+		*/
+		Return { return stmt.pos }
+		StructDecl { return stmt.pos }
+		/*
+		// TypeDecl {
+		// }
+		// UnsafeStmt {
+		// }
+		*/
+		//
+		else { return Pos{} }
+	}
+}

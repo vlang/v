@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_method_called_arg_mismatch.vv:3:15: error: cannot use `Foo` as `Bar` in argument 1 to `Obj.set`
+    1 | fn main() {
+    2 |     mut obj := Obj{}
+    3 |     obj.set[Bar](Foo{})
+      |                  ~~~~~
+    4 | }
+    5 |

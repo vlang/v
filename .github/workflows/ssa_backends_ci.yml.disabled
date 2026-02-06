@@ -1,0 +1,48 @@
+name: SSA backends CI
+
+on:
+  push:
+    paths:
+      - 'vlib/v2/**'
+      - 'cmd/tinyv/**'
+      - '.github/workflows/ssa_backends_ci.yml'
+  pull_request:
+    paths:
+      - 'vlib/v2/**'
+      - 'cmd/tinyv/**'
+      - '.github/workflows/ssa_backends_ci.yml'
+
+concurrency:
+  group: ssa_backends-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ssa-backends-linux:
+    runs-on: ubuntu-24.04
+    env:
+      VJOBS: 1
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make && ./v symlink
+      - name: Test native x64 backend
+        run: v run cmd/tinyv/test_ssa_backends.v
+      - name: Test cleanc backend
+        run: v run cmd/tinyv/test_ssa_backends.v cleanc
+      - name: Test c-ssa backend
+        run: v run cmd/tinyv/test_ssa_backends.v c
+
+  ssa-backends-macos:
+    runs-on: macos-14
+    env:
+      VJOBS: 1
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Test native arm64 backend
+        run: v run cmd/tinyv/test_ssa_backends.v
+      - name: Test cleanc backend
+        run: v run cmd/tinyv/test_ssa_backends.v cleanc
+      - name: Test c-ssa backend
+        run: v run cmd/tinyv/test_ssa_backends.v c

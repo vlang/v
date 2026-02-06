@@ -1,0 +1,28 @@
+vlib/v/checker/tests/labelled_break_continue.vv:8:5: error: invalid label name `L2`
+    6 |         for {
+    7 |             if i < 7 {
+    8 |                 continue L2
+      |                 ~~~~~~~~
+    9 |             } else {
+   10 |                 break L2
+vlib/v/checker/tests/labelled_break_continue.vv:10:5: error: invalid label name `L2`
+    8 |                 continue L2
+    9 |             } else {
+   10 |                 break L2
+      |                 ~~~~~
+   11 |             }
+   12 |         }
+vlib/v/checker/tests/labelled_break_continue.vv:19:5: error: invalid label name `L1`
+   17 |         for {
+   18 |             if i < 3 {
+   19 |                 continue L1
+      |                 ~~~~~~~~
+   20 |             } else {
+   21 |                 break L1
+vlib/v/checker/tests/labelled_break_continue.vv:21:5: error: invalid label name `L1`
+   19 |                 continue L1
+   20 |             } else {
+   21 |                 break L1
+      |                 ~~~~~
+   22 |             }
+   23 |         }

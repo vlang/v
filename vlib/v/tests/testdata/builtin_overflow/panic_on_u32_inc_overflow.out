@@ -1,0 +1,8 @@
+4294967294
+4294967295
+================ V panic ================
+   module: builtin.overflow
+ function: add_u32()
+  message: attempt to add with overflow(u32(4294967295) + u32(1))
+     file: vlib/builtin/overflow/overflow.v
+

@@ -1,0 +1,8 @@
+1844674407370955161
+18446744073709551610
+================ V panic ================
+   module: builtin.overflow
+ function: mul_u64()
+  message: attempt to mul with overflow(u64(18446744073709551610) * u64(10))
+     file: vlib/builtin/overflow/overflow.v
+

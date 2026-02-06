@@ -1,0 +1,6 @@
+module main
+
+fn main() {
+	_ = A(0)
+	_ = &A(unsafe { nil })
+}

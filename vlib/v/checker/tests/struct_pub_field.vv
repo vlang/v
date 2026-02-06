@@ -1,0 +1,10 @@
+struct Foo {
+	i int
+}
+
+fn main() {
+	a := Foo{
+		i: 1
+	}
+	a.i = 2
+}

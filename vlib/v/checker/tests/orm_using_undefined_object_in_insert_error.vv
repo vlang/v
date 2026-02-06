@@ -1,0 +1,15 @@
+import db.sqlite
+
+struct Node {
+	id   int @[primary; sql: serial]
+	text string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql db {
+		create table Node
+		insert bug into Node
+	}!
+}

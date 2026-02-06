@@ -1,0 +1,152 @@
+// Test data file for goto_def_test.v
+module main
+
+import v.tests.vls.sample_mod1 as s
+
+struct LocalStruct {
+	value int
+}
+
+fn (ls LocalStruct) my_method() string {
+	return 'method'
+}
+
+fn test_local_struct() {
+ 	mut obj := LocalStruct{value: 42}
+
+	msg := obj.my_method()
+	println(msg)
+
+	another := LocalStruct{}
+	println(another.value)
+
+	yet_another := obj
+	println(yet_another)
+
+	val := obj.value
+	println(val)
+
+	result := obj.my_method()
+	println(result)
+
+	ret_type := obj.my_method()
+	println(ret_type)
+}
+
+struct DeepStruct {
+	LocalStruct
+	st struct {
+		sstt struct {
+			l2 int
+		}
+		l1 int
+	}
+	l0 int
+}
+
+fn test_deep_struct() {
+  deep := DeepStruct{}
+	nested_val := deep.st.sstt.l2
+	println(nested_val)
+
+	embedded_val := deep.LocalStruct
+	println(embedded_val)
+
+	deep_2 := DeepStruct {
+	  st: struct {
+			sstt: struct {
+			  l2: deep.st.sstt.l2
+			}
+			l1: deep.st.l1
+		}
+	}
+}
+
+enum LocalEnum {
+	first
+	second
+	third
+}
+
+fn test_local_enum() {
+  e1 := LocalEnum.first
+
+	match e1 {
+		.second { println('second') }
+		else {}
+	}
+}
+
+type LocalAlias = string
+
+fn test_local_alias() {
+  casted := LocalAlias('test')
+}
+
+type LocalSum = int | string
+
+struct TypeA {
+	a int
+}
+
+struct TypeB {
+	b string
+}
+
+type UserSum = TypeA | TypeB
+
+fn test_local_sum() {
+	sum_val := LocalSum(42)
+	println(sum_val)
+
+	user_sum := UserSum(TypeA{a: 10})
+	println(user_sum)
+}
+
+enum Method {
+	completion
+	signature_help
+	definition
+}
+
+fn test_match_enum() {
+	method := Method.completion
+	line_info := match method {
+		.completion {
+			'completion_info'
+		}
+		.signature_help {
+			'signature_info'
+		}
+		.definition {
+			'definition_info'
+		}
+	}
+	println(line_info)
+}
+
+fn test_imported_enum() {
+	imported_e := s.PublicEnum1.a
+	println(imported_e)
+}
+
+struct OpStruct {
+	val int
+}
+
+fn (a OpStruct) + (b OpStruct) OpStruct {
+	return OpStruct{val: a.val + b.val}
+}
+
+fn takes_struct(param OpStruct) string {
+	return param.str()
+}
+
+struct ArrayElemStruct {
+	value int
+}
+
+struct ContainerStruct {
+	items []ArrayElemStruct
+	fixed_items [5]ArrayElemStruct
+}

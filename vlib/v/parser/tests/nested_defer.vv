@@ -1,0 +1,14 @@
+fn test1() int {
+	mut a := 0
+	defer {
+		a = 12
+		defer {
+			a = 13
+		}
+	}
+	return a
+
+fn main() {
+	x := test1()
+	println(x)
+}

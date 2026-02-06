@@ -1,0 +1,15 @@
+// vtest vflags: -autofree
+pub struct Test {
+mut:
+	tags []string
+}
+
+pub fn (mut t Test) set_tags(tags string) {
+	t.tags = tags.to_lower().replace(',', ' ').trim_space().split(' ')
+}
+
+fn main() {
+	mut test := Test{}
+	test.set_tags('Hello, World')
+	println(test.tags)
+}

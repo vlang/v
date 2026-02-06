@@ -1,0 +1,19 @@
+--- normal multi exprs
+12
+2
+22
+-10
+45
+10
+--- struct based multi exprs/stmt exprs
+true
+10
+15
+false
+30
+35
+15
+125
+0
+20
+592

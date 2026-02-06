@@ -1,0 +1,82 @@
+vlib/v/checker/tests/add_op_wrong_type_err.vv:4:10: error: mismatched types `Aaa` and `int literal`
+    2 | 
+    3 | fn main() {
+    4 |     println(Aaa{} + 10)
+      |             ~~~~~~~~~~
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:4:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+    2 | 
+    3 | fn main() {
+    4 |     println(Aaa{} + 10)
+      |             ~~~~~~~~~~
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:5:10: error: mismatched types `int literal` and `Aaa`
+    3 | fn main() {
+    4 |     println(Aaa{} + 10)
+    5 |     println(10 + Aaa{})
+      |             ~~~~~~~~~~
+    6 |     println([1, 2, 3] + 10)
+    7 |     println(10 + [1, 2, 3])
+vlib/v/checker/tests/add_op_wrong_type_err.vv:5:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
+    3 | fn main() {
+    4 |     println(Aaa{} + 10)
+    5 |     println(10 + Aaa{})
+      |             ~~~~~~~~~~
+    6 |     println([1, 2, 3] + 10)
+    7 |     println(10 + [1, 2, 3])
+vlib/v/checker/tests/add_op_wrong_type_err.vv:6:10: error: mismatched types `[]int` and `int literal`
+    4 |     println(Aaa{} + 10)
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+      |             ~~~~~~~~~~~~~~
+    7 |     println(10 + [1, 2, 3])
+    8 |     a := map[string]int{}
+vlib/v/checker/tests/add_op_wrong_type_err.vv:6:10: error: infix expr: cannot use `int literal` (right expression) as `[]int`
+    4 |     println(Aaa{} + 10)
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+      |             ~~~~~~~~~~~~~~
+    7 |     println(10 + [1, 2, 3])
+    8 |     a := map[string]int{}
+vlib/v/checker/tests/add_op_wrong_type_err.vv:7:10: error: mismatched types `int literal` and `[]int`
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+    7 |     println(10 + [1, 2, 3])
+      |             ~~~~~~~~~~~~~~
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:7:10: error: infix expr: cannot use `[]int` (right expression) as `int literal`
+    5 |     println(10 + Aaa{})
+    6 |     println([1, 2, 3] + 10)
+    7 |     println(10 + [1, 2, 3])
+      |             ~~~~~~~~~~~~~~
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:9:10: error: mismatched types `map[string]int` and `int literal`
+    7 |     println(10 + [1, 2, 3])
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+      |             ~~~~~~
+   10 |     println(10 + a)
+   11 | }
+vlib/v/checker/tests/add_op_wrong_type_err.vv:9:10: error: infix expr: cannot use `int literal` (right expression) as `map[string]int`
+    7 |     println(10 + [1, 2, 3])
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+      |             ~~~~~~
+   10 |     println(10 + a)
+   11 | }
+vlib/v/checker/tests/add_op_wrong_type_err.vv:10:10: error: mismatched types `int literal` and `map[string]int`
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+   10 |     println(10 + a)
+      |             ~~~~~~
+   11 | }
+vlib/v/checker/tests/add_op_wrong_type_err.vv:10:10: error: infix expr: cannot use `map[string]int` (right expression) as `int literal`
+    8 |     a := map[string]int{}
+    9 |     println(a + 10)
+   10 |     println(10 + a)
+      |             ~~~~~~
+   11 | }

@@ -1,0 +1,13 @@
+struct Foo {}
+
+fn (f Foo) foo() int {
+	return 1
+}
+
+fn new_foo() !Foo {
+	return Foo{}
+}
+
+fn main() {
+	new_foo().foo()
+}

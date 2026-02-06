@@ -1,0 +1,30 @@
+name: 'Cache Apt Packages'
+description: 'Cache all commonly used apt packages to speed up CI jobs'
+
+# imagemagick              : convert, mogrify
+# xvfb                     : xvfb
+# openimageio-tools        : idiff
+# libxcursor-dev libxi-dev : V gfx deps
+# libgl1-mesa-dri          : For headless rendering on the CI / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
+# freeglut3-dev            : Fixes graphic apps compilation with tcc
+# sdl2                     : needed for Puzzle Vibes & Chocolate Doom
+# libsodium-dev            : needed for Gitly and C2V
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
+      with:
+        version: 1.0
+        packages: expect binutils postgresql sqlite3 clang valgrind \
+          imagemagick openimageio-tools xvfb xsel xclip \
+          libsodium-dev libpq-dev libssl-dev libsqlite3-dev \
+          libfreetype6-dev libxi-dev libxcursor-dev \
+          libgl-dev libxrandr-dev libasound2-dev \
+          libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri \
+          libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev \
+          libpng-dev libsamplerate0-dev \
+          xfonts-75dpi xfonts-base
+    - name: Install common packages
+      run: echo "done installing packages"
+      shell: bash

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/if_match_expr_err.vv:3:8: error: cannot use `match` with `if` statements
+    1 | fn main() {
+    2 |     a := 0
+    3 |     if match a {
+      |        ~~~~~
+    4 |         0 {
+    5 |             println('a is zero')

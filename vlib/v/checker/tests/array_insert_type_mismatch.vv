@@ -1,0 +1,15 @@
+fn main() {
+	mut a := [1, 2]
+	a.insert(1, 2.3)
+	a.insert(1, 'abc')
+	a.insert(1, [1.1, 2.2])
+	a.insert(1, ['aa', 'bb', 'cc'])
+	a.insert(1, [[1]])
+	a.insert(1, [[['aa']]])
+	println(a)
+
+	mut b := [[1, 2, 3]]
+	b.insert(0, [[[2]]])
+	b.insert(0, [[[['aa']]]])
+	println(b)
+}

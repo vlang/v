@@ -1,0 +1,221 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module builtin
+
+// utf8_char_len returns the length in bytes of a UTF-8 encoded codepoint that starts with the byte `b`.
+pub fn utf8_char_len(b u8) int {
+	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
+}
+
+// Convert utf32 to utf8
+// utf32 == Codepoint
+pub fn utf32_to_str(code u32) string {
+	unsafe {
+		mut buffer := malloc_noscan(5)
+		res := utf32_to_str_no_malloc(code, mut buffer)
+		if res.len == 0 {
+			// the buffer was not used at all
+			free(buffer)
+		}
+		return res
+	}
+}
+
+@[manualfree; unsafe]
+pub fn utf32_to_str_no_malloc(code u32, mut buf &u8) string {
+	unsafe {
+		len := utf32_decode_to_buffer(code, mut buf)
+		if len == 0 {
+			return ''
+		}
+		buf[len] = 0
+		return tos(buf, len)
+	}
+}
+
+@[manualfree; unsafe]
+pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
+	unsafe {
+		icode := int(code) // Prevents doing casts everywhere
+		mut buffer := &u8(buf)
+		if icode <= 127 {
+			// 0x7F
+			buffer[0] = u8(icode)
+			return 1
+		} else if icode <= 2047 {
+			// 0x7FF
+			buffer[0] = 192 | u8(icode >> 6) // 0xC0 - 110xxxxx
+			buffer[1] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 2
+		} else if icode <= 65535 {
+			// 0xFFFF
+			buffer[0] = 224 | u8(icode >> 12) // 0xE0 - 1110xxxx
+			buffer[1] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 3
+		}
+		// 0x10FFFF
+		else if icode <= 1114111 {
+			buffer[0] = 240 | u8(icode >> 18) // 0xF0 - 11110xxx
+			buffer[1] = 128 | (u8(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[3] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 4
+		}
+	}
+	return 0
+}
+
+// Convert utf8 to utf32
+// the original implementation did not check for
+// valid utf8 in the string, and could result in
+// values greater than the utf32 spec
+// it has been replaced by `utf8_to_utf32` which
+// has an option return type.
+//
+// this function is left for backward compatibility
+// it is used in vlib/builtin/string.v,
+// and also in vlib/v/gen/c/cgen.v
+pub fn (_rune string) utf32_code() int {
+	if _rune.len > 4 {
+		return 0
+	}
+	return int(impl_utf8_to_utf32(&u8(_rune.str), _rune.len))
+}
+
+// convert array of utf8 bytes to single utf32 value
+// will error if more than 4 bytes are submitted
+pub fn (_bytes []u8) utf8_to_utf32() !rune {
+	if _bytes.len > 4 {
+		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
+	}
+	return impl_utf8_to_utf32(&u8(_bytes.data), _bytes.len)
+}
+
+@[direct_array_access]
+fn impl_utf8_to_utf32(_bytes &u8, _bytes_len int) rune {
+	if _bytes_len == 0 || _bytes_len > 4 {
+		return 0
+	}
+	// return ASCII unchanged
+	if _bytes_len == 1 {
+		return rune(unsafe { _bytes[0] })
+	}
+
+	match _bytes_len {
+		2 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			return ((b0 & 0x1F) << 6) | (b1 & 0x3F)
+		}
+		3 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			b2 := rune(unsafe { _bytes[2] })
+			return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F)
+		}
+		4 {
+			b0 := rune(unsafe { _bytes[0] })
+			b1 := rune(unsafe { _bytes[1] })
+			b2 := rune(unsafe { _bytes[2] })
+			b3 := rune(unsafe { _bytes[3] })
+			return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// Calculate string length for formatting, i.e. number of "characters"
+// This is simplified implementation. if you need specification compliant width,
+// use utf8.east_asian.display_width.
+pub fn utf8_str_visible_length(s string) int {
+	mut l := 0
+	mut ul := 1
+	for i := 0; i < s.len; i += ul {
+		c := unsafe { s.str[i] }
+		ul = ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
+		if i + ul > s.len { // incomplete UTF-8 sequence
+			return l
+		}
+		l++
+		// avoid the match if not needed
+		if ul == 1 {
+			continue
+		}
+		// recognize combining characters and wide characters
+		match ul {
+			2 {
+				r := u64((u16(c) << 8) | unsafe { s.str[i + 1] })
+				if r >= 0xcc80 && r < 0xcdb0 {
+					// diacritical marks
+					l--
+				}
+			}
+			3 {
+				r := u64((u32(c) << 16) | unsafe { (u32(s.str[i + 1]) << 8) | s.str[i + 2] })
+				// diacritical marks extended
+				// diacritical marks supplement
+				// diacritical marks for symbols
+				// TODO: remove this workaround for v2's parser
+				// vfmt off
+				if (r >= 0xe1aab0 && r <= 0xe1ac7f) ||
+				    (r >= 0xe1b780 && r <= 0xe1b87f) ||
+					(r >= 0xe28390 && r <= 0xe2847f) ||
+					(r >= 0xefb8a0 && r <= 0xefb8af) {
+					// diacritical marks
+					l--
+				}
+				// Hangru
+				// CJK Unified Ideographics
+				// Hangru
+				// CJK
+				else if (r >= 0xe18480 && r <= 0xe1859f) ||
+					(r >= 0xe2ba80 && r <= 0xe2bf95) ||
+					(r >= 0xe38080 && r <= 0xe4b77f) ||
+					(r >= 0xe4b880 && r <= 0xea807f) ||
+					(r >= 0xeaa5a0 && r <= 0xeaa79f) ||
+					(r >= 0xeab080 && r <= 0xed9eaf) ||
+					(r >= 0xefa480 && r <= 0xefac7f) ||
+					(r >= 0xefb8b8 && r <= 0xefb9af) {
+					// half marks
+					l++
+				}
+				// vfmt on
+			}
+			4 {
+				r := u64((u32(c) << 24) | unsafe {
+					(u32(s.str[i + 1]) << 16) | (u32(s.str[i + 2]) << 8) | s.str[i + 3]
+				})
+				// Enclosed Ideographic Supplement
+				// Emoji
+				// CJK Unified Ideographs Extension B-G
+				// TODO: remove this workaround for v2's parser
+				// vfmt off
+				if (r >= 0xf09f8880 && r <= 0xf09f8a8f) ||
+					(r >= 0xf09f8c80 && r <= 0xf09f9c90) ||
+					(r >= 0xf09fa490 && r <= 0xf09fa7af) ||
+					(r >= 0xf0a08080 && r <= 0xf180807f) {
+					l++
+				}
+				// vfmt on
+			}
+			else {}
+		}
+	}
+	return l
+}
+
+// string_to_ansi_not_null_terminated returns an ANSI version of the string `_str`.
+// NOTE: This is most useful for converting a vstring to an ANSI string under Windows.
+// NOTE: The ANSI string return is not null-terminated, then you can use `os.write_file_array` write an ANSI file.
+pub fn string_to_ansi_not_null_terminated(_str string) []u8 {
+	wstr := _str.to_wide()
+	mut ansi := wide_to_ansi(wstr)
+	if ansi.len > 0 {
+		unsafe { ansi.len-- } // remove tailing zero
+	}
+	return ansi
+}

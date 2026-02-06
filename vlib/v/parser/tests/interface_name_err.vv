@@ -1,0 +1,19 @@
+interface A {
+	a int
+	b() int
+}
+
+struct Ba {
+	a int
+}
+
+fn (b &Ba) b() int {
+	return b.a
+}
+
+fn main() {
+	a := &Ba{
+		a: 1
+	}
+	b := A(a)
+}

@@ -1,0 +1,7 @@
+fn main() {
+	fun := fn [T](value T) T {
+		return value
+	}
+
+	println(fun[int](100))
+}

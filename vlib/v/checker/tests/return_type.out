@@ -1,0 +1,6 @@
+vlib/v/checker/tests/return_type.vv:2:9: error: cannot use `int literal` as type `bool` in return argument
+    1 | fn test() bool {
+    2 |     return 100
+      |            ~~~
+    3 | }
+    4 |

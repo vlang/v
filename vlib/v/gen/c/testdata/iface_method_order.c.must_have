@@ -1,0 +1,18 @@
+struct _main__Foo_interface_methods {
+void (*_method_a)(void* _);
+void (*_method_b)(void* _);
+};
+struct _main__Foo_interface_methods main__Foo_name_table[3] = {
+{
+._method_a = (void*) main__Bar_a_Interface_main__Foo_method_wrapper,
+._method_b = (void*) main__Bar_b_Interface_main__Foo_method_wrapper,
+},
+{
+._method_a = (void*) 0,
+._method_b = (void*) 0,
+},
+{
+._method_a = (void*) main__Baz_a_Interface_main__Foo_method_wrapper,
+._method_b = (void*) main__Baz_b_Interface_main__Foo_method_wrapper,
+},
+};

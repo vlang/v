@@ -1,0 +1,21 @@
+vlib/v/checker/tests/sumtype_init_with_ref_fields_err.vv:10:7: error: reference field `Node.parent` must be initialized
+    8 | 
+    9 | fn main() {
+   10 |     s := Sumtype{}
+      |          ~~~~~~~~~
+   11 |     dump(s)
+   12 | }
+vlib/v/checker/tests/sumtype_init_with_ref_fields_err.vv:10:7: error: reference field `Node.left` must be initialized
+    8 | 
+    9 | fn main() {
+   10 |     s := Sumtype{}
+      |          ~~~~~~~~~
+   11 |     dump(s)
+   12 | }
+vlib/v/checker/tests/sumtype_init_with_ref_fields_err.vv:10:7: error: reference field `Node.right` must be initialized
+    8 | 
+    9 | fn main() {
+   10 |     s := Sumtype{}
+      |          ~~~~~~~~~
+   11 |     dump(s)
+   12 | }

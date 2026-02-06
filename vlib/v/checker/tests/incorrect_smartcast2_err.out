@@ -1,0 +1,21 @@
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:22:9: notice: smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar
+   20 | 
+   21 | fn doesntwork(v []Either[int, int]) {
+   22 |     match v[0] {
+      |            ~~~
+   23 |         Left[int] {
+   24 |             println(v[0].error)
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:24:17: error: field `error` does not exist or have the same type in these sumtype `Either[int, int]` variants: Right[int]
+   22 |     match v[0] {
+   23 |         Left[int] {
+   24 |             println(v[0].error)
+      |                          ~~~~~
+   25 |         }
+   26 |         else {}
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:24:4: error: `println` can not print void expressions
+   22 |     match v[0] {
+   23 |         Left[int] {
+   24 |             println(v[0].error)
+      |             ~~~~~~~~~~~~~~~~~~~
+   25 |         }
+   26 |         else {}

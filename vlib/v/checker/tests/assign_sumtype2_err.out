@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_sumtype2_err.vv:14:3: error: cannot assign to field `decl`: expected `Decl`, not `Stmt`
+   12 |     stmt := Stmt(Decl{})
+   13 |     _ := File{
+   14 |         decl: stmt
+      |         ~~~~~~~~~~
+   15 |     }
+   16 | }

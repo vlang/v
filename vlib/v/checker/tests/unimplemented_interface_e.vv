@@ -1,0 +1,14 @@
+interface Animal {
+	speak(s string)
+}
+
+struct Cat {}
+
+fn (c Cat) speak(s &string) {}
+
+fn foo(a Animal) {}
+
+fn main() {
+	foo(Cat{})
+	_ = Animal(Cat{})
+}

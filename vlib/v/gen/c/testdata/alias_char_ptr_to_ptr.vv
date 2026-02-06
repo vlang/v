@@ -1,0 +1,20 @@
+// vtest vflags: -no-skip-unused
+type ALcharptr = &char
+
+fn return_text_one() ALcharptr {
+	return ALcharptr(''.str)
+}
+
+fn return_text_two() &char {
+	return ''.str
+}
+
+fn get_one() string {
+	s := return_text_one()
+	return unsafe { cstring_to_vstring(s) }
+}
+
+fn get_two() string {
+	s := return_text_two()
+	return unsafe { cstring_to_vstring(s) }
+}

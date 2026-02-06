@@ -1,0 +1,7 @@
+vlib/v/parser/tests/expr_evaluated_but_not_used_e.vv:3:14: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     mut array := [1, 2, 3]
+    3 |     array << 4, 5
+      |                 ^
+    4 |     println(array)
+    5 | }

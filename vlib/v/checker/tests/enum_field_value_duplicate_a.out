@@ -1,0 +1,15 @@
+vlib/v/checker/tests/enum_field_value_duplicate_a.vv:3:10: error: enum value `0` already exists
+    1 | enum Color {
+    2 |     red
+    3 |     green = 0
+      |             ^
+    4 |     blue  = 1
+    5 |     alpha = 1
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed
+vlib/v/checker/tests/enum_field_value_duplicate_a.vv:5:10: error: enum value `1` already exists
+    3 |     green = 0
+    4 |     blue  = 1
+    5 |     alpha = 1
+      |             ^
+    6 | }
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

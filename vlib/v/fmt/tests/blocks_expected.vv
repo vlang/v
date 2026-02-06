@@ -1,0 +1,9 @@
+fn unsafe_fn() {
+	unsafe {
+		_ = malloc(2)
+	}
+}
+
+fn fn_with_defer() {
+	defer { voidfn() }
+}

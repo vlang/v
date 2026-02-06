@@ -1,0 +1,6 @@
+if 1 in [1, 2, 2, 2] { println('ok') }
+
+a := `a`
+if `a` in [`c`, a, a] { println('ok') }
+
+println('done')

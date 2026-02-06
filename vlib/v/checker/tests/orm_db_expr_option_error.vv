@@ -1,0 +1,33 @@
+module main
+
+import db.sqlite
+
+struct Account {
+	id int @[primary]
+}
+
+fn connect_option() ?sqlite.DB {
+	return sqlite.connect(':memory:') or { return none }
+}
+
+fn main() {
+	db_option := connect_option()
+
+	_ := sql db_option {
+		select from Account
+	}!
+
+	account := Account{}
+
+	_ := sql account {
+		select from Account
+	}!
+
+	sql account {
+		insert account into Account
+	}!
+
+	sql db_option {
+		insert account into Account
+	}!
+}

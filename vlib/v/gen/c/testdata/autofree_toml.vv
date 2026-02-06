@@ -1,0 +1,9 @@
+// vtest vflags: -autofree
+import toml
+import os
+
+config_fname := os.join_path(os.vtmp_dir(), 'config.toml')
+tab_title := 'test tab title'
+os.write_file(config_fname, 'tab_title = "${tab_title}"')!
+doc := toml.parse_file(config_fname)!
+assert doc.value('tab_title').string() == tab_title

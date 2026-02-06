@@ -1,0 +1,15 @@
+struct EventA {
+	a u32
+}
+
+struct EventB {
+	b u32
+}
+
+type Event = EventA | EventB
+
+fn main() {
+	some_ptr := voidptr(1234)
+	event := &Event(some_ptr)
+	_ = event
+}

@@ -1,0 +1,7 @@
+// V gowrappers waiter fns:
+IError __v_thread_IError_wait(__v_thread_IError thread);
+Array_IError Array___v_thread_IError_wait(Array___v_thread_IError a);
+// V gowrappers:
+IError __v_thread_IError_wait(__v_thread_IError thread) {
+u32 main__rsync_thread_wrapper(thread_arg_main__rsync *arg) {
+Array_IError Array___v_thread_IError_wait(Array___v_thread_IError a) {

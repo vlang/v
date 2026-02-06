@@ -1,0 +1,5 @@
+static void main__Abc_free(main__Abc* it);
+static void builtin__FILE_free(FILE* it);
+static void builtin__FILE_free(FILE* it) {
+static void main__Abc_free(main__Abc* it) {
+builtin__FILE_free(&(it->myfile));

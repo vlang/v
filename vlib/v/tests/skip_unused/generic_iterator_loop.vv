@@ -1,0 +1,23 @@
+module main
+
+struct Foo {}
+
+fn (f Foo) next() ?Foo {
+	return none
+}
+
+struct Bar {}
+
+fn (f Bar) next() ?Bar {
+	return none
+}
+
+fn loop[T](iter T) {
+	for _ in iter {
+	}
+}
+
+fn main() {
+	loop(Foo{})
+	loop(Bar{})
+}

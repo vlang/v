@@ -1,0 +1,28 @@
+module main
+
+struct Dummy {
+	v int
+}
+
+fn get_dummy() &Dum {
+	d := Dum{
+		v: 1
+	}
+	return &d
+}
+
+type Dum = Dummy
+
+fn main() {
+	dummy := if false {
+		res := &Dum{
+			v: 2
+		}
+		&res
+	} else {
+		r := get_dummy()
+		r
+	}
+
+	println(dummy)
+}

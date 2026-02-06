@@ -1,0 +1,7 @@
+fn main() {
+	option_1 := ?int(10)
+	if mut option_1 != none {
+		option_1 = 11
+	}
+	println('Options: ${option_1}')
+}

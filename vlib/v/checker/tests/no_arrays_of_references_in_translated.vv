@@ -1,0 +1,9 @@
+@[translated]
+module main
+
+fn main() {
+	println(*[]&int{len: 1}[0])
+	println([1]&int{})
+	_ = [][1]&int{len: 1}[0][0]
+	_ = []map[int]&int{len: 1}
+}

@@ -1,0 +1,15 @@
+vlib/v/checker/tests/fn_type_exists.vv:1:34: error: unknown type `Pants`
+    1 | type PantsCreator = fn (a Shirt) Pants
+      |                                  ~~~~~
+    2 | 
+    3 | type PantsConsumer = fn (p Pants)
+vlib/v/checker/tests/fn_type_exists.vv:1:27: error: unknown type `Shirt`
+    1 | type PantsCreator = fn (a Shirt) Pants
+      |                           ~~~~~
+    2 | 
+    3 | type PantsConsumer = fn (p Pants)
+vlib/v/checker/tests/fn_type_exists.vv:3:28: error: unknown type `Pants`
+    1 | type PantsCreator = fn (a Shirt) Pants
+    2 | 
+    3 | type PantsConsumer = fn (p Pants)
+      |                            ~~~~~

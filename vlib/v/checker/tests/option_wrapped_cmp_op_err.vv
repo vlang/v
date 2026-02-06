@@ -1,0 +1,7 @@
+fn main() {
+	a := ?string('hi')
+	println(a == 'hi')
+	println('hi' == a)
+	println(a != 'hi')
+	println('hi' != a)
+}

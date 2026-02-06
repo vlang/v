@@ -1,0 +1,4 @@
+vlib/v/checker/tests/inc_paren_expr.vv:1:1: error: cannot increment `(100 * 10)` because it is non lvalue expression
+    1 | (100 * 10)++
+      | ~~~~~~~~~~
+Details: try rewrite this as `(100 * 10) + 1`

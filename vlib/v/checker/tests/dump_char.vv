@@ -1,0 +1,3 @@
+c := char(67)
+dump(u8(c))
+dump(c)

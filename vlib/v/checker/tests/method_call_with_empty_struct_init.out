@@ -1,0 +1,12 @@
+vlib/v/checker/tests/method_call_with_empty_struct_init.vv:10:11: error: `{}` can not be used for initialising empty structs any more. Use `Abc{}` instead.
+    8 | fn main() {
+    9 |     s := Abc{}
+   10 |     s.abc(0, {})
+      |              ~~
+   11 | }
+vlib/v/checker/tests/method_call_with_empty_struct_init.vv:10:11: error: `map{  }` (no value) used as value in argument 2 to `Abc.abc`
+    8 | fn main() {
+    9 |     s := Abc{}
+   10 |     s.abc(0, {})
+      |              ~~
+   11 | }

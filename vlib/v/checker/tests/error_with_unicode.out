@@ -1,0 +1,56 @@
+vlib/v/checker/tests/error_with_unicode.vv:6:17: error: cannot use `int literal` as `string` in argument 2 to `f1`
+    4 | 
+    5 | fn main() {
+    6 |     f1('🐀🐈', 0)
+      |                ^
+    7 |     f2(0, '🐟🐧')
+    8 |     mut n := 0
+vlib/v/checker/tests/error_with_unicode.vv:7:8: error: cannot use `string` as `int` in argument 2 to `f2`
+    5 | fn main() {
+    6 |     f1('🐀🐈', 0)
+    7 |     f2(0, '🐟🐧')
+      |           ~~~~~~
+    8 |     mut n := 0
+    9 |     n = '漢字'
+vlib/v/checker/tests/error_with_unicode.vv:9:6: error: cannot assign to `n`: expected `int`, not `string`
+    7 |     f2(0, '🐟🐧')
+    8 |     mut n := 0
+    9 |     n = '漢字'
+      |         ~~~~~~
+   10 |     n = 'ひらがな'
+   11 |     n = '简体字'
+vlib/v/checker/tests/error_with_unicode.vv:10:6: error: cannot assign to `n`: expected `int`, not `string`
+    8 |     mut n := 0
+    9 |     n = '漢字'
+   10 |     n = 'ひらがな'
+      |         ~~~~~~~~~~
+   11 |     n = '简体字'
+   12 |     n = '繁體字'
+vlib/v/checker/tests/error_with_unicode.vv:11:6: error: cannot assign to `n`: expected `int`, not `string`
+    9 |     n = '漢字'
+   10 |     n = 'ひらがな'
+   11 |     n = '简体字'
+      |         ~~~~~~~~
+   12 |     n = '繁體字'
+   13 |     n = '한글'
+vlib/v/checker/tests/error_with_unicode.vv:12:6: error: cannot assign to `n`: expected `int`, not `string`
+   10 |     n = 'ひらがな'
+   11 |     n = '简体字'
+   12 |     n = '繁體字'
+      |         ~~~~~~~~
+   13 |     n = '한글'
+   14 |     n = 'Кириллица'
+vlib/v/checker/tests/error_with_unicode.vv:13:6: error: cannot assign to `n`: expected `int`, not `string`
+   11 |     n = '简体字'
+   12 |     n = '繁體字'
+   13 |     n = '한글'
+      |         ~~~~~~
+   14 |     n = 'Кириллица'
+   15 |     _ = n
+vlib/v/checker/tests/error_with_unicode.vv:14:6: error: cannot assign to `n`: expected `int`, not `string`
+   12 |     n = '繁體字'
+   13 |     n = '한글'
+   14 |     n = 'Кириллица'
+      |         ~~~~~~~~~~~
+   15 |     _ = n
+   16 | }

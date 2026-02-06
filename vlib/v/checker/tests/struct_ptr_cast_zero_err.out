@@ -1,0 +1,36 @@
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:7:5: warning: cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`
+    5 | b := 0
+    6 | 
+    7 | _ = &Context(0)
+      |     ~~~~~~~~~~~
+    8 | _ = &Context(a)
+    9 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:8:5: warning: cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`
+    6 | 
+    7 | _ = &Context(0)
+    8 | _ = &Context(a)
+      |     ~~~~~~~~~~~
+    9 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:9:5: warning: cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`
+    7 | _ = &Context(0)
+    8 | _ = &Context(a)
+    9 | _ = &Context(b)
+      |     ~~~~~~~~~~~
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:7:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    5 | b := 0
+    6 | 
+    7 | _ = &Context(0)
+      |     ~~~~~~~~~~~
+    8 | _ = &Context(a)
+    9 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:8:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    6 | 
+    7 | _ = &Context(0)
+    8 | _ = &Context(a)
+      |     ~~~~~~~~~~~
+    9 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:9:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    7 | _ = &Context(0)
+    8 | _ = &Context(a)
+    9 | _ = &Context(b)
+      |     ~~~~~~~~~~~

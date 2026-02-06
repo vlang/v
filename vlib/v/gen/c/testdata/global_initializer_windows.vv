@@ -1,0 +1,11 @@
+// vtest vflags: -enable-globals
+
+struct Foo {
+	foo int
+	bar struct {
+		a int
+		b f64
+	}
+}
+
+__global g_test_foo = [3]Foo{}

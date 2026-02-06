@@ -1,0 +1,19 @@
+const a = 123
+
+const b = 'abc'
+
+const c = rune(123)
+
+const d = u64(2 * c)
+
+const f = func()
+
+fn func() int {
+	return 42
+}
+
+dump(a)
+dump(b)
+dump(c)
+dump(d)
+dump(f)

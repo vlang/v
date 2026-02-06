@@ -1,0 +1,8 @@
+fn result() !int {
+	return 1
+}
+
+fn main() {
+	a := result()
+	println(a)
+}

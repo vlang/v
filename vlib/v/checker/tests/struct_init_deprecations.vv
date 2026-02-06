@@ -1,0 +1,23 @@
+import v.checker.tests.module_with_deprecated_structs as m
+
+fn init_deprecated_structs() {
+	o := m.Old{}
+	p := m.Present{}
+	dump(o)
+	dump(p)
+}
+
+fn init_deprecated_fields() {
+	x := m.Xyz{
+		a: 0
+		b: 1
+		c: 2
+		d: 3
+	}
+	dump(x)
+}
+
+fn main() {
+	init_deprecated_structs()
+	init_deprecated_fields()
+}

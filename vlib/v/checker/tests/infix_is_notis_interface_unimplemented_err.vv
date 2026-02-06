@@ -1,0 +1,28 @@
+fn f() ?int {
+	return none
+}
+
+fn type_unimplemented_ierror() {
+	if _ := f() {
+	} else {
+		_ = err is int
+	}
+
+	_ = f() or {
+		_ = err is int
+		0
+	}
+}
+
+interface IAbc {
+	some_method()
+}
+
+struct Struct {}
+
+fn (s Struct) some_method() {}
+
+fn type_unimplemented_interface() {
+	ivalue := IAbc(Struct{})
+	_ := ivalue is int
+}

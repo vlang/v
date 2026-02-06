@@ -1,0 +1,3 @@
+import rand { f64 }
+
+type Dot = [3]f64

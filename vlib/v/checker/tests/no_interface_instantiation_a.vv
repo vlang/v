@@ -1,0 +1,5 @@
+interface Speaker {}
+
+fn main() {
+	_ = Speaker{}
+}

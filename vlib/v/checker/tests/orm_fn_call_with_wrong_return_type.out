@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_fn_call_with_wrong_return_type.vv:52:37: error: ORM: function calls must return only primitive types and time.Time, but `get_second_child` returns `Child`
+   50 | 
+   51 |     steve := sql db {
+   52 |         select from Parent where child == get_second_child()
+      |                                           ~~~~~~~~~~~~~~~~~~
+   53 |     }!
+   54 |

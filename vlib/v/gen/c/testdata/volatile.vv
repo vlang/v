@@ -1,0 +1,10 @@
+struct Abc {
+	volatile a_volatile_field     int
+	a_non_volatile_field int
+}
+
+mut volatile zzz := 123
+mut volatile pzzz := &zzz
+println(zzz)
+println(&int(voidptr(pzzz)))
+println(Abc{})

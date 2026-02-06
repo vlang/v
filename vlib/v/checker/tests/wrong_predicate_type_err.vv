@@ -1,0 +1,21 @@
+@[heap]
+struct Foo {
+	field int
+}
+
+fn t() []&Foo {
+	mut a := []&Foo{}
+	a << &Foo{
+		field: 1
+	}
+	a << &Foo{
+		field: 2
+	}
+	return a
+}
+
+fn main() {
+	t().filter(fn (a Foo) bool {
+		return true
+	})
+}

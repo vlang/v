@@ -1,0 +1,35 @@
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:29:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+   27 | // ritorna una nuova Quadrica somma del ricevente e di un'altra
+   28 | fn (q &Quad) add(other &Quad) &Quad {
+   29 |     return &(Quad{q.x + other.x, q.y + other.y, q.z + other.z, q.w + other.w})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   30 | }
+   31 |
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:34:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+   32 | // ritorna una nuova Quadrica differenza tra il ricevente e un'altra
+   33 | fn (q &Quad) sub(other &Quad) &Quad {
+   34 |     return &(Quad{q.x - other.x, q.y - other.y, q.z - other.z, q.w - other.w})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   35 | }
+   36 |
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:39:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+   37 | // ritorna una nuova Quadrica ottenuta negando il ricevente
+   38 | fn (q &Quad) neg() &Quad {
+   39 |     return &(Quad{-q.x, -q.y, -q.z, -q.w})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   40 | }
+   41 |
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:44:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+   42 | // ritorna una nuova Quadrica ottenuta moltiplicando il ricevente per una costante
+   43 | fn (q &Quad) mult(factor f64) &Quad {
+   44 |     return &(Quad{q.x * factor, q.y * factor, q.z * factor, q.w * factor})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   45 | }
+   46 |
+vlib/v/checker/tests/unnecessary_parenthesis_of_reference.vv:49:10: notice: unnecessary `()`, use `&Quad{....}` instead of `&(Quad{....})`
+   47 | // ritorna una nuova Quadrica ottenuta dividendo il ricevente per una costante
+   48 | fn (q &Quad) div(factor f64) &Quad {
+   49 |     return &(Quad{q.x / factor, q.y / factor, q.z / factor, q.w / factor})
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   50 | }
+   51 |

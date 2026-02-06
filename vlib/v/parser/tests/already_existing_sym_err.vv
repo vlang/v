@@ -1,0 +1,16 @@
+@[translated]
+module vnkxcb
+
+type Nk_size = u32
+
+union Nk_handle {
+	ptr voidptr
+	id int
+}
+
+enum Nk_plugin_alloc {
+	nk_tree_node
+	nk_tree_tab
+}
+
+type Nk_plugin_alloc = fn (Nk_handle, voidptr, Nk_size) voidptr

@@ -1,0 +1,11 @@
+enum Color {
+	red   @[RED]  // first attribute
+	blue  @[BLUE] // second attribute
+}
+
+fn main() {
+	$for e in Color.values {
+		println(e.name)
+		println(e.attrs)
+	}
+}

@@ -1,0 +1,5 @@
+struct Aaa { mut: v int }  struct Bbb { a Aaa }  struct Ccc { mut: b Bbb } struct Ddd { mut: c Ccc }
+mut d := Ddd{} d.c.b = Bbb{}
+'OK'
+===output===
+OK

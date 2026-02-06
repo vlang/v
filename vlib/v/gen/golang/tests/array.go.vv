@@ -1,0 +1,21 @@
+module main
+
+#import "fmt"
+
+fn main() {
+	mut array_int := [1,2]
+	mut array_int_b := [6,7]
+	mut array_string := ['one', 'two']
+	mut array_string_b := ['six', 'seven']
+
+	array_int << 3
+	array_int << [4,5]
+	array_int << array_int_b
+
+	array_string << 'three'
+	array_string << ['four', 'five']
+	array_string << array_string_b
+
+	#fmt.Printf("%v\n", array_int)
+	#fmt.Printf("%v\n", array_string)
+}

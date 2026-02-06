@@ -1,0 +1,5 @@
+vlib/v/checker/tests/incorrect_name_interface_method.vv:2:2: error: method name `_speak` cannot start with `_`
+    1 | interface MyInterface {
+    2 |     _speak()
+      |     ~~~~~~~~
+    3 | }

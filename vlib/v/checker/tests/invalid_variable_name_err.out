@@ -1,0 +1,41 @@
+vlib/v/checker/tests/invalid_variable_name_err.vv:2:2: error: invalid use of reserved type `string` as a variable name
+    1 | fn main() {
+    2 |     string := 'hello, world'
+      |     ~~~~~~
+    3 |     println(string)
+    4 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:5:2: error: invalid use of reserved type `bool` as a variable name
+    3 |     println(string)
+    4 | 
+    5 |     bool := true
+      |     ~~~~
+    6 |     println(bool)
+    7 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:8:2: error: invalid use of reserved type `int` as a variable name
+    6 |     println(bool)
+    7 | 
+    8 |     int := 22
+      |     ~~~
+    9 |     println(int)
+   10 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:11:2: error: invalid use of reserved type `u64` as a variable name
+    9 |     println(int)
+   10 | 
+   11 |     u64 := 222
+      |     ~~~
+   12 |     println(u64)
+   13 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:14:2: error: invalid use of reserved type `f64` as a variable name
+   12 |     println(u64)
+   13 | 
+   14 |     f64 := 2.22
+      |     ~~~
+   15 |     println(f64)
+   16 |
+vlib/v/checker/tests/invalid_variable_name_err.vv:17:2: error: invalid use of reserved type `map` as a variable name
+   15 |     println(f64)
+   16 | 
+   17 |     map := map[string]string{}
+      |     ~~~
+   18 |     println(map)
+   19 | }

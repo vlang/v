@@ -1,0 +1,15 @@
+// for issue 19325
+type Response = int | string
+
+fn foo() string {
+	return 'hello'
+}
+
+fn event(cb fn () Response) {
+	resp := cb()
+	assert resp is string
+}
+
+fn main() {
+	event(foo)
+}

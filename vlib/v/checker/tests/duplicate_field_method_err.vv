@@ -1,0 +1,10 @@
+struct St {
+	attr fn () = unsafe { nil }
+}
+
+fn (s St) attr() {}
+
+interface Foo {
+	bar fn ()
+	bar()
+}

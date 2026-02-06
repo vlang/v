@@ -1,0 +1,5 @@
+fn main() {
+	mut var4 := ?map[string]string{}
+	var4?['a'] = 'b'
+	var4['b'] = 'c'
+}

@@ -1,0 +1,79 @@
+// Copyright (c) 2019-2025 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module fasthttp
+
+import runtime
+import net
+
+#include <fcntl.h>
+#include <errno.h>
+
+$if !windows {
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <netinet/tcp.h>
+}
+
+const max_thread_pool_size = runtime.nr_cpus()
+const max_connection_size = 65536 // Max events per epoll_wait
+
+const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol int) int
+
+fn C.bind(sockfd int, addr &net.Addr, addrlen u32) int
+
+fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
+
+fn C.recv(__fd int, __buf voidptr, __n usize, __flags int) int
+
+fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen u32) int
+
+fn C.listen(__fd int, __n int) int
+
+fn C.perror(s &u8)
+
+fn C.close(fd int) int
+
+fn C.htons(__hostshort u16) u16
+
+fn C.fcntl(fd int, cmd int, arg int) int
+
+pub struct Slice {
+pub:
+	start int
+	len   int
+}
+
+// HttpRequest represents an HTTP request.
+// TODO make fields immutable
+pub struct HttpRequest {
+pub mut:
+	buffer         []u8 // A V slice of the read buffer for convenience
+	method         Slice
+	path           Slice
+	version        Slice
+	header_fields  Slice
+	body           Slice
+	client_conn_fd int
+	user_data      voidptr // User-defined context data
+}
+
+pub struct HttpResponse {
+pub:
+	content   []u8
+	file_path string
+}
+
+// ServerConfig bundles the parameters needed to start a fasthttp server.
+pub struct ServerConfig {
+pub:
+	family                  net.AddrFamily = .ip6
+	port                    int            = 3000
+	max_request_buffer_size int            = 8192
+	handler                 fn (HttpRequest) !HttpResponse @[required]
+	user_data               voidptr
+}

@@ -1,0 +1,9 @@
+// somefile.v
+import orm
+import models
+
+fn init_db(db orm.Connection) {
+	sql db {
+		create table models.User
+	}
+}

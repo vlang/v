@@ -1,0 +1,18 @@
+struct Person {
+	name string
+mut:
+	relatives []&Person
+}
+
+fn main() {
+	mut father := &Person{
+		name: 'John'
+	}
+	mut mother := &Person{
+		name:      'Jane'
+		relatives: [father]
+	}
+	father.relatives = [mother]
+	println(father)
+	println('Success')
+}

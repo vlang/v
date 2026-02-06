@@ -1,0 +1,15 @@
+module main
+
+struct S1 {}
+
+fn main() {
+	s1 := S1{}
+
+	$for method in S1.methods {
+		println(S1.method_hello('yo'))
+	}
+}
+
+fn (t S1) method_hello() string {
+	return 'Hello'
+}

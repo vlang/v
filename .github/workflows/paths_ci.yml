@@ -1,0 +1,115 @@
+name: Path Testing CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/paths_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/paths_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: paths-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  space-paths-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          path: '你好 my $path, @с интервали'
+      - name: Build V
+        run: |
+          # shellcheck disable=SC2016
+          echo '你好 my $path, @с интервали'
+          ls -la
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ls -la
+          make
+      - name: v doctor
+        run: |
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ./v doctor
+      - name: v tests
+        run: |
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ./v test vlib/builtin vlib/os
+
+  space-paths-macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: '你好 my $path, @с интервали'
+          persist-credentials: false
+      - name: Build V
+        run: |
+          # shellcheck disable=SC2016
+          echo '你好 my $path, @с интервали'
+          ls -la
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ls -la
+          make
+          ## prebuild cmd/tools/builders/js_builder, to minimise the
+          ## chances of a sporadic "Killed" when running the tests later
+          ./v -b js run examples/hello_world.v
+      - name: v doctor
+        run: |
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ./v doctor
+      - name: v tests
+        run: |
+          # shellcheck disable=SC2016
+          cd '你好 my $path, @с интервали'
+          ./v test vlib/builtin vlib/os
+
+  space-paths-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    ## NB: the following paths do not work for now:
+    ##### MY_V_PATH: '你好 my $path, @с интервали'
+    ##### MY_V_PATH: 'path with some $punctuation, and some spaces '
+    ## tcc has a problem interpreting paths with non latin letters in them,
+    ## by default, but that can be solved with passing -Bthirdparty/tcc
+    ## but after that V fails self building with:
+    ####### builder error: cannot write to folder
+    ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
+    ## and that happens even for gcc builds, not just tcc ones
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: 'path with some $punctuation, and some spaces'
+          persist-credentials: false
+      - name: Build V
+        run: |
+          echo 'path with some $punctuation, and some spaces'
+          dir
+          cd 'path with some $punctuation, and some spaces'
+          dir
+          .\make.bat -tcc
+      - name: v doctor
+        run: |
+          cd 'path with some $punctuation, and some spaces'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd 'path with some $punctuation, and some spaces'
+          ./v test vlib/builtin vlib/os

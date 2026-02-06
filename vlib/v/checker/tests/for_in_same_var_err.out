@@ -1,0 +1,47 @@
+vlib/v/checker/tests/for_in_same_var_err.vv:1:10: error: in a `for x in <range>` loop, the key or value iteration variable `x` can not be the same as the low variable
+    1 | for x in x .. 10 {
+      |          ^
+    2 |     dump(x)
+    3 | }
+vlib/v/checker/tests/for_in_same_var_err.vv:5:15: error: in a `for x in <range>` loop, the key or value iteration variable `y` can not be the same as the high variable
+    3 | }
+    4 | 
+    5 | for y in 0 .. y {
+      |               ^
+    6 |     dump(y)
+    7 | }
+vlib/v/checker/tests/for_in_same_var_err.vv:9:10: error: in a `for x in <range>` loop, the key or value iteration variable `z` can not be the same as the low variable
+    7 | }
+    8 | 
+    9 | for z in z .. z {
+      |          ^
+   10 |     dump(z)
+   11 | }
+vlib/v/checker/tests/for_in_same_var_err.vv:13:10: error: in a `for x in array` loop, the key or value iteration variable `w` can not be the same as the low variable
+   11 | }
+   12 | 
+   13 | for w in w {
+      |          ^
+   14 |     dump(w)
+   15 | }
+vlib/v/checker/tests/for_in_same_var_err.vv:14:7: error: dump expression can not be void
+   12 | 
+   13 | for w in w {
+   14 |     dump(w)
+      |          ^
+   15 | }
+   16 |
+vlib/v/checker/tests/for_in_same_var_err.vv:17:13: error: in a `for x in array` loop, the key or value iteration variable `_` can not be the same as the low variable
+   15 | }
+   16 | 
+   17 | for k, _ in k {
+      |             ^
+   18 |     dump(k)
+   19 | }
+vlib/v/checker/tests/for_in_same_var_err.vv:17:13: error: for in: cannot index `int`
+   15 | }
+   16 | 
+   17 | for k, _ in k {
+      |             ^
+   18 |     dump(k)
+   19 | }

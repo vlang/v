@@ -1,0 +1,21 @@
+fn main() {
+	foo := 'foo'
+	_ := foo.len < 1
+	_ := foo.len > 0 || foo.len == 0 || foo.len != 0
+
+	bar := 'bar'
+	_ := 1 > bar.len
+	_ := 0 < bar.len || 0 == bar.len || 0 != bar.len
+
+	if foo.len < 1 || bar.len > 0 || (foo.len == 0 && bar.len == 0) {
+	}
+
+	// Should not notify when `.len` is used with other types.
+	baz := ['baz']
+	_ := baz.len == 0
+
+	foobar := {
+		'foo': 'bar'
+	}
+	_ := foobar.len < 1
+}

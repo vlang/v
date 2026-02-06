@@ -1,0 +1,5 @@
+vlib/v/checker/tests/hex_lit_wrong_digit_err.vv:2:18: error: this hexadecimal number has unsuitable digit `g`
+    1 | fn main() {
+    2 |     println(0x111ghi)
+      |                  ^
+    3 | }

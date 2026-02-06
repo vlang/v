@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unimplemented_interface_j.vv:12:13: error: `Cat` incorrectly implements interface `Animal`, field `name` must be mutable
+   10 | fn main() {
+   11 |     mut animals := []Animal{}
+   12 |     animals << Cat{}
+      |                ~~~~~
+   13 | }

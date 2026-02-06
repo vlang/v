@@ -1,0 +1,7 @@
+vlib/v/checker/tests/const_decl_multi_return_err.vv:5:11: error: const declarations do not support multiple return values yet
+    3 | }
+    4 | 
+    5 | const a = foo()
+      |           ~~~~~
+    6 | 
+    7 | fn main() {

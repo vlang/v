@@ -1,0 +1,12 @@
+vlib/v/checker/tests/immutable_field.vv:8:4: error: field `i1` of struct `Aaa` is immutable
+    6 | fn main() {
+    7 |     a := Aaa{1}
+    8 |     a.i1 = 2
+      |       ~~
+    9 | }
+vlib/v/checker/tests/immutable_field.vv:8:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    6 | fn main() {
+    7 |     a := Aaa{1}
+    8 |     a.i1 = 2
+      |     ^
+    9 | }

@@ -1,0 +1,4 @@
+fn main(){
+	items := {'a': 'A'}
+	if id := items[id] {} else {}
+}

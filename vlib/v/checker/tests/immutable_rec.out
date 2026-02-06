@@ -1,0 +1,6 @@
+vlib/v/checker/tests/immutable_rec.vv:15:2: error: `a` is immutable, declare it with `mut` to make it mutable
+   13 |         e: 2
+   14 |     }
+   15 |     a.f()
+      |     ^
+   16 | }

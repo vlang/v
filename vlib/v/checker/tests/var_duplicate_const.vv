@@ -1,0 +1,6 @@
+const size = 22
+
+fn main() {
+    size := 11
+    println(main.size)
+}

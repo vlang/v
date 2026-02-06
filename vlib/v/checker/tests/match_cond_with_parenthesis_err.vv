@@ -1,0 +1,22 @@
+module main
+
+enum Enum {
+	a
+	b
+	c
+}
+
+fn foo() ?Enum {
+	return .a
+}
+
+fn bar() bool {
+	return match (foo()) {
+		.a { true }
+		.b, .c { false }
+	}
+}
+
+fn main() {
+	bar()
+}

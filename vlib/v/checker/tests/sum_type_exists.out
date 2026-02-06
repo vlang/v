@@ -1,0 +1,6 @@
+vlib/v/checker/tests/sum_type_exists.vv:1:22: error: unknown type `Inexistent`
+    1 | type Miscellaneous = Inexistent | Nope | int
+      |                      ~~~~~~~~~~
+vlib/v/checker/tests/sum_type_exists.vv:1:35: error: unknown type `Nope`
+    1 | type Miscellaneous = Inexistent | Nope | int
+      |                                   ~~~~

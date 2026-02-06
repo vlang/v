@@ -1,0 +1,9 @@
+vlib/v/checker/tests/struct_init_with_iface_embed_iface_with_incorrect_method_impl_ref_field_err.vv:21:3: error: `&Stream` incorrectly implements method `read` of interface `Refresher`: expected return type `!int`
+   19 |     s := &Stream{}
+   20 |     _ := &Server{
+   21 |         refresher: s
+      |         ~~~~~~~~~~~~
+   22 |     }
+   23 | }
+Details: main.Refresher has `fn read(x main.Refresher, buf []u8) !int`
+         main.Stream has `fn read(a main.Stream, buf []u8)`

@@ -1,0 +1,16 @@
+import json
+
+interface Foo {
+	a int
+}
+
+struct Bar {
+	a int
+}
+
+fn main() {
+	mut foo_mut := Foo(Bar{})
+	if foo_mut is Bar {
+		println(json.encode(foo_mut))
+	}
+}

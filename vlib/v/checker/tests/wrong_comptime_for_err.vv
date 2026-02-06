@@ -1,0 +1,30 @@
+type TestSum = int | string | []int
+
+struct Bar {
+	y int
+}
+
+struct Foo {
+mut:
+	a TestSum
+	b int
+	c string
+	d Bar
+}
+
+fn main() {
+	a := Foo{}
+	$for f in a.fields {
+		$if f.typ is $sumtype {
+			$for f2 in f.variants {
+				dump(f2)
+			}
+		} $else $if f.typ is Bar {
+			assert true
+		}
+	}
+	$for f in a.variants {
+	}
+	$for f in T.variants {
+	}
+}

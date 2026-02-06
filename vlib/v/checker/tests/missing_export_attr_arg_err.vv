@@ -1,0 +1,4 @@
+@[export]
+fn foo() string {
+	return 'foo'
+}

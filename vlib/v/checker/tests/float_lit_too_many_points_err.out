@@ -1,0 +1,5 @@
+vlib/v/checker/tests/float_lit_too_many_points_err.vv:2:19: error: too many decimal points in number
+    1 | fn main() {
+    2 |     println(123.45.67)
+      |                   ^
+    3 | }

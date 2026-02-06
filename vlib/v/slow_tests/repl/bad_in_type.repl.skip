@@ -1,0 +1,4 @@
+a := [1,2,3]
+println('hi' in a)
+===output===
+.vrepl.v:2:18: bad element type: `string` in `[]int`

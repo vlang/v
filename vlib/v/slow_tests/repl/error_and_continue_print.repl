@@ -1,0 +1,15 @@
+a = 3
+b
+[4, 5].filter(it < 5)
+===output===
+error: undefined ident: `a` (use `:=` to declare a variable)
+    5 | import math
+    6 | 
+    7 | a = 3
+      | ^
+error: undefined ident: `b`
+    5 | import math
+    6 | 
+    7 | println(b)
+      |         ^
+[4]

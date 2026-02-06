@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_map_void_fn_err.vv:3:12: error: type mismatch, `println` does not return anything
+    1 | fn main() {
+    2 |     array := [1, 2, 3, 4]
+    3 |     array.map(println(it))
+      |               ~~~~~~~~~~~
+    4 | }

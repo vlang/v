@@ -1,0 +1,12 @@
+vlib/v/checker/tests/mod_name_duplicate_var_err.vv:4:2: error: duplicate of a module name `foo`
+    2 | 
+    3 | fn bar() {
+    4 |     foo := 'bar'
+      |     ~~~
+    5 |     println(foo)
+    6 | }
+vlib/v/checker/tests/mod_name_duplicate_var_err.vv:1:1: error: project must include a `main` module or be a shared library (compile with `v -shared`)
+    1 | module foo
+      | ^
+    2 | 
+    3 | fn bar() {

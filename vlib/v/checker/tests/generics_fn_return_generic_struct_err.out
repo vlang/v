@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generics_fn_return_generic_struct_err.vv:13:32: error: return generic struct `GenericChannelStruct` in fn declaration must specify the generic type names, e.g. GenericChannelStruct[T]
+   11 | }
+   12 | 
+   13 | pub fn new_channel_struct[T]() GenericChannelStruct {
+      |                                ~~~~~~~~~~~~~~~~~~~~
+   14 |     d := GenericChannelStruct{
+   15 |         ch: chan T{}
+vlib/v/checker/tests/generics_fn_return_generic_struct_err.vv:14:7: error: generic struct init must specify type parameter, e.g. Foo[T]
+   12 | 
+   13 | pub fn new_channel_struct[T]() GenericChannelStruct {
+   14 |     d := GenericChannelStruct{
+      |          ~~~~~~~~~~~~~~~~~~~~~
+   15 |         ch: chan T{}
+   16 |     }

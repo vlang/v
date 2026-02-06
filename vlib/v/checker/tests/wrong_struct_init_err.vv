@@ -1,0 +1,5 @@
+module main
+
+import net.http
+_ := http.Response{header: http.new_header{} }
+

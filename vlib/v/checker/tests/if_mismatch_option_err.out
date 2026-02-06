@@ -1,0 +1,12 @@
+vlib/v/checker/tests/if_mismatch_option_err.vv:8:2: warning: unused variable: `operation`
+    6 | fn main() {
+    7 |     operation_name := 'get_area'
+    8 |     operation := if o := Operation.from(operation_name) { o } else { ?Operation(none) }
+      |     ~~~~~~~~~
+    9 | }
+vlib/v/checker/tests/if_mismatch_option_err.vv:8:15: error: mismatched types `Operation` and `?Operation`
+    6 | fn main() {
+    7 |     operation_name := 'get_area'
+    8 |     operation := if o := Operation.from(operation_name) { o } else { ?Operation(none) }
+      |                  ~~
+    9 | }

@@ -1,0 +1,16 @@
+interface Interface {
+mut:
+	method() u32
+}
+
+struct St {}
+
+fn (st St) method() int {
+	panic('')
+}
+
+fn foo(_ Interface) {}
+
+fn bar() {
+	foo(St{})
+}

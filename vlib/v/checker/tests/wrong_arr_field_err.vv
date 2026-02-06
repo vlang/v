@@ -1,0 +1,2 @@
+arr := []int{len: 100, cap: 200, init1: index * 3}
+println(arr)

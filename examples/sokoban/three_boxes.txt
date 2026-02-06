@@ -1,0 +1,10 @@
+It seems tricky, but it is not ...@Be careful to not get stuck.
+         ###          #
+    ###### ######     #
+           #  @ #     #
+          ##    #######
+#   $$$   #           #
+#      .   .  . #     #
+#      #   #  ###     #
+#      #      ###     #
+   ############       #

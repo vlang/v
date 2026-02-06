@@ -1,0 +1,9 @@
+--- labeled_break_continue_with_inc()
+0
+--- labeled_break_with_inc()
+0
+--- triple_nested_labeled_continue()
+24
+25
+--- labeled_continue_deep_nest()
+8

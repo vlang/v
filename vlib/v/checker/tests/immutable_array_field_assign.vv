@@ -1,0 +1,10 @@
+struct Aaa {
+	i []int
+}
+
+fn main() {
+	mut a := Aaa{
+		i: [0]
+	}
+	a.i[0] = 3
+}

@@ -1,0 +1,7 @@
+fn foo() ?bool {return true}	
+fn main() {
+	foo()? // only works in main()
+	println('done')
+}	
+===output===
+done

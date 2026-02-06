@@ -1,0 +1,14 @@
+module main
+
+pub struct Maybe[T] {
+	present bool
+	val     T
+}
+
+struct MyType {
+	a Maybe[UnknownType]
+}
+
+fn main() {
+	_ = MyType{}
+}

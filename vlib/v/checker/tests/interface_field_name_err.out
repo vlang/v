@@ -1,0 +1,20 @@
+vlib/v/checker/tests/interface_field_name_err.vv:2:2: error: field name `Age` cannot contain uppercase letters, use snake_case instead
+    1 | interface Animal {
+    2 |     Age int
+      |     ~~~
+    3 |     Foo &int
+    4 |     Bar []string
+vlib/v/checker/tests/interface_field_name_err.vv:3:2: error: field name `Foo` cannot contain uppercase letters, use snake_case instead
+    1 | interface Animal {
+    2 |     Age int
+    3 |     Foo &int
+      |     ~~~
+    4 |     Bar []string
+    5 | }
+vlib/v/checker/tests/interface_field_name_err.vv:4:2: error: field name `Bar` cannot contain uppercase letters, use snake_case instead
+    2 |     Age int
+    3 |     Foo &int
+    4 |     Bar []string
+      |     ~~~
+    5 | }
+    6 |

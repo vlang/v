@@ -1,0 +1,10 @@
+fn main() {
+	name := 'b'
+	nb := match name {
+		'a' { 10 }
+		'b' { 500 }
+		else { u64(345454) }
+	}
+
+	println(nb)
+}

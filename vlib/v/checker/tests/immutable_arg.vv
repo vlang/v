@@ -1,0 +1,16 @@
+struct St {
+mut:
+	e int
+}
+
+fn f(mut x St) {
+	x.e++
+	println(x)
+}
+
+fn main() {
+	a := St{
+		e: 2
+	}
+	f(mut a)
+}

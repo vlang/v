@@ -1,0 +1,12 @@
+vlib/v/checker/tests/assign_generic_fn_err.vv:2:9: error: cannot assign generic function to a variable
+    1 | fn main() {
+    2 |     fun := fn [T](value T) T {
+      |            ~~~~~~~~~~~~~~~~~~~
+    3 |         return value
+    4 |     }
+vlib/v/checker/tests/assign_generic_fn_err.vv:6:13: error: a non generic function called like a generic one
+    4 |     }
+    5 | 
+    6 |     println(fun[int](100))
+      |                ~~~~~
+    7 | }

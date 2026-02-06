@@ -1,0 +1,6 @@
+fn main() {
+    mut z := 1
+    mut z = 1
+    mut i := 2
+    i, mut z = 2,3
+}

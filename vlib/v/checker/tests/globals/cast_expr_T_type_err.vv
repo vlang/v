@@ -1,0 +1,10 @@
+module main
+
+__global (
+	fo = A(0)
+	fo1 = &A(0)
+)
+
+fn main() {
+
+}

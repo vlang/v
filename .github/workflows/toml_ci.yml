@@ -1,0 +1,40 @@
+name: toml CI
+
+on:
+  push:
+    paths:
+      - 'vlib/**'
+      - '**/toml_ci.yml'
+      - '!**.md'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - '**/toml_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: toml-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  toml-module-pass-external-test-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install dependencies
+        run: |
+          v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
+          sudo chmod 755 jq-linux64
+          sudo mv jq-linux64 /usr/bin/jq
+
+      - name: Show JQ Version
+        run: jq --version
+
+      - name: Download more TOML testsuits
+        run: .github/workflows/download_full_toml_test_suites.sh
+
+      - name: Run TOML tests
+        run: VTEST_TOML_DO_YAML_CONVERSION=1 VTEST_TOML_DO_LARGE_FILES=1 ./v test vlib/toml

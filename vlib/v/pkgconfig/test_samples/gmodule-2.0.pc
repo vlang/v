@@ -1,0 +1,12 @@
+prefix=/usr
+libdir=${prefix}/lib/x86_64-linux-gnu
+includedir=${prefix}/include
+
+gmodule_supported=true
+
+Name: GModule
+Description: Dynamic module loader for GLib
+Version: 2.64.3
+Requires: gmodule-no-export-2.0, glib-2.0
+Libs: -Wl,--export-dynamic
+Cflags: -I${includedir}

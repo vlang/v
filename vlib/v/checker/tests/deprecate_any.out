@@ -1,0 +1,38 @@
+vlib/v/checker/tests/deprecate_any.vv:1:8: notice: the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type
+    1 | fn foo(a any) {}
+      |        ^
+    2 | 
+    3 | fn main() {
+vlib/v/checker/tests/deprecate_any.vv:5:7: notice: the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type
+    3 | fn main() {
+    4 |     _ := []any{}
+    5 |     _ := map[int]any{}
+      |          ~~~~~~~~~~~~~
+    6 |     _ := map[any]int{}
+    7 | }
+vlib/v/checker/tests/deprecate_any.vv:6:7: notice: the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type
+    4 |     _ := []any{}
+    5 |     _ := map[int]any{}
+    6 |     _ := map[any]int{}
+      |          ~~~~~~~~~~~~~
+    7 | }
+vlib/v/checker/tests/deprecate_any.vv:4:7: error: cannot use type `any` here
+    2 | 
+    3 | fn main() {
+    4 |     _ := []any{}
+      |          ~~~~~~
+    5 |     _ := map[int]any{}
+    6 |     _ := map[any]int{}
+vlib/v/checker/tests/deprecate_any.vv:5:7: error: cannot use type `any` here
+    3 | fn main() {
+    4 |     _ := []any{}
+    5 |     _ := map[int]any{}
+      |          ~~~~~~~~~~~~~
+    6 |     _ := map[any]int{}
+    7 | }
+vlib/v/checker/tests/deprecate_any.vv:6:7: error: cannot use type `any` here
+    4 |     _ := []any{}
+    5 |     _ := map[int]any{}
+    6 |     _ := map[any]int{}
+      |          ~~~~~~~~~~~~~
+    7 | }

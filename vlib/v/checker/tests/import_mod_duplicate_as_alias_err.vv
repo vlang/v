@@ -1,0 +1,8 @@
+module json
+
+import json as vjson
+
+const used = true
+
+println(used)
+println(vjson.used)

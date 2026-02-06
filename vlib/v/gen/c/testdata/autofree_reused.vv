@@ -1,0 +1,10 @@
+// vtest vflags: -autofree
+fn main() {
+	b := byteptr(c'a')
+	s := unsafe { b.vbytes(1) }
+	println(s)
+
+	bb := byteptr(c'a')
+	ss := unsafe { bb.vstring() }
+	println(ss)
+}

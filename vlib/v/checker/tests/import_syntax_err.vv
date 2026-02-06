@@ -1,0 +1,4 @@
+import time, os
+fn main() {
+	println(time.now())
+}

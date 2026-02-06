@@ -1,0 +1,78 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module ast
+
+import v.cflag
+
+// check if cflag is in table
+pub fn (t &Table) has_cflag(flag cflag.CFlag) bool {
+	for cf in t.cflags {
+		if cf.os == flag.os && cf.name == flag.name && cf.value == flag.value {
+			return true
+		}
+	}
+	return false
+}
+
+// parse the flags to (ast.cflags) []CFlag
+// Note: clean up big time (joe-c)
+pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ! {
+	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', 'D']
+	flag_orig := cflg.trim_space()
+	mut flag := flag_orig
+	if flag == '' {
+		return error('flag is empty')
+	}
+	mut fos := ''
+	mut allowed_os_overrides := []string{}
+	allowed_os_overrides << valid_comptime_not_user_defined
+	allowed_os_overrides << ctimedefines
+	for os_override in allowed_os_overrides {
+		if !flag.starts_with(os_override) {
+			continue
+		}
+		pos := flag.index(' ') or { return error('none') }
+		fos = flag[..pos].trim_space()
+		flag = flag[pos..].trim_space()
+	}
+	for {
+		mut name := ''
+		mut value := ''
+		if flag[0] == `-` {
+			for f in allowed_flags {
+				i := 1 + f.len
+				if i <= flag.len && f == flag[1..i] {
+					name = flag[..i].trim_space()
+					flag = flag[i..].trim_space()
+					break
+				}
+			}
+		}
+		// -I/usr/local/a b c/include -m64 -I/usr/include
+		index := flag.index_(' -')
+		if index > -1 {
+			value = flag[..index].trim_space()
+			flag = flag[index..].trim_space()
+		} else {
+			value = flag
+		}
+
+		if name in ['-I', '-l', '-L'] && value == '' {
+			hint := if name == '-l' { 'library name' } else { 'path' }
+			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
+		}
+		cf := cflag.CFlag{
+			mod:   mod
+			os:    fos
+			name:  name
+			value: value
+		}
+		if !t.has_cflag(cf) {
+			t.cflags << cf
+		}
+		if index == -1 {
+			break
+		}
+	}
+}

@@ -1,0 +1,187 @@
+name: CI Linux
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tcc-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build v
+        run: make -j4 && ./v symlink
+      - name: Build v with -prealloc
+        run: v run ci/linux_ci.vsh build_v_with_prealloc
+      - name: All code is formatted
+        run: v run ci/linux_ci.vsh all_code_is_formatted_tcc
+      - name: Install dependencies for examples and tools
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_tcc
+      - name: Test v->c
+        run: v run ci/linux_ci.vsh test_v_to_c_tcc
+      - name: v self compilation
+        run: v run ci/linux_ci.vsh v_self_compilation_tcc
+      - name: v doctor
+        run: v run ci/linux_ci.vsh v_doctor_tcc
+      - name: Verify `v test` works
+        run: v run ci/linux_ci.vsh verify_v_test_works_tcc
+      - name: Test pure V math module
+        run: v run ci/linux_ci.vsh test_pure_v_math_module_tcc
+      - name: Test inline assembly on linux
+        run: v run ci/linux_ci.vsh test_inline_assembly
+      - name: Self tests
+        run: v run ci/linux_ci.vsh self_tests_tcc
+      - name: Build examples
+        run: v run ci/linux_ci.vsh build_examples_tcc
+      - name: Run the submodule example, using a relative path
+        run: v run ci/linux_ci.vsh run_submodule_example_tcc
+      - name: Build v tools
+        run: v run ci/linux_ci.vsh build_tools_tcc
+      - name: Build v binaries
+        run: v run ci/linux_ci.vsh build_vbinaries_tcc
+      - name: Build benches
+        run: v run ci/linux_ci.vsh build_benches_tcc
+      - name: Run a VSH script
+        run: v run ci/linux_ci.vsh run_vsh_script_tcc
+      - name: Test v tutorials
+        run: v run ci/linux_ci.vsh test_v_tutorials_tcc
+      - name: Build cmd/tools/fast
+        run: v run ci/linux_ci.vsh build_fast_tcc
+      - name: V self compilation with -usecache
+        run: v run ci/linux_ci.vsh v_self_compilation_usecache_tcc
+      - name: Test password input
+        run: v run ci/linux_ci.vsh test_password_input_tcc
+      - name: Test readline
+        run: v run ci/linux_ci.vsh test_readline_tcc
+      - name: Test leak detector
+        run: v run ci/linux_ci.vsh test_leak_detector_tcc
+      - name: Test leak detector not being active for normal compile
+        run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos
+
+  gcc-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    env:
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: All code is formatted
+        run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
+      - name: Install dependencies for examples and tools
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+      - name: Recompile V with -cstrict and gcc
+        run: v run ci/linux_ci.vsh recompile_v_with_cstrict_gcc
+      - name: Valgrind v.c
+        run: v run ci/linux_ci.vsh valgrind_v_c_gcc
+      - name: Run sanitizers
+        run: v run ci/linux_ci.vsh run_sanitizers_gcc
+      - name: v self compilation
+        run: v run ci/linux_ci.vsh v_self_compilation_gcc
+      - name: v self compilation with -usecache
+        run: v run ci/linux_ci.vsh v_self_compilation_usecache_gcc
+      - name: Verify `v test` works
+        run: v run ci/linux_ci.vsh verify_v_test_works_gcc
+      - name: Test pure V math module
+        run: v run ci/linux_ci.vsh test_pure_v_math_module_gcc
+      - name: Self tests
+        run: v run ci/linux_ci.vsh self_tests_gcc
+      - name: Self tests (-prod)
+        run: v run ci/linux_ci.vsh self_tests_prod_gcc
+      - name: Self tests (-cstrict)
+        run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
+      - name: Build examples
+        run: v run ci/linux_ci.vsh build_examples_gcc
+      - name: Build tetris with -autofree
+        run: v run ci/linux_ci.vsh build_tetris_autofree_gcc
+      - name: Build blog tutorial with -autofree
+        run: v run ci/linux_ci.vsh build_blog_autofree_gcc
+      - name: Build option_test.c.v with -autofree
+        run: v run ci/linux_ci.vsh build_option_test_autofree_gcc
+      - name: V self compilation with -parallel-cc
+        run: v run ci/linux_ci.vsh v_self_compilation_parallel_cc_gcc
+      - name: Build modules
+        run: v run ci/linux_ci.vsh build_modules_gcc
+      - name: native machine code generation
+        run: v run ci/linux_ci.vsh native_machine_code_generation_gcc
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos
+      - name: compile vdoctor.v with -prod
+        run: v run ci/linux_ci.vsh compile_vdoctor_prod_gcc
+      - name: compile vup.v with -prod
+        run: v run ci/linux_ci.vsh compile_vup_prod_gcc
+
+  clang-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc clang
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: All code is formatted
+        run: v run ci/linux_ci.vsh all_code_is_formatted_clang
+      - name: Install dependencies for examples and tools
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_clang
+      - name: Recompile V with -cstrict and clang
+        run: v run ci/linux_ci.vsh recompile_v_with_cstrict_clang
+      - name: Valgrind
+        run: v run ci/linux_ci.vsh valgrind_clang
+      - name: Run sanitizers
+        run: v run ci/linux_ci.vsh run_sanitizers_clang
+      - name: v self compilation
+        run: v run ci/linux_ci.vsh v_self_compilation_clang
+      - name: v self compilation with -usecache
+        run: v run ci/linux_ci.vsh v_self_compilation_usecache_clang
+      - name: Verify `v test` works
+        run: v run ci/linux_ci.vsh verify_v_test_works_clang
+      - name: Test pure V math module
+        run: v run ci/linux_ci.vsh test_pure_v_math_module_clang
+      - name: Self tests
+        run: v run ci/linux_ci.vsh self_tests_clang
+      - name: Self tests (vprod)
+        run: v run ci/linux_ci.vsh self_tests_vprod_clang
+      - name: Self tests (-cstrict)
+        run: v run ci/linux_ci.vsh self_tests_cstrict_clang
+      - name: Build examples
+        run: v run ci/linux_ci.vsh build_examples_clang
+      - name: Build examples with -autofree
+        run: v run ci/linux_ci.vsh build_examples_autofree_clang
+      - name: Build modules
+        run: v run ci/linux_ci.vsh build_modules_clang
+      - name: native machine code generation
+        run: v run ci/linux_ci.vsh native_machine_code_generation_clang
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos

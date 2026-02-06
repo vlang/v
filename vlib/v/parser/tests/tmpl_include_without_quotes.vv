@@ -1,0 +1,6 @@
+fn main() {
+	a := 'foo'
+	b := 'bar'
+	result := $tmpl('tmpl/include.txt')
+	assert result.trim_space() == 'foo\nbar'
+}

@@ -1,0 +1,7 @@
+vlib/v/parser/tests/comptime_unknown_meta_kind_err.vv:7:20: error: unknown kind `abcde`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`
+    5 | 
+    6 | fn test_main() {
+    7 |     $for item in Test.abcde {
+      |                       ~~~~~
+    8 |         dump(item)
+    9 |     }

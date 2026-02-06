@@ -1,0 +1,27 @@
+vlib/v/checker/tests/struct_unneeded_default.vv:2:18: warning: unnecessary default value of `0`: struct fields are zeroed by default
+    1 | struct Test {
+    2 |     n      int    = 0
+      |                     ^
+    3 |     n_ok   int    = 1
+    4 |     s      string = ''
+vlib/v/checker/tests/struct_unneeded_default.vv:4:18: warning: unnecessary default value of '': struct fields are zeroed by default
+    2 |     n      int    = 0
+    3 |     n_ok   int    = 1
+    4 |     s      string = ''
+      |                     ~~
+    5 |     s_ok   string = 's'
+    6 |     b      bool   = false
+vlib/v/checker/tests/struct_unneeded_default.vv:6:18: warning: unnecessary default value `false`: struct fields are zeroed by default
+    4 |     s      string = ''
+    5 |     s_ok   string = 's'
+    6 |     b      bool   = false
+      |                     ~~~~~
+    7 |     b_ok   bool   = true
+    8 |     opt    ?int   = none
+vlib/v/checker/tests/struct_unneeded_default.vv:8:18: warning: unnecessary default value of `none`: struct fields are zeroed by default
+    6 |     b      bool   = false
+    7 |     b_ok   bool   = true
+    8 |     opt    ?int   = none
+      |                     ~~~~
+    9 |     opt_ok ?int   = 1
+   10 | }

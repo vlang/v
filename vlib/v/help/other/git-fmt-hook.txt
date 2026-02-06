@@ -1,0 +1,11 @@
+Tool to install/remove pre-commit Git hook
+
+Usage:
+  v git-fmt-hook [SUBCMD]
+
+The pre-commit Git hook will check/format V files before commit with 'v fmt' command.
+
+SUBCMD:
+  status : get status for Git pre-commit hook .git/hooks/pre-commit
+  install: install Git pre-commit hook .git/hooks/pre-commit
+  remove : remove Git pre-commit hook

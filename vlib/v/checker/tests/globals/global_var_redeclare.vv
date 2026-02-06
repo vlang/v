@@ -1,0 +1,6 @@
+__global foobar = 1
+
+fn main() {
+	foobar := 2
+	println(foobar)
+}

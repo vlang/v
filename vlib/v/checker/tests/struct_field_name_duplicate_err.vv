@@ -1,0 +1,4 @@
+struct Aaa {
+	a int
+	a string
+}

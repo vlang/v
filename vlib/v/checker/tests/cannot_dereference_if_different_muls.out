@@ -1,0 +1,7 @@
+vlib/v/checker/tests/cannot_dereference_if_different_muls.vv:6:8: error: cannot use `&u64` (right side) as `u64` (left side) in assignment
+    4 |     unsafe {
+    5 |         mut ptr := &u64(page + higher_half)
+    6 |         *ptr = freelist_head
+      |              ^
+    7 |         freelist_head = ptr
+    8 |     }

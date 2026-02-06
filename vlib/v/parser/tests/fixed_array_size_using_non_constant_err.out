@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fixed_array_size_using_non_constant_err.vv:9:25: error: fixed array size cannot use non-constant value
+    7 |     println(typeof(t.len).name)
+    8 |
+    9 |     mut score := [t.len][t.len]int{}
+      |                            ~~~
+   10 | }

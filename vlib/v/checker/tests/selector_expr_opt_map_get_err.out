@@ -1,0 +1,6 @@
+vlib/v/checker/tests/selector_expr_opt_map_get_err.vv:8:9: error: type `?map[string]string` is an Option, it must be unwrapped first; use `x.m?` to do it
+    6 | fn main() {
+    7 |     x := Abc{}
+    8 |     _ := x.m['test'] or { 'test' }
+      |            ^
+    9 | }

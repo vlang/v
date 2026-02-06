@@ -1,0 +1,14 @@
+vlib/v/checker/tests/json_decode_shared_err.vv:6:16: error: json.encode cannot handle shared data
+    4 |     shared data := [1, 2, 3]
+    5 |     rlock data {
+    6 |         println(json.encode(data))
+      |                      ~~~~~~~~~~~~
+    7 |     }
+    8 | }
+vlib/v/checker/tests/json_decode_shared_err.vv:6:3: error: `println` can not print void expressions
+    4 |     shared data := [1, 2, 3]
+    5 |     rlock data {
+    6 |         println(json.encode(data))
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |     }
+    8 | }

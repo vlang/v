@@ -1,0 +1,25 @@
+// error in non-mut as receover
+struct Box {
+mut:
+	value int
+}
+
+fn (mut box Box) set(value int) {
+	box.value = value
+}
+
+fn non_mut_receiver() {
+	Box{}.set(0)
+}
+
+// error in array chained method calls
+fn array_chained_method_calls() {
+	path := 'hello/file.txt'
+	_ = path.split('.').pop()
+}
+
+// error in map chained method calls
+fn map_chained_method_calls() {
+	mut m := map[int]int{}
+	m.clone().delete(0)
+}

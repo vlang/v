@@ -1,0 +1,13 @@
+vlib/v/checker/tests/array_delete_print_err.vv:3:2: error: `println` can not print void expressions
+    1 | fn main() {
+    2 |     mut a := []string{}
+    3 |     println(a.delete(0))
+      |     ~~~~~~~~~~~~~~~~~~~~
+    4 |     println('${a.delete(0)}')
+    5 | }
+vlib/v/checker/tests/array_delete_print_err.vv:4:15: error: expression does not return a value
+    2 |     mut a := []string{}
+    3 |     println(a.delete(0))
+    4 |     println('${a.delete(0)}')
+      |                  ~~~~~~~~~
+    5 | }

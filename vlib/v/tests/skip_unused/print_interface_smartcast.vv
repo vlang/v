@@ -1,0 +1,42 @@
+module main
+
+pub struct MyError implements IError {
+pub:
+	msg    string
+	code   int
+	domain int
+	level  int
+}
+
+pub fn (e MyError) str() string {
+	return '${e.msg} ${e.code}:${e.domain}:${e.level}'
+}
+
+pub fn (e MyError) msg() string {
+	return e.msg
+}
+
+pub fn (e MyError) code() int {
+	return e.code
+}
+
+fn MyError.new(msg string, code int, domain int, level int) MyError {
+	return MyError{
+		msg:    msg
+		code:   code
+		domain: domain
+		level:  level
+	}
+}
+
+fn foo() ! {
+	return MyError.new('xxx', 1, 1, 1)
+}
+
+fn main() {
+	foo() or {
+		if err is MyError {
+			eprintln(err)
+		}
+	}
+}

@@ -1,0 +1,13 @@
+vlib/v/checker/tests/cast_expr_T_type_err.vv:4:6: error: unknown type `A`
+    2 |
+    3 | fn main() {
+    4 |     _ = A(0)
+      |         ~~~~
+    5 |     _ = &A(unsafe { nil })
+    6 | }
+vlib/v/checker/tests/cast_expr_T_type_err.vv:5:6: error: unknown type `A`
+    3 | fn main() {
+    4 |     _ = A(0)
+    5 |     _ = &A(unsafe { nil })
+      |         ~~~~~~~~~~~~~~~~~~
+    6 | }

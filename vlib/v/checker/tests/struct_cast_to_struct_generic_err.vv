@@ -1,0 +1,12 @@
+struct Abc[T] {
+	name T
+}
+
+struct Xyz {
+	name string
+}
+
+fn main() {
+	abc := Abc[int]{}
+	_ := Xyz(abc)
+}

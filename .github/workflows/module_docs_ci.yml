@@ -1,0 +1,55 @@
+name: vlib modules CI
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/**.v'
+      - 'vlib/**.md'
+      - 'cmd/tools/vdoc/**.v'
+      - 'cmd/tools/vdoc/theme/**.js'
+      - 'cmd/tools/vdoc/theme/**.css'
+      - 'cmd/tools/vdoc/theme/**.svg'
+      - 'cmd/tools/vdoc/theme/**.html'
+      - '**/module_docs_ci.yml'
+  push:
+    paths:
+      - 'vlib/**.v'
+      - 'vlib/**.md'
+      - 'cmd/tools/vdoc/**.v'
+      - 'cmd/tools/vdoc/theme/**.js'
+      - 'cmd/tools/vdoc/theme/**.css'
+      - 'cmd/tools/vdoc/theme/**.svg'
+      - 'cmd/tools/vdoc/theme/**.html'
+      - '**/module_docs_ci.yml'
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: module_docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'master')}}
+
+jobs:
+  build-module-docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Update packages, before running apt install
+        run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
+      - name: Install dependencies (some modules wrap C libs)
+        run: v retry -- sudo apt install --quiet -y libpq-dev
+          libsodium-dev libasound2-dev libssl-dev \
+          sqlite3 libsqlite3-dev libfreetype6-dev \
+          libx11-dev libxi-dev freeglut3-dev \
+          libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev
+      - name: Install markdown from vpm
+        run: v retry -- v install markdown
+      - name: Test v doc
+        run: VJOBS=1 ./v test cmd/tools/vdoc/
+      - name: Build module documentation and check the examples in the comments
+        run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
+      - name: Deploy docs to vercel
+        if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+        run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true

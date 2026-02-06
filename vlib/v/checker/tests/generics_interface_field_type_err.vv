@@ -1,0 +1,45 @@
+module main
+
+pub struct Entity {
+pub:
+	id u16
+}
+
+pub struct Position { // other components ie Velocity
+pub mut:
+	x f64
+	y f64
+	z f64
+}
+
+pub interface IComponentStore[T] {
+mut:
+	add(Entity, T)
+}
+
+pub struct ComponentStore[T] {
+pub mut:
+	typ string
+	// data etc
+}
+
+pub fn (mut cs ComponentStore[T]) add(e Entity, value T) {
+	//	index := cs.set.add(e.id)
+	//	cs.instances[index] = value
+}
+
+@[heap]
+struct Registry {
+pub mut:
+	data map[string]IComponentStore
+}
+
+pub fn registry() &Registry {
+	mut r := &Registry{
+		data: map[string]IComponentStore{}
+	}
+	return r
+}
+
+fn main() {
+}

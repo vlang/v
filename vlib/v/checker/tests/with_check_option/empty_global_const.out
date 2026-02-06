@@ -1,0 +1,7 @@
+vlib/v/checker/tests/with_check_option/empty_global_const.vv:5:1: error: use `v -enable-globals ...` to enable globals
+    3 | const buf_len = 256
+    4 | 
+    5 | __global not_used_in_code_but_helps_triggering = u64(-1)
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 | 
+    7 | struct Buffer {

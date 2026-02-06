@@ -1,0 +1,8 @@
+fn main() {
+	my_var := 12
+	c1 := fn [my_var] () int {
+		return my_var
+	}
+	assert c1() == 12
+	println('ok')
+}

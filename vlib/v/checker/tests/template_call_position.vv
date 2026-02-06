@@ -1,0 +1,5 @@
+module main
+
+fn main() {
+	$tmpl('template_call_position_test.txt')
+}

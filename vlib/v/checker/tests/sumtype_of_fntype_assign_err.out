@@ -1,0 +1,6 @@
+vlib/v/checker/tests/sumtype_of_fntype_assign_err.vv:14:11: error: cannot assign to `m['f']`: expected `Expr`, not `fn () Expr`
+   12 |     mut m := map[string]Expr{}
+   13 |
+   14 |     m['f'] = f
+      |              ^
+   15 | }

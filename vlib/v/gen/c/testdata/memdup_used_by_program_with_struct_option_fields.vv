@@ -1,0 +1,15 @@
+struct Foo {
+	data &int
+}
+
+struct FooHolder {
+	foo ?Foo
+}
+
+struct Program {
+	foo ?Foo
+}
+
+fn main() {
+	_ := Program{}
+}

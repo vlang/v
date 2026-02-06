@@ -1,0 +1,7 @@
+Name: impossible
+Description: This is a package, that has an impossible dependency
+Version: 1.2.2
+Requires: xyz-unknown-package
+Libs: 
+Libs.private: -lm
+Cflags:

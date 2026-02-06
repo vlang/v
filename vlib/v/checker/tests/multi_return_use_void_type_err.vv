@@ -1,0 +1,3 @@
+fn main() {
+	print('a'), print('b')
+}

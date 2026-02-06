@@ -1,0 +1,16 @@
+module main
+
+struct Chacabum {
+	a int
+}
+
+type SumType = Chacabum | int | string
+
+fn (a SumType) cast_to[T]() T {
+	return a as T
+}
+
+fn main() {
+	println(SumType('la').cast_to[string]())
+	println(SumType(true).cast_to[bool]())
+}

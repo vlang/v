@@ -1,0 +1,10 @@
+fn main() {
+	$if mysymbol ? {
+		// this should not produce checker errors, but will print only with `-d mysymbol`
+		println('comptime option define works')
+	}
+	$if mysymbol {
+		// this will produce a checker error when `-d mysymbol` is not given on the CLI
+		println('comptime non-option define works')
+	}
+}

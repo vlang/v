@@ -1,0 +1,33 @@
+fn main() {
+	a1 := [1, 2, 3]
+	a2 := a1
+	mut a3 := []int{}
+	a3 = a1
+
+	m1 := {
+		'one': 1
+	}
+	m2 := m1
+	mut m3 := map[string]int{}
+	m3 = m1
+
+	_ = a2
+	_ = m2
+
+	mut m := {
+		'foo': 1
+	}
+	foo(mut m)
+
+	_ = a3
+	_ = m1
+	_ = m2
+	_ = m3
+}
+
+fn foo(mut m map[string]int) {
+	m2 := m
+	m['foo'] = 100
+	println(m)
+	println(m2)
+}

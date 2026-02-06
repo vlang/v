@@ -1,0 +1,12 @@
+fn process_keyholder1(super_long_argument1 string, super_long_argument2 string, super_long_argument3 string,
+	super_long_argument4 string, super_long_argument5 string) string {
+	return ''
+}
+
+fn process_keyholder2(super_long_argument1 string, super_long_argument2 string, super_long_argument3 string,
+	super_long_argument4 string, super_long_argument5 string, super_long_argument6 string, super_long_argument7 string,
+	super_long_argument8 string) string {
+	return ''
+}
+
+fn main() {}

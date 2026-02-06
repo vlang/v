@@ -1,0 +1,6 @@
+mut x := i64(922337203685477580)
+println(x)
+x = x * 10
+println(x)
+x = x * 10
+println(x)

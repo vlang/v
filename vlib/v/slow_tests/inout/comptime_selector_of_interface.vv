@@ -1,0 +1,16 @@
+struct People {
+	count int
+}
+
+interface IPeople {
+	count int
+}
+
+fn main() {
+	p := IPeople(People{42})
+
+	dump(p.count)
+	$for f in IPeople.fields {
+		dump(p.$(f.name))
+	}
+}

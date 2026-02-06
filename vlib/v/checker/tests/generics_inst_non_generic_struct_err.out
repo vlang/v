@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generics_inst_non_generic_struct_err.vv:5:14: error: struct `Test` is not a generic struct, cannot instantiate to the concrete types
+    3 |
+    4 | fn main() {
+    5 |     println(Test[string]{})
+      |                 ~~~~~~~~
+    6 | }

@@ -1,0 +1,25 @@
+// vtest vflags: -enable-globals
+
+@[weak]
+__global abc = u64(1)
+__global xyz = u64(2)
+
+@[weak]
+__global (
+	weak_1 = u64(4)
+	weak_2 = u64(5)
+)
+
+@[weak]
+fn a_weak_function() int {
+	return 42
+}
+
+fn main() {
+	println('abc: ${abc}')
+	println('xyz: ${xyz}')
+	println('xyz: ${xyz}')
+	println('weak_1: ${weak_1}')
+	println('weak_2: ${weak_2}')
+	println(a_weak_function())
+}

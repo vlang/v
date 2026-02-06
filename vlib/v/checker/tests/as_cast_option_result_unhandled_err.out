@@ -1,0 +1,6 @@
+vlib/v/checker/tests/as_cast_option_result_unhandled_err.vv:11:6: error: ret_sum_result() returns `!Sum`, so it should have either an `or {}` block, or `!` at the end
+    9 | }
+   10 | 
+   11 | _ := ret_sum_result() as int
+      |      ~~~~~~~~~~~~~~~~
+   12 | _ := ret_sum_option() as string

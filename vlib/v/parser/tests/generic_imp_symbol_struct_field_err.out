@@ -1,0 +1,6 @@
+vlib/v/parser/tests/generic_imp_symbol_struct_field_err.vv:4:8: error: unknown type `math.vec.vec3`
+    2 | 
+    3 | struct Veca {
+    4 |     field vec3[f64]
+      |           ~~~~
+    5 | }

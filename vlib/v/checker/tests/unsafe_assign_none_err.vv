@@ -1,0 +1,6 @@
+fn f() {
+	mut s := unsafe { none }
+	println(s)
+}
+
+f()

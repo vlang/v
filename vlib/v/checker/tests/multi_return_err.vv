@@ -1,0 +1,23 @@
+fn my_func(a1 int, a2 int) {}
+
+fn my_func2() (int, f64) {
+	return 0, 0
+}
+
+fn my_func3(a1 int, a2 int, a3 string) {}
+
+fn my_func4(a0 string, a1 int, a2 int) {}
+
+fn my_func5() {}
+
+fn my_func6() (int, int, int) {
+	return 0, 0, 0
+}
+
+fn main() {
+	my_func(my_func2())
+	my_func3(my_func2(), 'foo')
+	my_func4('foo', my_func2())
+	my_func(my_func5())
+	my_func(my_func6())
+}

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/method_ptr_used_as_argument_err.vv:8:16: error: cannot use `fn () int` as `int` in argument 1 to `add`
+    6 |     arg1 := '10'
+    7 |     arg2 := '20'
+    8 |     result := add(arg1.int, arg2.int)
+      |                   ~~~~~~~~
+    9 |     println(result)
+   10 | }
+vlib/v/checker/tests/method_ptr_used_as_argument_err.vv:8:26: error: cannot use `fn () int` as `int` in argument 2 to `add`
+    6 |     arg1 := '10'
+    7 |     arg2 := '20'
+    8 |     result := add(arg1.int, arg2.int)
+      |                             ~~~~~~~~
+    9 |     println(result)
+   10 | }

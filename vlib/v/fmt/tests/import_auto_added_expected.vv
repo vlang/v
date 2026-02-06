@@ -1,0 +1,7 @@
+module main
+
+import time
+
+fn main() {
+	curr_time := time.now()
+}

@@ -1,0 +1,5 @@
+fn main() {
+	mut bc := []u8{}
+	bc << [0xCA, 0xFE, 0xBA, 0xBE]
+	println(bc)
+}

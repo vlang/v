@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<book category="web">
+  <title lang="en" code:type="const char*">Learning XML</title>
+  <author attr=" surrounding spaces ">Erik T. Ray</author>
+  <year>2003</year>
+  <price>39.95</price>
+</book>

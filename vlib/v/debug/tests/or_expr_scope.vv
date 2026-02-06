@@ -1,0 +1,11 @@
+fn r() !bool {
+	return error('fail')
+}
+
+fn main() {
+	a := r() or {
+		$dbg;
+		false
+	}
+	println(a)
+}

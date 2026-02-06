@@ -1,0 +1,2 @@
+type MyInt = int
+type MyMyInt = MyInt

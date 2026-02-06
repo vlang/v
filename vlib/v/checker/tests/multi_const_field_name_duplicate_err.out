@@ -1,0 +1,6 @@
+vlib/v/checker/tests/multi_const_field_name_duplicate_err.vv:2:7: error: duplicate const `aaa`
+    1 | const aaa = 1
+    2 | const aaa = 2
+      |       ~~~
+    3 | 
+    4 | fn main() {

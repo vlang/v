@@ -1,0 +1,12 @@
+struct Node {
+	next []Node = []Node{len: 1}
+}
+
+struct BetterNode {
+	next []BetterNode
+}
+
+fn main() {
+	buggy := Node{}
+	normal := BetterNode{}
+}

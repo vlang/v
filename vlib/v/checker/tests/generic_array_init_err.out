@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_array_init_err.vv:2:9: error: invalid array element: expected `u8`, not `string`
+    1 | fn decode[T]() {
+    2 |     _ := T{''}
+      |            ~~
+    3 |     _ := T{0}
+    4 |     _ := T{u8(1)}

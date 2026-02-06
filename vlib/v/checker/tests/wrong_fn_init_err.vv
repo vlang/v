@@ -1,0 +1,6 @@
+type MyCallback = fn () string
+
+fn main() {
+	a := MyCallback{}
+	println(a)
+}

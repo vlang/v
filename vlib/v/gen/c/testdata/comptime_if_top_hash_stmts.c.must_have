@@ -1,0 +1,52 @@
+#if defined(_WIN32)
+#if defined(CUSTOM_DEFINE_user_d1)
+#elif defined(CUSTOM_DEFINE_user_d2)
+#include "pre1.h"
+#elif defined(__linux__)
+#if defined(CUSTOM_DEFINE_user_d3)
+#include "pre2.h"
+#elif defined(CUSTOM_DEFINE_user_d4)
+#if defined(_WIN32)
+#if defined(CUSTOM_DEFINE_user_d1)
+#include "w1.h"
+#define user_d1
+#elif defined(CUSTOM_DEFINE_user_d2)
+#include "w2.h"
+#define user_d2
+#else
+#include "w3.h"
+#define user_not_d1_d2
+#define user_all_windows
+#include "windows.h"
+#elif defined(__linux__)
+#if defined(CUSTOM_DEFINE_user_d3)
+#include "l1.h"
+#define user_d3
+#elif defined(CUSTOM_DEFINE_user_d4)
+#include "l2.h"
+#define user_d4
+#define user_all_linux
+#include "stdio.h"
+#else
+#define user_all_other
+#include "other.h"
+#if defined(_WIN32)
+#if defined(CUSTOM_DEFINE_user_d1)
+#elif defined(CUSTOM_DEFINE_user_d2)
+#else
+#include "macos1.m"
+#elif defined(__linux__)
+#if defined(CUSTOM_DEFINE_user_d3)
+#include "macos2.m"
+#elif defined(CUSTOM_DEFINE_user_d4)
+#endif
+#if defined(_WIN32)
+#if defined(CUSTOM_DEFINE_user_d1)
+#elif defined(CUSTOM_DEFINE_user_d2)
+#include "post1.h"
+#elif defined(__linux__)
+#if defined(CUSTOM_DEFINE_user_d3)
+#elif defined(CUSTOM_DEFINE_user_d4)
+#include "post2.h"
+#else
+#include "post3.h"

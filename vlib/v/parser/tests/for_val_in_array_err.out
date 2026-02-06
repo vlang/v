@@ -1,0 +1,7 @@
+vlib/v/parser/tests/for_val_in_array_err.vv:5:6: error: redefinition of value iteration variable `val`, use `for (val in array) {` if you want to check for a condition instead
+    3 | fn main() {
+    4 |     val := `+`
+    5 |     for val in [TokenValue(`+`), TokenValue(`-`)] {
+      |         ~~~
+    6 |         println("ok")
+    7 |         break

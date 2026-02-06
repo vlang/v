@@ -1,0 +1,8 @@
+fn main() {
+	res := match asd {
+		1 { 'foo' }
+		2 { 'test' }
+		else { '' }
+	}
+	_ = res
+}

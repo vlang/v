@@ -1,0 +1,23 @@
+struct Item {
+	owner_id ?string
+}
+
+fn get_opt() ?int {
+	return 1
+}
+
+fn main() {
+	item := Item{
+		owner_id: 'key'
+	}
+	arr := [1, 2, 3]
+	m := {
+		'key': 1
+	}
+
+	// Optional struct field with map
+	_ = item.owner_id in m
+
+	// Optional function return with array
+	_ = get_opt() in arr
+}

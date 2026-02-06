@@ -1,0 +1,6 @@
+vlib/v/checker/tests/arraydecompose_arg_err.vv:7:2: error: cannot have parameter after array decompose
+    5 | fn test_main() {
+    6 |     var := [0.0]
+    7 |     test_arr(1, ...var, 'a')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | }

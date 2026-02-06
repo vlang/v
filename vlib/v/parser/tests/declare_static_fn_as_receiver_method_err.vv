@@ -1,0 +1,11 @@
+struct Foo {
+}
+
+fn (y Foo) Foo.new() Foo {
+	return Foo{}
+}
+
+fn main() {
+	x := Foo{}.new()
+	println(x)
+}

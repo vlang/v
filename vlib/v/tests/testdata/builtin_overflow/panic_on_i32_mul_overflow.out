@@ -1,0 +1,8 @@
+214748364
+2147483640
+================ V panic ================
+   module: builtin.overflow
+ function: mul_i32()
+  message: attempt to mul with overflow(i32(2147483640) * i32(10))
+     file: vlib/builtin/overflow/overflow.v
+

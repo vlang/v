@@ -1,0 +1,15 @@
+fn test() { aaa }
+fn print_info(n int) { println('${n}') }
+mut a := 22
+print_info(a)
+a = 11
+print_info(a)
+===output===
+error: `aaa` evaluated but not used
+    6 | 
+    7 | fn test() {
+    8 |  aaa 
+      |  ~~~
+    9 | }
+22
+11

@@ -1,0 +1,34 @@
+vlib/v/checker/tests/map_index_reference_value.vv:11:3: warning: accessing a pointer map value requires an `or {}` block outside `unsafe`
+    9 | fn main() {
+   10 |     mut m := map[string]&Foo{}
+   11 |     m['bar'].bar = 'bar'
+      |      ~~~~~~~
+   12 |     // m['bar'] << 'baz' // etc
+   13 |
+vlib/v/checker/tests/map_index_reference_value.vv:11:3: warning: accessing map value that contain pointers requires an `or {}` block outside `unsafe`
+    9 | fn main() {
+   10 |     mut m := map[string]&Foo{}
+   11 |     m['bar'].bar = 'bar'
+      |      ~~~~~~~
+   12 |     // m['bar'] << 'baz' // etc
+   13 |
+vlib/v/checker/tests/map_index_reference_value.vv:15:8: warning: accessing map value that contain pointers requires an `or {}` block outside `unsafe`
+   13 |
+   14 |     mut m2 := map[string]Bar{}
+   15 |     _ = m2['key']
+      |           ~~~~~~~
+   16 |
+   17 |     mut m3 := map[string][]Bar{}
+vlib/v/checker/tests/map_index_reference_value.vv:18:8: warning: accessing map value that contain pointers requires an `or {}` block outside `unsafe`
+   16 |
+   17 |     mut m3 := map[string][]Bar{}
+   18 |     _ = m3['key']
+      |           ~~~~~~~
+   19 | }
+vlib/v/checker/tests/map_index_reference_value.vv:11:11: error: field `bar` of struct `&Foo` is immutable
+    9 | fn main() {
+   10 |     mut m := map[string]&Foo{}
+   11 |     m['bar'].bar = 'bar'
+      |              ~~~
+   12 |     // m['bar'] << 'baz' // etc
+   13 |

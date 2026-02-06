@@ -1,0 +1,19 @@
+struct Foo {
+mut:
+	foo !int
+	bar ?int = 1
+	baz int  = 1
+}
+
+fn main() {
+	mut f := Foo{}
+
+	_ = f.bar
+	_ = f.bar + 1
+
+	_ = f.bar!
+
+	_ = f.bar or { _ = 1 }
+
+	_ = f.baz?
+}

@@ -1,0 +1,40 @@
+// This file is used as a text file
+module main
+
+import v.tests.vls.sample_mod1 as s
+import v.tests.vls.sample_mod2
+
+struct MyS{
+mut:
+	a int
+	b string
+}
+
+// add add `val` to `a`
+fn (mut m MyS) add(val int) {
+	m.a += val
+}
+
+fn main() {
+	s.
+	sample_mod2.
+	mut k := MyS{}
+	k.
+	s.
+	mut str := 'hello'
+	x := str.all_before_last(
+	j := str.all_before_last(s.
+	strings.
+	builtin.
+	v := 1
+	s.public_fn1(1)
+	s.PublicStruct1{}
+	s.PublicAlias1_1{}
+	s.PublicAlias1_2{}
+	s.public_const1
+}
+
+// ensure we can jump to `public_fn1()` even in `NotExistStruct` method
+fn (mut x NotExistStruct) add(val int) {
+	s.public_fn1(1)
+}

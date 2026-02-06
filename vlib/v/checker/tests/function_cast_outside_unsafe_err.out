@@ -1,0 +1,6 @@
+vlib/v/checker/tests/function_cast_outside_unsafe_err.vv:7:10: error: casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks
+    5 | fn main() {
+    6 |     f := fn () {}
+    7 |     println(FnB(f)) // not FnA()
+      |             ~~~~~~
+    8 | }

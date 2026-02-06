@@ -1,0 +1,3 @@
+fn main() f64 {
+	return 1.23
+}

@@ -1,0 +1,4 @@
+bool Array_u8_contains(Array_u8 a, u8 v);
+string Array_fixed_int_2_str(Array_fixed_int_2 a);
+string indent_Array_fixed_int_2_str(Array_fixed_int_2 a, int indent_count);
+bool Array_fixed_int_2_arr_eq(Array_fixed_int_2 a, Array_fixed_int_2 b);

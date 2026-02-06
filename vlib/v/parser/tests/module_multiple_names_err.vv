@@ -1,0 +1,4 @@
+module main os
+fn main() {
+	println('hello, world')
+}

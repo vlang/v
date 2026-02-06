@@ -1,0 +1,25 @@
+fn match_value_different_type() {
+	x := 100
+	$match x {
+		100 {
+			println('int 100')
+		}
+		'100' {
+			println('string 100')
+		}
+	}
+}
+
+fn match_type_different_literal() {
+	$match $int {
+		1 {
+			println('IntegerLiteral')
+		}
+		'1' {
+			println('StringLiteral')
+		}
+		true {
+			println('BoolLiteral')
+		}
+	}
+}

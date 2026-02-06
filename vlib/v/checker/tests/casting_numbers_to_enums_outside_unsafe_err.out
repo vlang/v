@@ -1,0 +1,6 @@
+vlib/v/checker/tests/casting_numbers_to_enums_outside_unsafe_err.vv:7:6: error: casting numbers to enums, should be done inside `unsafe{}` blocks
+    5 | }
+    6 | 
+    7 | a := Abc(1)
+      |      ~~~~~~
+    8 | println(a)

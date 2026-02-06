@@ -1,0 +1,3 @@
+i32 ExternalSymbol(char* );
+i32 a = ExternalSymbol("hello");
+extern struct my_struct my_instance;

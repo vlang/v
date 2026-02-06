@@ -1,0 +1,50 @@
+pub interface ReaderWriter {
+	read(mut buf []u8) ?int // from Reader
+	write(buf []u8) ?int    // from Writer
+}
+
+interface Speaker {
+	// first
+	speak() string
+	// between
+	foo() string
+	foo2() string
+	// last
+}
+
+interface Baz {
+	// first
+	speak() string
+	// comment
+	// more between
+	foo() string
+	foo2() string
+	// last
+}
+
+interface Bar {
+	speak() string // after
+	foo() string
+	speak2() string // also after
+	// and between
+	foo2() string
+}
+
+interface TestsRunner {
+mut:
+	fn_passes     u64
+	fn_fails      u64
+	assert_passes u64
+	assert_fails  u64
+	test_fn_info  &TestFnMetaInfo // filled in by generated code, before .fn_start() is called.
+	start(ntests int) // called before all tests, you can initialise private data here. ntests is the number of test functions in the _test.v file.
+	finish()          // called after all tests are finished, you should free all the private data here.
+	//
+	fn_start() // called at the start of each test_ function
+	fn_pass()  // called at the end of each test_ function, with no failed assertion
+	fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) // called only for `fn test_xyz() ? { return error('message') }`
+	fn_fail() // called at the end of each test_ function, with a failed assertion, *or* returning an error
+	//
+	assert_pass(i &AssertMetaInfo) // called for each `assert true`
+	assert_fail(i &AssertMetaInfo) // called for each `assert false`
+}

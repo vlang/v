@@ -1,0 +1,7 @@
+vlib/v/parser/tests/if_guard_redefinition.vv:7:8: error: redefinition of `x`
+    5 | fn main() {
+    6 |     x := 1
+    7 |     if x := opt_fn() {
+      |        ^
+    8 |         println(x)
+    9 |     }

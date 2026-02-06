@@ -1,0 +1,10 @@
+fn main() {
+	for rune in 'runes' {
+		println(rune)
+	}
+
+	for char, c in 'runes' {
+		println(c)
+		println(char)
+	}
+}

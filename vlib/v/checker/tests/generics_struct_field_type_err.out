@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_field_type_err.vv:4:8: error: `LL` type is generic struct, must specify the generic type names, e.g. LL[T], LL[int]
+    2 | mut:
+    3 |     value T
+    4 |     next  &LL = unsafe { 0 }
+      |           ~~~
+    5 | }
+    6 |

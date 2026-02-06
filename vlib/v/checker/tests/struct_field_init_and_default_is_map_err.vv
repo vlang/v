@@ -1,0 +1,14 @@
+const const_map = {
+	'key': 4
+}
+
+struct Foo {
+mut:
+	field map[string]int = const_map
+}
+
+fn main() {
+	_ = Foo{
+		field: const_map
+	}
+}

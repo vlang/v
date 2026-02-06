@@ -1,0 +1,7 @@
+pub struct Node {
+	parent ?Node
+}
+
+pub struct NodeWrapper {
+	node Node
+}

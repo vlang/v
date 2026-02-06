@@ -1,0 +1,9 @@
+module vlas
+
+import submod_import_alias.vlas.internal.blas
+
+fn C.LAPACKE_dlange(matrix_layout internal.blas.MemoryLayout) f64
+
+pub fn c_trans(trans bool) internal.blas.Transpose {
+	return if trans { .trans } else { .no_trans }
+}

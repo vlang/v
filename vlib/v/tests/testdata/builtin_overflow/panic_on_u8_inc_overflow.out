@@ -1,0 +1,8 @@
+254
+255
+================ V panic ================
+   module: builtin.overflow
+ function: add_u8()
+  message: attempt to add with overflow(u8(255) + u8(1))
+     file: vlib/builtin/overflow/overflow.v
+

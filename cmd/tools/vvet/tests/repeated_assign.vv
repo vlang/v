@@ -1,0 +1,15 @@
+// vtest vflags: -r
+fn main() {
+	mut a := ''
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+	a += 'foo'
+}

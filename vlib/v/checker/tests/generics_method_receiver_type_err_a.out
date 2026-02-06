@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_method_receiver_type_err_a.vv:6:11: error: generic struct `Node` in fn declaration must specify the generic type names, e.g. Node[T]
+    4 | }
+    5 | 
+    6 | pub fn (x Node) str() string {
+      |           ~~~~
+    7 |     return 'Value is : ${u16(x.val)}\nName is : ${x.name}'
+    8 | }

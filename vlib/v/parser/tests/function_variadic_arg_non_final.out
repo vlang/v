@@ -1,0 +1,5 @@
+vlib/v/parser/tests/function_variadic_arg_non_final.vv:1:6: error: cannot use ...(variadic) with non-final parameter para1
+    1 | fn f(para1 ...int, para2 f32) int {
+      |      ~~~~~
+    2 |     return 22
+    3 | }

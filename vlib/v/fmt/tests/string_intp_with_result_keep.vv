@@ -1,0 +1,7 @@
+fn err() !u8 {
+	return 1
+}
+
+fn main() {
+	println('${err()!}')
+}

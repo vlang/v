@@ -1,0 +1,277 @@
+struct Size7 {
+	a i8
+	b u8
+	c i8
+	d i8
+	e u8
+	f i8
+	g u8
+}
+
+struct Size28 {
+	a int
+	b i16
+	c int
+	d u32
+	e i8
+	f int
+	g int
+}
+
+struct StructWithDefault {
+	a int = 8
+	b int
+	c int = 5
+}
+
+struct Mutable {
+mut:
+	a int
+	b int
+}
+
+fn struct_test() {
+	a := Size7{1, 2, 3, 4, 5, 6, 7}
+	b := a
+	assert a.c == 3
+	assert b.f == 6
+	c := Size28{
+		d: 1
+		f: 2
+		a: 3
+		c: 4
+	}
+	assert c.a == 3
+	assert c.f == 2
+	assert c.e == 0
+	d := StructWithDefault{
+		b: 2
+		c: 3
+	}
+	assert d.a == 8
+	assert d.b == 2
+	assert d.c == 3
+	mut e := Mutable{1, 0}
+	e.a = 2
+	assert e.a == 2
+	assert e.b == 0
+	mut f := &e
+	f.a = 3
+	assert e.a == 3
+	f.b = 2
+	assert e.b == 2
+
+	g := &Mutable{2, 1}
+	assert g.a == 2
+	assert g.b == 1
+}
+
+type AliasedStruct = Mutable
+type AliasedPointer = &Mutable
+
+fn alias_test() {
+	mut a := AliasedStruct{1, 0}
+	a.a = 2
+	assert a.a == 2
+	mut b := &a
+	b.a = 3
+	assert a.a == 3
+	b.b = 2
+	assert a.b == 2
+
+	c := AliasedPointer{2, 1}
+	assert c.a == 2
+	assert c.b == 1
+}
+
+fn init_size28() Size28 {
+	return Size28{1, 2, 3, 4, 5, 6, 7}
+}
+
+type AliasedSize28 = Size28
+
+fn init_aliased() AliasedSize28 {
+	return AliasedSize28{1, 2, 3, 4, 5, 6, 7}
+}
+
+fn return_test() {
+	a := init_size28()
+	assert a.a == 1
+	assert a.b == 2
+	assert a.c == 3
+	assert a.d == 4
+	assert a.e == 5
+	assert a.f == 6
+	assert a.g == 7
+
+	b := init_aliased()
+	assert b.a == 1
+	assert b.b == 2
+	assert b.c == 3
+	assert b.d == 4
+	assert b.e == 5
+	assert b.f == 6
+	assert b.g == 7
+}
+
+struct Tree {
+mut:
+        leaf Leaf
+        sp Species
+        h f32
+        age int
+	big_leaf BigLeaf
+	medium_leaf MediumLeaf
+	small_leaf SmallLeaf
+}
+
+enum Species {
+        oak
+        willow
+}
+
+struct Leaf {
+        a int
+}
+
+struct BigLeaf {
+	a i64
+	b int
+	c i64
+}
+
+struct MediumLeaf {
+	a i16
+}
+
+struct SmallLeaf {
+	a u8
+}
+
+fn assign_fields() {
+	// TODO: fix commented
+	mut a := Tree{}
+	println(a.leaf.a)
+	assert a.leaf.a == 0
+	assert a.sp == .oak
+	assert a.h == 0.0
+	assert a.age == 0
+
+	a = Tree{age: 3}
+	assert a.age == 3
+
+//	a = Tree{h: 2.0}
+//	assert a.h == 2.0
+
+	a.h = 1.1
+	assert a.h == 1.1
+
+	a.age = 3
+	assert a.age == 3
+
+	a.sp = .willow
+	assert a.sp == .willow
+
+	a.leaf = Leaf{2}
+	assert a.leaf.a == 2
+	println(a.leaf.a)
+
+	a.big_leaf = BigLeaf{1, 2, 3}
+	assert a.big_leaf.a == 1
+	assert a.big_leaf.b == 2
+	assert a.big_leaf.c == 3
+
+	a.small_leaf = SmallLeaf{5}
+	assert a.small_leaf.a == 5
+	
+	a.medium_leaf = MediumLeaf{23}
+	assert a.medium_leaf.a == 23
+
+	mut f := Leaf{1}
+	assert f.a == 1
+	mut f2 := &f
+	assert f2.a == 1
+	unsafe{*f2 = Leaf{2}}
+	assert f2.a == 2
+	assert f.a == 2
+}
+
+struct Nest {
+        a string
+}
+
+struct Nest2 {
+	a Nest
+}
+
+struct Nest3 {
+	a Nest2
+}
+
+struct Int {
+        a int
+}
+
+struct NestMixed {
+        s string
+        b Int
+}
+
+fn nested_test() {
+	x := Nest{'abc'}
+	assert x.a[1] == `b`
+
+	x2 := Nest2{Nest{'def'}}
+	assert x2.a.a[2] == `f`
+
+	x3 := Nest3{Nest2{Nest{'ghi'}}}
+	assert x3.a.a.a[1] == `h`
+
+	x4 := NestMixed{'abc', Int{3}}
+	assert x4.b.a == 3
+}
+
+struct Foo {
+mut:
+        mantissa u64
+        b bool
+}
+
+fn field_assign_test() {
+	mut b := Foo{1, true}
+	b.mantissa += 1
+	b.mantissa -= 1
+	assert b.mantissa == 1
+	b.mantissa |= 2
+	assert b.mantissa == 3
+	b.mantissa &= 1
+	assert b.mantissa == 1
+	b.mantissa ^= 5
+	assert b.mantissa == 4
+	b.mantissa %= 3
+	assert b.mantissa == 1
+	b.mantissa *= 10
+	b.mantissa /= 10
+	assert b.mantissa == 1
+	b.mantissa <<= 4
+	b.mantissa >>>= 2
+	b.mantissa >>= 2
+	assert b.mantissa == 1
+	b.b &&= true
+	assert b.b == true
+	b.b &&= false
+	assert b.b == false
+	b.b ||= true
+	assert b.b == true
+	b.b ||= false
+	assert b.b == true
+}
+
+fn main() {
+	struct_test()
+	return_test()
+	alias_test()
+	assign_fields()
+	nested_test()
+	field_assign_test()
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generics_fn_param_wrong_arg_type_err.vv:2:11: error: cannot use `int literal` as `string` in argument 1 to `f`
+    1 | fn test[T, U](f fn (T) U) U {
+    2 |     return f(1)
+      |              ^
+    3 | }
+    4 |

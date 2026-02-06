@@ -1,0 +1,4 @@
+vlib/v/parser/tests/fn_call_unexpected_eof_rpar_too_many_err.vv:1:12: error: unexpected eof, expecting `)`
+    1 | println('a', 'b'
+      |            ~~~~~
+    2 |

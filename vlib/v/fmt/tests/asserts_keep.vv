@@ -1,0 +1,6 @@
+fn test_abc() {
+	assert 2 < 3
+	assert 2 == 2
+	assert 'abc' == 'abc'
+	assert 'abc'.len == 3
+}

@@ -1,0 +1,86 @@
+type IntegerAlias = int
+
+struct Test {
+	a int               = 0
+	b voidptr           = unsafe { nil }
+	c &Test             = unsafe { 0 }
+	d map[int][3]string = {}
+}
+
+fn main() {
+	// strings
+	a := 'string'
+	t := typeof(a)
+	println(t)
+	t2 := typeof('another string')
+	println(t2)
+
+	// integers
+	n := 123
+	t3 := typeof(n)
+	println(t3)
+	t4 := typeof(123)
+	println(t4)
+	test_alias(0)
+
+	// pointers
+	t5 := typeof(unsafe { nil })
+	println(t5)
+	t6 := typeof(charptr(0))
+	println(t6)
+	t7 := typeof(&u8(3))
+	println(t7)
+
+	// functions
+	t8 := typeof(main)
+	println(t8)
+	t9 := typeof(test_alias)
+	println(t9)
+	t10 := typeof(return_func)
+	println(t10)
+
+	// arrays
+	t11 := typeof([]int{})
+	println(t11)
+	t12 := typeof([16]int{})
+	println(t12)
+
+	// maps
+	t13 := typeof(map[int]string{})
+	println(t13)
+	t14 := typeof(map[int][2]int{})
+	println(t14)
+
+	// options, results
+	t15 := typeof(result_func)
+	println(t15)
+	t16 := typeof(result_func())
+	println(t16)
+	t17 := typeof(opt_func)
+	println(t17)
+	t18 := typeof(opt_func())
+	println(t18)
+
+	// structs
+	t19 := typeof(Test{})
+	println(t19)
+	t20 := typeof(Test{}.d)
+	println(t20)
+}
+
+fn test_alias(t IntegerAlias) {
+	t1 := typeof(t)
+	println(t1)
+}
+
+fn return_func(foo int, bar []int, baz voidptr) string {
+	return ''
+}
+
+fn result_func() !int {
+	return 0
+}
+
+fn opt_func() ?int {
+	return 0
+}

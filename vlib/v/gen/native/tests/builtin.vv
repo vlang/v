@@ -1,0 +1,162 @@
+mut a := ''
+assert a.is_ascii()
+a = ' Aö~'
+assert !a.is_ascii()
+
+
+	assert ''.is_ascii() == true
+	assert ' '.is_ascii() == true
+	assert '~~'.is_ascii() == true
+	assert ' Az~'.is_ascii() == true
+	assert ' Aö~'.is_ascii() == false
+	assert '👋'.is_ascii() == false
+	assert 'a👋bc'.is_ascii() == false
+	assert ''.is_identifier() == false
+	assert ' '.is_identifier() == false
+	assert '~~'.is_identifier() == false
+	assert '_Az~'.is_identifier() == false
+	assert '_Aö~'.is_identifier() == false
+	assert '👋'.is_identifier() == false
+	assert 'a👋bc'.is_identifier() == false
+	assert '9'.is_identifier() == false
+	assert '_9'.is_identifier() == true
+	assert 'a 9'.is_identifier() == false
+	assert 't'.is_identifier() == true
+	assert ''.is_blank()
+	assert ' '.is_blank()
+	assert ' \t'.is_blank()
+	assert ' \t
+
+'.is_blank()
+	assert ' \t\r'.is_blank()
+	assert ' \t\r
+
+'.is_blank()
+	assert 'abc'.indent_width() == 0
+	assert ' abc'.indent_width() == 1
+	assert '  abc'.indent_width() == 2
+	assert '\tabc'.indent_width() == 1
+	assert '\t abc'.indent_width() == 2
+	assert '\t\tabc'.indent_width() == 2
+	assert '\t\t abc'.indent_width() == 3
+	assert 'abcabca'.index_u8(`a`) == 0
+	assert 'abcabca'.index_u8(`b`) == 1
+	assert 'abcabca'.index_u8(`c`) == 2
+
+	assert 'abc'.index_u8(`d`) == -1
+	assert 'abc'.index_u8(`A`) == -1
+	assert 'abc'.index_u8(`B`) == -1
+	assert 'abc'.index_u8(`C`) == -1
+/*
+	assert 'abcabca'.last_index('ca')? == 5
+	assert 'abcabca'.last_index('ab')? == 3
+	assert 'abcabca'.last_index('b')? == 4
+	assert 'Zabcabca'.last_index('Z')? == 0
+	x := 'Zabcabca'.last_index('Y')
+	assert x == none
+*/
+	assert 'abcabca'.last_index_u8(`a`) == 6
+	assert 'abcabca'.last_index_u8(`c`) == 5
+	assert 'abcabca'.last_index_u8(`b`) == 4
+	assert 'Zabcabca'.last_index_u8(`Z`) == 0
+	assert 'abc'.last_index_u8(`d`) == -1
+	assert 'abc'.last_index_u8(`A`) == -1
+	assert 'abc'.last_index_u8(`B`) == -1
+	assert 'abc'.last_index_u8(`C`) == -1
+	assert 'abc abca'.contains_u8(`a`)
+	assert 'abc abca'.contains_u8(`b`)
+	assert 'abc abca'.contains_u8(`c`)
+	assert 'abc abca'.contains_u8(` `)
+	assert !'abc abca'.contains_u8(`A`)
+/*
+	assert 'Abcd'.camel_to_snake() == 'abcd'
+	assert 'aBcd'.camel_to_snake() == 'a_bcd'
+	assert 'AAbb'.camel_to_snake() == 'aa_bb'
+	assert 'aaBB'.camel_to_snake() == 'aa_bb'
+	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
+	assert 'AAbbCC'.camel_to_snake() == 'aa_bb_cc'
+	assert 'aaBBcc'.camel_to_snake() == 'aa_bb_cc'
+	assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+	assert 'aa__BB'.camel_to_snake() == 'aa__bb'
+	assert 'JVM_PUBLIC_ACC'.camel_to_snake() == 'jvm_public_acc'
+	assert '_ISspace'.camel_to_snake() == '_is_space'
+	assert '_aBcd'.camel_to_snake() == '_a_bcd'
+	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
+	assert '_AbCDe_'.camel_to_snake() == '_ab_cd_e_'
+	assert 'abcd'.snake_to_camel() == 'Abcd'
+	assert 'ab_cd'.snake_to_camel() == 'AbCd'
+	assert 'ab_cd_efg'.snake_to_camel() == 'AbCdEfg'
+	assert '_abcd'.snake_to_camel() == 'Abcd'
+	assert '_abcd_'.snake_to_camel() == 'Abcd'
+	assert 'Hello World'.wrap(width: 10) == 'Hello\nWorld'
+	assert 'Hello World'.wrap(width: 10, end: '<linea-break>') == 'Hello<linea-break>World'
+	assert 'The V programming language'.wrap(width: 20, end: '|') == 'The V programming|language'
+	assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'
+
+	assert 'Hello World!'.hex() == '48656c6c6f20576f726c6421'
+	assert 'VLANG'.hex() == '564c414e47'
+	assert 'VLANG'.hex() == 'VLANG'.bytes().hex()
+	for c in u8(0) .. 255 {
+		assert c.ascii_str().hex() == [c].hex()
+	}
+
+*/
+
+
+
+
+/// ABOVE ARE TESTS FROM VLIB
+
+
+
+// TODO: not working
+// println(c_error_number_str(0))
+// println(c_error_number_str(1))
+
+/* uncomment when floats are supported
+println(f32_abs(32.32))
+println(f32_abs(-32.32))
+println(f32_max(32.32, -32.32))
+println(f32_max(-32.32, 32.32))
+println(f32_min(32.32, -32.32))
+println(f32_min(-32.32, 32.32))
+println(f64_abs(32.32))
+println(f64_abs(-32.32))
+println(f64_max(32.32, -32.32))
+println(f64_max(-32.32, 32.32))
+println(f64_min(32.32, -32.32))
+println(f64_min(-32.32, 32.32))
+*/
+
+gc_is_enabled() // not yet enabled so only calling it 
+
+println(int_max(32, -32))
+println(int_max(-32, 32))
+println(int_min(32, -32))
+println(int_min(-32, 32))
+
+// assert u8(`a`).ascii_str() == 'a' when ptr index will work
+// assert u8(`b`).ascii_str() != 'a'
+// assert u8(0x4F).hex() == '4F' when fixed array index will work
+// assert u8(0x42).hex() != '4F'
+assert u8(`a`).is_alnum()
+assert !u8(`_`).is_alnum()
+assert u8(`0`).is_bin_digit()
+assert !u8(`3`).is_bin_digit()
+assert u8(`A`).is_capital()
+assert !u8(`a`).is_capital()
+assert u8(`0`).is_digit()
+assert !u8(`a`).is_digit()
+assert u8(`A`).is_hex_digit()
+assert !u8(`G`).is_hex_digit()
+assert u8(`c`).is_letter()
+assert !u8(`2`).is_letter()
+assert u8(`7`).is_oct_digit()
+assert !u8(`8`).is_oct_digit()
+assert u8(` `).is_space()
+assert !u8(`_`).is_space()
+
+assert 'Hello'.is_capital() == true
+assert 'HelloWorld'.is_capital() == false
+
+exit(0)

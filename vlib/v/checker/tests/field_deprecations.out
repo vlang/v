@@ -1,0 +1,42 @@
+vlib/v/checker/tests/field_deprecations.vv:23:9: notice: field `d` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; d use Xyz.a instead
+   21 |     dump(x.c)
+   22 |     x.c = 11
+   23 |     dump(x.d)
+      |            ^
+   24 |     x.d = 45
+   25 | }
+vlib/v/checker/tests/field_deprecations.vv:24:4: notice: field `d` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; d use Xyz.a instead
+   22 |     x.c = 11
+   23 |     dump(x.d)
+   24 |     x.d = 45
+      |       ^
+   25 | }
+   26 |
+vlib/v/checker/tests/field_deprecations.vv:19:9: warning: field `b` has been deprecated
+   17 |     dump(x.a)
+   18 |     x.a = 123
+   19 |     dump(x.b)
+      |            ^
+   20 |     x.b = 456
+   21 |     dump(x.c)
+vlib/v/checker/tests/field_deprecations.vv:20:4: warning: field `b` has been deprecated
+   18 |     x.a = 123
+   19 |     dump(x.b)
+   20 |     x.b = 456
+      |       ^
+   21 |     dump(x.c)
+   22 |     x.c = 11
+vlib/v/checker/tests/field_deprecations.vv:21:9: error: field `c` has been deprecated since 2021-03-01; c use Xyz.a instead
+   19 |     dump(x.b)
+   20 |     x.b = 456
+   21 |     dump(x.c)
+      |            ^
+   22 |     x.c = 11
+   23 |     dump(x.d)
+vlib/v/checker/tests/field_deprecations.vv:22:4: error: field `c` has been deprecated since 2021-03-01; c use Xyz.a instead
+   20 |     x.b = 456
+   21 |     dump(x.c)
+   22 |     x.c = 11
+      |       ^
+   23 |     dump(x.d)
+   24 |     x.d = 45

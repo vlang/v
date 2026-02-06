@@ -1,0 +1,15 @@
+struct Foo1 {
+}
+
+struct Foo2 {
+}
+
+type Foo = Foo1 | Foo2
+
+fn f(v ...Foo) {
+	println(v)
+}
+
+fn main() {
+	f(...[Foo1{}, Foo1{}])
+}

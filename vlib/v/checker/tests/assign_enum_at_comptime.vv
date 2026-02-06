@@ -1,0 +1,15 @@
+enum TestEnum {
+	one = 1
+}
+
+struct TestStruct {
+	test TestEnum
+}
+
+fn main() {
+	mut t := TestStruct{}
+
+	$for field in TestStruct.fields {
+		t.$(field.name) = '1'
+	}
+}

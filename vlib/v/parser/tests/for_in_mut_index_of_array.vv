@@ -1,0 +1,6 @@
+fn main() {
+	mut m := [1, 2, 3]
+	for mut i, _ in m {
+		println(i)
+	}
+}

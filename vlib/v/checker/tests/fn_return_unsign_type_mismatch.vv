@@ -1,0 +1,12 @@
+fn foo() u64 {
+	return -(3 - 1)
+}
+
+fn bar() u64 {
+	return -1
+}
+
+fn main() {
+	dump(foo())
+	dump(bar())
+}

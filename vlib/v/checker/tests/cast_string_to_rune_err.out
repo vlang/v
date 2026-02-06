@@ -1,0 +1,26 @@
+vlib/v/checker/tests/cast_string_to_rune_err.vv:2:7: error: cannot cast `string` to rune, use `'0'.runes()` instead.
+    1 | fn main() {
+    2 |     _ := rune('0')
+      |          ~~~~~~~~~
+    3 |     _ := rune('012345')
+    4 |     _ := rune('v')
+vlib/v/checker/tests/cast_string_to_rune_err.vv:3:7: error: cannot cast `string` to rune, use `'012345'.runes()` instead.
+    1 | fn main() {
+    2 |     _ := rune('0')
+    3 |     _ := rune('012345')
+      |          ~~~~~~~~~~~~~~
+    4 |     _ := rune('v')
+    5 |     _ := rune('abcd')
+vlib/v/checker/tests/cast_string_to_rune_err.vv:4:7: error: cannot cast `string` to rune, use `'v'.runes()` instead.
+    2 |     _ := rune('0')
+    3 |     _ := rune('012345')
+    4 |     _ := rune('v')
+      |          ~~~~~~~~~
+    5 |     _ := rune('abcd')
+    6 | }
+vlib/v/checker/tests/cast_string_to_rune_err.vv:5:7: error: cannot cast `string` to rune, use `'abcd'.runes()` instead.
+    3 |     _ := rune('012345')
+    4 |     _ := rune('v')
+    5 |     _ := rune('abcd')
+      |          ~~~~~~~~~~~~
+    6 | }

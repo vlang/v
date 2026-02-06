@@ -1,0 +1,8 @@
+fn main() {
+	for true {
+		_ := fn () int {
+			break
+			return 3
+		}()
+	}
+}

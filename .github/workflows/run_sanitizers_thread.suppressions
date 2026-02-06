@@ -1,0 +1,5 @@
+## See https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+## and https://clang.llvm.org/docs/ThreadSanitizer.html
+## The sync__stdatomic__add_i64 and sync__stdatomic__sub_i64 suppressions below, are needed for clang-10 to clang-12; clang-18 is fine without them
+race:sync__stdatomic__add_i64
+race:sync__stdatomic__sub_i64

@@ -1,0 +1,21 @@
+vlib/v/checker/tests/globals/cast_expr_T_type_err.vv:5:8: warning: cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`
+    3 | __global (
+    4 |     fo = A(0)
+    5 |     fo1 = &A(0)
+      |           ~~~~~
+    6 | )
+    7 |
+vlib/v/checker/tests/globals/cast_expr_T_type_err.vv:4:7: error: unknown type `A`
+    2 | 
+    3 | __global (
+    4 |     fo = A(0)
+      |          ~~~~
+    5 |     fo1 = &A(0)
+    6 | )
+vlib/v/checker/tests/globals/cast_expr_T_type_err.vv:5:8: error: unknown type `A`
+    3 | __global (
+    4 |     fo = A(0)
+    5 |     fo1 = &A(0)
+      |           ~~~~~
+    6 | )
+    7 |

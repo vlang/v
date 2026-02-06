@@ -1,0 +1,77 @@
+vlib/v/checker/tests/goto_label.vv:8:9: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    6 |         goto a1
+    7 |         _ = fn () {
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+      |                  ~~
+    9 |             goto f2 // same with `f2`
+   10 |             goto a1 // this is ok
+vlib/v/checker/tests/goto_label.vv:9:9: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    7 |         _ = fn () {
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+    9 |             goto f2 // same with `f2`
+      |                  ~~
+   10 |             goto a1 // this is ok
+   11 |             a1:
+vlib/v/checker/tests/goto_label.vv:10:9: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+    9 |             goto f2 // same with `f2`
+   10 |             goto a1 // this is ok
+      |                  ~~
+   11 |             a1:
+   12 |             goto a1
+vlib/v/checker/tests/goto_label.vv:12:9: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+   10 |             goto a1 // this is ok
+   11 |             a1:
+   12 |             goto a1
+      |                  ~~
+   13 |         }
+   14 |         f2:
+vlib/v/checker/tests/goto_label.vv:6:8: error: unknown label `a1`
+    4 |         goto f2
+    5 |         f1:
+    6 |         goto a1
+      |              ~~
+    7 |         _ = fn () {
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+vlib/v/checker/tests/goto_label.vv:8:9: error: unknown label `f1`
+    6 |         goto a1
+    7 |         _ = fn () {
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+      |                  ~~
+    9 |             goto f2 // same with `f2`
+   10 |             goto a1 // this is ok
+vlib/v/checker/tests/goto_label.vv:9:9: error: unknown label `f2`
+    7 |         _ = fn () {
+    8 |             goto f1 // the `f1` label is not available here; it is in the outer scope
+    9 |             goto f2 // same with `f2`
+      |                  ~~
+   10 |             goto a1 // this is ok
+   11 |             a1:
+vlib/v/checker/tests/goto_label.vv:15:8: error: unknown label `a1`
+   13 |         }
+   14 |         f2:
+   15 |         goto a1
+      |              ~~
+   16 |         goto f1 // back
+   17 |         goto f2
+vlib/v/checker/tests/goto_label.vv:25:8: error: unknown label `f1`
+   23 |         goto g1 // forward
+   24 |         g1:
+   25 |         goto f1
+      |              ~~
+   26 |         goto a1
+   27 |         goto g1 // back
+vlib/v/checker/tests/goto_label.vv:26:8: error: unknown label `a1`
+   24 |         g1:
+   25 |         goto f1
+   26 |         goto a1
+      |              ~~
+   27 |         goto g1 // back
+   28 |         goto undefined
+vlib/v/checker/tests/goto_label.vv:28:8: error: unknown label `undefined`
+   26 |         goto a1
+   27 |         goto g1 // back
+   28 |         goto undefined
+      |              ~~~~~~~~~
+   29 |     }
+   30 | }

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_table_attributes.vv:3:1: error: ORM: table attribute must have an argument
+    1 | import db.sqlite
+    2 | 
+    3 | @[table]
+      | ~~~~~~~~
+    4 | struct Foo {
+    5 |     id int @[primary; sql: serial]

@@ -1,0 +1,6 @@
+mut x := u8(25)
+println(x)
+x = x * 10
+println(x)
+x = x * 10
+println(x)

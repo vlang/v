@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_assigned_to_pointer_to_struct.vv:7:4: error: mismatched types `&Foo` and `Foo`
+    5 | fn main() {
+    6 |     mut f := &Foo{10}
+    7 |     f = Foo{
+      |       ^
+    8 |         x: 20
+    9 |     }

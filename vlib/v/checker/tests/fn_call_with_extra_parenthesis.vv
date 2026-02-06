@@ -1,0 +1,6 @@
+fn doit(i int) {
+}
+
+fn main() {
+	doit()(1)
+}

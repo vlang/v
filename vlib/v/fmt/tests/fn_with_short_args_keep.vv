@@ -1,0 +1,22 @@
+struct Config {
+	name string
+	age  int
+}
+
+fn get_info(a int, b string, c Config) string {
+	return b + '-' + c.name + '-${a}'
+}
+
+fn main() {
+	ret1 := get_info(11, 'aaaaabbbbb',
+		name: 'john'
+		age:  11
+	)
+	println(ret1)
+
+	ret2 := get_info(22, 'aaaaabbbbbcccccdddddeeeeefffffggggghhhhhiiiiijjjjjkkkkklllllmmmmm',
+		name: 'bob'
+		age:  22
+	)
+	println(ret2)
+}

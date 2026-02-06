@@ -1,0 +1,126 @@
+fn main() {
+	g := 32
+	result1 := match g {
+		1...64 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result1)
+
+	h := 100
+	result2 := match h {
+		1...64 {
+			'Wrong'
+		}
+		else {
+			'Right'
+		}
+	}
+	println(result2)
+
+	i := 1
+	result3 := match i {
+		1...10 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result3)
+
+	j := 10
+	result4 := match j {
+		1...10 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result4)
+
+	k := 50
+	result5 := match k {
+		1...32 {
+			'Wrong'
+		}
+		33...64 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result5)
+
+	n := 15
+	result6 := match n {
+		1...10 {
+			10
+		}
+		11...20 {
+			20
+		}
+		else {
+			0
+		}
+	}
+	println(result6)
+
+	o := i64(500)
+	result7 := match o {
+		i64(1)...i64(1000) {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result7)
+
+	p := u32(50)
+	result8 := match p {
+		u32(0)...u32(100) {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result8)
+
+	r := -5
+	result9 := match r {
+		-10...-1 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result9)
+
+	s := 0
+	result10 := match s {
+		-10...25 {
+			'Right'
+		}
+		else {
+			'Wrong'
+		}
+	}
+	println(result10)
+
+	println(match 1234 {
+		-1200...1 {
+			'Wrong'
+		}
+		else {
+			'Right'
+		}
+	})
+}

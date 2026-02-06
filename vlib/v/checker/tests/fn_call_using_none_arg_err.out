@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_call_using_none_arg_err.vv:6:4: error: cannot use `none` as generic argument
+    4 | 
+    5 | fn main() {
+    6 |     f(none)
+      |       ~~~~
+    7 | }

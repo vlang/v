@@ -1,0 +1,16 @@
+// NB: This file has and *should* have trailing spaces.
+// When making changes, please ensure they are not removed.
+
+fn after_comments() {
+	// spaces after line comments give errors  
+	/*  
+	in block comments  
+	too  
+	*/  
+}
+
+fn main() {
+	var := 'error about the spaces right there'  
+	no_err := "inside multi line strings it's fine.  
+but not after"  
+}

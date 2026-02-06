@@ -1,0 +1,15 @@
+module main
+
+import v.ast
+
+struct Data {
+}
+
+type DataCollection = Data
+
+fn main() {
+	_ := Data
+	_ := DataCollection
+	_ := ast.Type
+	// _ := gui.Animate // for vpm mod
+}

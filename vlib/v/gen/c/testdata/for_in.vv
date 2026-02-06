@@ -1,0 +1,29 @@
+struct CustomIter {
+mut:
+	idx int
+}
+
+fn new_custom_iter() CustomIter {
+	return CustomIter{
+		idx: 0
+	}
+}
+
+fn (mut a CustomIter) next() ?int {
+	if a.idx == 4 {
+		return none
+	} else {
+		a.idx++
+		return a.idx * 2
+	}
+}
+
+fn main() {
+	for x in new_custom_iter() {
+		println('a.${x}')
+	}
+	for ix, val in new_custom_iter() {
+		println('b.${ix}=${val}')
+	}
+	println('end')
+}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is V still fast?</title>
+<link rel="icon" type="image/x-icon" sizes="32x32" href="favicon_32x32.ico">
+<link rel="icon" type="image/x-icon" sizes="16x16" href="favicon_16x16.ico">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+<h2><a href='/'>Is V still fast?</a></h2>
+
+Monitoring compilation speed for each commit. <br><br>
+Running on a free tier AWS t2.micro instance (1 vCPU). Typical desktop hardware is 2-3 times faster. <br><br>
+Source code: <a target=blank href='https://github.com/vlang/v/blob/master/cmd/tools/fast/fast.v'>fast.v</a> <br><br>
+Older stats: <a href="2024.html">2024</a>, <a href="2023.html">2023</a>, <a href="2022.html">2022</a>, <a href="2021.html">2021</a>, <a href="2020.html">2020</a><br><br>
+<table>
+	<tr>
+		<th style='width:180px'>&nbsp;&nbsp;&nbsp;&nbsp;Timestamp&nbsp;&nbsp;&nbsp;&nbsp;</th>
+		<th style='width:85px'>Commit</th>
+		<th class='cmessage'>Commit Message</td>
+		<th style='width:120px;white-space: nowrap'>v -o v.c</th>
+		<th style='width:120px;white-space: nowrap'>v -o v</th>
+		<th style='width:130px'>v -native 1mil.v</th>
+		<th style='width:120px;white-space: nowrap'>v hello.v</th>
+		<th style='width:85px;white-space: nowrap'>v.c size</th>
+		<th style='width:55px;white-space: nowrap'>parse</th>
+		<th style='width:55px'>check</th>
+		<th style='width:55px'>cgen</th>
+		<th style='width:55px'>scan</th>
+		<th style='width:80px;white-space: nowrap'>V lines</th>
+		<th style='width:95px;white-space: nowrap'>V lines/s</th>
+	</tr>
+

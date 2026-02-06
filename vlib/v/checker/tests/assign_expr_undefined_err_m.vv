@@ -1,0 +1,9 @@
+fn main(){
+	a := 'add'
+	n := 2
+	x := match a {
+		'add'{ n + x }
+		else{0}
+	}
+	println(x)
+}

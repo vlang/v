@@ -1,0 +1,189 @@
+name: Other CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: other-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  performance-compare-with-master:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Environment info
+        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
+      - name: Name the local git branch
+        run: git checkout -b the_v_pr_branch
+      - name: Build local v
+        run: make && ./v symlink
+      - name: V version
+        run: ./v version
+      - name: Build the repeat tool
+        run: ./v cmd/tools/vrepeat.v
+      - name: Run compare_pr_to_master.v
+        run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
+
+  prevent-gpl-licenses:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout V ${{ github.head_ref }}
+        uses: actions/checkout@v6
+        with:
+          path: v
+      - name: Checkout V master
+        uses: actions/checkout@v6
+        with:
+          repository: vlang/v
+          path: vmaster
+      - name: Detect potentially added GPL licensed code
+        run: |
+          gpl_search_cmd="grep 'GPL' -r --exclude-dir=.git --exclude=*.yml --exclude=*.md --exclude=*.vv --exclude=*_test.v ."
+          cd vmaster
+          eval "$gpl_search_cmd" > ../gpl_res_vmaster
+          cd ../v
+          eval "$gpl_search_cmd" > ../gpl_res_vnew
+          cd ..
+          diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
+
+  code-formatting:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v6
+      - name: Environment info
+        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
+      - name: Build local v
+        run: make -j4 && ./v symlink
+      - name: v test-cleancode
+        run: ./v -silent test-cleancode
+      - name: v test-fmt
+        run: ./v -silent test-fmt
+
+  performance-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v6
+      - name: Environment info
+        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
+      - name: Build local v
+        run: make -j4 && ./v symlink
+      - name: Clone & Build previous vmaster/v
+        run: |
+          ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
+          (cd vmaster; make -j4)
+      - name: V versions
+        run: ./v version && ./vmaster/v version
+      - name: Build the repeat tool
+        run: ./v cmd/tools/vrepeat.v
+      - name: Repeat -o hw.c examples/hello_world.v
+        run: ./v repeat --max_time 251 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
+      - name: Repeat -o v.c cmd/v
+        run: ./v repeat --max_time 1731 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
+
+  misc-tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 10
+      - name: Build v
+        run: make -j4 && ./v symlink
+
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt install --quiet -y g++-9 g++-10
+
+      - name: g++-9 version
+        run: g++-9 --version
+      - name: V self compilation with g++ and -std=c++11
+        run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
+
+      - name: g++-10 version
+        run: g++-10 --version
+      - name: V self compilation with g++ and -std=c++20
+        run: ./v -cc g++-10 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-10 -no-std -cflags -std=c++20 -o v3 cmd/v
+
+      # NB: this does not mean it runs, but at least keeps it from regressing
+      - name: Ensure V can be compiled with -autofree
+        run: ./v -autofree cmd/v
+
+      - name: Ensure V can be compiled with -no-closures
+        run: ./v -no-closures cmd/v
+
+      - name: Shader examples can be built
+        run: |
+          .github/workflows/compile_shaders_in_examples.sh
+          ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
+
+  parser-silent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build local v
+        run: |
+          make -j4 && ./v symlink
+          ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
+      - name: Install zzuf
+        run: ./v retry -- sudo apt install -qq zzuf
+      - name: Run test-parser
+        run: |
+          ./v test-parser --show_source --linear examples/hello_world.v
+          ./v test-parser --show_source --linear examples/hanoi.v
+          ./v test-parser --show_source --linear examples/fibonacci.v
+          ./v test-parser --show_source --linear examples/cli.v
+          ./v test-parser --show_source --linear examples/json.v
+          ./v test-parser --show_source --linear examples/vmod.v
+          ./v test-parser --show_source --linear examples/regex/regex_example.v
+          ./v test-parser --show_source --linear examples/2048/2048.v
+
+      - name: Run test-parser over fuzzed files
+        run: |
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+          ./v test-parser --show_source --linear examples/hello_world_fuzz.v
+          ./v test-parser --show_source --linear examples/fibonacci_fuzz.v
+          ./v test-parser --show_source --linear examples/hanoi_fuzz.v
+          ./v test-parser --show_source --linear examples/cli_fuzz.v
+          ./v test-parser --show_source --linear examples/json_fuzz.v
+          ./v test-parser --show_source --linear examples/vmod_fuzz.v
+          ./v test-parser --show_source --linear examples/regex_example_fuzz.v
+          ./v test-parser --show_source --linear examples/2048/2048_fuzz.v

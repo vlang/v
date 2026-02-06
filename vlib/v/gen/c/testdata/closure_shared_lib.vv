@@ -1,0 +1,8 @@
+// vtest vflags: -shared
+@[export: 'foo']
+fn show_foo(s &char) {
+	my_fn := fn [s] () {
+		_ = s
+	}
+	my_fn()
+}

@@ -1,0 +1,35 @@
+// Test for issue #26271: v fmt fails on mutually exclusive $if blocks with duplicate method definitions
+module main
+
+struct MyType {
+	value int
+}
+
+$if foo ? {
+	pub fn (x MyType) str() string {
+		return 'foo mode'
+	}
+} $else {
+	pub fn (x MyType) str() string {
+		return 'normal mode'
+	}
+}
+
+$if bar ? {
+	fn (m MyType) debug() string {
+		return 'bar debug'
+	}
+} $else $if baz ? {
+	fn (m MyType) debug() string {
+		return 'baz debug'
+	}
+} $else {
+	fn (m MyType) debug() string {
+		return 'default debug'
+	}
+}
+
+fn main() {
+	t := MyType{42}
+	println(t.str())
+}

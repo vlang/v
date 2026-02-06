@@ -1,0 +1,7 @@
+vlib/v/checker/tests/static_fn_call_no_struct_decl_err.vv:5:4: error: unknown type `Mystery`
+    3 | }
+    4 | 
+    5 | fn Mystery.hey() {
+      |    ~~~~~~~
+    6 |     println('hey')
+    7 | }

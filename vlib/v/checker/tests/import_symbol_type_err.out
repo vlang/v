@@ -1,0 +1,24 @@
+vlib/v/checker/tests/import_symbol_type_err.vv:1:17: error: module `crypto` has no type `Coin`
+    1 | import crypto { Coin }
+      |                 ~~~~
+    2 | 
+    3 | fn main() {
+vlib/v/checker/tests/import_symbol_type_err.vv:4:10: error: unknown type `crypto.Coin`.
+Did you mean `crypto.Hash`?
+    2 | 
+    3 | fn main() {
+    4 |     println(Coin{})
+      |             ~~~~~~
+    5 | }
+vlib/v/checker/tests/import_symbol_type_err.vv:4:10: error: unknown struct: crypto.Coin
+    2 | 
+    3 | fn main() {
+    4 |     println(Coin{})
+      |             ~~~~~~
+    5 | }
+vlib/v/checker/tests/import_symbol_type_err.vv:4:2: error: `println` can not print void expressions
+    2 | 
+    3 | fn main() {
+    4 |     println(Coin{})
+      |     ~~~~~~~~~~~~~~~
+    5 | }

@@ -1,0 +1,8 @@
+module main
+
+fn g() ?int {
+	return 123
+}
+
+x := if ff := g() { ff } else { return }
+println(x)

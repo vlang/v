@@ -1,0 +1,9 @@
+int _t1 = main__fn_returning_array().len;
+if (!(_t1 == 1)) {
+v_assert_meta_info__t2.src = _S("fn_returning_array().len == 1");
+v_assert_meta_info__t2.llabel = _S("fn_returning_array().len");
+
+int _t3 = main__fn_returning_struct().x;
+if (!(_t3 == 123)) {
+v_assert_meta_info__t4.src = _S("fn_returning_struct().x == 123");
+v_assert_meta_info__t4.llabel = _S("fn_returning_struct().x");

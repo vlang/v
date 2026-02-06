@@ -1,0 +1,10 @@
+vlib/v/tests/skip_unused/assert_works_test.vv:2: fn test_abc
+   > assert 'abc' == 'xyz'
+     Left value (len: 3): `abc`
+    Right value (len: 3): `xyz`
+
+vlib/v/tests/skip_unused/assert_works_test.vv:7: fn test_index_expr
+   > assert example_string[1 .. 4] == 'abcdef'
+     Left value (len: 3): `his`
+    Right value (len: 6): `abcdef`
+

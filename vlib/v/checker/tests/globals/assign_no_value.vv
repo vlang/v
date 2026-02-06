@@ -1,0 +1,3 @@
+__global (
+	test = int_i
+)

@@ -1,0 +1,19 @@
+fn main() {}
+
+fn foo() string {
+	match 1 {
+		1 {
+			return ''
+		}
+		2 {
+			if true {
+				return ''
+			} else {
+				return ''
+			}
+		}
+		else {
+			return ''
+		}
+	}
+}

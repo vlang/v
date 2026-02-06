@@ -1,0 +1,34 @@
+Bump the semantic version of the v.mod and/or specified files.
+
+Usage:
+  v bump [options] [file1 file2 ...]
+
+The first instance of a version number is replaced with the new version.
+Additionally, the line affected must contain the word "version" in any
+form of capitalization. For instance, the following lines will be
+recognized by the heuristic:
+
+tool_version = '1.2.1'
+version: '0.2.42'
+VERSION = "1.23.8"
+
+If certain lines need to be skipped, use the --skip option. For instance,
+the following command will skip lines containing "tool-version":
+
+  v bump --patch --skip "tool-version" [files...]
+
+Examples:
+  Bump the patch version in v.mod if it exists
+    v bump --patch
+  Bump the major version in v.mod and vls.v
+    v bump --major v.mod vls.v
+  Upgrade the minor version in sample.v only
+    v bump --minor sample.v
+
+
+Options:
+  -h, --help           Show this help text.
+  -m, --major          Bump the major version.
+  -n, --minor          Bump the minor version.
+  -p, --patch          Bump the patch version.
+  -s, --skip <string>  Skip lines matching this substring.

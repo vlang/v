@@ -1,0 +1,5 @@
+vlib/v/parser/tests/invalid_field_name_err.vv:2:2: error: invalid field name
+    1 | struct MyStruct { 
+    2 |     c.close int
+      |     ^
+    3 | }

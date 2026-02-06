@@ -1,0 +1,14 @@
+const b = Foo.first
+
+enum Foo {
+	first = 5
+	second
+
+	_end = 9
+}
+
+a := [b]int{}
+println(a)
+
+c := [Foo.second]int{}
+println(c)

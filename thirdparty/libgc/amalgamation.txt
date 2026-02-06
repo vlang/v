@@ -1,0 +1,50 @@
+The libgc source is distributed here as an amalgamation (https://sqlite.org/amalgamation.html).
+This means that, rather than mirroring the entire bdwgc repo here, the amalgamate tool
+was used to bundle all C files and local includes together into a single C file, which is
+much easier to handle.  This helps keep the V source distribution small, can reduce compile
+times by 3%-15%, and can help C compilers generate more optimized code.
+
+For generating the libgc amalgamation, the following commands were used:
+
+    git clone https://github.com/ivmai/bdwgc.git
+    cd bdwgc
+    ./autogen.sh
+    ./configure --enable-threads=pthreads \
+        --enable-static \
+        --enable-shared=no \
+        --enable-thread-local-alloc=no \
+        --enable-parallel-mark \
+        --enable-single-obj-compilation \
+        --enable-gc-debug
+        
+    ../../../cmd/tools/amalgamate -o ../gc.c \
+        -b atomic_ops.h \
+        -b gc/gc.h \
+        -b gc/gc_backptr.h \
+        -b gc/gc_disclaim.h \
+        -b gc/gc_gcj.h \
+        -b gc/gc_inline.h \
+        -b gc/gc_mark.h \
+        -b gc/gc_pthread_redirects.h \
+        -b gc/gc_tiny_fl.h \
+        -b gc/gc_typed.h \
+        -b gc/javaxfc.h \
+        -b il/PCR_IL.h \
+        -b mm/PCR_MM.h \
+        -b psp2-support.h \
+        -b stubinfo.h \
+        -b th/PCR_ThCtl.h \
+        -b vd/PCR_VD.h \
+        -s include \
+        -s include/private \
+        extra/gc.c
+
+The updated header files are then copied into the include/gc directory.  We can delete
+include/gc/gc_cpp.h since this header is not needed by V.  And, we can remove the git
+repo for bdwgc.
+
+    cp include/gc/*.h ../include/gc
+    cd ..
+    rm include/gc/gc_cpp.h
+    rm -rf bdwgc
+

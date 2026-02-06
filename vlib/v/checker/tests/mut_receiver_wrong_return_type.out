@@ -1,0 +1,13 @@
+vlib/v/checker/tests/mut_receiver_wrong_return_type.vv:4:9: error: cannot use `Test` as type `?int` in return argument
+    2 | 
+    3 | fn (mut test Test) test() ?int {
+    4 |     return test
+      |            ~~~~
+    5 | }
+    6 |
+vlib/v/checker/tests/mut_receiver_wrong_return_type.vv:8:9: error: cannot use `Test` as type `int` in return argument
+    6 | 
+    7 | fn (mut test Test) test2() int {
+    8 |     return test
+      |            ~~~~
+    9 | }

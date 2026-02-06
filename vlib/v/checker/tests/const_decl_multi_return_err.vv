@@ -1,0 +1,9 @@
+fn foo() (int, int, int) {
+	return 1, 2, 3
+}
+
+const a = foo()
+
+fn main() {
+	println('${a}')
+}

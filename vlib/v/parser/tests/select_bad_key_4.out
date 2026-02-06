@@ -1,0 +1,7 @@
+vlib/v/parser/tests/select_bad_key_4.vv:7:8: error: select key: `<-` operator expected
+    5 |             println(b)
+    6 |         }
+    7 |         c := -a {
+      |              ^
+    8 |             println("shouldn't get here")
+    9 |         }

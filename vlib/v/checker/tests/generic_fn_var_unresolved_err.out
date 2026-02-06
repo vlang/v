@@ -1,0 +1,21 @@
+vlib/v/checker/tests/generic_fn_var_unresolved_err.vv:8:7: error: `func` is a generic fn, you should pass its concrete types, e.g. func[int]
+    6 | 
+    7 | fn main() {
+    8 |     _ := func
+      |          ~~~~
+    9 |     _ := {
+   10 |         'test': func
+vlib/v/checker/tests/generic_fn_var_unresolved_err.vv:8:7: error: `func` is a generic fn, you should pass its concrete types, e.g. func[int]
+    6 | 
+    7 | fn main() {
+    8 |     _ := func
+      |          ~~~~
+    9 |     _ := {
+   10 |         'test': func
+vlib/v/checker/tests/generic_fn_var_unresolved_err.vv:10:11: error: `func` is a generic fn, you should pass its concrete types, e.g. func[int]
+    8 |     _ := func
+    9 |     _ := {
+   10 |         'test': func
+      |                 ~~~~
+   11 |     }
+   12 | }

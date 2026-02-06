@@ -1,0 +1,28 @@
+vlib/v/checker/tests/map_init_wrong_update_type.vv:12:8: error: invalid map value: expected `StrB`, not `int literal`
+   10 |     a := {
+   11 |         ...foo // not ok
+   12 |         'a': 5
+      |              ^
+   13 |         'b': 6
+   14 |     }
+vlib/v/checker/tests/map_init_wrong_update_type.vv:13:8: error: invalid map value: expected `StrB`, not `int literal`
+   11 |         ...foo // not ok
+   12 |         'a': 5
+   13 |         'b': 6
+      |              ^
+   14 |     }
+   15 |     b := {
+vlib/v/checker/tests/map_init_wrong_update_type.vv:17:3: error: invalid map key: expected `StrA`, not `Bar`
+   15 |     b := {
+   16 |         ...foo // not ok
+   17 |         Bar{'yes'}: '5'
+      |         ~~~~~~~~~~
+   18 |         Bar{'now'}: '6'
+   19 |     }
+vlib/v/checker/tests/map_init_wrong_update_type.vv:18:3: error: invalid map key: expected `StrA`, not `Bar`
+   16 |         ...foo // not ok
+   17 |         Bar{'yes'}: '5'
+   18 |         Bar{'now'}: '6'
+      |         ~~~~~~~~~~
+   19 |     }
+   20 |     c := {

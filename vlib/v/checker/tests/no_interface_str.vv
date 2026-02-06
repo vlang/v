@@ -1,0 +1,19 @@
+interface Animal {
+	speak()
+}
+
+struct Cow {
+}
+
+fn (c Cow) speak() {
+	println('moo')
+}
+
+fn get_animal() Animal {
+	return Cow{}
+}
+
+fn moin() {
+	a := get_animal()
+	println(a.str())
+}

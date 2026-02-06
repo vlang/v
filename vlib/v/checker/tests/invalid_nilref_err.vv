@@ -1,0 +1,4 @@
+fn main() {
+	var := unsafe { &nil }
+	println(var)
+}

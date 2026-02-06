@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_multidim_array.vv:12:2: error: ORM: multi-dimension array fields are not supported
+   10 |     id    int      @[primary; sql: serial]
+   11 |     users []User   @[fkey: id]
+   12 |     bad   [][]User @[fkey: id]
+      |     ~~~~~~~~~~~~~~
+   13 | }
+   14 |

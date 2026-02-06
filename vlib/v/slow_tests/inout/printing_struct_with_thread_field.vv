@@ -1,0 +1,44 @@
+// Video is the object containing all the information needed for
+// conversion to ascii.
+struct Video {
+pub:
+	// path may be URL or path on local file system.
+	path         string
+	tmp_dir      string
+	frame_count  int
+	frame_format FrameFormat
+pub mut:
+	// TODO: once V fixes bug #19281 replace the type here
+	// with `thread !`. And the return type on the corresponding
+	// function that is spawned.
+	extract_frames_thread thread string
+	frames                [][]u8
+	framerate             f64 = 24.0
+}
+
+enum FrameFormat {
+	bmp
+	jpg
+}
+
+fn (video Video) extract_frames() string {
+	// try to extract frames os.execute()
+	// if os.execute() returns with an exit
+	// code other than 0, return an error.
+	if true {
+		return 'Failed to extract frames: os.execute() cmd output'
+	}
+	// do something else
+	return '1234'
+}
+
+fn main() {
+	mut video := Video{
+		path:    '/path/to/some/mp4'
+		tmp_dir: '/tmp'
+	}
+	video.extract_frames_thread = spawn video.extract_frames()
+	println(video.extract_frames_thread.wait())
+	println(video)
+	flush_stdout()
+}

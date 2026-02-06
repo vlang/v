@@ -1,0 +1,5 @@
+module main
+
+fn C.abc(a i32, b i32, c charptr) i32
+
+fn abc(a int, b int, c charptr) int

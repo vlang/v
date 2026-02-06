@@ -1,0 +1,3 @@
+// vtest vflags: -F
+fn foo() {
+}

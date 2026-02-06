@@ -1,0 +1,10 @@
+fn f() ?&int {
+	return none
+}
+
+a := f() or {
+	{
+	}
+}
+_ = f() or { a }
+_ = f() or { `.` }

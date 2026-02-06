@@ -1,0 +1,5 @@
+vlib/v/parser/tests/fn_type_only_args_in_interfaces.vv:22:1: error: `syntax_error` evaluated but not used 
+   20 | }
+   21 | 
+   22 | syntax_error
+      | ~~~~~~~~~~~~

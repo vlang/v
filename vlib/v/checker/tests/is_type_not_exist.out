@@ -1,0 +1,31 @@
+vlib/v/checker/tests/is_type_not_exist.vv:10:10: error: is: type `testmod.SomethingThatDontExist` does not exist
+    8 | 
+    9 | fn fn_with_sum_type_param(i Integer) {
+   10 |     if i is SomethingThatDontExist {
+      |             ~~~~~~~~~~~~~~~~~~~~~~
+   11 |         println('It should fail !')
+   12 |     }
+vlib/v/checker/tests/is_type_not_exist.vv:10:10: error: `testmod.Integer` has no variant `testmod.SomethingThatDontExist`
+    8 | 
+    9 | fn fn_with_sum_type_param(i Integer) {
+   10 |     if i is SomethingThatDontExist {
+      |             ~~~~~~~~~~~~~~~~~~~~~~
+   11 |         println('It should fail !')
+   12 |     }
+vlib/v/checker/tests/is_type_not_exist.vv:29:11: error: is: type `testmod.empty_foo` does not exist
+   27 |     _ := testmod.empty_foo
+   28 |     fb := Foobar(Foo{foo: 5})
+   29 |     if fb is testmod.empty_foo{}
+      |              ~~~~~~~
+   30 | }
+vlib/v/checker/tests/is_type_not_exist.vv:29:11: error: `testmod.Foobar` has no variant `testmod.empty_foo`
+   27 |     _ := testmod.empty_foo
+   28 |     fb := Foobar(Foo{foo: 5})
+   29 |     if fb is testmod.empty_foo{}
+      |              ~~~~~~~
+   30 | }
+vlib/v/checker/tests/is_type_not_exist.vv:1:1: error: project must include a `main` module or be a shared library (compile with `v -shared`)
+    1 | module testmod
+      | ^
+    2 | 
+    3 | type Integer = i8 | i16 | int | i64

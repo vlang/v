@@ -1,0 +1,9 @@
+vlib/v/checker/tests/sum_type_holding_alias_ptr_err.vv:3:12: error: sum type cannot hold a reference type
+    1 | type Alias1 = &int
+    2 | type Alias2 = &string
+    3 | type Qwe = Alias1 | Alias2
+      |            ~~~~~~
+    4 | 
+    5 | fn main() {
+Details: declare alias as non-reference type: `Qwe = Alias1 | ...`
+and use a reference to the sum type instead: `var := &Qwe(Alias1(val))`

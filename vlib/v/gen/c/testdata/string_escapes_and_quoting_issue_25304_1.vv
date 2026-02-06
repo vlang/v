@@ -1,0 +1,6 @@
+println('start')
+b := 'Hello world!\u004azz\u005cXYZ'
+a := 'zzz\u005c${')}}));builtin__println(b);//'}QWE'
+_ := a
+_ := b
+println('done')

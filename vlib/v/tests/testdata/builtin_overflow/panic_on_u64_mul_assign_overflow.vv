@@ -1,0 +1,6 @@
+mut x := u64(1844674407370955161)
+println(x)
+x *= 10
+println(x)
+x *= 10
+println(x)

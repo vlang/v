@@ -1,0 +1,12 @@
+cmd/tools/vvet/tests/repeated_code.vv:4: notice: a[0] occurs 1/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:5: notice: a[0] occurs 2/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:6: notice: a[0] occurs 3/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:6: notice: a[0] occurs 4/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:7: notice: a[0] occurs 5/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:8: notice: a[0] occurs 6/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:9: notice: a[0] occurs 7/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:9: notice: a[0] occurs 8/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:11: notice: a[0] occurs 9/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:12: notice: a[0] occurs 10/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:13: notice: a[0] occurs 11/12 times in function scope (main.main).
+cmd/tools/vvet/tests/repeated_code.vv:13: notice: a[0] occurs 12/12 times in function scope (main.main).

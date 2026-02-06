@@ -1,0 +1,10 @@
+prefix=/usr
+libdir=${prefix}/lib/x86_64-linux-gnu
+includedir=${prefix}/include
+
+Name: Atk
+Description: Accessibility Toolkit
+Version: 2.35.1
+Requires: glib-2.0 >=  2.38.0, gobject-2.0 >=  2.38.0
+Libs: -L${libdir} -latk-1.0
+Cflags: -I${includedir}/atk-1.0

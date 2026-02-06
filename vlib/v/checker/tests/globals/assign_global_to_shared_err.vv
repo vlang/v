@@ -1,0 +1,6 @@
+@[has_globals]
+__global a = {1: 'one', 2: 'two'}
+
+fn main() {
+	shared b := a
+}

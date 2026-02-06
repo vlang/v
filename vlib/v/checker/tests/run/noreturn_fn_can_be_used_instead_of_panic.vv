@@ -1,0 +1,14 @@
+fn abc() !int {
+	return error('oh no')
+}
+
+@[noreturn]
+fn log_and_die(e IError) {
+	eprintln('${@FN}: error: ${e}')
+	exit(77)
+}
+
+fn main() {
+	x := abc() or { log_and_die(err) }
+	println(x)
+}

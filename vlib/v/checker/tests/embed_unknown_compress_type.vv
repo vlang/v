@@ -1,0 +1,4 @@
+fn main() {
+	test := $embed_file('embed_unknown_compress_type.vv', .this_is_not_a_valid_compression_type)
+	println(test.to_string())
+}

@@ -1,0 +1,25 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:1:13: error: type `byte` is an alias, use the original alias type `u8` instead
+    1 | type Byte = byte
+      |             ~~~~
+    2 |
+    3 | fn foo(_ byte) {}
+vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:3:10: error: byte is deprecated, use u8 instead
+    1 | type Byte = byte
+    2 |
+    3 | fn foo(_ byte) {}
+      |          ~~~~
+    4 |
+    5 | fn main() {
+vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:6:7: error: byte is deprecated, use u8 instead
+    4 |
+    5 | fn main() {
+    6 |     _ := byte(0)
+      |          ~~~~~~~
+    7 |     _ := fn(_ byte) {}
+    8 | }
+vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:7:12: error: byte is deprecated, use u8 instead
+    5 | fn main() {
+    6 |     _ := byte(0)
+    7 |     _ := fn(_ byte) {}
+      |               ~~~~
+    8 | }

@@ -1,0 +1,104 @@
+vlib/v/checker/tests/shared_bad_args.vv:51:8: error: `r` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver
+   49 |     }
+   50 |     lock s {
+   51 |         u := r.s_val(s)
+      |              ^
+   52 |         println(u)
+   53 |     }
+vlib/v/checker/tests/shared_bad_args.vv:51:8: error: `r` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut right-hand side of assignment
+   49 |     }
+   50 |     lock s {
+   51 |         u := r.s_val(s)
+      |              ^
+   52 |         println(u)
+   53 |     }
+vlib/v/checker/tests/shared_bad_args.vv:55:16: error: `s` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument
+   53 |     }
+   54 |     lock r {
+   55 |         v := r.s_val(s)
+      |                      ^
+   56 |         println(v)
+   57 |     }
+vlib/v/checker/tests/shared_bad_args.vv:58:13: error: `m` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument
+   56 |         println(v)
+   57 |     }
+   58 |     w := m_val(m)
+      |                ^
+   59 |     x := a_val(a)
+   60 |     println('${w} ${x}')
+vlib/v/checker/tests/shared_bad_args.vv:59:13: error: `a` is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument
+   57 |     }
+   58 |     w := m_val(m)
+   59 |     x := a_val(a)
+      |                ^
+   60 |     println('${w} ${x}')
+   61 | }
+vlib/v/checker/tests/shared_bad_args.vv:77:3: error: r must be added to the `lock` list above
+   75 |     }
+   76 |     lock s {
+   77 |         r.s_mut(mut s)
+      |         ^
+   78 |     }
+   79 |     lock r {
+vlib/v/checker/tests/shared_bad_args.vv:77:3: error: r is `shared` and must be `lock`ed to be passed as `mut`
+   75 |     }
+   76 |     lock s {
+   77 |         r.s_mut(mut s)
+      |         ^
+   78 |     }
+   79 |     lock r {
+vlib/v/checker/tests/shared_bad_args.vv:80:15: error: s must be added to the `lock` list above
+   78 |     }
+   79 |     lock r {
+   80 |         r.s_mut(mut s)
+      |                     ^
+   81 |     }
+   82 |     m_mut(mut m)
+vlib/v/checker/tests/shared_bad_args.vv:80:15: error: s is `shared` and must be `lock`ed to be passed as `mut`
+   78 |     }
+   79 |     lock r {
+   80 |         r.s_mut(mut s)
+      |                     ^
+   81 |     }
+   82 |     m_mut(mut m)
+vlib/v/checker/tests/shared_bad_args.vv:82:12: error: m is `shared` and must be `lock`ed to be passed as `mut`
+   80 |         r.s_mut(mut s)
+   81 |     }
+   82 |     m_mut(mut m)
+      |               ^
+   83 |     a_mut(mut a)
+   84 | }
+vlib/v/checker/tests/shared_bad_args.vv:83:12: error: a is `shared` and must be `lock`ed to be passed as `mut`
+   81 |     }
+   82 |     m_mut(mut m)
+   83 |     a_mut(mut a)
+      |               ^
+   84 | }
+   85 |
+vlib/v/checker/tests/shared_bad_args.vv:94:10: error: `y` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+   92 |         a: 5
+   93 |     }
+   94 |     println(y)
+      |             ^
+   95 |     println('${y}')
+   96 |     a := Ab{
+vlib/v/checker/tests/shared_bad_args.vv:95:13: error: `y` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut interpolation object
+   93 |     }
+   94 |     println(y)
+   95 |     println('${y}')
+      |                ^
+   96 |     a := Ab{
+   97 |         s: St{
+vlib/v/checker/tests/shared_bad_args.vv:101:12: error: `a.s` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+   99 |         }
+  100 |     }
+  101 |     println(a.s)
+      |               ^
+  102 |     println('${a.s}')
+  103 | }
+vlib/v/checker/tests/shared_bad_args.vv:102:15: error: `a.s` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut interpolation object
+  100 |     }
+  101 |     println(a.s)
+  102 |     println('${a.s}')
+      |                  ^
+  103 | }

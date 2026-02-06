@@ -1,0 +1,28 @@
+vlib/v/checker/tests/clash_ident_module_name_prefix.vv:7:1: error: identifier cannot use prefix `builtin__` of imported module `builtin`
+    5 | // os is not imported so the os__ prefix should not produce an error
+    6 |
+    7 | fn builtin__string_str() {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | }
+    9 |
+vlib/v/checker/tests/clash_ident_module_name_prefix.vv:10:1: error: identifier cannot use prefix `time__` of imported module `time`
+    8 | }
+    9 |
+   10 | fn time__utc() {
+      | ~~~~~~~~~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/clash_ident_module_name_prefix.vv:17:2: error: identifier cannot use prefix `builtin__` of imported module `builtin`
+   15 |
+   16 | fn main() {
+   17 |     builtin__string_str := 'Hello V!'.str()
+      |     ~~~~~~~~~~~~~~~~~~~
+   18 |     time__now := time.now()
+   19 |     os__log := 'Hello V!'
+vlib/v/checker/tests/clash_ident_module_name_prefix.vv:18:2: error: identifier cannot use prefix `time__` of imported module `time`
+   16 | fn main() {
+   17 |     builtin__string_str := 'Hello V!'.str()
+   18 |     time__now := time.now()
+      |     ~~~~~~~~~
+   19 |     os__log := 'Hello V!'
+   20 |     println(builtin__string_str)

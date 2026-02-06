@@ -1,0 +1,6 @@
+vlib/v/checker/tests/const_field_name_duplicate_err.vv:2:1: error: unexpected name `cosnt`
+    1 | const aaa = 1
+    2 | cosnt aaa = 2
+      | ~~~~~
+    3 | 
+    4 | fn main() {

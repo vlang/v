@@ -1,0 +1,6 @@
+// vtest vflags: -os windows
+import sokol as _
+
+fn main() {
+	println('hello world')
+}

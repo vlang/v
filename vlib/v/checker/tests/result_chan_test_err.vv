@@ -1,0 +1,4 @@
+fn main() {
+	c := chan !string{}
+	println(c.len)
+}

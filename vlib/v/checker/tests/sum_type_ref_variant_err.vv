@@ -1,0 +1,13 @@
+struct Abc {
+	val string
+}
+
+struct Xyz {
+	foo string
+}
+
+type AliasType = string
+type Alphabet1 = Abc | string | &Xyz
+type Alphabet2 = Abc | &Xyz | string
+type Alphabet3 = &Xyz | Abc | string
+type Alphabet4 = Xyz | Abc | &AliasType

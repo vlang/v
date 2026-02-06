@@ -1,0 +1,19 @@
+interface MyError {
+	print_error()
+}
+
+struct CustomError implements MyError {
+}
+
+fn (e CustomError) print_error2() {
+}
+
+interface MyError2 {
+	print_error2()
+}
+
+struct CustomError2 implements MyError, MyError2 {
+}
+
+fn (e CustomError2) print_error3() {
+}

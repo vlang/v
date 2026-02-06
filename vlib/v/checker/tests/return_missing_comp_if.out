@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_missing_comp_if.vv:3:1: error: missing return at end of function `foo`
+    1 | fn main() {}
+    2 | 
+    3 | fn foo() string {
+      | ~~~~~~~~~~~~~~~
+    4 |     $if windows {
+    5 |     } $else {

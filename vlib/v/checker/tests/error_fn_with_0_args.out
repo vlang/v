@@ -1,0 +1,7 @@
+vlib/v/checker/tests/error_fn_with_0_args.vv:2:9: error: expected 1 argument, but got 0
+    1 | fn abc() ! {
+    2 |     return error()
+      |            ~~~~~~~
+    3 | }
+Details: have ()
+         want (string)

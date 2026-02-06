@@ -1,0 +1,58 @@
+fn match_expr_assignment() {
+	a := 20
+	_ := match a {
+		10 { 10 }
+		5 { 5 }
+		else { 2 }
+	}
+}
+
+fn match_branch_comment() {
+	a := 1
+	match a {
+		1 {
+			println('1')
+		}
+		2 {
+			println('2')
+		}
+		else {
+			// do nothing
+		}
+	}
+}
+
+fn really_long_branch_exprs() {
+	match x {
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
+		MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr,
+		SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit {
+			return expr.pos
+		}
+		InfixExpr {
+			Foo{
+				x: 3
+			}
+		}
+	}
+}
+
+fn match_branch_extra_comma() {
+	match x {
+		Foo, Bar {}
+		int, string {}
+	}
+	match n {
+		0...5 {}
+		2, 3 {}
+		else {}
+	}
+}
+
+fn match_index_range_expr(var string) string {
+	return match true {
+		var.len < 3 { 'i#' + var }
+		var[1..2].contains('#') { var }
+		else { 'i#' + var }
+	}
+}

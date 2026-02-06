@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unknown_field_in_struct_literal.vv:10:2: error: unknown field `pos` in struct literal of type `TileLine`.
+Did you mean `ypos`?
+    8 | 
+    9 | hline := TileLine{
+   10 |     pos: 123
+      |     ~~~~~~~~
+   11 | }
+   12 | println(hline)

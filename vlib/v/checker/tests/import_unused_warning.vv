@@ -1,0 +1,6 @@
+import os as _
+import time
+
+fn main() {
+	println('hello, world')
+}

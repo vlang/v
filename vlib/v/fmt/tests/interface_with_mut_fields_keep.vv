@@ -1,0 +1,7 @@
+interface Toto {
+	a int
+	d()
+mut:
+	b int
+	f()
+}

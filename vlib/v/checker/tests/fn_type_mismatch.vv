@@ -1,0 +1,14 @@
+fn add(a int, b int) f32 {
+	return a + b
+}
+
+fn div(a f32, b f32) f32 {
+	println('div: ${a} ${b}')
+	return a / b
+}
+
+fn main() {
+	fns := [add, div]
+	println(fns[0](10.0, 5.0))
+	println(fns[1](10.0, 5.0))
+}

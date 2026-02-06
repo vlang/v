@@ -1,0 +1,15 @@
+vlib/v/checker/tests/slice_clone_in_struct_init_notice.vv:9:7: notice: an implicit clone of the slice was done here
+    7 |
+    8 |     _ := AA{
+    9 |         a: a[0..5]
+      |             ~~~~~~
+   10 |     }
+   11 |     _ := a[0..5]
+Details: vlib/v/checker/tests/slice_clone_in_struct_init_notice.vv:9:7: details: To silence this notice, use either an explicit `a[..].clone()`,
+or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.
+    7 |
+    8 |     _ := AA{
+    9 |         a: a[0..5]
+      |             ~~~~~~
+   10 |     }
+   11 |     _ := a[0..5]

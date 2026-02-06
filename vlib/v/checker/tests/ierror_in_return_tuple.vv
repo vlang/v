@@ -1,0 +1,7 @@
+fn return_ierror_in_tuple() (bool, IError) {
+	return false, error('')
+}
+
+fn return_option_in_tuple() (bool, ?bool) {
+	return false, error('')
+}

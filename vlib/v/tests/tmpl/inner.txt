@@ -1,0 +1,17 @@
+@for i in 0..10 
+${i*2} - $i
+@end
+
+@for key, val in downloads
+${key}, downloaded $val times.
+@end
+
+@if !ignored
+this is ignored
+@else
+this is not ignored
+@end
+
+@if true
+so, it's basically true
+@end

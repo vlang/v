@@ -1,0 +1,60 @@
+// pi
+// pi
+const pi = 3.14
+// phi
+// phi
+// phi
+const phi = 1.618
+// Euler's constant
+const eulers = 2.7182
+const supported_platforms = ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+	'android', 'js', 'solaris', 'haiku']
+const one_line_supported = ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+	'android', 'js', 'solaris', 'haiku']
+const another_const = ['a', 'b', 'c', 'd', 'e', 'f']
+const multiline_const = [
+	'first line',
+	'second line',
+	'third line',
+	'fourth line',
+]
+
+const i_am_a_very_long_constant_name_so_i_stand_alone_and_my_length_is_over_90_characters = [
+	'testforit',
+]
+
+pub const i_am_pub_const = true
+
+const abc = 1 // abc
+
+const def = 2 // def
+
+const ghi = 3 // ghi
+
+fn main() {
+	a := [
+		[3, 5, 6],
+		[7, 9, 2],
+	]
+	b := [[
+		[2, 5, 8],
+		[5, 1, 3],
+		[2, 6, 0],
+	], [
+		[9, 4, 5],
+		[7, 2, 3],
+		[1, 2, 3],
+	]]
+	c := [
+		[
+			[2, 5, 8],
+			[5, 1, 3],
+			[2, 6, 0],
+		],
+		[
+			[9, 4, 5],
+			[7, 2, 3],
+			[1, 2, 3],
+		],
+	]
+}

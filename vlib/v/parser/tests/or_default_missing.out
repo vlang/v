@@ -1,0 +1,14 @@
+vlib/v/parser/tests/or_default_missing.vv:3:18: error: `or` block must provide a default value of type `int`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)
+    1 | fn test_array_or() {
+    2 |     m := [3, 4, 5]
+    3 |     el := m[4] or { println('error') }
+      |                     ~~~~~~~~~~~~~~~~
+    4 |     println(el)
+    5 | }
+vlib/v/parser/tests/or_default_missing.vv:14:29: error: last statement in the `or {}` block should be an expression of type `int` or exit parent scope
+   12 |     }
+   13 |     mut testvar := 0
+   14 |     el := m['pp'] or { testvar = 12 }
+      |                                ^
+   15 |     println('${el} ${testvar}')
+   16 | }

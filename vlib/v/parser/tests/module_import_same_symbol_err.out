@@ -1,0 +1,4 @@
+vlib/v/parser/tests/module_import_same_symbol_err.vv:2:17: error: cannot register symbol `max`, it was already imported
+    1 | import math { max }
+    2 | import arrays { max }
+      |                 ~~~

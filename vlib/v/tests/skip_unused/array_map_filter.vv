@@ -1,0 +1,9 @@
+fn main() {
+	[u8(5)].map(fn (e u8) u8 {
+		return e
+	})
+	[u8(5)].filter(fn (e u8) bool {
+		return true
+	})
+	println('done')
+}

@@ -1,0 +1,10 @@
+struct Abc {
+	myfile &C.FILE = unsafe { nil }
+}
+
+@[manualfree]
+fn main() {
+	a := Abc{}
+	println(a)
+	unsafe { a.free() }
+}

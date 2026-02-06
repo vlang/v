@@ -1,0 +1,20 @@
+struct User {}
+
+fn (u &User) debug_1() {
+	println('${u.typo}')
+}
+
+fn debug_2[T](t T) {
+	_ := t.typo
+}
+
+fn debug_3[T](t T) {
+	println('${t.typo}')
+}
+
+fn main() {
+	u := &User{}
+	u.debug_1()
+	debug_2(u)
+	debug_3(u)
+}

@@ -1,0 +1,33 @@
+pub struct INode {
+mut:
+	heapindex u64
+}
+
+pub struct IHeap[T] {
+mut:
+	array []&T
+	size  u64
+}
+
+pub fn create_iheap[T](capacity int) &IHeap[T] {
+	mut h := &IHeap[T]{
+		array: []&T{cap: capacity}
+		size:  0
+	}
+	h.array << &T(unsafe { nil })
+	return h
+}
+
+fn (mut h IHeap[T]) percolateup(hl u64, mut element T) {
+	mut hole := hl
+	for hole > 1 && element < h.array[hole / 2] {
+		// ^ Notice that '<' was not defined
+		println("didnt define '<' for the INode")
+		hole /= 2
+	}
+}
+
+fn main() {
+	heap := create_iheap[INode](3000000)
+	println(heap)
+}

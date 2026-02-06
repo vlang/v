@@ -1,0 +1,25 @@
+module main
+
+fn C.test()
+
+struct Boo {}
+
+fn (b Boo) call_1() {}
+
+fn foo() {
+	bar()
+}
+
+fn bar() {
+	baz()
+}
+
+fn baz() {
+	boo := Boo{}
+	boo.call_1()
+}
+
+fn main() {
+	foo()
+	eprintln('end')
+}

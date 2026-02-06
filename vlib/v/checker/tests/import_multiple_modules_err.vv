@@ -1,0 +1,4 @@
+import time math
+fn main() {
+	println(time.now().unix())
+}

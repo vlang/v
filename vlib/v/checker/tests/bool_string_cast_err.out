@@ -1,0 +1,12 @@
+vlib/v/checker/tests/bool_string_cast_err.vv:2:10: error: cannot cast type `bool` to string, use `true.str()` instead.
+    1 | fn main() {
+    2 |     println(string(true))
+      |             ~~~~~~~~~~~~
+    3 |     println(string(false))
+    4 | }
+vlib/v/checker/tests/bool_string_cast_err.vv:3:10: error: cannot cast type `bool` to string, use `false.str()` instead.
+    1 | fn main() {
+    2 |     println(string(true))
+    3 |     println(string(false))
+      |             ~~~~~~~~~~~~~
+    4 | }

@@ -1,0 +1,10 @@
+fn opt_fn() ?int {
+    return 2
+}
+
+fn main() {
+    x := 1
+    if x := opt_fn() {
+        println(x)
+    }
+}

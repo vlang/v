@@ -1,0 +1,12 @@
+module main
+
+fn main() {
+	// vfmt off
+	a := [
+		1, 2, 3,
+		4, 5, 6,
+	]
+	// vfmt on
+
+	println('Hello World!')
+}

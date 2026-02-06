@@ -1,0 +1,5 @@
+vlib/v/checker/tests/main_args_err.vv:1:1: error: function `main` cannot have arguments
+    1 | fn main(a string) {
+      | ~~~~~~~~~~~~~~~~~
+    2 |     println(a)
+    3 | }

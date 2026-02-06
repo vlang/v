@@ -1,0 +1,11 @@
+module main
+
+pub struct SomeError {
+mut:
+	msg string
+}
+
+fn main() {
+	a := unsafe { &SomeError('yo') }
+	println(a)
+}

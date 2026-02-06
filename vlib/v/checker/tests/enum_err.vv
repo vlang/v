@@ -1,0 +1,11 @@
+module main
+
+enum Color {
+	green = 'green'
+	yellow
+	blue
+}
+
+fn main() {
+	println('hello')
+}

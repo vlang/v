@@ -1,0 +1,63 @@
+vlib/v/checker/tests/struct_type_cast_err.vv:5:7: error: cannot cast struct `Foo` to `string`
+    3 | fn main() {
+    4 |     foo := Foo{}
+    5 |     _ := string(foo)
+      |          ~~~~~~~~~~~
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:6:7: error: cannot cast struct `Foo` to `int`
+    4 |     foo := Foo{}
+    5 |     _ := string(foo)
+    6 |     _ := int(foo)
+      |          ~~~~~~~~
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:7:7: error: cannot cast struct `Foo` to `u64`
+    5 |     _ := string(foo)
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+      |          ~~~~~~~~
+    8 |     _ := u32(foo)
+    9 |     _ := rune(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:8:7: error: cannot cast struct `Foo` to `u32`
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+      |          ~~~~~~~~
+    9 |     _ := rune(foo)
+   10 |     _ := u8(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:9:7: error: cannot cast struct `Foo` to `rune`
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+    9 |     _ := rune(foo)
+      |          ~~~~~~~~~
+   10 |     _ := u8(foo)
+   11 |     _ := i8(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:10:7: error: cannot cast struct `Foo` to `u8`
+    8 |     _ := u32(foo)
+    9 |     _ := rune(foo)
+   10 |     _ := u8(foo)
+      |          ~~~~~~~
+   11 |     _ := i8(foo)
+   12 |     _ := i64(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:11:7: error: cannot cast struct `Foo` to `i8`
+    9 |     _ := rune(foo)
+   10 |     _ := u8(foo)
+   11 |     _ := i8(foo)
+      |          ~~~~~~~
+   12 |     _ := i64(foo)
+   13 |     _ := int(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:12:7: error: cannot cast struct `Foo` to `i64`
+   10 |     _ := u8(foo)
+   11 |     _ := i8(foo)
+   12 |     _ := i64(foo)
+      |          ~~~~~~~~
+   13 |     _ := int(foo)
+   14 |     _ = &I1(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:13:7: error: cannot cast struct `Foo` to `int`
+   11 |     _ := i8(foo)
+   12 |     _ := i64(foo)
+   13 |     _ := int(foo)
+      |          ~~~~~~~~
+   14 |     _ = &I1(foo)
+   15 | }

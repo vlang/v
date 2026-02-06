@@ -1,0 +1,6 @@
+vlib/v/checker/tests/embed_unknown_compress_type.vv:2:10: error: not supported compression type: .this_is_not_a_valid_compression_type. supported: .none, .zlib
+    1 | fn main() {
+    2 |     test := $embed_file('embed_unknown_compress_type.vv', .this_is_not_a_valid_compression_type)
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |     println(test.to_string())
+    4 | }

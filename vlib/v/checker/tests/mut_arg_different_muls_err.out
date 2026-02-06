@@ -1,0 +1,7 @@
+vlib/v/checker/tests/mut_arg_different_muls_err.vv:26:21: error: cannot use `&Window` as `&&Window` in argument 1 to `window_resized`
+   24 | 
+   25 | fn on_event(mut w Window) {
+   26 |     window_resized(mut w)
+      |                        ^
+   27 | }
+   28 |

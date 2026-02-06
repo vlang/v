@@ -1,0 +1,4 @@
+vlib/v/parser/tests/for_index_in_range.vv:1:5: error: cannot declare index variable with range `for`
+    1 | for i, k in 0..5 {
+      |     ^
+    2 | }

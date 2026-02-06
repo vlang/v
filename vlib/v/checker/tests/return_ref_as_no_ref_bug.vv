@@ -1,0 +1,14 @@
+struct BugStruct {
+	id int
+}
+
+fn main() {
+	x := return_not_reference()
+	println(x.id)
+}
+
+fn return_not_reference() BugStruct {
+	return &BugStruct{
+		id: 1
+	}
+}

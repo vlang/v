@@ -1,0 +1,16 @@
+module main
+
+pub struct Expr1 {
+	name string
+}
+
+fn foo(mut expr &Expr1) { // <---- &
+	println(expr.name)
+}
+
+fn main() {
+	mut expr := Expr1{
+		name: '123'
+	}
+	foo(mut expr)
+}

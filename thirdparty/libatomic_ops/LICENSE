@@ -1,0 +1,76 @@
+MIT License (core library) / GPL-2.0 (gpl extension library)
+
+Copyright (c) 1991-1994 by Xerox Corporation.  All rights reserved.
+Copyright (c) 1996-1999 by Silicon Graphics.  All rights reserved.
+Copyright (c) 1999-2011 Hewlett-Packard Development Company, L.P.
+Copyright (c) 2005, 2007 Thiemo Seufer
+Copyright (c) 2007 by NEC LE-IT.  All rights reserved.
+Copyright (c) 2008-2022 Ivan Maidanski
+Copyright (c) 2009 Bradley Smith
+Copyright (c) 2009 by Takashi Yoshii.  All rights reserved.
+
+
+Our intent is to make it easy to use libatomic_ops, in both free and
+proprietary software.  Hence most of code (core library) that we expect to
+be linked into a client application is covered by a MIT or MIT-style license.
+
+However, a few library routines (the gpl extension library) are covered by
+the GNU General Public License.  These are put into a separate library,
+libatomic_ops_gpl.a file.
+
+Most of the test code is covered by the GNU General Public License too.
+
+
+The low-level (core) part of the library (libatomic_ops.a) is mostly covered
+by the MIT license:
+
+----------------------------------------
+
+Copyright (c) ...
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------
+
+
+Some files in the atomic_ops/sysdeps directory (part of core library) were
+inherited in part from the Boehm-Demers-Weiser conservative garbage collector,
+and are covered by its license, which is similar in spirit to MIT license:
+
+--------------------------------
+
+Copyright (c) ...
+
+THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
+OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
+
+Permission is hereby granted to use or copy this program
+for any purpose, provided the above notices are retained on all copies.
+Permission to modify the code and to distribute modified code is granted,
+provided the above notices are retained, and a notice that the code was
+modified is included with the above copyright notice.
+
+----------------------------------
+
+
+A few files are covered by the GNU General Public License.  (See file
+"COPYING".)  This applies only to the test code and the atomic_ops_gpl
+portion of the library.  Thus, atomic_ops_gpl should generally not be
+linked into proprietary code.  (This distinction was motivated by patent
+considerations.)

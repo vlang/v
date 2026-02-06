@@ -1,0 +1,12 @@
+interface Animal {
+	speak(s string)
+}
+
+struct Cat {}
+
+fn (c Cat) speak() {}
+
+fn main() {
+	mut animals := []Animal{}
+	animals << Cat{}
+}

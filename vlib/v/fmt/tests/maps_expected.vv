@@ -1,0 +1,53 @@
+const reserved_types = {
+	'i8':   true
+	'i16':  true
+	'int':  true
+	'i64':  true
+	'i128': true
+}
+
+numbers := {
+	'one':                                 1
+	'two':                                 2
+	'sevenhundredseventyseven':            777
+	'fivethousandthreehundredtwentyseven': 5327
+}
+
+explicit_init := map[string]string{}
+
+explicit_init_with_value := {
+	'abc': 0
+}
+
+headers := http.new_header_from_map({
+	.content_type:  'application/json'
+	.authorization: 'Bearer abcdef'
+})
+
+utf8_keys := {
+	'ß':                                                              's'
+	'В начале':                                                       'В начале'
+	'最初有道':                                                       '最初有道'
+	'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+	'AĀBCČDEĒFGĢHIĪJKĶLĻMNŅOPQRSŠTUŪVXYWZŽ':                          'AABCCDEEFGGHIIJKKLLMNNOPQRSSTUUVXYWZZ'
+	'aābcčdeēfgģhiījkķlļmnņopqrsštuūvxywzž':                          'aabccdeefgghiijkkllmnnopqrsstuuvxywzz'
+	'ąĄčČęĘėĖįĮšŠųŲūŪžŽ':                                             'aAcCeEeEiIsSuUuUzZ'
+	'ãẽĩõũñỹ':                                                        'aeiouny'
+	'ÃẼĨÕŨÑỸ':                                                        'AEIOUNY'
+	'àèìòùǹỳẁ':                                                       'aeiounyw'
+	'ÀÈÌÒÙǸỲẀ':                                                       'AEIOUNYW'
+	'áéíóúǵḱĺḿńṕŕśẃýź':                                               'aeiougklmnprswyz'
+	'ÁÉÍÓÚǴḰĹḾŃṔŔŚẂÝŹ':                                               'AEIOUGKLMNPRSWYZ'
+	'âêîôûĉĝĥĵŝŷŵẑ':                                                  'aeioucghjsywz'
+	'ÂÊÎÔÛĈĜĤĴŜŶŴẐ':                                                  'AEIOUCGHJSYWZ'
+	'äëïöüḧẗẍÿẅ':                                                     'aeiouhtxyw'
+	'ÄËÏÖÜḦẌŸẄ':                                                      'AEIOUHXYW'
+	'åÅ':                                                             'aA'
+	'æÆ':                                                             'aeAE'
+	'çÇ':                                                             'cC'
+	'øØ':                                                             'oO'
+	'ß':                                                              's'
+	'В начале':                                                       'В начале'
+	'最初有道':                                                       '最初有道'
+	'לפניכם':                                                         'לפניכם'
+}

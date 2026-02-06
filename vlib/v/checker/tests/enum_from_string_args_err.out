@@ -1,0 +1,34 @@
+vlib/v/checker/tests/enum_from_string_args_err.vv:8:2: error: expected 1 argument, but got 0
+    6 |
+    7 | fn main() {
+    8 |     Color.from_string()
+      |     ~~~~~~~~~~~~~~~~~~~
+    9 |     Color.from_string('red', 'blue')
+   10 |     Color.from_string(22)
+vlib/v/checker/tests/enum_from_string_args_err.vv:9:2: error: expected 1 argument, but got 2
+    7 | fn main() {
+    8 |     Color.from_string()
+    9 |     Color.from_string('red', 'blue')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     Color.from_string(22)
+   11 |     Color.from_string(22.22)
+vlib/v/checker/tests/enum_from_string_args_err.vv:10:2: error: expected `string` argument, but got `int literal`
+    8 |     Color.from_string()
+    9 |     Color.from_string('red', 'blue')
+   10 |     Color.from_string(22)
+      |     ~~~~~~~~~~~~~~~~~~~~~
+   11 |     Color.from_string(22.22)
+   12 |     Color.from_string(true)
+vlib/v/checker/tests/enum_from_string_args_err.vv:11:2: error: expected `string` argument, but got `float literal`
+    9 |     Color.from_string('red', 'blue')
+   10 |     Color.from_string(22)
+   11 |     Color.from_string(22.22)
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~
+   12 |     Color.from_string(true)
+   13 | }
+vlib/v/checker/tests/enum_from_string_args_err.vv:12:2: error: expected `string` argument, but got `bool`
+   10 |     Color.from_string(22)
+   11 |     Color.from_string(22.22)
+   12 |     Color.from_string(true)
+      |     ~~~~~~~~~~~~~~~~~~~~~~~
+   13 | }

@@ -1,0 +1,5 @@
+module json2
+
+import x.json2
+
+println(json2.Any(json2.null))

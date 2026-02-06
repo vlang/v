@@ -1,0 +1,9 @@
+module main
+
+fn main() {
+        a2 := [][][]f32[][]{}
+        dump(typeof(a2).name)
+
+	assert typeof(a2).name == '[][][]f32'
+}
+

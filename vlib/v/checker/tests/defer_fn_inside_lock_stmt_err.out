@@ -1,0 +1,7 @@
+vlib/v/checker/tests/defer_fn_inside_lock_stmt_err.vv:7:3: error: `defer(fn)`s are not allowed in lock statements
+    5 |     lock x {
+    6 |         defer {} // ok
+    7 |         defer(fn) {} // fail
+      |         ~~~~~~~~~~~~
+    8 |         _ = x
+    9 |     }

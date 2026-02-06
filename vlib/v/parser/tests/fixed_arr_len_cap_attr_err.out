@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fixed_arr_len_cap_attr_err.vv:2:31: error: `len` and `cap` are invalid attributes for fixed array dimension
+    1 | fn new_board() [][]string {
+    2 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+      |                               ~~~
+    3 |     for i in 0..9 {
+    4 |         board[i / 3][i % 3] = (i + 1).str()

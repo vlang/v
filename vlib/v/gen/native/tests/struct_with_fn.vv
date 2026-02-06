@@ -1,0 +1,89 @@
+struct Size7 {
+	a i8
+	b u8
+	c i8
+	d i8
+	e u8
+	f i8
+	g u8
+}
+
+struct Size8 {
+	a int
+	b i16
+	c i8
+}
+
+struct Size12 {
+	a int
+	b int
+	c int
+}
+
+struct Size16 {
+	a int
+	b i8
+	c i64
+}
+
+struct Size28 {
+	a int
+	b i16
+	c int
+	d u32
+	e i8
+	f int
+	g int
+}
+
+fn get_7(s Size7) Size7 {
+	return s
+}
+
+fn get_8(s Size8) Size8 {
+	return s
+}
+
+fn get_12(s Size12) Size12 {
+	return s
+}
+
+fn get_16(s Size16) Size16 {
+	return s
+}
+
+fn get_28(s Size28) Size28 {
+	return s
+}
+
+fn struct_fn_test() {
+	a := Size7{
+		b: 2
+	}
+	assert get_7(a).b == 2
+	assert get_7(Size7{ c: 3 }).c == 3
+	b := Size8{
+		b: 2
+	}
+	assert get_8(b).b == 2
+	assert get_8(Size8{ c: 3 }).c == 3
+	c := Size12{
+		b: 2
+	}
+	assert get_12(c).b == 2
+	assert get_12(Size12{ c: 3 }).c == 3
+	d := Size16{
+		b: 2
+	}
+	assert get_16(d).b == 2
+	assert get_16(Size16{ c: 3 }).c == 3
+	e := Size28{
+		b: 2
+	}
+	assert get_28(e).b == 2
+	assert get_28(Size28{ c: 3 }).c == 3
+}
+
+fn main() {
+	struct_fn_test()
+}

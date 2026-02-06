@@ -1,0 +1,11 @@
+module main
+
+fn son[T](val T) {
+	$if T !is int {
+		$compile_error('son only taken int as input')
+	}
+}
+
+fn main() {
+	son(false)
+}

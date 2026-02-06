@@ -1,0 +1,10 @@
+struct St {}
+
+fn main() {
+	shared x := St{}
+	lock x {
+		defer {} // ok
+		defer(fn) {} // fail
+		_ = x
+	}
+}

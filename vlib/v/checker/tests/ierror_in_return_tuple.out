@@ -1,0 +1,5 @@
+vlib/v/checker/tests/ierror_in_return_tuple.vv:1:29: error: type `IError` cannot be used in multi-return, return an Option instead
+    1 | fn return_ierror_in_tuple() (bool, IError) {
+      |                             ~~~~~~~~~~~~~~
+    2 |     return false, error('')
+    3 | }

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/no_main_println_err.vv:1:1: error: expected 1 argument, but got 0
+    1 | println()
+      | ~~~~~~~~~
+Details: have ()
+         want (string)

@@ -1,0 +1,7 @@
+fn main() {
+	mut m := {
+		'key': 3
+	}
+	a := &m['key']
+	println(a)
+}

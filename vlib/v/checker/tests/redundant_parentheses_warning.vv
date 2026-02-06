@@ -1,0 +1,5 @@
+fn main() {
+	a := 2
+	b := ((a + 2))
+	println(b)
+}

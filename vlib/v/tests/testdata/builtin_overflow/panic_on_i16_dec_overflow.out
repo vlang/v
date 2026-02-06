@@ -1,0 +1,8 @@
+-32767
+-32768
+================ V panic ================
+   module: builtin.overflow
+ function: sub_i16()
+  message: attempt to sub with overflow(i16(-32768) - i16(1))
+     file: vlib/builtin/overflow/overflow.v
+

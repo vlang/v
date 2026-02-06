@@ -1,0 +1,31 @@
+import time
+
+fn writer(c chan i64, delay i64) {
+	for {
+		time.sleep(delay)
+
+		c <- time.now().day_of_week() or {
+			break
+		}
+	}
+}
+
+fn reader(c chan i64, max int) {
+	mut a := []i64{}
+	for {
+		a << <-c
+		if a.len > max {
+			c.close()
+			break
+		}
+	}
+	dump(a.any(it in [i64(1), 2, 3, 4, 5, 6, 7]))
+}
+
+fn main() {
+	c := chan i64{}
+	mut t := []thread{}
+	t << spawn reader(c, 0)
+	t << spawn writer(c, 10 * time.millisecond)
+	t.wait()
+}

@@ -1,0 +1,6 @@
+@[translated]
+module main
+
+fn main() {
+	a := 123
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_field_name_assign_incorrect_type_err.vv:11:25: error: cannot assign to `t.$(field.name)`: expected `int`, not `string`
+    9 |     mut t := T{}
+   10 |     $for field in T.fields {
+   11 |         t.$(field.name) = data[field.name]
+      |                               ~~~~~~~~~~~~
+   12 |     }
+   13 |     return t

@@ -1,0 +1,18 @@
+module main
+
+const buf_len = 256
+
+__global not_used_in_code_but_helps_triggering = u64(-1)
+
+struct Buffer {
+mut:
+	data [256]u8
+	pos  int
+}
+
+fn (mut buf Buffer) clear() {
+	buf.pos = 0
+	for i in 0 .. buf_len {
+		buf.data[i] = 0
+	}
+}

@@ -1,0 +1,143 @@
+fn mul(a i64, unsigned u32) f64 {
+	mut one := a
+
+	one *= 2 / unsigned
+
+	return one
+}
+
+fn typ(a int) i64 {
+	mut one := a
+	sec := one + i64(a)
+
+	return sec
+}
+
+pub fn gcd(a_ i64, b_ i64) i64 {
+	mut a := a_
+	mut b := b_
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a %= b
+		if a == 0 {
+			return b
+		}
+		b %= a
+	}
+	return a
+}
+
+pub fn lcm(a i64, b i64) i64 {
+	if a == 0 {
+		return a
+	}
+	res := a * (b / gcd(b, a))
+	if res < 0 {
+		return -res
+	}
+	return res
+}
+
+pub fn inc(a f64) int {
+	mut b := a
+	b++
+	b--
+	return int(b)
+}
+
+pub fn negate(a int) i64 {
+	return ~a + 1
+}
+
+pub fn powi(a i64, b i64) i64 {
+	mut b_ := b
+	mut p := a
+	mut v := i64(1)
+
+	if b_ < 0 { // exponent < 0
+		if a == 0 {
+			return -1 // division by 0
+		}
+		return if a * a != 1 {
+			0
+		} else {
+			if (b_ & 1) > 0 {
+				a
+			} else {
+				1
+			}
+		}
+	}
+
+	for b_ > 0 {
+		if b_ & 1 > 0 {
+			v *= p
+		}
+		p *= p
+		b_ >>= 1
+	}
+
+	return v
+}
+
+pub fn sqrti(a i64) i64 {
+	mut x := a
+	mut q, mut r := i64(1), i64(0)
+	for ; q <= x; {
+		q <<= 2
+	}
+	for ; q > 1; {
+		q >>= 2
+		t := x - r - q
+		r >>= 1
+		if t >= 0 {
+			x = t
+			r += q
+		}
+	}
+	return r
+}
+
+fn main() {
+	println('--- test printing numbers')
+	println(-20)
+	println(0)
+	println(22)
+	println(-1000000022)
+
+	println('--- test powi')
+	println(powi(2, 62))
+	println(powi(0, -2))
+	println(powi(2, -1))
+
+	println('--- test sqrti')
+	println(sqrti(i64(123456789) * i64(123456789)))
+	println(sqrti(144))
+	println(sqrti(0))
+
+	println('--- test negate')
+	println(negate(20))
+	println(negate(-1))
+
+	println('--- test inc')
+	println(inc(20))
+	println(inc(-1))
+
+	println('--- test lcm')
+	println(lcm(2, 3))
+	println(lcm(-2, 3))
+	println(lcm(-2, -3))
+	println(lcm(0, 0))
+
+	println('--- test gcd')
+
+	println(gcd(6, 9))
+	println(gcd(6, -9))
+	println(gcd(-6, -9))
+	println(gcd(0, 0))
+}

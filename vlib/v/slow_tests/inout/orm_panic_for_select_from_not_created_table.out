@@ -1,0 +1,5 @@
+================ V panic ================
+   module: main
+ function: main()
+  message: no such table: User (1) (SELECT `id`, `name` FROM `User`;)
+     file: vlib/v/slow_tests/inout/orm_panic_for_select_from_not_created_table.vv:13

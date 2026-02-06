@@ -1,0 +1,11 @@
+@[unsafe]
+fn foo() {
+	b := 23
+	static aa := b
+	static bb := 1 + 1
+	static cc := ''.str()
+}
+
+fn main() {
+	foo()
+}

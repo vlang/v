@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unimplemented_interface_f.vv:11:13: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected 2 parameter(s), not 1
+    9 | fn main() {
+   10 |     mut animals := []Animal{}
+   11 |     animals << Cat{}
+      |                ~~~~~
+   12 | }
+Details: main.Animal has `fn speak(x main.Animal, s string)`
+         main.Cat has `fn speak(c main.Cat)`

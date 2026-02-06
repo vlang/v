@@ -1,0 +1,8 @@
+struct Release {
+	Foo          string
+	Bar          &int
+	Architecture []string
+}
+
+fn main() {
+}

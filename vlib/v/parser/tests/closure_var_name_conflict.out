@@ -1,0 +1,7 @@
+vlib/v/parser/tests/closure_var_name_conflict.vv:4:15: error: the parameter name `x` conflicts with the captured value name
+    2 |     x := 1
+    3 |
+    4 |     y := fn [x] (x int) {
+      |                  ^
+    5 |         println(x)
+    6 |     }

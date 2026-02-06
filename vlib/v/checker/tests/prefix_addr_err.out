@@ -1,0 +1,10 @@
+vlib/v/checker/tests/prefix_addr_err.vv:2:2: warning: unused variable: `b`
+    1 | fn main() {
+    2 |     b := &'foo'.len
+      |     ^
+    3 | }
+vlib/v/checker/tests/prefix_addr_err.vv:2:7: error: cannot take the address of a literal value
+    1 | fn main() {
+    2 |     b := &'foo'.len
+      |          ~~~~~~~~~~
+    3 | }

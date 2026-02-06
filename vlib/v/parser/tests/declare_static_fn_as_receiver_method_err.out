@@ -1,0 +1,7 @@
+vlib/v/parser/tests/declare_static_fn_as_receiver_method_err.vv:4:12: error: cannot declare a static function as a receiver method
+    2 | }
+    3 | 
+    4 | fn (y Foo) Foo.new() Foo {
+      |            ~~~~~~~
+    5 |     return Foo{}
+    6 | }

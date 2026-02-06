@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_selector_or_block_err.vv:9:8: error: `or` block must provide a value of type `[]string`, not `?[]string`
+    7 |     return post.authors or {
+    8 |         post.authors = []string{}
+    9 |         post.authors
+      |              ~~~~~~~
+   10 |     }
+   11 | }

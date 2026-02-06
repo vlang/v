@@ -1,0 +1,14 @@
+vlib/v/checker/tests/defer_use_multi_return_value_with_index_out_of_bounds.vv:3:11: error: index 2 out of range of 2 return types
+    1 | fn test() (string, string) {
+    2 |     defer {
+    3 |         println($res(2))
+      |                 ~~~~~~~
+    4 |     }
+    5 |     return 'test', 'test2'
+vlib/v/checker/tests/defer_use_multi_return_value_with_index_out_of_bounds.vv:3:3: error: `println` can not print void expressions
+    1 | fn test() (string, string) {
+    2 |     defer {
+    3 |         println($res(2))
+      |         ~~~~~~~~~~~~~~~~
+    4 |     }
+    5 |     return 'test', 'test2'

@@ -1,0 +1,5 @@
+c := 0
+cref := &c
+
+*cref = 1
+(*cref) = 1

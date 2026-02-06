@@ -1,0 +1,22 @@
+fn main() {
+	stop := 10
+	// Can only calculate correctly until rank 92
+	if stop > 92 {
+		println('rank must be 92 or less')
+		return
+	}
+	// Three consecutive terms of the sequence
+	mut a := i64(0)
+	mut b := i64(0)
+	mut c := i64(1)
+	println(a + b + c)
+	for _ in 0 .. stop {
+		// Set a and b to the next term
+		a = b
+		b = c
+		// Compute the new term
+		c = a + b
+		// Print the new term
+		println(c)
+	}
+}

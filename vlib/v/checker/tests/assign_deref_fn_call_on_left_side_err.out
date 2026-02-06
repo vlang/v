@@ -1,0 +1,18 @@
+vlib/v/checker/tests/assign_deref_fn_call_on_left_side_err.vv:8:2: error: cannot dereference a function call on the left side of an assignment, use a temporary variable
+    6 | 
+    7 | fn main() {
+    8 |     *foo('s') = 1
+      |     ^
+    9 | }
+vlib/v/checker/tests/assign_deref_fn_call_on_left_side_err.vv:8:12: error: modifying variables via dereferencing can only be done in `unsafe` blocks
+    6 | 
+    7 | fn main() {
+    8 |     *foo('s') = 1
+      |               ^
+    9 | }
+vlib/v/checker/tests/assign_deref_fn_call_on_left_side_err.vv:8:14: error: cannot assign to `*foo('s')`: expected `Foo`, not `int literal`
+    6 | 
+    7 | fn main() {
+    8 |     *foo('s') = 1
+      |                 ^
+    9 | }

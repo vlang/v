@@ -1,0 +1,14 @@
+vlib/v/parser/tests/expected_type_enum_err.vv:8:12: error: expected type is not an enum (`rune`)
+    6 | 
+    7 | fn main() {
+    8 |     if `c` == .bar {
+      |               ~~~~
+    9 |     }
+   10 | }
+vlib/v/parser/tests/expected_type_enum_err.vv:8:5: error: non-bool type `void` used as if condition
+    6 | 
+    7 | fn main() {
+    8 |     if `c` == .bar {
+      |        ~~~~~~~~~~~
+    9 |     }
+   10 | }

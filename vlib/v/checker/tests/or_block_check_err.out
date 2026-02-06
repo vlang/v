@@ -1,0 +1,27 @@
+vlib/v/checker/tests/or_block_check_err.vv:6:36: error: expression requires a non empty `or {}` block
+    4 | 
+    5 | fn main() {
+    6 |     _ = callexpr_with_or_block_call() or {}.replace('a', 'b')
+      |                                       ~~~~~
+    7 |     _ = (callexpr_with_or_block_call() or {}).replace('a', 'b')
+    8 |
+vlib/v/checker/tests/or_block_check_err.vv:7:37: error: expression requires a non empty `or {}` block
+    5 | fn main() {
+    6 |     _ = callexpr_with_or_block_call() or {}.replace('a', 'b')
+    7 |     _ = (callexpr_with_or_block_call() or {}).replace('a', 'b')
+      |                                        ~~~~~
+    8 | 
+    9 |     _ = callexpr_with_or_block_call() or { eprintln('error') }.replace('a', 'b')
+vlib/v/checker/tests/or_block_check_err.vv:9:41: error: `or` block must provide a default value of type `string`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)
+    7 |     _ = (callexpr_with_or_block_call() or {}).replace('a', 'b')
+    8 | 
+    9 |     _ = callexpr_with_or_block_call() or { eprintln('error') }.replace('a', 'b')
+      |                                            ~~~~~~~~~~~~~~~~~
+   10 |     _ = (callexpr_with_or_block_call() or { eprintln('error') }).replace('a', 'b')
+   11 | }
+vlib/v/checker/tests/or_block_check_err.vv:10:42: error: `or` block must provide a default value of type `string`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)
+    8 | 
+    9 |     _ = callexpr_with_or_block_call() or { eprintln('error') }.replace('a', 'b')
+   10 |     _ = (callexpr_with_or_block_call() or { eprintln('error') }).replace('a', 'b')
+      |                                             ~~~~~~~~~~~~~~~~~
+   11 | }

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_match_value_different_type.vv:7:3: error: can not matching a string value(`'100'`) in a non string type `$match`, `x` type is `int`
+    5 |             println('int 100')
+    6 |         }
+    7 |         '100' {
+      |         ~~~~~
+    8 |             println('string 100')
+    9 |         }
+vlib/v/checker/tests/comptime_match_value_different_type.vv:18:3: error: can not matching a string value(`'1'`) in a non string type `$match`, `$int` type is `int`
+   16 |             println('IntegerLiteral')
+   17 |         }
+   18 |         '1' {
+      |         ~~~
+   19 |             println('StringLiteral')
+   20 |         }

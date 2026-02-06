@@ -1,0 +1,9 @@
+const item = 24
+const i = 23
+
+fn main() {
+	for item, i in ['abc', 'def'] {
+		println(item)
+		println(i)
+	}
+}

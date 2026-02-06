@@ -1,0 +1,6 @@
+vlib/v/checker/tests/go_mut_arg.vv:14:19: error: function in `spawn` statement cannot contain mutable non-reference arguments
+   12 |         a: 0
+   13 |     }
+   14 |     spawn change(mut x)
+      |                      ^
+   15 | }

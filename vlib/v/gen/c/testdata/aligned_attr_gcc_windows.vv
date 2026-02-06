@@ -1,0 +1,20 @@
+// vtest vflags: -cc gcc -os windows
+
+@[aligned: 8]
+@[markused]
+struct Test {
+	a int
+}
+
+@[aligned: 16]
+@[markused]
+struct Test2 {
+	a int
+	b int
+}
+
+@[aligned: 8]
+@[markused]
+union Test3 {
+	a int
+}

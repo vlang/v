@@ -1,0 +1,98 @@
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:6:10: error: mismatched types `Aaa` and `int literal`
+    4 | 
+    5 | fn main() {
+    6 |     println(Aaa{} * 10)
+      |             ~~~~~~~~~~
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:6:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+    4 | 
+    5 | fn main() {
+    6 |     println(Aaa{} * 10)
+      |             ~~~~~~~~~~
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:7:10: error: mismatched types `int literal` and `Aaa`
+    5 | fn main() {
+    6 |     println(Aaa{} * 10)
+    7 |     println(10 * Aaa{})
+      |             ~~~~~~~~~~
+    8 |     println([1, 2, 3] * 10)
+    9 |     println(10 * [1, 2, 3])
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:7:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
+    5 | fn main() {
+    6 |     println(Aaa{} * 10)
+    7 |     println(10 * Aaa{})
+      |             ~~~~~~~~~~
+    8 |     println([1, 2, 3] * 10)
+    9 |     println(10 * [1, 2, 3])
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:8:10: error: mismatched types `[]int` and `int literal`
+    6 |     println(Aaa{} * 10)
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+      |             ~~~~~~~~~~~~~~
+    9 |     println(10 * [1, 2, 3])
+   10 |     a := map[string]int{}
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:8:10: error: infix expr: cannot use `int literal` (right expression) as `[]int`
+    6 |     println(Aaa{} * 10)
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+      |             ~~~~~~~~~~~~~~
+    9 |     println(10 * [1, 2, 3])
+   10 |     a := map[string]int{}
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:9:10: error: mismatched types `int literal` and `[]int`
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+    9 |     println(10 * [1, 2, 3])
+      |             ~~~~~~~~~~~~~~
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:9:10: error: infix expr: cannot use `[]int` (right expression) as `int literal`
+    7 |     println(10 * Aaa{})
+    8 |     println([1, 2, 3] * 10)
+    9 |     println(10 * [1, 2, 3])
+      |             ~~~~~~~~~~~~~~
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:11:10: error: mismatched types `map[string]int` and `int literal`
+    9 |     println(10 * [1, 2, 3])
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+      |             ~~~~~~
+   12 |     println(10 * a)
+   13 |     c1 := cmplx.complex(1, -2)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:11:10: error: infix expr: cannot use `int literal` (right expression) as `map[string]int`
+    9 |     println(10 * [1, 2, 3])
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+      |             ~~~~~~
+   12 |     println(10 * a)
+   13 |     c1 := cmplx.complex(1, -2)
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:12:10: error: mismatched types `int literal` and `map[string]int`
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+   12 |     println(10 * a)
+      |             ~~~~~~
+   13 |     c1 := cmplx.complex(1, -2)
+   14 |     c2 := c1 * 2.0
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:12:10: error: infix expr: cannot use `map[string]int` (right expression) as `int literal`
+   10 |     a := map[string]int{}
+   11 |     println(a * 10)
+   12 |     println(10 * a)
+      |             ~~~~~~
+   13 |     c1 := cmplx.complex(1, -2)
+   14 |     c2 := c1 * 2.0
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:14:8: error: infix expr: cannot use `float literal` (right expression) as `math.complex.Complex`
+   12 |     println(10 * a)
+   13 |     c1 := cmplx.complex(1, -2)
+   14 |     c2 := c1 * 2.0
+      |           ~~~~~~~~
+   15 |     println(c2)
+   16 |     c3 := 2.0 * c1
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:16:8: error: infix expr: cannot use `math.complex.Complex` (right expression) as `float literal`
+   14 |     c2 := c1 * 2.0
+   15 |     println(c2)
+   16 |     c3 := 2.0 * c1
+      |           ~~~~~~~~
+   17 |     println(c3)
+   18 | }

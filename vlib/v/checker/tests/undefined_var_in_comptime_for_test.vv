@@ -1,0 +1,18 @@
+module main
+
+struct Struct {
+	b string
+	a ?string
+	c string
+}
+
+fn test[U](val U) {
+	$for field in U.fields {
+		fields_len++
+		println(field)
+	}
+}
+
+fn test_main() {
+	test(Struct{})
+}

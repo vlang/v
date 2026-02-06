@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unsafe_assign_none_err.vv:2:20: error: cannot use `none` in `unsafe` blocks
+    1 | fn f() {
+    2 |     mut s := unsafe { none }
+      |                       ~~~~
+    3 |     println(s)
+    4 | }

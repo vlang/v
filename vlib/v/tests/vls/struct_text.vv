@@ -1,0 +1,7 @@
+module main
+
+struct MyS {
+mut:
+	a int
+	b string
+}

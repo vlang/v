@@ -1,0 +1,14 @@
+arr := [2, 3]!
+mut p := unsafe { nil }
+p = arr
+mut ip := &int(unsafe { nil })
+ip = arr
+_ = &int(arr)
+_ = p
+_ = ip
+
+unsafe {
+	_ = memdup(arr, 1)
+	_ = tos(arr, 1)
+	fn (p &int) {}(arr)
+}

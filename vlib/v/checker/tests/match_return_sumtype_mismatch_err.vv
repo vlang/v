@@ -1,0 +1,19 @@
+type St = string
+type Ru = rune
+type Myt = Ru | St
+
+fn myt_t1(b bool) Myt {
+	match b {
+		true { return St('TRUE') }
+		false { return Ru(`F`) }
+	}
+}
+
+fn myt_t2(b bool) Myt {
+	return match b {
+		true { St('TRUE') }
+		false { `F` }
+	}
+}
+
+fn main() {}

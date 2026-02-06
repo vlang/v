@@ -1,0 +1,14 @@
+vlib/v/checker/tests/undefined_var_in_comptime_for_test.vv:11:3: error: undefined ident: `fields_len`
+    9 | fn test[U](val U) {
+   10 |     $for field in U.fields {
+   11 |         fields_len++
+      |         ~~~~~~~~~~
+   12 |         println(field)
+   13 |     }
+vlib/v/checker/tests/undefined_var_in_comptime_for_test.vv:11:13: error: invalid operation: ++ (non-numeric type `void`)
+    9 | fn test[U](val U) {
+   10 |     $for field in U.fields {
+   11 |         fields_len++
+      |                   ~~
+   12 |         println(field)
+   13 |     }

@@ -1,0 +1,27 @@
+struct Foo[T] {
+pub:
+	data T
+}
+
+struct Foo1 {}
+
+struct Foo2 {}
+
+fn multi_generic_args[T, V](t T, v V) bool {
+	return true
+}
+
+fn main() {
+	v1, v2 := -1, 1
+
+	// not generic
+	a1, a2 := v1 < v2, v2 > v1
+	assert a1 && a2
+	b1, b2 := v1 < simplemodule.zero, v2 > v1
+	assert b1 && b2
+
+	// generic
+	assert multi_generic_args[int, string](0, 's')
+	assert multi_generic_args[Foo1, Foo2](Foo1{}, Foo2{})
+	assert multi_generic_args[Foo[int], Foo[int]](Foo[int]{}, Foo[int]{})
+}

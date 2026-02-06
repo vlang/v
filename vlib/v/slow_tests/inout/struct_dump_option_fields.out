@@ -1,0 +1,18 @@
+Test{
+    a: Option(none)
+    b: Option(none)
+    c: Option(none)
+    d: &Option(none)
+    e: Option(none)
+    f: Option(none)
+    g: Option(none)
+    h: &Option(none)
+    i: Option(none)
+    j: Option(none)
+    k: []
+    l: []
+    m: []
+    n: Option(Other{
+        a: Option(none)
+    })
+}

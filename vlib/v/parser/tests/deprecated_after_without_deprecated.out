@@ -1,0 +1,26 @@
+vlib/v/parser/tests/deprecated_after_without_deprecated.vv:1:1: warning: @[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute
+    1 | @[deprecated_after: '2025-10-10']
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | fn my_fn() {
+    3 | }
+vlib/v/parser/tests/deprecated_after_without_deprecated.vv:5:1: warning: @[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute
+    3 | }
+    4 | 
+    5 | @[deprecated_after: '2025-10-10']
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 | const my_const = 123
+    7 |
+vlib/v/parser/tests/deprecated_after_without_deprecated.vv:8:1: warning: @[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute
+    6 | const my_const = 123
+    7 | 
+    8 | @[deprecated_after: '2025-10-10']
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 | type MyType = u8
+   10 |
+vlib/v/parser/tests/deprecated_after_without_deprecated.vv:11:1: warning: @[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute
+    9 | type MyType = u8
+   10 | 
+   11 | @[deprecated_after: '2025-10-10']
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 | interface MyInterface {
+   13 |     x int

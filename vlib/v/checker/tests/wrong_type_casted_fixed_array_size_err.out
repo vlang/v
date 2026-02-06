@@ -1,0 +1,13 @@
+vlib/v/checker/tests/wrong_type_casted_fixed_array_size_err.vv:10:7: error: only integer types are allowed
+    8 | }
+    9 |
+   10 | a := [b]int{}
+      |       ^
+   11 | println(a)
+   12 |
+vlib/v/checker/tests/wrong_type_casted_fixed_array_size_err.vv:13:7: error: only integer types are allowed
+   11 | println(a)
+   12 |
+   13 | c := [f32(Foo.first)]int{}
+      |       ~~~~~~~~~~~~~~
+   14 | println(c)

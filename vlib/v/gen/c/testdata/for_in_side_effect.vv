@@ -1,0 +1,8 @@
+fn test() bool {
+	println('side effect')
+	return true
+}
+
+fn main() {
+	assert (test() in [false, true]) == true
+}

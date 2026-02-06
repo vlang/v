@@ -1,0 +1,12 @@
+cmd/tools/vvet/tests/empty_string.vv:3: notice: Use `foo == ''` instead of `foo.len < 1`
+cmd/tools/vvet/tests/empty_string.vv:4: notice: Use `foo != ''` instead of `foo.len > 0`
+cmd/tools/vvet/tests/empty_string.vv:4: notice: Use `foo == ''` instead of `foo.len == 0`
+cmd/tools/vvet/tests/empty_string.vv:4: notice: Use `foo != ''` instead of `foo.len != 0`
+cmd/tools/vvet/tests/empty_string.vv:7: notice: Use `'' == bar` instead of `1 > bar.len`
+cmd/tools/vvet/tests/empty_string.vv:8: notice: Use `'' != bar` instead of `0 < bar.len`
+cmd/tools/vvet/tests/empty_string.vv:8: notice: Use `'' == bar` instead of `0 == bar.len`
+cmd/tools/vvet/tests/empty_string.vv:8: notice: Use `'' != bar` instead of `0 != bar.len`
+cmd/tools/vvet/tests/empty_string.vv:10: notice: Use `foo == ''` instead of `foo.len < 1`
+cmd/tools/vvet/tests/empty_string.vv:10: notice: Use `bar != ''` instead of `bar.len > 0`
+cmd/tools/vvet/tests/empty_string.vv:10: notice: Use `foo == ''` instead of `foo.len == 0`
+cmd/tools/vvet/tests/empty_string.vv:10: notice: Use `bar == ''` instead of `bar.len == 0`

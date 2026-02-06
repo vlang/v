@@ -1,0 +1,10 @@
+module vlas
+
+// `internal/blas` has to be intact as submodule directory structure for the test to be reliable.
+import internal.blas
+
+fn C.LAPACKE_dlange(matrix_layout blas.MemoryLayout) f64
+
+pub fn c_trans(trans bool) blas.Transpose {
+	return if trans { .trans } else { .no_trans }
+}

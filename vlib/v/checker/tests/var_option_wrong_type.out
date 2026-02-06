@@ -1,0 +1,18 @@
+vlib/v/checker/tests/var_option_wrong_type.vv:3:23: error: mismatched types `?f64` and `string`
+    1 | var_none := ?f64(none)
+    2 | 
+    3 | var3 := var_none or { var_none + 'foo' }
+      |                       ~~~~~~~~~~~~~~~~
+    4 | println(var3)
+vlib/v/checker/tests/var_option_wrong_type.vv:3:23: error: infix expr: cannot use `string` (right expression) as `f64`
+    1 | var_none := ?f64(none)
+    2 | 
+    3 | var3 := var_none or { var_none + 'foo' }
+      |                       ~~~~~~~~~~~~~~~~
+    4 | println(var3)
+vlib/v/checker/tests/var_option_wrong_type.vv:3:23: error: `or` block must provide a default value of type `f64`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)
+    1 | var_none := ?f64(none)
+    2 | 
+    3 | var3 := var_none or { var_none + 'foo' }
+      |                       ~~~~~~~~~~~~~~~~
+    4 | println(var3)

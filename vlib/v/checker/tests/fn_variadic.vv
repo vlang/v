@@ -1,0 +1,13 @@
+fn f(vi ...int) int {
+	_ = f(...vi) // OK
+	_ = f(...vi, 2)
+	return 0
+}
+
+struct S1 {}
+
+fn (s S1) m(vi ...int) int {
+	_ = s.m(...vi) // OK
+	_ = s.m(...vi, 2)
+	return 0
+}

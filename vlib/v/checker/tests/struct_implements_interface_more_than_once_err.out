@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:3:31: error: struct type Abc cannot implement interface `io.Writer more than once`
+    1 | import io { Writer }
+    2 | 
+    3 | struct Abc implements Writer, Writer, Writer {
+      |                               ~~~~~~
+    4 |     aaa string
+    5 | }
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:12:31: error: struct type Def cannot implement interface `io.Writer more than once`
+   10 | 
+   11 | // vfmt off
+   12 | struct Def implements Writer, io.Writer {
+      |                               ~~
+   13 |     aaa string
+   14 | }

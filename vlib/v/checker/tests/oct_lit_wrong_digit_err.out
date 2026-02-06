@@ -1,0 +1,5 @@
+vlib/v/checker/tests/oct_lit_wrong_digit_err.vv:2:18: error: this octal number has unsuitable digit `8`
+    1 | fn main() {
+    2 |     println(0o1118)
+      |                  ^
+    3 | }

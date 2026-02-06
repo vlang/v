@@ -1,0 +1,24 @@
+enum Color {
+	red
+	green = 10
+	blue
+}
+
+@[flag]
+enum Permissions {
+	read
+	write
+	execute
+}
+
+fn main() {
+	println(unsafe { Color(0) })
+	println(unsafe { Color(10) })
+	println(unsafe { Color(12) })
+	println(unsafe { Color(-10) })
+
+	println(unsafe { Permissions(0b101) })
+	println(unsafe { Permissions(0b1010) })
+	println(unsafe { Permissions(-1) })
+	println(unsafe { Permissions(0) })
+}

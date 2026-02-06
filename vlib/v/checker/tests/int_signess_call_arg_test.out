@@ -1,0 +1,35 @@
+vlib/v/checker/tests/int_signess_call_arg_test.vv:5:8: error: cannot use `int` as `u64` in argument 1 to `ztest`
+    3 | fn test_main() {
+    4 |     a := -1
+    5 |     ztest(a)
+      |           ^
+    6 |     ztest2(-1)
+    7 |     ztest3(-1)
+vlib/v/checker/tests/int_signess_call_arg_test.vv:6:9: error: cannot use literal signed integer as `u8` in argument 1 to `ztest2`
+    4 |     a := -1
+    5 |     ztest(a)
+    6 |     ztest2(-1)
+      |            ~~
+    7 |     ztest3(-1)
+    8 |     ztest4(-1)
+vlib/v/checker/tests/int_signess_call_arg_test.vv:7:9: error: cannot use literal signed integer as `u16` in argument 1 to `ztest3`
+    5 |     ztest(a)
+    6 |     ztest2(-1)
+    7 |     ztest3(-1)
+      |            ~~
+    8 |     ztest4(-1)
+    9 |     ztest5(-1)
+vlib/v/checker/tests/int_signess_call_arg_test.vv:8:9: error: cannot use literal signed integer as `u32` in argument 1 to `ztest4`
+    6 |     ztest2(-1)
+    7 |     ztest3(-1)
+    8 |     ztest4(-1)
+      |            ~~
+    9 |     ztest5(-1)
+   10 | }
+vlib/v/checker/tests/int_signess_call_arg_test.vv:9:9: error: cannot use literal signed integer as `usize` in argument 1 to `ztest5`
+    7 |     ztest3(-1)
+    8 |     ztest4(-1)
+    9 |     ztest5(-1)
+      |            ~~
+   10 | }
+   11 |

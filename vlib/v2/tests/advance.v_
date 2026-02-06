@@ -1,0 +1,37 @@
+module main
+
+fn main() {
+	a := 1
+	b := [1,2,3,4]
+	// c := b[0
+
+	if x == {} 
+
+	as_cast_a := sum_type_a as 
+	
+	if x == 100 {
+		
+	}
+
+	if y == 200 {
+		
+	}
+
+	// TODO: check line
+	// arr := [2]{}
+
+	
+
+	// for x in 1..10 {
+	// 	println(x)
+	// }
+}
+
+fn fn_a() ? {
+	
+}
+
+fn fn_b() {
+	a := 1
+	println('hello')
+}

@@ -1,0 +1,3 @@
+struct WithEmbed {
+	custom.Foo
+}

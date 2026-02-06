@@ -1,0 +1,9 @@
+fn main() {}
+
+fn foo() string {
+	$if windows {
+		return ''
+	} $else {
+		return ''
+	}
+}

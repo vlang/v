@@ -1,0 +1,18 @@
+#!/usr/bin/env expect
+
+set timeout 3
+
+# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
+set v_root [lindex $argv 0]
+set project_name [lindex $argv 1]
+
+spawn $v_root/v new
+
+expect "Input your project name: " { send "$project_name\r" } timeout { exit 1 }
+expect "Input your project description: " { send "My Awesome V Project.\r" } timeout { exit 1 }
+expect "Input your project version: (0.0.0) " { send "0.1.0\r" } timeout { exit 1 }
+expect "Input your project license: (MIT) " { send "GPL\r" } timeout { exit 1 }
+expect "Initialising ..." {} timeout { exit 1 }
+expect "Created binary (application) project `$project_name`" {} timeout { exit 1 }
+
+expect eof

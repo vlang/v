@@ -1,0 +1,28 @@
+import mymod { Data, ImpNode }
+
+fn foobar_mymod[U](inode ImpNode[U]) ImpNode[U] {
+	return ImpNode{}
+}
+
+fn simple[T]() T {
+	return T{}
+}
+
+struct Foo {}
+
+fn (_ Foo) simple[T]() T {
+	return T{}
+}
+
+struct GenericStruct[A, B] {
+	v Data[Data[A], B]
+}
+
+fn proper_generics(gs GenericStruct[A, B]) GenericStruct[A, B] {
+	return gs
+}
+
+fn main() {
+	simple[int]()
+	Foo{}.simple[int]()
+}

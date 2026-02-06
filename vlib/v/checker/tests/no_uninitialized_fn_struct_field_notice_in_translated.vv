@@ -1,0 +1,14 @@
+@[translated]
+module main
+
+type FnCb = fn ()
+
+struct Abc {
+	x int
+	f FnCb
+}
+
+fn main() {
+	a := Abc{}
+	dump(a)
+}

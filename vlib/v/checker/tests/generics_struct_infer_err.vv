@@ -1,0 +1,11 @@
+struct Foo[T, U] {
+	a T
+	b U
+}
+
+fn main() {
+	st11 := Foo{
+		a: 'two'
+	}
+	println(st11)
+}

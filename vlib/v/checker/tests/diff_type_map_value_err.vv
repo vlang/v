@@ -1,0 +1,23 @@
+struct MyStruct {
+	field int
+}
+
+struct MyStruct2 {
+	field int
+}
+
+fn empty() map[string]?MyStruct {
+	return {
+		'key1': ?MyStruct(none)
+		'key2': MyStruct{
+			field: 10
+		}
+	}
+}
+
+fn test_empty() {
+	expected := {
+		'key': ?MyStruct(none)
+	}
+	assert empty() == expected
+}

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/globals/global_blank_ident_as_name_err.vv:2:5: error: cannot use `_` as a global name
+    1 | __global (
+    2 |     _ = 23
+      |     ^
+    3 | )

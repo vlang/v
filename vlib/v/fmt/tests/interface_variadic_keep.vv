@@ -1,0 +1,4 @@
+interface Element {
+	unnamed_method(...f64)
+	named_method(params ...f64)
+}

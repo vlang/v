@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_call_arg_mismatch_err_e.vv:8:4: error: cannot use `u32` as `int` in argument 1 to `f`
+    6 |     x := u32(2251797157)
+    7 |     println(x)
+    8 |     f(x)
+      |       ^
+    9 | }

@@ -1,0 +1,31 @@
+fn print_true(i int) bool {
+	println(i)
+	return true
+}
+
+const other_list = [3, 4]
+
+fn main() {
+	list := [1, 2, 3]
+	index := 3
+	if index < list.len && list[index] == 3 {
+		println('Index is within bounds and value is 3')
+	} else {
+		println('Index is out of bounds or value is not 3')
+	}
+	if index < list.len && print_true(list[index]) {
+		println('Index is within bounds')
+	} else {
+		println('Index is out of bounds')
+	}
+	if index < list.len && other_list.contains(list[index]) {
+		println('Index is within bounds and value is in other_list')
+	} else {
+		println('Index is out of bounds or value is not in other_list')
+	}
+	if index < list.len && (other_list.contains(list[index]) || other_list.contains(list[index])) {
+		println('Index is within bounds and value is in other_list')
+	} else {
+		println('Index is out of bounds or value is not in other_list')
+	}
+}

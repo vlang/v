@@ -1,0 +1,126 @@
+struct Args {
+	argc          u32
+	argc_buf_size u32
+}
+
+fn wasi_args_sizes_get() {
+	args := Args{}
+	if WASM.args_sizes_get(&args.argc, &args.argc_buf_size) == 0 {
+		println('args_sizes_get: ok')
+	}
+	if args.argc >= 1 {
+		println('args_sizes_get: argc >= 1')
+	}
+	if args.argc_buf_size > 0 {
+		println('args_sizes_get: argc_buf_size > 0')
+	}
+}
+
+fn wasi_args_get() {
+	unsafe {
+		args := Args{}
+		WASM.args_sizes_get(&args.argc, &args.argc_buf_size)
+
+		mut argv_buf := malloc(args.argc_buf_size + 1)
+		mut argv_ptrs := malloc(args.argc)
+
+		if WASM.args_get(&argv_ptrs[0], &argv_buf[0]) == 0 {
+			println('args_get: ok')
+		}
+
+		// @TODO: Check if the end ends with .wasm with a proper builtin
+		if cstring_to_vstring(argv_buf).len == (args.argc_buf_size) - 1 {
+			println('wasi_args_get: ok')
+		}
+	}
+}
+
+fn wasi_random_get() {
+	mut random_table := [128]u8{}
+
+	errno := WASM.random_get(&random_table[0], 128)
+	if errno == 0 {
+		println('random_get: ok')
+	}
+
+	mut min := u8(255)
+	mut max := u8(0)
+	mut all_same := true
+	first_val := random_table[0]
+
+	for i in 0 .. 128 {
+		val := random_table[i]
+		if val < min {
+			min = val
+		}
+		if val > max {
+			max = val
+		}
+		if val != first_val {
+			all_same = false
+		}
+	}
+
+	println('random_get: has low values = ${min < 200}')
+	println('random_get: has high values = ${max > 55}')
+	println('random_get: values vary = ${!all_same}')
+}
+
+fn wasi_fd_write() {
+	message := 'fd_write: Hello from WASI WOORLD!\n'
+	message_struct := CIOVec{
+		buf: message.str
+		len: usize(message.len)
+	}
+
+	if WASM.fd_write(1, &message_struct, 1, 0) == 0 {
+		println('fd_write: ok')
+	}
+}
+
+fn wasi_fd_write_multiple_iovecs() {
+	msg1 := 'Multiple '
+	msg2 := 'IO '
+	msg3 := 'vectors yay!\n'
+
+	iovs := [
+		CIOVec{
+			buf: msg1.str
+			len: usize(msg1.len)
+		},
+		CIOVec{
+			buf: msg2.str
+			len: usize(msg2.len)
+		},
+		CIOVec{
+			buf: msg3.str
+			len: usize(msg3.len)
+		},
+	]!
+
+	if WASM.fd_write(1, &iovs[0], 3, 0) == 0 {
+		println('fd_write_multi: ok')
+	}
+}
+
+fn wasi_fd_sync() {
+	// Flush stdout (fd 1)
+	if WASM.fd_sync(1) == 0 {
+		println('fd_sync: ok on stdout')
+	}
+
+	// Flush stderr (fd 2)
+	if WASM.fd_sync(2) == 0 {
+		println('fd_sync: ok on stderr')
+	}
+}
+
+fn main() {
+	wasi_args_sizes_get()
+	wasi_args_get()
+	wasi_random_get()
+	wasi_fd_write()
+	wasi_fd_write_multiple_iovecs()
+	wasi_fd_sync()
+	// @TODO: Find a way to test fd_read ?
+}

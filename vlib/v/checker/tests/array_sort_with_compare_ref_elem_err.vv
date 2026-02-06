@@ -1,0 +1,54 @@
+struct Vec2 {
+	x f32
+	y f32
+}
+
+interface Cell {
+mut:
+	pos Vec2
+}
+
+struct GridCell {
+mut:
+	pos Vec2
+}
+
+pub struct Grid2D {
+mut:
+	cells []&Cell
+}
+
+fn sort_cells_by_yx(a &Cell, b &Cell) int {
+	if a.pos.y == b.pos.y {
+		if a.pos.x < b.pos.x {
+			return -1
+		} else {
+			return 1
+		}
+	} else {
+		if a.pos.y < b.pos.y {
+			return -1
+		} else {
+			return 1
+		}
+	}
+}
+
+fn (mut g Grid2D) sort_cells() {
+	g.cells.sort_with_compare(sort_cells_by_yx)
+}
+
+fn main() {
+	mut grid := Grid2D{}
+	grid.cells << GridCell{
+		pos: Vec2{0, 0}
+	}
+	grid.cells << GridCell{
+		pos: Vec2{1, 0}
+	}
+	grid.cells << GridCell{
+		pos: Vec2{1, 2}
+	}
+	grid.sort_cells()
+	println(grid)
+}

@@ -1,0 +1,111 @@
+// vtest vflags: -d ddd1=true -d ddd2=false
+
+fn main() {
+	println('>>>>> Should be compiled with: `./v -d ddd1=true -d ddd2=false`')
+	println('>>>>> Note that ddd3 is not passed *on purpose*, to test the default .')
+	assert $d('ddd1', false) == true
+	assert $d('ddd2', true) == false
+	assert $d('ddd3', true) == true
+	check_ddd1()
+	check_ddd2()
+	check_ddd3()
+}
+
+fn check_ddd1() {
+	println('===========================================================================')
+	println('\$d(ddd1, false) : ' + $d('ddd1', false).str())
+	println('\$d(ddd1,  true) : ' + $d('ddd1', true).str())
+	println('------------------------------------------------------------')
+	println('Checking \$if with default false:')
+	$if $d('ddd1', false) {
+		println('1 ddd1 is true')
+	} $else {
+		println('1 ddd1 is false')
+	}
+	println('Checking \$if with default true:')
+	$if $d('ddd1', true) {
+		println('2 ddd1 is true')
+	} $else {
+		println('2 ddd1 is false')
+	}
+	println('------------------------------------------------------------')
+	println('Checking \$if !\$d(ddd1) with default false:')
+	$if !$d('ddd1', false) {
+		println('3 !ddd1 is true')
+	} $else {
+		println('3 !ddd1 is false')
+	}
+	println('Checking \$if !\$d() with default  true:')
+	$if !$d('ddd1', true) {
+		println('4 !ddd1 is true')
+	} $else {
+		println('4 !ddd1 is false')
+	}
+	println('')
+}
+
+fn check_ddd2() {
+	println('===========================================================================')
+	println('\$d(ddd2, false) : ' + $d('ddd2', false).str())
+	println('\$d(ddd2,  true) : ' + $d('ddd2', true).str())
+	println('------------------------------------------------------------')
+	println('Checking \$if with default false:')
+	$if $d('ddd2', false) {
+		println('1 ddd2 is true')
+	} $else {
+		println('1 ddd2 is false')
+	}
+	println('Checking \$if with default true:')
+	$if $d('ddd2', true) {
+		println('2 ddd2 is true')
+	} $else {
+		println('2 ddd2 is false')
+	}
+	println('------------------------------------------------------------')
+	println('Checking \$if !\$d() with default false:')
+	$if !$d('ddd2', false) {
+		println('3 !ddd2 is true')
+	} $else {
+		println('3 !ddd2 is false')
+	}
+	println('Checking \$if !\$d() with default  true:')
+	$if !$d('ddd2', true) {
+		println('4 !ddd2 is true')
+	} $else {
+		println('4 !ddd2 is false')
+	}
+	println('')
+}
+
+fn check_ddd3() {
+	println('===========================================================================')
+	println('\$d(ddd3, false) : ' + $d('ddd3', false).str())
+	println('\$d(ddd3,  true) : ' + $d('ddd3', true).str())
+	println('------------------------------------------------------------')
+	println('Checking \$if with default false:')
+	$if $d('ddd3', false) {
+		println('1 ddd3 is true')
+	} $else {
+		println('1 ddd3 is false')
+	}
+	println('Checking \$if with default true:')
+	$if $d('ddd3', true) {
+		println('2 ddd3 is true')
+	} $else {
+		println('2 ddd3 is false')
+	}
+	println('------------------------------------------------------------')
+	println('Checking \$if !\$d() with default false:')
+	$if !$d('ddd3', false) {
+		println('3 !ddd3 is true')
+	} $else {
+		println('3 !ddd3 is false')
+	}
+	println('Checking \$if !\$d() with default  true:')
+	$if !$d('ddd3', true) {
+		println('4 !ddd3 is true')
+	} $else {
+		println('4 !ddd3 is false')
+	}
+	println('')
+}

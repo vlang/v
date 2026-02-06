@@ -1,0 +1,8 @@
+builtin/js
+builtin/wasm
+builtin/linux_bare
+builtin/wasm_bare
+os/bare
+v/slow_tests/
+v/preludes_js/
+v/preludes

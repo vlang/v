@@ -1,0 +1,3 @@
+fn foo() ?string | int {
+	return 0
+}

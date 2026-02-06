@@ -1,0 +1,29 @@
+struct St {
+mut:
+	n int
+}
+
+fn f(ch chan mut St) {
+	v := St{}
+	ch <- v
+	mut w := St{}
+	ch <- w
+	x := &St{}
+	ch <- x
+	mut y := St{}
+	ch <- y
+	mut z := &St{
+		n: 7
+	}
+	// this works
+	ch <- z
+}
+
+fn main() {
+	c := chan mut St{}
+	go f(c)
+	mut y := <-c
+	z := <-c
+	println(y)
+	println(z)
+}

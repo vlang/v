@@ -1,0 +1,6 @@
+vlib/v/parser/tests/option_alias_option_type_err.vv:4:11: error: cannot use double options like `??bool`, `?Foo` is a double option. use `Foo` instead
+    2 | 
+    3 | struct Bar {
+    4 |         a ?Foo
+      |           ~~~~
+    5 | }

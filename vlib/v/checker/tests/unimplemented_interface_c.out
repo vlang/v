@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unimplemented_interface_c.vv:12:6: error: `Cat` incorrectly implements method `name` of interface `Animal`: expected 1 parameter(s), not 2
+   10 |
+   11 | fn main() {
+   12 |     foo(Cat{})
+      |         ~~~~~
+   13 | }
+Details: main.Animal has `fn name(x main.Animal)`
+         main.Cat has `fn name(c main.Cat, s string)`

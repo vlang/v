@@ -1,0 +1,4 @@
+fn main() {
+	val := none
+	println(val)
+}

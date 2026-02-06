@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_method_arg_type_err.vv:14:20: error: `node_create` parameter `t` is not `mut`, `mut` is not needed`
+   12 |         name: 'Gecko'
+   13 |     }
+   14 |     r.node_create(mut g)
+      |                       ^
+   15 | }
+   16 |

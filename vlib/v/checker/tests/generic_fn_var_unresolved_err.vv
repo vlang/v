@@ -1,0 +1,12 @@
+module main
+
+fn func[T](arg string, mut val T) int {
+	return 2
+}
+
+fn main() {
+	_ := func
+	_ := {
+		'test': func
+	}
+}

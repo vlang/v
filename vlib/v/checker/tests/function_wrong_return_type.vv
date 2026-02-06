@@ -1,0 +1,8 @@
+fn h() int {
+	return 3.14
+}
+
+fn main() {
+	d := h()
+	println('${d}')
+}

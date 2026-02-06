@@ -1,0 +1,18 @@
+import db.sqlite
+
+struct Test {
+	id int @[primary; serial]
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Test
+	}!
+
+	x := Test{}
+	x_id := sql db {
+		insert x into Test
+	} or { panic(err) }
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/wrong_or_expr_err.vv:7:31: error: wrong return type `string` in the `or {}` block, expected `i16`
+    5 |         return 1
+    6 |     }
+    7 |     println('${get_number() or { '1' }}')
+      |                                  ~~~
+    8 | }

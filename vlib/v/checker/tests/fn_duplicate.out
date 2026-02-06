@@ -1,0 +1,12 @@
+builder error: redefinition of function `f`
+vlib/v/checker/tests/fn_duplicate.vv:1:1: conflicting declaration: fn f()
+    1 | fn f() {
+      | ~~~~~~
+    2 | }
+    3 |
+vlib/v/checker/tests/fn_duplicate.vv:4:1: conflicting declaration: fn f(i int)
+    2 | }
+    3 |
+    4 | fn f(i int) {
+      | ~~~~~~~~~~~
+    5 | }

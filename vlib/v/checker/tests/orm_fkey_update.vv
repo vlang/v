@@ -1,0 +1,58 @@
+import db.sqlite
+
+struct Foo {
+	id       int @[primary; sql: serial]
+	name     string
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+	bar       ?Bar @[fkey: 'child_id']
+}
+
+struct Bar {
+	id       int @[primary; sql: serial]
+	child_id int
+	name     string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Foo
+		create table Child
+		create table Bar
+	}!
+
+	child_one := Child{
+		name: 'abc'
+	}
+
+	child_two := Child{
+		name: 'def'
+	}
+
+	bar_one := Bar{
+		id:   0
+		name: 'name'
+	}
+
+	foo := Foo{
+		name:     'abc'
+		children: [
+			child_one,
+			child_two,
+		]
+	}
+	_ := sql db {
+		insert foo into Foo
+	}!
+
+	sql db {
+		update Child set bar = bar_one where id == 0
+	}!
+}

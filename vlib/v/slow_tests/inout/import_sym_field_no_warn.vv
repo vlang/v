@@ -1,0 +1,7 @@
+import net.http { SameSite }
+
+fn main() {
+	mime := SameSite.same_site_not_set
+
+	println(mime)
+}

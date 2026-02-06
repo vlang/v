@@ -1,0 +1,11 @@
+struct HttpResult {
+	status_code int
+}
+
+fn abc() ?HttpResult {
+	return HttpResult{}
+}
+
+fn main() {
+	println(abc().status_code)
+}

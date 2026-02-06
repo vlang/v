@@ -1,0 +1,7 @@
+vlib/v/checker/tests/var_eval_not_used_scope.vv:5:3: error: `c` evaluated but not used
+    3 | fn main() {
+    4 |     {
+    5 |         c
+      |         ^
+    6 |     }
+    7 | }

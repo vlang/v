@@ -1,0 +1,6 @@
+mut x := i64(9223372036854775806)
+println(x)
+x++
+println(x)
+x++
+println(x)

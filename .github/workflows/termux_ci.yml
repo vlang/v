@@ -1,0 +1,52 @@
+name: CI Termux
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+jobs:
+  termux-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test in Termux
+        run: |
+          set -o xtrace
+          echo "$PWD"
+          whoami
+          touch outside_docker.txt
+          git log -n4
+          echo "running docker ..."
+          docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
+            set -o xtrace
+            echo "running inside docker"
+            whoami
+            cp -r /src ~/vproject; cd ~/vproject
+            touch inside_docker.txt
+            ls -la
+            echo "previous TERMUX_VERSION: $TERMUX_VERSION"
+            export TERMUX_VERSION=0.118.3
+            echo "explicit TERMUX_VERSION: $TERMUX_VERSION"
+            .github/workflows/retry.sh pkg update -y
+            .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
+            git log -n4
+            VFLAGS="-cc cc" make
+            ./v symlink
+            v run examples/hello_world.v
+            v run examples/primes.v
+            v -e "import os; dump( os.user_os() )"
+          '

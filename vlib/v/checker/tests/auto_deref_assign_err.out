@@ -1,0 +1,6 @@
+vlib/v/checker/tests/auto_deref_assign_err.vv:10:6: error: cannot assign to `o`: expected `&int`, not `string`
+    8 | fn sub(mut o &int) {
+    9 |     println('in function got: ' + o.str())
+   10 |     o = 'mutate int as string??'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+   11 | }

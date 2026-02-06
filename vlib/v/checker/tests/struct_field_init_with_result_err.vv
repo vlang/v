@@ -1,0 +1,11 @@
+fn example() !int {
+	return 0
+}
+
+struct Example {
+	example int
+}
+
+fn main() {
+	println(Example{example()})
+}

@@ -1,0 +1,8 @@
+struct Foo {
+	foo string
+}
+struct Foo2 {
+mut:
+	Foo
+}
+fn main() {}

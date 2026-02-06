@@ -1,0 +1,13 @@
+aaa
+@if cond
+bbb
+@else
+zzz
+@end
+ccc
+
+aaa
+@if cond
+bbb
+@end
+ccc

@@ -1,0 +1,19 @@
+interface List[T] {
+mut:
+	add(e T) bool
+}
+
+struct LinkedList[T] {
+	// ...
+}
+
+fn (mut list LinkedList[T]) add(e T) {
+	// ...
+}
+
+fn do_list_thing(list List) { // <--- Error here
+	// ...
+}
+
+fn main() {
+}

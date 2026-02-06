@@ -1,0 +1,13 @@
+module main
+
+struct Node {
+	data int
+	next &Node
+}
+
+fn main() {
+	n := Node{
+		data: 123
+	}
+	eprintln('n.data: ${n.data}')
+}

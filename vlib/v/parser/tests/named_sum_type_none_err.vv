@@ -1,0 +1,1 @@
+type Abc = string | int | bool | none

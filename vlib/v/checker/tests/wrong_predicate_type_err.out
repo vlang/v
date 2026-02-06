@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wrong_predicate_type_err.vv:18:13: error: type mismatch, should use `fn(a &Foo) bool {...}`
+   16 | 
+   17 | fn main() {
+   18 |     t().filter(fn (a Foo) bool {
+      |                ~~~~~~~~~~~~~~~~~
+   19 |         return true
+   20 |     })

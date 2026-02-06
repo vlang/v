@@ -1,0 +1,30 @@
+module testmod
+
+type Integer = i8 | i16 | int | i64
+
+fn main() {
+	fn_with_sum_type_param(1)
+}
+
+fn fn_with_sum_type_param(i Integer) {
+	if i is SomethingThatDontExist {
+		println('It should fail !')
+	}
+}
+
+struct Foo {
+	foo int
+}
+struct Bar {
+	bar i8
+}
+
+type Foobar = Foo | Bar
+
+const empty_foo = Foo{foo: 0}
+
+fn fn_with_module_const_type_is_expr() {
+	_ := testmod.empty_foo
+	fb := Foobar(Foo{foo: 5})
+	if fb is testmod.empty_foo{}
+}

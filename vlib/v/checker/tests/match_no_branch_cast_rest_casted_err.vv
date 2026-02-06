@@ -1,0 +1,10 @@
+fn main() {
+	name := 'b'
+	nb := match name {
+		'a' { u8(10) }
+		'b' { 345 }
+		else { 0 }
+	}
+
+	println(nb)
+}

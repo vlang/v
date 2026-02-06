@@ -1,0 +1,3 @@
+vlib/v/parser/tests/hash_empty_flag_value.vv:1:1: error: no argument(s) provided for #flag
+    1 | #flag
+      | ~~~~~

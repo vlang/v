@@ -1,0 +1,93 @@
+import time // foo
+
+/*
+block
+comment
+*/
+
+fn fun() int {
+	return 0 // another comment
+}
+
+fn mr_fun() (int, int) {
+	return 1, // one comment
+	 2 // another comment
+}
+
+fn single_line_blocks() {
+	// 1
+	println('')
+	// 2
+	println('')
+	// 3
+	// 4
+	println('')
+	// 5
+	// 6
+}
+
+fn main() {
+	/* block1
+	*/
+	/*
+	block2 */
+	/*
+
+	block3
+
+	*/
+	a :=  1 // this is a comment
+	d := c // and an extra one
+	e := c
+	// more comments = more good
+	arr := [
+		//   block foo bar
+		//   inline foo bar
+		0,
+	]
+  return // empty return
+}
+
+fn insert_space() {
+	//abc
+}
+
+fn linebreaks_in_block_comments() {
+	/*foo
+	comment goes here!
+	bar*/
+	/*  spam
+	spaces make no difference there
+	eggs */
+}
+
+fn between_if_branches() {
+	if spam {
+	}
+
+	// remove the empty line above
+	else if eggs {
+	}
+
+	if spam2 {
+	}
+	// remove the empty line below
+
+	else {
+	}
+}
+
+for // comments
+{
+	break
+}
+
+for i := 0; i < 1; i++ // comments
+{
+	break
+}
+
+for _ in [1, 2] // comments
+{
+	break
+}

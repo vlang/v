@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unimplemented_interface_a.vv:10:6: error: `Cat` doesn't implement method `name` of interface `Animal`
+    8 | 
+    9 | fn main() {
+   10 |     foo(Cat{})
+      |         ~~~~~
+   11 | }

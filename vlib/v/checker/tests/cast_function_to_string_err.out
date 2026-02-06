@@ -1,0 +1,5 @@
+vlib/v/checker/tests/cast_function_to_string_err.vv:2:10: error: cannot cast function `main` to string
+    1 | fn main() {
+    2 |     println(string(main))
+      |             ~~~~~~~~~~~~
+    3 | }

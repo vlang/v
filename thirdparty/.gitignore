@@ -1,0 +1,11 @@
+!glfw/glfw3.dll
+!glfw/msvc/glfw3.lib
+
+freetype/
+sdl2/
+SDL2_image/
+SDL2_mixer/
+SDL2_ttf/
+pg/
+tcc/
+sqlite/

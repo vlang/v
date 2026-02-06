@@ -1,0 +1,11 @@
+
+{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("zlib"), .len=4, .is_lit=1 }, (byteptr)_v_embed_blob_0},
+{1, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, (byteptr)_v_embed_blob_1},
+
+VV_LOC void v__preludes__embed_file__zlib__init(void);
+VV_LOC _result_Array_u8 v__preludes__embed_file__zlib__ZLibDecoder_decompress(v__preludes__embed_file__zlib__ZLibDecoder _d1, Array_u8 data) {
+return compress__zlib__decompress(data);
+
+res.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _S("embed.vv"), _S("zlib"))->data;
+res.compression_type = _S("zlib");
+res.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _S("embed.vv"), _S("none"))->data;

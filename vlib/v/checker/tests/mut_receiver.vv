@@ -1,0 +1,13 @@
+struct Foo{
+mut:
+	name string
+}
+fn (f mut Foo) info() {
+	f.name = 'foo'
+}
+fn (mut f &Foo) info2() {
+	f.name = 'foo'
+}
+fn main() {
+	println('hello, world')
+}

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/cast_to_concrete_mut_err.vv:37:12: warning: casting `&Message` to `&LocalMessageType` is only allowed in `unsafe` code
+   35 |     if mut mdef is Message {
+   36 |         mut a := LocalMessageType(*mdef)
+   37 |         mut b := &LocalMessageType(mdef)
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~
+   38 |         mut c := LocalMessageType(mdef)
+   39 |
+vlib/v/checker/tests/cast_to_concrete_mut_err.vv:38:12: error: cannot cast `&Message` to `LocalMessageType`, you must dereference it first (e.g. LocalMessageType(*var))
+   36 |         mut a := LocalMessageType(*mdef)
+   37 |         mut b := &LocalMessageType(mdef)
+   38 |         mut c := LocalMessageType(mdef)
+      |                  ~~~~~~~~~~~~~~~~~~~~~~
+   39 | 
+   40 |         dump(a)

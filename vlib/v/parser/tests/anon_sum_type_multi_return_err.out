@@ -1,0 +1,5 @@
+vlib/v/parser/tests/anon_sum_type_multi_return_err.vv:1:24: error: invalid expression: unexpected token `|`
+    1 | fn abc() (string, int) | string {
+      |                        ^
+    2 |     return ''
+    3 | }

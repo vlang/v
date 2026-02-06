@@ -1,0 +1,22 @@
+field: a
+a is mut?: true
+field: b
+b is mut?: true
+b is struct?: true
+field: c
+c is pub?: true
+c is option?: true
+field: d
+d is pub?: true
+d is map?: true
+field: e
+e is pub?: true
+e is atomic?: true
+field: f
+f is pub?: true
+f is mut?: true
+f is array?: true
+field: zzz
+zzz is pub?: true
+zzz is mut?: true
+zzz is alias?: true

@@ -1,0 +1,13 @@
+import cli { Command, CommandFlag }
+
+fn main() {
+	mut cmd := Command{
+		name: 'foo'
+		version: '0.1.0'
+		posix_mode: true
+		defaults: struct {
+			version: CommandFlag{false, true}
+		}
+	}
+	cmd.parse(['foo', '--version'])
+}

@@ -1,0 +1,7 @@
+fn f(para1 int, para1 f32) int {
+	return para1
+}
+
+fn main() {
+	a := f(11, 1.1)
+}

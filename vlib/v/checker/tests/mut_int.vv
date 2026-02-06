@@ -1,0 +1,5 @@
+fn foo(mut x int) {
+}
+
+fn main() {
+}

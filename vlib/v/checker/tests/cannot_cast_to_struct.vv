@@ -1,0 +1,18 @@
+struct Abc {}
+
+struct Xyz {}
+
+type Alphabet = Abc | Xyz
+
+struct Test {
+	abc Alphabet
+}
+
+fn main() {
+	_ := Test(Abc{})
+	sum := Alphabet(Xyz{})
+	_ = Xyz(sum)
+	_ = Xyz(5)
+	s := Abc{}
+	_ = Xyz(&s)
+}

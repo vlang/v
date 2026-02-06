@@ -1,0 +1,6 @@
+mut x := u32(429496729)
+println(x)
+x = x * 10
+println(x)
+x = x * 10
+println(x)

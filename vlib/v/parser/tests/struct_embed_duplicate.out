@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_embed_duplicate.vv:7:2: error: cannot embed `Abc` more than once
+    5 | struct Xyz {
+    6 |     Abc
+    7 |     Abc
+      |     ~~~
+    8 |     bar int
+    9 | }

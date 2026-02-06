@@ -1,0 +1,15 @@
+vlib/v/checker/tests/string_to_enum_cast_err.vv:8:7: error: cannot cast `string` to `enum`
+    6 | 
+    7 | fn main() {
+    8 |     _ := Test('one')
+      |          ~~~~~~~~~~~
+    9 | 
+   10 |     my_str := 'one'
+Details: use main.Test.from_string('one') instead
+vlib/v/checker/tests/string_to_enum_cast_err.vv:11:7: error: cannot cast `string` to `enum`
+    9 | 
+   10 |     my_str := 'one'
+   11 |     _ := Test(my_str)
+      |          ~~~~~~~~~~~~
+   12 | }
+Details: use main.Test.from_string(my_str) instead

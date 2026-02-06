@@ -1,0 +1,14 @@
+fn my_thread() {
+	println('yo')
+}
+
+fn my_thread_with_params(s string) {
+	println(s)
+}
+
+fn my_fn_calling_threads() {
+	go my_thread()
+	go my_thread_with_params('yay')
+
+	go my_thread_with_params('nono')
+}

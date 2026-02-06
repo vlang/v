@@ -1,0 +1,10 @@
+fn abc_1() {
+}
+
+fn abc_2(a ?string) string {
+	return a?
+}
+
+fn test_main() {
+	abc_2(none)
+}

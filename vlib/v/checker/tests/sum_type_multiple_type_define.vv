@@ -1,0 +1,3 @@
+struct Foo {}
+
+type FooType = Foo | Foo

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/free_method_errors.vv:3:5: error: `.free()` methods should be defined on either a `(mut x &Error1)`, or a `(x &Error1)` receiver
+    1 | struct Error1 {}
+    2 | 
+    3 | fn (a Error1) free() {}
+      |     ~~~~~~~~
+    4 | 
+    5 | struct Error2 {}
+vlib/v/checker/tests/free_method_errors.vv:7:23: error: `.free()` methods should not have a return type
+    5 | struct Error2 {}
+    6 | 
+    7 | fn (a &Error2) free() f64 {}
+      |                       ~~~
+    8 | 
+    9 | struct Error3 {}
+vlib/v/checker/tests/free_method_errors.vv:7:1: error: missing return at end of function `free`
+    5 | struct Error2 {}
+    6 | 
+    7 | fn (a &Error2) free() f64 {}
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | 
+    9 | struct Error3 {}
+vlib/v/checker/tests/free_method_errors.vv:11:1: error: `.free()` methods should have 0 arguments
+    9 | struct Error3 {}
+   10 | 
+   11 | fn (a &Error3) free(x int) {}
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 | 
+   13 | struct Ok {}

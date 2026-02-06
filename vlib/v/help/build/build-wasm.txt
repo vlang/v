@@ -1,0 +1,36 @@
+This command compiles the given target, along with their dependencies,
+into an executable using the WebAssembly code generation backend.
+
+Usage:
+  v -b wasm [-options] ['run'] <target.v|target_directory> [run options]
+
+
+For more general build help, see also `v help build`.
+
+# Interfacing WebAssembly code generation, passing options to it:
+   -wasm-validate
+      After compiling the WebAssembly module, execute wasm-validate to validate the module.
+      Useful for debugging the compiler.
+
+   -wasm-stack-top
+      Overrides the default stack_top value used by the WebAssembly compiler.
+      Useful for some platforms with unusual memory requirements.
+
+   -d no_imports
+      Removes the default imports from the builtins. Useful for embedded targets where
+      you can't control the imports.
+
+   -os <browser|wasi>, -target-os <browser|wasi>
+      Change the target WebAssembly execution environment that V compiles for.
+
+      The `wasi` target is the default execution environment.
+        When targeting WASI, the generated WebAssembly module can be run in a variety
+		of environments that support the WASI specification.
+        WASI provides a standardized interface to interact with the host operating system,
+		allowing WebAssembly modules to perform tasks like file I/O, networking, and more.
+        The specific version of the WASI specification targeted by V is 'wasi_snapshot_preview1'.
+
+      The `browser` target is an experimental environment that compiles for a stripped down
+	    builtin, for use in browsers. The produced WebAssembly module will have functions
+		exported that are `pub` and inside the `module main`. See `examples/wasm/mandelbrot`
+		for an example.

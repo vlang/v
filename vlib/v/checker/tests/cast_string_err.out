@@ -1,0 +1,49 @@
+vlib/v/checker/tests/cast_string_err.vv:14:9: error: cannot cast enum to string, use ev.str() instead.
+   12 | fn main() {
+   13 |     ev := MyEnum.val1
+   14 |     sev := string(ev)
+      |            ~~~~~~~~~~
+   15 |     println(sev)
+   16 |     //
+vlib/v/checker/tests/cast_string_err.vv:18:9: error: cannot cast sumtype `Sumtype` to string, use `st.str()` instead.
+   16 |     //
+   17 |     st := Sumtype(int(456))
+   18 |     sst := string(st)
+      |            ~~~~~~~~~~
+   19 |     println(sst)
+   20 |     //
+vlib/v/checker/tests/cast_string_err.vv:18:9: error: cannot cast `Sumtype` sum type value to `string`, use `st as string` instead
+   16 |     //
+   17 |     st := Sumtype(int(456))
+   18 |     sst := string(st)
+      |            ~~~~~~~~~~
+   19 |     println(sst)
+   20 |     //
+vlib/v/checker/tests/cast_string_err.vv:22:10: error: cannot cast struct `Abc` to `string`
+   20 |     //
+   21 |     abc := Abc{}
+   22 |     sabc := string(abc)
+      |             ~~~~~~~~~~~
+   23 |     println(sabc)
+   24 |     //
+vlib/v/checker/tests/cast_string_err.vv:26:8: error: cannot cast map to string.
+   24 |     //
+   25 |     mm := map[string]int{}
+   26 |     sm := string(mm)
+      |           ~~~~~~~~~~
+   27 |     println(sm)
+   28 |     //
+vlib/v/checker/tests/cast_string_err.vv:30:8: error: cannot cast []u8 to string, use `arr.bytestr()` or `arr.str()` instead.
+   28 |     //
+   29 |     arr := []u8{}
+   30 |     sa := string(arr)
+      |           ~~~~~~~~~~~
+   31 |     println(sa)
+   32 |     //
+vlib/v/checker/tests/cast_string_err.vv:34:8: error: cannot cast number to string, use `ii.str()` instead.
+   32 |     //
+   33 |     ii := 1
+   34 |     si := string(ii)
+      |           ~~~~~~~~~~
+   35 |     println(si)
+   36 | }

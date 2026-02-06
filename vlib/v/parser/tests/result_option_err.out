@@ -1,0 +1,5 @@
+vlib/v/parser/tests/result_option_err.vv:1:11: error: the type must be Option or Result
+    1 | fn abc() ?!string {
+      |           ^
+    2 |     return ''
+    3 | }

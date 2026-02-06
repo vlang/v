@@ -1,0 +1,16 @@
+struct Node[T] {
+	val  T
+	name string
+}
+
+pub fn (x Node) str() string {
+	return 'Value is : ${u16(x.val)}\nName is : ${x.name}'
+}
+
+fn main() {
+	xx := Node[u16]{
+		val:  u16(11)
+		name: 'man'
+	}
+	println(xx.str())
+}

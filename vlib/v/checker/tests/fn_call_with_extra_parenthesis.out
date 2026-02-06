@@ -1,0 +1,14 @@
+vlib/v/checker/tests/fn_call_with_extra_parenthesis.vv:5:2: error: expected 1 argument, but got 0
+    3 | 
+    4 | fn main() {
+    5 |     doit()(1)
+      |     ~~~~~~
+    6 | }
+Details: have ()
+         want (int)
+vlib/v/checker/tests/fn_call_with_extra_parenthesis.vv:5:9: error: unknown function: 
+    3 | 
+    4 | fn main() {
+    5 |     doit()(1)
+      |            ^
+    6 | }

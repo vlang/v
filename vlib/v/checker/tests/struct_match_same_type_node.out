@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_match_same_type_node.vv:10:3: error: struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type
+    8 | fn (mut t Type) returns() Union {
+    9 |     match t {
+   10 |         Type {
+      |         ~~~~
+   11 |             t.something = 'else'
+   12 |         }

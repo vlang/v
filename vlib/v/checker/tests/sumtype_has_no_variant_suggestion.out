@@ -1,0 +1,8 @@
+vlib/v/checker/tests/sumtype_has_no_variant_suggestion.vv:14:5: error: `Abc` has no variant `amod.NonExisting`.
+5 possibilities: `amod.Bcg`, `amod.Xyz`, `AnotherStruct`, `Struct1`, `ThirdStruct`.
+   12 |     a := Abc(Struct1{})
+   13 |     match a {
+   14 |         x.NonExisting { println('----') }
+      |           ~~~~~~~~~~~
+   15 |         else {}
+   16 |     }

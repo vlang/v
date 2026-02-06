@@ -1,0 +1,14 @@
+vlib/v/checker/tests/invalid_op_ptr_err.vv:3:6: error: infix `*` is not defined for pointer values
+    1 | num := 10
+    2 | p := &num
+    3 | x := 5 * p
+      |      ~~~~~
+    4 | y := 5 / p
+    5 | dump(x)
+vlib/v/checker/tests/invalid_op_ptr_err.vv:4:6: error: infix `/` is not defined for pointer values
+    2 | p := &num
+    3 | x := 5 * p
+    4 | y := 5 / p
+      |      ~~~~~
+    5 | dump(x)
+    6 | dump(p)

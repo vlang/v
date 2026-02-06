@@ -1,0 +1,3 @@
+foo_ptr := unsafe { nil }
+
+println(*foo_ptr)

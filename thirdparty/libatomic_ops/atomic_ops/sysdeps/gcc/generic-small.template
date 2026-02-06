@@ -1,0 +1,158 @@
+/*
+ * Copyright (c) 1991-1994 by Xerox Corporation.  All rights reserved.
+ * Copyright (c) 1996-1999 by Silicon Graphics.  All rights reserved.
+ * Copyright (c) 2003-2011 Hewlett-Packard Development Company, L.P.
+ *
+ *
+ * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
+ * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
+ *
+ * Permission is hereby granted to use or copy this program
+ * for any purpose, provided the above notices are retained on all copies.
+ * Permission to modify the code and to distribute modified code is granted,
+ * provided the above notices are retained, and a notice that the code was
+ * modified is included with the above copyright notice.
+ *
+ */
+
+#if !defined(AO_GCC_HAVE_XSIZE_SYNC_CAS) || !defined(AO_PREFER_GENERALIZED)
+
+AO_INLINE XCTYPE
+AO_XSIZE_load(const volatile XCTYPE *addr)
+{
+  return __atomic_load_n(addr, __ATOMIC_RELAXED);
+}
+#define AO_HAVE_XSIZE_load
+
+AO_INLINE XCTYPE
+AO_XSIZE_load_acquire(const volatile XCTYPE *addr)
+{
+  return __atomic_load_n(addr, __ATOMIC_ACQUIRE);
+}
+#define AO_HAVE_XSIZE_load_acquire
+
+/* XSIZE_load_read is defined using load and nop_read.                  */
+/* TODO: Map it to ACQUIRE.  We should be strengthening the read and    */
+/* write stuff to the more general acquire/release versions.  It almost */
+/* never makes a difference and is much less error-prone.               */
+
+/* XSIZE_load_full is generalized using load and nop_full.              */
+/* TODO: Map it to SEQ_CST and clarify the documentation.               */
+
+/* TODO: Map load_dd_acquire_read to ACQUIRE.  Ideally it should be     */
+/* mapped to CONSUME, but the latter is currently broken.               */
+
+/* XSIZE_store_full definition is omitted similar to load_full reason.  */
+
+/* TODO: Map store_write to RELEASE.    */
+
+#ifndef AO_SKIPATOMIC_XSIZE_store
+  AO_INLINE void
+  AO_XSIZE_store(volatile XCTYPE *addr, XCTYPE value)
+  {
+    __atomic_store_n(addr, value, __ATOMIC_RELAXED);
+  }
+# define AO_HAVE_XSIZE_store
+#endif
+
+#ifndef AO_SKIPATOMIC_XSIZE_store_release
+  AO_INLINE void
+  AO_XSIZE_store_release(volatile XCTYPE *addr, XCTYPE value)
+  {
+    __atomic_store_n(addr, value, __ATOMIC_RELEASE);
+  }
+# define AO_HAVE_XSIZE_store_release
+#endif
+
+#endif /* !AO_GCC_HAVE_XSIZE_SYNC_CAS || !AO_PREFER_GENERALIZED */
+
+#ifdef AO_GCC_HAVE_XSIZE_SYNC_CAS
+
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_compare_and_swap(volatile XCTYPE *addr,
+                                  XCTYPE old_val, XCTYPE new_val)
+  {
+    (void)__atomic_compare_exchange_n(addr,
+                                      &old_val /* p_expected */,
+                                      new_val /* desired */,
+                                      0 /* is_weak: false */,
+                                      __ATOMIC_RELAXED /* success */,
+                                      __ATOMIC_RELAXED /* failure */);
+    return old_val;
+  }
+# define AO_HAVE_XSIZE_fetch_compare_and_swap
+
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_compare_and_swap_acquire(volatile XCTYPE *addr,
+                                          XCTYPE old_val, XCTYPE new_val)
+  {
+    (void)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                      __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
+    return old_val;
+  }
+# define AO_HAVE_XSIZE_fetch_compare_and_swap_acquire
+
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_compare_and_swap_release(volatile XCTYPE *addr,
+                                          XCTYPE old_val, XCTYPE new_val)
+  {
+    (void)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                      __ATOMIC_RELEASE,
+                                      __ATOMIC_RELAXED /* failure */);
+    return old_val;
+  }
+# define AO_HAVE_XSIZE_fetch_compare_and_swap_release
+
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_compare_and_swap_full(volatile XCTYPE *addr,
+                                       XCTYPE old_val, XCTYPE new_val)
+  {
+    (void)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                      __ATOMIC_ACQ_REL,
+                                      __ATOMIC_ACQUIRE /* failure */);
+    return old_val;
+  }
+# define AO_HAVE_XSIZE_fetch_compare_and_swap_full
+
+# ifndef AO_GENERALIZE_ASM_BOOL_CAS
+    AO_INLINE int
+    AO_XSIZE_compare_and_swap(volatile XCTYPE *addr,
+                              XCTYPE old_val, XCTYPE new_val)
+    {
+      return (int)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                        __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+    }
+#   define AO_HAVE_XSIZE_compare_and_swap
+
+    AO_INLINE int
+    AO_XSIZE_compare_and_swap_acquire(volatile XCTYPE *addr,
+                                      XCTYPE old_val, XCTYPE new_val)
+    {
+      return (int)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                        __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
+    }
+#   define AO_HAVE_XSIZE_compare_and_swap_acquire
+
+    AO_INLINE int
+    AO_XSIZE_compare_and_swap_release(volatile XCTYPE *addr,
+                                      XCTYPE old_val, XCTYPE new_val)
+    {
+      return (int)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                              __ATOMIC_RELEASE,
+                                              __ATOMIC_RELAXED /* failure */);
+    }
+#   define AO_HAVE_XSIZE_compare_and_swap_release
+
+    AO_INLINE int
+    AO_XSIZE_compare_and_swap_full(volatile XCTYPE *addr,
+                                   XCTYPE old_val, XCTYPE new_val)
+    {
+      return (int)__atomic_compare_exchange_n(addr, &old_val, new_val, 0,
+                                              __ATOMIC_ACQ_REL,
+                                              __ATOMIC_ACQUIRE /* failure */);
+    }
+#   define AO_HAVE_XSIZE_compare_and_swap_full
+
+# endif /* !AO_GENERALIZE_ASM_BOOL_CAS */
+
+#endif /* AO_GCC_HAVE_XSIZE_SYNC_CAS */

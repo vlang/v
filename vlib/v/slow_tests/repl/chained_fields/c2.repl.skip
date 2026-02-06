@@ -1,0 +1,5 @@
+struct Aaa { mut: v int }  struct Bbb { a Aaa }  struct Ccc { mut: b Bbb } struct Ddd { mut: c Ccc }
+c2 := Ccc{}
+c2.b = Bbb{}  // Error (c2 immutable)
+===output===
+`c2` is immutable

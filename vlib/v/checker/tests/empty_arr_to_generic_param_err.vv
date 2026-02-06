@@ -1,0 +1,10 @@
+fn t[T](a []T) {}
+
+struct Foo {}
+
+fn (t &Foo) t[T](a []T) {}
+
+fn main() {
+	t([])
+	Foo{}.t([])
+}

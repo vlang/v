@@ -1,0 +1,21 @@
+vlib/v/checker/tests/comptime_compile_warn_with_string_interp_test.vv:6:3: warning: invalid type i8 5
+    4 |     $if T is i8 {
+    5 |         assert typeof[T]().name == typeof[i8]().name
+    6 |         $compile_warn('invalid type ${T.name} ${T.idx}')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |         return 1
+    8 |     }
+vlib/v/checker/tests/comptime_compile_warn_with_string_interp_test.vv:16:3: warning: invalid type i8 5, i16 6
+   14 |         assert typeof[T]().name == typeof[i8]().name
+   15 |         assert typeof[R]().name == typeof[i16]().name
+   16 |         $compile_warn('invalid type ${T.name} ${T.idx}, ${R.name} ${R.idx}')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |         return 1
+   18 |     }
+vlib/v/checker/tests/comptime_compile_warn_with_string_interp_test.vv:27:3: warning: invalid type i8 5, i16 6, i32 7
+   25 |         assert typeof[R]().name == typeof[i16]().name
+   26 |         assert typeof[E]().name == typeof[i32]().name
+   27 |         $compile_warn('invalid type ${T.name} ${T.idx}, ${R.name} ${R.idx}, ${E.name} ${E.idx}')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   28 |         return 1
+   29 |     }

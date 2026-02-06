@@ -1,0 +1,51 @@
+struct Foo {
+mut:
+	x int
+}
+
+struct Bar {
+mut:
+	y int
+}
+
+type Foobar = Foo | Bar
+
+fn mutate_foobar1(mut foobar Foobar) {
+	match foobar {
+		Foo {
+			mutate_foo(mut foobar)
+		}
+		Bar {
+			mutate_bar(mut foobar)
+		}
+	}
+}
+
+fn mutate_foobar2(mut foobar Foobar) int {
+	return match foobar {
+		Foo {
+			mutate_foo(mut foobar)
+		}
+		Bar {
+			mutate_bar(mut foobar)
+		}
+	}
+}
+
+fn mutate_foo(mut foo Foo) int {
+	foo.x = 5
+	return 5
+}
+
+fn mutate_bar(mut bar Bar) int {
+	bar.y = 10
+	return 10
+}
+
+fn main() {
+	mut bar := Bar{
+		y: 0
+	}
+	mutate_foobar1(mut bar)
+	mutate_foobar2(mut bar)
+}

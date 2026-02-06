@@ -1,0 +1,20 @@
+vlib/v/checker/tests/struct_field_name_err.vv:2:2: error: field name `Foo` cannot contain uppercase letters, use snake_case instead
+    1 | struct Release {
+    2 |     Foo          string
+      |     ~~~~~~~~~~~~~~~~~~~
+    3 |     Bar          &int
+    4 |     Architecture []string
+vlib/v/checker/tests/struct_field_name_err.vv:3:2: error: field name `Bar` cannot contain uppercase letters, use snake_case instead
+    1 | struct Release {
+    2 |     Foo          string
+    3 |     Bar          &int
+      |     ~~~~~~~~~~~~~~~~~
+    4 |     Architecture []string
+    5 | }
+vlib/v/checker/tests/struct_field_name_err.vv:4:2: error: field name `Architecture` cannot contain uppercase letters, use snake_case instead
+    2 |     Foo          string
+    3 |     Bar          &int
+    4 |     Architecture []string
+      |     ~~~~~~~~~~~~~~~~~~~~~
+    5 | }
+    6 |

@@ -1,0 +1,11 @@
+vlib/v/checker/tests/sumtype_circular_reference_err.vv:1:14: error: sum type `Type6` cannot be defined recursively
+    1 | type Type6 = Type7 | int
+      |              ~~~~~
+    2 | type Type7 = Type6 | string
+    3 |
+vlib/v/checker/tests/sumtype_circular_reference_err.vv:2:14: error: sum type `Type7` cannot be defined recursively
+    1 | type Type6 = Type7 | int
+    2 | type Type7 = Type6 | string
+      |              ~~~~~
+    3 | 
+    4 | struct Foo {

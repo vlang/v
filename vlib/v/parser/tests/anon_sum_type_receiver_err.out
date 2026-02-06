@@ -1,0 +1,5 @@
+vlib/v/parser/tests/anon_sum_type_receiver_err.vv:1:11: error: unexpected token `|`, expecting `)`
+    1 | fn (x int | string) baz() {
+      |           ^
+    2 |     println('baz')
+    3 | }

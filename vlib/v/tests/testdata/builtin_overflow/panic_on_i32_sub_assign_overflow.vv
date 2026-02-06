@@ -1,0 +1,6 @@
+mut x := i32(-2147483647)
+println(x)
+x -= 1
+println(x)
+x -= 1
+println(x)

@@ -1,0 +1,8 @@
+module main
+
+import term { bright_cyan, colorize }
+
+fn main() {
+	n := colorize(bright_cyan, 'hello')
+	println(n)
+}

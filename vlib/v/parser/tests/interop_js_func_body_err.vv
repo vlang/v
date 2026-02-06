@@ -1,0 +1,1 @@
+fn JS.state_is_ready_on_leave(retval int) {}

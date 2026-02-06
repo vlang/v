@@ -1,0 +1,1 @@
+[vlib/v/slow_tests/inout/for_channel_or_expr_block.vv:22] a.any(it in [i64(1), 2, 3, 4, 5, 6, 7]): true

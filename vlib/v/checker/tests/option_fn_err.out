@@ -1,0 +1,126 @@
+vlib/v/checker/tests/option_fn_err.vv:32:16: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `twice`
+   30 |     foo()
+   31 |     _ := bar(0)
+   32 |     println(twice(bar(0)))
+      |                   ~~~~~~
+   33 | 
+   34 |     // anon fn
+vlib/v/checker/tests/option_fn_err.vv:35:16: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `anon`
+   33 | 
+   34 |     // anon fn
+   35 |     fn (_ int) {}(bar(0))
+      |                   ~~~~~~
+   36 | 
+   37 |     // assert
+vlib/v/checker/tests/option_fn_err.vv:38:9: error: assert can be used only with `bool` expressions, but found `bool` instead
+   36 | 
+   37 |     // assert
+   38 |     assert bar(true)
+      |            ~~~~~~~~~
+   39 | 
+   40 |     // struct
+vlib/v/checker/tests/option_fn_err.vv:43:3: error: cannot assign an Option value to a non-option struct field
+   41 |     mut v := Data{
+   42 |         f:     fn (_ int) {}
+   43 |         value: bar(0)
+      |         ~~~~~~~~~~~~~
+   44 |         opt:   bar(0)
+   45 |     }
+vlib/v/checker/tests/option_fn_err.vv:46:8: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `Data.add`
+   44 |         opt:   bar(0)
+   45 |     }
+   46 |     v.add(bar(0)) // call method
+      |           ~~~~~~
+   47 |     v.f(bar(0)) // call fn field
+   48 |
+vlib/v/checker/tests/option_fn_err.vv:47:6: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `Data.f`
+   45 |     }
+   46 |     v.add(bar(0)) // call method
+   47 |     v.f(bar(0)) // call fn field
+      |         ~~~~~~
+   48 | 
+   49 |     // array
+vlib/v/checker/tests/option_fn_err.vv:51:6: error: unwrapped Option cannot be used in an infix expression
+   49 |     // array
+   50 |     mut arr := [1, 2]
+   51 |     arr << bar(0)
+      |         ~~
+   52 |     // init
+   53 |     _ := [bar(0)]
+vlib/v/checker/tests/option_fn_err.vv:54:27: error: cannot use unwrapped Option as initializer
+   52 |     // init
+   53 |     _ := [bar(0)]
+   54 |     _ := []int{len: 1, init: bar(0)}
+      |                              ~~~~~~
+   55 |     _ := [bar(0)]!
+   56 |     _ := [1]int{init: bar(0)}
+vlib/v/checker/tests/option_fn_err.vv:56:20: error: cannot use unwrapped Option as initializer
+   54 |     _ := []int{len: 1, init: bar(0)}
+   55 |     _ := [bar(0)]!
+   56 |     _ := [1]int{init: bar(0)}
+      |                       ~~~~~~
+   57 |     // index
+   58 |     println(arr[bar(0)])
+vlib/v/checker/tests/option_fn_err.vv:58:13: error: cannot use Option or Result as index (array type `[]int`)
+   56 |     _ := [1]int{init: bar(0)}
+   57 |     // index
+   58 |     println(arr[bar(0)])
+      |                ~~~~~~~~
+   59 |     // array builtin methods
+   60 |     arr.insert(0, bar(0))
+vlib/v/checker/tests/option_fn_err.vv:60:16: error: cannot use `?int` as `voidptr`, it must be unwrapped first in argument 2 to `[]int.insert`
+   58 |     println(arr[bar(0)])
+   59 |     // array builtin methods
+   60 |     arr.insert(0, bar(0))
+      |                   ~~~~~~
+   61 |     arr.prepend(bar(0))
+   62 |     arr.contains(bar(0))
+vlib/v/checker/tests/option_fn_err.vv:61:14: error: cannot use `?int` as `voidptr`, it must be unwrapped first in argument 1 to `[]int.prepend`
+   59 |     // array builtin methods
+   60 |     arr.insert(0, bar(0))
+   61 |     arr.prepend(bar(0))
+      |                 ~~~~~~
+   62 |     arr.contains(bar(0))
+   63 |     arr.index(bar(0))
+vlib/v/checker/tests/option_fn_err.vv:62:15: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `.contains()`
+   60 |     arr.insert(0, bar(0))
+   61 |     arr.prepend(bar(0))
+   62 |     arr.contains(bar(0))
+      |                  ~~~~~~
+   63 |     arr.index(bar(0))
+   64 |     println(arr.map(bar(0)))
+vlib/v/checker/tests/option_fn_err.vv:63:12: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `.index()`
+   61 |     arr.prepend(bar(0))
+   62 |     arr.contains(bar(0))
+   63 |     arr.index(bar(0))
+      |               ~~~~~~
+   64 |     println(arr.map(bar(0)))
+   65 |     println(arr.filter(bar(true)))
+vlib/v/checker/tests/option_fn_err.vv:65:21: error: type mismatch, `bar` must return a bool
+   63 |     arr.index(bar(0))
+   64 |     println(arr.map(bar(0)))
+   65 |     println(arr.filter(bar(true)))
+      |                        ~~~~~~~~~
+   66 |     println(arr.any(bar(true)))
+   67 |     println(arr.all(bar(true)))
+vlib/v/checker/tests/option_fn_err.vv:66:18: error: type mismatch, `bar` must return a bool
+   64 |     println(arr.map(bar(0)))
+   65 |     println(arr.filter(bar(true)))
+   66 |     println(arr.any(bar(true)))
+      |                     ~~~~~~~~~
+   67 |     println(arr.all(bar(true)))
+   68 |
+vlib/v/checker/tests/option_fn_err.vv:67:18: error: type mismatch, `bar` must return a bool
+   65 |     println(arr.filter(bar(true)))
+   66 |     println(arr.any(bar(true)))
+   67 |     println(arr.all(bar(true)))
+      |                     ~~~~~~~~~
+   68 | 
+   69 |     match bar(0) {
+vlib/v/checker/tests/option_fn_err.vv:70:3: error: `match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`
+   68 | 
+   69 |     match bar(0) {
+   70 |         0 {}
+      |         ^
+   71 |         else {}
+   72 |     }

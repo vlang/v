@@ -1,0 +1,17 @@
+fn main() {}
+
+fn foo() string {
+	a := 1
+	b := 1
+	$if windows {
+		if a == b {
+		} else {
+			return ''
+		}
+	} $else {
+		if a == b {
+		} else {
+			return ''
+		}
+	}
+}

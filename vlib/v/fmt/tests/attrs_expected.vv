@@ -1,0 +1,9 @@
+@[export: 'JNICALL Java_io_vlang_V_callStaticMethods']
+@[tom: 'jerry']
+@[direct_array_access; inline; unsafe]
+fn heavily_tagged() {}
+
+// console attribute to force-open a console for easier diagnostics on windows
+// also it's not safe to use
+@[console; unsafe]
+fn dangerous_console() {}

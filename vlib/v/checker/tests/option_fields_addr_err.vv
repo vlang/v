@@ -1,0 +1,13 @@
+module main
+
+struct Wrapper {
+	value ?u8
+}
+
+fn main() {
+	x := Wrapper{}
+	if _ := &x.value {
+	}
+
+	_ := &x.value
+}

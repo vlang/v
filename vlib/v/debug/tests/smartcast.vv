@@ -1,0 +1,9 @@
+fn smartcast(a ?int) {
+	if a != none {
+		$dbg;
+	}
+}
+
+fn main() {
+	smartcast(1)
+}

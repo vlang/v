@@ -1,0 +1,10 @@
+@[heap]
+struct AStruct {
+	a int
+}
+
+fn main() {
+	st := AStruct{1}
+	$dbg;
+	dump(st)
+}

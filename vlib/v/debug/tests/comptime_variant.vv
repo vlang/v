@@ -1,0 +1,15 @@
+type MySum = int | string
+
+fn comptime_variant(arg MySum) {
+	$for v in arg.variants {
+		if arg is v {
+			$dbg;
+			dump(arg)
+		}
+	}
+}
+
+fn main() {
+	comptime_variant(MySum(int(0)))
+	comptime_variant(MySum('foo'))
+}
