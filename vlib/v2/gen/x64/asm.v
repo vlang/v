@@ -305,6 +305,72 @@ fn asm_mov_rax_mem_rcx(mut g Gen) {
 	g.emit(0x01)
 }
 
+// mov rax, [base + disp]
+fn asm_mov_rax_mem_base_disp(mut g Gen, base Reg, disp int) {
+	base_hw := g.map_reg(int(base))
+	mut rex := u8(0x48)
+	if base_hw >= 8 {
+		rex |= 1 // REX.B
+	}
+	g.emit(rex)
+	g.emit(0x8B)
+
+	rm := base_hw & 7
+	needs_sib := rm == 4 // rsp/r12
+
+	if disp == 0 && rm != 5 {
+		g.emit(rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+	} else if disp >= -128 && disp <= 127 {
+		g.emit(0x40 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x80 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit_u32(u32(disp))
+	}
+}
+
+// mov [base + disp], rax
+fn asm_mov_mem_base_disp_rax(mut g Gen, base Reg, disp int) {
+	base_hw := g.map_reg(int(base))
+	mut rex := u8(0x48)
+	if base_hw >= 8 {
+		rex |= 1 // REX.B
+	}
+	g.emit(rex)
+	g.emit(0x89)
+
+	rm := base_hw & 7
+	needs_sib := rm == 4 // rsp/r12
+
+	if disp == 0 && rm != 5 {
+		g.emit(rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+	} else if disp >= -128 && disp <= 127 {
+		g.emit(0x40 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x80 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit_u32(u32(disp))
+	}
+}
+
 // lea rax, [rbp + disp8]
 fn asm_lea_rax_rbp_disp8(mut g Gen, disp i8) {
 	g.emit(0x48)

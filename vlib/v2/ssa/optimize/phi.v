@@ -262,136 +262,74 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 // Destruction of Static Single Assignment Form", SPE 1998.
 //
 // Algorithm overview:
-// 1. Build worklist of (dest, src) pairs, filtering self-copies
-// 2. Track loc[v] = current location of value originally in v
-// 3. Track pred[d] = source value needed by destination d
-// 4. Ready set = destinations whose sources are not themselves destinations
-// 5. Loop:
-//    - If ready non-empty: emit copy, update locations, check for newly ready
-//    - Else (cycle): use temp to break cycle, add to ready
+// 1. Build a pending list of (dest, src), filtering self-copies
+// 2. Repeatedly emit copies where dest is not used as a source by any pending copy
+// 3. If none are ready, we have a cycle:
+//    - materialize a temporary in the predecessor block
+//    - rewrite pending sources that read the cycled value to read from temp
+// 4. Emit the sequenced copies
 //
 // Example cycle resolution for a <- b, b <- a:
-//   temp <- b; a <- temp; b <- a
+//   temp <- b; b <- a; a <- temp
 fn resolve_parallel_copies_briggs(mut m ssa.Module, blk_id int, copies []ParallelCopy) {
 	if copies.len == 0 {
 		return
 	}
 
-	// Filter out self-copies (dest == src) and build working set
-	mut worklist := []ParallelCopy{}
+	// Filter out self-copies (dest == src) and build pending set
+	mut pending := []ParallelCopy{}
 	for copy in copies {
 		if copy.dest != copy.src {
-			worklist << copy
+			pending << copy
 		}
 	}
 
-	if worklist.len == 0 {
+	if pending.len == 0 {
 		return
 	}
 
-	// loc[b] = current location of value originally in b
-	// pred[a] = the source for destination a
-	mut loc := map[int]int{}
-	mut pred := map[int]int{}
-
-	// Set of destinations that still need to be written
-	mut to_do := map[int]bool{}
-
-	// Initialize tracking structures
-	for copy in worklist {
-		loc[copy.src] = copy.src // Initially, value is at its original location
-		pred[copy.dest] = copy.src // Destination needs this source
-		to_do[copy.dest] = true // Mark as pending
-	}
-
-	// Ready set: destinations whose sources are not themselves destinations
-	// These can be safely copied without overwriting needed values
-	mut ready := []int{}
-
-	// Build a set of values used as sources by pending copies
-	mut used_as_src := map[int]bool{}
-	for copy in worklist {
-		used_as_src[copy.src] = true
-	}
-
-	for copy in worklist {
-		// A copy is ready if:
-		// 1. Its source is not a destination of another copy (won't be overwritten)
-		// 2. Its destination is not used as a source by another copy (safe to overwrite)
-		if !to_do[copy.src] && !used_as_src[copy.dest] {
-			ready << copy.dest
-		}
-	}
-
-	// Sequenced copies to emit
+	// Sequenced copies to emit in order
 	mut sequenced := []ParallelCopy{}
 
-	// Main loop: process until all copies are sequenced
-	for to_do.len > 0 {
-		if ready.len > 0 {
-			// Process a ready copy
-			b := ready.pop() // Destination
-			a := pred[b] // Source value needed
-			c := loc[a] // Current location of that value
+	// Main loop: process until all copies are sequenced.
+	for pending.len > 0 {
+		// Build set of source values for remaining copies.
+		mut pending_sources := map[int]bool{}
+		for copy in pending {
+			pending_sources[copy.src] = true
+		}
 
-			// Emit: b <- c (copy from current location of a to b)
-			sequenced << ParallelCopy{
-				dest: b
-				src:  c
-			}
-
-			// Update location: value originally at a is now at b
-			loc[a] = b
-			to_do.delete(b)
-
-			// Check if this makes other copies ready
-			// A copy becomes ready when its source is no longer in to_do
-			for dest, _ in to_do {
-				if dest in ready {
-					continue
-				}
-				src := pred[dest]
-				loc_of_src := if l := loc[src] { l } else { src }
-				// Ready if source location is not a pending destination
-				// AND destination is not used as source by another pending copy
-				mut dest_used_as_src := false
-				for other_dest, _ in to_do {
-					if other_dest != dest && pred[other_dest] == dest {
-						dest_used_as_src = true
-						break
-					}
-				}
-				if !to_do[loc_of_src] && !dest_used_as_src {
-					ready << dest
-				}
-			}
-		} else {
-			// No ready copies means we have a cycle
-			// Break the cycle by saving one value to a temporary
-
-			// Pick any remaining destination
-			mut b := 0
-			for dest, _ in to_do {
-				b = dest
+		// A copy is ready when writing its destination cannot clobber a pending source.
+		mut ready_idx := -1
+		for i, copy in pending {
+			if !pending_sources[copy.dest] {
+				ready_idx = i
 				break
 			}
+		}
 
-			// Create a temporary to hold the value at b's current location
-			typ := m.values[b].typ
-			temp := m.add_value_node(.instruction, typ, 'phi_tmp_${m.values.len}', 0)
+		if ready_idx >= 0 {
+			ready_copy := pending[ready_idx]
+			sequenced << ready_copy
+			pending.delete(ready_idx)
+			continue
+		}
 
-			// Save the current location of b to temp
-			c := loc[b]
-			sequenced << ParallelCopy{
-				dest: temp
-				src:  c
+		// No ready copies means a cycle.
+		// Materialize temp in the block and redirect all reads of the chosen source to it.
+		cycle_src := pending[0].src
+		mut typ := if cycle_src < m.values.len { m.values[cycle_src].typ } else { 0 }
+		if typ == 0 && pending[0].dest < m.values.len {
+			typ = m.values[pending[0].dest].typ
+		}
+		temp := insert_temp_in_block(mut m, blk_id, cycle_src, typ)
+		for i := 0; i < pending.len; i++ {
+			if pending[i].src == cycle_src {
+				pending[i] = ParallelCopy{
+					dest: pending[i].dest
+					src:  temp
+				}
 			}
-
-			// Update: value originally at b is now at temp
-			loc[b] = temp
-
-			// Now b should be ready (its source location is temp, not a pending dest)
-			ready << b
 		}
 	}
 
@@ -399,6 +337,32 @@ fn resolve_parallel_copies_briggs(mut m ssa.Module, blk_id int, copies []Paralle
 	for copy in sequenced {
 		insert_copy_in_block(mut m, blk_id, copy.dest, copy.src)
 	}
+}
+
+fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
+	m.instrs << ssa.Instruction{
+		op:       .bitcast
+		block:    blk_id
+		typ:      typ
+		operands: [ssa.ValueID(src)]
+	}
+	temp_id := m.add_value_node(.instruction, typ, 'phi_tmp_${m.values.len}', m.instrs.len - 1)
+
+	if src < m.values.len && temp_id !in m.values[src].uses {
+		m.values[src].uses << temp_id
+	}
+
+	// Safe insertion: find terminator and insert before it
+	mut insert_idx := m.blocks[blk_id].instrs.len
+	if insert_idx > 0 {
+		last_val := m.blocks[blk_id].instrs.last()
+		last_instr := m.instrs[m.values[last_val].index]
+		if last_instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {
+			insert_idx = m.blocks[blk_id].instrs.len - 1
+		}
+	}
+	m.blocks[blk_id].instrs.insert(insert_idx, temp_id)
+	return temp_id
 }
 
 fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
@@ -410,6 +374,12 @@ fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 		operands: [ssa.ValueID(dest), src]
 	}
 	val_id := m.add_value_node(.instruction, typ, 'copy', m.instrs.len - 1)
+	if dest < m.values.len && val_id !in m.values[dest].uses {
+		m.values[dest].uses << val_id
+	}
+	if src < m.values.len && val_id !in m.values[src].uses {
+		m.values[src].uses << val_id
+	}
 
 	// Safe insertion: find terminator and insert before it
 	mut insert_idx := m.blocks[blk_id].instrs.len

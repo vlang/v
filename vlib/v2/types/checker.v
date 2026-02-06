@@ -569,6 +569,22 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	if got_type == exp_type {
 		return true
 	}
+	// unwrap aliases for compatibility checks
+	if exp_type is Alias {
+		return c.check_types(exp_type.base_type, got_type)
+	}
+	if got_type is Alias {
+		return c.check_types(exp_type, got_type.base_type)
+	}
+	// allow nil in expression contexts that expect pointer-like values
+	if got_type is Nil {
+		match exp_type {
+			FnType, Interface, Pointer {
+				return true
+			}
+			else {}
+		}
+	}
 	// number literals
 	if exp_type.is_number() && got_type.is_number_literal() {
 		return true
@@ -827,7 +843,17 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// if lhs_type is Enum {
 			// 	c.expected_type = lhs_type
 			// }
-			c.expr(expr.rhs)
+			if expr.op == .and {
+				// In `a is T && a.field ...`, RHS is evaluated only when the smart-cast is true.
+				// Type-check RHS in a nested scope with casts from LHS applied.
+				c.open_scope()
+				sc_names, sc_types := c.extract_smartcasts(expr.lhs)
+				c.apply_smartcasts(sc_names, sc_types)
+				c.expr(expr.rhs)
+				c.close_scope()
+			} else {
+				c.expr(expr.rhs)
+			}
 			// c.expected_type = expected_type
 			if expr.op.is_comparison() {
 				return bool_
@@ -928,24 +954,12 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			return c.expr(expr.expr)
 		}
 		ast.PostfixExpr {
-			// TODO:
-			// typ := c.expr(expr.expr)
-			// if typ is FnType {
-			// 	if rt := typ.return_type {
-			// 		if rt in [OptionType, ResultType] { return typ }
-			// 	}
-			// 	if expr.op == .not {
-			// 		return_type := OptionType{base_type: typ.return_type or { void_ }}
-			// 		return FnType{...typ, return_type: return_type}
-			// 	}
-			// 	else if expr.op == .question {
-			// 		return_type := ResultType{base_type: typ.return_type or { void_ }}
-			// 		return FnType{...typ, return_type: return_type}
-			// 	}
-			// }
-			// return typ
-
-			return c.expr(expr.expr)
+			typ := c.expr(expr.expr)
+			// The `!` operator (error propagation) unwraps result/option types
+			if expr.op == .not {
+				return typ.unwrap()
+			}
+			return typ
 		}
 		ast.PrefixExpr {
 			expr_type := c.expr(expr.expr)
@@ -1186,17 +1200,35 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 					}
 					key_type := expr_type.key_type()
 					c.scope.insert(stmt.init.key.name, key_type)
+					if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
+						c.fn_root_scope.objects[stmt.init.key.name] = key_type
+					}
 				}
 				mut value_type := expr_type.value_type()
+				// For iterator structs (e.g. RunesIterator), value_type() returns
+				// the struct itself. The transformer lowers these to direct iteration,
+				// so don't flatten the stale iterator type to fn_root_scope.
+				is_iterator_struct := value_type is Struct
 				if stmt.init.value is ast.ModifierExpr {
+					// Store the non-ref type for fn_root_scope because the transformer
+					// lowers mutable for-in loops to indexed access with value copies.
+					non_ref_value_type := value_type
 					if stmt.init.value.kind == .key_mut {
 						value_type = value_type.ref()
 					}
 					if stmt.init.value.expr is ast.Ident {
 						c.scope.insert(stmt.init.value.expr.name, value_type)
+						if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
+							&& c.fn_root_scope != c.scope {
+							c.fn_root_scope.objects[stmt.init.value.expr.name] = non_ref_value_type
+						}
 					}
 				} else if stmt.init.value is ast.Ident {
 					c.scope.insert(stmt.init.value.name, value_type)
+					if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
+						&& c.fn_root_scope != c.scope {
+						c.fn_root_scope.objects[stmt.init.value.name] = value_type
+					}
 				}
 			} else {
 				if stmt.cond !is ast.EmptyExpr {
@@ -1553,10 +1585,18 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	// so that local variables declared in the body are included
 	fn_scope := c.scope
 	scope_fn_name := if decl.is_method {
-		// Get receiver base type name for method scope key
+		// Get receiver base type name for method scope key.
+		// Strip module prefix since set_fn_scope already prepends the module.
 		mut receiver_type := c.expr(decl.receiver.typ)
 		receiver_base_type := receiver_type.base_type()
-		'${receiver_base_type.name()}__${decl.name}'
+		mut recv_name := receiver_base_type.name()
+		if c.cur_file_module != '' {
+			prefix := '${c.cur_file_module}__'
+			if recv_name.starts_with(prefix) {
+				recv_name = recv_name[prefix.len..]
+			}
+		}
+		'${recv_name}__${decl.name}'
 	} else {
 		decl.name
 	}
@@ -1848,7 +1888,7 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexExpr) ast.Expr {
 	lhs_type := c.expr(expr.lhs)
 	// expr_type := c.expr(expr.expr)
-	if lhs_type is FnType {
+	if c.is_callable_type(lhs_type) {
 		return ast.GenericArgs{
 			lhs:  expr.lhs
 			args: [expr.expr]
@@ -1862,10 +1902,27 @@ fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexE
 	}
 }
 
+fn (c &Checker) is_callable_type(t Type) bool {
+	match t {
+		FnType {
+			return true
+		}
+		Alias {
+			return c.is_callable_type(t.base_type)
+		}
+		Pointer {
+			return c.is_callable_type(t.base_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut c Checker) resolve_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
 	lhs_type := c.expr(expr.lhs)
 	// expr_type := c.expr(expr.expr)
-	if lhs_type is FnType {
+	if c.is_callable_type(lhs_type) {
 		return ast.CallExpr{
 			lhs:  expr.lhs
 			args: [expr.expr]
@@ -2514,6 +2571,11 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 				if field.name == name {
 					return t
 					// return int_
+				}
+			}
+			if name == 'str' {
+				return FnType{
+					return_type: string_
 				}
 			}
 			// flags - compiler magic (currently)

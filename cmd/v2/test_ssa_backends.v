@@ -14,7 +14,7 @@ fn main() {
 	vroot := os.dir(@VEXE)
 	v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
 	v2_binary := os.join_path(vroot, 'cmd', 'v2', 'v2')
-	build_res := os.execute('${os.quoted_path(@VEXE)} ${v2_source} -o ${v2_binary}')
+	build_res := os.execute('${@VEXE} ${v2_source} -o ${v2_binary}')
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
@@ -67,16 +67,24 @@ fn main() {
 		return
 	}
 
-	// Run Reference (v run test.v)
-	println('[*] Running reference: v -enable-globals run ${input_file}...')
-	ref_res := os.execute('${os.quoted_path(@VEXE)} -n -w -enable-globals run ${input_file}')
-	if ref_res.exit_code != 0 {
-		eprintln('Error: Reference run failed')
-		eprintln(ref_res.output)
-		return
+	// Get expected output: use .out file if --skip-builtin, otherwise run reference compiler
+	mut expected_out := ''
+	out_file := input_file.replace('.v', '.out')
+	if os.args.contains('--skip-builtin') && os.exists(out_file) {
+		println('[*] Using expected output from ${out_file}')
+		expected_out = os.read_file(out_file) or { '' }.trim_space().replace('\r\n', '\n')
+	} else {
+		// Run Reference (v run test.v)
+		println('[*] Running reference: v -enable-globals run ${input_file}...')
+		ref_res := os.execute('v -n -w -enable-globals run ${input_file}')
+		if ref_res.exit_code != 0 {
+			eprintln('Error: Reference run failed')
+			eprintln(ref_res.output)
+			return
+		}
+		// Normalize newlines
+		expected_out = ref_res.output.trim_space().replace('\r\n', '\n')
 	}
-	// Normalize newlines
-	expected_out := ref_res.output.trim_space().replace('\r\n', '\n')
 
 	// Run Generated Binary (the v2-produced one we saved earlier)
 	println('[*] Running generated binary...')

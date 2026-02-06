@@ -5,10 +5,13 @@ module builder
 
 import os
 import v2.ast
+import v2.abi
 import v2.gen.arm64
 import v2.gen.cleanc
 import v2.gen.v as gen_v
 import v2.gen.x64
+import v2.insel
+import v2.mir
 import v2.pref
 import v2.ssa
 import v2.ssa.optimize
@@ -176,10 +179,8 @@ fn (mut b Builder) gen_cleanc() {
 
 		println('[*] Compiled ${output_name}')
 
-		// Clean up C file unless -keepc is specified
-		if !b.pref.keep_c {
-			os.rm(c_file) or {}
-		}
+		// Keep C file (always preserve for debugging)
+		// To explicitly remove, use os.rm manually
 	}
 }
 
@@ -194,13 +195,31 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		return
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
+	mut native_sw := time.new_stopwatch()
 
 	// Build all files together with proper multi-file ordering
+	mut stage_start := native_sw.elapsed()
 	ssa_builder.build_all(b.files)
+	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
+
+	stage_start = native_sw.elapsed()
 	optimize.optimize(mut mod)
+	print_time('SSA Optimize', time.Duration(native_sw.elapsed() - stage_start))
 	$if debug {
 		optimize.verify_and_panic(mod, 'full optimization')
 	}
+
+	stage_start = native_sw.elapsed()
+	mut mir_mod := mir.lower_from_ssa(mod)
+	print_time('MIR Lower', time.Duration(native_sw.elapsed() - stage_start))
+
+	stage_start = native_sw.elapsed()
+	abi.lower(mut mir_mod, arch)
+	print_time('ABI Lower', time.Duration(native_sw.elapsed() - stage_start))
+
+	stage_start = native_sw.elapsed()
+	insel.select(mut mir_mod, arch)
+	print_time('InsSel', time.Duration(native_sw.elapsed() - stage_start))
 
 	// Determine output binary name from the last user file
 	output_binary := if b.pref.output_file != '' {
@@ -213,7 +232,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	if arch == .arm64 && os.user_os() == 'macos' {
 		// Use built-in linker for ARM64 macOS
-		mut gen := arm64.Gen.new(mod)
+		mut gen := arm64.Gen.new(&mir_mod)
 		gen.gen()
 		gen.link_executable(output_binary)
 
@@ -225,11 +244,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		obj_file := 'main.o'
 
 		if arch == .arm64 {
-			mut gen := arm64.Gen.new(mod)
+			mut gen := arm64.Gen.new(&mir_mod)
 			gen.gen()
 			gen.write_file(obj_file)
 		} else {
-			mut gen := x64.Gen.new(mod)
+			mut gen := x64.Gen.new(&mir_mod)
 			gen.gen()
 			gen.write_file(obj_file)
 		}
