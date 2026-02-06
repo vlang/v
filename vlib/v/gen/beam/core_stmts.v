@@ -169,6 +169,7 @@ fn (mut g CoreGen) core_let_chain(node ast.AssignStmt, stmts []ast.Stmt, next_id
 	}
 
 	// Handle each left = right pair as a let binding
+	mut let_count := 0
 	for i, left in node.left {
 		if left is ast.Ident {
 			if left.name == '_' {
@@ -204,20 +205,33 @@ fn (mut g CoreGen) core_let_chain(node ast.AssignStmt, stmts []ast.Stmt, next_id
 			g.write_indent_core()
 			g.out.write_string('in  ')
 			g.indent++
+			let_count++
 
 			// Last binding in this assignment -> continue with rest of body
 			if i == node.left.len - 1 {
 				g.core_body_chain(stmts, next_idx, false)
 			}
 			// If more bindings, the loop continues and they chain
+		} else {
+			// Non-ident left side (index, selector, etc.) - treat as side effect
+			if i == 0 && write_indent {
+				g.write_indent_core()
+			}
+			rhs_idx := if i < node.right.len { i } else { 0 }
+			g.out.write_string('do  ')
+			g.core_expr(node.right[rhs_idx])
+			g.out.writeln('')
+			g.indent++
+			if i == node.left.len - 1 {
+				g.core_body_chain(stmts, next_idx, true)
+			}
+			g.indent--
 		}
 	}
 
 	// Unwind indent for each let binding we added
-	for left in node.left {
-		if left is ast.Ident && left.name != '_' {
-			g.indent--
-		}
+	for _ in 0 .. let_count {
+		g.indent--
 	}
 }
 
@@ -335,10 +349,26 @@ fn (mut g CoreGen) core_for_foldl(node ast.ForInStmt, accumulators []string, ini
 	g.write_indent_core()
 	if accumulators.len == 1 {
 		g.out.writeln('fun (${loop_var}, ${acc_in[0]}) ->')
+		g.indent++
 	} else {
-		g.out.writeln('fun (${loop_var}, {${acc_in.join(', ')}}) ->')
+		// Core Erlang doesn't support tuple patterns in fun args.
+		// Use a single tuple param and destructure with element/2.
+		acc_tuple := g.new_temp()
+		g.out.writeln('fun (${loop_var}, ${acc_tuple}) ->')
+		g.indent++
+		for j, ain in acc_in {
+			g.write_indent_core()
+			g.out.write_string("let <${ain}> =")
+			g.out.writeln('')
+			g.indent++
+			g.write_indent_core()
+			g.out.writeln("call 'erlang':'element'(${j + 1}, ${acc_tuple})")
+			g.indent--
+			g.write_indent_core()
+			g.out.write_string('in  ')
+		}
+		g.out.writeln('')
 	}
-	g.indent++
 
 	// Generate fold body: compute new accumulator values
 	g.core_fold_body(node.stmts, accumulators, acc_in, acc_out)

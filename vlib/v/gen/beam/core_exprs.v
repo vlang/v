@@ -9,7 +9,7 @@ import strings
 fn (mut g CoreGen) core_expr(node ast.Expr) {
 	match node {
 		ast.IntegerLiteral { g.core_integer_literal(node) }
-		ast.FloatLiteral { g.write_core(node.val) }
+		ast.FloatLiteral { g.core_float_literal(node) }
 		ast.StringLiteral { g.core_string_literal(node) }
 		ast.BoolLiteral { g.write_core(if node.val { "'true'" } else { "'false'" }) }
 		ast.Ident { g.core_ident(node) }
@@ -38,6 +38,28 @@ fn (mut g CoreGen) core_integer_literal(node ast.IntegerLiteral) {
 		g.write_core('8#${val[2..]}')
 	} else if val.len > 2 && val[0] == `0` && (val[1] == `b` || val[1] == `B`) {
 		g.write_core('2#${val[2..]}')
+	} else {
+		g.write_core(val)
+	}
+}
+
+fn (mut g CoreGen) core_float_literal(node ast.FloatLiteral) {
+	val := node.val
+	// Core Erlang requires a decimal point in float literals.
+	// V may produce "1e+10" or "1e10" which needs "1.0e+10" or "1.0e10"
+	if val.contains('e') || val.contains('E') {
+		if !val.contains('.') {
+			// Insert .0 before the exponent
+			e_pos := if val.contains('e') { val.index('e') or { -1 } } else { val.index('E') or { -1 } }
+			if e_pos > 0 {
+				g.write_core('${val[..e_pos]}.0${val[e_pos..]}')
+				return
+			}
+		}
+	}
+	// Ensure there's a decimal point
+	if !val.contains('.') {
+		g.write_core('${val}.0')
 	} else {
 		g.write_core(val)
 	}
