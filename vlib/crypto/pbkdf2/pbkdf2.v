@@ -34,7 +34,7 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 			}
 		}
 		else {
-			panic('Unsupported hash')
+			return error('Unsupported hash')
 		}
 	}
 
