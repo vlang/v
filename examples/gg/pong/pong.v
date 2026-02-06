@@ -1,3 +1,4 @@
+// vtest build: !openbsd
 module main
 
 import gg
