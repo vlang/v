@@ -11,7 +11,7 @@ compare_digit_array(Operand_a, Operand_b) ->
         end;
         false -> begin
             % TODO: unhandled stmt type
-            ok            0
+            0
         end
         end.
 
@@ -151,7 +151,7 @@ divide_array_by_digit(Operand_a, Divisor, Quotient, Remainder) ->
             Rem = todo,
             Quo = todo,
             % TODO: unhandled stmt type
-            ok            shrink_tail_zeros(Quotient),
+            shrink_tail_zeros(Quotient),
             shrink_tail_zeros(Remainder),
             ok
         end
@@ -179,7 +179,7 @@ shift_digits_right(Original, Amount, Storage) ->
     Mask = (todo bsl Amount) - 1,
     Offset = 60 - Amount,
     % TODO: unhandled stmt type
-    ok    shrink_tail_zeros(Storage),
+    shrink_tail_zeros(Storage),
     ok.
 
 bitwise_or_digit_array(Operand_a, Operand_b, Storage) ->
@@ -245,13 +245,13 @@ bit_set(A, N) ->
     Byte_offset = N div 60,
     Mask = todo bsl todo,
     % TODO: unhandled stmt type
-    ok
+
 knuth_divide_array_by_array(Operand_a, Operand_b, Quotient, Remainder) ->
     M = length(Operand_a) - length(Operand_b),
     N = length(Operand_b),
     U = [],
     V = [],
-    Leading_zeros = leading_zeros_64('[]u64.last'(Operand_b)) - 4,
+    Leading_zeros = leading_zeros_64(lists:last(Operand_b)) - 4,
     case Leading_zeros > 0 of
         true -> begin
             Carry = todo,
@@ -284,13 +284,13 @@ knuth_divide_array_by_array(Operand_a, Operand_b, Quotient, Remainder) ->
     V_n_1 = lists:nth(N - 1 + 1, V),
     V_n_2 = lists:nth(N - 2 + 1, V),
     % TODO: unhandled stmt type
-    ok    '[]u64.delete_last'(Remainder),
+    '[]u64.delete_last'(Remainder),
     case Leading_zeros > 0 of
         true -> begin
             Carry4 = todo,
             Max_leading_digit = (todo bsl Leading_zeros) - 1,
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     shrink_tail_zeros(Quotient),
@@ -302,13 +302,13 @@ greater_than(X1, X2, Y1, Y2) ->
 
 'Integer.montgomery'(M) ->
     % TODO: unhandled stmt type
-    ok    N = 'Integer.abs'(M),
+    N = 'Integer.abs'(M),
     B = todo,
     #{n => N, ni => ('Integer.left_shift'('Integer.mod_inv'('Integer.left_shift'(#{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'}, B), N), B) - #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'}) / N, rr => 'Integer.left_shift'(#{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'}, B * 2) rem N, {vbeam, type} => 'MontgomeryContext'}.
 
 'Integer.mont_odd'(A, X, M) ->
     % TODO: unhandled stmt type
-    ok    Window = get_window_size(todo),
+    Window = get_window_size(todo),
     Table = [],
     Ctx = 'Integer.montgomery'(M),
     Aa = case maps:get(signum, A) < 0 orelse 'Integer.abs_cmp'(A, M) >= 0 of
@@ -316,11 +316,11 @@ greater_than(X1, X2, Y1, Y2) ->
         false -> A
     end,
     % TODO: unhandled stmt type
-    ok    R = case '[]u64.last'(maps:get(digits, M)) band (todo bsl 59) /= 0 of
+    R = case lists:last(maps:get(digits, M)) band (todo bsl 59) /= 0 of
         true -> begin
             Rdigits = [],
             % TODO: unhandled stmt type
-            ok            #{digits => Rdigits, signum => 1, {vbeam, type} => 'Integer'}
+            #{digits => Rdigits, signum => 1, {vbeam, type} => 'Integer'}
         end;
         false -> 'Integer.to_mont'(#{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'}, Ctx)
     end,
@@ -329,20 +329,20 @@ greater_than(X1, X2, Y1, Y2) ->
     Wvalue = 0,
     Wend = 0,
     % TODO: unhandled stmt type
-    ok    'Integer.from_mont'(R, Ctx).
+    'Integer.from_mont'(R, Ctx).
 
 'Integer.mont_even'(A, X, M) ->
     % TODO: unhandled stmt type
-    ok    M1 = element(1, 'Integer.rsh_to_set_bit'(M)),
+    M1 = element(1, 'Integer.rsh_to_set_bit'(M)),
     J = element(2, 'Integer.rsh_to_set_bit'(M)),
     M2 = 'Integer.left_shift'(#{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'}, J),
     % TODO: unhandled stmt type
-    ok    X1 = 'Integer.mont_odd'(A, X, M1),
+    X1 = 'Integer.mont_odd'(A, X, M1),
     X2 = 'Integer.exp_binary'(A, X, M2),
     M2n = todo - 1,
     M1i = 'Integer.mod_inv'(M1, M2),
     % TODO: unhandled stmt type
-    ok    T1 = 'Integer.mask_bits'(X1, M2n),
+    T1 = 'Integer.mask_bits'(X1, M2n),
     T2 = 'Integer.mask_bits'(X2, M2n),
     T = 'Integer.mask_bits'((case 'Integer.abs_cmp'(T2, T1) >= 0 of
         true -> 'Integer.mask_bits'((T2 - T1), M2n);
@@ -352,18 +352,18 @@ greater_than(X1, X2, Y1, Y2) ->
 
 'Integer.exp_binary'(A, X, M) ->
     % TODO: unhandled stmt type
-    ok    N = todo - 1,
+    N = todo - 1,
     Window = get_window_size(todo),
     Table = [],
     D = 'Integer.mask_bits'((lists:nth(1, Table) * lists:nth(1, Table)), N),
     % TODO: unhandled stmt type
-    ok    R = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
+    R = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
     Start = true,
     Wstart = 'Integer.bit_len'(X) - 1,
     Wend = 0,
     Wvalue = 1,
     % TODO: unhandled stmt type
-    ok    'Integer.mask_bits'(R, N).
+    'Integer.mask_bits'(R, N).
 
 get_window_size(N) ->
     case N > 768 of
@@ -404,7 +404,7 @@ get_window_size(N) ->
         end.
 
 'Integer.clone'(X) ->
-    #{digits => '[]u64.clone'(maps:get(digits, X)), signum => maps:get(signum, X), is_const => false, {vbeam, type} => 'Integer'}.
+    #{digits => maps:get(digits, X), signum => maps:get(signum, X), is_const => false, {vbeam, type} => 'Integer'}.
 
 int_signum(Value) ->
     case Value == 0 of
@@ -474,7 +474,7 @@ integer_from_bytes(Oinput, Config) ->
                     true -> begin
                         First_non_zero_index1 = I,
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 ok
@@ -487,7 +487,7 @@ integer_from_bytes(Oinput, Config) ->
                     Carry_value = todo,
                     Digits = [],
                     % TODO: unhandled stmt type
-                    ok                    case Carry_bits > 0 of
+                    case Carry_bits > 0 of
                         true -> begin
                             Remaining_shift = 60 - Carry_bits,
                             Digits bsl (Carry_value bsr Remaining_shift)
@@ -511,7 +511,7 @@ integer_from_radix(All_characters, Radix) ->
     case Radix < 2 orelse Radix > 36 of
         true -> error(<<"math.big: Radix must be between 2 and 36 (inclusive)">>);
         false -> begin
-            Characters = 'string.to_lower'(All_characters),
+            Characters = string:lowercase(All_characters),
             validate_string(Characters, Radix),
             integer_from_regular_string(Characters, Radix)
         end
@@ -524,7 +524,7 @@ validate_string(Characters, Radix) ->
         false -> 0
     end,
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 integer_from_regular_string(Characters, Radix) ->
     Sign_present = length(Characters) > 0 andalso (lists:nth(1, Characters) == todo orelse lists:nth(1, Characters) == todo),
@@ -544,7 +544,7 @@ integer_from_regular_string(Characters, Radix) ->
     Pow = maps:get(todo, #{2 => 59, 3 => 37, 4 => 29, 5 => 25, 6 => 23, 7 => 21, 8 => 19, 9 => 18, 10 => 18, 11 => 17, 12 => 16, 13 => 16, 14 => 15, 15 => 15, 16 => 14, 17 => 14, 18 => 14, 19 => 14, 20 => 13, 21 => 13, 22 => 13, 23 => 13, 24 => 13, 25 => 12, 26 => 12, 27 => 12, 28 => 12, 29 => 12, 30 => 12, 31 => 12, 32 => 11, 33 => 11, 34 => 11, 35 => 11, 36 => 11}),
     Radix_pow = 'Integer.pow'(Radix_int, todo),
     % TODO: unhandled stmt type
-    ok    #{digits => '[]u64.clone'(maps:get(digits, Result)), signum => maps:get(signum, Result) * Signum, {vbeam, type} => 'Integer'}.
+    #{digits => maps:get(digits, Result), signum => maps:get(signum, Result) * Signum, {vbeam, type} => 'Integer'}.
 
 regular_string_to_radix(Characters, Radix) ->
     Result = todo,
@@ -557,13 +557,13 @@ regular_string_to_radix(Characters, Radix) ->
 'Integer.abs'(A) ->
     case maps:get(signum, A) == 0 of
         true -> #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'};
-        false -> #{digits => '[]u64.clone'(maps:get(digits, A)), signum => 1, {vbeam, type} => 'Integer'}
+        false -> #{digits => maps:get(digits, A), signum => 1, {vbeam, type} => 'Integer'}
     end.
 
 'Integer.neg'(A) ->
     case maps:get(signum, A) == 0 of
         true -> #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'};
-        false -> #{digits => '[]u64.clone'(maps:get(digits, A)), signum => -maps:get(signum, A), {vbeam, type} => 'Integer'}
+        false -> #{digits => maps:get(digits, A), signum => -maps:get(signum, A), {vbeam, type} => 'Integer'}
     end.
 
 'Integer.+'(Augend, Addend) ->
@@ -681,7 +681,7 @@ regular_string_to_radix(Characters, Radix) ->
 
 'Integer.div_mod'(Dividend, Divisor) ->
     case todo of
-        true -> panic(<<"math.big: Cannot divide by zero">>);
+        true -> erlang:error({panic, <<"math.big: Cannot divide by zero">>});
         false -> ok
     end,
     'Integer.div_mod_internal'(Dividend, Divisor).
@@ -724,7 +724,7 @@ regular_string_to_radix(Characters, Radix) ->
 
 'Integer.mask_bits'(A, N) ->
     % TODO: unhandled stmt type
-    ok    case length(maps:get(digits, A)) == 0 orelse N == 0 of
+    case length(maps:get(digits, A)) == 0 orelse N == 0 of
         true -> #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'};
         false -> begin
             W = N div 60,
@@ -735,12 +735,12 @@ regular_string_to_radix(Characters, Radix) ->
                     true -> begin
                         Storage = [],
                         % TODO: unhandled stmt type
-                        ok                        Storage
+                        Storage
                     end;
                     false -> begin
                         Storage1 = [],
                         % TODO: unhandled stmt type
-                        ok                        Storage1
+                        Storage1
                     end
                 end, signum => 1, {vbeam, type} => 'Integer'}
                         end
@@ -758,7 +758,7 @@ regular_string_to_radix(Characters, Radix) ->
                     X = Base,
                     Y = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
                     % TODO: unhandled stmt type
-                    ok                    X * Y
+                    X * Y
                 end
                         end
                 end.
@@ -774,7 +774,7 @@ regular_string_to_radix(Characters, Radix) ->
                     X = Base rem Modulus,
                     Y = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
                     % TODO: unhandled stmt type
-                    ok                    X * Y rem Modulus
+                    X * Y rem Modulus
                 end
                         end
                 end.
@@ -858,7 +858,7 @@ regular_string_to_radix(Characters, Radix) ->
     case Target_index >= length(maps:get(digits, A)) of
         true -> ok;
         false -> begin
-            Copy = '[]u64.clone'(maps:get(digits, A)),
+            Copy = maps:get(digits, A),
             case Value of
                 true -> ok;
                 false -> ok
@@ -971,18 +971,18 @@ regular_string_to_radix(Characters, Radix) ->
 
 'Integer.general_radix_str'(Integer, Radix) ->
     % TODO: unhandled stmt type
-    ok    Divisor = 'Integer.pow'(integer_from_int(Radix), todo),
+    Divisor = 'Integer.pow'(integer_from_int(Radix), todo),
     Current = 'Integer.abs'(Integer),
     Digit = #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'},
     Sb = new_builder(length(maps:get(digits, Integer)) * maps:get(Radix, #{2 => 59, 3 => 37, 4 => 29, 5 => 25, 6 => 23, 7 => 21, 8 => 19, 9 => 18, 10 => 18, 11 => 17, 12 => 16, 13 => 16, 14 => 15, 15 => 15, 16 => 14, 17 => 14, 18 => 14, 19 => 14, 20 => 13, 21 => 13, 22 => 13, 23 => 13, 24 => 13, 25 => 12, 26 => 12, 27 => 12, 28 => 12, 29 => 12, 30 => 12, 31 => 12, 32 => 11, 33 => 11, 34 => 11, 35 => 11, 36 => 11})),
     St = [],
     % TODO: unhandled stmt type
-    ok    case maps:get(signum, Integer) == -1 of
+    case maps:get(signum, Integer) == -1 of
         true -> 'Builder.write_string'(Sb, <<"-">>);
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    'Builder.str'(Sb).
+    'Builder.str'(Sb).
 
 general_str(Quotient, Remainder, Radix) ->
     case maps:get(signum, Quotient) == 0 andalso maps:get(signum, Remainder) == 0 of
@@ -994,12 +994,12 @@ general_str(Quotient, Remainder, Radix) ->
             Sb = new_builder(maps:get(Radix, #{2 => 59, 3 => 37, 4 => 29, 5 => 25, 6 => 23, 7 => 21, 8 => 19, 9 => 18, 10 => 18, 11 => 17, 12 => 16, 13 => 16, 14 => 15, 15 => 15, 16 => 14, 17 => 14, 18 => 14, 19 => 14, 20 => 13, 21 => 13, 22 => 13, 23 => 13, 24 => 13, 25 => 12, 26 => 12, 27 => 12, 28 => 12, 29 => 12, 30 => 12, 31 => 12, 32 => 11, 33 => 11, 34 => 11, 35 => 11, 36 => 11})),
             St = [],
             % TODO: unhandled stmt type
-            ok            case maps:get(signum, Quotient) > 0 of
+            case maps:get(signum, Quotient) > 0 of
                 true -> 'Builder.write_string'(Sb, repeat(48, maps:get(Radix, #{2 => 59, 3 => 37, 4 => 29, 5 => 25, 6 => 23, 7 => 21, 8 => 19, 9 => 18, 10 => 18, 11 => 17, 12 => 16, 13 => 16, 14 => 15, 15 => 15, 16 => 14, 17 => 14, 18 => 14, 19 => 14, 20 => 13, 21 => 13, 22 => 13, 23 => 13, 24 => 13, 25 => 12, 26 => 12, 27 => 12, 28 => 12, 29 => 12, 30 => 12, 31 => 12, 32 => 11, 33 => 11, 34 => 11, 35 => 11, 36 => 11}) - length(St)));
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok            'Builder.str'(Sb)
+            'Builder.str'(Sb)
         end
         end.
 
@@ -1027,7 +1027,7 @@ general_str(Quotient, Remainder, Radix) ->
             Bytes = [],
             Current_byte = todo,
             Bits_in_byte = 0,
-            Digit = '[]u64.last'(maps:get(digits, A)),
+            Digit = lists:last(maps:get(digits, A)),
             Bit = todo,
             Bits_in_byte1 = 8 - Bit_len rem 8,
             case Bits_in_byte1 == 8 of
@@ -1040,8 +1040,8 @@ general_str(Quotient, Remainder, Radix) ->
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok            % TODO: unhandled stmt type
-            ok            Bytes
+            % TODO: unhandled stmt type
+            Bytes
         end
         end.
 
@@ -1052,7 +1052,7 @@ general_str(Quotient, Remainder, Radix) ->
             Product = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
             Current = A,
             % TODO: unhandled stmt type
-            ok            Product
+            Product
         end
         end.
 
@@ -1066,7 +1066,7 @@ general_str(Quotient, Remainder, Radix) ->
             case maps:get(signum, A) == 0 of
                 true -> A;
                 false -> 
-                    case length(maps:get(digits, A)) == 1 andalso '[]u64.last'(maps:get(digits, A)) == 1 of
+                    case length(maps:get(digits, A)) == 1 andalso lists:last(maps:get(digits, A)) == 1 of
                         true -> A;
                         false -> begin
                             Shift = 'Integer.bit_len'(A),
@@ -1076,7 +1076,7 @@ general_str(Quotient, Remainder, Radix) ->
                             end,
                             Result = #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'},
                             % TODO: unhandled stmt type
-                            ok                            Result
+                            Result
                         end
                                         end
                                         end
@@ -1116,7 +1116,7 @@ bi_max(A, B) ->
                             Bz = element(2, 'Integer.rsh_to_set_bit'('Integer.abs'(B))),
                             Shift = umin(Az, Bz),
                             % TODO: unhandled stmt type
-                            ok                            'Integer.left_shift'(Bb, Shift)
+                            'Integer.left_shift'(Bb, Shift)
                         end
                                         end
                                         end
@@ -1139,7 +1139,7 @@ bi_max(A, B) ->
                                     Y = B,
                                     R = X rem Y,
                                     % TODO: unhandled stmt type
-                                    ok                                    Y
+                                    Y
                                 end
                                                         end
                                                                 end
@@ -1156,7 +1156,7 @@ bi_max(A, B) ->
     end.
 
 'Integer.mod_inv'(A, M) ->
-    N = #{digits => '[]u64.clone'(maps:get(digits, M)), signum => 1, {vbeam, type} => 'Integer'},
+    N = #{digits => maps:get(digits, M), signum => 1, {vbeam, type} => 'Integer'},
     B = A,
     X = #{digits => [todo], signum => 1, is_const => true, {vbeam, type} => 'Integer'},
     Y = #{digits => [], signum => 0, is_const => true, {vbeam, type} => 'Integer'},
@@ -1166,12 +1166,12 @@ bi_max(A, B) ->
     end,
     Sign = -1,
     % TODO: unhandled stmt type
-    ok    case Sign < 0 of
+    case Sign < 0 of
         true -> ok;
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    case maps:get(signum, Y) > 0 andalso 'Integer.abs_cmp'(Y, M) < 0 of
+    case maps:get(signum, Y) > 0 andalso 'Integer.abs_cmp'(Y, M) < 0 of
         true -> Y;
         false -> Y rem M
     end.
@@ -1182,7 +1182,7 @@ bi_max(A, B) ->
         false -> begin
             N = todo,
             % TODO: unhandled stmt type
-            ok            N1 = (N * 60) + todo,
+            N1 = (N * 60) + todo,
             'Integer.right_shift'(X, N1)
         end
         end.
@@ -1195,7 +1195,7 @@ bi_max(A, B) ->
         true -> false;
         false -> begin
             % TODO: unhandled stmt type
-            ok            N = '[]u64.last'(maps:get(digits, X)),
+            N = lists:last(maps:get(digits, X)),
             N band (N - todo) == 0
         end
         end.
@@ -1206,7 +1206,7 @@ bi_max(A, B) ->
         false -> 
             case length(maps:get(digits, X)) == 0 of
                 true -> 0;
-                false -> length(maps:get(digits, X)) * 60 - (leading_zeros_64('[]u64.last'(maps:get(digits, X))) - 4)
+                false -> length(maps:get(digits, X)) * 60 - (leading_zeros_64(lists:last(maps:get(digits, X))) - 4)
                         end
                 end.
 
@@ -1222,7 +1222,7 @@ bi_max(A, B) ->
     end,
     Ten = integer_from_int(10),
     % TODO: unhandled stmt type
-    ok    case Is_negative1 of
+    case Is_negative1 of
         true -> ok;
         false -> ok
     end,
@@ -1264,13 +1264,15 @@ iabs(V) ->
 shrink_tail_zeros(A) ->
     Alen = length(A),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.
+
 'Integer.shrink_tail_zeros'(I) ->
     Alen = length(maps:get(digits, I)),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.
+
 debug_u64_str(A) ->
     Sb = new_builder(30),
     'Builder.write_string'(Sb, <<"[">>),
@@ -1314,8 +1316,8 @@ debug_u32_str(A) ->
     end,
     Blen = length(B),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    Sb = new_builder(30),
+    % TODO: unhandled stmt type
+    Sb = new_builder(30),
     'Builder.write_string'(Sb, <<"[">>),
     First = true,
     First1 = lists:foldl(fun(I, FirstAcc) ->
@@ -1413,7 +1415,7 @@ toom3_multiply_digit_array(Operand_a, Operand_b, Storage) ->
                             false -> ok
                         end,
                         'Integer.shrink_tail_zeros'(B0),
-                        B11 = #{digits => '[]u64.clone'(lists:nth(todo + 1, Operand_b)), signum => 1, {vbeam, type} => 'Integer'},
+                        B11 = #{digits => lists:nth(todo + 1, Operand_b), signum => 1, {vbeam, type} => 'Integer'},
                     end;
                     false -> begin
                         case not '[]u64.all'(lists:nth(todo + 1, Operand_b), It == 0) of
@@ -1426,7 +1428,7 @@ toom3_multiply_digit_array(Operand_a, Operand_b, Storage) ->
                             false -> ok
                         end,
                         'Integer.shrink_tail_zeros'(B11),
-                        B21 = #{digits => '[]u64.clone'(lists:nth(todo + 1, Operand_b)), signum => 1, {vbeam, type} => 'Integer'},
+                        B21 = #{digits => lists:nth(todo + 1, Operand_b), signum => 1, {vbeam, type} => 'Integer'},
                     end
                 end
             end,
@@ -1448,7 +1450,7 @@ toom3_multiply_digit_array(Operand_a, Operand_b, Storage) ->
             Tm11 = Tm1 - T22,
             S = todo * 60,
             Result = 'Integer.left_shift'(('Integer.left_shift'(('Integer.left_shift'(('Integer.left_shift'(Pinf, S) + T22), S) + T11), S) + Tm11), S) + P0,
-            Storage = '[]u64.clone'(maps:get(digits, Result)),
+            Storage = maps:get(digits, Result),
         end
         end.
 
@@ -1461,7 +1463,8 @@ left_shift_digits_in_place(A, Amount) ->
     Old_len = length(A),
     Elem_size = maps:get(element_size, A),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 right_shift_digits_in_place(A, Amount) ->
     '[]u64.drop'(A, Amount),
     ok.

@@ -1,0 +1,33 @@
+module 'v.main' ['main'/0,
+                'show_result'/3,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'main'/0 =
+            fun () ->
+                do  apply 'use_stdout'/0()
+                    let <Old_rate> =
+                        'todo'
+                    in  'ok'
+        'show_result'/3 =
+            fun (I, Res, Delta) ->
+                case call 'erlang':'=:='(Delta, 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <Sdelta> =
+                            call 'erlang':'float_to_binary'(Delta)
+                        in  let <Color> =
+                                case call 'erlang':'>'(Delta, 0) of <'true'> when 'true' -> fun (_fref0) -> apply 'green'/1(_fref0) <'false'> when 'true' -> case call 'erlang':'=:='(Delta, 0) of <'true'> when 'true' -> fun (_fref0) -> apply 'white'/1(_fref0) <'false'> when 'true' -> fun (_fref0) -> apply 'red'/1(_fref0) end end
+                            in  let <Cdelta> =
+                                    apply 'colorize'/2(Color, Sdelta)
+                                in  apply 'info'/1(call 'erlang':'iolist_to_binary'([Cdelta|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('amount', Res))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(I)|[]]]]]]))
+                end
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

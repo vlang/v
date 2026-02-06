@@ -1,0 +1,139 @@
+module 'v.main' ['KvStore.create'/3,
+                'KvStore.get'/2,
+                'KvStore.update'/3,
+                'KvStore.delete'/2,
+                'KvStore.dump'/1,
+                'KvHandler.handle_create'/3,
+                'KvHandler.handle_get'/3,
+                'KvHandler.handle_update'/3,
+                'KvHandler.handle_delete'/3,
+                'KvHandler.handle_list'/3,
+                'handle_conn'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'KvStore.create'/3 =
+        fun (S, Key, Value) ->
+            do  apply 'RwMutex.lock'/1(call 'erlang':'map_get'('mu', S))
+                case call 'lists':'member'(Key, call 'erlang':'map_get'('store', S)) of
+                    <'true'> when 'true' -> 'false'
+                    <'false'> when 'true' -> 
+                        do  Value
+                            'true'
+                end
+    'KvStore.get'/2 =
+        fun (S, Key) ->
+            do  apply 'RwMutex.rlock'/1(call 'erlang':'map_get'('mu', S))
+                case 'todo' of
+                    <'true'> when 'true' -> Value
+                    <'false'> when 'true' -> 
+                        'todo'
+                end
+    'KvStore.update'/3 =
+        fun (S, Key, Value) ->
+            do  apply 'RwMutex.lock'/1(call 'erlang':'map_get'('mu', S))
+                case call 'lists':'member'(Key, call 'erlang':'map_get'('store', S)) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        'false'
+                end
+    'KvStore.delete'/2 =
+        fun (S, Key) ->
+            do  apply 'RwMutex.lock'/1(call 'erlang':'map_get'('mu', S))
+                case call 'lists':'member'(Key, call 'erlang':'map_get'('store', S)) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        'false'
+                end
+    'KvStore.dump'/1 =
+        fun (S) ->
+            call 'erlang':'map_get'('store', S)
+    'KvHandler.handle_create'/3 =
+        fun (H, Req, Wr) ->
+            let <P> =
+                apply 'Request.decode_params'/1(Req)
+            in  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('key', P)), 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        do  apply 'warn'/1(call 'erlang':'iolist_to_binary'([#{#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[P|[]]]))
+                            case call 'erlang':'not'(apply 'KvStore.create'/3(call 'erlang':'map_get'('store', H), call 'erlang':'map_get'('key', P), call 'erlang':'map_get'('value', P))) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    apply 'ResponseWriter.write'/2(Wr, ~{#{#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}#=>'true'}~)
+                            end
+                end
+    'KvHandler.handle_get'/3 =
+        fun (H, Req, Wr) ->
+            let <P> =
+                apply 'Request.decode_params'/1(Req)
+            in  let <Value> =
+                    apply 'KvStore.get'/2(call 'erlang':'map_get'('store', H), call 'erlang':'map_get'('key', P))
+                in  apply 'ResponseWriter.write'/2(Wr, ~{'key'=>call 'erlang':'map_get'('key', P),'value'=>Value,{'vbeam','type'}=>'KvItem'}~)
+    'KvHandler.handle_update'/3 =
+        fun (H, Req, Wr) ->
+            let <P> =
+                apply 'Request.decode_params'/1(Req)
+            in  case call 'erlang':'not'(apply 'KvStore.update'/3(call 'erlang':'map_get'('store', H), call 'erlang':'map_get'('key', P), call 'erlang':'map_get'('value', P))) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        apply 'ResponseWriter.write'/2(Wr, ~{#{#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}#=>'true'}~)
+                end
+    'KvHandler.handle_delete'/3 =
+        fun (H, Req, Wr) ->
+            let <P> =
+                apply 'Request.decode_params'/1(Req)
+            in  case call 'erlang':'not'(apply 'KvStore.delete'/2(call 'erlang':'map_get'('store', H), call 'erlang':'map_get'('key', P))) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        apply 'ResponseWriter.write'/2(Wr, ~{#{#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}#=>'true'}~)
+                end
+    'KvHandler.handle_list'/3 =
+        fun (H, _req, Wr) ->
+            let <Items> =
+                []
+            in  do  let <_1> =
+                    fun (V, K) ->
+                        do  call 'erlang':'bsl'(Items, ~{'key'=>K,'value'=>V,{'vbeam','type'}=>'KvItem'}~)
+                            call 'erlang':'+'(K, 1)
+                in  call 'lists':'foldl'(_1, 0, apply 'KvStore.dump'/1(call 'erlang':'map_get'('store', H)))
+                    do  call 'lists':'sort'(Items)
+                        apply 'ResponseWriter.write'/2(Wr, Items)
+    'handle_conn'/2 =
+        fun (Conn, H) ->
+            let <Log_inter> =
+                ~{{'vbeam','type'}=>'LoggingInterceptor'}~
+            in  let <Inters> =
+                    ~{'event'=>[call 'erlang':'map_get'('on_event', Log_inter)|[]],'encoded_request'=>[call 'erlang':'map_get'('on_encoded_request', Log_inter)|[]],'request'=>[call 'erlang':'map_get'('on_request', Log_inter)|[]],'response'=>[call 'erlang':'map_get'('on_response', Log_inter)|[]],'encoded_response'=>[call 'erlang':'map_get'('on_encoded_response', Log_inter)|[]],{'vbeam','type'}=>'Interceptors'}~
+                in  let <Srv> =
+                        apply 'new_server'/1(~{'stream'=>Conn,'handler'=>H,'interceptors'=>Inters,{'vbeam','type'}=>'ServerConfig'}~)
+                    in  do  apply 'dispatch_event'/3(call 'erlang':'map_get'('event', Inters), #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                            apply 'Server.start'/1(Srv)
+    'main'/0 =
+        fun () ->
+            let <S> =
+                ~{{'vbeam','type'}=>'KvStore'}~
+            in  let <H> =
+                    ~{'store'=>S,{'vbeam','type'}=>'KvHandler'}~
+                in  let <R> =
+                        ~{{'vbeam','type'}=>'Router'}~
+                    in  do  apply 'Router.register'/3(R, #{#<107>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('handle_create', H))
+                            do  apply 'Router.register'/3(R, #{#<107>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('handle_get', H))
+                                do  apply 'Router.register'/3(R, #{#<107>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('handle_update', H))
+                                    do  apply 'Router.register'/3(R, #{#<107>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('handle_delete', H))
+                                        do  apply 'Router.register'/3(R, #{#<107>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('handle_list', H))
+                                            let <Addr> =
+                                                #{#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#
+                                            in  let <L> =
+                                                    apply 'listen_tcp'/2('ip', Addr)
+                                                in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<84>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Addr|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                                        'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

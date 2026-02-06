@@ -15,23 +15,23 @@ main() ->
 
 is_valid(Grid, Row, Col, Num) ->
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    Start_row = Row - Row rem 3,
+    % TODO: unhandled stmt type
+    Start_row = Row - Row rem 3,
     Start_col = Col - Col rem 3,
     % TODO: unhandled stmt type
-    ok    true.
+    true.
 
 find_empty(Grid) ->
     % TODO: unhandled stmt type
-    ok    todo.
+    todo.
 
 solve_sudoku(Grid) ->
     Row = element(1, find_empty(Grid)),
     Col = element(2, find_empty(Grid)),
     % TODO: unhandled stmt type
-    ok    false.
+    false.
 
 print_grid(Label, Grid) ->
     vbeam_io:println(Label),
     % TODO: unhandled stmt type
-    ok
+        ok.

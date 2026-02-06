@@ -17,7 +17,7 @@
 
 'Decoder.skip_whitespace'(Checker, Message) ->
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Decoder.check_json_format'(Checker) ->
     'Decoder.skip_whitespace'(Checker, <<"empty json">>),
@@ -67,7 +67,7 @@
 'Decoder.check_string'(Checker) ->
     'Decoder.increment'(Checker, <<"string not closed">>),
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Decoder.check_number'(Checker) ->
     case lists:nth(maps:get(checker_idx, Checker) + 1, maps:get(json, Checker)) == todo of
@@ -80,7 +80,7 @@
             true -> begin
                 'Decoder.increment'(Checker, <<"">>),
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> 'Decoder.checker_error'(Checker, <<"expected digit got ", ('u8.ascii_str'(lists:nth(maps:get(checker_idx, Checker) + 1, maps:get(json, Checker))))/binary>>)
         end
     end,
@@ -92,7 +92,7 @@
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     case lists:nth(maps:get(checker_idx, Checker) + 1, maps:get(json, Checker)) == todo orelse lists:nth(maps:get(checker_idx, Checker) + 1, maps:get(json, Checker)) == todo of
@@ -107,7 +107,7 @@
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     todo,
@@ -159,13 +159,13 @@
     'Decoder.increment'(Checker, <<"expected array end">>),
     'Decoder.skip_whitespace'(Checker, <<"expected array end">>),
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'Decoder.check_object'(Checker) ->
     'Decoder.increment'(Checker, <<"expected object end">>),
     'Decoder.skip_whitespace'(Checker, <<"expected object end">>),
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 'LinkedList.push'(List, Value) ->
     New_node = #{value => Value, {vbeam, type} => 'Node'},
@@ -185,19 +185,19 @@
     Result_buffer = [],
     Current = maps:get(head, List),
     % TODO: unhandled stmt type
-    ok    '[]u8.bytestr'(Result_buffer).
+    '[]u8.bytestr'(Result_buffer).
 
 'LinkedList.str'(List) ->
     Sb = new_builder(128),
     % TODO: unhandled stmt type
-    ok    Current = maps:get(head, List),
+    Current = maps:get(head, List),
     % TODO: unhandled stmt type
-    ok    'Builder.str'(Sb).
+    'Builder.str'(Sb).
 
 'LinkedList.free'(List) ->
     Current = maps:get(head, List),
     % TODO: unhandled stmt type
-    ok
+
 'JsonDecodeError.msg'(E) ->
     <<"\\n", (integer_to_binary(maps:get(line, E)))/binary, ":", (integer_to_binary(maps:get(character, E)))/binary, ": Invalid json: ", (maps:get(message, E))/binary, "\\n", (maps:get(context, E))/binary>>.
 
@@ -207,7 +207,7 @@
     Character_number = 0,
     Last_newline = 0,
     % TODO: unhandled stmt type
-    ok    Cutoff = Character_number > 50,
+    Cutoff = Character_number > 50,
     Context_start = case Cutoff of
         true -> Position - 50;
         false -> Last_newline
@@ -246,7 +246,7 @@
     Character_number = 0,
     Last_newline = 0,
     % TODO: unhandled stmt type
-    ok    Cutoff = Character_number > 50,
+    Cutoff = Character_number > 50,
     Context_start = case Cutoff of
         true -> Start - 50;
         false -> Last_newline
@@ -304,7 +304,7 @@ get_dynamic_from_element(_t) ->
             Buffer_index = 1,
             String_index = 1,
             % TODO: unhandled stmt type
-            ok            todo,
+            todo,
             Val = '[]u8.bytestr'(String_buffer),
         end;
         false -> 'Decoder.decode_error'(Decoder, <<"Expected string, but got ", (maps:get(value_kind, String_info))/binary>>)
@@ -318,7 +318,7 @@ get_dynamic_from_element(_t) ->
             Array_position = maps:get(position, Array_info),
             Array_end = Array_position + maps:get(length, Array_info),
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> 'Decoder.decode_error'(Decoder, <<"Expected array, but got ", (maps:get(value_kind, Array_info))/binary>>)
     end,
     ok.
@@ -330,7 +330,7 @@ get_dynamic_from_element(_t) ->
             Map_position = maps:get(position, Map_info),
             Map_end = Map_position + maps:get(length, Map_info),
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> 'Decoder.decode_error'(Decoder, <<"Expected object, but got ", (maps:get(value_kind, Map_info))/binary>>)
     end,
     ok.
@@ -444,14 +444,14 @@ get_map_element_type(_m) ->
     Map_end = Map_position + maps:get(length, maps:get(value, Current_node)),
     Type_field = <<"\"_type\"">>,
     % TODO: unhandled stmt type
-    ok    case Type_field_node == todo of
+    case Type_field_node == todo of
         true -> false;
         false -> begin
             Variant_name = maps:get(name, todo),
             case maps:get(length, maps:get(value, Type_field_node)) - 2 == length(Variant_name) of
                 true -> begin
                     % TODO: unhandled stmt type
-                    ok                    case todo of
+                    case todo of
                         true -> true;
                         false -> ok
                     end
@@ -500,7 +500,7 @@ encode(Val, Config) ->
     Buffer_start = 0,
     Buffer_end = 0,
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     maps:get(output, Encoder) bsl todo,
     ok.
 
@@ -609,6 +609,7 @@ encode(Val, Config) ->
     end.
 
 'Encoder.encode_sumtype'(Encoder, Val) ->
+        ok.
 
 check_not_empty(Val) ->
     true.
@@ -704,7 +705,7 @@ encode_pretty(Typed_data) ->
     case F of
         todo -> F;
         todo; todo; todo; todo; todo; todo; todo; todo; todo; todo; todo -> todo;
-        todo -> 'string.int'(F);
+        todo -> binary_to_integer(F);
         _ -> 0
     end.
 
@@ -768,7 +769,7 @@ encode_pretty(Typed_data) ->
     case F of
         todo -> F;
         todo; todo; todo; todo; todo; todo; todo; todo; todo; todo -> todo;
-        todo -> 'string.f64'(F);
+        todo -> binary_to_float(F);
         _ -> 0.0
     end.
 
@@ -864,7 +865,8 @@ encode_pretty(Typed_data) ->
                 end.
                 Is_unix_timestamp1 = false,
                 % TODO: unhandled stmt type
-                ok                ok
+                                ok.
+                ok
             end, F),
             case Is_unix_timestamp1 of
                 true -> unix('string.i64'(F));
@@ -903,13 +905,13 @@ flatten_array(T) ->
                     false -> ok
                 end,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> case Include_space andalso lists:nth(maps:get(pos, S) + 1, maps:get(text, S)) == todo of
                 true -> begin
                     todo,
                     todo,
                     % TODO: unhandled stmt type
-                    ok                end;
+                end;
                 false -> ok
             end
         end;
@@ -917,7 +919,7 @@ flatten_array(T) ->
     end.
 
 'Scanner.error'(S, Description) ->
-    'Scanner.tokenize'(S, 'string.bytes'(Description), error).
+    'Scanner.tokenize'(S, binary_to_list(Description), error).
 
 'Scanner.tokenize'(S, Lit, Kind) ->
     #{lit => Lit, kind => Kind, col => maps:get(col, S), line => maps:get(line, S), {vbeam, type} => 'Token'}.
@@ -926,7 +928,7 @@ flatten_array(T) ->
     Has_closed = false,
     Chrs = [],
     % TODO: unhandled stmt type
-    ok    Tok = 'Scanner.tokenize'(S, Chrs, str),
+    Tok = 'Scanner.tokenize'(S, Chrs, str),
     'Scanner.move'(S),
     case not Has_closed of
         true -> 'Scanner.error'(S, <<"missing double quotes in string closing">>);
@@ -952,7 +954,7 @@ flatten_array(T) ->
         true -> 'Scanner.error'(S, <<"leading zeroes in a number are not allowed">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case Dot_index + 1 < length(maps:get(text, S)) andalso length(lists:nth(todo + 1, Digits)) == 0 of
+            case Dot_index + 1 < length(maps:get(text, S)) andalso length(lists:nth(todo + 1, Digits)) == 0 of
                 true -> 'Scanner.error'(S, <<"invalid float">>);
                 false -> begin
                     case maps:get(pos, S) < length(maps:get(text, S)) andalso (lists:nth(maps:get(pos, S) + 1, maps:get(text, S)) == todo orelse lists:nth(maps:get(pos, S) + 1, maps:get(text, S)) == todo) of
@@ -968,7 +970,7 @@ flatten_array(T) ->
                             end,
                             Exp_digits_count = 0,
                             % TODO: unhandled stmt type
-                            ok                            case Exp_digits_count == 0 of
+                            case Exp_digits_count == 0 of
                                 true -> 'Scanner.error'(S, <<"invalid exponent">>);
                                 false -> ok
                             end

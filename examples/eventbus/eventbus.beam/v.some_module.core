@@ -1,0 +1,34 @@
+module 'v.some_module' ['do_work'/0,
+                'get_subscriber'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'do_work'/0 =
+    fun () ->
+        let <Duration> =
+            ~{'hours'=>10,{'vbeam','type'}=>'Duration'}~
+        in  do  let <_1> =
+                fun (I) ->
+                    do  call 'io':'format'([119|[111|[114|[107|[105|[110|[103|[46|[46|[46|[126|[110|[]]]]]]]]]]]]])
+                        case call 'erlang':'=:='(I, 5) of <'true'> when 'true' -> 
+                            let <Event_metadata> =
+                                ~{'message'=>call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(I)|[]]]),{'vbeam','type'}=>'EventMetadata'}~
+                            in  do  apply 'EventBus[string].publish'/4(apply 'new'/0(), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#, Duration, Event_metadata)
+                                    apply 'EventBus[string].publish'/4(apply 'new'/0(), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#, Duration, Event_metadata)
+                         <'false'> when 'true' -> 'ok' end
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(10, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                apply 'EventBus[string].publish'/4(apply 'new'/0(), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']])}#, ~{'hours'=>42,{'vbeam','type'}=>'Duration'}~, ~{'message'=>#{#<65>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'EventMetadata'}~)
+'get_subscriber'/0 =
+    fun () ->
+        call 'erlang':'map_get'('subscriber', apply 'new'/0())
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.some_module')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.some_module', _0)
+end

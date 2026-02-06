@@ -7,7 +7,7 @@ find_pattern(Adj, Start, Target) ->
     Res = [],
     'Queue[[]string].push'(Queue, [Start]),
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 print_pattern(Pat) ->
     lists:foreach(fun(P) ->
@@ -15,6 +15,7 @@ print_pattern(Pat) ->
         ok.
         ok
     end, Pat),
+        ok.
 
 visited_init(Adj) ->
     Temp = #{},

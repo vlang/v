@@ -1,0 +1,26 @@
+module 'v.net.ssl' ['new_ssl_dialer'/1,
+                'SSLDialer.dial'/2,
+                'new_ssl_conn'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_ssl_dialer'/1 =
+        fun (Config) ->
+            ~{'config'=>Config,{'vbeam','type'}=>'SSLDialer'}~
+    'SSLDialer.dial'/2 =
+        fun (D, Address) ->
+            apply 'new_ssl_conn'/1(call 'erlang':'map_get'('config', D))
+    'new_ssl_conn'/1 =
+        fun (Config) ->
+            let <C> =
+                apply 'new_ssl_conn'/1(call 'erlang':'map_get'('SSLConnectConfig', Config))
+            in  ~{'SSLConn'=>C,{'vbeam','type'}=>'SSLConn'}~
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.net.ssl')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.net.ssl', _0)
+    end

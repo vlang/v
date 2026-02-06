@@ -1,0 +1,48 @@
+module 'v.main' ['main'/0,
+                'is_valid'/4,
+                'find_empty'/1,
+                'solve_sudoku'/1,
+                'print_grid'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Grid> =
+            [[0|[3|[0|[0|[7|[0|[0|[0|[0|[]]]]]]]]]]|[[0|[0|[0|[1|[3|[5|[0|[0|[0|[]]]]]]]]]]|[[0|[0|[1|[0|[0|[0|[0|[5|[0|[]]]]]]]]]]|[[1|[0|[0|[0|[6|[0|[0|[0|[3|[]]]]]]]]]]|[[4|[0|[0|[8|[0|[3|[0|[0|[1|[]]]]]]]]]]|[[7|[0|[0|[0|[2|[0|[0|[0|[6|[]]]]]]]]]]|[[0|[0|[0|[0|[0|[0|[2|[1|[0|[]]]]]]]]]]|[[0|[0|[0|[4|[1|[2|[0|[0|[5|[]]]]]]]]]]|[[0|[0|[0|[0|[0|[0|[0|[7|[4|[]]]]]]]]]]|[]]]]]]]]]]
+        in  do  apply 'print_grid'/2(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#, Grid)
+                do  call 'io':'format'([83|[111|[108|[118|[105|[110|[103|[46|[46|[46|[126|[110|[]]]]]]]]]]]]])
+                    case apply 'solve_sudoku'/1(Grid) of <'true'> when 'true' -> apply 'print_grid'/2(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#, Grid) <'false'> when 'true' -> 
+                        do  call 'io':'format'([78|[111|[32|[115|[111|[108|[117|[116|[105|[111|[110|[32|[101|[120|[105|[115|[116|[115|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]])
+                            call 'erlang':'halt'(1)
+                     end
+'is_valid'/4 =
+    fun (Grid, Row, Col, Num) ->
+        let <Start_row> =
+            call 'erlang':'-'(Row, call 'erlang':'rem'(Row, 3))
+        in  let <Start_col> =
+                call 'erlang':'-'(Col, call 'erlang':'rem'(Col, 3))
+            in  'true'
+'find_empty'/1 =
+    fun (Grid) ->
+        'todo'
+'solve_sudoku'/1 =
+    fun (Grid) ->
+        let <Row> =
+            apply 'find_empty'/1(Grid)
+        in  let <Col> =
+                apply 'find_empty'/1(Grid)
+            in  'false'
+'print_grid'/2 =
+    fun (Label, Grid) ->
+        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [Label|[]])
+            'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

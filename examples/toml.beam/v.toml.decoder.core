@@ -1,0 +1,105 @@
+module 'v.toml.decoder' ['Decoder.decode'/2,
+                'Decoder.modify'/2,
+                'Decoder.excerpt'/2,
+                'Decoder.decode_quoted'/2,
+                'Decoder.decode_number'/2,
+                'decode_quoted_escapes'/1,
+                'decode_unicode_escape'/1,
+                'Decoder.decode_date_time'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Decoder.decode'/2 =
+        fun (D, N) ->
+            do  apply 'walk_and_modify'/2(D, N)
+                'ok'
+    'Decoder.modify'/2 =
+        fun (D, Value) ->
+            do  case Value of <'todo'> when 'true' -> apply 'Decoder.decode_quoted'/2(D, V) <'todo'> when 'true' -> apply 'Decoder.decode_number'/2(D, V) <'todo'> when 'true' -> apply 'Decoder.decode_date_time'/2(D, V) <_> when 'true' -> 'ok' end
+                'ok'
+    'Decoder.excerpt'/2 =
+        fun (D, Tp) ->
+            apply 'Scanner.excerpt'/3(call 'erlang':'map_get'('scanner', D), call 'erlang':'map_get'('pos', Tp), 10)
+    'Decoder.decode_quoted'/2 =
+        fun (D, Q) ->
+            do  apply 'decode_quoted_escapes'/1(Q)
+                'ok'
+    'Decoder.decode_number'/2 =
+        fun (D, N) ->
+            do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('text', N), #{#<45>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#), call 'erlang':'=:='(call 'erlang':'map_get'('text', N), #{#<43>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                'ok'
+    'decode_quoted_escapes'/1 =
+        fun (Q) ->
+            let <Eat_whitespace> =
+                'false'
+            in  let <Decoded_s> =
+                    #{  }#
+                in  let <Is_basic> =
+                        call 'erlang':'=:='(call 'erlang':'map_get'('quote', Q), 'todo')
+                    in  case call 'erlang':'not'(Is_basic) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                let <S> =
+                                    apply 'new_simple_text'/1(call 'erlang':'map_get'('text', Q))
+                                in  do  call 'binary':'replace'(call 'erlang':'map_get'('text', Q), #{#<92>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#, #{#<34>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                        do  Decoded_s
+                                            'ok'
+                        end
+    'decode_unicode_escape'/1 =
+        fun (Esc_unicode) ->
+            let <Is_long_esc_type> =
+                case call 'string':'prefix'(Esc_unicode, #{#<85>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end
+            in  let <Sequence> =
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), Esc_unicode)
+                in  let <Hex_digits_len> =
+                        case Is_long_esc_type of <'true'> when 'true' -> 8 <'false'> when 'true' -> 4 end
+                    in  let <Sequence_len> =
+                            Hex_digits_len
+                        in  let <Sequence_1> =
+                                call 'lists':'nth'(call 'erlang':'+'('todo', 1), Sequence)
+                            in  let <Unicode_point> =
+                                    Sequence_1
+                                in  let <Unicode_point_2> =
+                                        case call 'erlang':'<'(call 'erlang':'length'(Unicode_point), 8) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([apply 'string.repeat'/2(#{#<48>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'-'(8, call 'erlang':'length'(Unicode_point)))|[Unicode_point|[]]]) <'false'> when 'true' -> Unicode_point end
+                                    in  let <I64_val> =
+                                            apply 'parse_int'/3(Unicode_point_2, 16, 0)
+                                        in  let <Rn> =
+                                                'todo'
+                                            in  Rn
+    'Decoder.decode_date_time'/2 =
+        fun (D, Dt) ->
+            do  case case call 'binary':'match'(call 'erlang':'map_get'('text', Dt), #{#<46>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 
+                let <Yymmddhhmmss> =
+                    apply 'string.all_before'/2(call 'erlang':'map_get'('text', Dt), #{#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                in  let <Rest> =
+                        apply 'string.all_after'/2(call 'erlang':'map_get'('text', Dt), #{#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  let <Z> =
+                            case case call 'binary':'match'(Rest, #{#<90>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<90>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{  }# end
+                        in  let <Ms> =
+                                Rest
+                            in  let <Offset> =
+                                    #{  }#
+                                in  let <Offset_1> =
+                                        case case call 'binary':'match'(Rest, #{#<43>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.all_after'/2(Rest, #{#<43>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) <'false'> when 'true' -> case case call 'binary':'match'(Rest, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.all_after'/2(Rest, #{#<45>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) <'false'> when 'true' -> Offset end end
+                                    in  let <Ms_2> =
+                                            case case call 'binary':'match'(Rest, #{#<43>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> let <Offset_3> = call 'erlang':'iolist_to_binary'([#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.all_after'/2(Rest, #{#<43>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) in apply 'string.all_before'/2(Rest, #{#<43>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> case case call 'binary':'match'(Rest, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> let <Offset_4> = call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.all_after'/2(Rest, #{#<45>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) in apply 'string.all_before'/2(Rest, #{#<45>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> Ms end end
+                                        in  let <Ms_5> =
+                                                case call 'erlang':'=/='(Z, #{  }#) of <'true'> when 'true' -> call 'binary':'replace'(Ms_2, #{#<90>(8,1,'integer',['unsigned'|['big']])}#, #{  }#, ['global'|[]]) <'false'> when 'true' -> Ms_2 end
+                                            in  case call 'erlang':'>'(call 'erlang':'length'(Ms_5), 1) of
+                                                    <'true'> when 'true' -> 'ok'
+                                                    <'false'> when 'true' -> 
+                                                        let <Ms_6> =
+                                                            call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([Ms_5|[apply 'string.repeat'/2(#{#<48>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'-'(4, call 'erlang':'length'(Ms_5)))|[]]])|[Z|[]]])
+                                                        in  'ok'
+                                                end
+             <'false'> when 'true' -> 'ok' end
+                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.toml.decoder')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.toml.decoder', _0)
+    end

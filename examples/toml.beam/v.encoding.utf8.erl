@@ -28,7 +28,7 @@ is_16(Ranges, R) ->
             Low = 0,
             High = length(Ranges),
             % TODO: unhandled stmt type
-            ok            false
+            false
         end
         end.
 
@@ -39,7 +39,7 @@ is_32(Ranges, R) ->
             Low = 0,
             High = length(Ranges),
             % TODO: unhandled stmt type
-            ok            false
+            false
         end
         end.
 
@@ -50,7 +50,7 @@ len(S) ->
             Count = 0,
             Index = 0,
             % TODO: unhandled stmt type
-            ok            Count
+            Count
         end
         end.
 
@@ -68,7 +68,7 @@ get_rune(S, Index) ->
                 true -> begin
                     Lword = 0,
                     % TODO: unhandled stmt type
-                    ok                    case Ch_len1 == 2 of
+                    case Ch_len1 == 2 of
                         true -> ok;
                         false -> case Ch_len1 == 3 of
                             true -> ok;
@@ -89,7 +89,7 @@ get_rune(S, Index) ->
 raw_index(S, Index) ->
     R = [],
     % TODO: unhandled stmt type
-    ok    'rune.str'(lists:nth(Index + 1, R)).
+    'rune.str'(lists:nth(Index + 1, R)).
 
 reverse(S) ->
     Len_s = len(S),
@@ -101,8 +101,8 @@ reverse(S) ->
                 Str_array bsl raw_index(S, I),
                 ok
             end, lists:seq(0, Len_s - 1)),
-            Str_array1 = '[]string.reverse'(Str_array),
-            '[]string.join'(Str_array1, <<"">>)
+            Str_array1 = lists:reverse(Str_array),
+            iolist_to_binary(lists:join(<<"">>, Str_array1))
         end
         end.
 
@@ -339,12 +339,13 @@ convert_case(S, Upper_flag) ->
     Tab_char = 0,
     Str_res = todo,
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.
+
 find_punct_in_table(In_code, In_table) ->
     First_index = 0,
     Last_index = (length(In_table)),
     Index = 0,
     X = todo,
     % TODO: unhandled stmt type
-    ok    -1.
+    -1.

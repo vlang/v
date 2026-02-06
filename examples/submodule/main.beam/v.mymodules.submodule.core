@@ -1,0 +1,16 @@
+module 'v.mymodules.submodule' ['sub_xy'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'sub_xy'/2 =
+    fun (X, Y) ->
+        call 'erlang':'-'(X, Y)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.mymodules.submodule')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.mymodules.submodule', _0)
+end

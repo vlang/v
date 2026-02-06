@@ -1,0 +1,28 @@
+module 'v.main' ['App.method_one'/1,
+                'App.method_two'/1,
+                'App.method_three'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'App.method_one'/1 =
+    fun (App) ->
+        'ok'
+'App.method_two'/1 =
+    fun (App) ->
+        0
+'App.method_three'/2 =
+    fun (App, S) ->
+        S
+'main'/0 =
+    fun () ->
+        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

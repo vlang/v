@@ -7,7 +7,7 @@ exec(Path) ->
     Cmd = #{path => Path, {vbeam, type} => 'Command'},
     'Command.start'(Cmd),
     % TODO: unhandled stmt type
-    ok    Out.
+    Out.
 
 main() ->
     Out = <<"">>,
@@ -16,4 +16,4 @@ main() ->
     Out2 = exec(<<"echo to stderr 1>&2">>),
     vbeam_io:println(<<"'", (Out2)/binary, "'">>),
     % TODO: unhandled stmt type
-    ok
+        ok.

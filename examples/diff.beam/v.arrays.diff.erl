@@ -12,8 +12,8 @@ diff(A, B) ->
     Alimit = Mut_alimit,
     Blimit = Mut_blimit,
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    case Aoffset == Alimit of
+    % TODO: unhandled stmt type
+    case Aoffset == Alimit of
         true -> ok;
         false -> 
             case Boffset == Blimit of
@@ -38,7 +38,7 @@ diff(A, B) ->
     X = 0,
     Y = 0,
     % TODO: unhandled stmt type
-    ok    panic(<<"diff.find_middle_snake: should never be reached">>),
+    erlang:error({panic, <<"diff.find_middle_snake: should never be reached">>}),
     ok.
 
 'DiffContext.result'(C, N, M) ->
@@ -46,7 +46,7 @@ diff(A, B) ->
     Y = 0,
     Res = [],
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 'DiffContext.merge_changes'(C, Context_lines) ->
     case length(maps:get(changes, C)) == 0 of
@@ -72,7 +72,7 @@ diff(A, B) ->
 'DiffContext.generate_patch'(C, Param) ->
     Sb = new_builder(100),
     % TODO: unhandled stmt type
-    ok    Unified = case maps:get(unified, Param) < 0 of
+    Unified = case maps:get(unified, Param) < 0 of
         true -> 0;
         false -> maps:get(unified, Param)
     end,
@@ -125,6 +125,7 @@ diff(A, B) ->
         end.
         LineOut
     end, Line, lists:seq(Start, End - 1)),
+        ok.
 
 'DiffContext.write_change'(C, Sb, Change, Param) ->
     Line = lists:foldl(fun(I, LineAcc) ->
@@ -143,6 +144,7 @@ diff(A, B) ->
         end.
         LineOut
     end, Line, lists:seq(maps:get(b, Change), maps:get(b, Change) + maps:get(ins, Change) - 1)),
+        ok.
 
 'DiffContextFlag.is_empty'(E) ->
     todo == 0.
@@ -155,19 +157,24 @@ diff(A, B) ->
 
 'DiffContextFlag.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DiffContextFlag.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DiffContextFlag.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DiffContextFlag.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DiffContextFlag.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DiffContextFlag__static__zero'() ->
     todo.
 

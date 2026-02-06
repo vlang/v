@@ -30,7 +30,7 @@ decode_int(Root) ->
                         true -> todo;
                         false -> 
                             case Root is todo of
-                                true -> 'string.int'(Root);
+                                true -> binary_to_integer(Root);
                                 false -> 0
                                                         end
                                                                 end
@@ -113,7 +113,7 @@ decode_f64(Root) ->
                         true -> todo;
                         false -> 
                             case Root is todo of
-                                true -> 'string.f64'(Root);
+                                true -> binary_to_float(Root);
                                 false -> 0.0
                                                         end
                                                                 end
@@ -159,7 +159,7 @@ decode_bool(Root) ->
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok            case Neg1 of
+            case Neg1 of
                 true -> <<(<<"-">>)/binary, (S)/binary>>;
                 false -> S
             end
@@ -180,7 +180,7 @@ decode_bool(Root) ->
                 false -> ok
             end,
             % TODO: unhandled stmt type
-            ok            case Neg3 of
+            case Neg3 of
                 true -> <<(<<"-">>)/binary, (S1)/binary>>;
                 false -> S1
             end

@@ -5,7 +5,8 @@ main() ->
     use_stdout(),
     Old_rate = todo,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 show_result(I, Res, Delta) ->
     case Delta == 0 of
         true -> ok;

@@ -5,5 +5,5 @@ main() ->
     find_abs_path_of_executable(<<"inotifywait">>),
     Cmd = start_new_command(<<"inotifywait -q -r -m -e move,modify,create,delete .">>),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok
+    % TODO: unhandled stmt type
+        ok.

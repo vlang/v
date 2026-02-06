@@ -11,7 +11,8 @@ rain() ->
     Width = 0,
     Height = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 update_rain_column(Rc, Width, Height) ->
     case maps:get(head, Rc) > Height + length(Rc) of
         true -> ok;
@@ -41,7 +42,7 @@ print_rain_column(Rc, Height) ->
 
 print_at(S, X, Y) ->
     set_cursor_position(#{x => X, y => Y, {vbeam, type} => 'Coord'}),
-    print(S),
+    io:format("~s", [S]),
     ok.
 
 random_symbol() ->
@@ -63,5 +64,5 @@ init_terminal() ->
     New_state = Old_state,
     'Termios.disable_echo'(New_state),
     set_state(0, New_state),
-    print(<<"\\e[?1049h\\e[?25l">>),
+    io:format("~s", [<<"\\e[?1049h\\e[?25l">>]),
     ok.

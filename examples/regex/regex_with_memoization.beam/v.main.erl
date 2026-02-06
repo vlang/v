@@ -107,4 +107,4 @@ main() ->
     io:format("~s~n", [<<"example: source `address@domain.net` matches pattern `\\\\w+@domain\\\\.net`">>]),
     io:format("~s~n", [<<"enter `exit` to quit\\n">>]),
     % TODO: unhandled stmt type
-    ok
+        ok.

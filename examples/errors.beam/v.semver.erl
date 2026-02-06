@@ -58,7 +58,7 @@ parse(Input) ->
         end;
         false -> ok
     end,
-    Raw_ints = 'string.split'(Raw_version2, <<".">>),
+    Raw_ints = binary:split(Raw_version2, <<".">>, [global]),
     #{prerelease => Prerelease1, metadata => Metadata1, raw_ints => Raw_ints, {vbeam, type} => 'RawVersion'}.
 
 'RawVersion.is_valid'(Ver) ->
@@ -78,9 +78,9 @@ parse(Input) ->
         end.
 
 'RawVersion.complete'(Raw_ver) ->
-    Raw_ints = '[]string.clone'(maps:get(raw_ints, Raw_ver)),
+    Raw_ints = maps:get(raw_ints, Raw_ver),
     % TODO: unhandled stmt type
-    ok    #{prerelease => maps:get(prerelease, Raw_ver), metadata => maps:get(metadata, Raw_ver), raw_ints => Raw_ints, {vbeam, type} => 'RawVersion'}.
+    #{prerelease => maps:get(prerelease, Raw_ver), metadata => maps:get(metadata, Raw_ver), raw_ints => Raw_ints, {vbeam, type} => 'RawVersion'}.
 
 'RawVersion.validate'(Raw_ver) ->
     case not 'RawVersion.is_valid'(Raw_ver) of
@@ -89,7 +89,7 @@ parse(Input) ->
         end.
 
 'RawVersion.to_version'(Raw_ver) ->
-    #{major => 'string.int'(lists:nth(0 + 1, maps:get(raw_ints, Raw_ver))), minor => 'string.int'(lists:nth(1 + 1, maps:get(raw_ints, Raw_ver))), patch => 'string.int'(lists:nth(2 + 1, maps:get(raw_ints, Raw_ver))), prerelease => maps:get(prerelease, Raw_ver), metadata => maps:get(metadata, Raw_ver), {vbeam, type} => 'Version'}.
+    #{major => binary_to_integer(lists:nth(0 + 1, maps:get(raw_ints, Raw_ver))), minor => binary_to_integer(lists:nth(1 + 1, maps:get(raw_ints, Raw_ver))), patch => binary_to_integer(lists:nth(2 + 1, maps:get(raw_ints, Raw_ver))), prerelease => maps:get(prerelease, Raw_ver), metadata => maps:get(metadata, Raw_ver), {vbeam, type} => 'Version'}.
 
 'Range.satisfies'(R, Ver) ->
     'ComparatorSet.any'(maps:get(comparator_sets, R), 'ComparatorSet.satisfies'(It, Ver)).
@@ -114,7 +114,7 @@ parse(Input) ->
     end.
 
 parse_range(Input) ->
-    Raw_comparator_sets = 'string.split'(Input, <<" || ">>),
+    Raw_comparator_sets = binary:split(Input, <<" || ">>, [global]),
     Comparator_sets = [],
     lists:foreach(fun(Raw_comp_set) ->
         case can_expand(Raw_comp_set) of
@@ -132,7 +132,7 @@ parse_range(Input) ->
     #{comparator_sets => Comparator_sets, {vbeam, type} => 'Range'}.
 
 parse_comparator_set(Input) ->
-    Raw_comparators = 'string.split'(Input, <<" ">>),
+    Raw_comparators = binary:split(Input, <<" ">>, [global]),
     case length(Raw_comparators) > 2 of
         true -> todo;
         false -> begin
@@ -149,23 +149,23 @@ parse_comparator_set(Input) ->
 parse_comparator(Input) ->
     Op = eq,
     Raw_version = if
-        'string.starts_with'(Input, <<">=">>) -> begin
+        case string:prefix(Input, <<">=">>) of nomatch -> false; _ -> true end -> begin
             Op1 = ge,
             lists:nth(todo + 1, Input)
         end;
-        'string.starts_with'(Input, <<"<=">>) -> begin
+        case string:prefix(Input, <<"<=">>) of nomatch -> false; _ -> true end -> begin
             Op2 = le,
             lists:nth(todo + 1, Input)
         end;
-        'string.starts_with'(Input, <<">">>) -> begin
+        case string:prefix(Input, <<">">>) of nomatch -> false; _ -> true end -> begin
             Op3 = gt,
             lists:nth(todo + 1, Input)
         end;
-        'string.starts_with'(Input, <<"<">>) -> begin
+        case string:prefix(Input, <<"<">>) of nomatch -> false; _ -> true end -> begin
             Op4 = lt,
             lists:nth(todo + 1, Input)
         end;
-        'string.starts_with'(Input, <<"=">>) -> lists:nth(todo + 1, Input);
+        case string:prefix(Input, <<"=">>) of nomatch -> false; _ -> true end -> lists:nth(todo + 1, Input);
         true -> Input
     end,
     Version = coerce_version(Raw_version),
@@ -191,7 +191,7 @@ parse_xrange(Input) ->
     'RawVersion.validate'(Raw_ver).
 
 can_expand(Input) ->
-    lists:nth(1, Input) == todo orelse lists:nth(1, Input) == todo orelse 'string.contains'(Input, <<" - ">>) orelse 'string.index_any'(Input, <<"Xx*">>) > -1.
+    lists:nth(1, Input) == todo orelse lists:nth(1, Input) == todo orelse case binary:match(Input, <<" - ">>) of nomatch -> false; _ -> true end orelse 'string.index_any'(Input, <<"Xx*">>) > -1.
 
 expand_comparator_set(Input) ->
     case lists:nth(1, Input) of
@@ -199,7 +199,7 @@ expand_comparator_set(Input) ->
         todo -> expand_caret(lists:nth(todo + 1, Input));
         _ -> ok
     end,
-    case 'string.contains'(Input, <<" - ">>) of
+    case case binary:match(Input, <<" - ">>) of nomatch -> false; _ -> true end of
         true -> expand_hyphen(Input);
         false -> expand_xrange(Input)
         end.
@@ -221,7 +221,7 @@ expand_caret(Raw_version) ->
     make_comparator_set_ge_lt(Min_ver, Max_ver).
 
 expand_hyphen(Raw_range) ->
-    Raw_versions = 'string.split'(Raw_range, <<" - ">>),
+    Raw_versions = binary:split(Raw_range, <<" - ">>, [global]),
     case length(Raw_versions) /= 2 of
         true -> todo;
         false -> begin

@@ -1,0 +1,47 @@
+module 'v.main' ['find_pattern'/3,
+                'print_pattern'/1,
+                'visited_init'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'find_pattern'/3 =
+        fun (Adj, Start, Target) ->
+            let <Visited> =
+                apply 'visited_init'/1(Adj)
+            in  let <Queue> =
+                    ~{{'vbeam','type'}=>'Queue[[]string]'}~
+                in  let <Res> =
+                        []
+                    in  do  apply 'Queue[[]string].push'/2(Queue, [Start|[]])
+                            Res
+    'print_pattern'/1 =
+        fun (Pat) ->
+            'ok'
+    'visited_init'/1 =
+        fun (Adj) ->
+            let <Temp> =
+                ~{}~
+            in  do  let <_1> =
+                    fun (_, I) ->
+                        do  'false'
+                            call 'erlang':'+'(I, 1)
+                in  call 'lists':'foldl'(_1, 0, Adj)
+                    Temp
+    'main'/0 =
+        fun () ->
+            let <Adj> =
+                ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<65>(8,1,'integer',['unsigned'|['big']])}#|[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<65>(8,1,'integer',['unsigned'|['big']])}#|[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<69>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<70>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]]]}~
+            in  let <Path> =
+                    apply 'find_pattern'/3(Adj, #{#<65>(8,1,'integer',['unsigned'|['big']])}#, #{#<70>(8,1,'integer',['unsigned'|['big']])}#)
+                in  do  call 'io':'format'([84|[104|[101|[32|[97|[108|[108|[32|[112|[97|[116|[116|[101|[114|[110|[32|[112|[97|[116|[104|[32|[102|[114|[111|[109|[32|[110|[111|[100|[101|[32|[65|[32|[116|[111|[32|[110|[111|[100|[101|[32|[70|[32|[105|[115|[58|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                        apply 'print_pattern'/1(Path)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

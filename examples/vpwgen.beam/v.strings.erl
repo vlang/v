@@ -13,6 +13,7 @@ new_builder(Initial_size) ->
                 ok
                 ok
             end, lists:seq(0, Len - 1)),
+                        ok
                 end.
 
 'Builder.write_string'(B, S) ->
@@ -21,6 +22,7 @@ new_builder(Initial_size) ->
         ok.
         ok
     end, S),
+        ok.
 
 'Builder.write_byte'(B, Data) ->
     B bsl Data,
@@ -146,7 +148,7 @@ levenshtein_distance(A, B) ->
                         false -> begin
                             Row = [],
                             % TODO: unhandled stmt type
-                            ok                            lists:nth(length(A) + 1, Row)
+                            lists:nth(length(A) + 1, Row)
                         end
                                         end
                                         end
@@ -263,7 +265,7 @@ jaro_similarity(A, B) ->
                             end,
                             todo,
                             % TODO: unhandled stmt type
-                            ok                            ok
+                            ok
                         end, lists:seq(Start, End - 1)),
                         {StartOut, EndOut}
                     end, {Start, End}, lists:seq(0, A_len - 1)),
@@ -277,7 +279,7 @@ jaro_similarity(A, B) ->
                                     false -> ok
                                 end,
                                 % TODO: unhandled stmt type
-                                ok                                case lists:nth(I + 1, A) /= lists:nth(K + 1, B) of
+                                case lists:nth(I + 1, A) /= lists:nth(K + 1, B) of
                                     true -> todo;
                                     false -> ok
                                 end,
@@ -345,7 +347,7 @@ find_between_pair_u8(Input, Start, End) ->
                 end,
                 todo,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case Start_index > 0 of
@@ -378,7 +380,7 @@ find_between_pair_rune(Input, Start, End) ->
                 end,
                 todo,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case Start_index > 0 of
@@ -406,7 +408,7 @@ find_between_pair_string(Input, Start, End) ->
     Runes = 'string.runes'(Input),
     I = 0,
     % TODO: unhandled stmt type
-    ok    <<"">>.
+    <<"">>.
 
 split_capital(S) ->
     Res = [],
@@ -420,7 +422,7 @@ split_capital(S) ->
                 end,
                 Word_start1 = Idx,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         ok

@@ -2,7 +2,7 @@
 -export(['Vec.norm'/1, new_image/2, 'Image.save_as_ppm'/2, 'Sphere.intersect'/2, clamp/1, to_int/1, intersect/3, rand_f64/0, new_tabs/0, radiance/3, ray_trace/4, main/0, 'Refl_t__static__from'/1]).
 
 'Vec.norm'(V) ->
-    Tmp_norm = todo / sqrt(maps:get(x, V) * maps:get(x, V) + maps:get(y, V) * maps:get(y, V) + maps:get(z, V) * maps:get(z, V)),
+    Tmp_norm = todo / math:sqrt(maps:get(x, V) * maps:get(x, V) + maps:get(y, V) * maps:get(y, V) + maps:get(z, V) * maps:get(z, V)),
     #{x => maps:get(x, V) * Tmp_norm, y => maps:get(y, V) * Tmp_norm, z => maps:get(z, V) * Tmp_norm, {vbeam, type} => 'Vec'}.
 
 new_image(W, H) ->
@@ -32,7 +32,7 @@ new_image(W, H) ->
     case Det < 0 of
         true -> 0;
         false -> begin
-            Det1 = sqrt(Det),
+            Det1 = math:sqrt(Det),
             T = B - Det1,
             case T > todo of
                 true -> T;
@@ -66,7 +66,7 @@ intersect(R, Spheres, Nspheres) ->
     T = 1e+10,
     Id = 0,
     % TODO: unhandled stmt type
-    ok    T < todo.
+    T < todo.
 
 rand_f64() ->
     X = u32() band 16#3FFFFFFF,
@@ -125,7 +125,7 @@ radiance(R, Depthi, Scene_id) ->
                         true -> begin
                             R1 = u32() band 65535,
                             R2 = rand_f64(),
-                            R2s = sqrt(R2),
+                            R2s = math:sqrt(R2),
                             W = Nl,
                             U = case abs(maps:get(x, W)) > todo of
                                 true -> #{x => 0, y => 1, z => 0, {vbeam, type} => 'Vec'};
@@ -196,12 +196,12 @@ ray_trace(W, H, Samps, Scene_id) ->
     V_1 = todo,
     V_2 = todo,
     % TODO: unhandled stmt type
-    ok    Image.
+    Image.
 
 main() ->
-    case length('v.os':'arguments'()) > 6 of
+    case length(init:get_plain_arguments()) > 6 of
         true -> begin
-            eprintln(<<"Usage:\\n     path_tracing [samples] [image.ppm] [scene_n] [width] [height]">>),
+            io:format(standard_error, "~s~n", [<<"Usage:\\n     path_tracing [samples] [image.ppm] [scene_n] [width] [height]">>]),
             exit(1)
         end;
         false -> ok
@@ -211,36 +211,36 @@ main() ->
     Samples = 4,
     Scene_id = 0,
     File_name = <<"image.ppm">>,
-    case length('v.os':'arguments'()) >= 2 of
+    case length(init:get_plain_arguments()) >= 2 of
         true -> ok;
         false -> ok
     end,
-    case length('v.os':'arguments'()) >= 3 of
+    case length(init:get_plain_arguments()) >= 3 of
         true -> ok;
         false -> ok
     end,
-    case length('v.os':'arguments'()) >= 4 of
+    case length(init:get_plain_arguments()) >= 4 of
         true -> ok;
         false -> ok
     end,
-    case length('v.os':'arguments'()) >= 5 of
+    case length(init:get_plain_arguments()) >= 5 of
         true -> ok;
         false -> ok
     end,
-    case length('v.os':'arguments'()) == 6 of
+    case length(init:get_plain_arguments()) == 6 of
         true -> ok;
         false -> ok
     end,
     seed([todo, 0]),
-    eprintln(<<"Path tracing samples: ", (integer_to_binary(Samples))/binary, ", file_name: ", (File_name)/binary, ", scene_id: ", (integer_to_binary(Scene_id))/binary, ", width: ", (integer_to_binary(Width))/binary, ", height: ", (integer_to_binary(Height))/binary>>),
-    eprintln(<<"">>),
+    io:format(standard_error, "~s~n", [<<"Path tracing samples: ", (integer_to_binary(Samples))/binary, ", file_name: ", (File_name)/binary, ", scene_id: ", (integer_to_binary(Scene_id))/binary, ", width: ", (integer_to_binary(Width))/binary, ", height: ", (integer_to_binary(Height))/binary>>]),
+    io:format(standard_error, "~s~n", [<<"">>]),
     T1 = ticks(),
     Image = ray_trace(Width, Height, Samples, Scene_id),
     T2 = ticks(),
-    eprintln(<<"Rendering finished. Took: ", (integer_to_binary((T2 - T1)))/binary, "ms">>),
+    io:format(standard_error, "~s~n", [<<"Rendering finished. Took: ", (integer_to_binary((T2 - T1)))/binary, "ms">>]),
     'Image.save_as_ppm'(Image, File_name),
     T3 = ticks(),
-    eprintln(<<"Image saved as [", (File_name)/binary, "]. Took: ", (integer_to_binary((T3 - T2)))/binary, "ms">>),
+    io:format(standard_error, "~s~n", [<<"Image saved as [", (File_name)/binary, "]. Took: ", (integer_to_binary((T3 - T2)))/binary, "ms">>]),
     ok.
 
 'Refl_t__static__from'(Input) ->

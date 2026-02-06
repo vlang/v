@@ -1,0 +1,30 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 1) of <'true'> when 'true' -> 
+                do  call 'io':'format'('standard_error', [65|[32|[115|[109|[97|[108|[108|[32|[96|[116|[97|[105|[108|[32|[45|[102|[32|[102|[105|[108|[101|[96|[32|[108|[105|[107|[101|[32|[112|[114|[111|[103|[114|[97|[109|[44|[32|[119|[114|[105|[116|[116|[101|[110|[32|[105|[110|[32|[86|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                    do  call 'io':'format'('standard_error', [85|[115|[97|[103|[101|[58|[32|[96|[118|[32|[114|[117|[110|[32|[101|[120|[97|[109|[112|[108|[101|[115|[47|[118|[116|[97|[105|[108|[46|[118|[32|[121|[111|[117|[114|[95|[108|[111|[110|[103|[95|[102|[105|[108|[101|[46|[108|[111|[103|[96|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                        call 'erlang':'halt'(0)
+             <'false'> when 'true' -> 'ok' end
+                let <Tfile> =
+                    call 'lists':'nth'(2, call 'init':'get_plain_arguments'())
+                in  let <F> =
+                        apply 'open_file'/2(Tfile, #{#<114>(8,1,'integer',['unsigned'|['big']])}#)
+                    in  do  apply 'File.seek'/3(F, 0, 'end')
+                            let <Read_pos> =
+                                apply 'File.tell'/1(F)
+                            in  let <Buf> =
+                                    []
+                                in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

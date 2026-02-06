@@ -1,0 +1,21 @@
+module 'v.main' ['main'/0,
+                'run'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            apply 'run'/0()
+    'run'/0 =
+        fun () ->
+            do  'ok'
+                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

@@ -15,7 +15,8 @@
 
 'Flag.free'(F) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Flag.str'(F) ->
     <<"    flag:\n            name: ", (maps:get(name, F))/binary, "\n            abbr: `", ('u8.ascii_str'(maps:get(abbr, F)))/binary, "`\n            usage: ", (maps:get(usage, F))/binary, "\n            desc: ", (maps:get(val_desc, F))/binary>>.
 
@@ -27,15 +28,16 @@
         ok
     end, Af),
     Res bsl <<"  ]">>,
-    '[]string.join'(Res, <<"\\n">>).
+    iolist_to_binary(lists:join(<<"\\n">>, Res)).
 
 'FlagParser.free'(F) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 new_flag_parser(Args) ->
-    Original_args = '[]string.clone'(Args),
+    Original_args = Args,
     Idx_dashdash = '[]string.index'(Args, <<"--">>),
-    All_before_dashdash = '[]string.clone'(Args),
+    All_before_dashdash = Args,
     All_after_dashdash = [],
     case Idx_dashdash >= 0 of
         true -> begin
@@ -68,7 +70,7 @@ new_flag_parser(Args) ->
     end.
 
 'FlagParser.skip_executable'(Fs) ->
-    '[]string.delete'(maps:get(args, Fs), 0),
+    lists:delete(0, maps:get(args, Fs)),
     ok.
 
 'FlagParser.allow_unknown_args'(Fs) ->
@@ -80,16 +82,16 @@ new_flag_parser(Args) ->
 'FlagParser.parse_value'(Fs, Longhand, Shorthand) ->
     Full = <<"--", (Longhand)/binary>>,
     % TODO: unhandled stmt type
-    ok    Found_entries = [],
+    Found_entries = [],
     To_delete = [],
     % TODO: unhandled stmt type
-    ok    Should_skip_one = false,
+    Should_skip_one = false,
     lists:foreach(fun(Arg) ->
         case Should_skip_one of
             true -> begin
                 Should_skip_one1 = false,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case length(Arg) == 0 orelse lists:nth(1, Arg) /= todo of
@@ -122,7 +124,7 @@ new_flag_parser(Args) ->
                 To_delete bsl I + 1,
                 Should_skip_one2 = true,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case length(Arg) > length(Full) + 1 andalso lists:nth(todo + 1, Arg) == <<(Full)/binary, "=">> of
@@ -130,13 +132,13 @@ new_flag_parser(Args) ->
                 Found_entries bsl lists:nth(todo + 1, Arg),
                 To_delete bsl I,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         ok
     end, maps:get(args, Fs)),
     lists:foreach(fun(Del) ->
-        '[]string.delete'(maps:get(args, Fs), Del - I),
+        lists:delete(Del - I, maps:get(args, Fs)),
         ok
     end, To_delete),
     Found_entries.
@@ -156,12 +158,12 @@ new_flag_parser(Args) ->
             true -> case length(maps:get(args, Fs)) > I + 1 andalso lists:member(lists:nth(I + 1 + 1, maps:get(args, Fs)), [<<"true">>, <<"false">>]) of
                 true -> begin
                     Val = lists:nth(I + 1 + 1, maps:get(args, Fs)),
-                    '[]string.delete'(maps:get(args, Fs), I + 1),
-                    '[]string.delete'(maps:get(args, Fs), I),
+                    lists:delete(I + 1, maps:get(args, Fs)),
+                    lists:delete(I, maps:get(args, Fs)),
                     Val
                 end;
                 false -> begin
-                    '[]string.delete'(maps:get(args, Fs), I),
+                    lists:delete(I, maps:get(args, Fs)),
                     <<"true">>
                 end
             end;
@@ -170,7 +172,7 @@ new_flag_parser(Args) ->
         case length(Arg) > length(Full) + 1 andalso lists:nth(todo + 1, Arg) == <<(Full)/binary, "=">> of
             true -> begin
                 Val1 = lists:nth(todo + 1, Arg),
-                '[]string.delete'(maps:get(args, Fs), I),
+                lists:delete(I, maps:get(args, Fs)),
                 Val1
             end;
             false -> ok
@@ -223,7 +225,7 @@ new_flag_parser(Args) ->
     Parsed = 'FlagParser.parse_value'(Fs, Name, Abbr),
     Value = [],
     lists:foreach(fun(Val) ->
-        Value bsl 'string.int'(Val),
+        Value bsl binary_to_integer(Val),
         ok
     end, Parsed),
     Value.
@@ -239,7 +241,7 @@ new_flag_parser(Args) ->
         true -> error(<<"parameter '", (Name)/binary, "' not provided">>);
         false -> begin
             Parsed0 = lists:nth(1, Parsed),
-            'string.int'(Parsed0)
+            binary_to_integer(Parsed0)
         end
         end.
 
@@ -256,7 +258,7 @@ new_flag_parser(Args) ->
     Parsed = 'FlagParser.parse_value'(Fs, Name, Abbr),
     Value = [],
     lists:foreach(fun(Val) ->
-        Value bsl 'string.f64'(Val),
+        Value bsl binary_to_float(Val),
         ok
     end, Parsed),
     Value.
@@ -270,7 +272,7 @@ new_flag_parser(Args) ->
     Parsed = 'FlagParser.parse_value'(Fs, Name, Abbr),
     case length(Parsed) == 0 of
         true -> error(<<"parameter '", (Name)/binary, "' not provided">>);
-        false -> 'string.f64'(lists:nth(1, Parsed))
+        false -> binary_to_float(lists:nth(1, Parsed))
         end.
 
 'FlagParser.float'(Fs, Name, Abbr, Fdefault, Usage, C) ->
@@ -387,7 +389,7 @@ new_flag_parser(Args) ->
                     true -> ok;
                     false -> ok
                 end,
-                Sargs = '[]string.join'(S, <<" and ">>),
+                Sargs = iolist_to_binary(lists:join(<<" and ">>, S)),
                 Use bsl <<"The arguments should be ", (Sargs)/binary, " in number.">>,
                 Use bsl <<"">>
             end
@@ -404,13 +406,13 @@ new_flag_parser(Args) ->
                     false -> ok
                 end,
                 case maps:get(name, F) /= <<"">> of
-                    true -> case not 'string.contains'(maps:get(val_desc, F), <<"<bool>">>) of
+                    true -> case not case binary:match(maps:get(val_desc, F), <<"<bool>">>) of nomatch -> false; _ -> true end of
                         true -> Onames bsl <<"--", (maps:get(name, F))/binary, " ", (maps:get(val_desc, F))/binary>>;
                         false -> Onames bsl <<"--", (maps:get(name, F))/binary>>
                     end;
                     false -> ok
                 end,
-                Option_names = <<(<<"  ">>)/binary, ('[]string.join'(Onames, <<", ">>))/binary>>,
+                Option_names = <<(<<"  ">>)/binary, (iolist_to_binary(lists:join(<<", ">>, Onames)))/binary>>,
                 Xspace = <<"">>,
                 case length(Option_names) > length(<<"                            ">>) - 2 of
                     true -> ok;
@@ -427,7 +429,7 @@ new_flag_parser(Args) ->
         Use bsl Footer,
         ok
     end, maps:get(footers, Fs)),
-    'string.replace'('[]string.join'(Use, <<"\\n">>), <<"- ,">>, <<"   ">>).
+    binary:replace(iolist_to_binary(lists:join(<<"\\n">>, Use)), <<"- ,">>, <<"   ">>, [global]).
 
 'FlagParser.find_existing_flag'(Fs, Fname) ->
     lists:foreach(fun(F) ->
@@ -461,7 +463,7 @@ new_flag_parser(Args) ->
 
 'FlagParser.finalize'(Fs) ->
     'FlagParser.handle_builtin_options'(Fs),
-    Remaining = '[]string.clone'(maps:get(args, Fs)),
+    Remaining = maps:get(args, Fs),
     case not maps:get(allow_unknown_args, Fs) of
         true -> ok;
         false -> ok
@@ -574,7 +576,7 @@ to_doc(Dc) ->
             true -> begin
                 maps:get(no_match, Fm) bsl Pos,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end.
         Pos_is_handled = lists:member(Pos, maps:get(handled_pos, Fm)),
@@ -587,7 +589,7 @@ to_doc(Dc) ->
                         false -> ok
                     end,
                     % TODO: unhandled stmt type
-                    ok                end;
+                end;
                 false -> ok
             end;
             false -> ok
@@ -621,7 +623,7 @@ to_doc(Dc) ->
                             true -> begin
                                 maps:get(no_match, Fm) bsl Pos,
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             false -> ok
                         end,
                         error(<<"invalid delimiter `", "` for flag `", "`">>)
@@ -636,7 +638,7 @@ to_doc(Dc) ->
                                     true -> begin
                                         maps:get(no_match, Fm) bsl Pos,
                                         % TODO: unhandled stmt type
-                                        ok                                    end;
+                                    end;
                                     false -> ok
                                 end,
                                 error(<<"long delimiter `", "` encountered in flag `", "` in ", " (V) style parsing mode. Maybe you meant `.v_flag_parser`?">>)
@@ -649,7 +651,7 @@ to_doc(Dc) ->
                                     true -> begin
                                         maps:get(no_match, Fm) bsl Pos,
                                         % TODO: unhandled stmt type
-                                        ok                                    end;
+                                    end;
                                     false -> ok
                                 end,
                                 error(<<"long delimiter `", "` encountered in flag `", "` in ", " (POSIX) style parsing mode">>)
@@ -667,7 +669,7 @@ to_doc(Dc) ->
                                     true -> begin
                                         maps:get(no_match, Fm) bsl Pos,
                                         % TODO: unhandled stmt type
-                                        ok                                    end;
+                                    end;
                                     false -> ok
                                 end,
                                 error(<<"short delimiter `", "` encountered in flag `", "` in ", " (GNU) style parsing mode">>)
@@ -680,7 +682,7 @@ to_doc(Dc) ->
                                     true -> begin
                                         maps:get(no_match, Fm) bsl Pos,
                                         % TODO: unhandled stmt type
-                                        ok                                    end;
+                                    end;
                                     false -> ok
                                 end,
                                 error(<<"long name `", "` used with short delimiter `", "` in flag `", "` in ", " (POSIX/GNU) style parsing mode">>)
@@ -696,7 +698,7 @@ to_doc(Dc) ->
                             true -> begin
                                 maps:get(no_match, Fm) bsl Pos,
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             false -> ok
                         end,
                         error(<<"invalid delimiter-only flag `", "`">>)
@@ -713,7 +715,7 @@ to_doc(Dc) ->
                     true -> begin
                         trace_dbg_println(<<": skipping position \"", "\". Already handled">>),
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 lists:foreach(fun(Field) ->
@@ -721,14 +723,14 @@ to_doc(Dc) ->
                         true -> begin
                             trace_dbg_println(<<": skipping field \"", "\" has an @[ignore] attribute">>),
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end.
                     case todo of
                         true -> begin
                             trace_dbg_println(<<": skipping field \"", "\" already identified">>),
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end.
                     trace_println(<<": matching `", "` ", " flag \"", "/", "\" is it matching \"", "\"?">>),
@@ -806,7 +808,7 @@ to_doc(Dc) ->
                     true -> begin
                         trace_dbg_println(<<": (tail) skipping position \"", "\". Already handled">>),
                         % TODO: unhandled stmt type
-                        ok                    end;
+                    end;
                     false -> ok
                 end,
                 lists:foreach(fun(Field) ->
@@ -814,14 +816,14 @@ to_doc(Dc) ->
                         true -> begin
                             trace_dbg_println(<<": (tail) skipping field \"", "\" has an @[ignore] attribute">>),
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end.
                     case todo of
                         true -> begin
                             trace_dbg_println(<<": (tail) skipping field \"", "\" already identified">>),
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end.
                     case 'unknown.has'(maps:get(hints, Field), has_tail) of
@@ -837,7 +839,7 @@ to_doc(Dc) ->
                                     end,
                                     maps:get(handled_pos, Fm) bsl Pos,
                                     % TODO: unhandled stmt type
-                                    ok                                end;
+                                end;
                                 false -> ok
                             end
                         end;
@@ -860,6 +862,7 @@ to_doc(Dc) ->
         end.
         ok
     end, Args),
+        ok.
 
 'FlagMapper.to_doc'(Fm, Dc) ->
     Docs = [],
@@ -963,7 +966,7 @@ to_doc(Dc) ->
         true -> begin
             Longest_line = 0,
             lists:foreach(fun(Doc_line) ->
-                Lines = 'string.split'(Doc_line, <<"\\n">>),
+                Lines = binary:split(Doc_line, <<"\\n">>, [global]),
                 lists:foreach(fun(Line) ->
                     case length(Line) > Longest_line of
                         true -> ok;
@@ -977,7 +980,7 @@ to_doc(Dc) ->
         end;
         false -> ok
     end,
-    '[]string.join'(Docs, <<"\\n">>).
+    iolist_to_binary(lists:join(<<"\\n">>, Docs)).
 
 'FlagMapper.fields_docs'(Fm, Dc) ->
     Short_delimiter = case maps:get(style, Dc) of
@@ -1008,7 +1011,7 @@ to_doc(Dc) ->
             true -> begin
                 trace_println(<<(todo)/binary, ": skipping field \"", (maps:get(name, Field))/binary, "\" has an @[ignore] attribute">>),
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         Doc = maps:get(maps:get(name, Field), maps:get(fields, Dc)),
@@ -1053,14 +1056,14 @@ to_doc(Dc) ->
         case Flag_line_diff < 0 of
             true -> begin
                 Diff = -Flag_line_diff,
-                Line = <<(<<(Flag_line2)/binary, ('string.repeat'(<<" ">>, Diff))/binary>>)/binary, ('string.replace'(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>))/binary>>,
+                Line = <<(<<(Flag_line2)/binary, ('string.repeat'(<<" ">>, Diff))/binary>>)/binary, (binary:replace(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>, [global]))/binary>>,
                 Docs bsl 'string.trim_space_right'(Line)
             end;
             false -> begin
                 Docs bsl 'string.trim_space_right'(Flag_line2),
                 case Doc /= <<"">> of
                     true -> begin
-                        Line1 = <<(Empty_padding)/binary, ('string.replace'(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>))/binary>>,
+                        Line1 = <<(Empty_padding)/binary, (binary:replace(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>, [global]))/binary>>,
                         Docs bsl 'string.trim_space_right'(Line1)
                     end;
                     false -> ok
@@ -1074,18 +1077,18 @@ to_doc(Dc) ->
         ok
     end, maps:get(fields, maps:get(si, Fm))),
     lists:foreach(fun(Doc) ->
-        case 'string.starts_with'(Entry, maps:get(delimiter, Dc)) of
+        case case string:prefix(Entry, maps:get(delimiter, Dc)) of nomatch -> false; _ -> true end of
             true -> begin
                 Flag_line_diff1 = length(Entry) - Pad_desc + Indent_flags,
                 case Flag_line_diff1 < 0 of
                     true -> begin
                         Diff1 = -Flag_line_diff1,
-                        Line2 = <<(<<(<<(Indent_flags_padding)/binary, ('string.trim'(Entry, <<" ">>))/binary>>)/binary, ('string.repeat'(<<" ">>, Diff1))/binary>>)/binary, ('string.replace'(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>))/binary>>,
+                        Line2 = <<(<<(<<(Indent_flags_padding)/binary, (string:trim(Entry))/binary>>)/binary, ('string.repeat'(<<" ">>, Diff1))/binary>>)/binary, (binary:replace(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>, [global]))/binary>>,
                         Docs bsl 'string.trim_space_right'(Line2)
                     end;
                     false -> begin
-                        Docs bsl <<(Indent_flags_padding)/binary, ('string.trim'(Entry, <<" ">>))/binary>>,
-                        Line3 = <<(Empty_padding)/binary, ('string.replace'(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>))/binary>>,
+                        Docs bsl <<(Indent_flags_padding)/binary, (string:trim(Entry))/binary>>,
+                        Line3 = <<(Empty_padding)/binary, (binary:replace(keep_at_max(Doc, Desc_max), <<"\\n">>, <<"\\n", (Empty_padding)/binary>>, [global]))/binary>>,
                         Docs bsl 'string.trim_space_right'(Line3)
                     end
                 end,
@@ -1119,7 +1122,7 @@ keep_at_max(Str, Max) ->
             Width = 0,
             Last_possible_break = 'string.index'(Str, <<" ">>),
             Never_touched = true,
-            S = 'string.trim_space'(Str),
+            S = string:trim(Str),
             lists:foreach(fun(C) ->
                 todo,
                 case C == todo of
@@ -1133,7 +1136,7 @@ keep_at_max(Str, Max) ->
                     true -> begin
                         Never_touched1 = false,
                         Fitted1 = <<(lists:nth(todo + 1, S))/binary, (<<"\\n">>)/binary>>,
-                        Fitted2 = 'string.trim'(keep_at_max('string.trim'('string.replace'(lists:nth(todo + 1, S), <<"\\n">>, <<" ">>), <<" ">>), Safe_max), <<" ">>),
+                        Fitted2 = string:trim(keep_at_max(string:trim(binary:replace(lists:nth(todo + 1, S), <<"\\n">>, <<" ">>, [global])), Safe_max)),
                     end;
                     false -> case Width > Safe_max of
                         true -> ok;
@@ -1163,7 +1166,7 @@ keep_at_max(Str, Max) ->
     case 'FieldHints.has'(maps:get(hints, Field), is_bool) of
         true -> case Flag_name == maps:get(match_name, Field) orelse Flag_name == maps:get(short, Field) of
             true -> begin
-                Arg = case 'string.contains'(Flag_raw, <<"=">>) of
+                Arg = case case binary:match(Flag_raw, <<"=">>) of nomatch -> false; _ -> true end of
                     true -> 'string.all_after'(Flag_raw, <<"=">>);
                     false -> <<"">>
                 end,
@@ -1193,7 +1196,7 @@ keep_at_max(Str, Max) ->
     case length(Flag_name) /= 1 of
         true -> error(<<"`", (Flag_raw)/binary, "` is not supported in V `flag.FlagParser` (short) style parsing mode. Only single character flag names are supported. Use `-f value` instead">>);
         false -> 
-            case 'string.contains'(Flag_raw, <<"=">>) of
+            case case binary:match(Flag_raw, <<"=">>) of nomatch -> false; _ -> true end of
                 true -> error(<<"`=` in flag `", (Flag_raw)/binary, "` is not supported in V `flag.FlagParser` (short) style parsing mode. Use `-f value` instead">>);
                 false -> begin
                     case 'FieldHints.has'(maps:get(hints, Field), is_bool) of
@@ -1221,7 +1224,7 @@ keep_at_max(Str, Max) ->
     Pos = maps:get(pos, Flag_ctx),
     Used_delimiter = maps:get(delimiter, Flag_ctx),
     Next = maps:get(next, Flag_ctx),
-    case 'string.contains'(Flag_raw, <<"=">>) of
+    case case binary:match(Flag_raw, <<"=">>) of nomatch -> false; _ -> true end of
         true -> error(<<"`=` in flag `", (Flag_raw)/binary, "` is not supported in V `flag.FlagParser` (long) style parsing mode. Use `--flag value` instead">>);
         false -> begin
             case 'FieldHints.has'(maps:get(hints, Field), is_bool) of
@@ -1251,7 +1254,7 @@ keep_at_max(Str, Max) ->
     case 'FieldHints.has'(maps:get(hints, Field), is_bool) of
         true -> case Flag_name == maps:get(match_name, Field) of
             true -> begin
-                Arg = case 'string.contains'(Flag_raw, <<"=">>) of
+                Arg = case case binary:match(Flag_raw, <<"=">>) of nomatch -> false; _ -> true end of
                     true -> 'string.all_after'(Flag_raw, <<"=">>);
                     false -> <<"">>
                 end,
@@ -1302,7 +1305,7 @@ keep_at_max(Str, Max) ->
                 false -> begin
                     case length(Flag_name) > 1 of
                         true -> begin
-                            Split = 'string.split'(Flag_name, <<"">>),
+                            Split = binary:split(Flag_name, <<"">>, [global]),
                             Matched_fields = #{},
                             lists:foreach(fun(Mflag) ->
                                 Matched = false,
@@ -1330,7 +1333,7 @@ keep_at_max(Str, Max) ->
                                 false -> ok
                             end,
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end,
                     ok
@@ -1345,9 +1348,9 @@ keep_at_max(Str, Max) ->
     Used_delimiter = maps:get(delimiter, Flag_ctx),
     Next = maps:get(next, Flag_ctx),
     Struct_name = maps:get(name, maps:get(si, Fm)),
-    First_letter = lists:nth(1, 'string.split'(Flag_name, <<"">>)),
+    First_letter = lists:nth(1, binary:split(Flag_name, <<"">>, [global])),
     Next_first_letter = case Next /= <<"">> of
-        true -> lists:nth(1, 'string.split'(Next, <<"">>));
+        true -> lists:nth(1, binary:split(Next, <<"">>, [global]));
         false -> <<"">>
     end,
     Count_of_first_letter_repeats = 'string.count'(Flag_name, First_letter),
@@ -1356,7 +1359,7 @@ keep_at_max(Str, Max) ->
         true -> begin
             case Flag_name == maps:get(match_name, Field) of
                 true -> begin
-                    Arg = case 'string.contains'(Flag_raw, <<"=">>) of
+                    Arg = case case binary:match(Flag_raw, <<"=">>) of nomatch -> false; _ -> true end of
                         true -> 'string.all_after'(Flag_raw, <<"=">>);
                         false -> <<"">>
                     end,
@@ -1432,7 +1435,7 @@ keep_at_max(Str, Max) ->
                     end,
                     true
                 end;
-                false -> case not 'string.starts_with'(maps:get(next, Flag_ctx), Used_delimiter) of
+                false -> case not case string:prefix(maps:get(next, Flag_ctx), Used_delimiter) of nomatch -> false; _ -> true end of
                     true -> case maps:get(short, Field) == Flag_name1 of
                         true -> begin
                             trace_println(<<(todo)/binary, ": found match for (", (maps:get(type_name, Field))/binary, ") ", ('FlagMapper.dbg_match'(Fm, Flag_ctx, Field, Next1, <<"">>))/binary>>),
@@ -1546,19 +1549,24 @@ keep_at_max(Str, Max) ->
 
 'FieldHints.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FieldHints.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FieldHints.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FieldHints.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FieldHints.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'FieldHints__static__zero'() ->
     todo.
 
@@ -1576,19 +1584,24 @@ keep_at_max(Str, Max) ->
 
 'Show.set'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Show.set_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Show.clear'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Show.clear_all'(E) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Show.toggle'(E, Flag_) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Show__static__zero'() ->
     todo.
 

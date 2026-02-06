@@ -1,0 +1,24 @@
+module 'v.main' ['factorial'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'factorial'/1 =
+    fun (N) ->
+        case 'todo' of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                'todo'
+        end
+'main'/0 =
+    fun () ->
+        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'integer_to_binary'(apply 'factorial'/1(5))|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

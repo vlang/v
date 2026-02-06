@@ -174,7 +174,7 @@ write_color(B, S, Config) ->
     end,
     case length(Codes) > 0 of
         true -> begin
-            Code_str = '[]string.join'(Codes, <<";">>),
+            Code_str = iolist_to_binary(lists:join(<<";">>, Codes)),
             'Builder.write_string'(B, <<"[", (Code_str)/binary, "m", (S)/binary, "[0m">>)
         end;
         false -> 'Builder.write_string'(B, S)
@@ -186,12 +186,12 @@ writeln_color(B, S, Color) ->
     ok.
 
 set_cursor_position(C) ->
-    print(<<(<<"[", (integer_to_binary(maps:get(y, C)))/binary, ";", (integer_to_binary(maps:get(x, C)))/binary>>)/binary, (<<"H">>)/binary>>),
+    io:format("~s", [<<(<<"[", (integer_to_binary(maps:get(y, C)))/binary, ";", (integer_to_binary(maps:get(x, C)))/binary>>)/binary, (<<"H">>)/binary>>]),
     flush_stdout(),
     ok.
 
 move(N, Direction) ->
-    print(<<"[", (integer_to_binary(N))/binary, (Direction)/binary>>),
+    io:format("~s", [<<"[", (integer_to_binary(N))/binary, (Direction)/binary>>]),
     flush_stdout(),
     ok.
 
@@ -212,7 +212,7 @@ cursor_back(N) ->
     ok.
 
 erase_display(T) ->
-    print(<<(<<(<<"[">>)/binary, (T)/binary>>)/binary, (<<"J">>)/binary>>),
+    io:format("~s", [<<(<<(<<"[">>)/binary, (T)/binary>>)/binary, (<<"J">>)/binary>>]),
     flush_stdout(),
     ok.
 
@@ -225,7 +225,7 @@ erase_tobeg() ->
     ok.
 
 erase_clear() ->
-    print(<<"\\033[H\\033[J">>),
+    io:format("~s", [<<"\\033[H\\033[J">>]),
     flush_stdout(),
     ok.
 
@@ -234,7 +234,7 @@ erase_del_clear() ->
     ok.
 
 erase_line(T) ->
-    print(<<(<<(<<"[">>)/binary, (T)/binary>>)/binary, (<<"K">>)/binary>>),
+    io:format("~s", [<<(<<(<<"[">>)/binary, (T)/binary>>)/binary, (<<"K">>)/binary>>]),
     flush_stdout(),
     ok.
 
@@ -251,17 +251,17 @@ erase_line_clear() ->
     ok.
 
 show_cursor() ->
-    print(<<"[?25h">>),
+    io:format("~s", [<<"[?25h">>]),
     flush_stdout(),
     ok.
 
 hide_cursor() ->
-    print(<<"[?25l">>),
+    io:format("~s", [<<"[?25l">>]),
     flush_stdout(),
     ok.
 
 clear_previous_line() ->
-    print(<<"\\r[1A[2K">>),
+    io:format("~s", [<<"\\r[1A[2K">>]),
     flush_stdout(),
     ok.
 
@@ -269,8 +269,8 @@ get_terminal_size() ->
     80.
 
 clear() ->
-    print(<<"[2J">>),
-    print(<<"[H">>),
+    io:format("~s", [<<"[2J">>]),
+    io:format("~s", [<<"[H">>]),
     true.
 
 input_character() ->
@@ -352,7 +352,7 @@ strip_ansi(Text) ->
     Output = [],
     Ch = 0,
     % TODO: unhandled stmt type
-    ok    '[]u8.bytestr'(Output).
+    '[]u8.bytestr'(Output).
 
 h_divider(Divider) ->
     Cols = element(1, get_terminal_size()),
@@ -412,7 +412,7 @@ imax(X, Y) ->
 supports_escape_sequences(Fd) ->
     Vcolors_override = getenv(<<"VCOLORS">>),
     % TODO: unhandled stmt type
-    ok    case Vcolors_override == <<"always">> of
+    case Vcolors_override == <<"always">> of
         true -> true;
         false -> 
             case Vcolors_override == <<"never">> of
@@ -420,7 +420,7 @@ supports_escape_sequences(Fd) ->
                 false -> begin
                     Env_term = getenv(<<"TERM">>),
                     % TODO: unhandled stmt type
-                    ok                    case Env_term == <<"dumb">> of
+                    case Env_term == <<"dumb">> of
                         true -> false;
                         false -> 
                                         end
@@ -443,7 +443,7 @@ utf8_getchar() ->
                         false -> begin
                             Uc = C band ((1 bsl (7 - Len)) - 1),
                             % TODO: unhandled stmt type
-                            ok                            Uc
+                            Uc
                         end
                     end
                 end

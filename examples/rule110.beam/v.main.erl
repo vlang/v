@@ -3,33 +3,33 @@
 
 main() ->
     Arg = <<"31">>,
-    case length('v.os':'arguments'()) /= 2 of
+    case length(init:get_plain_arguments()) /= 2 of
         true -> begin
             io:format("~s~n", [<<"Usage: rule110 [<n>]">>]),
             io:format("~s~n", [<<"Using default `n` value: 31">>])
         end;
         false -> ok
     end,
-    N = 'string.int'(Arg),
+    N = binary_to_integer(Arg),
     case N > 200 orelse N < 3 of
         true -> begin
-            eprintln(<<"`n` must be between 3 and 200!">>),
+            io:format(standard_error, "~s~n", [<<"`n` must be between 3 and 200!">>]),
             exit(1)
         end;
         false -> ok
     end,
-    print(<<"\\n">>),
+    io:format("~s", [<<"\\n">>]),
     Title = <<" Rule 110 V Implementation ">>,
     Title_len = length(Title),
     case N > Title_len of
         true -> begin
             lists:foreach(fun(_) ->
-                print(<<"=">>),
+                io:format("~s", [<<"=">>]),
                 ok
             end, lists:seq(0, (N - Title_len) div 2 - 1)),
-            print(Title),
+            io:format("~s", [Title]),
             lists:foreach(fun(_) ->
-                print(<<"=">>),
+                io:format("~s", [<<"=">>]),
                 ok
             end, lists:seq(0, (N - Title_len) div 2 - 1)),
         end;
@@ -39,7 +39,7 @@ main() ->
     lists:foreach(fun(I) ->
         ok
     end, lists:seq(0, N - 1)),
-    print(<<"\\n">>),
+    io:format("~s", [<<"\\n">>]),
     lists:foreach(fun(_) ->
         print_generation(Generation_bin),
         ok.
@@ -47,18 +47,19 @@ main() ->
         ok.
         ok
     end, lists:seq(0, N - 1)),
+        ok.
 
 print_generation(Arr) ->
     Symbols = [<<" ">>, <<"*">>],
     lists:foreach(fun(I) ->
-        print(lists:nth(lists:nth(I + 1, Arr) + 1, Symbols)),
+        io:format("~s", [lists:nth(lists:nth(I + 1, Arr) + 1, Symbols)]),
         ok
     end, lists:seq(0, length(Arr) - 1)),
-    print(<<"\\n">>),
+    io:format("~s", [<<"\\n">>]),
     ok.
 
 next_generation(Gen) ->
-    Arr = '[]int.clone'(Gen),
+    Arr = Gen,
     Prev = 0,
     Curr = 0,
     Next = 0,
@@ -93,4 +94,4 @@ next_generation(Gen) ->
         end,
         {CurrOut, NextOut}
     end, {Curr, Next}, lists:seq(0, length(Arr) - 1)),
-    Gen = '[]int.clone'(Arr),
+    Gen = Arr,

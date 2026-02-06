@@ -1,0 +1,82 @@
+module 'v.encoding.base64' ['encode'/1,
+                'encode_str'/1,
+                'decode'/1,
+                'decode_str'/1,
+                'encode_in_buffer'/2,
+                'decode_in_buffer'/2,
+                'decode_in_buffer_bytes'/2,
+                'encode_from_buffer'/3,
+                'decode_from_buffer'/3,
+                'alloc_and_encode'/2,
+                'url_decode'/1,
+                'url_decode_str'/1,
+                'url_encode'/1,
+                'url_encode_str'/1,
+                'assemble64'/8,
+                'assemble32'/4,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'encode'/1 =
+    fun (Data) ->
+        #{  }#
+'encode_str'/1 =
+    fun (Data) ->
+        #{  }#
+'decode'/1 =
+    fun (Data) ->
+        []
+'decode_str'/1 =
+    fun (Data) ->
+        #{  }#
+'encode_in_buffer'/2 =
+    fun (Data, Buffer) ->
+        0
+'decode_in_buffer'/2 =
+    fun (Data, Buffer) ->
+        0
+'decode_in_buffer_bytes'/2 =
+    fun (Data, Buffer) ->
+        0
+'encode_from_buffer'/3 =
+    fun (Dest, Src, Src_len) ->
+        0
+'decode_from_buffer'/3 =
+    fun (Dest, Src, Src_len) ->
+        0
+'alloc_and_encode'/2 =
+    fun (Src, Len) ->
+        #{  }#
+'url_decode'/1 =
+    fun (Data) ->
+        let <Result> =
+            apply 'string.replace_each'/2(Data, [#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[#{#<95>(8,1,'integer',['unsigned'|['big']])}#|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[]]]]])
+        in  do  case call 'erlang':'rem'(call 'erlang':'length'(Result), 4) of <2> when 'true' -> 'ok' <3> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+                apply 'decode'/1(Result)
+'url_decode_str'/1 =
+    fun (Data) ->
+        let <Result> =
+            apply 'string.replace_each'/2(Data, [#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[#{#<95>(8,1,'integer',['unsigned'|['big']])}#|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[]]]]])
+        in  do  case call 'erlang':'rem'(call 'erlang':'length'(Result), 4) of <2> when 'true' -> 'ok' <3> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+                apply 'decode_str'/1(Result)
+'url_encode'/1 =
+    fun (Data) ->
+        apply 'string.replace_each'/2(apply 'encode'/1(Data), [#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[#{#<95>(8,1,'integer',['unsigned'|['big']])}#|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[#{  }#|[]]]]]]])
+'url_encode_str'/1 =
+    fun (Data) ->
+        apply 'string.replace_each'/2(apply 'encode_str'/1(Data), [#{#<43>(8,1,'integer',['unsigned'|['big']])}#|[#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[#{#<95>(8,1,'integer',['unsigned'|['big']])}#|[#{#<61>(8,1,'integer',['unsigned'|['big']])}#|[#{  }#|[]]]]]]])
+'assemble64'/8 =
+    fun (N1, N2, N3, N4, N5, N6, N7, N8) ->
+        call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bsl'('todo', 58), call 'erlang':'bsl'('todo', 52)), call 'erlang':'bsl'('todo', 46)), call 'erlang':'bsl'('todo', 40)), call 'erlang':'bsl'('todo', 34)), call 'erlang':'bsl'('todo', 28)), call 'erlang':'bsl'('todo', 22)), call 'erlang':'bsl'('todo', 16))
+'assemble32'/4 =
+    fun (N1, N2, N3, N4) ->
+        call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bsl'('todo', 26), call 'erlang':'bsl'('todo', 20)), call 'erlang':'bsl'('todo', 14)), call 'erlang':'bsl'('todo', 8))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.base64')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.base64', _0)
+end

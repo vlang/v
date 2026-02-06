@@ -24,7 +24,7 @@ int_u64(Max) ->
             end,
             N = todo,
             % TODO: unhandled stmt type
-            ok            N
+            N
         end
         end.
 
@@ -33,11 +33,11 @@ bytes_to_u64(B) ->
     Z = [],
     I = length(B),
     % TODO: unhandled stmt type
-    ok    case I > 0 of
+    case I > 0 of
         true -> begin
             D = todo,
             % TODO: unhandled stmt type
-            ok        end;
+        end;
         false -> ok
     end,
     Z.
@@ -59,7 +59,7 @@ int_big(N) ->
                     end,
                     Result = #{{vbeam, type} => 'Integer'},
                     % TODO: unhandled stmt type
-                    ok                    Result
+                    Result
                 end
                         end
         end

@@ -1,0 +1,63 @@
+module 'v.main' ['Tree.size'/1,
+                'Tree.insert'/2,
+                'Tree.search'/2,
+                'Tree.min'/1,
+                'Tree.delete'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'Tree.size'/1 =
+    fun (Tree) ->
+        case Tree of <'todo'> when 'true' -> 0 <'todo'> when 'true' -> call 'erlang':'+'(call 'erlang':'+'(1, apply 'Tree.size'/1(call 'erlang':'map_get'('left', Tree))), apply 'Tree.size'/1(call 'erlang':'map_get'('right', Tree))) end
+'Tree.insert'/2 =
+    fun (Tree, X) ->
+        case Tree of <'todo'> when 'true' -> ~{'value'=>X,'left'=>Tree,'right'=>Tree,{'vbeam','type'}=>'Node'}~ <'todo'> when 'true' -> case call 'erlang':'=:='(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> Tree <'false'> when 'true' -> case call 'erlang':'<'(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> ~{'left'=>apply 'Tree.insert'/2(call 'erlang':'map_get'('left', Tree), X),{'vbeam','type'}=>'Node'}~ <'false'> when 'true' -> ~{'right'=>apply 'Tree.insert'/2(call 'erlang':'map_get'('right', Tree), X),{'vbeam','type'}=>'Node'}~ end end end
+'Tree.search'/2 =
+    fun (Tree, X) ->
+        case Tree of <'todo'> when 'true' -> 'false' <'todo'> when 'true' -> case call 'erlang':'=:='(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> case call 'erlang':'<'(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> apply 'Tree.search'/2(call 'erlang':'map_get'('left', Tree), X) <'false'> when 'true' -> apply 'Tree.search'/2(call 'erlang':'map_get'('right', Tree), X) end end end
+'Tree.min'/1 =
+    fun (Tree) ->
+        case Tree of <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('value', Tree), apply 'Tree.min'/1(call 'erlang':'map_get'('left', Tree))) of <'true'> when 'true' -> call 'erlang':'map_get'('value', Tree) <'false'> when 'true' -> apply 'Tree.min'/1(call 'erlang':'map_get'('left', Tree)) end end
+'Tree.delete'/2 =
+    fun (Tree, X) ->
+        case Tree of <'todo'> when 'true' -> Tree <'todo'> when 'true' -> case call 'erlang':'and'(call 'erlang':'!is'(call 'erlang':'map_get'('left', Tree), 'todo'), call 'erlang':'!is'(call 'erlang':'map_get'('right', Tree), 'todo')) of <'true'> when 'true' -> case call 'erlang':'<'(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> ~{'left'=>apply 'Tree.delete'/2(call 'erlang':'map_get'('left', Tree), X),{'vbeam','type'}=>'Node'}~ <'false'> when 'true' -> case call 'erlang':'>'(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> ~{'right'=>apply 'Tree.delete'/2(call 'erlang':'map_get'('right', Tree), X),{'vbeam','type'}=>'Node'}~ <'false'> when 'true' -> ~{'value'=>apply 'Tree.min'/1(call 'erlang':'map_get'('right', Tree)),'right'=>apply 'Tree.delete'/2(call 'erlang':'map_get'('right', Tree), apply 'Tree.min'/1(call 'erlang':'map_get'('right', Tree))),{'vbeam','type'}=>'Node'}~ end end <'false'> when 'true' -> case call 'erlang':'!is'(call 'erlang':'map_get'('left', Tree), 'todo') of <'true'> when 'true' -> case call 'erlang':'=:='(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> call 'erlang':'map_get'('left', Tree) <'false'> when 'true' -> ~{'left'=>apply 'Tree.delete'/2(call 'erlang':'map_get'('left', Tree), X),{'vbeam','type'}=>'Node'}~ end <'false'> when 'true' -> case call 'erlang':'=:='(X, call 'erlang':'map_get'('value', Tree)) of <'true'> when 'true' -> call 'erlang':'map_get'('right', Tree) <'false'> when 'true' -> ~{'right'=>apply 'Tree.delete'/2(call 'erlang':'map_get'('right', Tree), X),{'vbeam','type'}=>'Node'}~ end end end end
+'main'/0 =
+    fun () ->
+        let <Tree> =
+            'todo'
+        in  let <Vals> =
+                [0.2|[0.0|[0.5|[0.3|[0.6|[0.8|[0.9|[1.0|[0.1|[0.4|[0.7|[]]]]]]]]]]]]
+            in  let <Tree_1> =
+                    let <_2> =
+                        fun (I, TreeAcc) ->
+                            let <TreeOut_4> =
+                                apply 'Tree[f64].insert'/2(TreeAcc, I)
+                            in  TreeOut_4
+                    in  call 'lists':'foldl'(_2, Tree, Vals)
+                in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Tree[f64].size'/1(Tree_1))|[]]])|[]])
+                        let <Del_vals> =
+                            [-0.3|[0.0|[0.3|[0.6|[1.0|[1.5|[]]]]]]]
+                        in  let <Tree_5> =
+                                let <_6> =
+                                    fun (I, TreeAcc) ->
+                                        let <TreeOut_8> =
+                                            apply 'Tree[f64].delete'/2(TreeAcc, I)
+                                        in  TreeOut_8
+                                in  call 'lists':'foldl'(_6, Tree_1, Del_vals)
+                            in  do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Tree[f64].size'/1(Tree_5))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                    do  call 'io':'format'([97|[110|[100|[32|[116|[104|[101|[115|[101|[32|[101|[108|[101|[109|[101|[110|[116|[115|[32|[119|[101|[114|[101|[32|[100|[101|[108|[101|[116|[101|[100|[58|[32|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                                        do  let <_9> =
+                                            fun (I) ->
+                                                case call 'erlang':'not'(apply 'Tree[f64].search'/2(Tree_5, I)) of <'true'> when 'true' -> call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'float_to_binary'(I)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]]) <'false'> when 'true' -> 'ok' end
+                                        in  call 'lists':'foreach'(_9, Vals)
+                                            call 'io':'format'([126|[110|[]]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

@@ -1,0 +1,46 @@
+module 'v.main' ['dfs_recursive'/4,
+                'visited_init'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'dfs_recursive'/4 =
+    fun (U, Visited, Graph, Top_sorting) ->
+        do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[U|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+            do  'true'
+                do  let <_1> =
+                    fun (V) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'(V, Visited), 'false') of <'true'> when 'true' -> apply 'dfs_recursive'/4(V, Visited, Graph, Top_sorting) <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'(U, Graph))
+                    call 'erlang':'bsl'(Top_sorting, U)
+'visited_init'/1 =
+    fun (A_graph) ->
+        let <Array_of_keys> =
+            call 'maps':'keys'(A_graph)
+        in  let <Temp> =
+                ~{}~
+            in  do  let <_1> =
+                    fun (I) ->
+                        'ok'
+                in  call 'lists':'foreach'(_1, Array_of_keys)
+                    Temp
+'main'/0 =
+    fun () ->
+        let <Graph_01> =
+            ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+        in  let <Graph_02> =
+                ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<71>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<69>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<70>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<71>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<72>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+            in  let <Graph_03> =
+                    ~{#{#<53>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<55>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#|[#{#<56>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<51>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<56>(8,1,'integer',['unsigned'|['big']])}#|[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<50>(8,1,'integer',['unsigned'|['big']])}#|[#{#<57>(8,1,'integer',['unsigned'|['big']])}#|[#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<56>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<57>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<50>(8,1,'integer',['unsigned'|['big']])}#=>[],#{#<57>(8,1,'integer',['unsigned'|['big']])}#=>[],#{#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#=>[]}~
+                in  let <Graph> =
+                        ~{}~
+                    in  'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

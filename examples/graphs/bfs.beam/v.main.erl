@@ -7,11 +7,12 @@ main() ->
     Path = breadth_first_search_path(Graph, <<"A">>, <<"F">>),
     vbeam_io:println(<<"The shortest path from node A to node F is: ", (Path)/binary>>),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 breadth_first_search_path(Graph, Vertex, Target) ->
     Path = [],
     Visited = [],
     Queue = [],
     Queue bsl [[Vertex], Path],
     % TODO: unhandled stmt type
-    ok    Path.
+    Path.

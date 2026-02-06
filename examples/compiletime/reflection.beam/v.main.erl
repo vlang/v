@@ -13,14 +13,14 @@ decode(Data) ->
 
 get_string(Data, Field_name) ->
     lists:foreach(fun(Line) ->
-        Key_val = 'string.split'(Line, <<"=">>),
+        Key_val = binary:split(Line, <<"=">>, [global]),
         case lists:nth(1, Key_val) == Field_name of
             true -> lists:nth(2, Key_val);
             false -> ok
         end,
         ok
-    end, 'string.split_into_lines'(Data)),
+    end, binary:split(Data, <<"\n">>, [global])),
     <<"">>.
 
 get_int(Data, Field) ->
-    'string.int'(get_string(Data, Field)).
+    binary_to_integer(get_string(Data, Field)).

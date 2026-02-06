@@ -1,0 +1,889 @@
+module 'v.x.json2' ['Decoder.increment'/2,
+                'Decoder.skip_whitespace'/2,
+                'Decoder.check_json_format'/1,
+                'Decoder.check_string'/1,
+                'Decoder.check_number'/1,
+                'Decoder.check_boolean'/1,
+                'Decoder.check_null'/1,
+                'Decoder.check_array'/1,
+                'Decoder.check_object'/1,
+                'LinkedList.push'/2,
+                'LinkedList.last'/1,
+                'ValueInfo].str'/1,
+                'LinkedList.str'/1,
+                'LinkedList.free'/1,
+                'JsonDecodeError.msg'/1,
+                'Decoder.checker_error'/2,
+                'Decoder.decode_error'/2,
+                'decode'/2,
+                'get_dynamic_from_element'/1,
+                'Decoder.decode_value'/2,
+                'Decoder.decode_string'/2,
+                'Decoder.decode_array'/2,
+                'Decoder.decode_map'/2,
+                'create_value_from_optional'/1,
+                'Decoder.decode_enum'/2,
+                'Decoder.decode_number'/2,
+                'Decoder.decode_number_from_string'/1,
+                'copy_type'/1,
+                'Decoder.get_decoded_sumtype_workaround'/2,
+                'Decoder.check_element_type_valid'/3,
+                'get_array_element_type'/1,
+                'Decoder.check_array_type_valid'/3,
+                'Decoder.get_array_type_workaround'/2,
+                'get_map_element_type'/1,
+                'Decoder.check_map_type_valid'/3,
+                'Decoder.check_map_empty_valid'/2,
+                'Decoder.get_map_type_workaround'/2,
+                'Decoder.check_struct_type_valid'/3,
+                'Decoder.get_struct_type_workaround'/2,
+                'Decoder.init_sumtype_by_value_kind'/3,
+                'Decoder.decode_sumtype'/2,
+                'raw_decode'/1,
+                'encode'/2,
+                'Encoder.encode_value'/2,
+                'Encoder.encode_string'/2,
+                'Encoder.encode_boolean'/2,
+                'Encoder.encode_number'/2,
+                'Encoder.encode_null'/1,
+                'Encoder.encode_array'/2,
+                'Encoder.encode_map'/2,
+                'Encoder.encode_enum'/2,
+                'Encoder.encode_sumtype'/2,
+                'check_not_empty'/1,
+                'Encoder.cached_field_infos'/1,
+                'Encoder.encode_struct'/2,
+                'Encoder.encode_struct_fields'/5,
+                'Encoder.encode_custom'/2,
+                'Encoder.encode_custom2'/2,
+                'Encoder.increment_level'/1,
+                'Encoder.decrement_level'/1,
+                'Encoder.add_indent'/1,
+                'encode_pretty'/1,
+                'Any.str'/1,
+                'Any.str'/1,
+                'Any.str'/1,
+                'Any.json_str'/1,
+                'Any.prettify_json_str'/1,
+                'Any.i8'/1,
+                'Any.i16'/1,
+                'Any.int'/1,
+                'Any.i32'/1,
+                'Any.i64'/1,
+                'Any.u8'/1,
+                'Any.u16'/1,
+                'Any.u32'/1,
+                'Any.u64'/1,
+                'Any.f32'/1,
+                'Any.f64'/1,
+                'Any.bool'/1,
+                'Any.arr'/1,
+                'Any.as_array'/1,
+                'Any.as_map'/1,
+                'Any.as_map_of_strings'/1,
+                'Any.to_time'/1,
+                'map_from'/1,
+                'flatten_array'/1,
+                'Token.full_col'/1,
+                'Scanner.move'/1,
+                'Scanner.move_pos_with_newlines'/1,
+                'Scanner.move_pos'/3,
+                'Scanner.error'/2,
+                'Scanner.tokenize'/3,
+                'Scanner.text_scan'/1,
+                'Scanner.num_scan'/1,
+                'Scanner.invalid_token'/1,
+                'Scanner.scan'/1,
+                'Null.from_json_null'/1,
+                'Null.to_json'/1,
+                'TokenKind__static__from'/1,
+                'ValueKind__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Decoder.increment'/2 =
+        fun (Checker, Message) ->
+            do  case call 'erlang':'=:='(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'length'(call 'erlang':'map_get'('json', Checker))) of <'true'> when 'true' -> 
+                case call 'erlang':'=:='(Message, #{  }#) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<69>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Message|[]]]))
+                end
+             <'false'> when 'true' -> 'ok' end
+                do  'todo'
+                    'ok'
+    'Decoder.skip_whitespace'/2 =
+        fun (Checker, Message) ->
+            'ok'
+    'Decoder.check_json_format'/1 =
+        fun (Checker) ->
+            do  apply 'Decoder.skip_whitespace'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                let <Start_idx_position> =
+                    call 'erlang':'map_get'('checker_idx', Checker)
+                in  let <Actual_value_info_pointer> =
+                        'todo'
+                    in  do  case call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)) of <'todo'> when 'true' -> apply 'Decoder.check_string'/1(Checker) <'todo'> when 'todo'> when 'true' -> apply 'Decoder.check_number'/1(Checker) <'todo'> when 'todo'> when 'true' -> apply 'Decoder.check_boolean'/1(Checker) <'todo'> when 'true' -> apply 'Decoder.check_null'/1(Checker) <'todo'> when 'true' -> apply 'Decoder.check_array'/1(Checker) <'todo'> when 'true' -> apply 'Decoder.check_object'/1(Checker) <_> when 'true' -> apply 'Decoder.checker_error'/2(Checker, #{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#) end
+                            do  call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), Start_idx_position)
+                                do  apply 'Decoder.increment'/2(Checker, #{  }#)
+                                    do  apply 'Decoder.skip_whitespace'/2(Checker, #{  }#)
+                                        do  case call 'erlang':'not'(call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), ['todo'|['todo'|['todo'|['todo'|[]]]]])) of <'true'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('value_kind', Actual_value_info_pointer)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                                            'ok'
+    'Decoder.check_string'/1 =
+        fun (Checker) ->
+            do  apply 'Decoder.increment'/2(Checker, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                'ok'
+    'Decoder.check_number'/1 =
+        fun (Checker) ->
+            do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo') of <'true'> when 'true' -> apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo') of <'true'> when 'true' -> apply 'Decoder.increment'/2(Checker, #{  }#) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'), call 'erlang':'=<'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo')) of <'true'> when 'true' -> 
+                    do  apply 'Decoder.increment'/2(Checker, #{  }#)
+                        'ok'
+                 <'false'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.ascii_str'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)))|[]]])) end end
+                    do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo') of <'true'> when 'true' -> 
+                        do  apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                            case call 'erlang':'not'(call 'erlang':'and'(call 'erlang':'>='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'), call 'erlang':'=<'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'))) of
+                                <'true'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.ascii_str'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)))|[]]]))
+                                <'false'> when 'true' -> 
+                                    'ok'
+                            end
+                     <'false'> when 'true' -> 'ok' end
+                        do  case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo')) of <'true'> when 'true' -> 
+                            do  apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo')) of <'true'> when 'true' -> apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                    case call 'erlang':'not'(call 'erlang':'and'(call 'erlang':'>='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'), call 'erlang':'=<'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)), 'todo'))) of
+                                        <'true'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.ascii_str'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)))|[]]]))
+                                        <'false'> when 'true' -> 
+                                            'ok'
+                                    end
+                         <'false'> when 'true' -> 'ok' end
+                            do  'todo'
+                                'ok'
+    'Decoder.check_boolean'/1 =
+        fun (Checker) ->
+            do  case call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('checker_idx', Checker), 1), call 'erlang':'map_get'('json', Checker)) of <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <_> when 'true' -> apply 'Decoder.checker_error'/2(Checker, #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) end
+                'ok'
+    'Decoder.check_null'/1 =
+        fun (Checker) ->
+            case call 'erlang':'=<'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('json', Checker)), call 'erlang':'map_get'('checker_idx', Checker)), 3) of
+                <'true'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, #{#<69>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Is_not_ok> =
+                        'todo'
+                    in  case call 'erlang':'=/='(Is_not_ok, 0) of
+                            <'true'> when 'true' -> apply 'Decoder.checker_error'/2(Checker, call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Checker))|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                            <'false'> when 'true' -> 
+                                do  3
+                                    'ok'
+                        end
+            end
+    'Decoder.check_array'/1 =
+        fun (Checker) ->
+            do  apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                do  apply 'Decoder.skip_whitespace'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+    'Decoder.check_object'/1 =
+        fun (Checker) ->
+            do  apply 'Decoder.increment'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                do  apply 'Decoder.skip_whitespace'/2(Checker, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+    'LinkedList.push'/2 =
+        fun (List, Value) ->
+            let <New_node> =
+                ~{'value'=>Value,{'vbeam','type'}=>'Node'}~
+            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('head', List), 'todo') of <'true'> when 'true' -> 
+                    do  New_node
+                        'ok'
+                 <'false'> when 'true' -> 
+                    do  New_node
+                        'ok'
+                 end
+                    'todo'
+    'LinkedList.last'/1 =
+        fun (List) ->
+            call 'erlang':'map_get'('value', call 'erlang':'map_get'('tail', List))
+    'ValueInfo].str'/1 =
+        fun (List) ->
+            let <Result_buffer> =
+                []
+            in  let <Current> =
+                    call 'erlang':'map_get'('head', List)
+                in  apply '[]u8.bytestr'/1(Result_buffer)
+    'LinkedList.str'/1 =
+        fun (List) ->
+            let <Sb> =
+                apply 'new_builder'/1(128)
+            in  let <Current> =
+                    call 'erlang':'map_get'('head', List)
+                in  apply 'Builder.str'/1(Sb)
+    'LinkedList.free'/1 =
+        fun (List) ->
+            let <Current> =
+                call 'erlang':'map_get'('head', List)
+            in  do  'todo'
+                    do  'todo'
+                        'ok'
+    'JsonDecodeError.msg'/1 =
+        fun (E) ->
+            call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('line', E))|[#{#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('character', E))|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('message', E)|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('context', E)|[]]]]]]]]])
+    'Decoder.checker_error'/2 =
+        fun (Checker, Message) ->
+            let <Position> =
+                call 'erlang':'map_get'('checker_idx', Checker)
+            in  let <Line_number> =
+                    0
+                in  let <Character_number> =
+                        0
+                    in  let <Last_newline> =
+                            0
+                        in  let <Cutoff> =
+                                call 'erlang':'>'(Character_number, 50)
+                            in  let <Context_start> =
+                                    case Cutoff of <'true'> when 'true' -> call 'erlang':'-'(Position, 50) <'false'> when 'true' -> Last_newline end
+                                in  let <Context_end> =
+                                        apply 'int_min'/2(call 'erlang':'length'(call 'erlang':'map_get'('json', Checker)), call 'erlang':'+'(Position, 5))
+                                    in  let <Context_end_newline> =
+                                            apply 'string.index_u8'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Checker)), 'todo')
+                                        in  let <Context_end_1> =
+                                                case call 'erlang':'=/='(Context_end_newline, -1) of <'true'> when 'true' -> call 'erlang':'+'(Position, Context_end_newline) <'false'> when 'true' -> Context_end end
+                                            in  let <Context> =
+                                                    #{  }#
+                                                in  let <Context_2> =
+                                                        case Cutoff of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Context end
+                                                    in  let <Context_3> =
+                                                            call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Checker))
+                                                        in  let <Context_4> =
+                                                                call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.ascii_str'/1(call 'lists':'nth'(call 'erlang':'+'(Position, 1), call 'erlang':'map_get'('json', Checker)))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                            in  let <Context_5> =
+                                                                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Checker))
+                                                                in  let <Context_6> =
+                                                                        #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                                                    in  let <Context_7> =
+                                                                            case Cutoff of <'true'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'+'(50, 3)) <'false'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, Character_number) end
+                                                                        in  let <Context_8> =
+                                                                                #{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<94>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#
+                                                                            in  'todo'
+    'Decoder.decode_error'/2 =
+        fun (Decoder, Message) ->
+            let <Error_info> =
+                ~{{'vbeam','type'}=>'ValueInfo'}~
+            in  let <Error_info_1> =
+                    case call 'erlang':'=/='(call 'erlang':'map_get'('current_node', Decoder), 'todo') of <'true'> when 'true' -> call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder)) <'false'> when 'true' -> call 'erlang':'map_get'('value', call 'erlang':'map_get'('tail', call 'erlang':'map_get'('values_info', Decoder))) end
+                in  let <Start> =
+                        call 'erlang':'map_get'('position', Error_info_1)
+                    in  let <End> =
+                            call 'erlang':'+'(Start, apply 'int_min'/2(call 'erlang':'map_get'('length', Error_info_1), 50))
+                        in  let <Line_number> =
+                                0
+                            in  let <Character_number> =
+                                    0
+                                in  let <Last_newline> =
+                                        0
+                                    in  let <Cutoff> =
+                                            call 'erlang':'>'(Character_number, 50)
+                                        in  let <Context_start> =
+                                                case Cutoff of <'true'> when 'true' -> call 'erlang':'-'(Start, 50) <'false'> when 'true' -> Last_newline end
+                                            in  let <Context_end> =
+                                                    apply 'int_min'/2(call 'erlang':'length'(call 'erlang':'map_get'('json', Decoder)), call 'erlang':'+'(End, 5))
+                                                in  let <Context_end_newline> =
+                                                        apply 'string.index_u8'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder)), 'todo')
+                                                    in  let <Context_end_2> =
+                                                            case call 'erlang':'=/='(Context_end_newline, -1) of <'true'> when 'true' -> call 'erlang':'+'(End, Context_end_newline) <'false'> when 'true' -> Context_end end
+                                                        in  let <Context> =
+                                                                #{  }#
+                                                            in  let <Context_3> =
+                                                                    case Cutoff of <'true'> when 'true' -> #{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> Context end
+                                                                in  let <Context_4> =
+                                                                        call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder))
+                                                                    in  let <Context_5> =
+                                                                            call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                                        in  let <Context_6> =
+                                                                                call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder))
+                                                                            in  let <Context_7> =
+                                                                                    #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                                                                in  let <Context_8> =
+                                                                                        case Cutoff of <'true'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'+'(50, 3)) <'false'> when 'true' -> apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, Character_number) end
+                                                                                    in  let <Context_9> =
+                                                                                            call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[apply 'string.repeat'/2(#{#<126>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('length', Error_info_1))|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                                                        in  'todo'
+    'decode'/2 =
+        fun (Val, Params) ->
+            case call 'erlang':'=:='(Val, #{  }#) of
+                <'true'> when 'true' -> 'todo'
+                <'false'> when 'true' -> 
+                    let <Decoder> =
+                        ~{'json'=>Val,'strict'=>call 'erlang':'map_get'('strict', Params),{'vbeam','type'}=>'Decoder'}~
+                    in  do  apply 'Decoder.check_json_format'/1(Decoder)
+                            let <Result> =
+                                ~{{'vbeam','type'}=>'T'}~
+                            in  do  call 'erlang':'map_get'('head', call 'erlang':'map_get'('values_info', Decoder))
+                                    do  apply 'Decoder.decode_value'/2(Decoder, Result)
+                                        do  'todo'
+                                            Result
+            end
+    'get_dynamic_from_element'/1 =
+        fun (_t) ->
+            []
+    'Decoder.decode_value'/2 =
+        fun (Decoder, Val) ->
+            do  'ok'
+                do  'ok'
+                    do  'ok'
+                        do  'ok'
+                            do  'ok'
+                                do  case call 'erlang':'=/='(call 'erlang':'map_get'('current_node', Decoder), 'todo') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    'ok'
+    'Decoder.decode_string'/2 =
+        fun (Decoder, Val) ->
+            let <String_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  let <Val_1> =
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('value_kind', String_info), 'string') of <'true'> when 'true' -> let <String_buffer> = [] in let <Buffer_index> = 1 in let <String_index> = 1 in do  'todo' apply '[]u8.bytestr'/1(String_buffer) <'false'> when 'true' -> do  apply 'Decoder.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('value_kind', String_info)|[]]])) Val end
+                in  'ok'
+    'Decoder.decode_array'/2 =
+        fun (Decoder, Val) ->
+            let <Array_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('value_kind', Array_info), 'array') of <'true'> when 'true' -> 
+                    do  call 'erlang':'map_get'('next', call 'erlang':'map_get'('current_node', Decoder))
+                        let <Array_position> =
+                            call 'erlang':'map_get'('position', Array_info)
+                        in  let <Array_end> =
+                                call 'erlang':'+'(Array_position, call 'erlang':'map_get'('length', Array_info))
+                            in  'ok'
+                 <'false'> when 'true' -> apply 'Decoder.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('value_kind', Array_info)|[]]])) end
+                    'ok'
+    'Decoder.decode_map'/2 =
+        fun (Decoder, Val) ->
+            let <Map_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('value_kind', Map_info), 'object') of <'true'> when 'true' -> 
+                    let <Map_position> =
+                        call 'erlang':'map_get'('position', Map_info)
+                    in  let <Map_end> =
+                            call 'erlang':'+'(Map_position, call 'erlang':'map_get'('length', Map_info))
+                        in  do  call 'erlang':'map_get'('next', call 'erlang':'map_get'('current_node', Decoder))
+                                'ok'
+                 <'false'> when 'true' -> apply 'Decoder.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('value_kind', Map_info)|[]]])) end
+                    'ok'
+    'create_value_from_optional'/1 =
+        fun (_val) ->
+            ~{{'vbeam','type'}=>'T'}~
+    'Decoder.decode_enum'/2 =
+        fun (Decoder, Val) ->
+            let <Enum_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('value_kind', Enum_info), 'number') of <'true'> when 'true' -> 
+                    let <Result> =
+                        0
+                    in  do  'todo'
+                            apply 'unknown.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<78>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+                 <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('value_kind', Enum_info), 'string') of <'true'> when 'true' -> 
+                    let <Result_1> =
+                        #{  }#
+                    in  do  apply 'unknown.decode_string'/2(Decoder, Result_1)
+                            apply 'unknown.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+                 <'false'> when 'true' -> 'ok' end end
+                    apply 'unknown.decode_error'/2(Decoder, #{#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+    'Decoder.decode_number'/2 =
+        fun (Decoder, Val) ->
+            let <Number_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  let <Str> =
+                    call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder))
+                in  do  case call 'erlang':'map_get'('unaliased_typ', T) of <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <'todo'> when 'true' -> 'ok' <_> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<96>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]]])) end
+                        'ok'
+    'Decoder.decode_number_from_string'/1 =
+        fun (Decoder) ->
+            let <String_info> =
+                call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder))
+            in  case call 'erlang':'<'(call 'erlang':'map_get'('length', String_info), 2) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        let <Str> =
+                            call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('json', Decoder))
+                        in  'ok'
+                end
+    'copy_type'/1 =
+        fun (_t) ->
+            ~{{'vbeam','type'}=>'T'}~
+    'Decoder.get_decoded_sumtype_workaround'/2 =
+        fun (Decoder, Initialized_sumtype) ->
+            do  'ok'
+                do  apply 'Decoder.decode_error'/2(Decoder, #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#)
+                    Initialized_sumtype
+    'Decoder.check_element_type_valid'/3 =
+        fun (Decoder, Element, Current_node) ->
+            case call 'erlang':'=:='(Current_node, 'todo') of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'is'(Element, 'todo') of
+                        <'true'> when 'true' -> 'true'
+                        <'false'> when 'true' -> 
+                            do  case call 'erlang':'map_get'('value_kind', call 'erlang':'map_get'('value', Current_node)) of <'string'> when 'true' -> 'ok' <'number'> when 'true' -> 'ok' <'boolean'> when 'true' -> 'ok' <'null'> when 'true' -> 'ok' <'array'> when 'true' -> 'ok' <'object'> when 'true' -> 'ok' end
+                                'false'
+                    end
+            end
+    'get_array_element_type'/1 =
+        fun (_arr) ->
+            ~{{'vbeam','type'}=>'T'}~
+    'Decoder.check_array_type_valid'/3 =
+        fun (Decoder, Arr, Current_node) ->
+            apply 'Decoder.check_element_type_valid'/3(Decoder, apply 'get_array_element_type'/1(Arr), Current_node)
+    'Decoder.get_array_type_workaround'/2 =
+        fun (Decoder, Initialized_sumtype) ->
+            do  'ok'
+                'false'
+    'get_map_element_type'/1 =
+        fun (_m) ->
+            ~{{'vbeam','type'}=>'V'}~
+    'Decoder.check_map_type_valid'/3 =
+        fun (Decoder, M, Current_node) ->
+            let <Element> =
+                apply 'get_map_element_type'/1(M)
+            in  apply 'Decoder.check_element_type_valid'/3(Decoder, Element, Current_node)
+    'Decoder.check_map_empty_valid'/2 =
+        fun (Decoder, M) ->
+            let <Element> =
+                apply 'get_map_element_type'/1(M)
+            in  apply 'unknown.check_element_type_valid'/3(Decoder, Element, Current_node)
+    'Decoder.get_map_type_workaround'/2 =
+        fun (Decoder, Initialized_sumtype) ->
+            do  'ok'
+                'false'
+    'Decoder.check_struct_type_valid'/3 =
+        fun (Decoder, S, Current_node) ->
+            let <Type_field_node> =
+                call 'erlang':'map_get'('next', call 'erlang':'map_get'('current_node', Decoder))
+            in  let <Map_position> =
+                    call 'erlang':'map_get'('position', call 'erlang':'map_get'('value', Current_node))
+                in  let <Map_end> =
+                        call 'erlang':'+'(Map_position, call 'erlang':'map_get'('length', call 'erlang':'map_get'('value', Current_node)))
+                    in  let <Type_field> =
+                            #{#<34>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#
+                        in  case call 'erlang':'=:='(Type_field_node, 'todo') of
+                                <'true'> when 'true' -> 'false'
+                                <'false'> when 'true' -> 
+                                    let <Variant_name> =
+                                        call 'erlang':'map_get'('name', 'todo')
+                                    in  do  case call 'erlang':'=:='(call 'erlang':'-'(call 'erlang':'map_get'('length', call 'erlang':'map_get'('value', Type_field_node)), 2), call 'erlang':'length'(Variant_name)) of <'true'> when 'true' -> 
+                                            case 'todo' of <'true'> when 'true' -> 'true' <'false'> when 'true' -> 'ok' end
+                                         <'false'> when 'true' -> 'ok' end
+                                            'false'
+                            end
+    'Decoder.get_struct_type_workaround'/2 =
+        fun (Decoder, Initialized_sumtype) ->
+            do  'ok'
+                'false'
+    'Decoder.init_sumtype_by_value_kind'/3 =
+        fun (Decoder, Val, Value_info) ->
+            let <Failed_struct> =
+                'false'
+            in  do  case call 'erlang':'map_get'('value_kind', Value_info) of <'string'> when 'true' -> 'ok' <'number'> when 'true' -> 'ok' <'boolean'> when 'true' -> 'ok' <'null'> when 'true' -> 'ok' <'array'> when 'true' -> 'ok' <'object'> when 'true' -> 'ok' end
+                    do  case Failed_struct of <'true'> when 'true' -> apply 'Decoder.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', T)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<63>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                        do  apply 'Decoder.decode_error'/2(Decoder, call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', T)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('value_kind', Value_info)|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]))
+                            'ok'
+    'Decoder.decode_sumtype'/2 =
+        fun (Decoder, Val) ->
+            let <Val_1> =
+                case call 'erlang':'is'('todo', 'todo') of <'true'> when 'true' -> do  apply 'unknown.decode_error'/2(Decoder, #{#<84>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) Val <'false'> when 'true' -> let <Value_info> = call 'erlang':'map_get'('value', call 'erlang':'map_get'('current_node', Decoder)) in do  apply 'Decoder.init_sumtype_by_value_kind'/3(Decoder, Val, Value_info) apply 'Decoder.get_decoded_sumtype_workaround'/2(Decoder, Val) end
+            in  'ok'
+    'raw_decode'/1 =
+        fun (Src) ->
+            apply 'decode'/2(Src, ~{{'vbeam','type'}=>'DecoderOptions'}~)
+    'encode'/2 =
+        fun (Val, Config) ->
+            let <Encoder> =
+                ~{'EncoderOptions'=>Config,{'vbeam','type'}=>'Encoder'}~
+            in  do  apply 'Encoder.encode_value'/2(Encoder, Val)
+                    apply '[]u8.bytestr'/1(call 'erlang':'map_get'('output', Encoder))
+    'Encoder.encode_value'/2 =
+        fun (Encoder, Val) ->
+            'ok'
+    'Encoder.encode_string'/2 =
+        fun (Encoder, Val) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                let <Buffer_start> =
+                    0
+                in  let <Buffer_end> =
+                        0
+                    in  do  'todo'
+                            call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+    'Encoder.encode_boolean'/2 =
+        fun (Encoder, Val) ->
+            case Val of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'todo' end
+    'Encoder.encode_number'/2 =
+        fun (Encoder, Val) ->
+            let <Integer_val> =
+                apply 'T.str'/1(Val)
+            in  do  'ok'
+                    'todo'
+    'Encoder.encode_null'/1 =
+        fun (Encoder) ->
+            'todo'
+    'Encoder.encode_array'/2 =
+        fun (Encoder, Val) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                do  case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> 
+                    do  apply 'Encoder.increment_level'/1(Encoder)
+                        apply 'Encoder.add_indent'/1(Encoder)
+                 <'false'> when 'true' -> 'ok' end
+                    do  let <_1> =
+                        fun (Item, I) ->
+                            do  apply 'Encoder.encode_value'/2(Encoder, Item)
+                                do  case call 'erlang':'<'(I, call 'erlang':'-'(call 'erlang':'length'(Val), 1)) of <'true'> when 'true' -> 
+                                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                                        case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> apply 'Encoder.add_indent'/1(Encoder) <'false'> when 'true' -> 'ok' end
+                                 <'false'> when 'true' -> case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> 
+                                    do  apply 'Encoder.decrement_level'/1(Encoder)
+                                        apply 'Encoder.add_indent'/1(Encoder)
+                                 <'false'> when 'true' -> 'ok' end end
+                                    call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, Val)
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+    'Encoder.encode_map'/2 =
+        fun (Encoder, Val) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                do  case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> 
+                    do  apply 'Encoder.increment_level'/1(Encoder)
+                        apply 'Encoder.add_indent'/1(Encoder)
+                 <'false'> when 'true' -> 'ok' end
+                    let <I> =
+                        0
+                    in  do  let <_1> =
+                            fun (Value, Key) ->
+                                do  apply 'Encoder.encode_string'/2(Encoder, Key)
+                                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                                        do  case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo') <'false'> when 'true' -> 'ok' end
+                                            do  apply 'Encoder.encode_value'/2(Encoder, Value)
+                                                do  case call 'erlang':'<'(I, call 'erlang':'-'(call 'maps':'size'(Val), 1)) of <'true'> when 'true' -> 
+                                                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                                                        case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> apply 'Encoder.add_indent'/1(Encoder) <'false'> when 'true' -> 'ok' end
+                                                 <'false'> when 'true' -> case call 'erlang':'map_get'('prettify', Encoder) of <'true'> when 'true' -> 
+                                                    do  apply 'Encoder.decrement_level'/1(Encoder)
+                                                        apply 'Encoder.add_indent'/1(Encoder)
+                                                 <'false'> when 'true' -> 'ok' end end
+                                                    do  'todo'
+                                                        call 'erlang':'+'(Key, 1)
+                        in  call 'lists':'foldl'(_1, 0, Val)
+                            call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+    'Encoder.encode_enum'/2 =
+        fun (Encoder, Val) ->
+            case call 'erlang':'map_get'('enum_as_int', Encoder) of <'true'> when 'true' -> apply 'unknown.encode_number'/2(Encoder, 'todo') <'false'> when 'true' -> 
+                let <Enum_val> =
+                    apply 'unknown.str'/1(Val)
+                in  let <Enum_val_1> =
+                        case call 'erlang':'is'(Val, 'todo') of <'true'> when 'true' -> let <I> = call 'erlang':'-'(call 'erlang':'length'(Enum_val), 3) in call 'lists':'nth'(call 'erlang':'+'('todo', 1), Enum_val) <'false'> when 'true' -> Enum_val end
+                    in  let <Attr_value> =
+                            #{  }#
+                        in  let <Enum_val_2> =
+                                case call 'erlang':'=/='(Attr_value, #{  }#) of <'true'> when 'true' -> Attr_value <'false'> when 'true' -> Enum_val_1 end
+                            in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                                    do  'todo'
+                                        call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+             end
+    'Encoder.encode_sumtype'/2 =
+        fun (Encoder, Val) ->
+            'ok'
+    'check_not_empty'/1 =
+        fun (Val) ->
+            do  'ok'
+                'true'
+    'Encoder.cached_field_infos'/1 =
+        fun (Encoder) ->
+            let <Field_infos> =
+                'todo'
+            in  let <Field_infos_1> =
+                    case call 'erlang':'=:='(Field_infos, 'todo') of <'true'> when 'true' -> [] <'false'> when 'true' -> Field_infos end
+                in  Field_infos_1
+    'Encoder.encode_struct'/2 =
+        fun (Encoder, Val) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+                let <Is_first> =
+                    apply 'Encoder.encode_struct_fields'/5(Encoder, Val, 'true', [], #{  }#)
+                in  do  case call 'erlang':'and'(call 'erlang':'map_get'('prettify', Encoder), call 'erlang':'not'(Is_first)) of <'true'> when 'true' -> 
+                        do  apply 'Encoder.decrement_level'/1(Encoder)
+                            apply 'Encoder.add_indent'/1(Encoder)
+                     <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('output', Encoder), 'todo')
+    'Encoder.encode_struct_fields'/5 =
+        fun (Encoder, Val, Was_first, Old_used_keys, Prefix) ->
+            let <Field_infos> =
+                apply 'Encoder.cached_field_infos'/1(Encoder)
+            in  let <I> =
+                    0
+                in  let <Is_first> =
+                        Was_first
+                    in  let <Used_keys> =
+                            Old_used_keys
+                        in  Is_first
+    'Encoder.encode_custom'/2 =
+        fun (Encoder, Val) ->
+            let <Integer_val> =
+                apply 'T.to_json'/1(Val)
+            in  'todo'
+    'Encoder.encode_custom2'/2 =
+        fun (Encoder, Val) ->
+            let <Integer_val> =
+                apply 'unknown.json_str'/1(Val)
+            in  'todo'
+    'Encoder.increment_level'/1 =
+        fun (Encoder) ->
+            do  'todo'
+                'ok'
+    'Encoder.decrement_level'/1 =
+        fun (Encoder) ->
+            do  'todo'
+                'ok'
+    'Encoder.add_indent'/1 =
+        fun (Encoder) ->
+            'todo'
+    'encode_pretty'/1 =
+        fun (Typed_data) ->
+            apply 'encode'/2(Typed_data, ~{'prettify'=>'true',{'vbeam','type'}=>'void'}~)
+    'Any.str'/1 =
+        fun (F) ->
+            apply 'Any.json_str'/1('todo')
+    'Any.str'/1 =
+        fun (F) ->
+            apply 'Any.json_str'/1('todo')
+    'Any.str'/1 =
+        fun (F) ->
+            case call 'erlang':'is'(F, 'todo') of <'true'> when 'true' -> F <'false'> when 'true' -> apply 'Any.json_str'/1(F) end
+    'Any.json_str'/1 =
+        fun (F) ->
+            apply 'encode'/2(F, ~{{'vbeam','type'}=>'EncoderOptions'}~)
+    'Any.prettify_json_str'/1 =
+        fun (F) ->
+            apply 'encode'/2(F, ~{'prettify'=>'true',{'vbeam','type'}=>'EncoderOptions'}~)
+    'Any.i8'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.i8'/1(F) <_> when 'true' -> 0 end
+    'Any.i16'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.i16'/1(F) <_> when 'true' -> 0 end
+    'Any.int'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> call 'erlang':'binary_to_integer'(F) <_> when 'true' -> 0 end
+    'Any.i32'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.i32'/1(F) <_> when 'true' -> 0 end
+    'Any.i64'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.i64'/1(F) <_> when 'true' -> 0 end
+    'Any.u8'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.u8'/1(F) <_> when 'true' -> 0 end
+    'Any.u16'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.u16'/1(F) <_> when 'true' -> 0 end
+    'Any.u32'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.u32'/1(F) <_> when 'true' -> 0 end
+    'Any.u64'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.u64'/1(F) <_> when 'true' -> 0 end
+    'Any.f32'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> apply 'string.f32'/1(F) <_> when 'true' -> 0.0 end
+    'Any.f64'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> call 'erlang':'binary_to_float'(F) <_> when 'true' -> 0.0 end
+    'Any.bool'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'true' -> case call 'erlang':'>'(call 'erlang':'length'(F), 0) of <'true'> when 'true' -> call 'erlang':'and'(call 'erlang':'=/='(F, #{#<48>(8,1,'integer',['unsigned'|['big']])}#), call 'erlang':'=/='(F, #{#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)) <'false'> when 'true' -> 'false' end <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> call 'erlang':'=/='('todo', 0) <'todo'> when 'todo'> when 'todo'> when 'todo'> when 'true' -> call 'erlang':'=/='('todo', 0) <'todo'> when 'todo'> when 'true' -> call 'erlang':'=/='('todo', 'todo') <_> when 'true' -> 'false' end
+    'Any.arr'/1 =
+        fun (F) ->
+            apply 'Any.as_array'/1(F)
+    'Any.as_array'/1 =
+        fun (F) ->
+            do  case call 'erlang':'is'(F, 'todo') of <'true'> when 'true' -> F <'false'> when 'true' -> case call 'erlang':'is'(F, 'todo') of <'true'> when 'true' -> 
+                let <Arr> =
+                    []
+                in  do  let <_1> =
+                        fun (V) ->
+                            call 'erlang':'bsl'(Arr, V)
+                    in  call 'lists':'foreach'(_1, F)
+                        Arr
+             <'false'> when 'true' -> 'ok' end end
+                [F|[]]
+    'Any.as_map'/1 =
+        fun (F) ->
+            do  case call 'erlang':'is'(F, 'todo') of <'true'> when 'true' -> F <'false'> when 'true' -> case call 'erlang':'is'(F, 'todo') of <'true'> when 'true' -> 
+                let <Mp> =
+                    ~{}~
+                in  do  let <_1> =
+                        fun (Fi, I) ->
+                            do  Fi
+                                call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, F)
+                        Mp
+             <'false'> when 'true' -> 'ok' end end
+                ~{#{#<48>(8,1,'integer',['unsigned'|['big']])}#=>F}~
+    'Any.as_map_of_strings'/1 =
+        fun (F) ->
+            case call 'erlang':'is'(F, 'todo') of
+                <'true'> when 'true' -> Ms
+                <'false'> when 'true' -> 
+                    case call 'erlang':'is'(F, 'todo') of
+                        <'true'> when 'true' -> Ms
+                        <'false'> when 'true' -> 
+                            ~{#{#<48>(8,1,'integer',['unsigned'|['big']])}#=>apply 'Any.str'/1(F)}~
+                    end
+            end
+    'Any.to_time'/1 =
+        fun (F) ->
+            case F of <'todo'> when 'true' -> F <'todo'> when 'true' -> apply 'unix'/1(F) <'todo'> when 'true' -> apply 'parse'/1(F) <_> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[F|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Any.type_name'/1(F)|[]]]]])) end
+    'map_from'/1 =
+        fun (T) ->
+            let <M> =
+                ~{}~
+            in  do  'ok'
+                    M
+    'flatten_array'/1 =
+        fun (T) ->
+            'ok'
+    'Token.full_col'/1 =
+        fun (T) ->
+            call 'erlang':'+'(call 'erlang':'map_get'('col', T), call 'erlang':'length'(call 'erlang':'map_get'('lit', T)))
+    'Scanner.move'/1 =
+        fun (S) ->
+            apply 'Scanner.move_pos'/3(S, 'true', 'true')
+    'Scanner.move_pos_with_newlines'/1 =
+        fun (S) ->
+            apply 'Scanner.move_pos'/3(S, 'false', 'true')
+    'Scanner.move_pos'/3 =
+        fun (S, Include_space, Include_newlines) ->
+            do  'todo'
+                case call 'erlang':'<'(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))) of <'true'> when 'true' -> case call 'erlang':'and'(Include_newlines, call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), ['todo'|['todo'|['todo'|[]]]])) of <'true'> when 'true' -> 
+                    do  'todo'
+                        do  0
+                            do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'), call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'length'(call 'erlang':'map_get'('text', S)))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), 1), call 'erlang':'map_get'('text', S)), 'todo')) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                'ok'
+                 <'false'> when 'true' -> case call 'erlang':'and'(Include_space, call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo')) of <'true'> when 'true' -> 
+                    do  'todo'
+                        do  'todo'
+                            'ok'
+                 <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> 'todo' end
+    'Scanner.error'/2 =
+        fun (S, Description) ->
+            apply 'Scanner.tokenize'/3(S, call 'erlang':'binary_to_list'(Description), 'error')
+    'Scanner.tokenize'/3 =
+        fun (S, Lit, Kind) ->
+            ~{'lit'=>Lit,'kind'=>Kind,'col'=>call 'erlang':'map_get'('col', S),'line'=>call 'erlang':'map_get'('line', S),{'vbeam','type'}=>'Token'}~
+    'Scanner.text_scan'/1 =
+        fun (S) ->
+            let <Has_closed> =
+                'false'
+            in  let <Chrs> =
+                    []
+                in  let <Tok> =
+                        apply 'Scanner.tokenize'/3(S, Chrs, 'str')
+                    in  do  apply 'Scanner.move'/1(S)
+                            case call 'erlang':'not'(Has_closed) of
+                                <'true'> when 'true' -> apply 'Scanner.error'/2(S, #{#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)
+                                <'false'> when 'true' -> 
+                                    Tok
+                            end
+    'Scanner.num_scan'/1 =
+        fun (S) ->
+            let <Is_fl> =
+                'false'
+            in  let <Dot_index> =
+                    -1
+                in  let <Digits> =
+                        []
+                    in  do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo') of <'true'> when 'true' -> 
+                            do  call 'erlang':'bsl'(Digits, 'todo')
+                                case call 'erlang':'not'(apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), 1), call 'erlang':'map_get'('text', S)))) of
+                                    <'true'> when 'true' -> apply 'Scanner.invalid_token'/1(S)
+                                    <'false'> when 'true' -> 
+                                        apply 'Scanner.move_pos_with_newlines'/1(S)
+                                end
+                         <'false'> when 'true' -> 'ok' end
+                            case call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'), call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), 1), call 'erlang':'map_get'('text', S))))) of
+                                <'true'> when 'true' -> apply 'Scanner.error'/2(S, #{#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(Dot_index, 1), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'erlang':'=:='(call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'('todo', 1), Digits)), 0)) of
+                                        <'true'> when 'true' -> apply 'Scanner.error'/2(S, #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                                        <'false'> when 'true' -> 
+                                            do  case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'))) of <'true'> when 'true' -> 
+                                                do  call 'erlang':'bsl'(Digits, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)))
+                                                    do  apply 'Scanner.move_pos_with_newlines'/1(S)
+                                                        do  case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), ['todo'|['todo'|[]]])) of <'true'> when 'true' -> 
+                                                            do  call 'erlang':'bsl'(Digits, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)))
+                                                                apply 'Scanner.move_pos_with_newlines'/1(S)
+                                                         <'false'> when 'true' -> 'ok' end
+                                                            let <Exp_digits_count> =
+                                                                0
+                                                            in  case call 'erlang':'=:='(Exp_digits_count, 0) of <'true'> when 'true' -> apply 'Scanner.error'/2(S, #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                                             <'false'> when 'true' -> 'ok' end
+                                                let <Kind> =
+                                                    case Is_fl of <'true'> when 'true' -> 'float' <'false'> when 'true' -> 'int' end
+                                                in  apply 'Scanner.tokenize'/3(S, Digits, Kind)
+                                    end
+                            end
+    'Scanner.invalid_token'/1 =
+        fun (S) ->
+            case call 'erlang':'and'(call 'erlang':'>='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 32), call 'erlang':'=<'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 126)) of <'true'> when 'true' -> 
+                let <X> =
+                    apply 'u8.ascii_str'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)))
+                in  apply 'Scanner.error'/2(S, call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[X|[#{#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+             <'false'> when 'true' -> 
+                let <X_1> =
+                    apply 'u8.str_escaped'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)))
+                in  apply 'Scanner.error'/2(S, call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[X_1|[#{#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+             end
+    'Scanner.scan'/1 =
+        fun (S) ->
+            do  case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'), call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), ['todo'|['todo'|['todo'|[]]]]))) of <'true'> when 'true' -> apply 'Scanner.move'/1(S) <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'>='(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))) of <'true'> when 'true' -> apply 'Scanner.tokenize'/3(S, [], 'eof') <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 3), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo'))) of <'true'> when 'true' -> 
+                    let <Ident> =
+                        apply '[]u8.bytestr'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('text', S)))
+                    in  case call 'erlang':'or'(call 'erlang':'=:='(Ident, #{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#), call 'erlang':'=:='(Ident, #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#)) of
+                            <'true'> when 'true' -> Tok
+                            <'false'> when 'true' -> 
+                                do  'todo'
+                                    apply 'Scanner.invalid_token'/1(S)
+                        end
+                 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 4), call 'erlang':'length'(call 'erlang':'map_get'('text', S))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo')) of <'true'> when 'true' -> 
+                    let <Ident_1> =
+                        apply '[]u8.bytestr'/1(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('text', S)))
+                    in  case call 'erlang':'=:='(Ident_1, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#) of
+                            <'true'> when 'true' -> Tok
+                            <'false'> when 'true' -> 
+                                do  'todo'
+                                    apply 'Scanner.invalid_token'/1(S)
+                        end
+                 <'false'> when 'true' -> case call 'lists':'member'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]]) of <'true'> when 'true' -> 
+                    let <Chr> =
+                        call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S))
+                    in  let <Tok_2> =
+                            apply 'Scanner.tokenize'/3(S, [], 'todo')
+                        in  do  apply 'Scanner.move'/1(S)
+                                Tok_2
+                 <'false'> when 'true' -> case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo') of <'true'> when 'true' -> apply 'Scanner.text_scan'/1(S) <'false'> when 'true' -> case call 'erlang':'or'(apply 'u8.is_digit'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S))), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', S), 1), call 'erlang':'map_get'('text', S)), 'todo')) of <'true'> when 'true' -> apply 'Scanner.num_scan'/1(S) <'false'> when 'true' -> apply 'Scanner.invalid_token'/1(S) end end end end end end
+    'Null.from_json_null'/1 =
+        fun (N) ->
+            'ok'
+    'Null.to_json'/1 =
+        fun (N) ->
+            #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#
+    'TokenKind__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'ValueKind__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.x.json2')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.x.json2', _0)
+    end

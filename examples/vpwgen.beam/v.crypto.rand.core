@@ -1,0 +1,83 @@
+module 'v.crypto.rand' ['read'/1,
+                'ReadError.msg'/1,
+                'bytes'/1,
+                'int_u64'/1,
+                'bytes_to_u64'/1,
+                'int_big'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'read'/1 =
+        fun (Bytes_needed) ->
+            let <Buffer> =
+                []
+            in  Buffer
+    'ReadError.msg'/1 =
+        fun (Err) ->
+            #{#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#
+    'bytes'/1 =
+        fun (Bytes_needed) ->
+            apply 'read'/1(Bytes_needed)
+    'int_u64'/1 =
+        fun (Max) ->
+            let <Bitlen> =
+                apply 'len_64'/1(Max)
+            in  case call 'erlang':'=:='(Bitlen, 0) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        let <K> =
+                            call 'erlang':'div'(call 'erlang':'+'(Bitlen, 7), 8)
+                        in  let <B> =
+                                'todo'
+                            in  let <B_1> =
+                                    case call 'erlang':'=:='(B, 'todo') of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> B end
+                                in  let <N> =
+                                        'todo'
+                                    in  N
+                end
+    'bytes_to_u64'/1 =
+        fun (B) ->
+            let <Ws> =
+                8
+            in  let <Z> =
+                    []
+                in  let <I> =
+                        call 'erlang':'length'(B)
+                    in  do  case call 'erlang':'>'(I, 0) of <'true'> when 'true' -> 
+                            let <D> =
+                                'todo'
+                            in  'ok'
+                         <'false'> when 'true' -> 'ok' end
+                            Z
+    'int_big'/1 =
+        fun (N) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('signum', N), 1) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<96>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Max> =
+                        call 'erlang':'-'(N, apply 'integer_from_int'/1(1))
+                    in  let <Len> =
+                            apply 'Integer.bit_len'/1(Max)
+                        in  case call 'erlang':'=:='(Len, 0) of
+                                <'true'> when 'true' -> Max
+                                <'false'> when 'true' -> 
+                                    let <K> =
+                                        call 'erlang':'div'(call 'erlang':'+'(Len, 7), 8)
+                                    in  let <B> =
+                                            'todo'
+                                        in  let <B_1> =
+                                                case call 'erlang':'=:='(B, 0) of <'true'> when 'true' -> 8 <'false'> when 'true' -> B end
+                                            in  let <Result> =
+                                                    ~{{'vbeam','type'}=>'Integer'}~
+                                                in  Result
+                            end
+            end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.rand')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.rand', _0)
+    end

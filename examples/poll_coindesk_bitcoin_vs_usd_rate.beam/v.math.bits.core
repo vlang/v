@@ -1,0 +1,472 @@
+module 'v.math.bits' ['leading_zeros_8'/1,
+                'leading_zeros_8_default'/1,
+                'leading_zeros_16'/1,
+                'leading_zeros_16_default'/1,
+                'leading_zeros_32'/1,
+                'leading_zeros_32_default'/1,
+                'leading_zeros_64'/1,
+                'leading_zeros_64_default'/1,
+                'trailing_zeros_8'/1,
+                'trailing_zeros_8_default'/1,
+                'trailing_zeros_16'/1,
+                'trailing_zeros_16_default'/1,
+                'trailing_zeros_32'/1,
+                'trailing_zeros_32_default'/1,
+                'trailing_zeros_64'/1,
+                'trailing_zeros_64_default'/1,
+                'ones_count_8'/1,
+                'ones_count_8_default'/1,
+                'ones_count_16'/1,
+                'ones_count_16_default'/1,
+                'ones_count_32'/1,
+                'ones_count_32_default'/1,
+                'ones_count_64'/1,
+                'ones_count_64_default'/1,
+                'rotate_left_8'/2,
+                'rotate_left_16'/2,
+                'rotate_left_32'/2,
+                'rotate_left_64'/2,
+                'reverse_8'/1,
+                'reverse_16'/1,
+                'reverse_32'/1,
+                'reverse_64'/1,
+                'reverse_bytes_16'/1,
+                'reverse_bytes_32'/1,
+                'reverse_bytes_64'/1,
+                'len_8'/1,
+                'len_16'/1,
+                'len_32'/1,
+                'len_64'/1,
+                'add_32'/3,
+                'add_64'/3,
+                'sub_32'/3,
+                'sub_64'/3,
+                'mul_32'/2,
+                'mul_32_default'/2,
+                'mul_64'/2,
+                'mul_64_default'/2,
+                'mul_add_32'/3,
+                'mul_add_32_default'/3,
+                'mul_add_64'/3,
+                'mul_add_64_default'/3,
+                'div_32'/3,
+                'div_32_default'/3,
+                'div_64'/3,
+                'div_64_default'/3,
+                'rem_32'/3,
+                'rem_64'/3,
+                'normalize'/1,
+                'f32_bits'/1,
+                'f32_from_bits'/1,
+                'f64_bits'/1,
+                'f64_from_bits'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'leading_zeros_8'/1 =
+    fun (X) ->
+        apply 'leading_zeros_8_default'/1(X)
+'leading_zeros_8_default'/1 =
+    fun (X) ->
+        call 'erlang':'-'(8, apply 'len_8'/1(X))
+'leading_zeros_16'/1 =
+    fun (X) ->
+        apply 'leading_zeros_16_default'/1(X)
+'leading_zeros_16_default'/1 =
+    fun (X) ->
+        call 'erlang':'-'(16, apply 'len_16'/1(X))
+'leading_zeros_32'/1 =
+    fun (X) ->
+        apply 'leading_zeros_32_default'/1(X)
+'leading_zeros_32_default'/1 =
+    fun (X) ->
+        call 'erlang':'-'(32, apply 'len_32'/1(X))
+'leading_zeros_64'/1 =
+    fun (X) ->
+        apply 'leading_zeros_64_default'/1(X)
+'leading_zeros_64_default'/1 =
+    fun (X) ->
+        call 'erlang':'-'(64, apply 'len_64'/1(X))
+'trailing_zeros_8'/1 =
+    fun (X) ->
+        apply 'trailing_zeros_8_default'/1(X)
+'trailing_zeros_8_default'/1 =
+    fun (X) ->
+        'todo'
+'trailing_zeros_16'/1 =
+    fun (X) ->
+        apply 'trailing_zeros_16_default'/1(X)
+'trailing_zeros_16_default'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> 16
+            <'false'> when 'true' -> 
+                'todo'
+        end
+'trailing_zeros_32'/1 =
+    fun (X) ->
+        apply 'trailing_zeros_32_default'/1(X)
+'trailing_zeros_32_default'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> 32
+            <'false'> when 'true' -> 
+                'todo'
+        end
+'trailing_zeros_64'/1 =
+    fun (X) ->
+        apply 'trailing_zeros_64_default'/1(X)
+'trailing_zeros_64_default'/1 =
+    fun (X) ->
+        case call 'erlang':'=:='(X, 0) of
+            <'true'> when 'true' -> 64
+            <'false'> when 'true' -> 
+                'todo'
+        end
+'ones_count_8'/1 =
+    fun (X) ->
+        apply 'ones_count_8_default'/1(X)
+'ones_count_8_default'/1 =
+    fun (X) ->
+        'todo'
+'ones_count_16'/1 =
+    fun (X) ->
+        apply 'ones_count_16_default'/1(X)
+'ones_count_16_default'/1 =
+    fun (X) ->
+        'todo'
+'ones_count_32'/1 =
+    fun (X) ->
+        apply 'ones_count_32_default'/1(X)
+'ones_count_32_default'/1 =
+    fun (X) ->
+        'todo'
+'ones_count_64'/1 =
+    fun (X) ->
+        apply 'ones_count_64_default'/1(X)
+'ones_count_64_default'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'+'(call 'erlang':'band'(call 'erlang':'bsr'(X, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'band'(X, call 'erlang':'band'('todo', 'todo')))
+        in  let <Y_1> =
+                call 'erlang':'+'(call 'erlang':'band'(call 'erlang':'bsr'(Y, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'band'(Y, call 'erlang':'band'('todo', 'todo')))
+            in  let <Y_2> =
+                    call 'erlang':'band'(call 'erlang':'+'(call 'erlang':'bsr'(Y_1, 4), Y_1), call 'erlang':'band'('todo', 'todo'))
+                in  let <Y_3> =
+                        call 'erlang':'bsr'(Y_2, 8)
+                    in  let <Y_4> =
+                            call 'erlang':'bsr'(Y_3, 16)
+                        in  let <Y_5> =
+                                call 'erlang':'bsr'(Y_4, 32)
+                            in  call 'erlang':'band'('todo', 127)
+'rotate_left_8'/2 =
+    fun (X, K) ->
+        let <S> =
+            call 'erlang':'band'('todo', call 'erlang':'-'('todo', 'todo'))
+        in  call 'erlang':'bor'(call 'erlang':'bsl'(X, S), call 'erlang':'bsr'(X, call 'erlang':'-'('todo', S)))
+'rotate_left_16'/2 =
+    fun (X, K) ->
+        let <S> =
+            call 'erlang':'band'('todo', call 'erlang':'-'('todo', 'todo'))
+        in  call 'erlang':'bor'(call 'erlang':'bsl'(X, S), call 'erlang':'bsr'(X, call 'erlang':'-'('todo', S)))
+'rotate_left_32'/2 =
+    fun (X, K) ->
+        let <S> =
+            call 'erlang':'band'('todo', call 'erlang':'-'('todo', 'todo'))
+        in  call 'erlang':'bor'(call 'erlang':'bsl'(X, S), call 'erlang':'bsr'(X, call 'erlang':'-'('todo', S)))
+'rotate_left_64'/2 =
+    fun (X, K) ->
+        let <S> =
+            call 'erlang':'band'('todo', call 'erlang':'-'('todo', 'todo'))
+        in  call 'erlang':'bor'(call 'erlang':'bsl'(X, S), call 'erlang':'bsr'(X, call 'erlang':'-'('todo', S)))
+'reverse_8'/1 =
+    fun (X) ->
+        call 'lists':'nth'(call 'erlang':'+'(X, 1), ['todo'|[16#80|[16#40|[16#c0|[16#20|[16#a0|[16#60|[16#e0|[16#10|[16#90|[16#50|[16#d0|[16#30|[16#b0|[16#70|[16#f0|[16#08|[16#88|[16#48|[16#c8|[16#28|[16#a8|[16#68|[16#e8|[16#18|[16#98|[16#58|[16#d8|[16#38|[16#b8|[16#78|[16#f8|[16#04|[16#84|[16#44|[16#c4|[16#24|[16#a4|[16#64|[16#e4|[16#14|[16#94|[16#54|[16#d4|[16#34|[16#b4|[16#74|[16#f4|[16#0c|[16#8c|[16#4c|[16#cc|[16#2c|[16#ac|[16#6c|[16#ec|[16#1c|[16#9c|[16#5c|[16#dc|[16#3c|[16#bc|[16#7c|[16#fc|[16#02|[16#82|[16#42|[16#c2|[16#22|[16#a2|[16#62|[16#e2|[16#12|[16#92|[16#52|[16#d2|[16#32|[16#b2|[16#72|[16#f2|[16#0a|[16#8a|[16#4a|[16#ca|[16#2a|[16#aa|[16#6a|[16#ea|[16#1a|[16#9a|[16#5a|[16#da|[16#3a|[16#ba|[16#7a|[16#fa|[16#06|[16#86|[16#46|[16#c6|[16#26|[16#a6|[16#66|[16#e6|[16#16|[16#96|[16#56|[16#d6|[16#36|[16#b6|[16#76|[16#f6|[16#0e|[16#8e|[16#4e|[16#ce|[16#2e|[16#ae|[16#6e|[16#ee|[16#1e|[16#9e|[16#5e|[16#de|[16#3e|[16#be|[16#7e|[16#fe|[16#01|[16#81|[16#41|[16#c1|[16#21|[16#a1|[16#61|[16#e1|[16#11|[16#91|[16#51|[16#d1|[16#31|[16#b1|[16#71|[16#f1|[16#09|[16#89|[16#49|[16#c9|[16#29|[16#a9|[16#69|[16#e9|[16#19|[16#99|[16#59|[16#d9|[16#39|[16#b9|[16#79|[16#f9|[16#05|[16#85|[16#45|[16#c5|[16#25|[16#a5|[16#65|[16#e5|[16#15|[16#95|[16#55|[16#d5|[16#35|[16#b5|[16#75|[16#f5|[16#0d|[16#8d|[16#4d|[16#cd|[16#2d|[16#ad|[16#6d|[16#ed|[16#1d|[16#9d|[16#5d|[16#dd|[16#3d|[16#bd|[16#7d|[16#fd|[16#03|[16#83|[16#43|[16#c3|[16#23|[16#a3|[16#63|[16#e3|[16#13|[16#93|[16#53|[16#d3|[16#33|[16#b3|[16#73|[16#f3|[16#0b|[16#8b|[16#4b|[16#cb|[16#2b|[16#ab|[16#6b|[16#eb|[16#1b|[16#9b|[16#5b|[16#db|[16#3b|[16#bb|[16#7b|[16#fb|[16#07|[16#87|[16#47|[16#c7|[16#27|[16#a7|[16#67|[16#e7|[16#17|[16#97|[16#57|[16#d7|[16#37|[16#b7|[16#77|[16#f7|[16#0f|[16#8f|[16#4f|[16#cf|[16#2f|[16#af|[16#6f|[16#ef|[16#1f|[16#9f|[16#5f|[16#df|[16#3f|[16#bf|[16#7f|[16#ff|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+'reverse_16'/1 =
+    fun (X) ->
+        call 'erlang':'bor'('todo', call 'erlang':'bsl'('todo', 8))
+'reverse_32'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(X, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(X, call 'erlang':'band'('todo', 'todo')), 1))
+        in  let <Y_1> =
+                call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(Y, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(Y, call 'erlang':'band'('todo', 'todo')), 'todo'))
+            in  let <Y_2> =
+                    call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(Y_1, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(Y_1, call 'erlang':'band'('todo', 'todo')), 'todo'))
+                in  apply 'reverse_bytes_32'/1('todo')
+'reverse_64'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(X, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(X, call 'erlang':'band'('todo', 'todo')), 1))
+        in  let <Y_1> =
+                call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(Y, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(Y, call 'erlang':'band'('todo', 'todo')), 2))
+            in  let <Y_2> =
+                    call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(Y_1, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(Y_1, call 'erlang':'band'('todo', 'todo')), 4))
+                in  apply 'reverse_bytes_64'/1(Y_2)
+'reverse_bytes_16'/1 =
+    fun (X) ->
+        call 'erlang':'bor'(call 'erlang':'bsr'(X, 8), call 'erlang':'bsl'(X, 8))
+'reverse_bytes_32'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(X, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(X, call 'erlang':'band'('todo', 'todo')), 'todo'))
+        in  'todo'
+'reverse_bytes_64'/1 =
+    fun (X) ->
+        let <Y> =
+            call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(X, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(X, call 'erlang':'band'('todo', 'todo')), 'todo'))
+        in  let <Y_1> =
+                call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(Y, 'todo'), call 'erlang':'band'('todo', 'todo')), call 'erlang':'bsl'(call 'erlang':'band'(Y, call 'erlang':'band'('todo', 'todo')), 'todo'))
+            in  call 'erlang':'bor'(call 'erlang':'bsr'(Y_1, 32), call 'erlang':'bsl'(Y_1, 32))
+'len_8'/1 =
+    fun (X) ->
+        'todo'
+'len_16'/1 =
+    fun (X) ->
+        let <Y> =
+            X
+        in  let <N> =
+                0
+            in  let <Y_1> =
+                    case call 'erlang':'>='(Y, 256) of <'true'> when 'true' -> 8 <'false'> when 'true' -> Y end
+                in  let <N_2> =
+                        case call 'erlang':'>='(Y_1, 256) of <'true'> when 'true' -> let <Y_3> = 8 in 8 <'false'> when 'true' -> N end
+                    in  call 'erlang':'+'(N_2, 'todo')
+'len_32'/1 =
+    fun (X) ->
+        let <Y> =
+            X
+        in  let <N> =
+                0
+            in  let <Y_1> =
+                    case call 'erlang':'>='(Y, 65536) of <'true'> when 'true' -> 16 <'false'> when 'true' -> Y end
+                in  let <N_2> =
+                        case call 'erlang':'>='(Y_1, 65536) of <'true'> when 'true' -> let <Y_3> = 16 in 16 <'false'> when 'true' -> N end
+                    in  let <Y_4> =
+                            case call 'erlang':'>='(Y_3, 256) of <'true'> when 'true' -> 8 <'false'> when 'true' -> Y_3 end
+                        in  let <N_5> =
+                                case call 'erlang':'>='(Y_4, 256) of <'true'> when 'true' -> let <Y_6> = 8 in 8 <'false'> when 'true' -> N_2 end
+                            in  call 'erlang':'+'(N_5, 'todo')
+'len_64'/1 =
+    fun (X) ->
+        let <Y> =
+            X
+        in  let <N> =
+                0
+            in  let <Y_1> =
+                    case call 'erlang':'>='(Y, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> 32 <'false'> when 'true' -> Y end
+                in  let <N_2> =
+                        case call 'erlang':'>='(Y_1, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> let <Y_3> = 32 in 32 <'false'> when 'true' -> N end
+                    in  let <Y_4> =
+                            case call 'erlang':'>='(Y_3, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> 16 <'false'> when 'true' -> Y_3 end
+                        in  let <N_5> =
+                                case call 'erlang':'>='(Y_4, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> let <Y_6> = 16 in 16 <'false'> when 'true' -> N_2 end
+                            in  let <Y_7> =
+                                    case call 'erlang':'>='(Y_6, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> 8 <'false'> when 'true' -> Y_6 end
+                                in  let <N_8> =
+                                        case call 'erlang':'>='(Y_7, call 'erlang':'bsl'('todo', 'todo')) of <'true'> when 'true' -> let <Y_9> = 8 in 8 <'false'> when 'true' -> N_5 end
+                                    in  call 'erlang':'+'(N_8, 'todo')
+'add_32'/3 =
+    fun (X, Y, Carry) ->
+        let <Sum64> =
+            call 'erlang':'+'(call 'erlang':'+'('todo', 'todo'), 'todo')
+        in  let <Sum> =
+                'todo'
+            in  let <Carry_out> =
+                    'todo'
+                in  Sum
+'add_64'/3 =
+    fun (X, Y, Carry) ->
+        let <Sum> =
+            call 'erlang':'+'(call 'erlang':'+'(X, Y), Carry)
+        in  let <Carry_out> =
+                call 'erlang':'bsr'(call 'erlang':'bor'(call 'erlang':'band'(X, Y), call 'erlang':'band'(call 'erlang':'bor'(X, Y), call 'erlang':'bnot'(Sum))), 63)
+            in  Sum
+'sub_32'/3 =
+    fun (X, Y, Borrow) ->
+        let <Diff> =
+            call 'erlang':'-'(call 'erlang':'-'(X, Y), Borrow)
+        in  let <Borrow_out> =
+                call 'erlang':'bsr'(call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bnot'(X), Y), call 'erlang':'band'(call 'erlang':'bnot'(call 'erlang':'bxor'(X, Y)), Diff)), 31)
+            in  Diff
+'sub_64'/3 =
+    fun (X, Y, Borrow) ->
+        let <Diff> =
+            call 'erlang':'-'(call 'erlang':'-'(X, Y), Borrow)
+        in  let <Borrow_out> =
+                call 'erlang':'bsr'(call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bnot'(X), Y), call 'erlang':'band'(call 'erlang':'bnot'(call 'erlang':'bxor'(X, Y)), Diff)), 63)
+            in  Diff
+'mul_32'/2 =
+    fun (X, Y) ->
+        apply 'mul_32_default'/2(X, Y)
+'mul_32_default'/2 =
+    fun (X, Y) ->
+        let <Tmp> =
+            call 'erlang':'*'('todo', 'todo')
+        in  let <Hi> =
+                'todo'
+            in  let <Lo> =
+                    'todo'
+                in  Hi
+'mul_64'/2 =
+    fun (X, Y) ->
+        apply 'mul_64_default'/2(X, Y)
+'mul_64_default'/2 =
+    fun (X, Y) ->
+        let <X0> =
+            call 'erlang':'band'(X, call 'erlang':'-'('todo', 1))
+        in  let <X1> =
+                call 'erlang':'bsr'(X, 32)
+            in  let <Y0> =
+                    call 'erlang':'band'(Y, call 'erlang':'-'('todo', 1))
+                in  let <Y1> =
+                        call 'erlang':'bsr'(Y, 32)
+                    in  let <W0> =
+                            call 'erlang':'*'(X0, Y0)
+                        in  let <T> =
+                                call 'erlang':'+'(call 'erlang':'*'(X1, Y0), call 'erlang':'bsr'(W0, 32))
+                            in  let <W1> =
+                                    call 'erlang':'band'(T, call 'erlang':'-'('todo', 1))
+                                in  let <W2> =
+                                        call 'erlang':'bsr'(T, 32)
+                                    in  let <W1_1> =
+                                            call 'erlang':'*'(X0, Y1)
+                                        in  let <Hi> =
+                                                call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(X1, Y1), W2), call 'erlang':'bsr'(W1_1, 32))
+                                            in  let <Lo> =
+                                                    call 'erlang':'*'(X, Y)
+                                                in  Hi
+'mul_add_32'/3 =
+    fun (X, Y, Z) ->
+        apply 'mul_add_32_default'/3(X, Y, Z)
+'mul_add_32_default'/3 =
+    fun (X, Y, Z) ->
+        let <Tmp> =
+            call 'erlang':'+'(call 'erlang':'*'('todo', 'todo'), 'todo')
+        in  let <Hi> =
+                'todo'
+            in  let <Lo> =
+                    'todo'
+                in  Hi
+'mul_add_64'/3 =
+    fun (X, Y, Z) ->
+        apply 'mul_add_64_default'/3(X, Y, Z)
+'mul_add_64_default'/3 =
+    fun (X, Y, Z) ->
+        let <H> =
+            apply 'mul_64'/2(X, Y)
+        in  let <L> =
+                apply 'mul_64'/2(X, Y)
+            in  let <Lo> =
+                    call 'erlang':'+'(L, Z)
+                in  let <Hi> =
+                        call 'erlang':'+'(H, 'todo')
+                    in  Hi
+'div_32'/3 =
+    fun (Hi, Lo, Y) ->
+        apply 'div_32_default'/3(Hi, Lo, Y)
+'div_32_default'/3 =
+    fun (Hi, Lo, Y) ->
+        do  case call 'erlang':'and'(call 'erlang':'=/='(Y, 0), call 'erlang':'=<'(Y, Hi)) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<79>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            let <Z> =
+                call 'erlang':'bor'(call 'erlang':'bsl'('todo', 32), 'todo')
+            in  let <Quo> =
+                    'todo'
+                in  let <Rem> =
+                        'todo'
+                    in  Quo
+'div_64'/3 =
+    fun (Hi, Lo, Y1) ->
+        apply 'div_64_default'/3(Hi, Lo, Y1)
+'div_64_default'/3 =
+    fun (Hi, Lo, Y1) ->
+        let <Y> =
+            Y1
+        in  do  case call 'erlang':'=:='(Y, 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<79>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'=<'(Y, Hi) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<79>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                    let <S> =
+                        'todo'
+                    in  let <Y_1> =
+                            S
+                        in  let <Yn1> =
+                                call 'erlang':'bsr'(Y_1, 32)
+                            in  let <Yn0> =
+                                    call 'erlang':'band'(Y_1, call 'erlang':'-'('todo', 1))
+                                in  let <Ss1> =
+                                        call 'erlang':'bsl'(Hi, S)
+                                    in  let <Xxx> =
+                                            call 'erlang':'-'(64, S)
+                                        in  let <Ss2> =
+                                                call 'erlang':'bsr'(Lo, Xxx)
+                                            in  let <Ss2_2> =
+                                                    case call 'erlang':'=:='(Xxx, 64) of <'true'> when 'true' -> 0 <'false'> when 'true' -> Ss2 end
+                                                in  let <Un32> =
+                                                        call 'erlang':'bor'(Ss1, Ss2_2)
+                                                    in  let <Un10> =
+                                                            call 'erlang':'bsl'(Lo, S)
+                                                        in  let <Un1> =
+                                                                call 'erlang':'bsr'(Un10, 32)
+                                                            in  let <Un0> =
+                                                                    call 'erlang':'band'(Un10, call 'erlang':'-'('todo', 1))
+                                                                in  let <Q1> =
+                                                                        call 'erlang':'div'(Un32, Yn1)
+                                                                    in  let <Rhat> =
+                                                                            call 'erlang':'-'(Un32, call 'erlang':'*'(Q1, Yn1))
+                                                                        in  let <Un21> =
+                                                                                call 'erlang':'+'(call 'erlang':'*'(Un32, 'todo'), call 'erlang':'-'(Un1, call 'erlang':'*'(Q1, Y_1)))
+                                                                            in  let <Q0> =
+                                                                                    call 'erlang':'div'(Un21, Yn1)
+                                                                                in  let <Rhat_3> =
+                                                                                        call 'erlang':'-'(Un21, call 'erlang':'*'(Q0, Yn1))
+                                                                                    in  let <Qq> =
+                                                                                            call 'erlang':'+'(call 'erlang':'*'(Q1, 'todo'), Q0)
+                                                                                        in  let <Rr> =
+                                                                                                call 'erlang':'bsr'(call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'*'(Un21, 'todo'), Un0), call 'erlang':'*'(Q0, Y_1)), S)
+                                                                                            in  Qq
+'rem_32'/3 =
+    fun (Hi, Lo, Y) ->
+        'todo'
+'rem_64'/3 =
+    fun (Hi, Lo, Y) ->
+        do  apply 'div_64'/3(call 'erlang':'rem'(Hi, Y), Lo, Y)
+let <Rem> =
+            apply 'div_64'/3(call 'erlang':'rem'(Hi, Y), Lo, Y)
+        in  Rem
+'normalize'/1 =
+    fun (X) ->
+        let <Smallest_normal> =
+            2.2250738585072014e-308
+        in  case call 'erlang':'<'(case call 'erlang':'>'(X, 'todo') of <'true'> when 'true' -> X <'false'> when 'true' -> call 'erlang':'-'(X) end, Smallest_normal) of
+                <'true'> when 'true' -> call 'erlang':'*'(X, call 'erlang':'bsl'('todo', 'todo'))
+                <'false'> when 'true' -> 
+                    X
+            end
+'f32_bits'/1 =
+    fun (F) ->
+        let <P> =
+            'todo'
+        in  P
+'f32_from_bits'/1 =
+    fun (B) ->
+        let <P> =
+            'todo'
+        in  P
+'f64_bits'/1 =
+    fun (F) ->
+        let <P> =
+            'todo'
+        in  P
+'f64_from_bits'/1 =
+    fun (B) ->
+        let <P> =
+            'todo'
+        in  P
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.math.bits')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.math.bits', _0)
+end

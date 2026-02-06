@@ -1,0 +1,22 @@
+module 'v.encoding.utf8.validate' ['utf8_string'/1,
+                'utf8_data'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'utf8_string'/1 =
+    fun (S) ->
+        apply 'utf8_data'/2(call 'erlang':'map_get'('str', S), call 'erlang':'length'(S))
+'utf8_data'/2 =
+    fun (Data, Len) ->
+        let <State> =
+            0
+        in  call 'erlang':'=:='(State, 0)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.utf8.validate')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.utf8.validate', _0)
+end

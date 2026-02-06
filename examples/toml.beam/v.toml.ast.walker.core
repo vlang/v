@@ -1,0 +1,50 @@
+module 'v.toml.ast.walker' ['Inspector.visit'/2,
+                'inspect'/3,
+                'walk'/2,
+                'walk_and_modify'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Inspector.visit'/2 =
+        fun (I, Value) ->
+            do  apply 'Inspector.inspector_callback'/3(I, Value, call 'erlang':'map_get'('data', I))
+                'ok'
+    'inspect'/3 =
+        fun (Value, Data, Inspector_callback) ->
+            do  apply 'walk'/2(~{'inspector_callback'=>Inspector_callback,'data'=>Data,{'vbeam','type'}=>'Inspector'}~, Value)
+                'ok'
+    'walk'/2 =
+        fun (Visitor, Value) ->
+            do  case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> 
+                let <Value_map> =
+                    'todo'
+                in  'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> 
+                    let <Value_array> =
+                        'todo'
+                    in  'ok'
+                 <'false'> when 'true' -> apply 'Visitor.visit'/2(Visitor, Value) end
+                    'ok'
+    'walk_and_modify'/2 =
+        fun (Modifier, Value) ->
+            do  case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> 
+                let <Value_map> =
+                    'todo'
+                in  'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'is'(Value, 'todo') of <'true'> when 'true' -> 
+                    let <Value_array> =
+                        'todo'
+                    in  'ok'
+                 <'false'> when 'true' -> apply 'Modifier.modify'/2(Modifier, Value) end
+                    'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.toml.ast.walker')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.toml.ast.walker', _0)
+    end

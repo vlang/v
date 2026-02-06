@@ -81,19 +81,19 @@
     Str3.
 
 'Number.i64'(N) ->
-    case 'string.starts_with'(maps:get(text, N), <<"0x">>) of
+    case case string:prefix(maps:get(text, N), <<"0x">>) of nomatch -> false; _ -> true end of
         true -> begin
-            Hex = 'string.replace'('string.to_upper'('string.all_after'(maps:get(text, N), <<"0x">>)), <<"_">>, <<"">>),
+            Hex = binary:replace(string:uppercase('string.all_after'(maps:get(text, N), <<"0x">>)), <<"_">>, <<"">>, [global]),
             parse_int(Hex, 16, 64)
         end;
-        false -> case 'string.starts_with'(maps:get(text, N), <<"0o">>) of
+        false -> case case string:prefix(maps:get(text, N), <<"0o">>) of nomatch -> false; _ -> true end of
             true -> begin
-                Oct = 'string.replace'('string.all_after'(maps:get(text, N), <<"0o">>), <<"_">>, <<"">>),
+                Oct = binary:replace('string.all_after'(maps:get(text, N), <<"0o">>), <<"_">>, <<"">>, [global]),
                 parse_int(Oct, 8, 64)
             end;
-            false -> case 'string.starts_with'(maps:get(text, N), <<"0b">>) of
+            false -> case case string:prefix(maps:get(text, N), <<"0b">>) of nomatch -> false; _ -> true end of
                 true -> begin
-                    Bin = 'string.replace'('string.all_after'(maps:get(text, N), <<"0b">>), <<"_">>, <<"">>),
+                    Bin = binary:replace('string.all_after'(maps:get(text, N), <<"0b">>), <<"_">>, <<"">>, [global]),
                     parse_int(Bin, 2, 64)
                 end;
                 false -> ok
@@ -103,7 +103,7 @@
     parse_int(maps:get(text, N), 0, 64).
 
 'Number.f64'(N) ->
-    'string.f64'('string.replace'(maps:get(text, N), <<"_">>, <<"">>)).
+    binary_to_float(binary:replace(maps:get(text, N), <<"_">>, <<"">>, [global])).
 
 'Date.str'(D) ->
     Str = <<(maps:get(name, todo))/binary, (<<"{\\n">>)/binary>>,

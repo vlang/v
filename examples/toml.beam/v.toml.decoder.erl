@@ -46,12 +46,12 @@ decode_quoted_escapes(Q) ->
         false -> begin
             S = new_simple_text(maps:get(text, Q)),
             % TODO: unhandled stmt type
-            ok            ok
+            ok
         end
         end.
 
 decode_unicode_escape(Esc_unicode) ->
-    Is_long_esc_type = 'string.starts_with'(Esc_unicode, <<"U">>),
+    Is_long_esc_type = case string:prefix(Esc_unicode, <<"U">>) of nomatch -> false; _ -> true end,
     Sequence = lists:nth(todo + 1, Esc_unicode),
     Hex_digits_len = case Is_long_esc_type of
         true -> 8;
@@ -69,22 +69,22 @@ decode_unicode_escape(Esc_unicode) ->
     Rn.
 
 'Decoder.decode_date_time'(D, Dt) ->
-    case 'string.contains'(maps:get(text, Dt), <<".">>) of
+    case case binary:match(maps:get(text, Dt), <<".">>) of nomatch -> false; _ -> true end of
         true -> begin
             Yymmddhhmmss = 'string.all_before'(maps:get(text, Dt), <<".">>),
             Rest = 'string.all_after'(maps:get(text, Dt), <<".">>),
-            Z = case 'string.contains'(Rest, <<"Z">>) of
+            Z = case case binary:match(Rest, <<"Z">>) of nomatch -> false; _ -> true end of
                 true -> <<"Z">>;
                 false -> <<"">>
             end,
             Ms = Rest,
             Offset = <<"">>,
-            case 'string.contains'(Rest, <<"+">>) of
+            case case binary:match(Rest, <<"+">>) of nomatch -> false; _ -> true end of
                 true -> begin
                     Offset1 = <<(<<"+">>)/binary, ('string.all_after'(Rest, <<"+">>))/binary>>,
                     Ms1 = 'string.all_before'(Rest, <<"+">>),
                 end;
-                false -> case 'string.contains'(Rest, <<"-">>) of
+                false -> case case binary:match(Rest, <<"-">>) of nomatch -> false; _ -> true end of
                     true -> begin
                         Offset2 = <<(<<"-">>)/binary, ('string.all_after'(Rest, <<"-">>))/binary>>,
                         Ms2 = 'string.all_before'(Rest, <<"-">>),

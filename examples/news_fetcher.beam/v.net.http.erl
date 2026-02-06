@@ -5,9 +5,9 @@
     Ssl_conn = new_ssl_conn(#{verify => maps:get(verify, Req), cert => maps:get(cert, Req), cert_key => maps:get(cert_key, Req), validate => maps:get(validate, Req), in_memory_verification => maps:get(in_memory_verification, Req), {vbeam, type} => 'SSLConnectConfig'}),
     Retries = 0,
     % TODO: unhandled stmt type
-    ok    Req_headers = 'Request.build_request_headers'(Req, Method, Host_name, Port, Path),
+    Req_headers = 'Request.build_request_headers'(Req, Method, Host_name, Port, Path),
     % TODO: unhandled stmt type
-    ok    'Request.do_request'(Req, Req_headers, Ssl_conn).
+    'Request.do_request'(Req, Req_headers, Ssl_conn).
 
 read_from_ssl_connection_cb(Con, Buf, Bufsize) ->
     Ssl_conn = todo,
@@ -20,7 +20,7 @@ read_from_ssl_connection_cb(Con, Buf, Bufsize) ->
     'SSLConn.shutdown'(Ssl_conn),
     Response_text = 'Builder.str'(Content),
     % TODO: unhandled stmt type
-    ok    case maps:get(on_finish, Req) /= todo of
+    case maps:get(on_finish, Req) /= todo of
         true -> 'Request.on_finish'(Req, Req, todo);
         false -> ok
     end,
@@ -33,10 +33,10 @@ read_cookies(H, Filter) ->
         false -> begin
             Cookies = [],
             lists:foreach(fun(Line_) ->
-                Line = 'string.trim_space'(Line_),
+                Line = string:trim(Line_),
                 Part = <<"">>,
                 % TODO: unhandled stmt type
-                ok                ok
+                ok
             end, Lines),
             Cookies
         end
@@ -119,11 +119,11 @@ sanitize(Valid, V) ->
         end,
         OkOut = false,
         % TODO: unhandled stmt type
-        ok        OkOut
+        OkOut
     end, Ok, lists:seq(0, length(V) - 1)),
     case Ok1 of
         true -> 'string.clone'(V);
-        false -> '[]u8.bytestr'('[]u8.filter'('string.bytes'(V), valid(It)))
+        false -> '[]u8.bytestr'(lists:filter(valid(It), binary_to_list(V)))
         end.
 
 sanitize_cookie_name(Name) ->
@@ -134,7 +134,7 @@ sanitize_cookie_value(V) ->
     case length(V) == 0 of
         true -> V;
         false -> 
-            case 'string.starts_with'(Val, <<" ">>) orelse 'string.contains'(V, <<";">>) orelse 'string.ends_with'(Val, <<" ">>) orelse 'string.starts_with'(Val, <<",">>) orelse 'string.ends_with'(Val, <<",">>) of
+            case case string:prefix(Val, <<" ">>) of nomatch -> false; _ -> true end orelse case binary:match(V, <<";">>) of nomatch -> false; _ -> true end orelse case binary:longest_common_suffix([Val, <<" ">>]) of 0 -> false; _ -> true end orelse case string:prefix(Val, <<",">>) of nomatch -> false; _ -> true end orelse case binary:longest_common_suffix([Val, <<",">>]) of 0 -> false; _ -> true end of
                 true -> <<"\"", (V)/binary, "\"">>;
                 false -> V
                         end
@@ -246,7 +246,7 @@ is_cookie_name_valid(Name) ->
         end.
 
 parse_cookie(Line) ->
-    Parts = 'string.split'('string.trim_space'(Line), <<";">>),
+    Parts = binary:split(string:trim(Line), <<";">>, [global]),
     case length(Parts) == 1 andalso lists:nth(1, Parts) == <<"">> of
         true -> error(<<"malformed cookie">>);
         false -> begin
@@ -272,11 +272,11 @@ parse_cookie(Line) ->
                             end;
                             false -> ok
                         end,
-                        Lower_attr = 'string.to_lower'(Attr1),
+                        Lower_attr = string:lowercase(Attr1),
                         Val = parse_cookie_value(Raw_val1, false),
                         case Lower_attr of
                             <<"samesite">> -> begin
-                                Lower_val = 'string.to_lower'(Val),
+                                Lower_val = string:lowercase(Val),
                                 case Lower_val of
                                     <<"lax">> -> ok;
                                     <<"strict">> -> ok;
@@ -286,15 +286,15 @@ parse_cookie(Line) ->
                             end;
                             <<"secure">> -> begin
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             <<"httponly">> -> begin
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             <<"domain">> -> begin
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             <<"max-age">> -> begin
-                                Secs = 'string.int'(Val),
+                                Secs = binary_to_integer(Val),
                                 case Secs /= 0 andalso lists:nth(1, Val) /= todo of
                                     true -> ok;
                                     false -> ok
@@ -304,10 +304,10 @@ parse_cookie(Line) ->
                                     false -> ok
                                 end,
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             <<"path">> -> begin
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             _ -> maps:get(unparsed, C) bsl lists:nth(I + 1, Parts)
                         end,
                         ok
@@ -320,24 +320,24 @@ parse_cookie(Line) ->
 
 download_file(Url, Out_file_path) ->
     % TODO: unhandled stmt type
-    ok    S = get(Url),
+    S = get(Url),
     case 'Response.status'(S) /= ok of
         true -> error_with_code(maps:get(body, S), maps:get(status_code, S));
         false -> begin
             % TODO: unhandled stmt type
-            ok            write_file(Out_file_path, maps:get(body, S)),
+            write_file(Out_file_path, maps:get(body, S)),
             ok
         end
         end.
 
 download_file_with_cookies(Url, Out_file_path, Cookies) ->
     % TODO: unhandled stmt type
-    ok    S = fetch(#{method => get, url => Url, cookies => Cookies, {vbeam, type} => 'FetchConfig'}),
+    S = fetch(#{method => get, url => Url, cookies => Cookies, {vbeam, type} => 'FetchConfig'}),
     case 'Response.status'(S) /= ok of
         true -> error(<<"received http code ", (integer_to_binary(maps:get(status_code, S)))/binary>>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            write_file(Out_file_path, maps:get(body, S)),
+            write_file(Out_file_path, maps:get(body, S)),
             ok
         end
         end.
@@ -353,14 +353,14 @@ download_file_with_progress(Url, Path, Params) ->
     'Downloader.on_start'(D, Req, Path),
     Response = 'Request.do'(Req),
     % TODO: unhandled stmt type
-    ok    'Downloader.on_finish'(D, Req, Response),
+    'Downloader.on_finish'(D, Req, Response),
     Response.
 
 download_progres_cb(Request, Chunk, Body_so_far, Expected_size, Status_code) ->
     D = todo,
     Pd = todo,
     % TODO: unhandled stmt type
-    ok    case Status_code == 200 of
+    case Status_code == 200 of
         true -> 'Downloader.on_chunk'(D, Request, Chunk, Body_so_far, Expected_size);
         false -> ok
     end,
@@ -396,7 +396,7 @@ download_progres_cb(Request, Chunk, Body_so_far, Expected_size, Status_code) ->
     Estimated_s = 'Duration.seconds'(Estimated),
     Eta_s = f64_max(Estimated_s - Elapsed_s, 0.0),
     'SilentStreamingDownloader.on_chunk'(maps:get(SilentStreamingDownloader, D), Request, Chunk, Already_received, Expected),
-    print(<<"\\rDownloading to `", (maps:get(path, D))/binary, "` ", (float_to_binary(todo * Ratio))/binary, "%, ", (float_to_binary(todo / (1024 * 1024)))/binary, "/", (float_to_binary(todo / (1024 * 1024)))/binary, "MB, ", (float_to_binary(Speed))/binary, "KB/s, elapsed: ", (float_to_binary(Elapsed_s))/binary, "s, eta: ", (float_to_binary(Eta_s))/binary, "s">>),
+    io:format("~s", [<<"\\rDownloading to `", (maps:get(path, D))/binary, "` ", (float_to_binary(todo * Ratio))/binary, "%, ", (float_to_binary(todo / (1024 * 1024)))/binary, "/", (float_to_binary(todo / (1024 * 1024)))/binary, "MB, ", (float_to_binary(Speed))/binary, "KB/s, elapsed: ", (float_to_binary(Elapsed_s))/binary, "s, eta: ", (float_to_binary(Eta_s))/binary, "s">>]),
     flush_stdout(),
     ok.
 
@@ -515,7 +515,8 @@ download_progres_cb(Request, Chunk, Body_so_far, Expected_size, Status_code) ->
 
 'Header.free'(H) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 new_header(Kvs) ->
     H = #{{vbeam, type} => 'Header'},
     lists:foreach(fun(Kv) ->
@@ -549,6 +550,7 @@ new_custom_header_from_map(Kvs) ->
         ok.
         ok
     end, Kvs),
+        ok.
 
 'Header.add_custom_map'(H, Kvs) ->
     lists:foreach(fun(V) ->
@@ -560,7 +562,7 @@ new_custom_header_from_map(Kvs) ->
 'Header.set'(H, Key, Value) ->
     Key_str = 'CommonHeader.str'(Key),
     % TODO: unhandled stmt type
-    ok    todo,
+    todo,
     ok.
 
 'Header.set_custom'(H, Key, Value) ->
@@ -592,14 +594,15 @@ new_custom_header_from_map(Kvs) ->
 
 'Header.delete_custom'(H, Key) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Header.contains'(H, Key) ->
     case maps:get(cur_pos, H) == 0 of
         true -> false;
         false -> begin
             Key_str = 'CommonHeader.str'(Key),
             % TODO: unhandled stmt type
-            ok            false
+            false
         end
         end.
 
@@ -607,12 +610,12 @@ new_custom_header_from_map(Kvs) ->
     case maps:get(exact, Flags) of
         true -> begin
             % TODO: unhandled stmt type
-            ok            false
+            false
         end;
         false -> begin
-            Lower_key = 'string.to_lower'(Key),
+            Lower_key = string:lowercase(Key),
             % TODO: unhandled stmt type
-            ok            false
+            false
         end
     end.
 
@@ -623,15 +626,15 @@ new_custom_header_from_map(Kvs) ->
     case maps:get(exact, Flags) of
         true -> ok;
         false -> begin
-            Lower_key = 'string.to_lower'(Key),
+            Lower_key = string:lowercase(Key),
             % TODO: unhandled stmt type
-            ok        end
+        end
     end,
     error(<<"none">>).
 
 'Header.starting_with'(H, Key) ->
     lists:foreach(fun(Kv) ->
-        case 'string.starts_with'(maps:get(key, Kv), Key) of
+        case case string:prefix(maps:get(key, Kv), Key) of nomatch -> false; _ -> true end of
             true -> maps:get(key, Kv);
             false -> ok
         end,
@@ -650,12 +653,12 @@ new_custom_header_from_map(Kvs) ->
             case maps:get(exact, Flags) of
                 true -> begin
                     % TODO: unhandled stmt type
-                    ok                    Res
+                    Res
                 end;
                 false -> begin
-                    Lower_key = 'string.to_lower'(Key),
+                    Lower_key = string:lowercase(Key),
                     % TODO: unhandled stmt type
-                    ok                    Res
+                    Res
                 end
             end
         end
@@ -664,7 +667,7 @@ new_custom_header_from_map(Kvs) ->
 'Header.keys'(H) ->
     Res = [],
     % TODO: unhandled stmt type
-    ok    uniq(Res).
+    uniq(Res).
 
 'Header.render'(H, Flags) ->
     Sb = new_builder(length(maps:get(data, H)) * 48),
@@ -675,7 +678,8 @@ new_custom_header_from_map(Kvs) ->
 
 'Header.render_into_sb'(H, Sb, Flags) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Header.join'(H, Other) ->
     Combined = #{data => maps:get(data, H), cur_pos => maps:get(cur_pos, H), {vbeam, type} => 'Header'},
     lists:foreach(fun(K) ->
@@ -690,7 +694,7 @@ new_custom_header_from_map(Kvs) ->
 canonicalize(Name) ->
     case lists:member(Name, #{<<"accept">> => accept, <<"accept-ch">> => accept_ch, <<"accept-charset">> => accept_charset, <<"accept-ch-lifetime">> => accept_ch_lifetime, <<"accept-encoding">> => accept_encoding, <<"accept-language">> => accept_language, <<"accept-patch">> => accept_patch, <<"accept-post">> => accept_post, <<"accept-ranges">> => accept_ranges, <<"access-control-allow-credentials">> => access_control_allow_credentials, <<"access-control-allow-headers">> => access_control_allow_headers, <<"access-control-allow-methods">> => access_control_allow_methods, <<"access-control-allow-origin">> => access_control_allow_origin, <<"access-control-expose-headers">> => access_control_expose_headers, <<"access-control-max-age">> => access_control_max_age, <<"access-control-request-headers">> => access_control_request_headers, <<"access-control-request-method">> => access_control_request_method, <<"age">> => age, <<"allow">> => allow, <<"alt-svc">> => alt_svc, <<"authorization">> => authorization, <<"cache-control">> => cache_control, <<"clear-site-data">> => clear_site_data, <<"connection">> => connection, <<"content-disposition">> => content_disposition, <<"content-encoding">> => content_encoding, <<"content-language">> => content_language, <<"content-length">> => content_length, <<"content-location">> => content_location, <<"content-range">> => content_range, <<"content-security-policy">> => content_security_policy, <<"content-security-policy-report-only">> => content_security_policy_report_only, <<"content-type">> => content_type, <<"cookie">> => cookie, <<"cross-origin-embedder-policy">> => cross_origin_embedder_policy, <<"cross-origin-opener-policy">> => cross_origin_opener_policy, <<"cross-origin-resource-policy">> => cross_origin_resource_policy, <<"date">> => date, <<"device-memory">> => device_memory, <<"digest">> => digest, <<"dnt">> => dnt, <<"early-data">> => early_data, <<"etag">> => etag, <<"expect">> => expect, <<"expect-ct">> => expect_ct, <<"expires">> => expires, <<"feature-policy">> => feature_policy, <<"forwarded">> => forwarded, <<"from">> => from, <<"host">> => host, <<"if-match">> => if_match, <<"if-modified-since">> => if_modified_since, <<"if-none-match">> => if_none_match, <<"if-range">> => if_range, <<"if-unmodified-since">> => if_unmodified_since, <<"index">> => index, <<"keep-alive">> => keep_alive, <<"large-allocation">> => large_allocation, <<"last-modified">> => last_modified, <<"link">> => link, <<"location">> => location, <<"nel">> => nel, <<"origin">> => origin, <<"pragma">> => pragma, <<"proxy-authenticate">> => proxy_authenticate, <<"proxy-authorization">> => proxy_authorization, <<"range">> => range, <<"referer">> => referer, <<"referrer-policy">> => referrer_policy, <<"retry-after">> => retry_after, <<"save-data">> => save_data, <<"sec-fetch-dest">> => sec_fetch_dest, <<"sec-fetch-mode">> => sec_fetch_mode, <<"sec-fetch-site">> => sec_fetch_site, <<"sec-fetch-user">> => sec_fetch_user, <<"sec-websocket-accept">> => sec_websocket_accept, <<"sec_websocket_key">> => sec_websocket_key, <<"server">> => server, <<"server-timing">> => server_timing, <<"set-cookie">> => set_cookie, <<"sourcemap">> => sourcemap, <<"strict-transport-security">> => strict_transport_security, <<"te">> => te, <<"timing-allow-origin">> => timing_allow_origin, <<"tk">> => tk, <<"trailer">> => trailer, <<"transfer-encoding">> => transfer_encoding, <<"upgrade">> => upgrade, <<"upgrade-insecure-requests">> => upgrade_insecure_requests, <<"user-agent">> => user_agent, <<"vary">> => vary, <<"via">> => via, <<"want-digest">> => want_digest, <<"warning">> => warning, <<"www-authenticate">> => www_authenticate, <<"x-content-type-options">> => x_content_type_options, <<"x-dns-prefetch-control">> => x_dns_prefetch_control, <<"x-forwarded-for">> => x_forwarded_for, <<"x-forwarded-host">> => x_forwarded_host, <<"x-forwarded-proto">> => x_forwarded_proto, <<"x-frame-options">> => x_frame_options, <<"x-xss-protection">> => x_xss_protection}) of
         true -> 'CommonHeader.str'(maps:get(Name, #{<<"accept">> => accept, <<"accept-ch">> => accept_ch, <<"accept-charset">> => accept_charset, <<"accept-ch-lifetime">> => accept_ch_lifetime, <<"accept-encoding">> => accept_encoding, <<"accept-language">> => accept_language, <<"accept-patch">> => accept_patch, <<"accept-post">> => accept_post, <<"accept-ranges">> => accept_ranges, <<"access-control-allow-credentials">> => access_control_allow_credentials, <<"access-control-allow-headers">> => access_control_allow_headers, <<"access-control-allow-methods">> => access_control_allow_methods, <<"access-control-allow-origin">> => access_control_allow_origin, <<"access-control-expose-headers">> => access_control_expose_headers, <<"access-control-max-age">> => access_control_max_age, <<"access-control-request-headers">> => access_control_request_headers, <<"access-control-request-method">> => access_control_request_method, <<"age">> => age, <<"allow">> => allow, <<"alt-svc">> => alt_svc, <<"authorization">> => authorization, <<"cache-control">> => cache_control, <<"clear-site-data">> => clear_site_data, <<"connection">> => connection, <<"content-disposition">> => content_disposition, <<"content-encoding">> => content_encoding, <<"content-language">> => content_language, <<"content-length">> => content_length, <<"content-location">> => content_location, <<"content-range">> => content_range, <<"content-security-policy">> => content_security_policy, <<"content-security-policy-report-only">> => content_security_policy_report_only, <<"content-type">> => content_type, <<"cookie">> => cookie, <<"cross-origin-embedder-policy">> => cross_origin_embedder_policy, <<"cross-origin-opener-policy">> => cross_origin_opener_policy, <<"cross-origin-resource-policy">> => cross_origin_resource_policy, <<"date">> => date, <<"device-memory">> => device_memory, <<"digest">> => digest, <<"dnt">> => dnt, <<"early-data">> => early_data, <<"etag">> => etag, <<"expect">> => expect, <<"expect-ct">> => expect_ct, <<"expires">> => expires, <<"feature-policy">> => feature_policy, <<"forwarded">> => forwarded, <<"from">> => from, <<"host">> => host, <<"if-match">> => if_match, <<"if-modified-since">> => if_modified_since, <<"if-none-match">> => if_none_match, <<"if-range">> => if_range, <<"if-unmodified-since">> => if_unmodified_since, <<"index">> => index, <<"keep-alive">> => keep_alive, <<"large-allocation">> => large_allocation, <<"last-modified">> => last_modified, <<"link">> => link, <<"location">> => location, <<"nel">> => nel, <<"origin">> => origin, <<"pragma">> => pragma, <<"proxy-authenticate">> => proxy_authenticate, <<"proxy-authorization">> => proxy_authorization, <<"range">> => range, <<"referer">> => referer, <<"referrer-policy">> => referrer_policy, <<"retry-after">> => retry_after, <<"save-data">> => save_data, <<"sec-fetch-dest">> => sec_fetch_dest, <<"sec-fetch-mode">> => sec_fetch_mode, <<"sec-fetch-site">> => sec_fetch_site, <<"sec-fetch-user">> => sec_fetch_user, <<"sec-websocket-accept">> => sec_websocket_accept, <<"sec_websocket_key">> => sec_websocket_key, <<"server">> => server, <<"server-timing">> => server_timing, <<"set-cookie">> => set_cookie, <<"sourcemap">> => sourcemap, <<"strict-transport-security">> => strict_transport_security, <<"te">> => te, <<"timing-allow-origin">> => timing_allow_origin, <<"tk">> => tk, <<"trailer">> => trailer, <<"transfer-encoding">> => transfer_encoding, <<"upgrade">> => upgrade, <<"upgrade-insecure-requests">> => upgrade_insecure_requests, <<"user-agent">> => user_agent, <<"vary">> => vary, <<"via">> => via, <<"want-digest">> => want_digest, <<"warning">> => warning, <<"www-authenticate">> => www_authenticate, <<"x-content-type-options">> => x_content_type_options, <<"x-dns-prefetch-control">> => x_dns_prefetch_control, <<"x-forwarded-for">> => x_forwarded_for, <<"x-forwarded-host">> => x_forwarded_host, <<"x-forwarded-proto">> => x_forwarded_proto, <<"x-frame-options">> => x_frame_options, <<"x-xss-protection">> => x_xss_protection}));
-        false -> '[]string.join'('[]string.map'('string.split'(Name, <<"-">>), 'string.capitalize'(It)), <<"-">>)
+        false -> iolist_to_binary(lists:join(<<"-">>, lists:map('string.capitalize'(It), binary:split(Name, <<"-">>, [global]))))
         end.
 
 'HeaderKeyError.msg'(Err) ->
@@ -732,9 +736,9 @@ parse_headers(S) ->
         end,
         case lists:nth(1, Line) == todo orelse lists:nth(1, Line) == todo of
             true -> begin
-                Last_value1 = <<" ", ('string.trim'(Line, <<" \\t">>))/binary>>,
+                Last_value1 = <<" ", (string:trim(Line))/binary>>,
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> case Last_key /= <<"">> of
                 true -> 'Header.add_custom'(H, Last_key, Last_value1);
                 false -> ok
@@ -743,12 +747,12 @@ parse_headers(S) ->
         Last_key1 = element(1, parse_header(Line)),
         Last_value2 = element(2, parse_header(Line)),
         ok
-    end, 'string.split_into_lines'(S)),
+    end, binary:split(S, <<"\n">>, [global])),
     'Header.add_custom'(H, Last_key1, Last_value2),
     H.
 
 parse_header(S) ->
-    case not 'string.contains'(S, <<":">>) of
+    case not case binary:match(S, <<":">>) of nomatch -> false; _ -> true end of
         true -> error(<<"missing colon in header">>);
         false -> begin
             Words = 'string.split_nth'(S, <<":">>, 2),
@@ -761,7 +765,7 @@ parse_header_fast(S) ->
     Pos.
 
 new_request(Method, Url_, Data) ->
-    Url = case Method == get andalso not 'string.contains'(Url_, <<"?">>) of
+    Url = case Method == get andalso not case binary:match(Url_, <<"?">>) of nomatch -> false; _ -> true end of
         true -> <<(<<(Url_)/binary, (<<"?">>)/binary>>)/binary, (Data)/binary>>;
         false -> Url_
     end,
@@ -827,7 +831,7 @@ url_encode_form_data(Data) ->
         Pieces bsl <<(Key)/binary, "=", (Value)/binary>>,
         ok
     end, Data),
-    '[]string.join'(Pieces, <<"&">>).
+    iolist_to_binary(lists:join(<<"&">>, Pieces)).
 
 build_url_from_fetch(Config) ->
     Url = parse(maps:get(url, Config)),
@@ -839,7 +843,7 @@ build_url_from_fetch(Config) ->
                 Pieces bsl <<(Key)/binary, "=", (Val)/binary>>,
                 ok
             end, maps:get(params, Config)),
-            Query = '[]string.join'(Pieces, <<"&">>),
+            Query = iolist_to_binary(lists:join(<<"&">>, Pieces)),
             case length(maps:get(raw_query, Url)) > 1 of
                 true -> ok;
                 false -> ok
@@ -858,7 +862,7 @@ new_http_proxy(Raw_url) ->
             Password = <<"">>,
             Str_url = 'URL.str'(Url),
             Host = maps:get(host, Url),
-            Port = 'string.int'('URL.port'(Url)),
+            Port = binary_to_integer('URL.port'(Url)),
             case Port == 0 of
                 true -> case Scheme == <<"https">> of
                     true -> begin
@@ -903,13 +907,13 @@ new_http_proxy(Raw_url) ->
                 true -> ok;
                 false -> ok
             end,
-            Encoded_authinfo = encode('string.bytes'(Authinfo1)),
+            Encoded_authinfo = encode(binary_to_list(Authinfo1)),
             Uheaders bsl <<"Proxy-Authorization: Basic ", (Encoded_authinfo)/binary, "\\r\\n">>
         end;
         false -> ok
     end,
     Version = v1_1,
-    <<(<<(<<"CONNECT ", (Host)/binary, " ", (Version)/binary, "\\r\\nHost: ", (Address)/binary, "\\r\\n">>)/binary, ('[]string.join'(Uheaders, <<"">>))/binary>>)/binary, (<<"\\r\\n">>)/binary>>.
+    <<(<<(<<"CONNECT ", (Host)/binary, " ", (Version)/binary, "\\r\\nHost: ", (Address)/binary, "\\r\\n">>)/binary, (iolist_to_binary(lists:join(<<"">>, Uheaders)))/binary>>)/binary, (<<"\\r\\n">>)/binary>>.
 
 'HttpProxy.http_do'(Pr, Host, _method, Path, Req) ->
     Host_name = element(1, split_address('URL.hostname'(Host))),
@@ -931,11 +935,11 @@ new_http_proxy(Raw_url) ->
                 'TcpConn.set_write_timeout'(Client1, maps:get(write_timeout, Req)),
                 'TcpConn.write_string'(Client1, S),
                 % TODO: unhandled stmt type
-                ok                Bytes = 'Request.read_all_from_client_connection'(Req, Client1),
+                Bytes = 'Request.read_all_from_client_connection'(Req, Client1),
                 'TcpConn.close'(Client1),
                 Response_text = '[]u8.bytestr'(Bytes),
                 % TODO: unhandled stmt type
-                ok                case maps:get(on_finish, Req) /= todo of
+                case maps:get(on_finish, Req) /= todo of
                     true -> 'Request.on_finish'(Req, Req, todo);
                     false -> ok
                 end,
@@ -950,7 +954,7 @@ new_http_proxy(Raw_url) ->
     case lists:member(maps:get(scheme, Pr), [<<"http">>, <<"https">>]) of
         true -> begin
             Tcp = dial_tcp(maps:get(host, Pr)),
-            'TcpConn.write'(Tcp, 'string.bytes'('HttpProxy.build_proxy_headers'(Pr, Host))),
+            'TcpConn.write'(Tcp, binary_to_list('HttpProxy.build_proxy_headers'(Pr, Host))),
             Bf = [],
             'TcpConn.read'(Tcp, Bf),
             Tcp
@@ -965,10 +969,10 @@ new_http_proxy(Raw_url) ->
     case lists:member(maps:get(scheme, Pr), [<<"http">>, <<"https">>]) of
         true -> begin
             Tcp = dial_tcp(maps:get(host, Pr)),
-            'TcpConn.write'(Tcp, 'string.bytes'('HttpProxy.build_proxy_headers'(Pr, Host))),
+            'TcpConn.write'(Tcp, binary_to_list('HttpProxy.build_proxy_headers'(Pr, Host))),
             Bf = [],
             'TcpConn.read'(Tcp, Bf),
-            case not 'string.contains'('[]u8.bytestr'(Bf), <<"HTTP/1.1 200">>) of
+            case not case binary:match('[]u8.bytestr'(Bf), <<"HTTP/1.1 200">>) of nomatch -> false; _ -> true end of
                 true -> error(<<"ssl dial error: ", ('[]u8.bytestr'(Bf))/binary>>);
                 false -> ok
             end,
@@ -1094,7 +1098,7 @@ method_from_str(M) ->
     Resp = #{{vbeam, type} => 'Response'},
     Nredirects = 0,
     % TODO: unhandled stmt type
-    ok    Resp.
+    Resp.
 
 'Request.method_and_url_to_response'(Req, Method, Url) ->
     Host_name = 'URL.hostname'(Url),
@@ -1104,7 +1108,7 @@ method_from_str(M) ->
         true -> <<"/", (P)/binary, "?", ('Values.encode'('URL.query'(Url)))/binary>>;
         false -> <<"/", (P)/binary>>
     end,
-    Nport = 'string.int'('URL.port'(Url)),
+    Nport = binary_to_integer('URL.port'(Url)),
     case Nport == 0 of
         true -> begin
             case Scheme == <<"http">> of
@@ -1176,7 +1180,7 @@ method_from_str(M) ->
             true -> ok;
             false -> ok
         end,
-        Val = '[]string.join'('Header.custom_values'(maps:get(header, Req), Key, #{{vbeam, type} => 'HeaderQueryConfig'}), <<"; ">>),
+        Val = iolist_to_binary(lists:join(<<"; ">>, 'Header.custom_values'(maps:get(header, Req), Key, #{{vbeam, type} => 'HeaderQueryConfig'}))),
         'Builder.write_string'(Sb, Key),
         'Builder.write_string'(Sb, <<": ">>),
         'Builder.write_string'(Sb, Val),
@@ -1230,13 +1234,13 @@ method_from_str(M) ->
     Client = dial_tcp(Host),
     'TcpConn.set_read_timeout'(Client, maps:get(read_timeout, Req)),
     'TcpConn.set_write_timeout'(Client, maps:get(write_timeout, Req)),
-    'TcpConn.write'(Client, 'string.bytes'(S)),
+    'TcpConn.write'(Client, binary_to_list(S)),
     % TODO: unhandled stmt type
-    ok    Bytes = 'Request.read_all_from_client_connection'(Req, Client),
+    Bytes = 'Request.read_all_from_client_connection'(Req, Client),
     'TcpConn.close'(Client),
     Response_text = '[]u8.bytestr'(Bytes),
     % TODO: unhandled stmt type
-    ok    case maps:get(on_finish, Req) /= todo of
+    case maps:get(on_finish, Req) /= todo of
         true -> 'Request.on_finish'(Req, Req, todo);
         false -> ok
     end,
@@ -1252,7 +1256,7 @@ method_from_str(M) ->
     Expected_size = todo,
     Status_code = -1,
     % TODO: unhandled stmt type
-    ok    ok.
+    ok.
 
 read_from_tcp_connection_cb(Con, Buf, Bufsize) ->
     R = todo,
@@ -1271,13 +1275,13 @@ parse_request(Reader) ->
     Body = [],
     case todo of
         true -> begin
-            N = 'string.int'(Length),
+            N = binary_to_integer(Length),
             case N > 0 of
                 true -> begin
                     Body1 = [],
                     Count = 0,
                     % TODO: unhandled stmt type
-                    ok                end;
+                end;
                 false -> ok
             end
         end;
@@ -1293,7 +1297,7 @@ parse_request_head(Reader) ->
     Header = new_header(),
     Line1 = 'BufferedReader.read_line'(Reader, #{{vbeam, type} => 'BufferedReadLineConfig'}),
     % TODO: unhandled stmt type
-    ok    Request_cookies = #{},
+    Request_cookies = #{},
     lists:foreach(fun(Cookie) ->
         ok
     end, read_cookies(Header, <<"">>)),
@@ -1304,19 +1308,19 @@ parse_request_head_str(S) ->
     case Pos0 == -1 of
         true -> error(<<"malformed request: no request line found">>);
         false -> begin
-            Line0 = 'string.trim_space'(lists:nth(todo + 1, S)),
+            Line0 = string:trim(lists:nth(todo + 1, S)),
             Method = element(1, parse_request_line(Line0)),
             Target = element(2, parse_request_line(Line0)),
             Version = element(3, parse_request_line(Line0)),
             Header = new_header(),
-            Lines = 'string.split'(lists:nth(todo + 1, S), <<"\\n">>),
+            Lines = binary:split(lists:nth(todo + 1, S), <<"\\n">>, [global]),
             lists:foreach(fun(Line_raw) ->
                 Line = 'string.trim_right'(Line_raw, <<"\\r">>),
                 case Line == <<"">> of
                     true -> ok;
                     false -> ok
                 end,
-                case not 'string.contains'(Line, <<":">>) of
+                case not case binary:match(Line, <<":">>) of nomatch -> false; _ -> true end of
                     true -> ok;
                     false -> ok
                 end,
@@ -1324,7 +1328,7 @@ parse_request_head_str(S) ->
                 Key = 'string.substr_unsafe'(Line, 0, Pos),
                 Val_start = Pos + 1,
                 % TODO: unhandled stmt type
-                ok                case Val_start < length(Line) of
+                case Val_start < length(Line) of
                     true -> begin
                         Value = 'string.substr_unsafe'(Line, Val_start, length(Line)),
                         'Header.add_custom'(Header, Key, Value)
@@ -1351,7 +1355,7 @@ parse_request_str(S) ->
     Request.
 
 parse_request_line(Line) ->
-    Words = 'string.split'(Line, <<" ">>),
+    Words = binary:split(Line, <<" ">>, [global]),
     case length(Words) /= 3 of
         true -> error(<<"bad request header">>);
         false -> begin
@@ -1373,7 +1377,7 @@ parse_form(Body) ->
     case 'string.match_glob'(Body, <<"{*}">>) of
         true -> ok;
         false -> begin
-            Words = 'string.split'(Body, <<"&">>),
+            Words = binary:split(Body, <<"&">>, [global]),
             lists:foreach(fun(Word) ->
                 Kv = 'string.split_nth'(Word, <<"=">>, 2),
                 case length(Kv) /= 2 of
@@ -1430,7 +1434,7 @@ multipart_form_body(Form, Files) ->
 parse_multipart_form(Body, Boundary) ->
     Form = #{},
     Files = #{},
-    Sections = 'string.split'(Body, Boundary),
+    Sections = binary:split(Body, Boundary, [global]),
     Fields = lists:nth(todo + 1, Sections),
     Line_segments = [],
     lists:foreach(fun(Field) ->
@@ -1462,7 +1466,7 @@ parse_multipart_form(Body, Boundary) ->
             true -> <<"">>;
             false -> lists:nth(todo + 1, Field)
         end,
-        Disposition = parse_disposition('string.trim_space'(Line1)),
+        Disposition = parse_disposition(string:trim(Line1)),
         Name = maps:get(<<"name">>, Disposition),
         case todo of
             true -> begin
@@ -1470,15 +1474,15 @@ parse_multipart_form(Body, Boundary) ->
                     true -> ok;
                     false -> ok
                 end,
-                case not 'string.starts_with'('string.to_lower'(Line2), <<"content-type:">>) of
+                case not case string:prefix(string:lowercase(Line2), <<"content-type:">>) of nomatch -> false; _ -> true end of
                     true -> ok;
                     false -> ok
                 end,
-                Content_type = 'string.trim_space'(lists:nth(2, 'string.split_nth'(Line2, <<":">>, 2))),
+                Content_type = string:trim(lists:nth(2, 'string.split_nth'(Line2, <<":">>, 2))),
                 Data = lists:nth(todo + 1, Field),
                 maps:get(Name, Files) bsl #{filename => Filename, content_type => Content_type, data => Data, {vbeam, type} => 'FileData'},
                 % TODO: unhandled stmt type
-                ok            end;
+            end;
             false -> ok
         end,
         case length(Line_segments) < 4 of
@@ -1497,14 +1501,14 @@ parse_disposition(Line) ->
             true -> ok;
             false -> ok
         end,
-        Key = 'string.trim_left'('string.to_lower'(lists:nth(1, Kv)), <<" \\t">>),
+        Key = 'string.trim_left'(string:lowercase(lists:nth(1, Kv)), <<" \\t">>),
         Value = lists:nth(2, Kv),
-        case 'string.starts_with'(Value, <<"\"">>) andalso 'string.ends_with'(Value, <<"\"">>) of
+        case case string:prefix(Value, <<"\"">>) of nomatch -> false; _ -> true end andalso case binary:longest_common_suffix([Value, <<"\"">>]) of 0 -> false; _ -> true end of
             true -> ok;
             false -> ok
         end,
         ok
-    end, 'string.split'(Line, <<";">>)),
+    end, binary:split(Line, <<";">>, [global])),
     Data.
 
 is_no_need_retry_error(Err_code) ->
@@ -1515,7 +1519,7 @@ is_no_need_retry_error(Err_code) ->
     ok.
 
 'Response.bytes'(Resp) ->
-    'string.bytes'('Response.bytestr'(Resp)).
+    binary_to_list('Response.bytestr'(Resp)).
 
 'Response.bytestr'(Resp) ->
     <<(<<(<<"HTTP/", (maps:get(http_version, Resp))/binary, " ", (integer_to_binary(maps:get(status_code, Resp)))/binary, " ", (maps:get(status_msg, Resp))/binary, "\\r\\n">>)/binary, (<<('Header.render'(maps:get(header, Resp), #{version => 'Response.version'(Resp), {vbeam, type} => 'HeaderRenderConfig'}))/binary, "\\r\\n">>)/binary>>)/binary, (maps:get(body, Resp))/binary>>.
@@ -1535,7 +1539,7 @@ parse_response(Resp) ->
     #{http_version => Version, status_code => Status_code, status_msg => Status_msg, header => Header, body => Body, {vbeam, type} => 'Response'}.
 
 parse_status_line(Line) ->
-    case length(Line) < 5 orelse 'string.to_lower'(lists:nth(todo + 1, Line)) /= <<"http/">> of
+    case length(Line) < 5 orelse string:lowercase(lists:nth(todo + 1, Line)) /= <<"http/">> of
         true -> error(<<"response does not start with HTTP/, line: `", (Line)/binary, "`">>);
         false -> begin
             Data = 'string.split_nth'(Line, <<" ">>, 3),
@@ -1603,11 +1607,11 @@ find_headers_range(Data) ->
     Start_idx = 'string.index'(Data, <<"\\n">>) + 1,
     Count = 0,
     % TODO: unhandled stmt type
-    ok    error(<<"no end index found">>).
+    error(<<"no end index found">>).
 
 'Server.listen_and_serve'(S) ->
     case maps:get(handler, S) is todo of
-        true -> eprintln(<<"Server handler not set, using debug handler">>);
+        true -> io:format(standard_error, "~s~n", [<<"Server handler not set, using debug handler">>]);
         false -> ok
     end,
     L = 'TcpListener.addr'(maps:get(listener, S)),
@@ -1636,13 +1640,13 @@ find_headers_range(Data) ->
         end;
         false -> ok
     end,
-    sleep(20 * todo),
+    timer:sleep(20 * todo),
     case maps:get(on_running, S) /= todo of
         true -> 'Server.on_running'(S, S);
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    case maps:get(state, S) == stopped of
+    case maps:get(state, S) == stopped of
         true -> 'Server.close'(S);
         false -> ok
     end.
@@ -1666,10 +1670,10 @@ find_headers_range(Data) ->
 'Server.wait_till_running'(S, Params) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok    case I >= maps:get(max_retries, Params) of
+    case I >= maps:get(max_retries, Params) of
         true -> error(<<"maximum retries reached">>);
         false -> begin
-            sleep(maps:get(retry_period_ms, Params)),
+            timer:sleep(maps:get(retry_period_ms, Params)),
             I
         end
         end.
@@ -1680,14 +1684,16 @@ new_handler_worker(Wid, Ch, Handler, Max_keep_alive_requests) ->
 
 'HandlerWorker.process_requests'(W) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'HandlerWorker.handle_conn'(W, Conn) ->
     % TODO: unhandled stmt type
-    ok    Reader = new_buffered_reader(#{reader => Conn, {vbeam, type} => 'BufferedReaderConfig'}),
+    Reader = new_buffered_reader(#{reader => Conn, {vbeam, type} => 'BufferedReaderConfig'}),
     % TODO: unhandled stmt type
-    ok    Request_count = 0,
+    Request_count = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'DebugHandler.handle'(D, Req) ->
     R = #{body => maps:get(data, Req), header => maps:get(header, Req), {vbeam, type} => 'Response'},
     'Response.set_status'(R, ok),
@@ -1873,7 +1879,7 @@ fast_request_words(Line) ->
     end.
 
 version_from_str(V) ->
-    case 'string.to_lower'(V) of
+    case string:lowercase(V) of
         <<"http/1.1">> -> v1_1;
         <<"http/2.0">> -> v2_0;
         <<"http/1.0">> -> v1_0;

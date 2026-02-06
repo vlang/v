@@ -1,0 +1,19 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  call 'io':'format'([114|[101|[97|[100|[100|[105|[114|[32|[101|[120|[97|[109|[112|[108|[101|[32|[117|[115|[105|[110|[103|[32|[111|[115|[46|[108|[115|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                let <Entries> =
+                    apply 'ls'/1(apply 'home_dir'/0())
+                in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

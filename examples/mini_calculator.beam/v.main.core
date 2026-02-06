@@ -1,0 +1,60 @@
+module 'v.main' ['expr_to_rev_pol'/1,
+                'eval_rev_pol'/1,
+                'is_num_string'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'expr_to_rev_pol'/1 =
+        fun (Expr) ->
+            case call 'erlang':'=:='(Expr, #{  }#) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Stack> =
+                        []
+                    in  let <Rev_pol> =
+                            []
+                        in  let <Pos> =
+                                0
+                            in  Rev_pol
+            end
+    'eval_rev_pol'/1 =
+        fun (Rev_pol) ->
+            let <Stack> =
+                []
+            in  do  let <_1> =
+                    fun (Item) ->
+                        case apply 'is_num_string'/1(Item) of <'true'> when 'true' -> call 'erlang':'bsl'(Stack, call 'erlang':'binary_to_float'(Item)) <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'length'(Stack), 2) of <'true'> when 'true' -> 
+                            let <Oprand_r> =
+                                call 'lists':'last'(Stack)
+                            in  do  call 'lists':'delete'(call 'erlang':'-'(call 'erlang':'length'(Stack), 1), Stack)
+                                    let <Oprand_l> =
+                                        call 'lists':'last'(Stack)
+                                    in  do  call 'lists':'delete'(call 'erlang':'-'(call 'erlang':'length'(Stack), 1), Stack)
+                                            case Item of <#{#<43>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Stack, call 'erlang':'+'(Oprand_l, Oprand_r)) <#{#<45>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Stack, call 'erlang':'-'(Oprand_l, Oprand_r)) <#{#<42>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Stack, call 'erlang':'*'(Oprand_l, Oprand_r)) <#{#<47>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Stack, call 'erlang':'/'(Oprand_l, Oprand_r)) <_> when 'true' -> 'ok' end
+                         <'false'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) end end
+                in  call 'lists':'foreach'(_1, Rev_pol)
+                    call 'lists':'nth'(1, Stack)
+    'is_num_string'/1 =
+        fun (Str) ->
+            do  let <_1> =
+                fun (C) ->
+                    case call 'erlang':'not'(call 'lists':'member'(C, ['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]]]]]]]]])) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, Str)
+                'true'
+    'main'/0 =
+        fun () ->
+            do  call 'io':'format'([80|[108|[101|[97|[115|[101|[32|[101|[110|[116|[101|[114|[32|[116|[104|[101|[32|[101|[120|[112|[114|[101|[115|[115|[105|[111|[110|[32|[121|[111|[117|[32|[119|[97|[110|[116|[32|[116|[111|[32|[99|[97|[108|[99|[117|[108|[97|[116|[101|[44|[32|[101|[46|[103|[46|[32|[49|[101|[50|[43|[40|[51|[45|[50|[46|[53|[41|[42|[54|[47|[49|[46|[53|[32|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                do  call 'io':'format'([69|[110|[116|[101|[114|[32|[39|[101|[120|[105|[116|[39|[32|[111|[114|[32|[39|[69|[88|[73|[84|[39|[32|[116|[111|[32|[113|[117|[105|[116|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                    let <Expr_count> =
+                        0
+                    in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

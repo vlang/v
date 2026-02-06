@@ -38,7 +38,7 @@
         end;
         false -> ok
     end,
-    print(maps:get(prompt, R)),
+    io:format("~s", [maps:get(prompt, R)]),
     Line = get_raw_line(),
     case length(Line) >= 0 of
         true -> ok;

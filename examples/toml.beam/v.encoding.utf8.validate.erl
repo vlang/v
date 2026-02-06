@@ -7,4 +7,4 @@ utf8_string(S) ->
 utf8_data(Data, Len) ->
     State = 0,
     % TODO: unhandled stmt type
-    ok    State == 0.
+    State == 0.

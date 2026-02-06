@@ -2,13 +2,13 @@
 -export([quote/1, encode_array/2, encode/1, from_file/1, decode/1, 'Scanner.tokenize'/3, 'Scanner.skip_whitespace'/1, is_name_alpha/1, 'Scanner.create_string'/2, 'Scanner.create_ident'/1, 'Scanner.peek_char'/2, 'Scanner.scan_all'/1, get_array_content/2, 'Parser.parse'/1, get_cache/0, new_mod_file_cacher/0, 'ModFileCacher.debug'/1, 'ModFileCacher.get_by_file'/2, 'ModFileCacher.get_by_folder'/2, 'ModFileCacher.add'/3, 'ModFileCacher.traverse'/2, 'ModFileCacher.mark_folders_with_vmod'/3, 'ModFileCacher.mark_folders_as_vmod_free'/2, 'ModFileCacher.check_for_stop'/2, 'ModFileCacher.get_files'/2, 'TokenKind__static__from'/1]).
 
 quote(Input) ->
-    case 'string.contains'(Input, <<"'">>) of
+    case case binary:match(Input, <<"'">>) of nomatch -> false; _ -> true end of
         true -> <<(<<(<<"\"">>)/binary, (Input)/binary>>)/binary, (<<"\"">>)/binary>>;
         false -> <<(<<(<<"'">>)/binary, (Input)/binary>>)/binary, (<<"'">>)/binary>>
         end.
 
 encode_array(B, Input) ->
-    case length('[]string.join'(Input, <<"">>)) > 60 of
+    case length(iolist_to_binary(lists:join(<<"">>, Input))) > 60 of
         true -> begin
             'Builder.writeln'(B, <<"[">>),
             lists:foreach(fun(Item) ->
@@ -30,7 +30,7 @@ encode_array(B, Input) ->
                 ok
             end, Input),
             'Builder.write_string'(B, <<"[">>),
-            'Builder.write_string'(B, '[]string.join'(Quoted, <<", ">>)),
+            'Builder.write_string'(B, iolist_to_binary(lists:join(<<", ">>, Quoted))),
             'Builder.writeln'(B, <<"]">>)
         end
     end.
@@ -91,26 +91,27 @@ decode(Contents) ->
 
 'Scanner.skip_whitespace'(S) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 is_name_alpha(Chr) ->
     'u8.is_letter'(Chr) orelse Chr == todo.
 
 'Scanner.create_string'(S, Q) ->
     Str = <<"">>,
     % TODO: unhandled stmt type
-    ok    Str.
+    Str.
 
 'Scanner.create_ident'(S) ->
     Text = <<"">>,
     % TODO: unhandled stmt type
-    ok    Text.
+    Text.
 
 'Scanner.peek_char'(S, C) ->
     maps:get(pos, S) - 1 < length(maps:get(text, S)) andalso lists:nth(maps:get(pos, S) - 1 + 1, maps:get(text, S)) == C.
 
 'Scanner.scan_all'(S) ->
     % TODO: unhandled stmt type
-    ok    'Scanner.tokenize'(S, eof, <<"eof">>),
+    'Scanner.tokenize'(S, eof, <<"eof">>),
     ok.
 
 get_array_content(Tokens, St_idx) ->
@@ -121,7 +122,7 @@ get_array_content(Tokens, St_idx) ->
         false -> begin
             todo,
             % TODO: unhandled stmt type
-            ok            Vals
+            Vals
         end
         end.
 
@@ -137,7 +138,7 @@ get_array_content(Tokens, St_idx) ->
                 false -> begin
                     I = 1,
                     % TODO: unhandled stmt type
-                    ok                    Mn
+                    Mn
                 end
                         end
         end
@@ -150,18 +151,19 @@ new_mod_file_cacher() ->
     #{{vbeam, type} => 'ModFileCacher'}.
 
 'ModFileCacher.debug'(Mcache) ->
-    eprintln(<<"ModFileCacher hits: ", (integer_to_binary(maps:get(hits, Mcache)))/binary, ", misses: ", (integer_to_binary(maps:get(misses, Mcache)))/binary, " | get_files_hits: ", (integer_to_binary(maps:get(get_files_hits, Mcache)))/binary, " | get_files_misses: ", (integer_to_binary(maps:get(get_files_misses, Mcache)))/binary>>),
-    eprintln(<<"\t ModFileCacher.cache.len: ", (integer_to_binary(maps:size(maps:get(cache, Mcache))))/binary>>),
+    io:format(standard_error, "~s~n", [<<"ModFileCacher hits: ", (integer_to_binary(maps:get(hits, Mcache)))/binary, ", misses: ", (integer_to_binary(maps:get(misses, Mcache)))/binary, " | get_files_hits: ", (integer_to_binary(maps:get(get_files_hits, Mcache)))/binary, " | get_files_misses: ", (integer_to_binary(maps:get(get_files_misses, Mcache)))/binary>>]),
+    io:format(standard_error, "~s~n", [<<"\t ModFileCacher.cache.len: ", (integer_to_binary(maps:size(maps:get(cache, Mcache))))/binary>>]),
     lists:foreach(fun(V) ->
-        eprintln(<<"\t K: ", (K)/binary, " | v.mod: ", (maps:get(vmod_file, V))/binary, " | folder: `", (maps:get(vmod_folder, V))/binary, "`">>),
+        io:format(standard_error, "~s~n", [<<"\t K: ", (K)/binary, " | v.mod: ", (maps:get(vmod_file, V))/binary, " | folder: `", (maps:get(vmod_folder, V))/binary, "`">>]),
         ok
     end, maps:get(cache, Mcache)),
-    eprintln(<<"\t ModFileCacher.folder_files:">>),
+    io:format(standard_error, "~s~n", [<<"\t ModFileCacher.folder_files:">>]),
     lists:foreach(fun(V) ->
-        eprintln(<<"\t K: ", (K)/binary, " | folder_files: ", (V)/binary>>),
+        io:format(standard_error, "~s~n", [<<"\t K: ", (K)/binary, " | folder_files: ", (V)/binary>>]),
         ok.
         ok
     end, maps:get(folder_files, Mcache)),
+        ok.
 
 'ModFileCacher.get_by_file'(Mcache, Vfile) ->
     'ModFileCacher.get_by_folder'(Mcache, dir(Vfile)).
@@ -189,7 +191,7 @@ new_mod_file_cacher() ->
     Folders_so_far = [Cfolder],
     Levels = 0,
     % TODO: unhandled stmt type
-    ok    'ModFileCacher.mark_folders_as_vmod_free'(Mcache, Folders_so_far),
+    'ModFileCacher.mark_folders_as_vmod_free'(Mcache, Folders_so_far),
     [Mfolder].
 
 'ModFileCacher.mark_folders_with_vmod'(Mcache, Folders_so_far, Vmod) ->
@@ -198,6 +200,7 @@ new_mod_file_cacher() ->
         ok.
         ok
     end, Folders_so_far),
+        ok.
 
 'ModFileCacher.mark_folders_as_vmod_free'(Mcache, Folders_so_far) ->
     lists:foreach(fun(F) ->
@@ -205,6 +208,7 @@ new_mod_file_cacher() ->
         ok.
         ok
     end, Folders_so_far),
+        ok.
 
 'ModFileCacher.check_for_stop'(Mcache, Files) ->
     lists:foreach(fun(I) ->

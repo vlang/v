@@ -1,0 +1,1114 @@
+module 'v.datatypes' ['BloomFilter.free'/1,
+                'new_bloom_filter_fast'/1,
+                'new_bloom_filter'/3,
+                'BloomFilter.add'/2,
+                'BloomFilter.exists'/2,
+                'BloomFilter.union'/2,
+                'BloomFilter.intersection'/2,
+                'new_root_node'/1,
+                'new_node'/2,
+                'new_none_node'/1,
+                'BSTreeNode.bind'/3,
+                'BSTree.insert'/2,
+                'BSTree.insert_helper'/3,
+                'BSTree.contains'/2,
+                'BSTree.contains_helper'/3,
+                'BSTree.remove'/2,
+                'BSTree.remove_helper'/4,
+                'BSTree.get_max_from_right'/2,
+                'BSTree.get_min_from_left'/2,
+                'BSTree.is_empty'/1,
+                'BSTree.in_order_traversal'/1,
+                'BSTree.in_order_traversal_helper'/3,
+                'BSTree.post_order_traversal'/1,
+                'BSTree.post_order_traversal_helper'/3,
+                'BSTree.pre_order_traversal'/1,
+                'BSTree.pre_order_traversal_helper'/3,
+                'BSTree.get_node'/3,
+                'BSTree.to_left'/2,
+                'BSTree.to_right'/2,
+                'BSTree.max'/1,
+                'BSTree.min'/1,
+                'DoublyLinkedList.is_empty'/1,
+                'DoublyLinkedList.len'/1,
+                'DoublyLinkedList.first'/1,
+                'DoublyLinkedList.last'/1,
+                'DoublyLinkedList.push_back'/2,
+                'DoublyLinkedList.push_front'/2,
+                'DoublyLinkedList.push_many'/3,
+                'DoublyLinkedList.pop_back'/1,
+                'DoublyLinkedList.pop_front'/1,
+                'DoublyLinkedList.insert'/3,
+                'DoublyLinkedList.insert_back'/3,
+                'DoublyLinkedList.insert_front'/3,
+                'DoublyLinkedList.node'/2,
+                'DoublyLinkedList.index'/2,
+                'DoublyLinkedList.delete'/2,
+                'DoublyLinkedList.str'/1,
+                'DoublyLinkedList.array'/1,
+                'DoublyLinkedList.next'/1,
+                'DoublyLinkedList.iterator'/1,
+                'DoublyLinkedList.back_iterator'/1,
+                'DoublyListIter.next'/1,
+                'DoublyListIterBack.next'/1,
+                'MinHeap.insert'/2,
+                'MinHeap.insert_many'/2,
+                'MinHeap.pop'/1,
+                'MinHeap.peek'/1,
+                'MinHeap.len'/1,
+                'MinHeap.left_child'/2,
+                'MinHeap.right_child'/2,
+                'MinHeap.parent'/2,
+                'LinkedList.is_empty'/1,
+                'LinkedList.len'/1,
+                'LinkedList.first'/1,
+                'LinkedList.last'/1,
+                'LinkedList.index'/2,
+                'LinkedList.push'/2,
+                'LinkedList.push_many'/2,
+                'LinkedList.pop'/1,
+                'LinkedList.shift'/1,
+                'LinkedList.insert'/3,
+                'LinkedList.prepend'/2,
+                'LinkedList.str'/1,
+                'LinkedList.array'/1,
+                'LinkedList.next'/1,
+                'LinkedList.iterator'/1,
+                'ListIter.next'/1,
+                'Quadtree.create'/8,
+                'Quadtree.insert'/2,
+                'Quadtree.retrieve'/2,
+                'Quadtree.clear'/1,
+                'Quadtree.get_nodes'/1,
+                'Quadtree.split'/1,
+                'Quadtree.get_index'/2,
+                'Queue.is_empty'/1,
+                'Queue.len'/1,
+                'Queue.peek'/1,
+                'Queue.last'/1,
+                'Queue.index'/2,
+                'Queue.push'/2,
+                'Queue.pop'/1,
+                'Queue.str'/1,
+                'Queue.array'/1,
+                'new_ringbuffer'/1,
+                'RingBuffer.push'/2,
+                'RingBuffer.pop'/1,
+                'RingBuffer.push_many'/2,
+                'RingBuffer.pop_many'/2,
+                'RingBuffer.is_empty'/1,
+                'RingBuffer.is_full'/1,
+                'RingBuffer.capacity'/1,
+                'RingBuffer.clear'/1,
+                'RingBuffer.occupied'/1,
+                'RingBuffer.remaining'/1,
+                'RingBuffer.move_reader'/1,
+                'RingBuffer.move_writer'/1,
+                'Set.exists'/2,
+                'Set.add'/2,
+                'Set.remove'/2,
+                'Set.pick'/1,
+                'Set.rest'/1,
+                'Set.pop'/1,
+                'Set.clear'/1,
+                'Set.=='/2,
+                'Set.is_empty'/1,
+                'Set.size'/1,
+                'Set.copy'/1,
+                'Set.add_all'/2,
+                'Set.union'/2,
+                'Set.intersection'/2,
+                'Set.-'/2,
+                'Set.subset'/2,
+                'Set.array'/1,
+                'Stack.is_empty'/1,
+                'Stack.len'/1,
+                'Stack.peek'/1,
+                'Stack.push'/2,
+                'Stack.pop'/1,
+                'Stack.str'/1,
+                'Stack.array'/1,
+                'Direction__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'BloomFilter.free'/1 =
+    fun (B) ->
+        'todo'
+'new_bloom_filter_fast'/1 =
+    fun (Hash_func) ->
+        ~{'hash_func'=>Hash_func,'table_size'=>16384,'num_functions'=>4,'table'=>[],{'vbeam','type'}=>'BloomFilter'}~
+'new_bloom_filter'/3 =
+    fun (Hash_func, Table_size, Num_functions) ->
+        case call 'erlang':'=<'(Table_size, 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'or'(call 'erlang':'<'(Num_functions, 1), call 'erlang':'>'(Num_functions, call 'erlang':'length'(Salts))) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<126>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        ~{'hash_func'=>Hash_func,'table_size'=>Table_size,'num_functions'=>Num_functions,'table'=>[],{'vbeam','type'}=>'BloomFilter'}~
+                end
+        end
+'BloomFilter.add'/2 =
+    fun (B, Element) ->
+        let <Hash> =
+            apply 'unknown.hash_func'/2(B, Element)
+        in  'ok'
+'BloomFilter.exists'/2 =
+    fun (B, Element) ->
+        let <Hash> =
+            apply 'unknown.hash_func'/2(B, Element)
+        in  do  let <_1> =
+                fun (I) ->
+                    let <Subhash> =
+                        call 'erlang':'bxor'(Hash, call 'lists':'nth'(call 'erlang':'+'(I, 1), Salts))
+                    in  let <Index> =
+                            'todo'
+                        in  let <Bb> =
+                                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'/'(Index, 8), 1), call 'erlang':'map_get'('table', B))
+                            in  let <Bit> =
+                                    call 'erlang':'bsl'(1, call 'erlang':'rem'(Index, 8))
+                                in  case call 'erlang':'=:='(call 'erlang':'band'(Bb, Bit), 0) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('num_functions', B), 1))
+                in  call 'lists':'foreach'(_1, _2)
+                'true'
+'BloomFilter.union'/2 =
+    fun (L, R) ->
+        case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'map_get'('table_size', L), call 'erlang':'map_get'('table_size', R)), call 'erlang':'=/='(call 'erlang':'map_get'('num_functions', L), call 'erlang':'map_get'('num_functions', R))), call 'erlang':'=/='(call 'erlang':'map_get'('hash_func', L), call 'erlang':'map_get'('hash_func', R))) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <New_f> =
+                    ~{'hash_func'=>call 'erlang':'map_get'('hash_func', L),'table_size'=>call 'erlang':'map_get'('table_size', L),'num_functions'=>call 'erlang':'map_get'('num_functions', L),'table'=>[],{'vbeam','type'}=>'BloomFilter'}~
+                in  do  let <_1> =
+                        fun (I) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('table', L)), 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        New_f
+        end
+'BloomFilter.intersection'/2 =
+    fun (L, R) ->
+        case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'map_get'('table_size', L), call 'erlang':'map_get'('table_size', R)), call 'erlang':'=/='(call 'erlang':'map_get'('num_functions', L), call 'erlang':'map_get'('num_functions', R))), call 'erlang':'=/='(call 'erlang':'map_get'('hash_func', L), call 'erlang':'map_get'('hash_func', R))) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <New_f> =
+                    ~{'hash_func'=>call 'erlang':'map_get'('hash_func', L),'table_size'=>call 'erlang':'map_get'('table_size', L),'num_functions'=>call 'erlang':'map_get'('num_functions', L),'table'=>[],{'vbeam','type'}=>'BloomFilter'}~
+                in  do  let <_1> =
+                        fun (I) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('table', L)), 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        New_f
+        end
+'new_root_node'/1 =
+    fun (Value) ->
+        ~{'is_init'=>'true','value'=>Value,'parent'=>apply 'new_none_node'/1('true'),'left'=>apply 'new_none_node'/1('false'),'right'=>apply 'new_none_node'/1('false'),{'vbeam','type'}=>'BSTreeNode'}~
+'new_node'/2 =
+    fun (Parent, Value) ->
+        ~{'is_init'=>'true','value'=>Value,'parent'=>Parent,{'vbeam','type'}=>'BSTreeNode'}~
+'new_none_node'/1 =
+    fun (Init) ->
+        ~{'is_init'=>Init,{'vbeam','type'}=>'BSTreeNode'}~
+'BSTreeNode.bind'/3 =
+    fun (Node, To_bind, _left) ->
+        do  call 'erlang':'map_get'('left', To_bind)
+            do  call 'erlang':'map_get'('right', To_bind)
+                do  call 'erlang':'map_get'('value', To_bind)
+                    do  call 'erlang':'map_get'('is_init', To_bind)
+                        let <To_bind_1> =
+                            apply 'new_none_node'/1('false')
+                        in  To_bind_1
+'BSTree.insert'/2 =
+    fun (Bst, Value) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                apply 'BSTree.insert_helper'/3(Bst, call 'erlang':'map_get'('root', Bst), Value)
+        end
+'BSTree.insert_helper'/3 =
+    fun (Bst, Node, Value) ->
+        do  case call 'erlang':'<'(call 'erlang':'map_get'('value', Node), Value) of <'true'> when 'true' -> 
+            case call 'erlang':'and'('todo', call 'erlang':'map_get'('is_init', call 'erlang':'map_get'('right', Node))) of
+                <'true'> when 'true' -> apply 'BSTree.insert_helper'/3(Bst, call 'erlang':'map_get'('right', Node), Value)
+                <'false'> when 'true' -> 
+                    do  apply 'new_node'/2(Node, Value)
+                        'true'
+            end
+         <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('value', Node), Value) of <'true'> when 'true' -> 
+            case call 'erlang':'and'('todo', call 'erlang':'map_get'('is_init', call 'erlang':'map_get'('left', Node))) of
+                <'true'> when 'true' -> apply 'BSTree.insert_helper'/3(Bst, call 'erlang':'map_get'('left', Node), Value)
+                <'false'> when 'true' -> 
+                    do  apply 'new_node'/2(Node, Value)
+                        'true'
+            end
+         <'false'> when 'true' -> 'ok' end end
+            'false'
+'BSTree.contains'/2 =
+    fun (Bst, Value) ->
+        apply 'BSTree.contains_helper'/3(Bst, call 'erlang':'map_get'('root', Bst), Value)
+'BSTree.contains_helper'/3 =
+    fun (Bst, Node, Value) ->
+        case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node))) of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('value', Node), Value) of <'true'> when 'true' -> apply 'BSTree.contains_helper'/3(Bst, call 'erlang':'map_get'('right', Node), Value) <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('value', Node), Value) of <'true'> when 'true' -> apply 'BSTree.contains_helper'/3(Bst, call 'erlang':'map_get'('left', Node), Value) <'false'> when 'true' -> 'ok' end end
+                    'true'
+        end
+'BSTree.remove'/2 =
+    fun (Bst, Value) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                apply 'BSTree.remove_helper'/4(Bst, call 'erlang':'map_get'('root', Bst), Value, 'false')
+        end
+'BSTree.remove_helper'/4 =
+    fun (Bst, Node, Value, Left) ->
+        case call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node)) of
+            <'true'> when 'true' -> 'false'
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'map_get'('value', Node), Value) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'<'(call 'erlang':'map_get'('value', Node), Value) of
+                            <'true'> when 'true' -> apply 'BSTree.remove_helper'/4(Bst, call 'erlang':'map_get'('right', Node), Value, 'false')
+                            <'false'> when 'true' -> 
+                                apply 'BSTree.remove_helper'/4(Bst, call 'erlang':'map_get'('left', Node), Value, 'true')
+                        end
+                end
+        end
+'BSTree.get_max_from_right'/2 =
+    fun (Bst, Node) ->
+        case 'todo' of
+            <'true'> when 'true' -> apply 'new_none_node'/1('false')
+            <'false'> when 'true' -> 
+                let <Right_node> =
+                    call 'erlang':'map_get'('right', Node)
+                in  case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Right_node))) of
+                        <'true'> when 'true' -> Node
+                        <'false'> when 'true' -> 
+                            apply 'BSTree.get_max_from_right'/2(Bst, Right_node)
+                    end
+        end
+'BSTree.get_min_from_left'/2 =
+    fun (Bst, Node) ->
+        case 'todo' of
+            <'true'> when 'true' -> apply 'new_none_node'/1('false')
+            <'false'> when 'true' -> 
+                let <Left_node> =
+                    call 'erlang':'map_get'('left', Node)
+                in  case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Left_node))) of
+                        <'true'> when 'true' -> Node
+                        <'false'> when 'true' -> 
+                            apply 'BSTree.get_min_from_left'/2(Bst, Left_node)
+                    end
+        end
+'BSTree.is_empty'/1 =
+    fun (Bst) ->
+        'todo'
+'BSTree.in_order_traversal'/1 =
+    fun (Bst) ->
+        let <Result> =
+            []
+        in  do  apply 'BSTree.in_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('root', Bst), Result)
+                Result
+'BSTree.in_order_traversal_helper'/3 =
+    fun (Bst, Node, Result) ->
+        case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node))) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                do  apply 'BSTree.in_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('left', Node), Result)
+                    do  call 'erlang':'bsl'(Result, call 'erlang':'map_get'('value', Node))
+                        apply 'BSTree.in_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('right', Node), Result)
+        end
+'BSTree.post_order_traversal'/1 =
+    fun (Bst) ->
+        let <Result> =
+            []
+        in  do  apply 'BSTree.post_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('root', Bst), Result)
+                Result
+'BSTree.post_order_traversal_helper'/3 =
+    fun (Bst, Node, Result) ->
+        case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node))) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                do  apply 'BSTree.post_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('left', Node), Result)
+                    do  apply 'BSTree.post_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('right', Node), Result)
+                        call 'erlang':'bsl'(Result, call 'erlang':'map_get'('value', Node))
+        end
+'BSTree.pre_order_traversal'/1 =
+    fun (Bst) ->
+        let <Result> =
+            []
+        in  do  apply 'BSTree.pre_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('root', Bst), Result)
+                Result
+'BSTree.pre_order_traversal_helper'/3 =
+    fun (Bst, Node, Result) ->
+        case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node))) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                do  call 'erlang':'bsl'(Result, call 'erlang':'map_get'('value', Node))
+                    do  apply 'BSTree.pre_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('left', Node), Result)
+                        apply 'BSTree.pre_order_traversal_helper'/3(Bst, call 'erlang':'map_get'('right', Node), Result)
+        end
+'BSTree.get_node'/3 =
+    fun (Bst, Node, Value) ->
+        case call 'erlang':'or'('todo', call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node))) of
+            <'true'> when 'true' -> apply 'new_none_node'/1('false')
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'map_get'('value', Node), Value) of
+                    <'true'> when 'true' -> Node
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'<'(call 'erlang':'map_get'('value', Node), Value) of
+                            <'true'> when 'true' -> apply 'BSTree.get_node'/3(Bst, call 'erlang':'map_get'('right', Node), Value)
+                            <'false'> when 'true' -> 
+                                apply 'BSTree.get_node'/3(Bst, call 'erlang':'map_get'('left', Node), Value)
+                        end
+                end
+        end
+'BSTree.to_left'/2 =
+    fun (Bst, Value) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Node> =
+                    apply 'BSTree.get_node'/3(Bst, call 'erlang':'map_get'('root', Bst), Value)
+                in  case call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            let <Left_node> =
+                                call 'erlang':'map_get'('left', Node)
+                            in  call 'erlang':'map_get'('value', Left_node)
+                    end
+        end
+'BSTree.to_right'/2 =
+    fun (Bst, Value) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Node> =
+                    apply 'BSTree.get_node'/3(Bst, call 'erlang':'map_get'('root', Bst), Value)
+                in  case call 'erlang':'not'(call 'erlang':'map_get'('is_init', Node)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            let <Right_node> =
+                                call 'erlang':'map_get'('right', Node)
+                            in  call 'erlang':'map_get'('value', Right_node)
+                    end
+        end
+'BSTree.max'/1 =
+    fun (Bst) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Max> =
+                    apply 'BSTree.get_max_from_right'/2(Bst, call 'erlang':'map_get'('root', Bst))
+                in  case call 'erlang':'not'(call 'erlang':'map_get'('is_init', Max)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            call 'erlang':'map_get'('value', Max)
+                    end
+        end
+'BSTree.min'/1 =
+    fun (Bst) ->
+        case apply 'BSTree.is_empty'/1(Bst) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Min> =
+                    apply 'BSTree.get_min_from_left'/2(Bst, call 'erlang':'map_get'('root', Bst))
+                in  case call 'erlang':'not'(call 'erlang':'map_get'('is_init', Min)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            call 'erlang':'map_get'('value', Min)
+                    end
+        end
+'DoublyLinkedList.is_empty'/1 =
+    fun (List) ->
+        call 'erlang':'=:='(call 'erlang':'length'(List), 0)
+'DoublyLinkedList.len'/1 =
+    fun (List) ->
+        call 'erlang':'length'(List)
+'DoublyLinkedList.first'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                call 'erlang':'map_get'('data', call 'erlang':'map_get'('head', List))
+        end
+'DoublyLinkedList.last'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                call 'erlang':'map_get'('data', call 'erlang':'map_get'('tail', List))
+        end
+'DoublyLinkedList.push_back'/2 =
+    fun (List, Item) ->
+        let <New_node> =
+            ~{'data'=>Item,{'vbeam','type'}=>'DoublyListNode'}~
+        in  do  case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> 
+                do  New_node
+                    'ok'
+             <'false'> when 'true' -> 
+                do  New_node
+                    do  call 'erlang':'map_get'('tail', List)
+                        'ok'
+             end
+                'ok'
+'DoublyLinkedList.push_front'/2 =
+    fun (List, Item) ->
+        let <New_node> =
+            ~{'data'=>Item,{'vbeam','type'}=>'DoublyListNode'}~
+        in  do  case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> 
+                do  New_node
+                    'ok'
+             <'false'> when 'true' -> 
+                do  New_node
+                    do  call 'erlang':'map_get'('head', List)
+                        'ok'
+             end
+                'ok'
+'DoublyLinkedList.push_many'/3 =
+    fun (List, Elements, Direction) ->
+        case Direction of <'front'> when 'true' -> 'ok' <'back'> when 'true' -> 'ok' end
+'DoublyLinkedList.pop_back'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'length'(List), 1) of
+                    <'true'> when 'true' -> Value
+                    <'false'> when 'true' -> 
+                        let <Value_1> =
+                            call 'erlang':'map_get'('data', call 'erlang':'map_get'('tail', List))
+                        in  do  'todo'
+                                do  call 'erlang':'map_get'('prev', call 'erlang':'map_get'('tail', List))
+                                    Value_1
+                end
+        end
+'DoublyLinkedList.pop_front'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'length'(List), 1) of
+                    <'true'> when 'true' -> Value
+                    <'false'> when 'true' -> 
+                        let <Value_1> =
+                            call 'erlang':'map_get'('data', call 'erlang':'map_get'('head', List))
+                        in  do  'todo'
+                                do  call 'erlang':'map_get'('next', call 'erlang':'map_get'('head', List))
+                                    Value_1
+                end
+        end
+'DoublyLinkedList.insert'/3 =
+    fun (List, Idx, Item) ->
+        case call 'erlang':'or'(call 'erlang':'<'(Idx, 0), call 'erlang':'>'(Idx, call 'erlang':'length'(List))) of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> case call 'erlang':'=:='(Idx, 0) of <'true'> when 'true' -> apply 'unknown.push_front'/2(List, Item) <'false'> when 'true' -> case call 'erlang':'=:='(Idx, call 'erlang':'length'(List)) of <'true'> when 'true' -> apply 'unknown.push_back'/2(List, Item) <'false'> when 'true' -> case call 'erlang':'=<'(Idx, call 'erlang':'/'(call 'erlang':'length'(List), 2)) of <'true'> when 'true' -> apply 'unknown.insert_front'/3(List, Idx, Item) <'false'> when 'true' -> apply 'unknown.insert_back'/3(List, Idx, Item) end end end end
+'DoublyLinkedList.insert_back'/3 =
+    fun (List, Idx, Item) ->
+        let <Node> =
+            apply 'unknown.node'/2(List, Idx)
+        in  let <Prev> =
+                call 'erlang':'map_get'('prev', Node)
+            in  let <New> =
+                    ~{'data'=>Item,'next'=>Node,'prev'=>Prev,{'vbeam','type'}=>'DoublyListNode'}~
+                in  do  New
+                        do  New
+                            'ok'
+'DoublyLinkedList.insert_front'/3 =
+    fun (List, Idx, Item) ->
+        let <Node> =
+            apply 'unknown.node'/2(List, call 'erlang':'-'(Idx, 1))
+        in  let <Next> =
+                call 'erlang':'map_get'('next', Node)
+            in  let <New> =
+                    ~{'data'=>Item,'next'=>Next,'prev'=>Node,{'vbeam','type'}=>'DoublyListNode'}~
+                in  do  New
+                        do  New
+                            'ok'
+'DoublyLinkedList.node'/2 =
+    fun (List, Idx) ->
+        case call 'erlang':'=<'(Idx, call 'erlang':'/'(call 'erlang':'length'(List), 2)) of
+            <'true'> when 'true' -> Node
+            <'false'> when 'true' -> 
+                let <Node_1> =
+                    call 'erlang':'map_get'('tail', List)
+                in  Node_1
+        end
+'DoublyLinkedList.index'/2 =
+    fun (List, Item) ->
+        let <Hn> =
+            call 'erlang':'map_get'('head', List)
+        in  let <Tn> =
+                call 'erlang':'map_get'('tail', List)
+            in  call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'DoublyLinkedList.delete'/2 =
+    fun (List, Idx) ->
+        do  case call 'erlang':'or'(call 'erlang':'<'(Idx, 0), call 'erlang':'>='(Idx, call 'erlang':'length'(List))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Idx, 0) of <'true'> when 'true' -> 
+            do  apply 'unknown.pop_front'/1(List)
+                'ok'
+         <'false'> when 'true' -> case call 'erlang':'=:='(Idx, call 'erlang':'-'(call 'erlang':'length'(List), 1)) of <'true'> when 'true' -> 
+            do  apply 'unknown.pop_back'/1(List)
+                'ok'
+         <'false'> when 'true' -> 'ok' end end end
+            let <Node> =
+                apply 'unknown.node'/2(List, Idx)
+            in  do  call 'erlang':'map_get'('next', Node)
+                    do  call 'erlang':'map_get'('prev', Node)
+                        'ok'
+'DoublyLinkedList.str'/1 =
+    fun (List) ->
+        apply 'unknown.str'/1(apply 'unknown.array'/1(List))
+'DoublyLinkedList.array'/1 =
+    fun (List) ->
+        let <Result_array> =
+            []
+        in  let <Node> =
+                call 'erlang':'map_get'('head', List)
+            in  Result_array
+'DoublyLinkedList.next'/1 =
+    fun (List) ->
+        case call 'erlang':'=:='(call 'erlang':'map_get'('iter', List), 'todo') of
+            <'true'> when 'true' -> apply 'unknown.next'/1(List)
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'map_get'('node', call 'erlang':'map_get'('iter', List)), 'todo') of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        call 'erlang':'map_get'('data', call 'erlang':'map_get'('node', call 'erlang':'map_get'('iter', List)))
+                end
+        end
+'DoublyLinkedList.iterator'/1 =
+    fun (List) ->
+        ~{'node'=>call 'erlang':'map_get'('head', List),{'vbeam','type'}=>'DoublyListIter'}~
+'DoublyLinkedList.back_iterator'/1 =
+    fun (List) ->
+        ~{'node'=>call 'erlang':'map_get'('tail', List),{'vbeam','type'}=>'DoublyListIterBack'}~
+'DoublyListIter.next'/1 =
+    fun (Iter) ->
+        case call 'erlang':'=:='(call 'erlang':'map_get'('node', Iter), 'todo') of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Res> =
+                    call 'erlang':'map_get'('data', call 'erlang':'map_get'('node', Iter))
+                in  do  call 'erlang':'map_get'('next', call 'erlang':'map_get'('node', Iter))
+                        Res
+        end
+'DoublyListIterBack.next'/1 =
+    fun (Iter) ->
+        case call 'erlang':'=:='(call 'erlang':'map_get'('node', Iter), 'todo') of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Res> =
+                    call 'erlang':'map_get'('data', call 'erlang':'map_get'('node', Iter))
+                in  do  call 'erlang':'map_get'('prev', call 'erlang':'map_get'('node', Iter))
+                        Res
+        end
+'MinHeap.insert'/2 =
+    fun (Heap, Item) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('data', Heap), Item)
+            let <Child> =
+                call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('data', Heap)), 1)
+            in  let <Parent> =
+                    apply 'unknown.parent'/2(Heap, Child)
+                in  'ok'
+'MinHeap.insert_many'/2 =
+    fun (Heap, Elements) ->
+        'ok'
+'MinHeap.pop'/1 =
+    fun (Heap) ->
+        do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('data', Heap)), 0) of <'true'> when 'true' -> call 'erlang':'error'(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('data', Heap)), 1) of <'true'> when 'true' -> apply 'unknown.pop'/1(call 'erlang':'map_get'('data', Heap)) <'false'> when 'true' -> 'ok' end end
+            let <Item> =
+                call 'lists':'nth'(1, call 'erlang':'map_get'('data', Heap))
+            in  do  apply 'unknown.pop'/1(call 'erlang':'map_get'('data', Heap))
+                    let <Parent> =
+                        0
+                    in  let <Left> =
+                            apply 'unknown.left_child'/2(Heap, Parent)
+                        in  let <Right> =
+                                apply 'unknown.right_child'/2(Heap, Parent)
+                            in  Item
+'MinHeap.peek'/1 =
+    fun (Heap) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('data', Heap)), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<72>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                call 'lists':'nth'(1, call 'erlang':'map_get'('data', Heap))
+        end
+'MinHeap.len'/1 =
+    fun (Heap) ->
+        call 'erlang':'length'(call 'erlang':'map_get'('data', Heap))
+'MinHeap.left_child'/2 =
+    fun (Heap, Idx) ->
+        let <Child> =
+            call 'erlang':'+'(call 'erlang':'*'(2, Idx), 1)
+        in  case call 'erlang':'>='(Child, call 'erlang':'length'(call 'erlang':'map_get'('data', Heap))) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    Child
+            end
+'MinHeap.right_child'/2 =
+    fun (Heap, Idx) ->
+        let <Child> =
+            call 'erlang':'+'(call 'erlang':'*'(2, Idx), 2)
+        in  case call 'erlang':'>='(Child, call 'erlang':'length'(call 'erlang':'map_get'('data', Heap))) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    Child
+            end
+'MinHeap.parent'/2 =
+    fun (Heap, Idx) ->
+        call 'erlang':'/'(call 'erlang':'-'(Idx, 1), 2)
+'LinkedList.is_empty'/1 =
+    fun (List) ->
+        call 'erlang':'=:='(call 'erlang':'length'(List), 0)
+'LinkedList.len'/1 =
+    fun (List) ->
+        call 'erlang':'length'(List)
+'LinkedList.first'/1 =
+    fun (List) ->
+        case call 'erlang':'not'(apply 'unknown.is_empty'/1(List)) of <'true'> when 'true' -> call 'erlang':'map_get'('data', call 'erlang':'map_get'('head', List)) <'false'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) end
+'LinkedList.last'/1 =
+    fun (List) ->
+        case call 'erlang':'not'(apply 'unknown.is_empty'/1(List)) of <'true'> when 'true' -> call 'erlang':'map_get'('data', call 'erlang':'map_get'('tail', List)) <'false'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) end
+'LinkedList.index'/2 =
+    fun (List, Idx) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'or'(call 'erlang':'<'(Idx, 0), call 'erlang':'>='(Idx, call 'erlang':'length'(List))) of
+                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+                    <'false'> when 'true' -> 
+                        let <Node> =
+                            call 'erlang':'map_get'('head', List)
+                        in  let <Node_1> =
+                                let <_2> =
+                                    fun (_, NodeAcc) ->
+                                        let <NodeOut_4> =
+                                            call 'erlang':'map_get'('next', NodeAcc)
+                                        in  NodeOut_4
+                                in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(Idx, 1))
+                                in  call 'lists':'foldl'(_2, Node, _3)
+                            in  call 'erlang':'map_get'('data', Node_1)
+                end
+        end
+'LinkedList.push'/2 =
+    fun (List, Item) ->
+        let <New_node> =
+            ~{'data'=>Item,{'vbeam','type'}=>'ListNode'}~
+        in  do  case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  New_node
+                    'ok'
+'LinkedList.push_many'/2 =
+    fun (List, Elements) ->
+        'ok'
+'LinkedList.pop'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Node> =
+                    call 'erlang':'map_get'('head', List)
+                in  let <To_return> =
+                        'todo'
+                    in  let <To_return_1> =
+                            case apply 'isnil'/1(call 'erlang':'map_get'('next', Node)) of <'true'> when 'true' -> To_return <'false'> when 'true' -> 'todo' end
+                        in  do  1
+                                To_return_1
+        end
+'LinkedList.shift'/1 =
+    fun (List) ->
+        case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> call 'erlang':'error'(#{#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 
+            do  1
+                let <Node> =
+                    call 'erlang':'map_get'('head', List)
+                in  do  call 'erlang':'map_get'('next', Node)
+                        do  case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            call 'erlang':'map_get'('data', Node)
+         end
+'LinkedList.insert'/3 =
+    fun (List, Idx, Item) ->
+        case call 'erlang':'or'(call 'erlang':'<'(Idx, 0), call 'erlang':'>'(Idx, call 'erlang':'length'(List))) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(Idx, call 'erlang':'length'(List)) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <New_node> =
+                            ~{'data'=>Item,{'vbeam','type'}=>'ListNode'}~
+                        in  do  case apply 'unknown.is_empty'/1(List) of <'true'> when 'true' -> 
+                                do  New_node
+                                    'ok'
+                             <'false'> when 'true' -> 
+                                let <Node> =
+                                    call 'erlang':'map_get'('head', List)
+                                in  case call 'erlang':'=:='(Idx, 0) of <'true'> when 'true' -> 
+                                        do  Node
+                                            'ok'
+                                     <'false'> when 'true' -> 
+                                        do  call 'erlang':'map_get'('next', Node)
+                                            do  New_node
+                                                case apply 'isnil'/1(call 'erlang':'map_get'('next', New_node)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                     end
+                             end
+                                'ok'
+                end
+        end
+'LinkedList.prepend'/2 =
+    fun (List, Item) ->
+        apply 'unknown.insert'/3(List, 0, Item)
+'LinkedList.str'/1 =
+    fun (List) ->
+        apply 'unknown.str'/1(apply 'unknown.array'/1(List))
+'LinkedList.array'/1 =
+    fun (List) ->
+        let <Result_array> =
+            []
+        in  let <Node> =
+                call 'erlang':'map_get'('head', List)
+            in  Result_array
+'LinkedList.next'/1 =
+    fun (List) ->
+        case apply 'isnil'/1(call 'erlang':'map_get'('iter', List)) of
+            <'true'> when 'true' -> apply 'unknown.next'/1(List)
+            <'false'> when 'true' -> 
+                case apply 'isnil'/1(call 'erlang':'map_get'('node', call 'erlang':'map_get'('iter', List))) of
+                    <'true'> when 'true' -> 'todo'
+                    <'false'> when 'true' -> 
+                        call 'erlang':'map_get'('data', call 'erlang':'map_get'('node', call 'erlang':'map_get'('iter', List)))
+                end
+        end
+'LinkedList.iterator'/1 =
+    fun (List) ->
+        ~{'node'=>call 'erlang':'map_get'('head', List),{'vbeam','type'}=>'ListIter'}~
+'ListIter.next'/1 =
+    fun (Iter) ->
+        case apply 'isnil'/1(call 'erlang':'map_get'('node', Iter)) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Res> =
+                    'todo'
+                in  do  call 'erlang':'map_get'('next', call 'erlang':'map_get'('node', Iter))
+                        Res
+        end
+'Quadtree.create'/8 =
+    fun (Q, X, Y, Width, Height, Capacity, Depth, Level) ->
+        ~{'perimeter'=>~{'x'=>X,'y'=>Y,'width'=>Width,'height'=>Height,{'vbeam','type'}=>'AABB'}~,'capacity'=>Capacity,'depth'=>Depth,'level'=>Level,'particles'=>[],'nodes'=>[],{'vbeam','type'}=>'Quadtree'}~
+'Quadtree.insert'/2 =
+    fun (Q, P) ->
+        let <Indexes> =
+            []
+        in  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('particles', Q), P)
+                        case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('particles', Q)), call 'erlang':'map_get'('capacity', Q)), call 'erlang':'<'(call 'erlang':'map_get'('level', Q), call 'erlang':'map_get'('depth', Q))) of <'true'> when 'true' -> 
+                            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 0) of <'true'> when 'true' -> apply 'Quadtree.split'/1(Q) <'false'> when 'true' -> 'ok' end
+                                let <Indexes_1> =
+                                    let <_2> =
+                                        fun (J, IndexesAcc) ->
+                                            let <IndexesOut_4> =
+                                                apply 'Quadtree.get_index'/2(Q, call 'lists':'nth'(call 'erlang':'+'(J, 1), call 'erlang':'map_get'('particles', Q)))
+                                            in                                              do  'ok'
+IndexesOut_4
+                                        in  let <_3> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('particles', Q)), 1))
+                                        in  call 'lists':'foldl'(_2, Indexes, _3)
+                                    in  'ok'
+                             <'false'> when 'true' -> 'ok' end
+                end
+    'Quadtree.retrieve'/2 =
+        fun (Q, P) ->
+            let <Indexes> =
+                apply 'Quadtree.get_index'/2(Q, P)
+            in  let <Detected_particles> =
+                    call 'erlang':'map_get'('particles', Q)
+                in  do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        Detected_particles
+    'Quadtree.clear'/1 =
+        fun (Q) ->
+            do  []
+                do  let <_1> =
+                    fun (J) ->
+                        case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 0) of <'true'> when 'true' -> apply 'Quadtree.clear'/1(call 'lists':'nth'(call 'erlang':'+'(J, 1), call 'erlang':'map_get'('nodes', Q))) <'false'> when 'true' -> 'ok' end
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    'ok'
+    'Quadtree.get_nodes'/1 =
+        fun (Q) ->
+            let <Nodes> =
+                []
+            in  do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    Nodes
+    'Quadtree.split'/1 =
+        fun (Q) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('nodes', Q)), 4) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Next_level> =
+                        call 'erlang':'+'(call 'erlang':'map_get'('level', Q), 1)
+                    in  let <Child_width> =
+                            call 'erlang':'/'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('perimeter', Q)), 2)
+                        in  let <Child_height> =
+                                call 'erlang':'/'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('perimeter', Q)), 2)
+                            in  let <X> =
+                                    call 'erlang':'map_get'('x', call 'erlang':'map_get'('perimeter', Q))
+                                in  let <Y> =
+                                        call 'erlang':'map_get'('y', call 'erlang':'map_get'('perimeter', Q))
+                                    in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', Q), ~{'perimeter'=>~{'x'=>call 'erlang':'+'(X, Child_width),'y'=>Y,'width'=>Child_width,'height'=>Child_height,{'vbeam','type'}=>'AABB'}~,'capacity'=>call 'erlang':'map_get'('capacity', Q),'depth'=>call 'erlang':'map_get'('depth', Q),'level'=>Next_level,'particles'=>[],'nodes'=>[],{'vbeam','type'}=>'Quadtree'}~)
+                                            do  call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', Q), ~{'perimeter'=>~{'x'=>X,'y'=>Y,'width'=>Child_width,'height'=>Child_height,{'vbeam','type'}=>'AABB'}~,'capacity'=>call 'erlang':'map_get'('capacity', Q),'depth'=>call 'erlang':'map_get'('depth', Q),'level'=>Next_level,'particles'=>[],'nodes'=>[],{'vbeam','type'}=>'Quadtree'}~)
+                                                do  call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', Q), ~{'perimeter'=>~{'x'=>X,'y'=>call 'erlang':'+'(Y, Child_height),'width'=>Child_width,'height'=>Child_height,{'vbeam','type'}=>'AABB'}~,'capacity'=>call 'erlang':'map_get'('capacity', Q),'depth'=>call 'erlang':'map_get'('depth', Q),'level'=>Next_level,'particles'=>[],'nodes'=>[],{'vbeam','type'}=>'Quadtree'}~)
+                                                    call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', Q), ~{'perimeter'=>~{'x'=>call 'erlang':'+'(X, Child_width),'y'=>call 'erlang':'+'(Y, Child_height),'width'=>Child_width,'height'=>Child_height,{'vbeam','type'}=>'AABB'}~,'capacity'=>call 'erlang':'map_get'('capacity', Q),'depth'=>call 'erlang':'map_get'('depth', Q),'level'=>Next_level,'particles'=>[],'nodes'=>[],{'vbeam','type'}=>'Quadtree'}~)
+            end
+    'Quadtree.get_index'/2 =
+        fun (Q, P) ->
+            let <Indexes> =
+                []
+            in  let <V_midpoint> =
+                    call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('perimeter', Q)), call 'erlang':'/'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('perimeter', Q)), 2))
+                in  let <H_midpoint> =
+                        call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('perimeter', Q)), call 'erlang':'/'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('perimeter', Q)), 2))
+                    in  let <North> =
+                            call 'erlang':'<'(call 'erlang':'map_get'('y', P), H_midpoint)
+                        in  let <South> =
+                                call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('y', P), call 'erlang':'map_get'('height', P)), H_midpoint)
+                            in  let <West> =
+                                    call 'erlang':'<'(call 'erlang':'map_get'('x', P), V_midpoint)
+                                in  let <East> =
+                                        call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('x', P), call 'erlang':'map_get'('width', P)), V_midpoint)
+                                    in  do  case call 'erlang':'and'(North, East) of <'true'> when 'true' -> call 'erlang':'bsl'(Indexes, 0) <'false'> when 'true' -> 'ok' end
+                                            do  case call 'erlang':'and'(North, West) of <'true'> when 'true' -> call 'erlang':'bsl'(Indexes, 1) <'false'> when 'true' -> 'ok' end
+                                                do  case call 'erlang':'and'(South, West) of <'true'> when 'true' -> call 'erlang':'bsl'(Indexes, 2) <'false'> when 'true' -> 'ok' end
+                                                    do  case call 'erlang':'and'(South, East) of <'true'> when 'true' -> call 'erlang':'bsl'(Indexes, 3) <'false'> when 'true' -> 'ok' end
+                                                        Indexes
+    'Queue.is_empty'/1 =
+        fun (Queue) ->
+            apply 'unknown.is_empty'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.len'/1 =
+        fun (Queue) ->
+            apply 'unknown.len'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.peek'/1 =
+        fun (Queue) ->
+            apply 'unknown.first'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.last'/1 =
+        fun (Queue) ->
+            apply 'unknown.last'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.index'/2 =
+        fun (Queue, Idx) ->
+            apply 'unknown.index'/2(call 'erlang':'map_get'('elements', Queue), Idx)
+    'Queue.push'/2 =
+        fun (Queue, Item) ->
+            apply 'unknown.push'/2(call 'erlang':'map_get'('elements', Queue), Item)
+    'Queue.pop'/1 =
+        fun (Queue) ->
+            apply 'unknown.shift'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.str'/1 =
+        fun (Queue) ->
+            apply 'unknown.str'/1(call 'erlang':'map_get'('elements', Queue))
+    'Queue.array'/1 =
+        fun (Queue) ->
+            apply 'unknown.array'/1(call 'erlang':'map_get'('elements', Queue))
+    'new_ringbuffer'/1 =
+        fun (S) ->
+            ~{'content'=>[],{'vbeam','type'}=>'RingBuffer'}~
+    'RingBuffer.push'/2 =
+        fun (Rb, Element) ->
+            case apply 'unknown.is_full'/1(Rb) of <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 
+                do  Element
+                    apply 'unknown.move_writer'/1(Rb)
+             end
+    'RingBuffer.pop'/1 =
+        fun (Rb) ->
+            let <V> =
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('reader', Rb), 1), call 'erlang':'map_get'('content', Rb))
+            in  do  case apply 'unknown.is_empty'/1(Rb) of <'true'> when 'true' -> call 'erlang':'error'(#{#<66>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> apply 'unknown.move_reader'/1(Rb) end
+                    V
+    'RingBuffer.push_many'/2 =
+        fun (Rb, Elements) ->
+            'ok'
+    'RingBuffer.pop_many'/2 =
+        fun (Rb, N) ->
+            let <Elements> =
+                []
+            in  do  let <_1> =
+                    fun (_) ->
+                        call 'erlang':'bsl'(Elements, apply 'unknown.pop'/1(Rb))
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(N, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    Elements
+    'RingBuffer.is_empty'/1 =
+        fun (Rb) ->
+            call 'erlang':'=:='(call 'erlang':'map_get'('reader', Rb), call 'erlang':'map_get'('writer', Rb))
+    'RingBuffer.is_full'/1 =
+        fun (Rb) ->
+            case call 'erlang':'=:='(call 'erlang':'+'(call 'erlang':'map_get'('writer', Rb), 1), call 'erlang':'map_get'('reader', Rb)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('writer', Rb), call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('content', Rb)), 1)), call 'erlang':'=:='(call 'erlang':'map_get'('reader', Rb), 0)) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> 'false' end end
+    'RingBuffer.capacity'/1 =
+        fun (Rb) ->
+            call 'erlang':'-'(call 'erlang':'map_get'('cap', call 'erlang':'map_get'('content', Rb)), 1)
+    'RingBuffer.clear'/1 =
+        fun (Rb) ->
+            let <Rb_1> =
+                ~{'content'=>[],{'vbeam','type'}=>'RingBuffer'}~
+            in  Rb_1
+    'RingBuffer.occupied'/1 =
+        fun (Rb) ->
+            let <Reader> =
+                call 'erlang':'map_get'('reader', Rb)
+            in  let <V> =
+                    0
+                in  case apply 'unknown.is_empty'/1(Rb) of
+                        <'true'> when 'true' -> V
+                        <'false'> when 'true' -> 
+                            V
+                    end
+    'RingBuffer.remaining'/1 =
+        fun (Rb) ->
+            call 'erlang':'-'(apply 'unknown.capacity'/1(Rb), apply 'unknown.occupied'/1(Rb))
+    'RingBuffer.move_reader'/1 =
+        fun (Rb) ->
+            do  'todo'
+                case call 'erlang':'>'(call 'erlang':'map_get'('reader', Rb), call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('content', Rb)), 1)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'RingBuffer.move_writer'/1 =
+        fun (Rb) ->
+            do  'todo'
+                case call 'erlang':'>'(call 'erlang':'map_get'('writer', Rb), call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('content', Rb)), 1)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Set.exists'/2 =
+        fun (Set, Element) ->
+            call 'lists':'member'(Element, call 'erlang':'map_get'('elements', Set))
+    'Set.add'/2 =
+        fun (Set, Element) ->
+            'ok'
+    'Set.remove'/2 =
+        fun (Set, Element) ->
+            apply 'unknown.delete'/2(call 'erlang':'map_get'('elements', Set), Element)
+    'Set.pick'/1 =
+        fun (Set) ->
+            do  let <_1> =
+                fun (_, K) ->
+                    do  'ok'
+                        call 'erlang':'+'(K, 1)
+            in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', Set))
+                call 'erlang':'error'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+    'Set.rest'/1 =
+        fun (Set) ->
+            let <Element> =
+                apply 'unknown.pick'/1(Set)
+            in  apply 'unknown.filter'/2(apply 'unknown.keys'/1(call 'erlang':'map_get'('elements', Set)), call 'erlang':'=/='(It, Element))
+    'Set.pop'/1 =
+        fun (Set) ->
+            let <Element> =
+                apply 'unknown.pick'/1(Set)
+            in  do  apply 'unknown.delete'/2(call 'erlang':'map_get'('elements', Set), Element)
+                    Element
+    'Set.clear'/1 =
+        fun (Set) ->
+            'ok'
+    'Set.=='/2 =
+        fun (L, R) ->
+            case call 'erlang':'=/='(call 'erlang':'length'(call 'erlang':'map_get'('elements', L)), call 'erlang':'length'(call 'erlang':'map_get'('elements', R))) of
+                <'true'> when 'true' -> 'false'
+                <'false'> when 'true' -> 
+                    do  let <_1> =
+                        fun (_, E) ->
+                            do  case call 'erlang':'not'(call 'lists':'member'(E, call 'erlang':'map_get'('elements', L))) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'+'(E, 1)
+                    in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', R))
+                        'true'
+            end
+    'Set.is_empty'/1 =
+        fun (Set) ->
+            call 'erlang':'=:='(apply 'unknown.size'/1(Set), 0)
+    'Set.size'/1 =
+        fun (Set) ->
+            call 'erlang':'length'(call 'erlang':'map_get'('elements', Set))
+    'Set.copy'/1 =
+        fun (Set) ->
+            ~{'elements'=>apply 'unknown.clone'/1(call 'erlang':'map_get'('elements', Set)),{'vbeam','type'}=>'Set'}~
+    'Set.add_all'/2 =
+        fun (Set, Elements) ->
+            'ok'
+    'Set.union'/2 =
+        fun (L, R) ->
+            let <Set> =
+                apply 'unknown.copy'/1(L)
+            in  do  let <_1> =
+                    fun (_, E) ->
+                        do  apply 'unknown.add'/2(Set, E)
+                            call 'erlang':'+'(E, 1)
+                in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', R))
+                    Set
+    'Set.intersection'/2 =
+        fun (L, R) ->
+            let <Set> =
+                apply 'unknown.copy'/1(L)
+            in  do  let <_1> =
+                    fun (_, E) ->
+                        do  case call 'erlang':'not'(apply 'unknown.exists'/2(R, E)) of <'true'> when 'true' -> apply 'unknown.remove'/2(Set, E) <'false'> when 'true' -> 'ok' end
+                            call 'erlang':'+'(E, 1)
+                in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', L))
+                    do  let <_3> =
+                        fun (_, E) ->
+                            do  case call 'erlang':'not'(apply 'unknown.exists'/2(L, E)) of <'true'> when 'true' -> apply 'unknown.remove'/2(Set, E) <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'+'(E, 1)
+                    in  call 'lists':'foldl'(_3, 0, call 'erlang':'map_get'('elements', R))
+                        Set
+    'Set.-'/2 =
+        fun (L, R) ->
+            let <Set> =
+                apply 'unknown.copy'/1(L)
+            in  do  let <_1> =
+                    fun (_, E) ->
+                        do  case apply 'unknown.exists'/2(R, E) of <'true'> when 'true' -> apply 'unknown.remove'/2(Set, E) <'false'> when 'true' -> 'ok' end
+                            call 'erlang':'+'(E, 1)
+                in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', L))
+                    Set
+    'Set.subset'/2 =
+        fun (L, R) ->
+            do  let <_1> =
+                fun (_, E) ->
+                    do  case call 'erlang':'not'(call 'lists':'member'(E, call 'erlang':'map_get'('elements', L))) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(E, 1)
+            in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('elements', R))
+                'true'
+    'Set.array'/1 =
+        fun (L) ->
+            apply 'unknown.keys'/1(call 'erlang':'map_get'('elements', L))
+    'Stack.is_empty'/1 =
+        fun (Stack) ->
+            call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('elements', Stack)), 0)
+    'Stack.len'/1 =
+        fun (Stack) ->
+            call 'erlang':'length'(call 'erlang':'map_get'('elements', Stack))
+    'Stack.peek'/1 =
+        fun (Stack) ->
+            case call 'erlang':'not'(apply 'unknown.is_empty'/1(Stack)) of <'true'> when 'true' -> apply 'unknown.last'/1(call 'erlang':'map_get'('elements', Stack)) <'false'> when 'true' -> call 'erlang':'error'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) end
+    'Stack.push'/2 =
+        fun (Stack, Item) ->
+            call 'erlang':'bsl'(call 'erlang':'map_get'('elements', Stack), Item)
+    'Stack.pop'/1 =
+        fun (Stack) ->
+            case call 'erlang':'not'(apply 'unknown.is_empty'/1(Stack)) of <'true'> when 'true' -> apply 'unknown.pop'/1(call 'erlang':'map_get'('elements', Stack)) <'false'> when 'true' -> call 'erlang':'error'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#) end
+    'Stack.str'/1 =
+        fun (Stack) ->
+            apply 'unknown.str'/1(call 'erlang':'map_get'('elements', Stack))
+    'Stack.array'/1 =
+        fun (Stack) ->
+            call 'erlang':'map_get'('elements', Stack)
+    'Direction__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.datatypes')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.datatypes', _0)
+    end

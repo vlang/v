@@ -13,7 +13,7 @@ utf8util_char_len(B) ->
             Tmp = 0,
             Ch = todo,
             % TODO: unhandled stmt type
-            ok            Ch
+            Ch
         end
         end.
 
@@ -25,7 +25,7 @@ utf8util_char_len(B) ->
             Tmp = 0,
             Ch = todo,
             % TODO: unhandled stmt type
-            ok            Ch
+            Ch
         end
         end.
 
@@ -99,10 +99,10 @@ utf8_str(Ch) ->
     I = 4,
     Res = <<"">>,
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 simple_log(Txt) ->
-    print(Txt),
+    io:format("~s", [Txt]),
     ok.
 
 'Token.reset'(Tok) ->
@@ -110,13 +110,13 @@ simple_log(Txt) ->
 'RE.reset'(Re) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok    case maps:get(group_count, Re) > 0 of
+    case maps:get(group_count, Re) > 0 of
         true -> case length(maps:get(groups, Re)) == 0 of
             true -> ok;
             false -> begin
                 I1 = 0,
                 % TODO: unhandled stmt type
-                ok            end
+            end
         end;
         false -> ok
     end,
@@ -129,11 +129,13 @@ simple_log(Txt) ->
         X = -1,
         ok
     end, maps:get(group_stack, Re)),
+        ok.
 
 'RE.reset_src'(Re) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'RE.parse_bsls'(Re, In_txt, In_i) ->
     Status = start,
     I = In_i,
@@ -141,7 +143,7 @@ simple_log(Txt) ->
     Hex_res = todo,
     Hex_count = 0,
     % TODO: unhandled stmt type
-    ok    -6.
+    -6.
 
 'RE.get_char_class'(Re, Pc) ->
     Buf = [],
@@ -150,13 +152,13 @@ simple_log(Txt) ->
     I = 0,
     Tmp = 0,
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    todo.
+    % TODO: unhandled stmt type
+    todo.
 
 'RE.check_char_class'(Re, Pc, Ch) ->
     Cc_i = maps:get(cc_index, lists:nth(Pc + 1, maps:get(prog, Re))),
     % TODO: unhandled stmt type
-    ok    false.
+    false.
 
 'RE.parse_char_class'(Re, In_txt, In_i) ->
     Status = start,
@@ -165,7 +167,7 @@ simple_log(Txt) ->
     Res_index = maps:get(cc_index, Re),
     Cc_type = todo,
     % TODO: unhandled stmt type
-    ok    -6.
+    -6.
 
 'RE.parse_quantifier'(Re, In_txt, In_i) ->
     Status = start,
@@ -174,14 +176,14 @@ simple_log(Txt) ->
     Q_max = 0,
     Ch = todo,
     % TODO: unhandled stmt type
-    ok    -6.
+    -6.
 
 'RE.parse_groups'(Re, In_txt, In_i) ->
     Status = start,
     I = In_i,
     Name = <<"">>,
     % TODO: unhandled stmt type
-    ok    -2.
+    -2.
 
 'RE.impl_compile'(Re, In_txt) ->
     I = 0,
@@ -192,7 +194,7 @@ simple_log(Txt) ->
     Group_stack_index = -1,
     I1 = 0,
     % TODO: unhandled stmt type
-    ok    case Group_stack_index /= -1 of
+    case Group_stack_index /= -1 of
         true -> -9;
         false -> 
             case Pc > 0 andalso maps:get(ist, lists:nth(Pc - 1 + 1, maps:get(prog, Re))) == todo of
@@ -202,12 +204,12 @@ simple_log(Txt) ->
                     Dot_char_count = 0,
                     Last_dot_char_pc = -1,
                     % TODO: unhandled stmt type
-                    ok                    case Last_dot_char_pc >= 0 of
+                    case Last_dot_char_pc >= 0 of
                         true -> begin
                             Pc11 = Last_dot_char_pc + 1,
                             Is_last_dot = true,
                             % TODO: unhandled stmt type
-                            ok                            case Is_last_dot of
+                            case Is_last_dot of
                                 true -> ok;
                                 false -> ok
                             end
@@ -218,12 +220,12 @@ simple_log(Txt) ->
                     Bsls_char_count = 0,
                     Last_bsls_char_pc = -1,
                     % TODO: unhandled stmt type
-                    ok                    case Last_bsls_char_pc >= 0 of
+                    case Last_bsls_char_pc >= 0 of
                         true -> begin
                             Pc13 = Last_bsls_char_pc + 1,
                             Is_last_bsls = true,
                             % TODO: unhandled stmt type
-                            ok                            case Is_last_bsls of
+                            case Is_last_bsls of
                                 true -> ok;
                                 false -> ok
                             end
@@ -234,12 +236,12 @@ simple_log(Txt) ->
                     Cc_char_count = 0,
                     Last_cc_char_pc = -1,
                     % TODO: unhandled stmt type
-                    ok                    case Last_cc_char_pc >= 0 of
+                    case Last_cc_char_pc >= 0 of
                         true -> begin
                             Pc15 = Last_cc_char_pc + 1,
                             Is_last_cc = true,
                             % TODO: unhandled stmt type
-                            ok                            case Is_last_cc of
+                            case Is_last_cc of
                                 true -> ok;
                                 false -> ok
                             end
@@ -248,7 +250,7 @@ simple_log(Txt) ->
                     end,
                     Pc16 = 0,
                     % TODO: unhandled stmt type
-                    ok                    case maps:get(debug, Re) > 0 of
+                    case maps:get(debug, Re) > 0 of
                         true -> begin
                             Gc = 'RE.get_code'(Re),
                             'RE.log_func'(Re, Gc)
@@ -266,7 +268,7 @@ simple_log(Txt) ->
     'Builder.write_string'(Res, <<"========================================\\nv RegEx compiler v ", (<<"1.0 alpha">>)/binary, " output:\\n">>),
     Stop_flag = false,
     % TODO: unhandled stmt type
-    ok    'Builder.write_string'(Res, <<"========================================\\n">>),
+    'Builder.write_string'(Res, <<"========================================\\n">>),
     'Builder.str'(Res).
 
 'RE.get_query'(Re) ->
@@ -277,7 +279,7 @@ simple_log(Txt) ->
     end,
     I = 0,
     % TODO: unhandled stmt type
-    ok    case (maps:get(flag, Re) band 16#00000004) /= 0 of
+    case (maps:get(flag, Re) band 16#00000004) /= 0 of
         true -> 'Builder.write_string'(Res, <<"$">>);
         false -> ok
     end,
@@ -338,7 +340,7 @@ state_str(S) ->
         true -> begin
             H_buf = new_builder(32),
             'Builder.write_string'(H_buf, <<"flags: ">>),
-            'Builder.write_string'(H_buf, 'string.replace'(integer_to_binary(maps:get(flag, Re)), <<" ">>, <<"0">>)),
+            'Builder.write_string'(H_buf, binary:replace(integer_to_binary(maps:get(flag, Re)), <<" ">>, <<"0">>, [global])),
             'Builder.write_string'(H_buf, <<"\\n">>),
             Sss = 'Builder.str'(H_buf),
             'RE.log_func'(Re, Sss)
@@ -346,7 +348,7 @@ state_str(S) ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    case maps:get(match_index, State) >= 0 of
+    case maps:get(match_index, State) >= 0 of
         true -> case maps:get(group_index, State) < 0 of
             true -> begin
                 case maps:get(ist, lists:nth(maps:get(pc, State) + 1, maps:get(prog, Re))) == todo of
@@ -448,11 +450,12 @@ regex_base(Pattern) ->
     Res = [],
     Gi = 0,
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 'RE.match_string'(Re, In_txt) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'RE.matches_string'(Re, In_txt) ->
     Start = element(1, 'RE.match_string'(Re, In_txt)),
     Start /= -1.
@@ -460,7 +463,7 @@ regex_base(Pattern) ->
 'RE.find'(Re, In_txt) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok    -1.
+    -1.
 
 'RE.find_from'(Re, In_txt, Start) ->
     Old_flag = maps:get(flag, Re),
@@ -469,7 +472,7 @@ regex_base(Pattern) ->
         true -> -1;
         false -> begin
             % TODO: unhandled stmt type
-            ok            -1
+            -1
         end
         end.
 
@@ -477,7 +480,7 @@ regex_base(Pattern) ->
     I = 0,
     Res = [],
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 'RE.split'(Re, In_txt) ->
     Pos = 'RE.find_all'(Re, In_txt),
@@ -486,7 +489,7 @@ regex_base(Pattern) ->
         true -> [In_txt];
         false -> begin
             % TODO: unhandled stmt type
-            ok            Sections bsl lists:nth(todo + 1, In_txt),
+            Sections bsl lists:nth(todo + 1, In_txt),
             Sections
         end
         end.
@@ -495,7 +498,7 @@ regex_base(Pattern) ->
     I = 0,
     Res = [],
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 'RE.replace_simple'(Re, In_txt, Repl) ->
     Pos = 'RE.find_all'(Re, In_txt),
@@ -509,25 +512,25 @@ regex_base(Pattern) ->
     Res = new_builder(length(In_txt)),
     Last_end = 0,
     % TODO: unhandled stmt type
-    ok    case Last_end >= 0 andalso Last_end < length(In_txt) of
+    case Last_end >= 0 andalso Last_end < length(In_txt) of
         true -> 'Builder.write_string'(Res, lists:nth(todo + 1, In_txt));
         false -> ok
     end,
     'Builder.str'(Res).
 
 'RE.parsed_replace_string'(Re, In_txt, Repl) ->
-    Str_lst = 'string.split'(Repl, <<"\\\\">>),
+    Str_lst = binary:split(Repl, <<"\\\\">>, [global]),
     Res = lists:nth(1, Str_lst),
     I = 1,
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 'RE.replace'(Re, In_txt, Repl_str) ->
     I = 0,
     Res = new_builder(length(In_txt)),
     Last_end = 0,
     % TODO: unhandled stmt type
-    ok    case Last_end >= 0 andalso Last_end < length(In_txt) of
+    case Last_end >= 0 andalso Last_end < length(In_txt) of
         true -> 'Builder.write_string'(Res, lists:nth(todo + 1, In_txt));
         false -> ok
     end,
@@ -550,7 +553,7 @@ regex_base(Pattern) ->
         end
     end,
     % TODO: unhandled stmt type
-    ok    I1 = I_p,
+    I1 = I_p,
     'Builder.write_string'(Res, lists:nth(todo + 1, In_txt)),
     'Builder.str'(Res).
 

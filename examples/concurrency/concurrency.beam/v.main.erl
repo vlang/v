@@ -3,7 +3,7 @@
 
 expensive_computing(Id, Duration) ->
     vbeam_io:println(<<"Executing expensive computing task (", (integer_to_binary(Id))/binary, ")...">>),
-    sleep(Duration * todo),
+    timer:sleep(Duration * todo),
     vbeam_io:println(<<"Finish task ", (integer_to_binary(Id))/binary, " on ", (integer_to_binary(Duration))/binary, " ms">>),
     ok.
 
@@ -12,6 +12,6 @@ main() ->
     Threads bsl todo,
     Threads bsl todo,
     Threads bsl todo,
-    '[]thread.wait'(Threads),
+    ok,
     io:format("~s~n", [<<"All jobs finished!">>]),
     ok.

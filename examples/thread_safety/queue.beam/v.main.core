@@ -1,0 +1,50 @@
+module 'v.main' ['producer'/3,
+                'consumer'/3,
+                'heavy_processing'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'producer'/3 =
+    fun (Producer_name, Arr, Mtx) ->
+        'ok'
+'consumer'/3 =
+    fun (Consumer_name, Arr, Mtx) ->
+        'ok'
+'heavy_processing'/1 =
+    fun (Queue_id) ->
+        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<79>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Queue_id|[]]])|[]])
+            call 'timer':'sleep'(call 'erlang':'*'(500, 'todo'))
+'main'/0 =
+    fun () ->
+        let <Mtx> =
+            apply 'new_mutex'/0()
+        in  let <Arr> =
+                []
+            in  let <Producer_threads> =
+                    ['todo'|['todo'|['todo'|['todo'|['todo'|[]]]]]]
+                in  let <Consumer_threads> =
+                        ['todo'|[]]
+                    in  do  let <_1> =
+                            fun (I) ->
+                                call 'erlang':'bsl'(Consumer_threads, 'todo')
+                        in  let <_2> =
+                                call 'lists':'seq'(1, call 'erlang':'-'(16, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            do  apply 'Mutex.lock'/1(Mtx)
+                                do  call 'erlang':'bsl'(Arr, fun (_fref0) -> apply 'heavy_processing'/1(_fref0))
+                                    do  apply 'Mutex.unlock'/1(Mtx)
+                                        do  let <_3> =
+                                            fun (T) ->
+                                                apply 'thread.wait'/1(T)
+                                        in  call 'lists':'foreach'(_3, Producer_threads)
+                                            'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

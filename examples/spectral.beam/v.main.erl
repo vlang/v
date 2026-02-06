@@ -11,8 +11,10 @@ times(V, U) ->
             AOut = lists:nth(J + 1, U) / todo,
             AOut
         end, A, lists:seq(0, length(U) - 1)),
+                ok.
         AOut
     end, A, lists:seq(0, length(V) - 1)),
+        ok.
 
 times_trans(V, U) ->
     A = lists:foldl(fun(I, AAcc) ->
@@ -21,8 +23,10 @@ times_trans(V, U) ->
             AOut = lists:nth(J + 1, U) / todo,
             AOut
         end, A, lists:seq(0, length(U) - 1)),
+                ok.
         AOut
     end, A, lists:seq(0, length(V) - 1)),
+        ok.
 
 a_times_transp(V, U) ->
     X = [],
@@ -32,7 +36,7 @@ a_times_transp(V, U) ->
 
 main() ->
     N = 0,
-    case length('v.os':'arguments'()) == 2 of
+    case length(init:get_plain_arguments()) == 2 of
         true -> ok;
         false -> ok
     end,
@@ -50,6 +54,6 @@ main() ->
         VvOut = lists:nth(I + 1, V) * lists:nth(I + 1, V),
         {VbvOut, VvOut}
     end, {Vbv, Vv}, lists:seq(0, N - 1)),
-    Ans = sqrt(Vbv1 / Vv1),
+    Ans = math:sqrt(Vbv1 / Vv1),
     vbeam_io:println(float_to_binary(Ans)),
     ok.

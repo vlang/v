@@ -6,18 +6,19 @@ push_pq(Prior_queue, Data, Priority) ->
     Pq_len = length(Prior_queue),
     I = 0,
     % TODO: unhandled stmt type
-    ok    Temp bsl #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
+    Temp bsl #{data => Data, priority => Priority, {vbeam, type} => 'NODE'},
     % TODO: unhandled stmt type
-    ok    Prior_queue = '[]T.clone'(Temp),
+    Prior_queue = Temp,
 
 updating_priority(Prior_queue, Search_data, New_priority) ->
     I = 0,
     Pq_len = length(Prior_queue),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 departure_priority(Prior_queue) ->
     X = maps:get(data, lists:nth(1, Prior_queue)),
-    '[]T.delete'(Prior_queue, 0),
+    lists:delete(0, Prior_queue),
     X.
 
 all_adjacents(G, V) ->
@@ -32,24 +33,27 @@ all_adjacents(G, V) ->
     Temp.
 
 print_solution(Dist) ->
-    print(<<"Vertex \\tDistance from Source">>),
+    io:format("~s", [<<"Vertex \\tDistance from Source">>]),
     lists:foreach(fun(Node) ->
-        print(<<"\\n ", (integer_to_binary(Node))/binary, " ==> \\t ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>),
+        io:format("~s", [<<"\\n ", (integer_to_binary(Node))/binary, " ==> \\t ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>]),
         ok.
         ok
     end, lists:seq(0, (length(Dist)) - 1)),
+        ok.
 
 print_paths_dist(Path, Dist) ->
-    print(<<"\\n Read the nodes from right to left (a path): \\n">>),
+    io:format("~s", [<<"\\n Read the nodes from right to left (a path): \\n">>]),
     I = lists:foldl(fun(Node, IAcc) ->
-        print(<<"\\n ", (integer_to_binary(Node))/binary, " ">>),
+        io:format("~s", [<<"\\n ", (integer_to_binary(Node))/binary, " ">>]),
         ok.
         IOut = Node,
         % TODO: unhandled stmt type
-        ok        print(<<"\\t PATH COST: ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>),
+                ok.
+        io:format("~s", [<<"\\t PATH COST: ", (integer_to_binary(lists:nth(Node + 1, Dist)))/binary>>]),
         ok.
         IOut
     end, I, lists:seq(1, (length(Path)) - 1)),
+        ok.
 
 dijkstra(G, S) ->
     Pq_queue = [],
@@ -58,7 +62,7 @@ dijkstra(G, S) ->
     Dist = [],
     Path = [],
     % TODO: unhandled stmt type
-    ok    print_solution(Dist),
+    print_solution(Dist),
     print_paths_dist(Path, Dist),
     ok.
 
@@ -68,7 +72,7 @@ main() ->
     Graph_03 = [[0, 10, 6, 5], [10, 0, 0, 15], [6, 0, 0, 4], [5, 15, 4, 0]],
     Graph = [],
     lists:foreach(fun(G_value) ->
-        Graph1 = '[][]int.clone'(G_value),
+        Graph1 = G_value,
         Start_node = 0,
         vbeam_io:println(<<"\\n\\n Graph ", (integer_to_binary(Index + 1))/binary, " using Dijkstra algorithm (source node: ", (integer_to_binary(Start_node))/binary, ")">>),
         dijkstra(Graph1, Start_node),

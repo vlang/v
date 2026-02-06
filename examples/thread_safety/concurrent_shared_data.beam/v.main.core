@@ -1,0 +1,28 @@
+module 'v.main' ['increment'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'increment'/1 =
+    fun (Data) ->
+        'todo'
+'main'/0 =
+    fun () ->
+        let <Data> =
+            ~{{'vbeam','type'}=>'SharedData'}~
+        in  let <Threads> =
+                ['todo'|['todo'|[]]]
+            in  do  let <_1> =
+                    fun (T) ->
+                        apply 'thread.wait'/1(T)
+                in  call 'lists':'foreach'(_1, Threads)
+                    'todo'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

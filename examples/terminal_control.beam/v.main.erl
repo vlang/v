@@ -8,15 +8,16 @@ main() ->
     sleeping_line(5, 10, 5, <<"*">>),
     standing_line(9, 5, 5, <<"*">>),
     cursor_down(5),
-    print(<<"\\n">>),
+    io:format("~s", [<<"\\n">>]),
     vbeam_io:println(bold(red(<<"It Worked!">>))),
     ok.
 
 sleeping_line(X, Y, Size, Ch) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 standing_line(X, Y, Size, Ch) ->
     I = 0,
     % TODO: unhandled stmt type
-    ok
+        ok.

@@ -1,0 +1,101 @@
+module 'v.readline' ['Readline.enable_raw_mode'/1,
+                'Readline.enable_raw_mode_nosig'/1,
+                'Readline.disable_raw_mode'/1,
+                'Readline.read_char'/1,
+                'Readline.read_line_utf8'/2,
+                'Readline.read_line'/2,
+                'read_line_utf8'/1,
+                'read_line'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Readline.enable_raw_mode'/1 =
+        fun (R) ->
+            case call 'erlang':'=/='(apply 'tcgetattr'/2(0, call 'erlang':'map_get'('orig_termios', R)), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Raw> =
+                        call 'erlang':'map_get'('orig_termios', R)
+                    in  do  apply 'invert'/1(1330)
+                            do  apply 'flag'/1('todo')
+                                do  apply 'invert'/1(32779)
+                                    do  'todo'
+                                        do  'todo'
+                                            do  apply 'tcsetattr'/3(0, 1, Raw)
+                                                do  'true'
+                                                    'ok'
+            end
+    'Readline.enable_raw_mode_nosig'/1 =
+        fun (R) ->
+            case call 'erlang':'=/='(apply 'tcgetattr'/2(0, call 'erlang':'map_get'('orig_termios', R)), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Raw> =
+                        call 'erlang':'map_get'('orig_termios', R)
+                    in  do  apply 'invert'/1(1330)
+                            do  apply 'flag'/1('todo')
+                                do  apply 'invert'/1(32778)
+                                    do  'todo'
+                                        do  'todo'
+                                            do  apply 'tcsetattr'/3(0, 1, Raw)
+                                                do  'true'
+                                                    'ok'
+            end
+    'Readline.disable_raw_mode'/1 =
+        fun (R) ->
+            case call 'erlang':'map_get'('is_raw', R) of <'true'> when 'true' -> 
+                do  apply 'tcsetattr'/3(0, 1, call 'erlang':'map_get'('orig_termios', R))
+                    'ok'
+             <'false'> when 'true' -> 'ok' end
+    'Readline.read_char'/1 =
+        fun (R) ->
+            'todo'
+    'Readline.read_line_utf8'/2 =
+        fun (R, Prompt) ->
+            do  []
+                do  0
+                    do  Prompt
+                        do  0
+                            do  case call 'erlang':'=<'(call 'erlang':'length'(call 'erlang':'map_get'('previous_lines', R)), 1) of <'true'> when 'true' -> 
+                                do  call 'erlang':'bsl'(call 'erlang':'map_get'('previous_lines', R), [])
+                                    call 'erlang':'bsl'(call 'erlang':'map_get'('previous_lines', R), [])
+                             <'false'> when 'true' -> 'ok' end
+                                do  call 'io':'format'([126|[115|[]]], [call 'erlang':'map_get'('prompt', R)|[]])
+                                    let <Line> =
+                                        apply 'get_raw_line'/0()
+                                    in  do  case call 'erlang':'>='(call 'erlang':'length'(Line), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            do  []
+                                                do  0
+                                                    case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('current', R)), 0) of
+                                                        <'true'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                        <'false'> when 'true' -> 
+                                                            call 'erlang':'map_get'('current', R)
+                                                    end
+    'Readline.read_line'/2 =
+        fun (R, Prompt) ->
+            let <S> =
+                apply 'Readline.read_line_utf8'/2(R, Prompt)
+            in  apply '[]rune.string'/1(S)
+    'read_line_utf8'/1 =
+        fun (Prompt) ->
+            let <R> =
+                ~{{'vbeam','type'}=>'Readline'}~
+            in  let <S> =
+                    apply 'Readline.read_line_utf8'/2(R, Prompt)
+                in  S
+    'read_line'/1 =
+        fun (Prompt) ->
+            let <R> =
+                ~{{'vbeam','type'}=>'Readline'}~
+            in  let <S> =
+                    apply 'Readline.read_line'/2(R, Prompt)
+                in  S
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.readline')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.readline', _0)
+    end

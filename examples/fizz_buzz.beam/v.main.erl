@@ -12,3 +12,4 @@ main() ->
         ok.
         ok
     end, lists:seq(1, 101 - 1)),
+        ok.

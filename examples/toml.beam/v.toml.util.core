@@ -1,0 +1,28 @@
+module 'v.toml.util' ['is_key_char'/1,
+                'is_ascii_control_character'/1,
+                'is_illegal_ascii_control_character'/1,
+                'printdbg'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'is_key_char'/1 =
+    fun (C) ->
+        apply 'u8.is_letter'/1(C)
+'is_ascii_control_character'/1 =
+    fun (Byte_char) ->
+        call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>='(Byte_char, 0), call 'erlang':'=<'(Byte_char, 16#1f)), call 'erlang':'=:='(Byte_char, 16#7f))
+'is_illegal_ascii_control_character'/1 =
+    fun (Byte_char) ->
+        call 'erlang':'and'(call 'erlang':'=/='(Byte_char, 16#09), apply 'is_ascii_control_character'/1(Byte_char))
+'printdbg'/2 =
+    fun (Id, Message) ->
+        call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([Id|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[Message|[]]])|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.toml.util')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.toml.util', _0)
+end

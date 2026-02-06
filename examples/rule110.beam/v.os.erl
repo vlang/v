@@ -2,21 +2,21 @@
 -export([args_after/1, args_before/1, start_new_command/1, 'Command.start'/1, 'Command.read_line'/1, 'Command.close'/1, fd_close/1, fd_write/2, fd_slurp/1, fd_read/2, fd_is_pending/1, is_abs_path/1, abs_path/1, norm_path/1, existing_path/1, clean_path/1, to_slash/1, from_slash/1, win_volume_len/1, is_slash/1, is_unc_path/1, has_drive_letter/1, starts_w_slash_slash/1, is_drive_rooted/1, is_normal_path/1, is_curr_dir_ref/3, windows_volume/1, stdin/0, stdout/0, stderr/0, 'File.close'/1, 'File.write'/2, 'File.writeln'/2, 'File.write_string'/2, 'File.write_ptr'/3, 'File.write_full_buffer'/3, 'File.flush'/1, 'File.seek'/3, 'File.tell'/1, 'File.read'/2, 'File.read_bytes_with_newline'/2, 'File.read_into_ptr'/3, 'File.eof'/1, error_file_not_opened/0, getwd/0, chdir/1, exists/1, is_dir/1, is_link/1, is_executable/1, is_writable/1, is_readable/1, mkdir/2, rmdir/1, ls/1, read_file/1, read_bytes/1, write_bytes/2, rm/1, cp/3, rename/2, rename_dir/2, open/1, create/1, vfopen/2, stat/1, lstat/1, file_size/1, file_last_mod_unix/1, truncate/2, getenv/1, getenv_opt/1, setenv/3, unsetenv/1, environ/0, real_path/1, symlink/2, readlink/1, link/2, executable/0, getpid/0, getppid/0, getuid/0, geteuid/0, getgid/0, getegid/0, system/1, execute/1, fork/0, wait/0, hostname/0, loginname/0, uname/0, flush/0, get_raw_line/0, get_raw_stdin/0, fileno/1, is_atty/1, chmod/2, chown/3, glob/1, posix_get_error_msg/1, get_error_msg/1, last_error/0, error_posix/1, page_size/0, disk_usage/1, native_glob_pattern/2, kind_of_existing_path/1, input_password/1, execve/3, open_file/3, open_append/1, 'File.reopen'/3, signal_opt/2, signal_ignore/1, is_main_thread/0, signal_ignore_internal/1, 'Result.free'/1, executable_fallback/0, cp_all/3, mv_by_cp/3, mv/3, read_lines/1, write_lines/2, sigint_to_signal_name/1, rmdir_all/1, is_dir_empty/1, file_ext/1, dir/1, base/1, file_name/1, split_path/1, input_opt/1, input/1, get_line/0, get_lines/0, get_lines_joined/0, get_raw_lines/0, get_raw_lines_joined/0, get_trimmed_lines/0, user_os/0, user_names/0, home_dir/0, expand_tilde_to_home/1, write_file/2, 'ExecutableNotFoundError.msg'/1, error_failed_to_find_executable/0, find_abs_path_of_executable/1, exists_in_system_path/1, is_file/1, join_path/2, join_path_single/2, normalize_path_in_builder/1, walk_ext/3, impl_walk_ext/4, walk/2, walk_with_context/3, log/1, mkdir_all/2, create_folder_when_it_does_not_exist/1, xdg_home_folder/2, cache_dir/0, data_dir/0, state_dir/0, local_bin_dir/0, temp_dir/0, vtmp_dir/0, default_vmodules_path/0, vmodules_dir/0, vmodules_paths/0, resource_abs_path/1, execute_or_panic/1, execute_or_exit/1, execute_opt/1, quoted_path/1, config_dir/0, 'Process.signal_kill'/1, 'Process.signal_term'/1, 'Process.signal_pgkill'/1, 'Process.signal_stop'/1, 'Process.signal_continue'/1, 'Process.wait'/1, 'Process.close'/1, 'Process.free'/1, 'Process._spawn'/1, 'Process.is_alive'/1, 'Process.set_redirect_stdio'/1, 'Process.stdin_write'/2, 'Process.stdout_slurp'/1, 'Process.stderr_slurp'/1, 'Process.stdout_read'/1, 'Process.stderr_read'/1, 'Process.pipe_read'/2, 'Process.is_pending'/2, 'Process.run'/1, new_process/1, 'Process.set_args'/2, 'Process.set_work_folder'/2, 'Process.set_environment'/2, sleep_ms/1, 'SeekMode__static__from'/1, 'ChildProcessPipeKind__static__from'/1, 'ProcessState__static__from'/1, 'Signal__static__from'/1]).
 
 args_after(Cut_word) ->
-    case length(arguments()) == 0 of
+    case length(init:get_plain_arguments()) == 0 of
         true -> [];
         false -> begin
             Cargs = [],
-            case (not lists:member(Cut_word, arguments())) of
+            case (not lists:member(Cut_word, init:get_plain_arguments())) of
                 true -> ok;
                 false -> begin
                     Found = false,
-                    Cargs bsl lists:nth(1, arguments()),
+                    Cargs bsl lists:nth(1, init:get_plain_arguments()),
                     lists:foreach(fun(A) ->
                         case A == Cut_word of
                             true -> begin
                                 Found1 = true,
                                 % TODO: unhandled stmt type
-                                ok                            end;
+                            end;
                             false -> ok
                         end,
                         case not Found1 of
@@ -25,7 +25,7 @@ args_after(Cut_word) ->
                         end,
                         Cargs bsl A,
                         ok
-                    end, lists:nth(todo + 1, arguments())),
+                    end, lists:nth(todo + 1, init:get_plain_arguments())),
                 end
             end,
             Cargs
@@ -33,14 +33,14 @@ args_after(Cut_word) ->
         end.
 
 args_before(Cut_word) ->
-    case length(arguments()) == 0 of
+    case length(init:get_plain_arguments()) == 0 of
         true -> [];
         false -> begin
             Cargs = [],
-            case (not lists:member(Cut_word, arguments())) of
+            case (not lists:member(Cut_word, init:get_plain_arguments())) of
                 true -> ok;
                 false -> begin
-                    Cargs bsl lists:nth(1, arguments()),
+                    Cargs bsl lists:nth(1, init:get_plain_arguments()),
                     lists:foreach(fun(A) ->
                         case A == Cut_word of
                             true -> ok;
@@ -48,7 +48,7 @@ args_before(Cut_word) ->
                         end,
                         Cargs bsl A,
                         ok
-                    end, lists:nth(todo + 1, arguments())),
+                    end, lists:nth(todo + 1, init:get_plain_arguments())),
                 end
             end,
             Cargs
@@ -102,7 +102,7 @@ is_abs_path(Path) ->
         true -> false;
         false -> begin
             % TODO: unhandled stmt type
-            ok            lists:nth(1, Path) == todo
+            lists:nth(1, Path) == todo
         end
         end.
 
@@ -130,7 +130,7 @@ norm_path(Path) ->
             Rooted = is_abs_path(Path),
             Volume_len = win_volume_len(Path),
             Volume = lists:nth(todo + 1, Path),
-            case Volume_len /= 0 andalso 'string.contains'(Volume, <<"/">>) of
+            case Volume_len /= 0 andalso case binary:match(Volume, <<"/">>) of nomatch -> false; _ -> true end of
                 true -> ok;
                 false -> ok
             end,
@@ -138,7 +138,7 @@ norm_path(Path) ->
             case Cpath == <<"">> andalso Volume_len == 0 of
                 true -> <<".">>;
                 false -> begin
-                    Spath = 'string.split'(Cpath, <<"/">>),
+                    Spath = binary:split(Cpath, <<"/">>, [global]),
                     case (not lists:member(<<"..">>, Spath)) of
                         true -> case Volume_len /= 0 of
                             true -> <<(Volume)/binary, (Cpath)/binary>>;
@@ -154,11 +154,11 @@ norm_path(Path) ->
                             New_path = [],
                             Backlink_count = 0,
                             % TODO: unhandled stmt type
-                            ok                            case Backlink_count /= 0 andalso not Rooted of
+                            case Backlink_count /= 0 andalso not Rooted of
                                 true -> ok;
                                 false -> ok
                             end,
-                            'Builder.write_string'(Sb, '[]string.join'(New_path, <<"/">>)),
+                            'Builder.write_string'(Sb, iolist_to_binary(lists:join(<<"/">>, New_path))),
                             Res = 'Builder.str'(Sb),
                             case length(Res) == 0 of
                                 true -> <<"/">>;
@@ -185,14 +185,14 @@ existing_path(Path) ->
                 false -> begin
                     Volume_len = 0,
                     % TODO: unhandled stmt type
-                    ok                    case Volume_len > 0 andalso is_slash(lists:nth(Volume_len - 1 + 1, Path)) of
+                    case Volume_len > 0 andalso is_slash(lists:nth(Volume_len - 1 + 1, Path)) of
                         true -> todo;
                         false -> ok
                     end,
                     Sc = new(lists:nth(todo + 1, Path)),
                     Recent_path = lists:nth(todo + 1, Path),
                     % TODO: unhandled stmt type
-                    ok                    Err
+                    Err
                 end
                         end
                 end.
@@ -204,7 +204,7 @@ clean_path(Path) ->
             Sb = new_builder(length(Path)),
             Sc = new(Path),
             % TODO: unhandled stmt type
-            ok            Res = 'Builder.str'(Sb),
+            Res = 'Builder.str'(Sb),
             case length(Res) > 1 andalso is_slash(lists:nth(length(Res) - 1 + 1, Res)) of
                 true -> lists:nth(todo + 1, Res);
                 false -> Res
@@ -242,7 +242,7 @@ win_volume_len(Path) ->
 
 is_slash(B) ->
     % TODO: unhandled stmt type
-    ok    B == todo.
+    B == todo.
 
 is_unc_path(Path) ->
     win_volume_len(Path) >= 5 andalso starts_w_slash_slash(Path).
@@ -405,7 +405,7 @@ read_file(Path) ->
 
 read_bytes(Path) ->
     Content = read_file(Path),
-    'string.bytes'(Content).
+    binary_to_list(Content).
 
 write_bytes(Path, Bytes) ->
     ok.
@@ -601,16 +601,16 @@ signal_ignore_internal(Args) ->
     ok.
 
 executable_fallback() ->
-    case length(arguments()) == 0 of
+    case length(init:get_plain_arguments()) == 0 of
         true -> <<"">>;
         false -> begin
-            Exepath = lists:nth(1, arguments()),
+            Exepath = lists:nth(1, init:get_plain_arguments()),
             % TODO: unhandled stmt type
-            ok            case not is_abs_path(Exepath) of
+            case not is_abs_path(Exepath) of
                 true -> begin
                     Other_separator = ,
-                    Rexepath = 'string.replace'(Exepath, Other_separator, <<"/">>),
-                    case 'string.contains'(Rexepath, <<"/">>) of
+                    Rexepath = binary:replace(Exepath, Other_separator, <<"/">>, [global]),
+                    case case binary:match(Rexepath, <<"/">>) of nomatch -> false; _ -> true end of
                         true -> ok;
                         false -> begin
                             Foundpath = find_abs_path_of_executable(Exepath),
@@ -686,14 +686,14 @@ mv(Source, Target, Opts) ->
 
 read_lines(Path) ->
     Buf = read_file(Path),
-    Res = 'string.split_into_lines'(Buf),
+    Res = binary:split(Buf, <<"\n">>, [global]),
     todo,
     Res.
 
 write_lines(Path, Lines) ->
     F = create(Path),
     % TODO: unhandled stmt type
-    ok    lists:foreach(fun(Line) ->
+    lists:foreach(fun(Line) ->
         'File.writeln'(F, Line),
         ok
     end, Lines),
@@ -715,7 +715,7 @@ sigint_to_signal_name(Si) ->
         _ -> ok
     end,
     % TODO: unhandled stmt type
-    ok    <<"unknown">>.
+    <<"unknown">>.
 
 rmdir_all(Path) ->
     Err_msg = <<"">>,
@@ -762,7 +762,7 @@ dir(Path) ->
     case Path == <<"">> of
         true -> <<".">>;
         false -> begin
-            Detected_path_separator = case 'string.contains'(Path, <<"/">>) of
+            Detected_path_separator = case case binary:match(Path, <<"/">>) of nomatch -> false; _ -> true end of
                 true -> <<"/">>;
                 false -> <<"\\\\">>
             end,
@@ -778,14 +778,14 @@ base(Path) ->
     case Path == <<"">> of
         true -> <<".">>;
         false -> begin
-            Detected_path_separator = case 'string.contains'(Path, <<"/">>) of
+            Detected_path_separator = case case binary:match(Path, <<"/">>) of nomatch -> false; _ -> true end of
                 true -> <<"/">>;
                 false -> <<"\\\\">>
             end,
             case Path == Detected_path_separator of
                 true -> Detected_path_separator;
                 false -> 
-                    case 'string.ends_with'(Path, Detected_path_separator) of
+                    case case binary:longest_common_suffix([Path, Detected_path_separator]) of 0 -> false; _ -> true end of
                         true -> lists:nth(todo + 1, Path2);
                         false -> begin
                             Pos = 'string.last_index'(Path, Detected_path_separator),
@@ -797,7 +797,7 @@ base(Path) ->
         end.
 
 file_name(Path) ->
-    Detected_path_separator = case 'string.contains'(Path, <<"/">>) of
+    Detected_path_separator = case case binary:match(Path, <<"/">>) of nomatch -> false; _ -> true end of
         true -> <<"/">>;
         false -> <<"\\\\">>
     end,
@@ -814,14 +814,14 @@ split_path(Path) ->
             end
         end
     end,
-    Detected_path_separator = case 'string.contains'(Path, <<"/">>) of
+    Detected_path_separator = case case binary:match(Path, <<"/">>) of nomatch -> false; _ -> true end of
         true -> <<"/">>;
         false -> <<"\\\\">>
     end,
     case Path == Detected_path_separator of
         true -> Detected_path_separator;
         false -> 
-            case 'string.ends_with'(Path, Detected_path_separator) of
+            case case binary:longest_common_suffix([Path, Detected_path_separator]) of 0 -> false; _ -> true end of
                 true -> lists:nth(todo + 1, Path);
                 false -> begin
                     Dir = <<".">>,
@@ -844,7 +844,7 @@ split_path(Path) ->
                 end.
 
 input_opt(Prompt) ->
-    print(Prompt),
+    io:format("~s", [Prompt]),
     flush(),
     Res = get_raw_line(),
     case length(Res) > 0 of
@@ -859,47 +859,47 @@ input(Prompt) ->
 get_line() ->
     Str = get_raw_line(),
     % TODO: unhandled stmt type
-    ok    'string.trim_right'(Str, <<"\\n">>).
+    'string.trim_right'(Str, <<"\\n">>).
 
 get_lines() ->
     Line = <<"">>,
     Inputstr = [],
     % TODO: unhandled stmt type
-    ok    Inputstr.
+    Inputstr.
 
 get_lines_joined() ->
-    '[]string.join'(get_lines(), <<"">>).
+    iolist_to_binary(lists:join(<<"">>, get_lines())).
 
 get_raw_lines() ->
     Line = <<"">>,
     Lines = [],
     % TODO: unhandled stmt type
-    ok    Lines.
+    Lines.
 
 get_raw_lines_joined() ->
-    '[]string.join'(get_raw_lines(), <<"">>).
+    iolist_to_binary(lists:join(<<"">>, get_raw_lines())).
 
 get_trimmed_lines() ->
     Lines = [],
     % TODO: unhandled stmt type
-    ok    Lines.
+    Lines.
 
 user_os() ->
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    case getenv(<<"TERMUX_VERSION">>) /= <<"">> of
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    case getenv(<<"TERMUX_VERSION">>) /= <<"">> of
         true -> <<"termux">>;
         false -> <<"unknown">>
         end.
@@ -913,7 +913,7 @@ expand_tilde_to_home(Path) ->
         true -> 'string.trim_right'(Hdir, <<"/">>);
         false -> begin
             Source = <<(<<"~">>)/binary, (<<"/">>)/binary>>,
-            case 'string.starts_with'(Path, Source) of
+            case case string:prefix(Path, Source) of nomatch -> false; _ -> true end of
                 true -> Result;
                 false -> Path
                         end
@@ -944,15 +944,15 @@ find_abs_path_of_executable(Exe_name) ->
                 end,
                 Res = <<"">>,
                 Path = getenv(<<"PATH">>),
-                Paths = 'string.split'(Path, <<":">>),
+                Paths = binary:split(Path, <<":">>, [global]),
                 lists:foreach(fun(P) ->
                     Found_abs_path = join_path_single(P, Fexepath),
                     % TODO: unhandled stmt type
-                    ok                    case is_file(Found_abs_path) andalso is_executable(Found_abs_path) of
+                    case is_file(Found_abs_path) andalso is_executable(Found_abs_path) of
                         true -> begin
                             Res1 = Found_abs_path,
                             % TODO: unhandled stmt type
-                            ok                        end;
+                        end;
                         false -> ok
                     end,
                     ok
@@ -977,9 +977,9 @@ is_file(Path) ->
 join_path(Base, Dirs) ->
     Sb = new_builder(length(Base) + length(Dirs) * 50),
     % TODO: unhandled stmt type
-    ok    Sbase = 'string.trim_right'(Base, <<"\\\\/">>),
+    Sbase = 'string.trim_right'(Base, <<"\\\\/">>),
     % TODO: unhandled stmt type
-    ok    'Builder.write_string'(Sb, Sbase),
+    'Builder.write_string'(Sb, Sbase),
     lists:foreach(fun(D) ->
         case D /= <<"">> of
             true -> begin
@@ -1001,9 +1001,9 @@ join_path(Base, Dirs) ->
 join_path_single(Base, Elem) ->
     Sb = new_builder(length(Base) + length(Elem) + 1),
     % TODO: unhandled stmt type
-    ok    Sbase = 'string.trim_right'(Base, <<"\\\\/">>),
+    Sbase = 'string.trim_right'(Base, <<"\\\\/">>),
     % TODO: unhandled stmt type
-    ok    'Builder.write_string'(Sb, Sbase),
+    'Builder.write_string'(Sb, Sbase),
     case Elem /= <<"">> of
         true -> begin
             'Builder.write_string'(Sb, <<"/">>),
@@ -1023,9 +1023,9 @@ normalize_path_in_builder(Sb) ->
     Fs = todo,
     Rs = todo,
     % TODO: unhandled stmt type
-    ok    lists:foreach(fun(Idx) ->
+    lists:foreach(fun(Idx) ->
         % TODO: unhandled stmt type
-        ok        ok
+        ok
     end, lists:seq(0, length(Sb) - 1)),
     lists:foreach(fun(Idx) ->
         case lists:nth(Idx + 1, Sb) == Rs andalso lists:nth(Idx + 1 + 1, Sb) == todo andalso lists:nth(Idx + 2 + 1, Sb) == Rs of
@@ -1038,6 +1038,7 @@ normalize_path_in_builder(Sb) ->
         end.
         ok
     end, lists:seq(0, length(Sb) - 3 - 1)),
+        ok.
 
 walk_ext(Path, Ext, Opts) ->
     Res = [],
@@ -1049,25 +1050,26 @@ impl_walk_ext(Path, Ext, Out, Opts) ->
         true -> ok;
         false -> begin
             Files = ls(Path),
-            Separator = case 'string.ends_with'(Path, <<"/">>) of
+            Separator = case case binary:longest_common_suffix([Path, <<"/">>]) of 0 -> false; _ -> true end of
                 true -> <<"">>;
                 false -> <<"/">>
             end,
             lists:foreach(fun(File) ->
-                case not maps:get(hidden, Opts) andalso 'string.starts_with'(File, <<".">>) of
+                case not maps:get(hidden, Opts) andalso case string:prefix(File, <<".">>) of nomatch -> false; _ -> true end of
                     true -> ok;
                     false -> ok
                 end
                 P = <<(<<(Path)/binary, (Separator)/binary>>)/binary, (File)/binary>>,
                 case is_dir(P) andalso not is_link(P) of
                     true -> impl_walk_ext(P, Ext, Out, Opts);
-                    false -> case 'string.ends_with'(File, Ext) of
+                    false -> case case binary:longest_common_suffix([File, Ext]) of 0 -> false; _ -> true end of
                         true -> Out bsl P;
                         false -> ok
                     end
                 end
                 ok
             end, Files),
+                        ok
         end
         end.
 
@@ -1081,7 +1083,8 @@ walk(Path, F) ->
                     Remaining = [],
                     Clean_path = 'string.trim_right'(Path, <<"/">>),
                     % TODO: unhandled stmt type
-                    ok                end
+                                        ok
+                end
                         end
                 end.
 
@@ -1096,7 +1099,8 @@ walk_with_context(Path, Context, Fcb) ->
                     Clean_path = 'string.trim_right'(Path, <<"/">>),
                     Loops = 0,
                     % TODO: unhandled stmt type
-                    ok                end
+                                        ok
+                end
                         end
                 end.
 
@@ -1109,12 +1113,12 @@ mkdir_all(Opath, Params) ->
         true -> error(<<"path `", (Opath)/binary, "` already exists, and is not a folder">>);
         false -> begin
             Other_separator = ,
-            Path = 'string.replace'(Opath, Other_separator, <<"/">>),
-            P = case 'string.starts_with'(Path, <<"/">>) of
+            Path = binary:replace(Opath, Other_separator, <<"/">>, [global]),
+            P = case case string:prefix(Path, <<"/">>) of nomatch -> false; _ -> true end of
                 true -> <<"/">>;
                 false -> <<"">>
             end,
-            Path_parts = 'string.split'('string.trim_left'(Path, <<"/">>), <<"/">>),
+            Path_parts = binary:split('string.trim_left'(Path, <<"/">>), <<"/">>, [global]),
             lists:foreach(fun(Subdir) ->
                 P1 = <<(Subdir)/binary, (<<"/">>)/binary>>,
                 case exists(P1) andalso is_dir(P1) of
@@ -1136,11 +1140,11 @@ create_folder_when_it_does_not_exist(Path) ->
             lists:foreach(fun(_) ->
                 mkdir_all(Path, #{mode => 8#700, {vbeam, type} => 'MkdirParams'}),
                 % TODO: unhandled stmt type
-                ok                ok
+                ok
             end, lists:seq(0, 10 - 1)),
             case is_dir(Path) orelse is_link(Path) of
                 true -> ok;
-                false -> panic(Error_msg)
+                false -> erlang:error({panic, Error_msg})
                         end
         end
         end.
@@ -1169,10 +1173,10 @@ local_bin_dir() ->
 temp_dir() ->
     Path = getenv(<<"TMPDIR">>),
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    case Path == <<"">> of
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    % TODO: unhandled stmt type
+    case Path == <<"">> of
         true -> ok;
         false -> ok
     end,
@@ -1210,9 +1214,9 @@ vmodules_paths() ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    Splitted = 'string.split'(Path, <<":">>),
+    Splitted = binary:split(Path, <<":">>, [global]),
     % TODO: unhandled stmt type
-    ok    List = [],
+    List = [],
     {Si, Trimmed} = lists:foldl(fun(I, {SiAcc, TrimmedAcc}) ->
         SiOut = lists:nth(I + 1, Splitted),
         TrimmedOut = 'string.trim_right'(Si, <<"/">>),
@@ -1236,15 +1240,15 @@ resource_abs_path(Path) ->
     Fp = join_path_single(Base_path1, Path),
     Res = real_path(Fp),
     % TODO: unhandled stmt type
-    ok    Res.
+    Res.
 
 execute_or_panic(Cmd) ->
     Res = execute(Cmd),
     case maps:get(exit_code, Res) /= 0 of
         true -> begin
-            eprintln(<<"failed    cmd: ", (Cmd)/binary>>),
-            eprintln(<<"failed   code: ", (integer_to_binary(maps:get(exit_code, Res)))/binary>>),
-            panic(maps:get(output, Res))
+            io:format(standard_error, "~s~n", [<<"failed    cmd: ", (Cmd)/binary>>]),
+            io:format(standard_error, "~s~n", [<<"failed   code: ", (integer_to_binary(maps:get(exit_code, Res)))/binary>>]),
+            erlang:error({panic, maps:get(output, Res)})
         end;
         false -> ok
     end,
@@ -1254,9 +1258,9 @@ execute_or_exit(Cmd) ->
     Res = execute(Cmd),
     case maps:get(exit_code, Res) /= 0 of
         true -> begin
-            eprintln(<<"failed    cmd: ", (Cmd)/binary>>),
-            eprintln(<<"failed   code: ", (integer_to_binary(maps:get(exit_code, Res)))/binary>>),
-            eprintln(maps:get(output, Res)),
+            io:format(standard_error, "~s~n", [<<"failed    cmd: ", (Cmd)/binary>>]),
+            io:format(standard_error, "~s~n", [<<"failed   code: ", (integer_to_binary(maps:get(exit_code, Res)))/binary>>]),
+            io:format(standard_error, "~s~n", [maps:get(output, Res)]),
             exit(1)
         end;
         false -> ok

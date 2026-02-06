@@ -154,6 +154,7 @@ internal_fill_buffer_from_set(Rng, Charset, Buf) ->
             lists:foreach(fun(I) ->
                 ok
             end, lists:seq(0, Blen - 1)),
+                        ok
         end
         end.
 
@@ -162,17 +163,18 @@ internal_ulid_at_millisecond(Rng, Unix_time_milli) ->
     T = Unix_time_milli,
     I = 9,
     % TODO: unhandled stmt type
-    ok    X = 'PRNG.u64'(Rng),
+    X = 'PRNG.u64'(Rng),
     I1 = 10,
     % TODO: unhandled stmt type
-    ok    X1 = 'PRNG.u64'(Rng),
+    X1 = 'PRNG.u64'(Rng),
     % TODO: unhandled stmt type
-    ok    '[]u8.bytestr'(Buf).
+    '[]u8.bytestr'(Buf).
 
 read_internal(Rng, Buf) ->
     lists:foreach(fun(I) ->
         ok
     end, lists:seq(0, length(Buf) - 1)),
+        ok.
 
 'PRNG.bytes'(Rng, Bytes_needed) ->
     case Bytes_needed < 0 of
@@ -204,7 +206,7 @@ read_internal(Rng, Buf) ->
                         false -> (todo bsl (Bit_len + 1)) - 1
                     end,
                     % TODO: unhandled stmt type
-                    ok                end
+                end
             end,
             todo
         end
@@ -223,7 +225,7 @@ read_internal(Rng, Buf) ->
                         false -> (todo bsl (Bit_len + 1)) - 1
                     end,
                     % TODO: unhandled stmt type
-                    ok                end
+                end
             end,
             todo
         end
@@ -307,7 +309,7 @@ read_internal(Rng, Buf) ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    case Exp1 < 118 of
+    case Exp1 < 118 of
         true -> ok;
         false -> ok
     end,
@@ -330,7 +332,7 @@ read_internal(Rng, Buf) ->
         false -> ok
     end,
     % TODO: unhandled stmt type
-    ok    Exp2 = Bitcount,
+    Exp2 = Bitcount,
     case Bitcount > 11 of
         true -> ok;
         false -> ok
@@ -399,7 +401,7 @@ read_internal(Rng, Buf) ->
         true -> error(<<"Standard deviation must be positive">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            error(<<"Implementation error. Please file an issue.">>)
+            error(<<"Implementation error. Please file an issue.">>)
         end
         end.
 
@@ -421,7 +423,7 @@ read_internal(Rng, Buf) ->
 
 'PRNG.exponential'(Rng, Lambda) ->
     case Lambda =< 0 of
-        true -> panic(<<"The rate (lambda) must be positive.">>);
+        true -> erlang:error({panic, <<"The rate (lambda) must be positive.">>});
         false -> ok
     end,
     -mlog('PRNG.f64'(Rng)) / Lambda.
@@ -437,6 +439,7 @@ read_internal(Rng, Buf) ->
         A_iOut = lists:nth(I + 1, A),
         {XOut, A_iOut}
     end, {X, A_i}, lists:seq(maps:get(start, Config_), New_end - 1 - 1)),
+        ok.
 
 'PRNG.shuffle_clone'(Rng, A, Config_) ->
     Res = 'unknown.clone'(A),

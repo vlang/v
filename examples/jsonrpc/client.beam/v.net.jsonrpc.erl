@@ -7,7 +7,7 @@ new_client(Cfg) ->
 'Client.notify'(C, Method, Params) ->
     Req = new_request(Method, Params, <<"">>),
     intercept_request(maps:get(request, maps:get(interceptors, C)), Req),
-    Enc_req = 'string.bytes'('Request.encode'(Req)),
+    Enc_req = binary_to_list('Request.encode'(Req)),
     intercept_encoded_request(maps:get(encoded_request, maps:get(interceptors, C)), Enc_req),
     'ReaderWriter.write'(maps:get(stream, C), Enc_req),
     ok.
@@ -15,7 +15,7 @@ new_client(Cfg) ->
 'Client.request'(C, Method, Params, Id) ->
     Req = new_request(Method, Params, Id),
     intercept_request(maps:get(request, maps:get(interceptors, C)), Req),
-    Enc_req = 'string.bytes'('Request.encode'(Req)),
+    Enc_req = binary_to_list('Request.encode'(Req)),
     intercept_encoded_request(maps:get(encoded_request, maps:get(interceptors, C)), Enc_req),
     'ReaderWriter.write'(maps:get(stream, C), Enc_req),
     Enc_resp = [],
@@ -33,7 +33,7 @@ new_client(Cfg) ->
         ok
     end, Reqs),
     Reqs_str2 = <<('string.all_before_last'(Reqs_str1, <<", ">>))/binary, (<<"]">>)/binary>>,
-    Enc_reqs = 'string.bytes'(Reqs_str2),
+    Enc_reqs = binary_to_list(Reqs_str2),
     intercept_encoded_request(maps:get(encoded_request, maps:get(interceptors, C)), Enc_reqs),
     'ReaderWriter.write'(maps:get(stream, C), Enc_reqs),
     Enc_resp = [],
@@ -52,6 +52,7 @@ dispatch_event(Ints, Event_name, Data) ->
         ok.
         ok
     end, Ints),
+        ok.
 
 intercept_encoded_request(Ints, Req) ->
     lists:foreach(fun(I) ->
@@ -73,6 +74,7 @@ intercept_response(Ints, Resp) ->
         ok.
         ok
     end, Ints),
+        ok.
 
 intercept_encoded_response(Ints, Resp) ->
     lists:foreach(fun(I) ->
@@ -80,6 +82,7 @@ intercept_encoded_response(Ints, Resp) ->
         ok.
         ok
     end, Ints),
+        ok.
 
 'Server.is_interceptor_enabled'(S) ->
     'unknown.get_interceptor'(S),
@@ -305,7 +308,8 @@ new_server(Cfg) ->
 
 'Server.start'(S) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Router.handle_jsonrpc'(R, Req, Wr) ->
     case todo of
         true -> ok;

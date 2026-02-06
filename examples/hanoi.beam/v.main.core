@@ -1,0 +1,28 @@
+module 'v.main' ['main'/0,
+                'move'/3,
+                'hanoi'/4,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        apply 'hanoi'/4(7, #{#<65>(8,1,'integer',['unsigned'|['big']])}#, #{#<66>(8,1,'integer',['unsigned'|['big']])}#, #{#<67>(8,1,'integer',['unsigned'|['big']])}#)
+'move'/3 =
+    fun (N, A, B) ->
+        call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<68>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(N)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[A|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[B|[#{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]])|[]])
+'hanoi'/4 =
+    fun (N, A, B, C) ->
+        case call 'erlang':'=:='(N, 1) of <'true'> when 'true' -> apply 'move'/3(1, A, C) <'false'> when 'true' -> 
+            do  apply 'hanoi'/4(call 'erlang':'-'(N, 1), A, C, B)
+                do  apply 'move'/3(N, A, C)
+                    apply 'hanoi'/4(call 'erlang':'-'(N, 1), B, A, C)
+         end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

@@ -11,3 +11,4 @@ main() ->
         end.
         ok
     end, Entries),
+        ok.

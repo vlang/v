@@ -2,10 +2,10 @@
 -export([main/0]).
 
 main() ->
-    case length(arguments()) /= 2 of
+    case length(init:get_plain_arguments()) /= 2 of
         true -> ok;
         false -> begin
-            Stop = 'string.int'(lists:nth(2, arguments())),
+            Stop = binary_to_integer(lists:nth(2, init:get_plain_arguments())),
             case Stop > 92 of
                 true -> ok;
                 false -> begin
@@ -21,6 +21,7 @@ main() ->
                         ok
                         {AOut, BOut, COut}
                     end, {A, B, C}, lists:seq(0, Stop - 1)),
+                                        ok
                 end
                         end
         end

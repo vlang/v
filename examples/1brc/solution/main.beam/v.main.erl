@@ -13,7 +13,7 @@ mmap_file(Path) ->
 
 'MemoryMappedFile.unmap'(Mf) ->
     case munmap(maps:get(data, Mf), maps:get(size, Mf)) /= 0 of
-        true -> panic(<<"(", (integer_to_binary(C.errno))/binary, ") munmap() failed">>);
+        true -> erlang:error({panic, <<"(", (integer_to_binary(C.errno))/binary, ") munmap() failed">>});
         false -> ok
     end,
     'File.close'(maps:get(file, Mf)),
@@ -24,8 +24,8 @@ format_value(Value) ->
 
 print_results(Results, Print_nicely) ->
     Output = [],
-    Cities = 'Result.keys'(Results),
-    '[]string.sort'(Cities),
+    Cities = maps:keys(Results),
+    lists:sort(Cities),
     lists:foreach(fun(City) ->
         V = maps:get(City, Results),
         Mean = todo / maps:get(count, V) / 10,
@@ -33,8 +33,8 @@ print_results(Results, Print_nicely) ->
         ok
     end, Cities),
     case Print_nicely of
-        true -> vbeam_io:println('[]string.join'(Output, <<"\\n">>));
-        false -> vbeam_io:println(<<(<<(<<"{">>)/binary, ('[]string.join'(Output, <<", ">>))/binary>>)/binary, (<<"}">>)/binary>>)
+        true -> vbeam_io:println(iolist_to_binary(lists:join(<<"\\n">>, Output)));
+        false -> vbeam_io:println(<<(<<(<<"{">>)/binary, (iolist_to_binary(lists:join(<<", ">>, Output)))/binary>>)/binary, (<<"}">>)/binary>>)
     end.
 
 combine_results(Results) ->
@@ -114,18 +114,18 @@ process_in_parallel(Mf, Thread_count) ->
     To = Approx_chunk_size,
     {From1, To1} = lists:foldl(fun(_, {FromAcc, ToAcc}) ->
         % TODO: unhandled stmt type
-        ok        Threads bsl todo,
+        Threads bsl todo,
         FromOut = ToAcc + 1,
         ToOut = FromAcc + Approx_chunk_size,
         {FromOut, ToOut}
     end, {From, To}, lists:seq(0, Thread_count - 1 - 1)),
     To2 = maps:get(size, Mf),
     Threads bsl todo,
-    Res = 'Result.wait'(Threads),
+    Res = ok,
     combine_results(Res).
 
 main() ->
-    Fp = new_flag_parser('v.os':'arguments'()),
+    Fp = new_flag_parser(init:get_plain_arguments()),
     'FlagParser.version'(Fp, <<"1brc v1.0.0">>),
     'FlagParser.skip_executable'(Fp),
     'FlagParser.application'(Fp, <<"1 billion rows challenge">>),
@@ -137,7 +137,7 @@ main() ->
     Path = lists:nth(1, 'FlagParser.remaining_parameters'(Fp)),
     Mf = mmap_file(Path),
     % TODO: unhandled stmt type
-    ok    Results = case Thread_count > 1 of
+    Results = case Thread_count > 1 of
         true -> process_in_parallel(Mf, Thread_count);
         false -> process_chunk(maps:get(data, Mf), 0, maps:get(size, Mf))
     end,

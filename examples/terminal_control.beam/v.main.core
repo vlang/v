@@ -1,0 +1,35 @@
+module 'v.main' ['main'/0,
+                'sleeping_line'/4,
+                'standing_line'/4,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  apply 'erase_clear'/0()
+                do  apply 'sleeping_line'/4(5, 5, 5, #{#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                    do  apply 'standing_line'/4(5, 5, 5, #{#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                        do  apply 'sleeping_line'/4(5, 10, 5, #{#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                            do  apply 'standing_line'/4(9, 5, 5, #{#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  apply 'cursor_down'/1(5)
+                                    do  call 'io':'format'([92|[110|[]]])
+                                        call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'bold'/1(apply 'red'/1(#{#<73>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#))|[]])
+    'sleeping_line'/4 =
+        fun (X, Y, Size, Ch) ->
+            let <I> =
+                0
+            in  'ok'
+    'standing_line'/4 =
+        fun (X, Y, Size, Ch) ->
+            let <I> =
+                0
+            in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

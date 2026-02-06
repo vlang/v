@@ -1,0 +1,64 @@
+module 'v.main' ['main'/0,
+                'extract_words'/1,
+                'filter_word'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Path> =
+                #{#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <Path_1> =
+                    case call 'erlang':'=/='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of <'true'> when 'true' -> Path <'false'> when 'true' -> call 'lists':'nth'(2, call 'init':'get_plain_arguments'()) end
+                in  let <Contents> =
+                        apply 'read_file'/1(call 'string':'trim'(Path_1))
+                    in  let <M> =
+                            ~{}~
+                        in  do  let <_2> =
+                                fun (Word) ->
+                                    'todo'
+                            in  call 'lists':'foreach'(_2, apply 'extract_words'/1(Contents))
+                                let <Keys> =
+                                    call 'maps':'keys'(M)
+                                in  do  call 'lists':'sort'(Keys)
+                                        'ok'
+    'extract_words'/1 =
+        fun (Contents) ->
+            let <Splits> =
+                []
+            in  do  let <_1> =
+                    fun (Space_split) ->
+                        case case call 'binary':'match'(Space_split, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> call 'erlang':'bsl'(Splits, call 'binary':'split'(Space_split, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])) <'false'> when 'true' -> call 'erlang':'bsl'(Splits, Space_split) end
+                in  call 'lists':'foreach'(_1, call 'binary':'split'(call 'string':'lowercase'(Contents), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                    let <Results> =
+                        []
+                    in  do  let <_2> =
+                            fun (S) ->
+                                let <Result> =
+                                    apply 'filter_word'/1(S)
+                                in  do  case call 'erlang':'=:='(Result, #{  }#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        call 'erlang':'bsl'(Results, Result)
+                        in  call 'lists':'foreach'(_2, Splits)
+                            Results
+    'filter_word'/1 =
+        fun (Word) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(Word, #{  }#), call 'erlang':'=:='(Word, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)) of
+                <'true'> when 'true' -> #{  }#
+                <'false'> when 'true' -> 
+                    let <I> =
+                        0
+                    in  let <Start> =
+                            I
+                        in  let <End> =
+                                I
+                            in  call 'lists':'nth'(call 'erlang':'+'('todo', 1), Word)
+            end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

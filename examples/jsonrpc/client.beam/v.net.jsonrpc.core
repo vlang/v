@@ -1,0 +1,407 @@
+module 'v.net.jsonrpc' ['new_client'/1,
+                'Client.notify'/3,
+                'Client.request'/4,
+                'Client.batch'/2,
+                'dispatch_event'/3,
+                'intercept_encoded_request'/2,
+                'intercept_request'/2,
+                'intercept_response'/2,
+                'intercept_encoded_response'/2,
+                'Server.is_interceptor_enabled'/1,
+                'Interceptors.get_interceptor'/1,
+                'ResponseError.code'/1,
+                'ResponseError.msg'/1,
+                'ResponseError.err'/1,
+                'response_error'/1,
+                'error_with_code'/2,
+                'Null.str'/1,
+                'Empty.str'/1,
+                'new_request'/3,
+                'Request.encode'/1,
+                'Request.encode_batch'/1,
+                'Request.decode_params'/1,
+                'decode_request'/1,
+                'decode_batch_request'/1,
+                'new_response'/3,
+                'Response.encode'/1,
+                'Response.encode_batch'/1,
+                'Response.decode_result'/1,
+                'decode_response'/1,
+                'decode_batch_response'/1,
+                'try_encode'/1,
+                'try_decode'/1,
+                'LoggingInterceptor.on_event'/3,
+                'LoggingInterceptor.on_encoded_request'/2,
+                'LoggingInterceptor.on_request'/2,
+                'LoggingInterceptor.on_response'/2,
+                'LoggingInterceptor.on_encoded_response'/2,
+                'new_server'/1,
+                'Server.respond'/1,
+                'Server.writer'/1,
+                'Server.start'/1,
+                'Router.handle_jsonrpc'/3,
+                'Router.register'/3,
+                'ResponseWriter.start_batch'/1,
+                'ResponseWriter.close_batch'/1,
+                'ResponseWriter.close'/1,
+                'ResponseWriter.write'/2,
+                'ResponseWriter.write_empty'/1,
+                'ResponseWriter.write_error'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_client'/1 =
+        fun (Cfg) ->
+            ~{'stream'=>call 'erlang':'map_get'('stream', Cfg),'interceptors'=>call 'erlang':'map_get'('interceptors', Cfg),{'vbeam','type'}=>'Client'}~
+    'Client.notify'/3 =
+        fun (C, Method, Params) ->
+            let <Req> =
+                apply 'new_request'/3(Method, Params, #{  }#)
+            in  do  apply 'intercept_request'/2(call 'erlang':'map_get'('request', call 'erlang':'map_get'('interceptors', C)), Req)
+                    let <Enc_req> =
+                        call 'erlang':'binary_to_list'(apply 'Request.encode'/1(Req))
+                    in  do  apply 'intercept_encoded_request'/2(call 'erlang':'map_get'('encoded_request', call 'erlang':'map_get'('interceptors', C)), Enc_req)
+                            do  apply 'ReaderWriter.write'/2(call 'erlang':'map_get'('stream', C), Enc_req)
+                                'ok'
+    'Client.request'/4 =
+        fun (C, Method, Params, Id) ->
+            let <Req> =
+                apply 'new_request'/3(Method, Params, Id)
+            in  do  apply 'intercept_request'/2(call 'erlang':'map_get'('request', call 'erlang':'map_get'('interceptors', C)), Req)
+                    let <Enc_req> =
+                        call 'erlang':'binary_to_list'(apply 'Request.encode'/1(Req))
+                    in  do  apply 'intercept_encoded_request'/2(call 'erlang':'map_get'('encoded_request', call 'erlang':'map_get'('interceptors', C)), Enc_req)
+                            do  apply 'ReaderWriter.write'/2(call 'erlang':'map_get'('stream', C), Enc_req)
+                                let <Enc_resp> =
+                                    []
+                                in  do  apply 'ReaderWriter.read'/2(call 'erlang':'map_get'('stream', C), Enc_resp)
+                                        do  apply 'intercept_encoded_response'/2(call 'erlang':'map_get'('encoded_response', call 'erlang':'map_get'('interceptors', C)), Enc_resp)
+                                            let <Resp> =
+                                                apply 'decode_response'/1(apply '[]u8.bytestr'/1(Enc_resp))
+                                            in  do  apply 'intercept_response'/2(call 'erlang':'map_get'('response', call 'erlang':'map_get'('interceptors', C)), Resp)
+                                                    Resp
+    'Client.batch'/2 =
+        fun (C, Reqs) ->
+            let <Reqs_str> =
+                #{#<91>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <Reqs_str_1> =
+                    let <_2> =
+                        fun (Req, Reqs_strAcc) ->
+                            do  apply 'intercept_request'/2(call 'erlang':'map_get'('request', call 'erlang':'map_get'('interceptors', C)), Req)
+                                let <Reqs_strOut_4> =
+                                    call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([Reqs_strAcc|[apply 'Request.encode'/1(Req)|[]]])|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                                in  Reqs_strOut_4
+                    in  call 'lists':'foldl'(_2, Reqs_str, Reqs)
+                in  let <Reqs_str_5> =
+                        call 'erlang':'iolist_to_binary'([apply 'string.all_before_last'/2(Reqs_str_1, #{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                    in  let <Enc_reqs> =
+                            call 'erlang':'binary_to_list'(Reqs_str_5)
+                        in  do  apply 'intercept_encoded_request'/2(call 'erlang':'map_get'('encoded_request', call 'erlang':'map_get'('interceptors', C)), Enc_reqs)
+                                do  apply 'ReaderWriter.write'/2(call 'erlang':'map_get'('stream', C), Enc_reqs)
+                                    let <Enc_resp> =
+                                        []
+                                    in  do  apply 'ReaderWriter.read'/2(call 'erlang':'map_get'('stream', C), Enc_resp)
+                                            do  apply 'intercept_encoded_response'/2(call 'erlang':'map_get'('encoded_response', call 'erlang':'map_get'('interceptors', C)), Enc_resp)
+                                                let <Resps> =
+                                                    apply 'decode_batch_response'/1(apply '[]u8.bytestr'/1(Enc_resp))
+                                                in  do  let <_6> =
+                                                        fun (Resp) ->
+                                                            apply 'intercept_response'/2(call 'erlang':'map_get'('response', call 'erlang':'map_get'('interceptors', C)), Resp)
+                                                    in  call 'lists':'foreach'(_6, Resps)
+                                                        Resps
+    'dispatch_event'/3 =
+        fun (Ints, Event_name, Data) ->
+            'ok'
+    'intercept_encoded_request'/2 =
+        fun (Ints, Req) ->
+            do  let <_1> =
+                fun (I) ->
+                    apply 'i'/1(Req)
+            in  call 'lists':'foreach'(_1, Ints)
+                'ok'
+    'intercept_request'/2 =
+        fun (Ints, Req) ->
+            do  let <_1> =
+                fun (I) ->
+                    apply 'i'/1(Req)
+            in  call 'lists':'foreach'(_1, Ints)
+                'ok'
+    'intercept_response'/2 =
+        fun (Ints, Resp) ->
+            'ok'
+    'intercept_encoded_response'/2 =
+        fun (Ints, Resp) ->
+            'ok'
+    'Server.is_interceptor_enabled'/1 =
+        fun (S) ->
+            do  apply 'unknown.get_interceptor'/1(S)
+                'true'
+    'Interceptors.get_interceptor'/1 =
+        fun (I) ->
+            do  let <_1> =
+                fun (Inter) ->
+                    case call 'erlang':'is'(Inter, 'todo') of <'true'> when 'true' -> Inter <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('event', I))
+                do  let <_2> =
+                    fun (Inter) ->
+                        case call 'erlang':'is'(Inter, 'todo') of <'true'> when 'true' -> Inter <'false'> when 'true' -> 'ok' end
+                in  call 'lists':'foreach'(_2, call 'erlang':'map_get'('encoded_request', I))
+                    do  let <_3> =
+                        fun (Inter) ->
+                            case call 'erlang':'is'(Inter, 'todo') of <'true'> when 'true' -> Inter <'false'> when 'true' -> 'ok' end
+                    in  call 'lists':'foreach'(_3, call 'erlang':'map_get'('request', I))
+                        do  let <_4> =
+                            fun (Inter) ->
+                                case call 'erlang':'is'(Inter, 'todo') of <'true'> when 'true' -> Inter <'false'> when 'true' -> 'ok' end
+                        in  call 'lists':'foreach'(_4, call 'erlang':'map_get'('response', I))
+                            do  let <_5> =
+                                fun (Inter) ->
+                                    case call 'erlang':'is'(Inter, 'todo') of <'true'> when 'true' -> Inter <'false'> when 'true' -> 'ok' end
+                            in  call 'lists':'foreach'(_5, call 'erlang':'map_get'('encoded_response', I))
+                                'todo'
+    'ResponseError.code'/1 =
+        fun (Err) ->
+            call 'erlang':'map_get'('code', Err)
+    'ResponseError.msg'/1 =
+        fun (Err) ->
+            call 'erlang':'map_get'('message', Err)
+    'ResponseError.err'/1 =
+        fun (E) ->
+            'todo'
+    'response_error'/1 =
+        fun (Params) ->
+            ~{'code'=>apply 'IError.code'/1(call 'erlang':'map_get'('error', Params)),'message'=>apply 'IError.msg'/1(call 'erlang':'map_get'('error', Params)),'data'=>call 'erlang':'map_get'('data', Params),{'vbeam','type'}=>'ResponseError'}~
+    'error_with_code'/2 =
+        fun (Message, Code) ->
+            ~{'code'=>Code,'message'=>Message,'data'=>#{  }#,{'vbeam','type'}=>'ResponseError'}~
+    'Null.str'/1 =
+        fun (N) ->
+            #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#
+    'Empty.str'/1 =
+        fun (E) ->
+            #{  }#
+    'new_request'/3 =
+        fun (Method, Params, Id) ->
+            ~{'method'=>Method,'params'=>apply 'try_encode'/1(Params),'id'=>Id,{'vbeam','type'}=>'Request'}~
+    'Request.encode'/1 =
+        fun (Req) ->
+            let <Params_payload> =
+                case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('params', Req)), 0) of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('params', Req)|[]]]) end
+            in  let <Id_payload> =
+                    case call 'erlang':'=/='(call 'erlang':'length'(call 'erlang':'map_get'('id', Req)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('id', Req)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]]) <'false'> when 'true' -> #{  }# end
+                in  call 'erlang':'iolist_to_binary'([#{#<123>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[#{#<50>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('method', Req)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[Params_payload|[Id_payload|[#{#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]])
+    'Request.encode_batch'/1 =
+        fun (Reqs) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Reqs), 0) of
+                <'true'> when 'true' -> #{#<91>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}#
+                <'false'> when 'true' -> 
+                    let <S> =
+                        call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Request.encode'/1(call 'lists':'nth'(1, Reqs))|[]]])
+                    in  let <S_1> =
+                            let <_2> =
+                                fun (Req, SAcc) ->
+                                    let <SOut_4> =
+                                        call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([SAcc|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[apply 'Request.encode'/1(Req)|[]]])
+                                    in  SOut_4
+                            in  call 'lists':'foldl'(_2, S, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Reqs))
+                        in  call 'erlang':'iolist_to_binary'([S_1|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            end
+    'Request.decode_params'/1 =
+        fun (Req) ->
+            apply 'try_decode'/1(call 'erlang':'map_get'('params', Req))
+    'decode_request'/1 =
+        fun (Raw) ->
+            let <Json_payload> =
+                apply 'string.all_after'/2(Raw, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            in  apply 'decode'/2('todo', Json_payload)
+    'decode_batch_request'/1 =
+        fun (Raw) ->
+            let <Json_payload> =
+                apply 'string.all_after'/2(Raw, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            in  apply 'decode'/2('todo', Json_payload)
+    'new_response'/3 =
+        fun (Result, Error, Id) ->
+            ~{'result'=>case call 'erlang':'=/='(call 'erlang':'map_get'('code', Error), 0) of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> apply 'try_encode'/1(Result) end,'error'=>Error,'id'=>Id,{'vbeam','type'}=>'Response'}~
+    'Response.encode'/1 =
+        fun (Resp) ->
+            let <S> =
+                call 'erlang':'iolist_to_binary'([#{#<123>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[#{#<50>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+            in  let <S_1> =
+                    case call 'erlang':'=/='(call 'erlang':'map_get'('code', call 'erlang':'map_get'('error', Resp)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([S|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[apply 'encode'/1(call 'erlang':'map_get'('error', Resp))|[]]]) <'false'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([S|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'erlang':'map_get'('result', Resp)|[]]]) end
+                in  let <S_2> =
+                        call 'erlang':'iolist_to_binary'([S_1|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                    in  let <S_3> =
+                            case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('id', Resp)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([S_2|[apply 'Null.str'/1(~{{'vbeam','type'}=>'Null'}~)|[]]]) <'false'> when 'true' -> call 'erlang':'iolist_to_binary'([S_2|[call 'erlang':'iolist_to_binary'([#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('id', Resp)|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]]]) end
+                        in  call 'erlang':'iolist_to_binary'([S_3|[#{#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'Response.encode_batch'/1 =
+        fun (Resps) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(Resps), 0) of
+                <'true'> when 'true' -> #{#<91>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}#
+                <'false'> when 'true' -> 
+                    let <S> =
+                        call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Response.encode'/1(call 'lists':'nth'(1, Resps))|[]]])
+                    in  let <S_1> =
+                            let <_2> =
+                                fun (Resp, SAcc) ->
+                                    let <SOut_4> =
+                                        call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([SAcc|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[apply 'Response.encode'/1(Resp)|[]]])
+                                    in  SOut_4
+                            in  call 'lists':'foldl'(_2, S, call 'lists':'nth'(call 'erlang':'+'('todo', 1), Resps))
+                        in  call 'erlang':'iolist_to_binary'([S_1|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+            end
+    'Response.decode_result'/1 =
+        fun (Resp) ->
+            apply 'try_decode'/1(call 'erlang':'map_get'('result', Resp))
+    'decode_response'/1 =
+        fun (Raw) ->
+            let <Json_payload> =
+                apply 'string.all_after'/2(Raw, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            in  apply 'decode'/2('todo', Json_payload)
+    'decode_batch_response'/1 =
+        fun (Raw) ->
+            let <Json_payload> =
+                apply 'string.all_after'/2(Raw, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            in  apply 'decode'/2('todo', Json_payload)
+    'try_encode'/1 =
+        fun (Data) ->
+            'ok'
+    'try_decode'/1 =
+        fun (S) ->
+            'ok'
+    'LoggingInterceptor.on_event'/3 =
+        fun (L, Name, Data) ->
+            let <Msg> =
+                call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[Name|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[Data|[]]]]])
+            in  apply 'Log.send_output'/3(call 'erlang':'map_get'('log', L), Msg, apply 'Log.get_level'/1(call 'erlang':'map_get'('log', L)))
+    'LoggingInterceptor.on_encoded_request'/2 =
+        fun (L, Req) ->
+            let <Msg> =
+                call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<81>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply '[]u8.bytestr'/1(Req)|[]]])
+            in  do  apply 'Log.send_output'/3(call 'erlang':'map_get'('log', L), Msg, apply 'Log.get_level'/1(call 'erlang':'map_get'('log', L)))
+                    'ok'
+    'LoggingInterceptor.on_request'/2 =
+        fun (L, Req) ->
+            let <Msg> =
+                call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<81>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('method', Req)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('params', Req)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('id', Req)|[]]]]]]])
+            in  do  apply 'Log.send_output'/3(call 'erlang':'map_get'('log', L), Msg, apply 'Log.get_level'/1(call 'erlang':'map_get'('log', L)))
+                    'ok'
+    'LoggingInterceptor.on_response'/2 =
+        fun (L, Resp) ->
+            let <Msg> =
+                call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('result', Resp)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+            in  let <Msg_1> =
+                    case call 'erlang':'=/='(call 'erlang':'map_get'('code', call 'erlang':'map_get'('error', Resp)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([Msg|[call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('error', Resp)|[]]])|[]]]) <'false'> when 'true' -> call 'erlang':'iolist_to_binary'([Msg|[#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]]]) end
+                in  let <Msg_2> =
+                        call 'erlang':'iolist_to_binary'([Msg_1|[call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('id', Resp)|[]]])|[]]])
+                    in  apply 'Log.send_output'/3(call 'erlang':'map_get'('log', L), Msg_2, apply 'Log.get_level'/1(call 'erlang':'map_get'('log', L)))
+    'LoggingInterceptor.on_encoded_response'/2 =
+        fun (L, Resp) ->
+            let <Msg> =
+                call 'erlang':'iolist_to_binary'([#{#<91>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply '[]u8.bytestr'/1(Resp)|[]]])
+            in  apply 'Log.send_output'/3(call 'erlang':'map_get'('log', L), Msg, apply 'Log.get_level'/1(call 'erlang':'map_get'('log', L)))
+    'new_server'/1 =
+        fun (Cfg) ->
+            ~{'stream'=>call 'erlang':'map_get'('stream', Cfg),'handler'=>call 'erlang':'map_get'('handler', Cfg),'interceptors'=>call 'erlang':'map_get'('interceptors', Cfg),{'vbeam','type'}=>'Server'}~
+    'Server.respond'/1 =
+        fun (S) ->
+            let <Rw> =
+                apply 'Server.writer'/1(S)
+            in  let <Rx> =
+                    []
+                in  let <Bytes_read> =
+                        apply 'ReaderWriter.read'/2(call 'erlang':'map_get'('stream', S), Rx)
+                    in  case call 'erlang':'=:='(Bytes_read, 0) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                do  apply 'intercept_encoded_request'/2(call 'erlang':'map_get'('encoded_request', call 'erlang':'map_get'('interceptors', S)), Rx)
+                                    let <Req_str> =
+                                        apply '[]u8.bytestr'/1(Rx)
+                                    in  let <Req_batch> =
+                                            []
+                                        in  do  case apply 'u8.ascii_str'/1(call 'lists':'nth'(1, Req_str)) of <#{#<91>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> apply 'ResponseWriter.start_batch'/1(Rw) <#{#<123>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> apply 'Request.prepend'/2(Req_batch, Req) <_> when 'true' -> 'todo' end
+                                                do  let <_1> =
+                                                    fun (Rq) ->
+                                                        do  call 'erlang':'map_get'('id', Rq)
+                                                            do  apply 'intercept_request'/2(call 'erlang':'map_get'('request', call 'erlang':'map_get'('interceptors', S)), Rq)
+                                                                apply 'Server.handler'/3(S, Rq, Rw)
+                                                in  call 'lists':'foreach'(_1, Req_batch)
+                                                    do  case call 'erlang':'>'(call 'erlang':'length'(Req_batch), 1) of <'true'> when 'true' -> apply 'ResponseWriter.close_batch'/1(Rw) <'false'> when 'true' -> 'ok' end
+                                                        'ok'
+                        end
+    'Server.writer'/1 =
+        fun (S) ->
+            ~{'writer'=>call 'erlang':'map_get'('stream', S),'sb'=>apply 'new_builder'/1(4096),'server'=>S,{'vbeam','type'}=>'ResponseWriter'}~
+    'Server.start'/1 =
+        fun (S) ->
+            'ok'
+    'Router.handle_jsonrpc'/3 =
+        fun (R, Req, Wr) ->
+            case 'todo' of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'ResponseWriter.write_error'/2(Wr, apply 'error_with_code'/2(#{#<77>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32601))
+            end
+    'Router.register'/3 =
+        fun (R, Method, Handler) ->
+            case call 'lists':'member'(Method, call 'erlang':'map_get'('methods', R)) of
+                <'true'> when 'true' -> 'false'
+                <'false'> when 'true' -> 
+                    do  Handler
+                        'true'
+            end
+    'ResponseWriter.start_batch'/1 =
+        fun (Rw) ->
+            do  'true'
+                apply 'Builder.write_string'/2(call 'erlang':'map_get'('sb', Rw), #{#<91>(8,1,'integer',['unsigned'|['big']])}#)
+    'ResponseWriter.close_batch'/1 =
+        fun (Rw) ->
+            do  'false'
+                do  apply 'Builder.go_back'/2(call 'erlang':'map_get'('sb', Rw), 2)
+                    do  apply 'Builder.write_string'/2(call 'erlang':'map_get'('sb', Rw), #{#<93>(8,1,'integer',['unsigned'|['big']])}#)
+                        apply 'ResponseWriter.close'/1(Rw)
+    'ResponseWriter.close'/1 =
+        fun (Rw) ->
+            do  apply 'intercept_encoded_response'/2(call 'erlang':'map_get'('encoded_response', call 'erlang':'map_get'('interceptors', call 'erlang':'map_get'('server', Rw))), call 'erlang':'map_get'('sb', Rw))
+                do  apply 'ReaderWriter.write'/2(call 'erlang':'map_get'('writer', Rw), call 'erlang':'map_get'('sb', Rw))
+                    apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('sb', Rw), 0)
+    'ResponseWriter.write'/2 =
+        fun (Rw, Payload) ->
+            let <Final_resp> =
+                ~{'id'=>call 'erlang':'map_get'('req_id', Rw),'result'=>apply 'encode'/1(Payload),{'vbeam','type'}=>'Response'}~
+            in  do  apply 'intercept_response'/2(call 'erlang':'map_get'('response', call 'erlang':'map_get'('interceptors', call 'erlang':'map_get'('server', Rw))), Final_resp)
+                    case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('req_id', Rw)), 0) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            do  apply 'Builder.write_string'/2(call 'erlang':'map_get'('sb', Rw), apply 'Response.encode'/1(Final_resp))
+                                case call 'erlang':'=:='(call 'erlang':'map_get'('is_batch', Rw), 'true') of
+                                    <'true'> when 'true' -> 'ok'
+                                    <'false'> when 'true' -> 
+                                        apply 'ResponseWriter.close'/1(Rw)
+                                end
+                    end
+    'ResponseWriter.write_empty'/1 =
+        fun (Rw) ->
+            apply 'ResponseWriter.write'/2(Rw, ~{{'vbeam','type'}=>'Null'}~)
+    'ResponseWriter.write_error'/2 =
+        fun (Rw, Err) ->
+            let <Res_err> =
+                Err
+            in  do  case call 'erlang':'!is'(Err, 'todo') of <'true'> when 'true' -> case call 'erlang':'not'(call 'lists':'member'(apply 'IError.code'/1(Err), [apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32700))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32600))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<77>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32601))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, -32602))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32693))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32099))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32002))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32000))|[apply 'ResponseError.code'/1(apply 'error_with_code'/2(#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, -32001))|[]]]]]]]]]])) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                    let <Final_resp> =
+                        ~{'id'=>call 'erlang':'map_get'('req_id', Rw),'error'=>'todo',{'vbeam','type'}=>'Response'}~
+                    in  do  apply 'intercept_response'/2(call 'erlang':'map_get'('response', call 'erlang':'map_get'('interceptors', call 'erlang':'map_get'('server', Rw))), Final_resp)
+                            do  apply 'Builder.write_string'/2(call 'erlang':'map_get'('sb', Rw), apply 'Response.encode'/1(Final_resp))
+                                case call 'erlang':'map_get'('is_batch', Rw) of
+                                    <'true'> when 'true' -> 'ok'
+                                    <'false'> when 'true' -> 
+                                        apply 'ResponseWriter.close'/1(Rw)
+                                end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.net.jsonrpc')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.net.jsonrpc', _0)
+    end

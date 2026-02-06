@@ -12,4 +12,4 @@ main() ->
     V = integer_from_int(0),
     W = integer_from_int(0),
     % TODO: unhandled stmt type
-    ok
+        ok.

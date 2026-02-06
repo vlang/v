@@ -3,7 +3,7 @@
 
 new_buffered_reader(O) ->
     case maps:get(cap, O) =< 0 of
-        true -> panic(<<"new_buffered_reader should be called with a positive `cap`">>);
+        true -> erlang:error({panic, <<"new_buffered_reader should be called with a positive `cap`">>});
         false -> ok
     end,
     R = #{reader => maps:get(reader, O), buf => [], offset => 0, mfails => maps:get(retries, O), {vbeam, type} => 'BufferedReader'},
@@ -61,7 +61,7 @@ new_buffered_reader(O) ->
         false -> begin
             Line = [],
             % TODO: unhandled stmt type
-            ok            todo
+            todo
         end
         end.
 
@@ -95,18 +95,18 @@ new_buffered_writer(O) ->
     length(maps:get(buf, B)) - maps:get(n, B).
 
 'BufferedWriter.write'(B, Src) ->
-    P = '[]u8.clone'(Src),
+    P = Src,
     Nn = 0,
     % TODO: unhandled stmt type
-    ok    N = copy(lists:nth(todo + 1, maps:get(buf, B)), P),
+    N = copy(lists:nth(todo + 1, maps:get(buf, B)), P),
     Nn1 = N,
     Nn1.
 
 cp(Src, Dst, Params) ->
     Buf = [],
     % TODO: unhandled stmt type
-    ok    % TODO: unhandled stmt type
-    ok    ok.
+    % TODO: unhandled stmt type
+    ok.
 
 new_multi_writer(Writers) ->
     #{writers => Writers, {vbeam, type} => 'MultiWriter'}.
@@ -134,13 +134,13 @@ read_all(Config) ->
     B = [],
     Read = 0,
     % TODO: unhandled stmt type
-    ok    lists:nth(todo + 1, B).
+    lists:nth(todo + 1, B).
 
 read_any(R) ->
     B = [],
     Read = 0,
     % TODO: unhandled stmt type
-    ok    lists:nth(todo + 1, B).
+    lists:nth(todo + 1, B).
 
 'ReaderWriterImpl.read'(R, Buf) ->
     'Reader.read'(maps:get(r, R), Buf).

@@ -1,0 +1,74 @@
+module 'v.main' ['main'/0,
+                'depth_first_search_path'/3,
+                'Solution.find_pattern'/6,
+                'print_pattern'/1,
+                'visited_init'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Graph_01> =
+            ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<65>(8,1,'integer',['unsigned'|['big']])}#|[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<65>(8,1,'integer',['unsigned'|['big']])}#|[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<69>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<70>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]]]}~
+        in  let <Graph_02> =
+                ~{#{#<65>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<66>(8,1,'integer',['unsigned'|['big']])}#|[#{#<67>(8,1,'integer',['unsigned'|['big']])}#|[#{#<68>(8,1,'integer',['unsigned'|['big']])}#|[]]]],#{#<66>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<67>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<68>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<69>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<70>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<71>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]],#{#<72>(8,1,'integer',['unsigned'|['big']])}#=>[#{#<69>(8,1,'integer',['unsigned'|['big']])}#|[#{#<70>(8,1,'integer',['unsigned'|['big']])}#|[#{#<71>(8,1,'integer',['unsigned'|['big']])}#|[]]]]}~
+            in  let <Path_01> =
+                    apply 'depth_first_search_path'/3(Graph_01, #{#<65>(8,1,'integer',['unsigned'|['big']])}#, #{#<70>(8,1,'integer',['unsigned'|['big']])}#)
+                in  do  call 'io':'format'([92|[110|[32|[71|[114|[97|[112|[104|[95|[48|[49|[58|[32|[97|[108|[108|[32|[112|[97|[116|[104|[32|[112|[97|[116|[116|[101|[114|[110|[32|[102|[114|[111|[109|[32|[110|[111|[100|[101|[32|[65|[32|[116|[111|[32|[110|[111|[100|[101|[32|[70|[32|[105|[115|[58|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                        do  apply 'print_pattern'/1(Path_01)
+                            let <Path_02> =
+                                apply 'depth_first_search_path'/3(Graph_02, #{#<65>(8,1,'integer',['unsigned'|['big']])}#, #{#<72>(8,1,'integer',['unsigned'|['big']])}#)
+                            in  do  call 'io':'format'([92|[110|[32|[71|[114|[97|[112|[104|[95|[48|[50|[58|[32|[97|[108|[108|[32|[112|[97|[116|[104|[32|[112|[97|[116|[116|[101|[114|[110|[32|[102|[114|[111|[109|[32|[110|[111|[100|[101|[32|[65|[32|[116|[111|[32|[110|[111|[100|[101|[32|[70|[32|[105|[115|[58|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+                                    apply 'print_pattern'/1(Path_02)
+'depth_first_search_path'/3 =
+    fun (Adj, Start, Target) ->
+        let <Sol> =
+            ~{{'vbeam','type'}=>'Solution'}~
+        in  let <Path> =
+                []
+            in  let <Visited> =
+                    apply 'visited_init'/1(Adj)
+                in  do  apply 'Solution.find_pattern'/6(Sol, Adj, Visited, Start, Target, Path)
+                        call 'erlang':'map_get'('pattern', Sol)
+'Solution.find_pattern'/6 =
+    fun (S, Adj, Visited, Node, Target, Path) ->
+        do  call 'erlang':'bsl'(Path, Node)
+            do  'true'
+                do  case call 'erlang':'=:='(Node, Target) of <'true'> when 'true' -> 
+                    do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Path|[]]])|[]])
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('pattern', S), [Path|[]])
+                 <'false'> when 'true' -> 'ok' end
+                    do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Node|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'(Node, Adj)|[]]]]])|[]])
+                        do  let <_1> =
+                            fun (_, I) ->
+                                do  case call 'erlang':'not'(call 'erlang':'map_get'(call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'(Node, Adj)), Visited)) of <'true'> when 'true' -> 
+                                    let <Temp> =
+                                        Path
+                                    in  apply 'Solution.find_pattern'/6(S, Adj, Visited, call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'(Node, Adj)), Target, Temp)
+                                 <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'+'(I, 1)
+                        in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'(Node, Adj))
+                            do  'false'
+                                call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Node|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Visited|[]]]]])|[]])
+'print_pattern'/1 =
+    fun (Pat) ->
+        'ok'
+'visited_init'/1 =
+    fun (Adj) ->
+        let <Temp> =
+            ~{}~
+        in  do  let <_1> =
+                fun (_, I) ->
+                    do  'false'
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Adj)
+                Temp
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

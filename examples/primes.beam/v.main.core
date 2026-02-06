@@ -1,0 +1,28 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <N> =
+            call 'erlang':'binary_to_integer'(call 'lists':'nth'(2, call 'init':'get_plain_arguments'()))
+        in  let <Sz> =
+                case call 'erlang':'<'(N, 15) of <'true'> when 'true' -> 50 <'false'> when 'true' -> 
+                    let <Ln> =
+                        apply 'log'/1('todo')
+                    in  call 'erlang':'+'('todo', 1)
+                 end
+            in  let <Sieve> =
+                    []
+                in  let <C> =
+                        0
+                    in  'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

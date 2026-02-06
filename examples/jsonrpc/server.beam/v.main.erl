@@ -4,7 +4,7 @@
 'KvStore.create'(S, Key, Value) ->
     'RwMutex.lock'(maps:get(mu, S)),
     % TODO: unhandled stmt type
-    ok    case lists:member(Key, maps:get(store, S)) of
+    case lists:member(Key, maps:get(store, S)) of
         true -> false;
         false -> begin
             true
@@ -14,7 +14,7 @@
 'KvStore.get'(S, Key) ->
     'RwMutex.rlock'(maps:get(mu, S)),
     % TODO: unhandled stmt type
-    ok    case todo of
+    case todo of
         true -> Value;
         false -> todo
         end.
@@ -22,7 +22,7 @@
 'KvStore.update'(S, Key, Value) ->
     'RwMutex.lock'(maps:get(mu, S)),
     % TODO: unhandled stmt type
-    ok    case lists:member(Key, maps:get(store, S)) of
+    case lists:member(Key, maps:get(store, S)) of
         true -> true;
         false -> false
         end.
@@ -30,7 +30,7 @@
 'KvStore.delete'(S, Key) ->
     'RwMutex.lock'(maps:get(mu, S)),
     % TODO: unhandled stmt type
-    ok    case lists:member(Key, maps:get(store, S)) of
+    case lists:member(Key, maps:get(store, S)) of
         true -> true;
         false -> false
         end.
@@ -77,13 +77,13 @@
         Items bsl #{key => K, value => V, {vbeam, type} => 'KvItem'},
         ok
     end, 'KvStore.dump'(maps:get(store, H))),
-    'KvItem.sort'(Items, maps:get(key, A) < maps:get(key, B)),
+    lists:sort(Items),
     'ResponseWriter.write'(Wr, Items),
     ok.
 
 handle_conn(Conn, H) ->
     % TODO: unhandled stmt type
-    ok    Log_inter = #{{vbeam, type} => 'LoggingInterceptor'},
+    Log_inter = #{{vbeam, type} => 'LoggingInterceptor'},
     Inters = #{event => [maps:get(on_event, Log_inter)], encoded_request => [maps:get(on_encoded_request, Log_inter)], request => [maps:get(on_request, Log_inter)], response => [maps:get(on_response, Log_inter)], encoded_response => [maps:get(on_encoded_response, Log_inter)], {vbeam, type} => 'Interceptors'},
     Srv = new_server(#{stream => Conn, handler => H, interceptors => Inters, {vbeam, type} => 'ServerConfig'}),
     dispatch_event(maps:get(event, Inters), <<"start">>, <<"server started">>),
@@ -103,4 +103,4 @@ main() ->
     L = listen_tcp(ip, Addr),
     vbeam_io:println(<<"TCP JSON-RPC server on ", (Addr)/binary, " (Content-Length framing)">>),
     % TODO: unhandled stmt type
-    ok
+        ok.

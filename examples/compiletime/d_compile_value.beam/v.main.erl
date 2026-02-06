@@ -3,7 +3,7 @@
 
 println_padded(Str) ->
     lists:foreach(fun(_) ->
-        print(todo),
+        io:format("~s", [todo]),
         ok
     end, lists:seq(0, todo - 1)),
     vbeam_io:println(<<" ", (Str)/binary>>),

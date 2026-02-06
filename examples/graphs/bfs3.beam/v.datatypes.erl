@@ -26,6 +26,7 @@ new_bloom_filter(Hash_func, Table_size, Num_functions) ->
         BbOut = todo,
         {SubhashOut, IndexOut, BbOut}
     end, {Subhash, Index, Bb}, lists:seq(0, maps:get(num_functions, B) - 1)),
+        ok.
 
 'BloomFilter.exists'(B, Element) ->
     Hash = 'unknown.hash_func'(B, Element),
@@ -121,7 +122,7 @@ new_none_node(Init) ->
                 end
             end,
             % TODO: unhandled stmt type
-            ok            true
+            true
         end
         end.
 
@@ -335,7 +336,7 @@ new_none_node(Init) ->
         true -> error(<<"Linked list is empty">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case length(List) == 1 of
+            case length(List) == 1 of
                 true -> Value;
                 false -> begin
                     Value = maps:get(data, maps:get(tail, List)),
@@ -350,7 +351,7 @@ new_none_node(Init) ->
         true -> error(<<"Linked list is empty">>);
         false -> begin
             % TODO: unhandled stmt type
-            ok            case length(List) == 1 of
+            case length(List) == 1 of
                 true -> Value;
                 false -> begin
                     Value = maps:get(data, maps:get(head, List)),
@@ -391,7 +392,7 @@ new_none_node(Init) ->
         false -> begin
             Node = maps:get(tail, List),
             % TODO: unhandled stmt type
-            ok            Node
+            Node
         end
         end.
 
@@ -399,7 +400,7 @@ new_none_node(Init) ->
     Hn = maps:get(head, List),
     Tn = maps:get(tail, List),
     % TODO: unhandled stmt type
-    ok    error(<<"none">>).
+    error(<<"none">>).
 
 'DoublyLinkedList.delete'(List, Idx) ->
     case Idx < 0 orelse Idx >= length(List) of
@@ -425,7 +426,7 @@ new_none_node(Init) ->
     Result_array = [],
     Node = maps:get(head, List),
     % TODO: unhandled stmt type
-    ok    Result_array.
+    Result_array.
 
 'DoublyLinkedList.next'(List) ->
     case maps:get(iter, List) == todo of
@@ -435,7 +436,7 @@ new_none_node(Init) ->
                 true -> todo;
                 false -> begin
                     % TODO: unhandled stmt type
-                    ok                    maps:get(data, maps:get(node, maps:get(iter, List)))
+                    maps:get(data, maps:get(node, maps:get(iter, List)))
                 end
                         end
                 end.
@@ -469,13 +470,15 @@ new_none_node(Init) ->
     Child = length(maps:get(data, Heap)) - 1,
     Parent = 'unknown.parent'(Heap, Child),
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'MinHeap.insert_many'(Heap, Elements) ->
     lists:foreach(fun(V) ->
         'unknown.insert'(Heap, V),
         ok.
         ok
     end, Elements),
+        ok.
 
 'MinHeap.pop'(Heap) ->
     case length(maps:get(data, Heap)) == 0 of
@@ -490,7 +493,7 @@ new_none_node(Init) ->
     Left = 'unknown.left_child'(Heap, Parent),
     Right = 'unknown.right_child'(Heap, Parent),
     % TODO: unhandled stmt type
-    ok    Item.
+    Item.
 
 'MinHeap.peek'(Heap) ->
     case length(maps:get(data, Heap)) == 0 of
@@ -566,6 +569,7 @@ new_none_node(Init) ->
         ok.
         ok
     end, Elements),
+        ok.
 
 'LinkedList.pop'(List) ->
     case 'LinkedList.is_empty'(List) of
@@ -578,7 +582,7 @@ new_none_node(Init) ->
                 end;
                 false -> begin
                     % TODO: unhandled stmt type
-                    ok                    To_return1 = todo,
+                    To_return1 = todo,
                 end
             end,
             To_return1
@@ -616,7 +620,7 @@ new_none_node(Init) ->
                                 end;
                                 false -> begin
                                     % TODO: unhandled stmt type
-                                    ok                                    case isnil(maps:get(next, New_node)) of
+                                    case isnil(maps:get(next, New_node)) of
                                         true -> ok;
                                         false -> ok
                                     end
@@ -640,7 +644,7 @@ new_none_node(Init) ->
     Result_array = [],
     Node = maps:get(head, List),
     % TODO: unhandled stmt type
-    ok    Result_array.
+    Result_array.
 
 'LinkedList.next'(List) ->
     case isnil(maps:get(iter, List)) of
@@ -650,7 +654,7 @@ new_none_node(Init) ->
                 true -> todo;
                 false -> begin
                     % TODO: unhandled stmt type
-                    ok                    maps:get(data, maps:get(node, maps:get(iter, List)))
+                    maps:get(data, maps:get(node, maps:get(iter, List)))
                 end
                         end
                 end.
@@ -689,6 +693,7 @@ new_none_node(Init) ->
                             ok
                             ok
                         end, lists:seq(0, length(Indexes1) - 1)),
+                                                ok
                         IndexesOut
                     end, Indexes, lists:seq(0, length(maps:get(particles, Q)) - 1)),
                 end;
@@ -699,7 +704,7 @@ new_none_node(Init) ->
 
 'Quadtree.retrieve'(Q, P) ->
     Indexes = 'Quadtree.get_index'(Q, P),
-    Detected_particles = 'AABB.clone'(maps:get(particles, Q)),
+    Detected_particles = maps:get(particles, Q),
     case length(maps:get(nodes, Q)) > 0 of
         true -> ok;
         false -> ok
@@ -819,6 +824,7 @@ new_ringbuffer(S) ->
         ok.
         ok
     end, Elements),
+        ok.
 
 'RingBuffer.pop_many'(Rb, N) ->
     Elements = [],
@@ -853,7 +859,7 @@ new_ringbuffer(S) ->
         true -> V;
         false -> begin
             % TODO: unhandled stmt type
-            ok            V
+            V
         end
         end.
 
@@ -931,6 +937,7 @@ new_ringbuffer(S) ->
         ok.
         ok
     end, Elements),
+        ok.
 
 'Set.union'(L, R) ->
     Set = 'unknown.copy'(L),

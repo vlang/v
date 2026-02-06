@@ -1,0 +1,33 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        case call 'erlang':'=/='(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                let <Stop> =
+                    call 'erlang':'binary_to_integer'(call 'lists':'nth'(2, call 'init':'get_plain_arguments'()))
+                in  case call 'erlang':'>'(Stop, 92) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <A> =
+                                'todo'
+                            in  let <B> =
+                                    'todo'
+                                in  let <C> =
+                                        'todo'
+                                    in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'integer_to_binary'(call 'erlang':'+'(call 'erlang':'+'(A, B), C))|[]])
+                                            'ok'
+                    end
+        end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

@@ -21,12 +21,13 @@ build_map_edges_from_graph(G) ->
 
 print_sol(Dist) ->
     N_vertex = length(Dist),
-    print(<<"\\n Vertex   Distance from Source">>),
+    io:format("~s", [<<"\\n Vertex   Distance from Source">>]),
     lists:foreach(fun(I) ->
-        print(<<"\\n   ", (integer_to_binary(I))/binary, "   -->   ", (integer_to_binary(lists:nth(I + 1, Dist)))/binary>>),
+        io:format("~s", [<<"\\n   ", (integer_to_binary(I))/binary, "   -->   ", (integer_to_binary(lists:nth(I + 1, Dist)))/binary>>]),
         ok.
         ok
     end, lists:seq(0, N_vertex - 1)),
+        ok.
 
 bellman_ford(Graph, Src) ->
     Edges = build_map_edges_from_graph(Graph),
@@ -52,7 +53,7 @@ bellman_ford(Graph, Src) ->
         WeightOut = maps:get(weight, maps:get(J, Edges)),
         case lists:nth(U1 + 1, Dist) /= 999999 andalso lists:nth(U1 + 1, Dist) + Weight1 < lists:nth(V1 + 1, Dist) of
             true -> begin
-                print(<<"\\n Graph contains negative weight cycle">>),
+                io:format("~s", [<<"\\n Graph contains negative weight cycle">>]),
             end;
             false -> ok
         end,
@@ -67,7 +68,7 @@ main() ->
     Graph_03 = [[0, 10, 6, 5], [10, 0, 0, 15], [6, 0, 0, 4], [5, 15, 4, 0]],
     Graph = [],
     lists:foreach(fun(G_value) ->
-        Graph1 = '[][]int.clone'(G_value),
+        Graph1 = G_value,
         Start_node = 0,
         vbeam_io:println(<<"\\n\\n Graph ", (integer_to_binary(Index + 1))/binary, " using Bellman-Ford algorithm (source node: ", (integer_to_binary(Start_node))/binary, ")">>),
         bellman_ford(Graph1, Start_node),

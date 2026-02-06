@@ -1,0 +1,24 @@
+module 'v.toml.to' ['json'/1,
+                'any_to_json'/1,
+                'json_any'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'json'/1 =
+        fun (Doa) ->
+            case Doa of <'todo'> when 'true' -> apply 'any_to_json'/1(apply 'ast_to_any'/1(call 'erlang':'map_get'('table', call 'erlang':'map_get'('ast', Doa)))) <'todo'> when 'true' -> apply 'any_to_json'/1(Doa) end
+    'any_to_json'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}# <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> apply 'Any.json_str'/1('todo') <'todo'> when 'true' -> Str <'todo'> when 'true' -> Str end
+    'json_any'/1 =
+        fun (A) ->
+            case A of <'todo'> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> 'todo' <'todo'> when 'true' -> Jmap <'todo'> when 'true' -> Jarr end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.toml.to')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.toml.to', _0)
+    end

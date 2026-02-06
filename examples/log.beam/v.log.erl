@@ -134,7 +134,7 @@ set_always_flush(Should_flush_on_every_message) ->
 
 'Log.log_to_console_too'(L) ->
     case maps:get(output_target, L) /= file of
-        true -> panic(<<"log_to_console_too should be called *after* .set_output_path">>);
+        true -> erlang:error({panic, <<"log_to_console_too should be called *after* .set_output_path">>});
         false -> ok
     end,
 
@@ -161,7 +161,7 @@ set_always_flush(Should_flush_on_every_message) ->
     end),
     E = tag_to_file(Level, maps:get(short_tag, L)),
     % TODO: unhandled stmt type
-    ok    case maps:get(always_flush, L) of
+    case maps:get(always_flush, L) of
         true -> 'Log.flush'(L);
         false -> ok
     end.
@@ -173,7 +173,7 @@ set_always_flush(Should_flush_on_every_message) ->
     end),
     Tag = tag_to_console(Level, maps:get(short_tag, L)),
     Msg = <<(Timestamp)/binary, " [", (Tag)/binary, "] ", (S)/binary, "\\n">>,
-    Arr = 'string.bytes'(Msg),
+    Arr = binary_to_list(Msg),
     'Writer.write'(maps:get(output_stream, L), Arr),
     case maps:get(always_flush, L) of
         true -> case maps:get(output_stream, L) is todo of
@@ -205,7 +205,7 @@ set_always_flush(Should_flush_on_every_message) ->
         end;
         false -> ok
     end,
-    panic(<<(<<(maps:get(output_label, L))/binary, (<<": ">>)/binary>>)/binary, (S)/binary>>),
+    erlang:error({panic, <<(<<(maps:get(output_label, L))/binary, (<<": ">>)/binary>>)/binary, (S)/binary>>}),
     ok.
 
 'Log.error'(L, S) ->
@@ -234,7 +234,8 @@ set_always_flush(Should_flush_on_every_message) ->
 
 'Log.free'(F) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'Log.time_format'(L, T) ->
     case maps:get(time_format, L) of
         tf_rfc3339_micro -> 'Time.format_rfc3339_micro'(T);
@@ -284,13 +285,14 @@ use_stdout() ->
 
 new_thread_safe_log() ->
     Slevel = todo,
-    Level = level_from_tag('string.to_upper'(Slevel)),
+    Level = level_from_tag(string:uppercase(Slevel)),
     X = #{level => Level, {vbeam, type} => 'ThreadSafeLog'},
     X.
 
 'ThreadSafeLog.free'(X) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
+
 'ThreadSafeLog.set_level'(X, Level) ->
     case todo of
         true -> ok;
@@ -359,12 +361,12 @@ new_thread_safe_log() ->
 
 'ThreadSafeLog.fatal'(X, S) ->
     case todo of
-        true -> panic(S);
+        true -> erlang:error({panic, S});
         false -> ok
     end,
     'Mutex.lock'(maps:get(mu, X)),
     % TODO: unhandled stmt type
-    ok    'Log.fatal'(maps:get(Log, X), S),
+    'Log.fatal'(maps:get(Log, X), S),
     ok.
 
 'Level__static__from'(Input) ->

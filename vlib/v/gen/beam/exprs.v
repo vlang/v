@@ -65,8 +65,46 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 
-	// Look up current SSA version
 	name := node.name
+
+	// Handle function references like main.double, Type.method, or term.green
+	// In Erlang source: fun name/arity (same-module) or fun 'v.mod':name/arity (cross-module)
+	if name.contains('.') {
+		fn_name := name.all_after_last('.')
+		mod_prefix := name.all_before_last('.')
+		// Look up arity in fn_infos
+		mut arity := 1 // default
+		for info in g.fn_infos {
+			if info.name == fn_name {
+				arity = info.arity
+				break
+			}
+		}
+		// Check if mod_prefix is a type in current module (method reference)
+		// or an imported module (cross-module function reference)
+		mut is_local_type := false
+		for info in g.fn_infos {
+			if info.name.starts_with('${mod_prefix}.') {
+				is_local_type = true
+				break
+			}
+		}
+		if !is_local_type && mod_prefix.len > 0 {
+			// Cross-module: fun 'v.othermod':fn_name/arity
+			erl_mod := g.v_mod_to_erl_mod(mod_prefix)
+			g.write("fun '${erl_mod}':'${fn_name}'/${arity}")
+		} else {
+			// Same-module: fun fn_name/arity (or 'Type.method'/arity)
+			if g.needs_atom_quote(fn_name) {
+				g.write("fun '${fn_name}'/${arity}")
+			} else {
+				g.write('fun ${fn_name}/${arity}')
+			}
+		}
+		return
+	}
+
+	// Look up current SSA version
 	if ver := g.var_versions[name] {
 		if ver == 0 {
 			g.write(g.erl_var(name))
@@ -128,7 +166,20 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		// Same-module call: fn_name(args)
 		name := g.call_fn_name(full_name, call_mod)
-		if g.needs_atom_quote(name) {
+		// Check if this is a variable holding a function (not a declared function)
+		// In Erlang, calling a function stored in a variable requires uppercase: F(X)
+		// Named function calls use lowercase: double(X)
+		mut is_fn_var := true
+		for info in g.fn_infos {
+			if info.name == name {
+				is_fn_var = false
+				break
+			}
+		}
+		if is_fn_var && !name.contains('.') && name.len > 0 {
+			// Variable function call: F(X)
+			g.write('${g.erl_var(name)}(')
+		} else if g.needs_atom_quote(name) {
 			g.write("'${name}'(")
 		} else {
 			g.write('${name}(')
@@ -582,6 +633,17 @@ fn (mut g Gen) erl_builtin_call(name string, node ast.CallExpr) bool {
 				g.write('panic')
 			}
 			g.write('})')
+			return true
+		}
+		'error' {
+			// V's error() constructor -> erlang:error(Message)
+			g.write('erlang:error(')
+			if node.args.len > 0 {
+				g.expr(node.args[0].expr)
+			} else {
+				g.write('error')
+			}
+			g.write(')')
 			return true
 		}
 		'sleep' {

@@ -54,7 +54,7 @@ unescape(S_, Mode) ->
     N = 0,
     Has_plus = false,
     % TODO: unhandled stmt type
-    ok    case N == 0 andalso not Has_plus of
+    case N == 0 andalso not Has_plus of
         true -> S;
         false -> 
             case length(S) < 2 * N of
@@ -62,7 +62,7 @@ unescape(S_, Mode) ->
                 false -> begin
                     T = new_builder(length(S) - 2 * N),
                     % TODO: unhandled stmt type
-                    ok                    'Builder.str'(T)
+                    'Builder.str'(T)
                 end
                         end
                 end.
@@ -215,7 +215,7 @@ parse_url(Rawurl, Via_request) ->
                         false -> begin
                             P = split_by_scheme(Rawurl),
                             Rest = lists:nth(2, P),
-                            case 'string.ends_with'(Rest, <<"?">>) andalso not 'string.contains'(lists:nth(todo + 1, Rest), <<"?">>) of
+                            case case binary:longest_common_suffix([Rest, <<"?">>]) of 0 -> false; _ -> true end andalso not case binary:match(lists:nth(todo + 1, Rest), <<"?">>) of nomatch -> false; _ -> true end of
                                 true -> begin
                                     Rest1 = lists:nth(todo + 1, Rest),
                                 end;
@@ -225,7 +225,7 @@ parse_url(Rawurl, Via_request) ->
                                     Rest2 = R,
                                 end
                             end,
-                            case not 'string.starts_with'(Rest2, <<"/">>) of
+                            case not case string:prefix(Rest2, <<"/">>) of nomatch -> false; _ -> true end of
                                 true -> begin
                                     case maps:get(scheme, Url) /= <<"">> of
                                         true -> begin
@@ -250,7 +250,7 @@ parse_url(Rawurl, Via_request) ->
                                 end;
                                 false -> ok
                             end,
-                            case ((maps:get(scheme, Url) /= <<"">> orelse not Via_request) andalso not 'string.starts_with'(Rest2, <<"///">>)) andalso 'string.starts_with'(Rest2, <<"//">>) andalso length(Rest2) > 2 of
+                            case ((maps:get(scheme, Url) /= <<"">> orelse not Via_request) andalso not case string:prefix(Rest2, <<"///">>) of nomatch -> false; _ -> true end) andalso case string:prefix(Rest2, <<"//">>) of nomatch -> false; _ -> true end andalso length(Rest2) > 2 of
                                 true -> begin
                                     Authority = element(1, split(lists:nth(todo + 1, Rest2), todo, false)),
                                     R1 = element(2, split(lists:nth(todo + 1, Rest2), todo, false)),
@@ -462,7 +462,7 @@ parse_query_values(M, Query) ->
     Had_error = false,
     Q = Query,
     % TODO: unhandled stmt type
-    ok    case Had_error of
+    case Had_error of
         true -> error(error_msg(<<"parse_query_values: failed parsing query string">>, <<"">>));
         false -> true
         end.
@@ -507,7 +507,7 @@ resolve_path(Base, Ref) ->
         true -> <<"">>;
         false -> begin
             Dst = [],
-            Src = 'string.split'(Full1, <<"/">>),
+            Src = binary:split(Full1, <<"/">>, [global]),
             lists:foreach(fun(Elem) ->
                 case Elem of
                     <<".">> -> ok;
@@ -524,7 +524,7 @@ resolve_path(Base, Ref) ->
                 true -> Dst bsl <<"">>;
                 false -> ok
             end,
-            <<(<<"/">>)/binary, ('string.trim_left'('[]string.join'(Dst, <<"/">>), <<"/">>))/binary>>
+            <<(<<"/">>)/binary, ('string.trim_left'(iolist_to_binary(lists:join(<<"/">>, Dst)), <<"/">>))/binary>>
         end
         end.
 
@@ -577,7 +577,7 @@ resolve_path(Base, Ref) ->
                 false -> ok
             end
         end;
-        false -> case 'string.starts_with'(Result1, <<"//">>) of
+        false -> case case string:prefix(Result1, <<"//">>) of nomatch -> false; _ -> true end of
             true -> ok;
             false -> ok
         end
@@ -610,7 +610,7 @@ split_host_port(Hostport) ->
         end;
         false -> ok
     end,
-    case length(Host1) > 1 andalso lists:nth(1, Host1) == todo andalso 'string.ends_with'(Host1, <<"]">>) of
+    case length(Host1) > 1 andalso lists:nth(1, Host1) == todo andalso case binary:longest_common_suffix([Host1, <<"]">>]) of 0 -> false; _ -> true end of
         true -> ok;
         false -> ok
     end,
@@ -723,7 +723,7 @@ new_values() ->
 'Values.del'(V, Key) ->
     lists:foreach(fun(Qvalue) ->
         case maps:get(key, Qvalue) == Key of
-            true -> 'QueryValue.delete'(maps:get(data, V), Idx);
+            true -> lists:delete(Idx, maps:get(data, V));
             false -> ok
         end,
         ok

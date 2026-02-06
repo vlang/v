@@ -55,6 +55,7 @@ merge_in_place(M1, M2) ->
     lists:foreach(fun(V) ->
         ok
     end, M2),
+        ok.
 
 merge(M1, M2) ->
     Res = 'unknown.clone'(M1),

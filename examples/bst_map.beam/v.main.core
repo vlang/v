@@ -1,0 +1,30 @@
+module 'v.main' ['KeyVal.=='/2,
+                'KeyVal.<'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'KeyVal.=='/2 =
+        fun (A, B) ->
+            call 'erlang':'=:='(call 'erlang':'map_get'('key', A), call 'erlang':'map_get'('key', B))
+    'KeyVal.<'/2 =
+        fun (A, B) ->
+            call 'erlang':'<'(call 'erlang':'map_get'('key', A), call 'erlang':'map_get'('key', B))
+    'main'/0 =
+        fun () ->
+            let <Bst> =
+                ~{{'vbeam','type'}=>'KeyVal]'}~
+            in  do  apply 'KeyVal].insert'/2(Bst, ~{'key'=>1,'val'=>12,{'vbeam','type'}=>'KeyVal'}~)
+                    do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'KeyVal].in_order_traversal'/1(Bst)|[]])
+                        do  apply 'KeyVal].insert'/2(Bst, ~{'key'=>2,'val'=>34,{'vbeam','type'}=>'KeyVal'}~)
+                            do  apply 'KeyVal].insert'/2(Bst, ~{'key'=>-2,'val'=>203,{'vbeam','type'}=>'KeyVal'}~)
+                                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

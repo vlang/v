@@ -1,0 +1,185 @@
+module 'v.io' ['new_buffered_reader'/1,
+                'BufferedReader.read'/2,
+                'BufferedReader.free'/1,
+                'BufferedReader.fill_buffer'/1,
+                'BufferedReader.needs_fill'/1,
+                'BufferedReader.end_of_stream'/1,
+                'BufferedReader.read_line'/2,
+                'new_buffered_writer'/1,
+                'BufferedWriter.reset'/1,
+                'BufferedWriter.buffered'/1,
+                'BufferedWriter.flush'/1,
+                'BufferedWriter.available'/1,
+                'BufferedWriter.write'/2,
+                'cp'/3,
+                'new_multi_writer'/1,
+                'MultiWriter.write'/2,
+                'NotExpected.msg'/1,
+                'NotExpected.code'/1,
+                'read_all'/1,
+                'read_any'/1,
+                'ReaderWriterImpl.read'/2,
+                'ReaderWriterImpl.write'/2,
+                'make_readerwriter'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'new_buffered_reader'/1 =
+    fun (O) ->
+        do  case call 'erlang':'=<'(call 'erlang':'map_get'('cap', O), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+            let <R> =
+                ~{'reader'=>call 'erlang':'map_get'('reader', O),'buf'=>[],'offset'=>0,'mfails'=>call 'erlang':'map_get'('retries', O),{'vbeam','type'}=>'BufferedReader'}~
+            in  R
+'BufferedReader.read'/2 =
+    fun (R, Buf) ->
+        case call 'erlang':'map_get'('end_of_stream', R) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                do  case apply 'BufferedReader.needs_fill'/1(R) of <'true'> when 'true' -> case call 'erlang':'not'(apply 'BufferedReader.fill_buffer'/1(R)) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                    let <Read> =
+                        apply 'copy'/2(Buf, call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('buf', R)))
+                    in  case call 'erlang':'=:='(Read, 0) of
+                            <'true'> when 'true' -> 'todo'
+                            <'false'> when 'true' -> 
+                                do  Read
+                                    do  Read
+                                        Read
+                        end
+        end
+'BufferedReader.free'/1 =
+    fun (R) ->
+        'todo'
+'BufferedReader.fill_buffer'/1 =
+    fun (R) ->
+        case call 'erlang':'map_get'('end_of_stream', R) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                do  0
+                    do  0
+                        do  apply 'Reader.read'/2(call 'erlang':'map_get'('reader', R), call 'erlang':'map_get'('buf', R))
+                            do  case call 'erlang':'=:='(call 'erlang':'length'(R), 0) of <'true'> when 'true' -> 'todo' <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'>='(call 'erlang':'map_get'('fails', R), call 'erlang':'map_get'('mfails', R)) of
+                                    <'true'> when 'true' -> 'false'
+                                    <'false'> when 'true' -> 
+                                        'true'
+                                end
+        end
+'BufferedReader.needs_fill'/1 =
+    fun (R) ->
+        call 'erlang':'>='(call 'erlang':'map_get'('offset', R), call 'erlang':'length'(R))
+'BufferedReader.end_of_stream'/1 =
+    fun (R) ->
+        call 'erlang':'map_get'('end_of_stream', R)
+'BufferedReader.read_line'/2 =
+    fun (R, Config) ->
+        case call 'erlang':'map_get'('end_of_stream', R) of
+            <'true'> when 'true' -> 'todo'
+            <'false'> when 'true' -> 
+                let <Line> =
+                    []
+                in  'todo'
+        end
+'new_buffered_writer'/1 =
+    fun (O) ->
+        case call 'erlang':'<'(call 'erlang':'map_get'('cap', O), 1) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<96>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                ~{'buf'=>[],'wr'=>call 'erlang':'map_get'('writer', O),{'vbeam','type'}=>'BufferedWriter'}~
+        end
+'BufferedWriter.reset'/1 =
+    fun (B) ->
+        let <Cap> =
+            call 'erlang':'length'(call 'erlang':'map_get'('buf', B))
+        in  do  []
+                'ok'
+'BufferedWriter.buffered'/1 =
+    fun (B) ->
+        call 'erlang':'map_get'('n', B)
+'BufferedWriter.flush'/1 =
+    fun (B) ->
+        case call 'erlang':'=:='(apply 'BufferedWriter.buffered'/1(B), 0) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                let <N> =
+                    apply 'Writer.write'/2(call 'erlang':'map_get'('wr', B), call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('buf', B)))
+                in  case call 'erlang':'<'(N, call 'erlang':'map_get'('n', B)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<87>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            do  0
+                                'ok'
+                    end
+        end
+'BufferedWriter.available'/1 =
+    fun (B) ->
+        call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('buf', B)), call 'erlang':'map_get'('n', B))
+'BufferedWriter.write'/2 =
+    fun (B, Src) ->
+        let <P> =
+            Src
+        in  let <Nn> =
+                0
+            in  let <N> =
+                    apply 'copy'/2(call 'lists':'nth'(call 'erlang':'+'('todo', 1), call 'erlang':'map_get'('buf', B)), P)
+                in  do  N
+                        let <Nn_1> =
+                            N
+                        in  Nn_1
+'cp'/3 =
+    fun (Src, Dst, Params) ->
+        let <Buf> =
+            []
+        in  'ok'
+'new_multi_writer'/1 =
+    fun (Writers) ->
+        ~{'writers'=>Writers,{'vbeam','type'}=>'MultiWriter'}~
+'MultiWriter.write'/2 =
+    fun (M, Buf) ->
+        do  let <_1> =
+            fun (W) ->
+                let <N> =
+                    apply 'Writer.write'/2(W, Buf)
+                in  case call 'erlang':'=/='(N, call 'erlang':'length'(Buf)) of <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('writers', M))
+            call 'erlang':'length'(Buf)
+'NotExpected.msg'/1 =
+    fun (Err) ->
+        call 'erlang':'map_get'('cause', Err)
+'NotExpected.code'/1 =
+    fun (Err) ->
+        call 'erlang':'map_get'('code', Err)
+'read_all'/1 =
+    fun (Config) ->
+        let <R> =
+            call 'erlang':'map_get'('reader', Config)
+        in  let <Read_till_eof> =
+                call 'erlang':'map_get'('read_to_end_of_stream', Config)
+            in  let <B> =
+                    []
+                in  let <Read> =
+                        0
+                    in  call 'lists':'nth'(call 'erlang':'+'('todo', 1), B)
+'read_any'/1 =
+    fun (R) ->
+        let <B> =
+            []
+        in  let <Read> =
+                0
+            in  call 'lists':'nth'(call 'erlang':'+'('todo', 1), B)
+'ReaderWriterImpl.read'/2 =
+    fun (R, Buf) ->
+        apply 'Reader.read'/2(call 'erlang':'map_get'('r', R), Buf)
+'ReaderWriterImpl.write'/2 =
+    fun (R, Buf) ->
+        apply 'Writer.write'/2(call 'erlang':'map_get'('w', R), Buf)
+'make_readerwriter'/2 =
+    fun (R, W) ->
+        ~{'r'=>R,'w'=>W,{'vbeam','type'}=>'ReaderWriterImpl'}~
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.io')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.io', _0)
+end

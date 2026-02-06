@@ -1,0 +1,22 @@
+module 'v.main' ['should_not_return'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'should_not_return'/1 =
+        fun (Logger) ->
+            apply 'Log.fatal'/2(Logger, call 'erlang':'iolist_to_binary'(['todo'|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+    'main'/0 =
+        fun () ->
+            let <My_log> =
+                ~{{'vbeam','type'}=>'Log'}~
+            in  apply 'should_not_return'/1(My_log)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

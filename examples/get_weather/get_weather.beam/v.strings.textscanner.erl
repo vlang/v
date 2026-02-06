@@ -91,4 +91,4 @@ new(Input) ->
 
 'TextScanner.skip_whitespace'(Ss) ->
     % TODO: unhandled stmt type
-    ok
+        ok.
