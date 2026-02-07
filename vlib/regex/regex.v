@@ -1008,12 +1008,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		// check special cases: $ ^
 		//
 		if char_len == 1 && i == 0 && u8(char_tmp) == `^` {
-			re.flag = f_ms
+			re.flag |= f_ms
 			i = i + char_len
 			continue
 		}
 		if char_len == 1 && i == (in_txt.len - 1) && u8(char_tmp) == `$` {
-			re.flag = f_me
+			re.flag |= f_me
 			i = i + char_len
 			continue
 		}
