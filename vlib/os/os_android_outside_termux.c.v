@@ -34,7 +34,7 @@ pub struct C.AAssetManager {
 // AssetManager provides access to an application's raw assets by creating Asset objects.
 pub type AssetManager = C.AAssetManager
 
-fn C.AAssetManager_open(&C.AAssetManager, &char, int) &C.AAsset
+fn C.AAssetManager_open(&C.AAssetManager, &char, i32) &C.AAsset
 
 // open opens an Android `Asset`.
 pub fn (am &AssetManager) open(filename string, mode AssetMode) !&Asset {
@@ -57,7 +57,7 @@ pub fn (a &Asset) get_buffer() voidptr {
 	return C.AAsset_getBuffer(a)
 }
 
-fn C.AAsset_getLength(&C.AAsset) int
+fn C.AAsset_getLength(&C.AAsset) i32
 
 // get_length returns the total size of the asset data.
 pub fn (a &Asset) get_length() int {
@@ -71,7 +71,7 @@ pub fn (a &Asset) get_length_64() i64 {
 	return C.AAsset_getLength64(a)
 }
 
-fn C.AAsset_read(&C.AAsset, voidptr, usize) int
+fn C.AAsset_read(&C.AAsset, voidptr, usize) i32
 
 // read attempts to read 'count' bytes of data from the current offset.
 // read returns the number of bytes read, zero on EOF, or < 0 on error.

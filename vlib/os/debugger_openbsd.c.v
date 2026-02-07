@@ -2,7 +2,7 @@ module os
 
 #include <sys/ptrace.h>
 
-fn C.ptrace(int, u32, voidptr, int) int
+fn C.ptrace(i32, u32, voidptr, i32) i32
 
 // debugger_present returns a bool indicating if the process is being debugged.
 pub fn debugger_present() bool {

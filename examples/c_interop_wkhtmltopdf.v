@@ -19,9 +19,9 @@ pub struct C.wkhtmltopdf_object_settings {}
 
 pub struct C.wkhtmltopdf_converter {}
 
-fn C.wkhtmltopdf_init(use_graphics bool) int
+fn C.wkhtmltopdf_init(use_graphics bool) i32
 
-fn C.wkhtmltopdf_deinit() int
+fn C.wkhtmltopdf_deinit() i32
 
 fn C.wkhtmltopdf_version() &char
 
@@ -46,9 +46,9 @@ fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings 
 
 fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) bool
 
-fn C.wkhtmltopdf_http_error_code(converter &C.wkhtmltopdf_converter) int
+fn C.wkhtmltopdf_http_error_code(converter &C.wkhtmltopdf_converter) i32
 
-fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, data &&char) int
+fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, data &&char) i32
 
 fn main() {
 	// init

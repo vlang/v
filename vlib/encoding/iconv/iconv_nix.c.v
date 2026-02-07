@@ -12,7 +12,7 @@ module iconv
 #flag termux -L/data/data/com.termux/files/usr/lib -liconv
 
 fn C.iconv_open(tocode charptr, fromcode charptr) voidptr
-fn C.iconv_close(cd voidptr) int
+fn C.iconv_close(cd voidptr) i32
 fn C.iconv(cd voidptr, inbuf &charptr, inbytesleft &usize, outbuf &charptr, outbytesleft &usize) usize
 
 // conv convert `fromcode` encoding string to `tocode` encoding string

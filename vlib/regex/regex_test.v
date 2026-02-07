@@ -203,6 +203,11 @@ const match_test_suite = [
     TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
     TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
+
+    // test anchor
+    TestItem{"abc", r"^abc$",0,3},
+    TestItem{"abc", r"^abc+$",0,3},
+    TestItem{"abcd", r"^abc+$",-1,0},
 ]
 
 struct TestItemRe {

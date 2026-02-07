@@ -18,33 +18,33 @@ pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink(pathname &char, buf &char, bufsiz usize) int
+fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
 
-fn C.getline(voidptr, voidptr, voidptr) int
+fn C.getline(voidptr, voidptr, voidptr) i32
 
-fn C.sigaction(int, voidptr, int) int
+fn C.sigaction(i32, voidptr, i32) i32
 
-fn C.open(&char, int, ...int) int
+fn C.open(&char, i32, ...int) i32
 
-fn C._wopen(&u16, int, ...int) int
+fn C._wopen(&u16, i32, ...int) i32
 
-fn C.fdopen(fd int, mode &char) &C.FILE
+fn C.fdopen(fd i32, mode &char) &C.FILE
 
-fn C.ferror(stream &C.FILE) int
+fn C.ferror(stream &C.FILE) i32
 
-fn C.feof(stream &C.FILE) int
+fn C.feof(stream &C.FILE) i32
 
-fn C.CopyFile(&u16, &u16, bool) int
+fn C.CopyFile(&u16, &u16, bool) i32
 
 // fn C.lstat(charptr, voidptr) u64
 
 fn C._wstat64(&u16, voidptr) u64
 
-fn C.chown(&char, int, int) int
+fn C.chown(&char, i32, i32) i32
 
-fn C.ftruncate(voidptr, u64) int
+fn C.ftruncate(voidptr, u64) i32
 
-fn C._chsize_s(voidptr, u64) int
+fn C._chsize_s(voidptr, u64) i32
 
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]

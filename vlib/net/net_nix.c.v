@@ -28,4 +28,4 @@ pub const error_einprogress = int(C.EINPROGRESS)
 pub const error_eagain = int(C.EAGAIN)
 pub const error_eintr = int(C.EINTR)
 
-fn C.unlink(&char) int
+fn C.unlink(&char) i32

@@ -15,9 +15,9 @@ mut:
 	udata  voidptr
 }
 
-fn C.kqueue() int
-fn C.__kevent__(int, voidptr, int, voidptr, int, voidptr) int
-fn C.EV_SET(voidptr, u32, i16, u16, u32, int, voidptr)
+fn C.kqueue() i32
+fn C.__kevent__(i32, voidptr, i32, voidptr, i32, voidptr) i32
+fn C.EV_SET(voidptr, u32, i16, u16, u32, i32, voidptr)
 
 // KqueueNotifier provides methods that implement FdNotifier using the
 // kqueue I/O event notification facility (macos, freeBSD, xxxBSD...unix only)
