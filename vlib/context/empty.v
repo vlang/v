@@ -9,6 +9,7 @@ import time
 // An EmptyContext is never canceled, has no values.
 pub struct EmptyContext {}
 
+// deadline returns none, since an EmptyContext has no deadline.
 pub fn (ctx &EmptyContext) deadline() ?time.Time {
 	return none
 }
@@ -20,14 +21,17 @@ pub fn (ctx &EmptyContext) done() chan int {
 	return ch
 }
 
+// err returns none, since an EmptyContext is never canceled.
 pub fn (ctx &EmptyContext) err() IError {
 	return none
 }
 
+// value returns none, since an EmptyContext carries no values.
 pub fn (ctx &EmptyContext) value(key Key) ?Any {
 	return none
 }
 
+// str returns a string describing the Context.
 pub fn (ctx &EmptyContext) str() string {
 	return 'unknown empty Context'
 }
