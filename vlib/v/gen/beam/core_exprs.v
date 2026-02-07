@@ -899,9 +899,25 @@ fn (mut g CoreGen) core_builtin_call(name string, node ast.CallExpr) bool {
 			g.end_call()
 			return true
 		}
+		'utc' {
+			// V time.utc() -> erlang:universaltime()
+			// Returns {{Year,Month,Day},{Hour,Min,Sec}} tuple
+			g.begin_call('erlang', 'universaltime')
+			g.end_call()
+			return true
+		}
+		'sys_mono_now' {
+			// V time.sys_mono_now() -> erlang:monotonic_time(nanosecond)
+			g.begin_call('erlang', 'monotonic_time')
+			g.emit_atom('nanosecond')
+			g.end_call()
+			return true
+		}
 		'now' {
-			// V time.now() -> erlang:localtime()
-			g.begin_call('erlang', 'localtime')
+			// V time.now() -> erlang:system_time(microsecond)
+			// Returns a large integer timestamp; Time struct construction handled by caller
+			g.begin_call('erlang', 'system_time')
+			g.emit_atom('microsecond')
 			g.end_call()
 			return true
 		}
@@ -951,7 +967,11 @@ fn (mut g CoreGen) core_builtin_call(name string, node ast.CallExpr) bool {
 		}
 		'getenv' {
 			// V os.getenv(name) -> os:getenv(Name)
+			// os:getenv returns charlist or false; we need to handle the false case
+			// Use case to convert: false -> <<>> (empty binary), charlist -> list_to_binary
 			if g.etf_mode {
+				tmp := g.new_temp()
+				g.begin_let(tmp)
 				g.begin_call('os', 'getenv')
 				g.begin_call('erlang', 'binary_to_list')
 				if node.args.len > 0 {
@@ -959,10 +979,206 @@ fn (mut g CoreGen) core_builtin_call(name string, node ast.CallExpr) bool {
 				}
 				g.end_call()
 				g.end_call()
+				g.mid_let()
+				g.begin_case()
+				g.emit_var(tmp)
+				g.mid_case_clauses()
+				// false clause -> empty binary
+				g.begin_clause()
+				g.emit_atom('false')
+				g.mid_clause_guard()
+				g.emit_true_guard()
+				g.mid_clause_body()
+				g.emit_binary('')
+				g.end_clause()
+				g.clause_sep()
+				// charlist clause -> convert to binary
+				tmp2 := g.new_temp()
+				g.begin_clause()
+				g.emit_var(tmp2)
+				g.mid_clause_guard()
+				g.emit_true_guard()
+				g.mid_clause_body()
+				g.begin_call('erlang', 'list_to_binary')
+				g.emit_var(tmp2)
+				g.end_call()
+				g.end_clause()
+				g.end_case()
+				g.end_let()
 			} else {
-				g.write_core("call 'os':'getenv'(call 'erlang':'binary_to_list'(")
+				tmp := g.new_temp()
+				tmp2 := g.new_temp()
+				g.write_core("let <${tmp}> = call 'os':'getenv'(call 'erlang':'binary_to_list'(")
 				if node.args.len > 0 {
 					g.core_expr(node.args[0].expr)
+				}
+				g.write_core(")) in case ${tmp} of <'false'> when 'true' -> ")
+				g.write_core(core_bitstring(''))
+				g.write_core(" <${tmp2}> when 'true' -> call 'erlang':'list_to_binary'(${tmp2}) end")
+			}
+			return true
+		}
+		'setenv' {
+			// V os.setenv(key, val, overwrite) -> os:putenv(Key, Val)
+			// os:putenv takes charlists, so convert binaries first
+			if g.etf_mode {
+				g.begin_call('os', 'putenv')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.emit_sep()
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 1 {
+					g.core_expr(node.args[1].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'os':'putenv'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core("), call 'erlang':'binary_to_list'(")
+				if node.args.len > 1 {
+					g.core_expr(node.args[1].expr)
+				}
+				g.write_core('))')
+			}
+			return true
+		}
+		'unsetenv' {
+			// V os.unsetenv(name) -> os:unsetenv(Name)
+			if g.etf_mode {
+				g.begin_call('os', 'unsetenv')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'os':'unsetenv'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core('))')
+			}
+			return true
+		}
+		'getwd' {
+			// V os.getwd() -> element(2, file:get_cwd())
+			// file:get_cwd() returns {ok, Dir} where Dir is a charlist
+			// We extract Dir and convert to binary
+			if g.etf_mode {
+				g.begin_call('erlang', 'list_to_binary')
+				g.begin_call('erlang', 'element')
+				g.emit_int('2')
+				g.emit_sep()
+				g.begin_call('file', 'get_cwd')
+				g.end_call()
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'erlang':'list_to_binary'(call 'erlang':'element'(2, call 'file':'get_cwd'()))")
+			}
+			return true
+		}
+		'mkdir' {
+			// V os.mkdir(path) -> file:make_dir(binary_to_list(Path))
+			if g.etf_mode {
+				g.begin_call('file', 'make_dir')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'file':'make_dir'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core('))')
+			}
+			return true
+		}
+		'rmdir' {
+			// V os.rmdir(path) -> file:del_dir(binary_to_list(Path))
+			if g.etf_mode {
+				g.begin_call('file', 'del_dir')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'file':'del_dir'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core('))')
+			}
+			return true
+		}
+		'getpid' {
+			// V os.getpid() -> list_to_integer(os:getpid())
+			// os:getpid() returns a charlist of the OS PID
+			if g.etf_mode {
+				g.begin_call('erlang', 'list_to_integer')
+				g.begin_call('os', 'getpid')
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'erlang':'list_to_integer'(call 'os':'getpid'())")
+			}
+			return true
+		}
+		'chdir' {
+			// V os.chdir(path) -> file:set_cwd(binary_to_list(Path))
+			if g.etf_mode {
+				g.begin_call('file', 'set_cwd')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'file':'set_cwd'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core('))')
+			}
+			return true
+		}
+		'rename' {
+			// V os.rename(src, dst) -> file:rename(Src, Dst)
+			if g.etf_mode {
+				g.begin_call('file', 'rename')
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.end_call()
+				g.emit_sep()
+				g.begin_call('erlang', 'binary_to_list')
+				if node.args.len > 1 {
+					g.core_expr(node.args[1].expr)
+				}
+				g.end_call()
+				g.end_call()
+			} else {
+				g.write_core("call 'file':'rename'(call 'erlang':'binary_to_list'(")
+				if node.args.len > 0 {
+					g.core_expr(node.args[0].expr)
+				}
+				g.write_core("), call 'erlang':'binary_to_list'(")
+				if node.args.len > 1 {
+					g.core_expr(node.args[1].expr)
 				}
 				g.write_core('))')
 			}
@@ -1141,12 +1357,27 @@ fn (mut g CoreGen) core_builtin_call(name string, node ast.CallExpr) bool {
 			return true
 		}
 		'unix' {
-			// V time.unix(ts) -> placeholder
+			// V time.unix() -> erlang:system_time(second)
+			// Returns Unix timestamp in seconds
+			if !node.is_method && node.args.len == 0 {
+				g.begin_call('erlang', 'system_time')
+				g.emit_atom('second')
+				g.end_call()
+				return true
+			}
+			// If called with args (e.g. time.unix(ts) for struct construction), placeholder
 			if g.etf_mode {
 				g.emit_atom('undefined')
 			} else {
 				g.write_core("~{{'vbeam','type'}=>'Time'}~")
 			}
+			return true
+		}
+		'unix_milli' {
+			// V time.unix_milli() -> erlang:system_time(millisecond)
+			g.begin_call('erlang', 'system_time')
+			g.emit_atom('millisecond')
+			g.end_call()
 			return true
 		}
 		'dial_tcp' {
