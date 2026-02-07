@@ -55,10 +55,12 @@ fn new_cancel_context(parent Context) &CancelContext {
 	}
 }
 
+// deadline always returns none for a CancelContext, since it has no deadline.
 pub fn (ctx &CancelContext) deadline() ?time.Time {
 	return none
 }
 
+// done returns the done channel, which is closed when this context is canceled.
 pub fn (mut ctx CancelContext) done() chan int {
 	ctx.mutex.lock()
 	done := ctx.done
@@ -66,6 +68,7 @@ pub fn (mut ctx CancelContext) done() chan int {
 	return done
 }
 
+// err returns `canceled` after the context has been canceled, or `none` if not yet canceled.
 pub fn (mut ctx CancelContext) err() IError {
 	ctx.mutex.lock()
 	err := ctx.err
@@ -73,6 +76,8 @@ pub fn (mut ctx CancelContext) err() IError {
 	return err
 }
 
+// value returns the CancelContext itself if the key matches the cancel context key,
+// otherwise delegates to the parent context.
 pub fn (ctx &CancelContext) value(key Key) ?Any {
 	if key == cancel_context_key {
 		return ctx
@@ -80,6 +85,8 @@ pub fn (ctx &CancelContext) value(key Key) ?Any {
 	return ctx.context.value(key)
 }
 
+// str returns a string representation of the CancelContext,
+// showing the parent context name suffixed with '.with_cancel'.
 pub fn (ctx &CancelContext) str() string {
 	return context_name(ctx.context) + '.with_cancel'
 }
