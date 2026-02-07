@@ -762,19 +762,17 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
+		// Disallow [T] as return type
+		if p.tok.kind == .lsbr && p.peek_tok.kind == .name && p.peek_tok.lit.len == 1
+			&& p.peek_tok.lit[0].is_capital() {
+			return_type_pos = return_type_pos.extend(p.peek_tok.pos()).extend(p.peek_token(2).pos())
+			p.error_with_pos('invalid generic return, use `${p.peek_tok.lit}` instead',
+				return_type_pos)
+		}
 		p.inside_fn_return = true
 		return_type = p.parse_type()
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
-		return_sym := p.table.sym(return_type)
-		if return_sym.info is ast.ArrayFixed {
-			// Disallow [T] as return type
-			gen_typ := return_sym.name.find_between('[', ']')
-			if gen_typ.len == 1 && gen_typ[0].is_capital() {
-				p.error_with_pos('invalid generic return, use `${gen_typ}` instead', return_type_pos)
-			}
-		}
-
 		if p.tok.kind in [.question, .not] {
 			ret_type_sym := p.table.sym(return_type)
 			p.error_with_pos('wrong syntax, it must be ${p.tok.kind}${ret_type_sym.name}, not ${ret_type_sym.name}${p.tok.kind}',
