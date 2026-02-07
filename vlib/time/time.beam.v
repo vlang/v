@@ -96,34 +96,241 @@ fn calculate_unix_time(year int, month int, day int, hour int, minute int, secon
 }
 
 // strftime formats the Time according to the format string.
-// Codegen translates to: calendar:format or custom formatting
+// Pure V implementation of strftime-style formatting.
 pub fn (t Time) strftime(fmt string) string {
-	// BEAM codegen handles this - stub returns empty string
-	// Full implementation would parse format string and build output
-	return ''
+	if fmt == '' {
+		return ''
+	}
+	mut result := ''
+	mut i := 0
+	for i < fmt.len {
+		if fmt[i] == `%` && i + 1 < fmt.len {
+			i++
+			match fmt[i] {
+				`Y` {
+					// 4-digit year
+					mut ys := '${t.year}'
+					for ys.len < 4 {
+						ys = '0' + ys
+					}
+					result += ys
+				}
+				`m` {
+					// 2-digit month
+					if t.month < 10 {
+						result += '0${t.month}'
+					} else {
+						result += '${t.month}'
+					}
+				}
+				`d` {
+					// 2-digit day
+					if t.day < 10 {
+						result += '0${t.day}'
+					} else {
+						result += '${t.day}'
+					}
+				}
+				`H` {
+					// 2-digit hour (24h)
+					if t.hour < 10 {
+						result += '0${t.hour}'
+					} else {
+						result += '${t.hour}'
+					}
+				}
+				`M` {
+					// 2-digit minute
+					if t.minute < 10 {
+						result += '0${t.minute}'
+					} else {
+						result += '${t.minute}'
+					}
+				}
+				`S` {
+					// 2-digit second
+					if t.second < 10 {
+						result += '0${t.second}'
+					} else {
+						result += '${t.second}'
+					}
+				}
+				`I` {
+					// 12-hour clock hour
+					mut h := t.hour % 12
+					if h == 0 {
+						h = 12
+					}
+					if h < 10 {
+						result += '0${h}'
+					} else {
+						result += '${h}'
+					}
+				}
+				`p` {
+					// AM/PM
+					if t.hour < 12 {
+						result += 'AM'
+					} else {
+						result += 'PM'
+					}
+				}
+				`b` {
+					// Abbreviated month name
+					result += t.smonth()
+				}
+				`j` {
+					// Day of year (001-366)
+					days_before := [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304,
+						334]
+					mut doy := days_before[t.month - 1] + t.day
+					if t.month > 2 && is_leap_year(t.year) {
+						doy += 1
+					}
+					if doy < 10 {
+						result += '00${doy}'
+					} else if doy < 100 {
+						result += '0${doy}'
+					} else {
+						result += '${doy}'
+					}
+				}
+				`n` {
+					result += '\n'
+				}
+				`t` {
+					result += '\t'
+				}
+				`%` {
+					result += '%'
+				}
+				`e` {
+					// Day of month, space-padded
+					if t.day < 10 {
+						result += ' ${t.day}'
+					} else {
+						result += '${t.day}'
+					}
+				}
+				`F` {
+					// ISO 8601 date: YYYY-MM-DD
+					result += t.strftime('%Y-%m-%d')
+				}
+				`T` {
+					// ISO 8601 time: HH:MM:SS
+					result += t.strftime('%H:%M:%S')
+				}
+				`R` {
+					// HH:MM
+					result += t.strftime('%H:%M')
+				}
+				else {
+					result += '%'
+					result += fmt[i].ascii_str()
+				}
+			}
+		} else {
+			result += fmt[i].ascii_str()
+		}
+		i++
+	}
+	return result
 }
 
 // parse_iso8601 parses an ISO 8601 formatted string into a Time.
-// Codegen translates to: calendar:iso_week_number or custom parsing
+// Supports formats: "YYYY-MM-DD", "YYYY-MM-DDTHH:MM:SS", "YYYY-MM-DDTHH:MM:SSZ",
+// "YYYY-MM-DDTHH:MM:SS+HH:MM", "YYYY-MM-DDTHH:MM:SS.frac"
 pub fn parse_iso8601(s string) !Time {
 	if s == '' {
 		return error('datetime string is empty')
 	}
-	// BEAM codegen handles this - stub returns empty Time
-	// Full implementation would parse ISO 8601 format
-	return Time{}
+	// Remove trailing 'Z' timezone indicator
+	mut str := s
+	if str.len > 0 && (str[str.len - 1] == `Z` || str[str.len - 1] == `z`) {
+		str = str[..str.len - 1]
+	}
+	// Strip timezone offset (+HH:MM or -HH:MM) at end
+	if str.len > 6 {
+		last6 := str[str.len - 6..]
+		if (last6[0] == `+` || last6[0] == `-`) && last6[3] == `:` {
+			str = str[..str.len - 6]
+		}
+	}
+	// Split date and time by T or t
+	mut date_part := str
+	mut time_part := ''
+	for ci in 0 .. str.len {
+		if str[ci] == `T` || str[ci] == `t` {
+			date_part = str[..ci]
+			time_part = str[ci + 1..]
+			break
+		}
+	}
+	// Parse date
+	date_parts := date_part.split('-')
+	if date_parts.len != 3 {
+		return error('invalid ISO 8601 date format')
+	}
+	iyear := strconv.atoi(date_parts[0]) or { return error('invalid year') }
+	imonth := strconv.atoi(date_parts[1]) or { return error('invalid month') }
+	iday := strconv.atoi(date_parts[2]) or { return error('invalid day') }
+	// Parse time if present
+	mut ihour := 0
+	mut iminute := 0
+	mut isecond := 0
+	mut ins := 0
+	if time_part != '' {
+		// Strip fractional seconds
+		mut tp := time_part
+		for fi in 0 .. tp.len {
+			if tp[fi] == `.` {
+				frac := tp[fi + 1..]
+				tp = tp[..fi]
+				// Parse fractional part into nanoseconds
+				mut frac_val := strconv.atoi(frac) or { 0 }
+				mut frac_len := frac.len
+				for frac_len < 9 {
+					frac_val *= 10
+					frac_len++
+				}
+				for frac_len > 9 {
+					frac_val /= 10
+					frac_len--
+				}
+				ins = frac_val
+				break
+			}
+		}
+		time_parts := tp.split(':')
+		if time_parts.len >= 1 {
+			ihour = strconv.atoi(time_parts[0]) or { 0 }
+		}
+		if time_parts.len >= 2 {
+			iminute = strconv.atoi(time_parts[1]) or { 0 }
+		}
+		if time_parts.len >= 3 {
+			isecond = strconv.atoi(time_parts[2]) or { 0 }
+		}
+	}
+	return new(Time{
+		year:       iyear
+		month:      imonth
+		day:        iday
+		hour:       ihour
+		minute:     iminute
+		second:     isecond
+		nanosecond: ins
+	})
 }
 
 // parse_rfc3339 parses an RFC 3339 formatted string into a Time.
-// RFC 3339 is a profile of ISO 8601, commonly used in JSON APIs.
-// On BEAM: Stub implementation - real parsing would be handled by codegen
+// RFC 3339 is a profile of ISO 8601: "2023-01-15T14:30:00Z" or "2023-01-15T14:30:00+05:00"
 pub fn parse_rfc3339(s string) !Time {
 	if s == '' {
 		return error('datetime string is empty')
 	}
-	// BEAM codegen handles this - stub returns empty Time
-	// Full implementation would parse RFC 3339 format (e.g., "2023-01-15T14:30:00Z")
-	return Time{}
+	// RFC 3339 is a subset of ISO 8601, delegate to that parser
+	return parse_iso8601(s)
 }
 
 // parse returns the time from a date string in "YYYY-MM-DD HH:mm:ss" format.
@@ -198,12 +405,95 @@ pub fn parse(s string) !Time {
 }
 
 // parse_format parses the string s with a custom format into a Time.
-// On BEAM: Stub implementation - real parsing would be handled by codegen
+// Supports common format specifiers: %Y, %m, %d, %H, %M, %S
 pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	// BEAM codegen handles this - stub returns empty Time
-	// Full implementation would parse the string according to the format
-	return Time{}
+	mut iyear := 0
+	mut imonth := 1
+	mut iday := 1
+	mut ihour := 0
+	mut iminute := 0
+	mut isecond := 0
+	mut si := 0 // index into s
+	mut fi := 0 // index into format
+	for fi < format.len && si < s.len {
+		if format[fi] == `%` && fi + 1 < format.len {
+			fi++
+			match format[fi] {
+				`Y` {
+					// 4-digit year
+					if si + 4 <= s.len {
+						iyear = strconv.atoi(s[si..si + 4]) or {
+							return error_invalid_time(0, 'invalid year')
+						}
+						si += 4
+					}
+				}
+				`m` {
+					// 2-digit month
+					if si + 2 <= s.len {
+						imonth = strconv.atoi(s[si..si + 2]) or {
+							return error_invalid_time(0, 'invalid month')
+						}
+						si += 2
+					}
+				}
+				`d` {
+					// 2-digit day
+					if si + 2 <= s.len {
+						iday = strconv.atoi(s[si..si + 2]) or {
+							return error_invalid_time(0, 'invalid day')
+						}
+						si += 2
+					}
+				}
+				`H` {
+					// 2-digit hour
+					if si + 2 <= s.len {
+						ihour = strconv.atoi(s[si..si + 2]) or {
+							return error_invalid_time(0, 'invalid hour')
+						}
+						si += 2
+					}
+				}
+				`M` {
+					// 2-digit minute
+					if si + 2 <= s.len {
+						iminute = strconv.atoi(s[si..si + 2]) or {
+							return error_invalid_time(0, 'invalid minute')
+						}
+						si += 2
+					}
+				}
+				`S` {
+					// 2-digit second
+					if si + 2 <= s.len {
+						isecond = strconv.atoi(s[si..si + 2]) or {
+							return error_invalid_time(0, 'invalid second')
+						}
+						si += 2
+					}
+				}
+				else {
+					// Unknown specifier, skip
+					si++
+				}
+			}
+			fi++
+		} else {
+			// Literal character, skip in both strings
+			si++
+			fi++
+		}
+	}
+	return new(Time{
+		year:   iyear
+		month:  imonth
+		day:    iday
+		hour:   ihour
+		minute: iminute
+		second: isecond
+	})
 }

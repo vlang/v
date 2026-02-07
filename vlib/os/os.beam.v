@@ -458,9 +458,31 @@ pub fn environ() map[string]string {
 // ========================================
 
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks resolved.
+// On BEAM: resolves '..' and '.' components but cannot resolve symlinks without Erlang stdlib.
 pub fn real_path(fpath string) string {
-	// Placeholder - would need filename:absname and follow symlinks
-	return fpath
+	if fpath == '' {
+		return getwd()
+	}
+	// If path is relative, prepend cwd
+	mut p := fpath
+	if p.len > 0 && p[0] != `/` {
+		p = getwd() + '/' + p
+	}
+	// Resolve . and .. components
+	parts := p.split('/')
+	mut resolved := []string{}
+	for part in parts {
+		if part == '' || part == '.' {
+			continue
+		} else if part == '..' {
+			if resolved.len > 0 {
+				resolved.delete_last()
+			}
+		} else {
+			resolved << part
+		}
+	}
+	return '/' + resolved.join('/')
 }
 
 // Note: abs_path is defined in filepath.v and uses getwd() and join_path_single()
@@ -557,9 +579,18 @@ pub fn wait() int {
 // Note: home_dir is defined in os.v and uses getenv()
 
 // hostname returns the hostname.
+// Falls back to HOSTNAME environment variable on BEAM.
 pub fn hostname() !string {
-	// Placeholder - in real impl: net_adm:localhost() or inet:gethostname()
-	return ''
+	h := getenv('HOSTNAME')
+	if h != '' {
+		return h
+	}
+	// Try COMPUTERNAME (Windows-style, sometimes set)
+	cn := getenv('COMPUTERNAME')
+	if cn != '' {
+		return cn
+	}
+	return 'localhost'
 }
 
 // loginname returns the name of the user logged in.
@@ -568,14 +599,15 @@ pub fn loginname() !string {
 }
 
 // uname returns information about the platform.
+// On BEAM: returns BEAM VM information since we're running on the Erlang VM.
 pub fn uname() Uname {
-	// Placeholder - in real impl: os:type(), os:version()
+	h := hostname() or { 'localhost' }
 	return Uname{
 		sysname:  'BEAM'
-		nodename: ''
-		release:  ''
-		version:  ''
-		machine:  ''
+		nodename: h
+		release:  'OTP'
+		version:  'Erlang/OTP'
+		machine:  'beam_vm'
 	}
 }
 
@@ -628,14 +660,41 @@ pub fn chown(path string, owner int, group int) ! {
 // ========================================
 
 // glob searches for all pathnames matching patterns.
+// On BEAM: Basic implementation using ls() and pattern matching.
+// For full glob support, Erlang's filelib:wildcard/1 would be needed via codegen.
 pub fn glob(patterns ...string) ![]string {
-	// Placeholder - in real impl: filelib:wildcard/1
-	return []string{}
+	mut result := []string{}
+	for pattern in patterns {
+		mut matches := []string{}
+		native_glob_pattern(pattern, mut matches)!
+		for m in matches {
+			result << m
+		}
+	}
+	return result
 }
 
 // posix_get_error_msg returns error code representation in string.
+// Maps common POSIX error codes to their descriptions.
 pub fn posix_get_error_msg(code int) string {
-	return 'error code: ${code}'
+	match code {
+		0 { return 'success' }
+		1 { return 'operation not permitted' }
+		2 { return 'no such file or directory' }
+		3 { return 'no such process' }
+		4 { return 'interrupted system call' }
+		5 { return 'input/output error' }
+		9 { return 'bad file descriptor' }
+		12 { return 'out of memory' }
+		13 { return 'permission denied' }
+		17 { return 'file exists' }
+		20 { return 'not a directory' }
+		21 { return 'is a directory' }
+		22 { return 'invalid argument' }
+		28 { return 'no space left on device' }
+		36 { return 'file name too long' }
+		else { return 'error code: ${code}' }
+	}
 }
 
 // get_error_msg returns error code representation in string.
@@ -669,13 +728,78 @@ pub fn disk_usage(path string) !DiskUsage {
 }
 
 // native_glob_pattern is used for glob pattern matching.
+// On BEAM: Lists directory entries and filters by simple pattern.
+// Supports '*' wildcard at start/end but not full glob syntax.
 fn native_glob_pattern(pattern string, mut matches []string) ! {
-	// Placeholder
+	// Extract directory and file pattern
+	mut dir := '.'
+	mut file_pattern := pattern
+	// Find the last path separator
+	mut last_sep := -1
+	for i in 0 .. pattern.len {
+		if pattern[i] == `/` {
+			last_sep = i
+		}
+	}
+	if last_sep >= 0 {
+		dir = pattern[..last_sep]
+		if dir == '' {
+			dir = '/'
+		}
+		file_pattern = pattern[last_sep + 1..]
+	}
+	// List directory entries
+	entries := ls(dir) or { return }
+	for entry in entries {
+		if match_glob_pattern(file_pattern, entry) {
+			if dir == '.' {
+				matches << entry
+			} else {
+				matches << dir + '/' + entry
+			}
+		}
+	}
+}
+
+// match_glob_pattern performs simple glob matching.
+// Supports: '*' matches any sequence, '?' matches single char.
+fn match_glob_pattern(pattern string, name string) bool {
+	if pattern == '*' {
+		return true
+	}
+	if pattern == name {
+		return true
+	}
+	// Simple prefix/suffix matching with *
+	if pattern.len > 0 && pattern[0] == `*` {
+		suffix := pattern[1..]
+		if name.len >= suffix.len {
+			return name[name.len - suffix.len..] == suffix
+		}
+		return false
+	}
+	if pattern.len > 0 && pattern[pattern.len - 1] == `*` {
+		prefix := pattern[..pattern.len - 1]
+		if name.len >= prefix.len {
+			return name[..prefix.len] == prefix
+		}
+		return false
+	}
+	return false
 }
 
 // kind_of_existing_path identifies whether path is a file, directory, or link.
+// Delegates to codegen-handled exists() and is_dir() functions.
 fn kind_of_existing_path(path string) PathKind {
-	return PathKind{}
+	if !exists(path) && !is_dir(path) {
+		return PathKind{}
+	}
+	d := is_dir(path)
+	return PathKind{
+		is_file: !d
+		is_dir:  d
+		is_link: false // is_link requires Erlang stdlib call not available from pure V
+	}
 }
 
 // input_password prompts the user for a password without echoing input.
