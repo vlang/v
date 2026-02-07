@@ -33,18 +33,24 @@ pub fn with_value(parent Context, key Key, value Any) Context {
 	}
 }
 
+// deadline returns the deadline from the parent context.
 pub fn (ctx &ValueContext) deadline() ?time.Time {
 	return ctx.context.deadline()
 }
 
+// done returns the done channel from the parent context.
 pub fn (mut ctx ValueContext) done() chan int {
 	return ctx.context.done()
 }
 
+// err returns the error from the parent context.
 pub fn (mut ctx ValueContext) err() IError {
 	return ctx.context.err()
 }
 
+// value returns the value associated with this context for the given key.
+// If the key matches the one stored in this ValueContext, its value is returned.
+// Otherwise, the lookup is delegated to the parent context.
 pub fn (ctx &ValueContext) value(key Key) ?Any {
 	if ctx.key == key {
 		return ctx.value
@@ -52,6 +58,8 @@ pub fn (ctx &ValueContext) value(key Key) ?Any {
 	return ctx.context.value(key)
 }
 
+// str returns a string representation of the ValueContext,
+// showing the parent context name suffixed with '.with_value'.
 pub fn (ctx &ValueContext) str() string {
 	return context_name(ctx.context) + '.with_value'
 }
