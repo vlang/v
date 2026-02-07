@@ -2,7 +2,7 @@ module os
 
 #include <signal.h>
 
-fn C.signal(signal int, handlercb SignalHandler) voidptr
+fn C.signal(signal i32, handlercb SignalHandler) voidptr
 
 // signal will assign `handler` callback to be called when `signum` signal is received.
 pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {

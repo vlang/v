@@ -18,39 +18,39 @@ pub type Zip = C.zip_t
 
 pub type Fn_on_extract_entry = fn (&&char, &&char) int
 
-fn C.zip_open(&char, int, char) &Zip
+fn C.zip_open(&char, i32, char) &Zip
 
 fn C.zip_close(&Zip)
 
-fn C.zip_entry_open(&Zip, &u8) int
+fn C.zip_entry_open(&Zip, &u8) i32
 
-fn C.zip_entry_openbyindex(&Zip, usize) int
+fn C.zip_entry_openbyindex(&Zip, usize) i32
 
-fn C.zip_entry_close(&Zip) int
+fn C.zip_entry_close(&Zip) i32
 
 fn C.zip_entry_name(&Zip) &u8
 
-fn C.zip_entry_index(&Zip) int
+fn C.zip_entry_index(&Zip) i32
 
-fn C.zip_entry_isdir(&Zip) int
+fn C.zip_entry_isdir(&Zip) i32
 
 fn C.zip_entry_size(&Zip) u64
 
 fn C.zip_entry_crc32(&Zip) u32
 
-fn C.zip_entry_write(&Zip, voidptr, usize) int
+fn C.zip_entry_write(&Zip, voidptr, usize) i32
 
-fn C.zip_entry_fwrite(&Zip, &char) int
+fn C.zip_entry_fwrite(&Zip, &char) i32
 
-fn C.zip_entry_read(&Zip, &voidptr, &usize) int
+fn C.zip_entry_read(&Zip, &voidptr, &usize) i32
 
-fn C.zip_entry_noallocread(&Zip, voidptr, usize) int
+fn C.zip_entry_noallocread(&Zip, voidptr, usize) i32
 
-fn C.zip_entry_fread(&Zip, &char) int
+fn C.zip_entry_fread(&Zip, &char) i32
 
-fn C.zip_entries_total(&Zip) int
+fn C.zip_entries_total(&Zip) i32
 
-fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) int
+fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) i32
 
 fn cb_zip_extract(filename &&char, arg &&char) int {
 	return 0

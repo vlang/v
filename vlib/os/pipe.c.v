@@ -1,9 +1,9 @@
 module os
 
-fn C._dup(fd int) int
-fn C._dup2(fd1 int, fd2 int) int
-fn C._pipe(fds &int, size u32, mode int) int
-fn C.dup(fd int) int
+fn C._dup(fd i32) i32
+fn C._dup2(fd1 i32, fd2 i32) i32
+fn C._pipe(fds &int, size u32, mode i32) i32
+fn C.dup(fd i32) i32
 
 const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
 const fd_stderr = $if windows { 2 } $else { C.STDERR_FILENO }

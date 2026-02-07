@@ -5,8 +5,8 @@ import os
 
 #include <sys/mman.h>
 
-fn C.mmap(addr voidptr, len u64, prot int, flags int, fd int, offset i64) voidptr
-fn C.munmap(addr voidptr, len u64) int
+fn C.mmap(addr voidptr, len u64, prot i32, flags i32, fd i32, offset i64) voidptr
+fn C.munmap(addr voidptr, len u64) i32
 
 struct MemoryMappedFile {
 	size u64

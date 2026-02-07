@@ -40,7 +40,7 @@ fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db
 	client_flag ConnectionFlag) &C.MYSQL
 
 // C.mysql_query executes the SQL statement pointed to by the null-terminated string `stmt_str`.
-fn C.mysql_query(mysql &C.MYSQL, const_q charptr) int
+fn C.mysql_query(mysql &C.MYSQL, const_q charptr) i32
 
 // C.mysql_use_result initiates a result set retrieval but does not actually read
 // the result set into the client like `mysql_store_result()` does.
@@ -48,11 +48,11 @@ fn C.mysql_use_result(mysql &C.MYSQL)
 
 // C.mysql_real_query executes the SQL statement pointed to by `stmt_str`,
 // a string length bytes long.
-fn C.mysql_real_query(mysql &C.MYSQL, q &u8, len u32) int
+fn C.mysql_real_query(mysql &C.MYSQL, q &u8, len u32) i32
 
 // C.mysql_select_db causes the database specified by `db` to become
 // the default (current) database on the connection specified by mysql.
-fn C.mysql_select_db(mysql &C.MYSQL, db &u8) int
+fn C.mysql_select_db(mysql &C.MYSQL, db &u8) i32
 
 // C.mysql_change_user changes the user and causes the database specified by `db` to become
 // the default (current) database on the connection specified by `mysql`.
@@ -63,10 +63,10 @@ fn C.mysql_change_user(mysql &C.MYSQL, user &u8, password &u8, db &u8) bool
 fn C.mysql_affected_rows(mysql &C.MYSQL) u64
 
 // C.mysql_options sets extra connect options and affects behavior for a connection.
-fn C.mysql_options(mysql &C.MYSQL, option int, arg voidptr) int
+fn C.mysql_options(mysql &C.MYSQL, option i32, arg voidptr) i32
 
 // C.mysql_get_option returns the current value of an option settable using `mysql_options()`.
-fn C.mysql_get_option(mysql &C.MYSQL, option int, arg voidptr) int
+fn C.mysql_get_option(mysql &C.MYSQL, option i32, arg voidptr) i32
 
 // C.mysql_list_tables returns a result set consisting of table names in the current database
 // that match the simple regular expression specified by the `wild` parameter.
@@ -75,29 +75,29 @@ fn C.mysql_get_option(mysql &C.MYSQL, option int, arg voidptr) int
 fn C.mysql_list_tables(mysql &C.MYSQL, wild &u8) &C.MYSQL_RES
 
 // C.mysql_num_fields returns the number of columns in a result set.
-fn C.mysql_num_fields(res &C.MYSQL_RES) int
+fn C.mysql_num_fields(res &C.MYSQL_RES) i32
 
 // C.mysql_num_rows returns the number of rows in the result set.
 fn C.mysql_num_rows(res &C.MYSQL_RES) u64
 
 // C.mysql_autocommit sets autocommit mode on if `mode` is 1, off if `mode` is 0.
-fn C.mysql_autocommit(mysql &C.MYSQL, mode bool) int
+fn C.mysql_autocommit(mysql &C.MYSQL, mode bool) i32
 
 // C.mysql_commit commits the current transaction.
-fn C.mysql_commit(mysql &C.MYSQL) int
+fn C.mysql_commit(mysql &C.MYSQL) i32
 
 // C.mysql_rollback rollback the current transaction.
-fn C.mysql_rollback(mysql &C.MYSQL) int
+fn C.mysql_rollback(mysql &C.MYSQL) i32
 
 // C.mysql_refresh flush tables or caches, or resets replication server information.
-fn C.mysql_refresh(mysql &C.MYSQL, options u32) int
+fn C.mysql_refresh(mysql &C.MYSQL, options u32) i32
 
 // C.mysql_reset_connection resets the connection to clear the session state.
-fn C.mysql_reset_connection(mysql &C.MYSQL) int
+fn C.mysql_reset_connection(mysql &C.MYSQL) i32
 
 // C.mysql_ping checks whether the connection to the server is working.
 // Returns zero if the connection to the server is active. Nonzero if an error occurred.
-fn C.mysql_ping(mysql &C.MYSQL) int
+fn C.mysql_ping(mysql &C.MYSQL) i32
 
 // C.mysql_store_result reads the entire result of a query to the client,
 // allocates a `MYSQL_RES` structure, and places the result into this structure.
@@ -157,10 +157,10 @@ fn C.mysql_get_client_info() &u8
 fn C.mysql_error(mysql &C.MYSQL) &u8
 
 // C.mysql_errno returns the error code for the most recently invoked API function that can succeed or fail.
-fn C.mysql_errno(mysql &C.MYSQL) int
+fn C.mysql_errno(mysql &C.MYSQL) i32
 
 // C.mysql_dump_debug_info instructs the server to write debugging information to the error log.
-fn C.mysql_dump_debug_info(mysql &C.MYSQL) int
+fn C.mysql_dump_debug_info(mysql &C.MYSQL) i32
 
 // C.mysql_debug does a `DBUG_PUSH` with the given string.
 fn C.mysql_debug(debug &u8)

@@ -12,9 +12,9 @@ import term
 import os
 import encoding.utf8.east_asian
 
-fn C.raise(sig int)
+fn C.raise(sig i32)
 
-fn C.getppid() int
+fn C.getppid() i32
 
 // Action defines what actions to be executed.
 enum Action {

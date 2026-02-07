@@ -30,11 +30,11 @@ mut:
 	c_ospeed Speed
 }
 
-fn C.tcgetattr(fd int, termios_p &C.termios) int
+fn C.tcgetattr(fd i32, termios_p &C.termios) i32
 
-fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+fn C.tcsetattr(fd i32, optional_actions i32, const_termios_p &C.termios) i32
 
-fn C.ioctl(fd int, request u64, args ...voidptr) int
+fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 
 // flag provides a termios flag of the correct size
 // for the underlying C.termios structure

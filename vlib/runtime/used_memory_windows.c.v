@@ -9,7 +9,7 @@ struct C.PROCESS_MEMORY_COUNTERS {
 	WorkingSetSize isize
 }
 
-fn C.GetProcessMemoryInfo(int, &C.PROCESS_MEMORY_COUNTERS, u64) bool
+fn C.GetProcessMemoryInfo(i32, &C.PROCESS_MEMORY_COUNTERS, u64) bool
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {

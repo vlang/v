@@ -10,28 +10,28 @@ import time
 #include <sys/errno.h>
 
 @[trusted]
-fn C.pthread_mutex_init(voidptr, voidptr) int
-fn C.pthread_mutex_lock(voidptr) int
-fn C.pthread_mutex_trylock(voidptr) int
-fn C.pthread_mutex_unlock(voidptr) int
-fn C.pthread_mutex_destroy(voidptr) int
-fn C.pthread_rwlockattr_init(voidptr) int
-fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
-fn C.pthread_rwlock_init(voidptr, voidptr) int
-fn C.pthread_rwlock_rdlock(voidptr) int
-fn C.pthread_rwlock_wrlock(voidptr) int
-fn C.pthread_rwlock_tryrdlock(voidptr) int
-fn C.pthread_rwlock_trywrlock(voidptr) int
-fn C.pthread_rwlock_unlock(voidptr) int
-fn C.pthread_rwlock_destroy(voidptr) int
-fn C.pthread_condattr_init(voidptr) int
-fn C.pthread_condattr_setpshared(voidptr, int) int
-fn C.pthread_condattr_destroy(voidptr) int
-fn C.pthread_cond_init(voidptr, voidptr) int
-fn C.pthread_cond_signal(voidptr) int
-fn C.pthread_cond_wait(voidptr, voidptr) int
-fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
-fn C.pthread_cond_destroy(voidptr) int
+fn C.pthread_mutex_init(voidptr, voidptr) i32
+fn C.pthread_mutex_lock(voidptr) i32
+fn C.pthread_mutex_trylock(voidptr) i32
+fn C.pthread_mutex_unlock(voidptr) i32
+fn C.pthread_mutex_destroy(voidptr) i32
+fn C.pthread_rwlockattr_init(voidptr) i32
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+fn C.pthread_rwlock_init(voidptr, voidptr) i32
+fn C.pthread_rwlock_rdlock(voidptr) i32
+fn C.pthread_rwlock_wrlock(voidptr) i32
+fn C.pthread_rwlock_tryrdlock(voidptr) i32
+fn C.pthread_rwlock_trywrlock(voidptr) i32
+fn C.pthread_rwlock_unlock(voidptr) i32
+fn C.pthread_rwlock_destroy(voidptr) i32
+fn C.pthread_condattr_init(voidptr) i32
+fn C.pthread_condattr_setpshared(voidptr, i32) i32
+fn C.pthread_condattr_destroy(voidptr) i32
+fn C.pthread_cond_init(voidptr, voidptr) i32
+fn C.pthread_cond_signal(voidptr) i32
+fn C.pthread_cond_wait(voidptr, voidptr) i32
+fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) i32
+fn C.pthread_cond_destroy(voidptr) i32
 
 @[typedef]
 pub struct C.pthread_mutex_t {}

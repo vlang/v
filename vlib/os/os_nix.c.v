@@ -45,26 +45,26 @@ pub const s_iroth = 0o0004 // Read by others
 pub const s_iwoth = 0o0002 // Write by others
 pub const s_ixoth = 0o0001
 
-fn C.utime(&char, &C.utimbuf) int
+fn C.utime(&char, &C.utimbuf) i32
 
-fn C.uname(name &C.utsname) int
+fn C.uname(name &C.utsname) i32
 
-fn C.symlink(&char, &char) int
+fn C.symlink(&char, &char) i32
 
-fn C.readlink(&char, &char, int) int
+fn C.readlink(&char, &char, i32) i32
 
-fn C.link(&char, &char) int
+fn C.link(&char, &char) i32
 
-fn C.gethostname(&char, int) int
+fn C.gethostname(&char, i32) i32
 
 // Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
 
-fn C.getppid() int
+fn C.getppid() i32
 
-fn C.getgid() int
+fn C.getgid() i32
 
-fn C.getegid() int
+fn C.getegid() i32
 
 enum GlobMatch {
 	exact
@@ -441,7 +441,7 @@ pub fn (mut f File) close() {
 	C.fclose(f.cfile)
 }
 
-fn C.mkstemp(stemplate &u8) int
+fn C.mkstemp(stemplate &u8) i32
 
 // ensure_folder_is_writable checks that `folder` exists, and is writable to the process
 // by creating an empty file in it, then deleting it.
@@ -522,7 +522,7 @@ fn get_long_path(path string) !string {
 	return path
 }
 
-fn C.sysconf(name int) i64
+fn C.sysconf(name i32) i64
 
 // page_size returns the page size in bytes.
 pub fn page_size() int {

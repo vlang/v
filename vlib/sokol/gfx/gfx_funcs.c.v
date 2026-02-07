@@ -26,20 +26,20 @@ fn C.sg_destroy_pipeline(pip C.sg_pipeline)
 fn C.sg_destroy_attachments(atts C.sg_attachments)
 fn C.sg_update_buffer(buf C.sg_buffer, data &C.sg_range)
 fn C.sg_update_image(img C.sg_image, data &C.sg_image_data)
-fn C.sg_append_buffer(buf C.sg_buffer, data &C.sg_range) int
+fn C.sg_append_buffer(buf C.sg_buffer, data &C.sg_range) i32
 fn C.sg_query_buffer_overflow(buf C.sg_buffer) bool
 fn C.sg_query_buffer_will_overflow(buf C.sg_buffer, size usize) bool
 
 // rendering functions
 fn C.sg_begin_pass(const_pass &C.sg_pass)
-fn C.sg_apply_viewport(x int, y int, width int, height int, origin_top_left bool)
+fn C.sg_apply_viewport(x i32, y i32, width i32, height i32, origin_top_left bool)
 fn C.sg_apply_viewportf(x f32, y f32, width f32, height f32, origin_top_left bool)
-fn C.sg_apply_scissor_rect(x int, y int, width int, height int, origin_top_left bool)
+fn C.sg_apply_scissor_rect(x i32, y i32, width i32, height i32, origin_top_left bool)
 fn C.sg_apply_scissor_rectf(x f32, y f32, width f32, height f32, origin_top_left bool)
 fn C.sg_apply_pipeline(pip C.sg_pipeline)
 fn C.sg_apply_bindings(bindings &C.sg_bindings)
-fn C.sg_apply_uniforms(stage ShaderStage, ub_index int, const_data &C.sg_range)
-fn C.sg_draw(base_element int, num_elements int, num_instances int)
+fn C.sg_apply_uniforms(stage ShaderStage, ub_index i32, const_data &C.sg_range)
+fn C.sg_draw(base_element i32, num_elements i32, num_instances i32)
 fn C.sg_end_pass()
 fn C.sg_commit()
 

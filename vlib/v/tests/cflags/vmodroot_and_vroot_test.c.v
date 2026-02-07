@@ -5,7 +5,7 @@
 #flag -I@VMODROOT/includes
 #include "myinclude.h"
 
-fn C.add(int, int) int
+fn C.add(i32, i32) i32
 
 // Tests that VROOT works no matter the current folder
 #flag -I @VEXEROOT/thirdparty/stb_image

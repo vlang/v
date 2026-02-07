@@ -13,11 +13,11 @@ pub const rtld_local = C.RTLD_LOCAL
 pub const rtld_nodelete = C.RTLD_NODELETE
 pub const rtld_noload = C.RTLD_NOLOAD
 
-fn C.dlopen(filename &char, flags int) voidptr
+fn C.dlopen(filename &char, flags i32) voidptr
 
 fn C.dlsym(handle voidptr, symbol &char) voidptr
 
-fn C.dlclose(handle voidptr) int
+fn C.dlclose(handle voidptr) i32
 
 fn C.dlerror() &char
 

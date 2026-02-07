@@ -4,21 +4,21 @@ module sapp
 fn C.sapp_isvalid() bool
 
 // returns the current framebuffer width in pixels
-fn C.sapp_width() int
+fn C.sapp_width() i32
 fn C.sapp_widthf() f32
 
 // returns the current framebuffer height in pixels
-fn C.sapp_height() int
+fn C.sapp_height() i32
 fn C.sapp_heightf() f32
 
 // get default framebuffer color pixel format
-fn C.sapp_color_format() int
+fn C.sapp_color_format() i32
 
 // get default framebuffer depth pixel format
-fn C.sapp_depth_format() int
+fn C.sapp_depth_format() i32
 
 // get default framebuffer sample count
-fn C.sapp_sample_count() int
+fn C.sapp_sample_count() i32
 
 // returns true when high_dpi was requested and actually running in a high-dpi scenario
 fn C.sapp_high_dpi() bool
@@ -90,13 +90,13 @@ fn C.sapp_set_window_title(&char)
 // SOKOL_APP_API_DECL void sapp_set_icon(const sapp_icon_desc* icon_desc);
 
 // Get number of dropped files
-fn C.sapp_get_num_dropped_files() int
+fn C.sapp_get_num_dropped_files() i32
 
 // Get the file path of the dropped file
-fn C.sapp_get_dropped_file_path(int) &char
+fn C.sapp_get_dropped_file_path(i32) &char
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
-fn C.sapp_run(desc &Desc) int
+fn C.sapp_run(desc &Desc) i32
 
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box
 fn C.sapp_html5_ask_leave_site(ask bool)

@@ -94,48 +94,48 @@ pub mut:
 pub type Params = []string | [][]string
 
 //
-fn C.sqlite3_open(&char, &&C.sqlite3) int
+fn C.sqlite3_open(&char, &&C.sqlite3) i32
 
-fn C.sqlite3_close(&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) i32
 
-fn C.sqlite3_busy_timeout(db &C.sqlite3, ms int) int
+fn C.sqlite3_busy_timeout(db &C.sqlite3, ms i32) i32
 
 fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 
 //
-fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, i32, &&C.sqlite3_stmt, &&char) i32
 
-fn C.sqlite3_step(&C.sqlite3_stmt) int
+fn C.sqlite3_step(&C.sqlite3_stmt) i32
 
-fn C.sqlite3_reset(&C.sqlite3_stmt) int
+fn C.sqlite3_reset(&C.sqlite3_stmt) i32
 
-fn C.sqlite3_finalize(&C.sqlite3_stmt) int
-
-//
-fn C.sqlite3_column_name(&C.sqlite3_stmt, int) &char
-
-fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &u8
-
-fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) i64
-
-fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
-
-fn C.sqlite3_column_count(&C.sqlite3_stmt) int
-
-fn C.sqlite3_column_type(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_bytes(&C.sqlite3_stmt, int) int
+fn C.sqlite3_finalize(&C.sqlite3_stmt) i32
 
 //
-fn C.sqlite3_errstr(int) &char
+fn C.sqlite3_column_name(&C.sqlite3_stmt, i32) &char
+
+fn C.sqlite3_column_text(&C.sqlite3_stmt, i32) &u8
+
+fn C.sqlite3_column_int(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, i32) i64
+
+fn C.sqlite3_column_double(&C.sqlite3_stmt, i32) f64
+
+fn C.sqlite3_column_count(&C.sqlite3_stmt) i32
+
+fn C.sqlite3_column_type(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_bytes(&C.sqlite3_stmt, i32) i32
+
+//
+fn C.sqlite3_errstr(i32) &char
 
 fn C.sqlite3_errmsg(&C.sqlite3) &char
 
 fn C.sqlite3_free(voidptr)
 
-fn C.sqlite3_changes(&C.sqlite3) int
+fn C.sqlite3_changes(&C.sqlite3) i32
 
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {

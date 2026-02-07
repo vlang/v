@@ -152,9 +152,9 @@ pub enum ExecStatusType {
 
 fn C.PQconnectdb(const_conninfo &char) &C.PGconn
 
-fn C.PQstatus(const_conn &C.PGconn) int
+fn C.PQstatus(const_conn &C.PGconn) i32
 
-fn C.PQtransactionStatus(const_conn &C.PGconn) int
+fn C.PQtransactionStatus(const_conn &C.PGconn) i32
 
 fn C.PQerrorMessage(const_conn &C.PGconn) &char
 
@@ -162,36 +162,36 @@ fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
 
 //
 
-fn C.PQgetisnull(const_res &C.PGresult, int, int) int
+fn C.PQgetisnull(const_res &C.PGresult, i32, i32) i32
 
-fn C.PQgetvalue(const_res &C.PGresult, int, int) &char
+fn C.PQgetvalue(const_res &C.PGresult, i32, i32) &char
 
-fn C.PQresultStatus(const_res &C.PGresult) int
+fn C.PQresultStatus(const_res &C.PGresult) i32
 
-fn C.PQntuples(const_res &C.PGresult) int
+fn C.PQntuples(const_res &C.PGresult) i32
 
-fn C.PQnfields(const_res &C.PGresult) int
+fn C.PQnfields(const_res &C.PGresult) i32
 
-fn C.PQfname(const_res &C.PGresult, int) &char
+fn C.PQfname(const_res &C.PGresult, i32) &char
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
-fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes int) int
+fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
-fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) int
+fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) i32
 
-fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async int) int
+fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 
-fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams int, const_param_types &&char) &C.PGresult
+fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
-fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -204,9 +204,9 @@ fn C.PQfinish(conn &C.PGconn)
 // LISTEN/NOTIFY support
 fn C.PQnotifies(conn &C.PGconn) &C.PGnotify
 
-fn C.PQconsumeInput(conn &C.PGconn) int
+fn C.PQconsumeInput(conn &C.PGconn) i32
 
-fn C.PQsocket(conn &C.PGconn) int
+fn C.PQsocket(conn &C.PGconn) i32
 
 fn C.PQescapeLiteral(conn &C.PGconn, str &char, length usize) &char
 

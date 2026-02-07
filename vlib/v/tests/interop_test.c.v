@@ -3,7 +3,7 @@
 
 struct Foo {}
 
-fn C.a(a string, b int) f32
+fn C.a(a string, b i32) f32
 fn C.b(a &voidptr)
 fn C.c(a string, b ...string) string
 fn C.d(a ...int)

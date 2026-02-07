@@ -1,6 +1,6 @@
 module os
 
-fn C.setpgid(pid int, pgid int) int
+fn C.setpgid(pid i32, pgid i32) i32
 
 fn (mut p Process) unix_spawn_process() int {
 	mut pipeset := [6]int{}

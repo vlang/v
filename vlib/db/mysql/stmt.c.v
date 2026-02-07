@@ -47,9 +47,9 @@ const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
 const mysql_no_data = C.MYSQL_NO_DATA
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
-fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) int
+fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) i32
 fn C.mysql_stmt_bind_param(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
-fn C.mysql_stmt_execute(&C.MYSQL_STMT) int
+fn C.mysql_stmt_execute(&C.MYSQL_STMT) i32
 fn C.mysql_stmt_close(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_free_result(&C.MYSQL_STMT) bool
 fn C.mysql_stmt_error(&C.MYSQL_STMT) &char
@@ -57,10 +57,10 @@ fn C.mysql_stmt_result_metadata(&C.MYSQL_STMT) &C.MYSQL_RES
 
 fn C.mysql_stmt_field_count(&C.MYSQL_STMT) u16
 fn C.mysql_stmt_bind_result(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
-fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
-fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
-fn C.mysql_stmt_store_result(&C.MYSQL_STMT) int
-fn C.mysql_stmt_fetch_column(&C.MYSQL_STMT, &C.MYSQL_BIND, u32, u64) int
+fn C.mysql_stmt_fetch(&C.MYSQL_STMT) i32
+fn C.mysql_stmt_next_result(&C.MYSQL_STMT) i32
+fn C.mysql_stmt_store_result(&C.MYSQL_STMT) i32
+fn C.mysql_stmt_fetch_column(&C.MYSQL_STMT, &C.MYSQL_BIND, u32, u64) i32
 
 pub struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })

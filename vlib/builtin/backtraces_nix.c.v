@@ -37,7 +37,7 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 	}
 }
 
-fn C.tcc_backtrace(fmt &char) int
+fn C.tcc_backtrace(fmt &char) i32
 @[direct_array_access]
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {

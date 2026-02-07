@@ -18,11 +18,11 @@ union C.epoll_data_t {
 	u64 u64
 }
 
-fn C.epoll_create1(int) int
+fn C.epoll_create1(i32) i32
 
-fn C.epoll_ctl(int, int, int, &C.epoll_event) int
+fn C.epoll_ctl(i32, i32, i32, &C.epoll_event) i32
 
-fn C.epoll_wait(int, &C.epoll_event, int, int) int
+fn C.epoll_wait(i32, &C.epoll_event, i32, i32) i32
 
 // EpollNotifier provides methods that implement FdNotifier using the
 // epoll I/O event notification facility (linux only)

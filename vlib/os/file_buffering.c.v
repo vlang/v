@@ -1,6 +1,6 @@
 module os
 
-fn C.setvbuf(stream &C.FILE, buffer &char, mode int, size usize) int
+fn C.setvbuf(stream &C.FILE, buffer &char, mode i32, size usize) i32
 
 // FileBufferMode describes the available buffering modes for an os.File: unbuffered, line buffered and block/fully buffered.
 // Normally all files are block buffered. If a stream refers to a terminal (as stdout normally does), it is line buffered.

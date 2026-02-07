@@ -7,17 +7,17 @@ import net
 #include <sys/stat.h>
 #include <netinet/tcp.h>
 
-fn C.accept4(sockfd int, addr &net.Addr, addrlen &u32, flags int) int
+fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
 
-fn C.epoll_create1(__flags int) int
+fn C.epoll_create1(__flags i32) i32
 
-fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
+fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
 
-fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
+fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
 
-fn C.sendfile(out_fd int, in_fd int, offset &i64, count usize) int
+fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
-fn C.fstat(fd int, buf &C.stat) int
+fn C.fstat(fd i32, buf &C.stat) i32
 
 @[typedef]
 union C.epoll_data_t {

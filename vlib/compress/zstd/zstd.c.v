@@ -18,19 +18,19 @@ const buf_out_size = 1024 * 1024
 fn C.ZSTD_versionNumber() u32
 fn C.ZSTD_versionString() charptr
 
-fn C.ZSTD_compress(voidptr, usize, voidptr, usize, int) usize
+fn C.ZSTD_compress(voidptr, usize, voidptr, usize, i32) usize
 fn C.ZSTD_decompress(voidptr, usize, voidptr, usize) usize
 fn C.ZSTD_getFrameContentSize(voidptr, usize) u64
 fn C.ZSTD_findFrameCompressedSize(voidptr, usize) usize
 fn C.ZSTD_compressBound(usize) usize
 fn C.ZSTD_isError(usize) u32
 fn C.ZSTD_getErrorName(usize) charptr
-fn C.ZSTD_minCLevel() int
-fn C.ZSTD_maxCLevel() int
-fn C.ZSTD_defaultCLevel() int
+fn C.ZSTD_minCLevel() i32
+fn C.ZSTD_maxCLevel() i32
+fn C.ZSTD_defaultCLevel() i32
 fn C.ZSTD_createCCtx() &C.ZSTD_CCtx
 fn C.ZSTD_freeCCtx(voidptr) usize
-fn C.ZSTD_compressCCtx(voidptr, voidptr, usize, voidptr, usize, int) usize
+fn C.ZSTD_compressCCtx(voidptr, voidptr, usize, voidptr, usize, i32) usize
 fn C.ZSTD_createDCtx() &C.ZSTD_DCtx
 fn C.ZSTD_freeDCtx(voidptr) usize
 fn C.ZSTD_decompressDCtx(voidptr, voidptr, usize, voidptr, usize) usize
@@ -268,7 +268,7 @@ pub:
 }
 
 fn C.ZSTD_cParam_getBounds(CParameter) Bounds
-fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, int) usize
+fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, i32) usize
 fn C.ZSTD_CCtx_setPledgedSrcSize(voidptr, u64) usize
 
 pub enum ResetDirective {
@@ -307,7 +307,7 @@ pub enum DParameter {
 }
 
 fn C.ZSTD_dParam_getBounds(DParameter) Bounds
-fn C.ZSTD_DCtx_setParameter(voidptr, DParameter, int) usize
+fn C.ZSTD_DCtx_setParameter(voidptr, DParameter, i32) usize
 fn C.ZSTD_DCtx_reset(voidptr, ResetDirective) usize
 
 // streaming compression
@@ -347,7 +347,7 @@ pub enum EndDirective {
 fn C.ZSTD_compressStream2(voidptr, &OutBuffer, &InBuffer, EndDirective) usize
 fn C.ZSTD_CStreamInSize() usize
 fn C.ZSTD_CStreamOutSize() usize
-fn C.ZSTD_initCStream(voidptr, int) usize
+fn C.ZSTD_initCStream(voidptr, i32) usize
 fn C.ZSTD_compressStream(voidptr, &OutBuffer, &InBuffer) usize
 fn C.ZSTD_flushStream(voidptr, &OutBuffer) usize
 fn C.ZSTD_endStream(voidptr, &OutBuffer) usize

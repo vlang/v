@@ -4,7 +4,7 @@ struct C.task_basic_info {
 	resident_size u64
 }
 
-fn C.task_info(C.task_t, int, &C.task_basic_info, &u64) int
+fn C.task_info(C.task_t, i32, &C.task_basic_info, &u64) i32
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {

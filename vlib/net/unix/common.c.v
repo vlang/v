@@ -13,7 +13,7 @@ const no_timeout = time.Duration(0)
 // only ever return with data)
 const infinite_timeout = time.infinite
 
-fn C.strncpy(&char, &char, int)
+fn C.strncpy(&char, &char, i32)
 
 // close a socket, given its file descriptor `handle`.
 pub fn close(handle int) ! {

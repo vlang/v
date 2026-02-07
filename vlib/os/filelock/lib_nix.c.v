@@ -2,9 +2,9 @@ module filelock
 
 #include <sys/file.h>
 
-fn C.unlink(&char) int
-fn C.open(&char, int, int) int
-fn C.flock(int, int) int
+fn C.unlink(&char) i32
+fn C.open(&char, i32, i32) i32
+fn C.flock(i32, i32) i32
 
 @[unsafe]
 pub fn (mut l FileLock) unlink() {

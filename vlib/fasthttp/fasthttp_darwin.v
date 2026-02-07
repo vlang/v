@@ -12,12 +12,12 @@ const buf_size = max_connection_size
 const kqueue_max_events = 128
 const backlog = max_connection_size
 
-fn C.kevent(kq int, changelist &C.kevent, nchanges int, eventlist &C.kevent, nevents int, timeout &C.timespec) int
-fn C.kqueue() int
-fn C.fstat(fd int, buf &C.stat) int
+fn C.kevent(kq i32, changelist &C.kevent, nchanges i32, eventlist &C.kevent, nevents i32, timeout &C.timespec) i32
+fn C.kqueue() i32
+fn C.fstat(fd i32, buf &C.stat) i32
 
 // int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
-fn C.sendfile(fd int, s int, offset i64, len &i64, hdtr voidptr, flags int) int
+fn C.sendfile(fd i32, s i32, offset i64, len &i64, hdtr voidptr, flags i32) i32
 
 struct C.kevent {
 	ident  u64

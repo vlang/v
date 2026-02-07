@@ -1,6 +1,6 @@
 module veb
 
-fn C.sendfile(in_fd int, out_fd int, offset int, count int, voidptr offsetp, voidptr hdr, flags int) int
+fn C.sendfile(in_fd i32, out_fd i32, offset i32, count i32, voidptr offsetp, voidptr hdr, flags i32) i32
 
 fn sendfile(out_fd int, in_fd int, nr_bytes int) int {
 	// out_fd must be a stream socket descriptor.
