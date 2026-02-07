@@ -314,6 +314,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	table.used_features.used_globals = walker.used_globals.move()
 	table.used_features.used_syms = walker.used_syms.move()
 	table.used_features.used_closures = walker.used_closures
+	table.used_features.used_str = walker.uses_str.move()
 
 	if trace_skip_unused {
 		eprintln('>> t.used_fns: ${table.used_features.used_fns.keys()}')
