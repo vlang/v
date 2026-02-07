@@ -9,7 +9,7 @@ pub struct C.MyStruct {
 	UppercaseField int
 }
 
-fn C.cadd(int, int) int
+fn C.cadd(i32, i32) i32
 
 pub fn vadd(a int, b int) int {
 	x := C.MyStruct{100}

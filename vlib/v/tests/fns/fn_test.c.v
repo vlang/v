@@ -51,11 +51,11 @@ interface MyInterface {}
 
 type F9 = fn (MyInterface)
 
-fn C.atoi(&u8) int
+fn C.atoi(&u8) i32
 fn C.freec(ptr voidptr)
 
 @[trusted]
-fn C.exitc(code int)
+fn C.exitc(code i32)
 
 // above checks attribute doesn't conflict with `freec` return type
 

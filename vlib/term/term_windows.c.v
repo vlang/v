@@ -166,8 +166,8 @@ pub fn enable_echo(enable bool) {
 }
 
 fn C.kbhit() bool
-fn C._getch() int
-fn C._getche() int
+fn C._getch() i32
+fn C._getche() i32
 
 // KeyPressedParams contains the optional parameters that you can pass to key_pressed.
 @[params]

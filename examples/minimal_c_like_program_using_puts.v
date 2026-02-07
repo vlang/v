@@ -6,7 +6,7 @@ module no_main
 // With clang-10, on Ubuntu 20.04, it produces an executable with a size of 2331 bytes, after stripping.
 // Note: the above uses sstrip 2.1 (from https://git.sr.ht/~breadbox/ELFkickers) and mold 2.32.0 (from https://github.com/rui314/mold).
 
-fn C.puts(const_msg &char) int
+fn C.puts(const_msg &char) i32
 
 @[export: 'main']
 fn hello() int {

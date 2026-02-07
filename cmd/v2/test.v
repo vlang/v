@@ -354,7 +354,7 @@ fn print_str(s string) {
 }
 
 // C function with keyword name (tests parser allowing keywords after C.)
-fn C.select(ndfs int, readfds voidptr, writefds voidptr, exceptfds voidptr, timeout voidptr) int
+fn C.select(ndfs i32, readfds voidptr, writefds voidptr, exceptfds voidptr, timeout voidptr) i32
 
 fn nested_return(x int) int {
 	if x < 10 {

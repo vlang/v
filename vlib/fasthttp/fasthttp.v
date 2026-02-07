@@ -22,25 +22,25 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol int) int
+fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol i32) i32
 
-fn C.bind(sockfd int, addr &net.Addr, addrlen u32) int
+fn C.bind(sockfd i32, addr &net.Addr, addrlen u32) i32
 
-fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
+fn C.send(__fd i32, __buf voidptr, __n usize, __flags i32) i32
 
-fn C.recv(__fd int, __buf voidptr, __n usize, __flags int) int
+fn C.recv(__fd i32, __buf voidptr, __n usize, __flags i32) i32
 
-fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen u32) int
+fn C.setsockopt(__fd i32, __level i32, __optname i32, __optval voidptr, __optlen u32) i32
 
-fn C.listen(__fd int, __n int) int
+fn C.listen(__fd i32, __n i32) i32
 
 fn C.perror(s &u8)
 
-fn C.close(fd int) int
+fn C.close(fd i32) i32
 
 fn C.htons(__hostshort u16) u16
 
-fn C.fcntl(fd int, cmd int, arg int) int
+fn C.fcntl(fd i32, cmd i32, arg i32) i32
 
 pub struct Slice {
 pub:

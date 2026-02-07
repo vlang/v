@@ -27,9 +27,9 @@ struct C.XRRCrtcInfo {
 	height u32
 }
 
-fn C.XOpenDisplay(int) voidptr
-fn C.XCloseDisplay(voidptr) int
-fn C.DefaultScreen(voidptr) int
+fn C.XOpenDisplay(i32) voidptr
+fn C.XCloseDisplay(voidptr) i32
+fn C.DefaultScreen(voidptr) i32
 fn C.DefaultRootWindow(voidptr) u64
 fn C.XRRGetScreenResources(voidptr, u64) &C.XRRScreenResources
 fn C.XRRGetOutputPrimary(voidptr, u64) u64
@@ -52,7 +52,7 @@ $if windows {
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 
 // call Windows API to get screen size
-fn C.GetSystemMetrics(int) int
+fn C.GetSystemMetrics(i32) i32
 
 pub type TouchPoint = C.sapp_touchpoint
 
