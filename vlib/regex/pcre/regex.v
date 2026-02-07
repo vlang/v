@@ -113,11 +113,14 @@ pub:
 }
 
 // --- AST Nodes ---
+
+// Quantifier represents a repetition range.
 struct Quantifier {
 	min int
 	max int // -1 for infinity
 }
 
+// Flags holds the current state of regex options.
 struct Flags {
 mut:
 	ignore_case bool
@@ -125,6 +128,7 @@ mut:
 	dot_all     bool
 }
 
+// NodeType defines the specific type of an AST node.
 enum NodeType {
 	chr
 	any_char
@@ -145,6 +149,7 @@ enum NodeType {
 	uppercase_char // \A
 }
 
+// Node represents a component in the regex Abstract Syntax Tree.
 struct Node {
 mut:
 	typ                 NodeType
@@ -166,14 +171,17 @@ mut:
 *
 ******************************************************************************/
 
+// is_word_char checks if a rune is a word character (alphanumeric or underscore).
 fn is_word_char(r rune) bool {
 	return (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) || (r >= `0` && r <= `9`) || r == `_`
 }
 
+// is_whitespace checks if a rune is a whitespace character.
 fn is_whitespace(r rune) bool {
 	return r in [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
 }
 
+// read_rune decodes the next UTF-8 character from the string at the given index.
 @[inline]
 pub fn read_rune(s string, index int) (rune, int) {
 	if index < s.len {
@@ -213,6 +221,7 @@ pub fn read_rune(s string, index int) (rune, int) {
 *
 ******************************************************************************/
 
+// compile parses a pattern string and returns a compiled Regex struct.
 pub fn compile(pattern string) !Regex {
 	start_pos := 0
 	start_group_counter := 0
@@ -252,17 +261,20 @@ pub fn compile(pattern string) !Regex {
 	}
 }
 
+// Compiler manages the state of the bytecode generation process.
 struct Compiler {
 mut:
 	prog      []Inst
 	group_cnt int
 }
 
+// emit adds an instruction to the program and returns its index.
 fn (mut c Compiler) emit(i Inst) int {
 	c.prog << i
 	return c.prog.len - 1
 }
 
+// emit_node generates VM instructions for a given AST node.
 fn (mut c Compiler) emit_node(node Node) {
 	for _ in 0 .. node.quant.min {
 		c.emit_single_node_logic(node)
@@ -297,6 +309,7 @@ fn (mut c Compiler) emit_node(node Node) {
 	}
 }
 
+// emit_single_node_logic handles the core logic for a node type without quantifiers.
 fn (mut c Compiler) emit_single_node_logic(node Node) {
 	match node.typ {
 		.chr {
@@ -404,6 +417,8 @@ fn (mut c Compiler) emit_single_node_logic(node Node) {
 }
 
 // --- Parser ---
+
+// parse_nodes parses the pattern string into a list of AST nodes.
 fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_start int, passed_flags Flags, mut group_map map[string]int) !([]Node, int, int) {
 	mut pos := pos_start
 	mut group_counter := group_counter_start
@@ -745,6 +760,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 *
 ******************************************************************************/
 
+// vm_match executes the compiled bytecode against the text starting at start_pos.
 fn (r Regex) vm_match(text string, start_pos int) ?Match {
 	mut stack := []Thread{cap: 32}
 
@@ -1032,6 +1048,7 @@ fn (r Regex) vm_match(text string, start_pos int) ?Match {
 	return none
 }
 
+// fullmatch checks if the entire input text matches the regex pattern.
 pub fn (r Regex) fullmatch(text string) ?Match {
 	if res := r.vm_match(text, 0) {
 		if res.end == text.len {
@@ -1041,6 +1058,8 @@ pub fn (r Regex) fullmatch(text string) ?Match {
 	return none
 }
 
+// replace finds the first match in text and replaces it with repl.
+// Supports $1, $2, etc. in repl for group substitution.
 pub fn (r Regex) replace(text string, repl string) string {
 	match_res := r.find(text) or { return text }
 	mut sb := strings.new_builder(text.len)
@@ -1062,6 +1081,7 @@ pub fn (r Regex) replace(text string, repl string) string {
 	return sb.str()
 }
 
+// group_by_name retrieves the captured text for a named group from a Match.
 pub fn (r Regex) group_by_name(m Match, name string) string {
 	if idx := r.group_map[name] {
 		if idx >= 0 && idx < m.groups.len {
@@ -1122,6 +1142,7 @@ pub fn (r Regex) find_all(text string) []Match {
 	return matches
 }
 
+// find_from finds the first match starting search from a specific index.
 pub fn (r Regex) find_from(text string, start_index int) ?Match {
 	if start_index < 0 || start_index > text.len {
 		return none
