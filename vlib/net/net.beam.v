@@ -280,33 +280,65 @@ pub mut:
 }
 
 // close closes the TCP connection
+// BEAM codegen: gen_tcp:close(Socket)
+// Requires codegen interception to call Erlang's gen_tcp:close/1
 pub fn (mut c TcpConn) close() ! {
-	// BEAM backend: placeholder
+	// On BEAM, the actual socket handle would be an Erlang port reference
+	// stored in c.handle. Codegen translates this to gen_tcp:close(Socket).
+	// Without codegen, this is a no-op that clears the handle.
+	c.handle = -1
 }
 
-// read reads data from the connection
+// read reads data from the connection into the provided buffer.
+// Returns the number of bytes read.
+// BEAM codegen: gen_tcp:recv(Socket, 0, Timeout) -> {ok, Data} | {error, Reason}
+// Requires codegen interception to call Erlang's gen_tcp:recv/3
 pub fn (c TcpConn) read(mut buf []u8) !int {
-	return error('TcpConn.read not implemented for BEAM backend')
+	// On BEAM, this becomes:
+	//   Timeout = case ReadTimeout of 0 -> infinity; T -> T end,
+	//   case gen_tcp:recv(Socket, 0, Timeout) of
+	//       {ok, Data} -> copy Data into buf, return byte count;
+	//       {error, closed} -> return 0;
+	//       {error, Reason} -> error(Reason)
+	//   end
+	return error('TcpConn.read requires codegen interception (gen_tcp:recv)')
 }
 
-// read_ptr reads data from the connection into a pointer
+// read_ptr reads data from the connection into a raw pointer buffer.
+// BEAM note: Raw pointer operations are not idiomatic on BEAM.
+// This delegates to the buffer-based read when codegen is available.
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
-	return error('TcpConn.read_ptr not implemented for BEAM backend')
+	return error('TcpConn.read_ptr requires codegen interception (gen_tcp:recv)')
 }
 
-// write writes data to the connection
+// write writes data to the connection.
+// Returns the number of bytes written.
+// BEAM codegen: gen_tcp:send(Socket, Data) -> ok | {error, Reason}
+// Requires codegen interception to call Erlang's gen_tcp:send/2
 pub fn (mut c TcpConn) write(bytes []u8) !int {
-	return error('TcpConn.write not implemented for BEAM backend')
+	// On BEAM, this becomes:
+	//   case gen_tcp:send(Socket, list_to_binary(Bytes)) of
+	//       ok -> byte_size(Data);
+	//       {error, Reason} -> error(Reason)
+	//   end
+	return error('TcpConn.write requires codegen interception (gen_tcp:send)')
 }
 
-// write_string writes a string to the connection
+// write_string writes a string to the connection.
+// BEAM codegen: gen_tcp:send(Socket, Binary)
 pub fn (mut c TcpConn) write_string(s string) !int {
-	return error('TcpConn.write_string not implemented for BEAM backend')
+	// On BEAM, strings are already binaries, so this is efficient:
+	//   case gen_tcp:send(Socket, S) of
+	//       ok -> byte_size(S);
+	//       {error, Reason} -> error(Reason)
+	//   end
+	return error('TcpConn.write_string requires codegen interception (gen_tcp:send)')
 }
 
-// write_ptr writes raw bytes to the connection
+// write_ptr writes raw bytes from a pointer to the connection.
+// BEAM note: Raw pointer operations are not idiomatic on BEAM.
 pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
-	return error('TcpConn.write_ptr not implemented for BEAM backend')
+	return error('TcpConn.write_ptr requires codegen interception (gen_tcp:send)')
 }
 
 // read_deadline returns the read deadline
@@ -354,8 +386,10 @@ pub fn (mut c TcpConn) set_sock() ! {
 	// BEAM: no-op stub
 }
 
-// peer_addr retrieves the peer address
+// peer_addr retrieves the peer address.
+// BEAM codegen: inet:peername(Socket) -> {ok, {Addr, Port}} | {error, Reason}
 pub fn (c &TcpConn) peer_addr() !Addr {
+	// Requires codegen: inet:peername(Socket)
 	return Addr{}
 }
 
@@ -365,14 +399,16 @@ pub fn (c &TcpConn) peer_ip() !string {
 	return addr.str()
 }
 
-// addr retrieves the local address
+// addr retrieves the local address.
+// BEAM codegen: inet:sockname(Socket) -> {ok, {Addr, Port}} | {error, Reason}
 pub fn (c &TcpConn) addr() !Addr {
+	// Requires codegen: inet:sockname(Socket)
 	return Addr{}
 }
 
-// str returns a string representation
+// str returns a string representation of the TCP connection
 pub fn (c TcpConn) str() string {
-	return 'TcpConn{}'
+	return 'TcpConn{handle: ${c.handle}, blocking: ${c.is_blocking}}'
 }
 
 // set_read_timeout sets the read timeout
@@ -397,43 +433,58 @@ mut:
 }
 
 // close closes the UDP connection
+// BEAM codegen: gen_udp:close(Socket)
 pub fn (mut c UdpConn) close() ! {
-	// BEAM backend: placeholder
+	// On BEAM, codegen translates to gen_udp:close(Socket)
 }
 
-// read reads data from the connection
+// read reads data from the UDP connection.
+// Returns the number of bytes read and the source address.
+// BEAM codegen: gen_udp:recv(Socket, 0, Timeout) -> {ok, {Addr, Port, Data}} | {error, Reason}
 pub fn (mut c UdpConn) read(mut buf []u8) !(int, Addr) {
-	return error('UdpConn.read not implemented for BEAM backend')
+	return error('UdpConn.read requires codegen interception (gen_udp:recv)')
 }
 
-// write writes data to the connection
+// write writes data to the connected UDP peer.
+// BEAM codegen: gen_udp:send(Socket, Data)
 pub fn (mut c UdpConn) write(buf []u8) !int {
-	return error('UdpConn.write not implemented for BEAM backend')
+	if !c.sock.has_r {
+		return err_no_udp_remote
+	}
+	return error('UdpConn.write requires codegen interception (gen_udp:send)')
 }
 
 // write_to_ptr writes raw data to a specific address
+// BEAM note: Raw pointer operations are not idiomatic on BEAM.
 pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &u8, len int) !int {
-	return error('UdpConn.write_to_ptr not implemented for BEAM backend')
+	return error('UdpConn.write_to_ptr requires codegen interception (gen_udp:send)')
 }
 
-// write_to writes the buffer to the specified address
+// write_to writes the buffer to the specified address.
+// BEAM codegen: gen_udp:send(Socket, Addr, Port, Data)
 pub fn (mut c UdpConn) write_to(addr Addr, buf []u8) !int {
-	return error('UdpConn.write_to not implemented for BEAM backend')
+	return error('UdpConn.write_to requires codegen interception (gen_udp:send)')
 }
 
-// write_to_string writes a string to the specified address
+// write_to_string writes a string to the specified address.
+// BEAM codegen: gen_udp:send(Socket, Addr, Port, Binary)
 pub fn (mut c UdpConn) write_to_string(addr Addr, s string) !int {
-	return error('UdpConn.write_to_string not implemented for BEAM backend')
+	return error('UdpConn.write_to_string requires codegen interception (gen_udp:send)')
 }
 
-// write_string writes a string to the connection
+// write_string writes a string to the connected UDP peer.
+// BEAM codegen: gen_udp:send(Socket, Binary)
 pub fn (mut c UdpConn) write_string(s string) !int {
-	return error('UdpConn.write_string not implemented for BEAM backend')
+	if !c.sock.has_r {
+		return err_no_udp_remote
+	}
+	return error('UdpConn.write_string requires codegen interception (gen_udp:send)')
 }
 
 // str returns a string representation
 pub fn (c &UdpConn) str() string {
-	return 'UdpConn'
+	s := if c.sock.has_r { c.sock.r.str() } else { 'unconnected' }
+	return 'UdpConn(${s})'
 }
 
 // TcpListener represents a TCP listener
@@ -445,14 +496,24 @@ pub mut:
 	is_blocking     bool = true
 }
 
-// accept accepts a connection
+// accept accepts a connection and sets default socket options.
+// BEAM codegen: gen_tcp:accept(ListenSocket, Timeout) -> {ok, Socket} | {error, Reason}
 pub fn (mut l TcpListener) accept() !&TcpConn {
-	return error('TcpListener.accept not implemented for BEAM backend')
+	// On BEAM, this becomes:
+	//   Timeout = case AcceptTimeout of 0 -> infinity; T -> T end,
+	//   case gen_tcp:accept(ListenSocket, Timeout) of
+	//       {ok, Socket} ->
+	//           inet:setopts(Socket, [{active, false}, {packet, raw}, binary]),
+	//           #{'v.net.TcpConn' => #{sock => Socket, ...}};
+	//       {error, Reason} -> error(Reason)
+	//   end
+	return error('TcpListener.accept requires codegen interception (gen_tcp:accept)')
 }
 
-// accept_only accepts a connection (without setting options)
+// accept_only accepts a connection without setting additional options.
+// BEAM codegen: gen_tcp:accept(ListenSocket, Timeout)
 pub fn (mut l TcpListener) accept_only() !&TcpConn {
-	return error('TcpListener.accept_only not implemented for BEAM backend')
+	return error('TcpListener.accept_only requires codegen interception (gen_tcp:accept)')
 }
 
 // accept_deadline returns the accept deadline
@@ -480,9 +541,10 @@ pub fn (mut c TcpListener) wait_for_accept() ! {
 	// BEAM: no-op stub
 }
 
-// close closes the listener
+// close closes the listening socket.
+// BEAM codegen: gen_tcp:close(ListenSocket)
 pub fn (mut c TcpListener) close() ! {
-	// BEAM backend: placeholder
+	// On BEAM, codegen translates to gen_tcp:close(ListenSocket)
 }
 
 // addr retrieves the local address
@@ -510,9 +572,15 @@ pub fn default_tcp_dialer() Dialer {
 	return &TCPDialer{}
 }
 
-// new_tcp_socket creates a new TCP socket
+// new_tcp_socket creates a new TCP socket.
+// BEAM note: On BEAM, sockets are created implicitly by gen_tcp:connect or gen_tcp:listen.
+// This function returns a placeholder socket; the real Erlang socket is created during dial/listen.
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
-	return error('new_tcp_socket not implemented for BEAM backend')
+	return TcpSocket{
+		Socket: Socket{
+			handle: 0
+		}
+	}
 }
 
 // tcp_socket_from_handle_raw creates a TcpSocket from a raw file descriptor
@@ -524,29 +592,73 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	}
 }
 
-// dial_tcp creates a new TCP connection to the given address
+// dial_tcp creates a new TCP connection to the given address (host:port).
+// BEAM codegen:
+//   {Host, Port} = split_address(Address),
+//   case gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}], Timeout) of
+//       {ok, Socket} -> TcpConn#{sock => Socket, ...};
+//       {error, econnrefused} -> error("connection refused");
+//       {error, timeout} -> error("connect timed out");
+//       {error, Reason} -> error(Reason)
+//   end
 pub fn dial_tcp(address string) !&TcpConn {
-	return error('dial_tcp not implemented for BEAM backend')
+	// Validate the address format
+	host, port := split_address(address)!
+	if host.len == 0 {
+		return error('dial_tcp: empty host')
+	}
+	if port == 0 {
+		return error('dial_tcp: port 0 is not valid for TCP')
+	}
+	// The actual gen_tcp:connect call requires codegen interception.
+	// The address parsing above is real V logic; the connection is Erlang.
+	return error('dial_tcp requires codegen interception (gen_tcp:connect) for ${host}:${port}')
 }
 
-// dial_tcp_with_bind creates a new TCP connection with local address binding
+// dial_tcp_with_bind creates a new TCP connection with local address binding.
+// BEAM codegen: gen_tcp:connect with {ip, LocalAddr} option
 pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
-	return error('dial_tcp_with_bind not implemented for BEAM backend')
+	_, _ := split_address(saddr)!
+	_, _ := split_address(laddr)!
+	return error('dial_tcp_with_bind requires codegen interception (gen_tcp:connect with bind)')
 }
 
-// listen_tcp starts listening on the given address
+// listen_tcp starts listening on the given address.
+// BEAM codegen:
+//   {_Host, Port} = split_address(Address),
+//   case gen_tcp:listen(Port, [binary, {active, false}, {packet, raw},
+//                              {reuseaddr, true}, {backlog, Backlog}]) of
+//       {ok, ListenSocket} -> TcpListener#{sock => ListenSocket, ...};
+//       {error, Reason} -> error(Reason)
+//   end
 pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
-	return error('listen_tcp not implemented for BEAM backend')
+	_, port := split_address(saddr)!
+	if port == 0 {
+		return error('listen_tcp: port 0 is not valid')
+	}
+	return error('listen_tcp requires codegen interception (gen_tcp:listen) for port ${port}')
 }
 
-// listen_udp starts listening for UDP on the given address
+// listen_udp starts listening for UDP on the given address.
+// BEAM codegen:
+//   {_Host, Port} = split_address(Address),
+//   case gen_udp:open(Port, [binary, {active, false}]) of
+//       {ok, Socket} -> UdpConn#{sock => Socket, ...};
+//       {error, Reason} -> error(Reason)
+//   end
 pub fn listen_udp(laddr string) !&UdpConn {
-	return error('listen_udp not implemented for BEAM backend')
+	_, _ := split_address(laddr)!
+	return error('listen_udp requires codegen interception (gen_udp:open)')
 }
 
-// dial_udp creates a new UDP connection
+// dial_udp creates a new UDP connection to the given address.
+// BEAM codegen:
+//   {Host, Port} = split_address(Address),
+//   {ok, Socket} = gen_udp:open(0, [binary, {active, false}]),
+//   gen_udp:connect(Socket, Host, Port)
 pub fn dial_udp(raddr string) !&UdpConn {
-	return error('dial_udp not implemented for BEAM backend')
+	_, _ := split_address(raddr)!
+	return error('dial_udp requires codegen interception (gen_udp:open + gen_udp:connect)')
 }
 
 // new_ip creates a new IPv4 address
@@ -573,14 +685,71 @@ pub fn new_ip6(port u16, addr [16]u8) Addr {
 	}
 }
 
-// resolve_addrs resolves an address string to a list of addresses
+// resolve_addrs resolves an address string to a list of addresses.
+// BEAM codegen: inet:gethostbyname(Host, Family) -> {ok, #hostent{h_addr_list=Addrs}} | {error, Reason}
+// The address parsing is done in pure V; the DNS resolution requires Erlang's inet module.
 pub fn resolve_addrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
-	return error('resolve_addrs not implemented for BEAM backend')
+	host, port := split_address(addr)!
+	// Check for literal IPv4 address (avoids DNS lookup)
+	if is_ipv4_literal(host) {
+		parts := host.split('.')
+		if parts.len == 4 {
+			a0 := u8(parts[0].int())
+			a1 := u8(parts[1].int())
+			a2 := u8(parts[2].int())
+			a3 := u8(parts[3].int())
+			mut ip_addr := Addr{
+				f: u8(AddrFamily.ip)
+				addr: AddrData{
+					Ip: Ip{
+						port: port
+						addr: [a0, a1, a2, a3]!
+					}
+				}
+			}
+			return [ip_addr]
+		}
+	}
+	// For hostname resolution, we need Erlang's inet:gethostbyname
+	// Codegen translates to:
+	//   case inet:gethostbyname(list_to_atom(Host), Family) of
+	//       {ok, #hostent{h_addr_list = Addrs}} -> [make_addr(A, Port) || A <- Addrs];
+	//       {error, Reason} -> error(Reason)
+	//   end
+	return error('resolve_addrs: DNS resolution requires codegen interception (inet:gethostbyname) for host ${host}')
 }
 
-// resolve_addrs_fuzzy resolves an address with automatic family detection
+// resolve_addrs_fuzzy resolves an address with automatic family detection.
+// First tries IPv4, then IPv6 if that fails.
 pub fn resolve_addrs_fuzzy(addr string, typ SocketType) ![]Addr {
-	return error('resolve_addrs_fuzzy not implemented for BEAM backend')
+	// Try IPv4 first
+	addrs := resolve_addrs(addr, .ip, typ) or {
+		// Then try IPv6
+		return resolve_addrs(addr, .ip6, typ)
+	}
+	return addrs
+}
+
+// is_ipv4_literal checks whether a string looks like an IPv4 address (e.g. "127.0.0.1")
+fn is_ipv4_literal(s string) bool {
+	parts := s.split('.')
+	if parts.len != 4 {
+		return false
+	}
+	for part in parts {
+		if part.len == 0 || part.len > 3 {
+			return false
+		}
+		val := part.int()
+		if val < 0 || val > 255 {
+			return false
+		}
+		// Check for leading zeros (invalid in strict IPv4)
+		if part.len > 1 && part[0] == `0` {
+			return false
+		}
+	}
+	return true
 }
 
 // NOTE: split_address is defined in util.v and uses string methods (count, index, etc.)
@@ -591,19 +760,27 @@ pub fn error_code() int {
 	return 0
 }
 
-// set_blocking sets the blocking mode of a socket
+// set_blocking sets the blocking mode of a socket.
+// BEAM note: On BEAM, socket blocking is controlled via {active, true|false} option.
+// In passive mode ({active, false}), recv is blocking. This is the default for V.
+// BEAM codegen: inet:setopts(Socket, [{active, Active}])
 pub fn set_blocking(handle int, state bool) ! {
-	// BEAM backend: placeholder
+	// On BEAM, blocking mode maps to the {active, false} socket option
+	// which is set by default. Non-blocking maps to {active, true} or {active, once}.
+	// This requires codegen: inet:setopts(Socket, [{active, !state}])
 }
 
-// shutdown shuts down a socket
+// shutdown shuts down part of a full-duplex connection.
+// BEAM codegen: gen_tcp:shutdown(Socket, Direction)
 pub fn shutdown(handle int) int {
+	// On BEAM: gen_tcp:shutdown(Socket, read_write)
 	return 0
 }
 
-// close closes a socket handle
+// close closes a socket handle.
+// BEAM codegen: gen_tcp:close(Socket) or gen_udp:close(Socket)
 pub fn close(handle int) ! {
-	// BEAM backend: placeholder
+	// On BEAM, codegen translates to the appropriate close call
 }
 
 // Well defined errors

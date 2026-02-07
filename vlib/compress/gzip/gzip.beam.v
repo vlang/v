@@ -56,21 +56,31 @@ pub:
 // compress compresses an array of bytes using gzip format and returns the compressed bytes.
 // On BEAM: Uses zlib:gzip/1 for RFC 1952 compliant gzip compression
 // Example: b := 'abcde'.repeat(1000).bytes(); cmprsd := gzip.compress(b)!
+//
+// BEAM codegen interception required. Translates to:
+//   case CompressionLevel of
+//       6 ->
+//           %% Default level - use simple API
+//           zlib:gzip(list_to_binary(Data));
+//       Level ->
+//           %% Custom level - use streaming API
+//           Z = zlib:open(),
+//           ok = zlib:deflateInit(Z, Level, deflated, 31, 8, default),
+//           Compressed = zlib:deflate(Z, Data, finish),
+//           ok = zlib:deflateEnd(Z),
+//           ok = zlib:close(Z),
+//           iolist_to_binary(Compressed)
+//   end
 pub fn compress(data []u8, params CompressParams) ![]u8 {
+	if data.len == 0 {
+		return []
+	}
 	if params.compression_level !in 0..10 {
 		return error('compression level should be in [0,9] on BEAM')
 	}
-	// BEAM codegen translates to:
-	//   zlib:gzip(list_to_binary(Data))
-	// or with compression level:
-	//   Z = zlib:open(),
-	//   ok = zlib:deflateInit(Z, Level, deflated, 31, 8, default),  % 31 = 15+16 for gzip
-	//   Compressed = zlib:deflate(Z, Data, finish),
-	//   ok = zlib:deflateEnd(Z),
-	//   ok = zlib:close(Z),
-	//   list_to_binary(Compressed)
-	// For now, return stub - actual implementation is in codegen
-	return []
+	// Actual compression requires Erlang's zlib module via codegen interception.
+	// Without codegen, we cannot perform gzip compression in pure V.
+	return error('gzip.compress requires codegen interception (zlib:gzip/1)')
 }
 
 // DecompressFlags - decompression behavior flags
@@ -171,34 +181,40 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 // decompress decompresses gzip data and returns the decompressed bytes.
 // On BEAM: Uses zlib:gunzip/1 for RFC 1952 compliant gzip decompression
 // Example: b := gzip.compress(data)!; original := gzip.decompress(b)!
+//
+// BEAM codegen interception required. Translates to:
+//   zlib:gunzip(list_to_binary(Data))
+// zlib:gunzip handles header parsing, decompression, CRC32, and length verification.
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
-	// Validate header first (for detailed error messages)
+	if data.len == 0 {
+		return error('gzip.decompress: empty input')
+	}
+	// Validate header first (for detailed error messages before calling zlib)
 	_ := validate(data, params)!
 
-	// BEAM codegen translates to:
-	//   zlib:gunzip(list_to_binary(Data))
-	// zlib:gunzip handles:
-	//   - header parsing
-	//   - decompression
-	//   - CRC32 verification
-	//   - length verification
-	// For now, return stub - actual implementation is in codegen
-	return []
+	// Actual decompression requires Erlang's zlib module via codegen interception.
+	return error('gzip.decompress requires codegen interception (zlib:gunzip/1)')
 }
 
 // decompress_with_callback decompresses gzip data using chunked decompression.
 // The callback receives chunks of at most 32KB each.
-// On BEAM: Uses zlib streaming API with safeInflate
+//
+// BEAM codegen interception required. Translates to:
+//   Z = zlib:open(),
+//   zlib:inflateInit(Z, 31),      % 31 = 15+16 for gzip window
+//   loop:
+//     case zlib:safeInflate(Z, Data) of
+//         {continue, Chunk} -> call callback with Chunk, continue;
+//         {finished, Chunk} -> call callback with Chunk, done
+//     end,
+//   zlib:inflateEnd(Z),
+//   zlib:close(Z)
 pub fn decompress_with_callback(data []u8, cb compr.ChunkCallback, userdata voidptr, params DecompressParams) !int {
+	if data.len == 0 {
+		return 0
+	}
 	_ := validate(data, params)!
 
-	// BEAM codegen would use:
-	//   Z = zlib:open(),
-	//   zlib:inflateInit(Z, 31),  % 31 = 15+16 for gzip
-	//   loop: zlib:safeInflate(Z, Data) -> {continue, Chunk} | {finished, Chunk}
-	//         call callback with each chunk
-	//   zlib:inflateEnd(Z),
-	//   zlib:close(Z)
-	// For now, return stub - actual implementation is in codegen
-	return 0
+	// Actual chunked decompression requires Erlang's zlib streaming API via codegen.
+	return error('gzip.decompress_with_callback requires codegen interception (zlib streaming API)')
 }

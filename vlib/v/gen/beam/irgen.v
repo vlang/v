@@ -229,6 +229,32 @@ fn (mut g IRGen) gen_expr_stmt(node ast.ExprStmt) {
 }
 
 fn (mut g IRGen) gen_assign(node ast.AssignStmt) {
+	// Multi-return: left has more identifiers than right expressions.
+	// e.g., `a, b := some_call()` or `a, b = some_call()`
+	// Evaluate the single RHS once; first LHS gets the return value,
+	// subsequent LHS vars get zero (our IR has no multi-return decomposition).
+	if node.left.len > 1 && node.right.len == 1 {
+		call_vreg := g.gen_expr(node.right[0])
+		for i, left in node.left {
+			if left is ast.Ident {
+				if left.name == '_' {
+					continue
+				}
+				if i == 0 {
+					g.var_regs[left.name] = call_vreg
+				} else {
+					vreg := g.next_vreg()
+					g.emit('{mov_imm, {vreg, ${vreg}}, 0}')
+					g.var_regs[left.name] = vreg
+				}
+				// Track type for later dispatch
+				if i < node.left_types.len {
+					g.var_types[left.name] = node.left_types[i]
+				}
+			}
+		}
+		return
+	}
 	for i, left in node.left {
 		if left is ast.Ident {
 			if node.op == .decl_assign {
@@ -533,7 +559,8 @@ fn (mut g IRGen) gen_branch_cond(cond ast.Expr, end_label string) {
 			else { 'eq' }
 		}
 		if cond.right is ast.IntegerLiteral {
-			g.emit('{cmp, {vreg, ${left_vreg}}, {imm, ${cond.right.val}}}')
+			imm_val := cond.right.val.i64()
+			g.emit('{cmp, {vreg, ${left_vreg}}, {imm, ${imm_val}}}')
 		} else {
 			right_vreg := g.gen_expr(cond.right)
 			g.emit('{cmp, {vreg, ${left_vreg}}, {vreg, ${right_vreg}}}')
@@ -578,7 +605,8 @@ fn (mut g IRGen) gen_branch_cond_true(cond ast.Expr, target_label string) {
 			else { 'ne' }
 		}
 		if cond.right is ast.IntegerLiteral {
-			g.emit('{cmp, {vreg, ${left_vreg}}, {imm, ${cond.right.val}}}')
+			imm_val := cond.right.val.i64()
+			g.emit('{cmp, {vreg, ${left_vreg}}, {imm, ${imm_val}}}')
 		} else {
 			right_vreg := g.gen_expr(cond.right)
 			g.emit('{cmp, {vreg, ${left_vreg}}, {vreg, ${right_vreg}}}')
@@ -730,7 +758,10 @@ fn (mut g IRGen) gen_expr(expr ast.Expr) int {
 	match expr {
 		ast.IntegerLiteral {
 			vreg := g.next_vreg()
-			g.emit('{mov_imm, {vreg, ${vreg}}, ${expr.val}}')
+			// Convert V integer literals (0x..., 0o..., 0b...) to decimal
+			// because Erlang's erl_scan rejects C-style prefix notation.
+			int_val := expr.val.i64()
+			g.emit('{mov_imm, {vreg, ${vreg}}, ${int_val}}')
 			return vreg
 		}
 		ast.FloatLiteral {
@@ -846,7 +877,8 @@ fn (mut g IRGen) gen_infix(node ast.InfixExpr) int {
 	}
 	if node.right is ast.IntegerLiteral {
 		result := g.next_vreg()
-		g.emit('{${op}, {vreg, ${result}}, {vreg, ${left}}, {imm, ${node.right.val}}}')
+		imm_val := node.right.val.i64()
+		g.emit('{${op}, {vreg, ${result}}, {vreg, ${left}}, {imm, ${imm_val}}}')
 		return result
 	}
 	right := g.gen_expr(node.right)
@@ -1276,6 +1308,16 @@ fn (mut g IRGen) get_struct_layout(typ ast.Type) StructLayout {
 	if idx in g.struct_layouts {
 		return g.struct_layouts[idx]
 	}
+	// Guard against void/invalid type index (0)
+	if idx == 0 {
+		layout := StructLayout{
+			field_names: []string{}
+			field_offsets: []int{}
+			total_size: 8
+		}
+		g.struct_layouts[idx] = layout
+		return layout
+	}
 	sym := g.table.sym(typ)
 	mut names := []string{}
 	mut offsets := []int{}
@@ -1345,7 +1387,12 @@ fn (mut g IRGen) gen_call_method(node ast.CallExpr) int {
 		arg_list << '{vreg, ${a_vreg}}'
 	}
 	result := g.next_vreg()
-	recv_type := g.table.sym(node.left_type).name
+	// Guard against void/invalid type index (0) which panics in table.sym()
+	recv_type := if int(node.left_type) != 0 {
+		g.table.sym(node.left_type).name
+	} else {
+		'unknown'
+	}
 	g.emit('{method_call, {vreg, ${result}}, <<"${recv_type}">>, <<"${node.name}">>, [${arg_list.join(', ')}]}')
 	return result
 }
