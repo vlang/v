@@ -242,6 +242,7 @@ pub fn compare_exchange_strong_u32(ptr &u32, expected &u32, desired u32) bool {
 
 @[heap]
 pub struct AtomicVal[T] {
+pub mut:
 	val T
 }
 

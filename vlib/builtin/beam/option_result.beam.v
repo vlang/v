@@ -88,3 +88,30 @@ pub enum ChanState {
 	not_ready // push()/pop() would have to wait, but no_block was requested
 	closed
 }
+
+// close closes the channel for further push transactions.
+// On BEAM: channels are implemented via vbeam_concurrency
+pub fn (ch chan) close() {}
+
+// try_pop returns `ChanState.success` if an object is popped from the channel.
+pub fn (ch chan) try_pop(obj voidptr) ChanState {
+	return .success
+}
+
+// try_push returns `ChanState.success` if the object is pushed to the channel.
+pub fn (ch chan) try_push(obj voidptr) ChanState {
+	return .success
+}
+
+// Internal V option/result types for BEAM
+struct _result {
+	is_error bool
+	err      IError = none__
+}
+
+struct _option {
+	state u8
+	err   IError = none__
+}
+
+const none__ = IError(&None__{})

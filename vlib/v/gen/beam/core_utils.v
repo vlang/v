@@ -98,6 +98,41 @@ fn (mut g CoreGen) next_core_var(name string) string {
 	return cname
 }
 
+// core_escape_charlist escapes a string for use as a charlist in ETF literal format.
+// In ETF, a charlist is represented as a string literal (list of integers).
+fn core_escape_charlist(s string) string {
+	// In ETF term text, a charlist literal is just a double-quoted string
+	mut result := strings.new_builder(s.len + 16)
+	for c in s {
+		match c {
+			`\\` { result.write_string('\\\\') }
+			`"` { result.write_string('\\"') }
+			else { result.write_u8(c) }
+		}
+	}
+	return result.str()
+}
+
+// core_escape_binary escapes a string for use in binary literal <<"...">> format.
+// Escapes backslash, double-quote, and control characters.
+fn core_escape_binary(s string) string {
+	if s.len == 0 {
+		return ''
+	}
+	mut result := strings.new_builder(s.len + 16)
+	for c in s {
+		match c {
+			`\\` { result.write_string('\\\\') }
+			`"` { result.write_string('\\"') }
+			`\n` { result.write_string('\\n') }
+			`\r` { result.write_string('\\r') }
+			`\t` { result.write_string('\\t') }
+			else { result.write_u8(c) }
+		}
+	}
+	return result.str()
+}
+
 // core_atom quotes an atom for Core Erlang (always quoted)
 fn core_atom(s string) string {
 	return "'${s}'"

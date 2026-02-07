@@ -751,3 +751,12 @@ fn is_main_thread() bool {
 fn signal_ignore_internal(args ...Signal) {
 	// No-op on BEAM
 }
+
+// write_file_array writes an array to a file.
+pub fn write_file_array(path string, buffer array) ! {
+	mut f := create(path)!
+	unsafe {
+		f.write_ptr(buffer.data, buffer.len * buffer.element_size)
+	}
+	f.close()
+}

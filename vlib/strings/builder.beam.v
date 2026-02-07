@@ -146,3 +146,55 @@ pub fn (mut b Builder) free() {
 pub fn (mut b Builder) reuse_as_plain_u8_array() []u8 {
 	return *b
 }
+
+// write_decimal appends a decimal representation of the number `n`
+@[direct_array_access]
+pub fn (mut b Builder) write_decimal(n i64) {
+	if n == 0 {
+		b.write_u8(0x30)
+		return
+	}
+	if n == min_i64 {
+		b.write_string(n.str())
+		return
+	}
+	mut buf := [25]u8{}
+	mut x := if n < 0 { -n } else { n }
+	mut i := 24
+	for x != 0 {
+		nextx := x / 10
+		r := x % 10
+		buf[i] = u8(r) + 0x30
+		x = nextx
+		i--
+	}
+	if n < 0 {
+		buf[i] = `-`
+		i--
+	}
+	unsafe { b.write_ptr(&buf[i + 1], 24 - i) }
+}
+
+// write_runes appends all the given runes to the accumulated buffer
+pub fn (mut b Builder) write_runes(runes []rune) {
+	for r in runes {
+		b.write_rune(r)
+	}
+}
+
+// write implements the io.Writer interface
+pub fn (mut b Builder) write(data []u8) !int {
+	if data.len == 0 {
+		return 0
+	}
+	b << data
+	return data.len
+}
+
+// drain_builder writes all of the `other` builder content, then re-initialises `other`
+pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
+	if other.len > 0 {
+		b << *other
+	}
+	other = new_builder(other_new_cap)
+}

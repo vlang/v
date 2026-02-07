@@ -44,8 +44,16 @@ pub fn graphics_num_colors() u16 {
 	return 0
 }
 
-// key_pressed returns the currently pressed key, or none if no key is pressed.
+// KeyPressedParams contains the optional parameters for key_pressed.
+@[params]
+pub struct KeyPressedParams {
+pub mut:
+	blocking bool // whether to wait for a pressed key
+	echo     bool // whether to output the pressed key to stdout
+}
+
+// key_pressed returns the currently pressed key, or -1 if no key is pressed.
 // On BEAM: Non-blocking keyboard input is not typically available
-pub fn key_pressed() ?u8 {
-	return none
+pub fn key_pressed(params KeyPressedParams) i64 {
+	return -1
 }
