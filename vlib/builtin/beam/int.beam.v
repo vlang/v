@@ -33,49 +33,55 @@ pub const min_u64 = u64(0)
 pub const max_u64 = u64(18446744073709551615)
 
 // str returns the value of the `i8` as a `string`.
+// Codegen handles: integer_to_binary(int(N))
 pub fn (n i8) str() string {
 	return int(n).str()
 }
 
 // str returns the value of the `i16` as a `string`.
+// Codegen handles: integer_to_binary(int(N))
 pub fn (n i16) str() string {
 	return int(n).str()
 }
 
 // str returns the value of the `u16` as a `string`.
+// Codegen handles: integer_to_binary(int(N))
 pub fn (n u16) str() string {
 	return int(n).str()
 }
 
 // str returns the value of the `int` as a `string`.
+// Codegen handles: integer_to_binary(N)
 pub fn (n int) str() string {
-	// Beam backend: will use Erlang's integer_to_binary/1
 	return ''
 }
 
 // str returns the value of the `i32` as a `string`.
+// Codegen handles: integer_to_binary(int(N))
 pub fn (n i32) str() string {
 	return int(n).str()
 }
 
 // str returns the value of the `u32` as a `string`.
+// Codegen handles: integer_to_binary(N)
 pub fn (n u32) str() string {
 	return u64(n).str()
 }
 
 // str returns the value of the `i64` as a `string`.
+// Codegen handles: integer_to_binary(N)
 pub fn (n i64) str() string {
-	// Beam backend: will use Erlang's integer_to_binary/1
 	return ''
 }
 
 // str returns the value of the `u64` as a `string`.
+// Codegen handles: integer_to_binary(N)
 pub fn (n u64) str() string {
-	// Beam backend: will use Erlang's integer_to_binary/1
 	return ''
 }
 
 // str returns the value of the `bool` as a `string`.
+// Codegen handles: atom_to_binary(B)
 pub fn (b bool) str() string {
 	if b {
 		return 'true'
@@ -84,6 +90,7 @@ pub fn (b bool) str() string {
 }
 
 // str returns the value of the `u8` as a `string`.
+// Codegen handles: integer_to_binary(int(N))
 pub fn (b u8) str() string {
 	return int(b).str()
 }
@@ -94,8 +101,8 @@ pub fn (n int_literal) str() string {
 }
 
 // hex returns the value of the `u64` as a hexadecimal `string`.
+// Codegen handles: integer_to_binary(N, 16)
 pub fn (nn u64) hex() string {
-	// Beam backend: will use Erlang's integer_to_list/2
 	return ''
 }
 
@@ -140,69 +147,81 @@ pub fn (nn int_literal) hex() string {
 }
 
 // hex2 returns a 0x-prefixed hexadecimal string
+// Not handled by codegen — real V implementation
 pub fn (n int) hex2() string {
 	return '0x' + n.hex()
 }
 
 // hex_full returns the full 16-digit hexadecimal representation
+// Not handled by codegen — real V implementation
 pub fn (nn u64) hex_full() string {
-	// Beam backend: will use Erlang's io_lib:format
-	return ''
+	h := nn.hex()
+	// Pad with leading zeros to 16 digits
+	if h.len >= 16 {
+		return h
+	}
+	pad := '0'.repeat(16 - h.len)
+	return pad + h
 }
 
 // is_capital returns `true` if the byte is a Latin capital letter.
-// Example: assert u8(`H`).is_capital() == true
-// Example: assert u8(`h`).is_capital() == false
+// Codegen handles: range check 65-90
 @[inline]
 pub fn (c u8) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
 
 // is_letter returns `true` if the byte is an ASCII letter.
+// Codegen handles: range check A-Z || a-z
 @[inline]
 pub fn (c u8) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
 // is_digit returns `true` if the byte is an ASCII digit.
+// Codegen handles: range check 48-57
 @[inline]
 pub fn (c u8) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_alnum returns `true` if the byte is alphanumeric.
+// Not handled by codegen — real V implementation (calls is_letter/is_digit which codegen handles)
 @[inline]
 pub fn (c u8) is_alnum() bool {
 	return c.is_letter() || c.is_digit()
 }
 
 // is_space returns `true` if the byte is whitespace.
+// Codegen handles: value equality checks for 32, 9, 10, 13
 @[inline]
 pub fn (c u8) is_space() bool {
-	return c in [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
+	return c == ` ` || c == `\t` || c == `\n` || c == `\r` || c == `\v` || c == `\f`
 }
 
 // ascii_str returns a single-character string
+// Codegen handles: list_to_binary([X])
 pub fn (b u8) ascii_str() string {
-	// Beam backend stub
 	return ''
 }
 
 // repeat returns a new string with count copies of the byte
+// Not handled by codegen — real V implementation
 pub fn (b u8) repeat(count int) string {
-	// Beam backend stub
-	return ''
+	if count <= 0 {
+		return ''
+	}
+	ch := b.ascii_str()
+	return ch.repeat(count)
 }
 
 // int_min returns the smallest `int` of input `a` and `b`.
-// Example: assert int_min(2,3) == 2
 @[inline]
 pub fn int_min(a int, b int) int {
 	return if a < b { a } else { b }
 }
 
 // int_max returns the largest `int` of input `a` and `b`.
-// Example: assert int_max(2,3) == 3
 @[inline]
 pub fn int_max(a int, b int) int {
 	return if a > b { a } else { b }
@@ -211,39 +230,42 @@ pub fn int_max(a int, b int) int {
 // ptr_str returns a string with the address of `ptr`.
 // On BEAM: Pointers don't exist in the same way, returns a representation
 pub fn ptr_str(ptr voidptr) string {
-	// On BEAM, we can use Erlang's term formatting
-	// This returns an opaque representation since BEAM doesn't have raw pointers
 	return '<ptr>'
 }
 
 // vstring_with_len creates a string from a byte pointer with a given length
-// On BEAM: Stub - binary creation would be handled by codegen
+// Stub — BEAM doesn't have raw pointers.
 pub fn (b &u8) vstring_with_len(len int) string {
-	// BEAM codegen handles this - would create binary from pointer + length
 	return ''
 }
 
 // vstring_literal_with_len creates a string from a byte pointer with a given length
-// On BEAM: Stub - binary creation would be handled by codegen
-// This is similar to vstring_with_len but typically used for string literals
+// Stub — BEAM doesn't have raw pointers.
 pub fn (b &u8) vstring_literal_with_len(len int) string {
-	// BEAM codegen handles this - would create binary from pointer + length
 	return ''
 }
 
 // vbytes creates a byte slice from a pointer with a given length
-// On BEAM: Stub - array creation would be handled by codegen
+// Stub — BEAM doesn't have raw pointers.
 pub fn (b &u8) vbytes(len int) []u8 {
-	// BEAM codegen handles this - would create list/binary from pointer + length
+	return []
+}
+
+// vbytes on `voidptr` makes a V []u8 structure from a memory buffer.
+// Stub — BEAM doesn't have raw pointers.
+@[unsafe]
+pub fn (data voidptr) vbytes(len int) []u8 {
 	return []
 }
 
 // is_hex_digit returns true if the byte is a valid hexadecimal digit (0-9, a-f, A-F)
+// Not handled by codegen — real V implementation
 pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // str_escaped returns a string representation of the byte with escape sequences for special chars
+// Not handled by codegen — real V implementation
 pub fn (b u8) str_escaped() string {
 	match b {
 		`\n` { return '\\n' }

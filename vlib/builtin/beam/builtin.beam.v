@@ -166,10 +166,10 @@ pub fn malloc(sz int) &u8 {
 	return unsafe { nil }
 }
 
-// malloc_noscan allocates sz bytes of memory (no GC scan needed)
+// malloc_noscan allocates n bytes of memory (no GC scan needed)
 // On BEAM: Same as malloc - BEAM GC handles everything
 @[unsafe]
-pub fn malloc_noscan(sz int) &u8 {
+pub fn malloc_noscan(n isize) &u8 {
 	return unsafe { nil }
 }
 
@@ -178,4 +178,62 @@ pub fn malloc_noscan(sz int) &u8 {
 @[unsafe]
 pub fn free(ptr voidptr) {
 	// No-op on BEAM - garbage collected
+}
+
+// memdup duplicates sz bytes from src
+@[unsafe]
+pub fn memdup(src voidptr, sz isize) voidptr {
+	return src
+}
+
+// memdup_noscan duplicates sz bytes from src (no GC scan needed)
+@[unsafe]
+pub fn memdup_noscan(src voidptr, sz isize) voidptr {
+	return src
+}
+
+// memdup_uncollectable duplicates sz bytes from src (never collected)
+@[unsafe]
+pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
+	return src
+}
+
+// memdup_align duplicates sz bytes from src with alignment
+@[unsafe]
+pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
+	return src
+}
+
+// gc_is_enabled returns true if the GC is enabled (always true on BEAM)
+pub fn gc_is_enabled() bool {
+	return true
+}
+
+// gc_enable enables the GC (no-op on BEAM — always garbage collected)
+pub fn gc_enable() {}
+
+// gc_disable disables the GC (no-op on BEAM — always garbage collected)
+pub fn gc_disable() {}
+
+// gc_collect triggers a garbage collection cycle (no-op on BEAM)
+pub fn gc_collect() {}
+
+// gc_memory_use returns the number of bytes used by GC managed memory
+pub fn gc_memory_use() usize {
+	return 0
+}
+
+// gc_heap_size returns the heap size
+pub fn gc_heap_size() usize {
+	return 0
+}
+
+// gc_free_size returns free size
+pub fn gc_free_size() usize {
+	return 0
+}
+
+// gc_total_bytes returns total bytes
+pub fn gc_total_bytes() u64 {
+	return 0
 }

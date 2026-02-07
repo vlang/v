@@ -219,6 +219,36 @@ struct TcpSocket {
 	Socket
 }
 
+// set_option_int sets an integer socket option
+pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
+	// BEAM: no-op stub
+}
+
+// set_option_bool sets a boolean socket option
+pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
+	// BEAM: no-op stub
+}
+
+// set_option sets a raw socket option (stub on BEAM).
+fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
+	// BEAM: no-op stub
+}
+
+// set_dualstack enables or disables dual-stack (IPv4+IPv6) mode.
+pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
+	// BEAM: no-op stub
+}
+
+// set_default_options sets default socket options (stub on BEAM).
+fn (mut s TcpSocket) set_default_options() ! {
+	// BEAM: no-op stub
+}
+
+// bind binds the socket to an address
+pub fn (mut s TcpSocket) bind(addr string) ! {
+	// BEAM: no-op stub
+}
+
 // UdpSocket represents a UDP socket
 struct UdpSocket {
 	Socket
@@ -272,6 +302,56 @@ pub fn (mut c TcpConn) write(bytes []u8) !int {
 // write_string writes a string to the connection
 pub fn (mut c TcpConn) write_string(s string) !int {
 	return error('TcpConn.write_string not implemented for BEAM backend')
+}
+
+// write_ptr writes raw bytes to the connection
+pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
+	return error('TcpConn.write_ptr not implemented for BEAM backend')
+}
+
+// read_deadline returns the read deadline
+pub fn (mut c TcpConn) read_deadline() !time.Time {
+	return c.read_deadline
+}
+
+// write_deadline returns the write deadline
+pub fn (mut c TcpConn) write_deadline() !time.Time {
+	return c.write_deadline
+}
+
+// set_read_deadline sets the read deadline
+pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
+	c.read_deadline = deadline
+}
+
+// set_write_deadline sets the write deadline
+pub fn (mut c TcpConn) set_write_deadline(deadline time.Time) {
+	c.write_deadline = deadline
+}
+
+// read_timeout returns the read timeout
+pub fn (c &TcpConn) read_timeout() time.Duration {
+	return c.read_timeout
+}
+
+// write_timeout returns the write timeout
+pub fn (c &TcpConn) write_timeout() time.Duration {
+	return c.write_timeout
+}
+
+// wait_for_read waits until data is available
+pub fn (c TcpConn) wait_for_read() ! {
+	// BEAM: no-op stub
+}
+
+// wait_for_write waits until write is possible
+pub fn (mut c TcpConn) wait_for_write() ! {
+	// BEAM: no-op stub
+}
+
+// set_sock configures the socket
+pub fn (mut c TcpConn) set_sock() ! {
+	// BEAM: no-op stub
 }
 
 // peer_addr retrieves the peer address
@@ -370,9 +450,34 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 	return error('TcpListener.accept not implemented for BEAM backend')
 }
 
+// accept_only accepts a connection (without setting options)
+pub fn (mut l TcpListener) accept_only() !&TcpConn {
+	return error('TcpListener.accept_only not implemented for BEAM backend')
+}
+
+// accept_deadline returns the accept deadline
+pub fn (c &TcpListener) accept_deadline() !time.Time {
+	return c.accept_deadline
+}
+
+// set_accept_deadline sets the accept deadline
+pub fn (mut c TcpListener) set_accept_deadline(deadline time.Time) {
+	c.accept_deadline = deadline
+}
+
+// accept_timeout returns the accept timeout
+pub fn (c &TcpListener) accept_timeout() time.Duration {
+	return c.accept_timeout
+}
+
 // set_accept_timeout sets the accept timeout for the listener
 pub fn (mut l TcpListener) set_accept_timeout(t time.Duration) {
 	l.accept_timeout = t
+}
+
+// wait_for_accept waits until a connection is available
+pub fn (mut c TcpListener) wait_for_accept() ! {
+	// BEAM: no-op stub
 }
 
 // close closes the listener
@@ -383,6 +488,13 @@ pub fn (mut c TcpListener) close() ! {
 // addr retrieves the local address
 pub fn (c &TcpListener) addr() !Addr {
 	return Addr{}
+}
+
+@[params]
+pub struct ListenOptions {
+pub:
+	dualstack bool = true
+	backlog   int  = 128
 }
 
 // TCPDialer is a concrete instance of the Dialer interface
@@ -398,13 +510,32 @@ pub fn default_tcp_dialer() Dialer {
 	return &TCPDialer{}
 }
 
+// new_tcp_socket creates a new TCP socket
+pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
+	return error('new_tcp_socket not implemented for BEAM backend')
+}
+
+// tcp_socket_from_handle_raw creates a TcpSocket from a raw file descriptor
+pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
+	return TcpSocket{
+		Socket: Socket{
+			handle: sockfd
+		}
+	}
+}
+
 // dial_tcp creates a new TCP connection to the given address
 pub fn dial_tcp(address string) !&TcpConn {
 	return error('dial_tcp not implemented for BEAM backend')
 }
 
+// dial_tcp_with_bind creates a new TCP connection with local address binding
+pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
+	return error('dial_tcp_with_bind not implemented for BEAM backend')
+}
+
 // listen_tcp starts listening on the given address
-pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
+pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
 	return error('listen_tcp not implemented for BEAM backend')
 }
 
