@@ -13,6 +13,7 @@ pub fn (ctx &EmptyContext) deadline() ?time.Time {
 	return none
 }
 
+// done returns a closed channel, since an EmptyContext can never be canceled.
 pub fn (ctx &EmptyContext) done() chan int {
 	ch := chan int{}
 	ch.close()
