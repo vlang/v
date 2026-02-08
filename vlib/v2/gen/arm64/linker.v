@@ -219,12 +219,64 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	bind_info := l.generate_bind_info()
 	bind_size := bind_info.len
 
+	// Build symbol table for internal function names (visible in objdump -d)
+	mut symtab_data := []u8{}
+	mut strtab_data := []u8{}
+	strtab_data << 0 // First byte of string table must be null
+
+	sym_code_vmaddr := l.text_vmaddr + u64(l.code_start)
+
+	// Find data section base address (minimum symbol value in sect 3)
+	mut sym_data_base := u64(0xFFFFFFFFFFFFFFFF)
+	for sym in l.macho.symbols {
+		if (sym.type_ & 0x0E) == 0x0E && sym.sect == 3 {
+			if sym.value < sym_data_base {
+				sym_data_base = sym.value
+			}
+		}
+	}
+	if sym_data_base == 0xFFFFFFFFFFFFFFFF {
+		sym_data_base = u64(l.macho.text_data.len + l.macho.str_data.len)
+	}
+
+	for sym in l.macho.symbols {
+		if (sym.type_ & 0x0E) != 0x0E {
+			continue // Skip undefined symbols
+		}
+		if sym.name in force_external_syms {
+			continue
+		}
+
+		mut vm_addr := u64(0)
+		mut out_sect := u8(0)
+		if sym.sect == 1 {
+			// __text section
+			vm_addr = sym_code_vmaddr + sym.value
+			out_sect = 1
+		} else if sym.sect == 3 {
+			// __data section
+			vm_addr = l.data_vmaddr + (sym.value - sym_data_base)
+			out_sect = 3
+		} else {
+			continue
+		}
+
+		str_idx := strtab_data.len
+		strtab_data << sym.name.bytes()
+		strtab_data << 0
+
+		write_u32_le(mut symtab_data, u32(str_idx)) // n_strx
+		symtab_data << sym.type_ // n_type
+		symtab_data << out_sect // n_sect
+		write_u16_le(mut symtab_data, sym.desc) // n_desc
+		write_u64_le(mut symtab_data, vm_addr) // n_value
+	}
+
 	// Symbol table follows bind info
 	symtab_off := bind_off + bind_size
-	// We'll have minimal symbols
-	n_syms := 0
-	strtab_off := symtab_off + (n_syms * 16)
-	strtab_size := 1 // Just null byte
+	n_syms := symtab_data.len / 16
+	strtab_off := symtab_off + symtab_data.len
+	strtab_size := strtab_data.len
 
 	// Code signature follows string table (will be calculated later)
 	// code_limit is where the signature starts (everything before is hashed)
@@ -235,7 +287,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	cs_off := code_limit
 
 	l.linkedit_off = bind_off
-	l.linkedit_size = bind_size + strtab_size + cs_size
+	l.linkedit_size = bind_size + symtab_data.len + strtab_size + cs_size
 
 	l.write_dyld_info(bind_off, bind_size)
 	l.write_symtab(symtab_off, n_syms, strtab_off, strtab_size)
@@ -293,8 +345,11 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Write LINKEDIT content
 	l.buf << bind_info
 
-	// Write string table (just null byte)
-	l.buf << 0
+	// Write symbol table nlist entries
+	l.buf << symtab_data
+
+	// Write string table
+	l.buf << strtab_data
 
 	println('  padding+data: ${time.since(t)}')
 	t = time.now()

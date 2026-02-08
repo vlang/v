@@ -1024,8 +1024,21 @@ fn (mut g Gen) gen_instr(val_id int) {
 				field_offset := tuple_offset + idx * 8
 				g.emit_ldr_reg_offset(8, 29, field_offset)
 				g.store_reg_to_val(8, val_id)
+			} else if reg := g.reg_map[tuple_id] {
+				// Tuple is in a register (e.g., a struct load that only loaded 8 bytes).
+				// For index 0, the register already holds the first field value.
+				if idx == 0 {
+					if reg != 8 {
+						g.emit_mov_reg(8, reg)
+					}
+					g.store_reg_to_val(8, val_id)
+				} else {
+					// Higher indices not available from a single register
+					g.load_val_to_reg(8, tuple_id)
+					g.store_reg_to_val(8, val_id)
+				}
 			} else {
-				// Tuple not in stack_map - fallback to loading as single value
+				// Tuple not in stack_map or reg_map - fallback
 				g.load_val_to_reg(8, tuple_id)
 				g.store_reg_to_val(8, val_id)
 			}

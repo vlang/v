@@ -142,9 +142,11 @@ pub fn (f &File) line_count() int {
 }
 
 pub fn (f &File) line_start(line int) int {
-	return f.line_offsets[line - 1] or {
+	idx := line - 1
+	if idx < 0 || idx >= f.line_offsets.len {
 		panic('invalid line `${line}` (must be > 0 & < ${f.line_count()})')
 	}
+	return f.line_offsets[idx]
 }
 
 pub fn (f &File) line(pos Pos) int {

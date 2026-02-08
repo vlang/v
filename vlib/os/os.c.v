@@ -277,9 +277,9 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 		// TODO: use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
 		mut buf := [1024]u8{}
-		mut count := 0
+		mut count := int(0)
 		for {
-			count = C.read(fp_from, &buf[0], sizeof(buf))
+			count = int(C.read(fp_from, &buf[0], sizeof(buf)))
 			if count == 0 {
 				break
 			}

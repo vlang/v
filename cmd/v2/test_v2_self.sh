@@ -3,7 +3,8 @@ set -e
 
 # Build v2 with v1
 rm v2 || true
-v v2.v
+V=${V:-$HOME/code/v/v}
+$V v2.v
 
 rm v3 || true
 rm v3.c || true
@@ -27,5 +28,3 @@ fi
 
 echo ""
 echo "=== SELF-COMPILATION TEST PASSED ==="
-echo "Note: v3 uses stubbed functions for complex modules."
-echo "Full bootstrap requires fixing remaining issues in cleanc module."

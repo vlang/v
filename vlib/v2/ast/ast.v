@@ -99,14 +99,14 @@ pub type Type = AnonStructType
 	| TupleType
 
 pub fn (exprs []Expr) name_list() string {
-	mut name_list := ''
-	for i, expr in exprs {
-		name_list += expr.name()
+	mut out := ''
+	for i := 0; i < exprs.len; i++ {
+		out = out + exprs[i].name()
 		if i < exprs.len - 1 {
-			name_list += ','
+			out = out + ','
 		}
 	}
-	return name_list
+	return out
 }
 
 pub fn (t Type) name() string {
@@ -115,8 +115,7 @@ pub fn (t Type) name() string {
 			'${t.name.name()}[${t.params.name_list()}]'
 		}
 		else {
-			panic('Type.name(): unsupported expr `${t.type_name()}`, currently only supports `ast.Ident` & `ast.SelectorExpr`')
-			// expr.str()
+			'Type'
 		}
 	}
 }
@@ -166,21 +165,20 @@ pub fn (expr Expr) name() string {
 			'${expr.op}${expr.expr.name()}'
 		}
 		SelectorExpr {
-			expr.name()
+			expr.lhs.name() + '.' + expr.rhs.name
 		}
 		StringLiteral {
 			"'${expr.value}'"
 		}
 		Type {
-			expr.name()
+			'Type'
 		}
 		UnsafeExpr {
 			// TODO:
 			'UnsafeExpr'
 		}
 		else {
-			panic('Expr.name(): unsupported expr `${expr.type_name()}`, add it?')
-			// expr.str()
+			'Expr'
 		}
 	}
 }
@@ -640,7 +638,7 @@ pub fn (s StringLiteralKind) str() string {
 // TODO: allow overriding this method in main v compiler
 // that is why this method was renamed from `from_string`
 @[direct_array_access]
-pub fn StringLiteralKind.from_string_tinyv(s string) !StringLiteralKind {
+pub fn StringLiteralKind.from_string_tinyv(s string) StringLiteralKind {
 	match s[0] {
 		`c` {
 			return .c
@@ -655,7 +653,7 @@ pub fn StringLiteralKind.from_string_tinyv(s string) !StringLiteralKind {
 		}
 		else {}
 	}
-	return error('invalid string prefix `${s}`')
+	return .v
 }
 
 // NOTE: I'm using two nodes StringLiteral & StringInterLiteral
@@ -700,7 +698,7 @@ pub enum StringInterFormat {
 	string
 }
 
-pub fn StringInterFormat.from_u8(c u8) !StringInterFormat {
+pub fn StringInterFormat.from_u8(c u8) StringInterFormat {
 	return match c {
 		`b` { .binary }
 		`c` { .character }
@@ -712,7 +710,7 @@ pub fn StringInterFormat.from_u8(c u8) !StringInterFormat {
 		`o` { .octal }
 		`p` { .pointer_address }
 		`s` { .string }
-		else { error('unknown formatter `${c.ascii_str()}`') }
+		else { .unformatted }
 	}
 }
 
@@ -970,10 +968,18 @@ pub:
 
 pub fn (ft &FnType) str() string {
 	mut s := 'fn('
-	for param in ft.params {
-		s += param.name + param.typ.name()
+	for i := 0; i < ft.params.len; i++ {
+		param := ft.params[i]
+		s = s + param.name + param.typ.name()
+		if i < ft.params.len - 1 {
+			s = s + ', '
+		}
 	}
-	s += ') ' + ft.return_type.name()
+	if ft.return_type is EmptyExpr {
+		s = s + ')'
+	} else {
+		s = s + ') ' + ft.return_type.name()
+	}
 	return s
 }
 

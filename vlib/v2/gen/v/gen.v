@@ -242,7 +242,7 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 				}
 				if stmt.cond !is ast.EmptyExpr {
 					is_plain = false
-					g.write('/* cond: ${stmt.cond.type_name()} */')
+					g.write('/* cond: ${stmt.cond.name()} */')
 					g.expr(stmt.cond)
 				}
 				if has_init || has_post {
@@ -348,7 +348,7 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 		ast.LabelStmt {
 			g.write(stmt.name)
 			g.writeln(':')
-			if stmt.stmt != ast.empty_stmt {
+			if stmt.stmt !is ast.EmptyStmt {
 				g.stmt(stmt.stmt)
 			}
 		}
@@ -507,7 +507,9 @@ fn (mut g Gen) expr(expr ast.Expr) {
 		ast.GenericArgOrIndexExpr {
 			// g.write('/* ast.GenericArgOrIndexExpr */')
 			g.expr(expr.lhs)
-			g.generic_list([expr.expr])
+			mut generic_args := []ast.Expr{cap: 1}
+			generic_args << expr.expr
+			g.generic_list(generic_args)
 		}
 		ast.Ident {
 			g.write(expr.name)
@@ -711,7 +713,8 @@ fn (mut g Gen) expr(expr ast.Expr) {
 			// g.write(quote_str)
 			for i, value in expr.values {
 				g.write(value)
-				if inter := expr.inters[i] {
+				if i < expr.inters.len {
+					inter := expr.inters[i]
 					g.write('\${')
 					g.expr(inter.expr)
 					if inter.format != .unformatted {

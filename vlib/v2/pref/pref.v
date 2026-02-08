@@ -35,8 +35,36 @@ pub mut:
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 pub:
-	vroot         string = os.dir(@VEXE)
+	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
+}
+
+fn detect_vroot() string {
+	// Prefer deriving from executable path: <vroot>/cmd/v2/v3
+	if os.args.len > 0 && os.args[0].len > 0 {
+		exe_path := os.abs_path(os.args[0])
+		dir1 := os.dir(exe_path)
+		p1 := os.join_path(dir1, 'vlib', 'builtin')
+		if os.is_dir(p1) {
+			return dir1
+		}
+		dir2 := os.dir(dir1)
+		if os.is_dir(os.join_path(dir2, 'vlib', 'builtin')) {
+			return dir2
+		}
+		dir3 := os.dir(dir2)
+		if os.is_dir(os.join_path(dir3, 'vlib', 'builtin')) {
+			return dir3
+		}
+	}
+	// Fallback to cwd if already at repository root.
+	cwd := os.getwd()
+	if cwd.len > 0 && os.is_dir(os.join_path(cwd, 'vlib', 'builtin')) {
+		return cwd
+	}
+	// Final fallback preserves previous behavior.
+	vexe_dir := os.dir(@VEXE)
+	return vexe_dir
 }
 
 pub fn new_preferences() Preferences {
@@ -49,7 +77,21 @@ pub fn new_preferences() Preferences {
 pub fn new_preferences_from_args(args []string) Preferences {
 	// Default backend based on OS: macOS defaults to arm64, others to x64
 	default_backend := if os.user_os() == 'macos' { 'arm64' } else { 'x64' }
-	backend_str := cmdline.option(args, '-backend', default_backend)
+	mut backend_str_long := cmdline.option(args, '-backend', '')
+	if backend_str_long.len == 0 {
+		backend_str_long = ''
+	}
+	mut backend_str_short := cmdline.option(args, '-b', '')
+	if backend_str_short.len == 0 {
+		backend_str_short = ''
+	}
+	backend_str := if backend_str_long.len > 0 {
+		backend_str_long
+	} else if backend_str_short.len > 0 {
+		backend_str_short
+	} else {
+		default_backend
+	}
 	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
 	match backend_str {
 		'cleanc' { backend = .cleanc }
@@ -59,7 +101,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		else {}
 	}
 
-	arch_str := cmdline.option(args, '-arch', 'auto')
+	mut arch_str := cmdline.option(args, '-arch', 'auto')
+	if arch_str.len == 0 {
+		arch_str = 'auto'
+	}
 	mut arch := Arch.auto
 	match arch_str {
 		'x64' { arch = .x64 }
@@ -70,8 +115,11 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
 
 	// Parse -printfn option (comma-separated list of function names to print)
-	printfn_str := cmdline.option(args, '-printfn', '')
-	printfn_list := if printfn_str != '' { printfn_str.split(',') } else { []string{} }
+	mut printfn_str := cmdline.option(args, '-printfn', '')
+	if printfn_str.len == 0 {
+		printfn_str = ''
+	}
+	printfn_list := if printfn_str.len > 0 { printfn_str.split(',') } else { []string{} }
 
 	options := cmdline.only_options(args)
 	// Default to sequential parsing (no_parallel=true) unless --parallel is specified
@@ -90,9 +138,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		arch:                  arch
 		output_file:           output_file
 		printfn_list:          printfn_list
-		// Explicitly set defaults since cleanc doesn't handle struct default values
-		vroot:         os.dir(@VEXE)
-		vmodules_path: os.vmodules_dir()
+		vroot:                 detect_vroot()
+		vmodules_path:         os.vmodules_dir()
 	}
 }
 

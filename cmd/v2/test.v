@@ -577,6 +577,13 @@ fn maybe_triple(x int) ?int {
 	return val * 3
 }
 
+fn maybe_fail(x int) !int {
+	if x >= 0 {
+		return x
+	}
+	return error('negative value')
+}
+
 // ===================== IF-EXPRESSION HELPERS =====================
 
 fn int_abs(a int) int {
@@ -2794,6 +2801,13 @@ fn main() {
 	// 35.12 Chained or { value } with computation
 	or_chain := maybe_double(25) or { 0 }
 	print_int(or_chain + 5) // 50 + 5 = 55
+
+	// 35.13 Result or { err } pattern - ensure `err` is available in scope
+	or_err := maybe_fail(-1) or {
+		print_str(err.msg())
+		0
+	}
+	print_int(or_err) // 0
 
 	// ==================== 36. RANGE EXPRESSIONS ====================
 	print_str('--- 36. Range Expressions ---')

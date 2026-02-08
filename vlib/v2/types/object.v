@@ -18,6 +18,7 @@ mut:
 
 struct Const {
 	ObjectCommon
+	int_val int
 }
 
 struct Global {
