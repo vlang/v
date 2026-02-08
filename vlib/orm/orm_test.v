@@ -21,7 +21,7 @@ struct Module {
 struct User {
 	id              int @[primary; sql: serial]
 	age             int
-	name            string @[default:'name'; sql: 'username']
+	name            string @[default: 'name'; sql: 'username']
 	is_customer     bool
 	skipped_string  string   @[skip]
 	skipped_string2 string   @[sql: '-']
