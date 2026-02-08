@@ -656,7 +656,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && default_val != '' {
 			mut sql_default_val := default_val
-			if field.typ == type_string && !default_val.starts_with("'") && !default_val.starts_with('"') {
+			if field.typ == type_string && !default_val.starts_with("'")
+				&& !default_val.starts_with('"') {
 				// Escape single quotes in the string
 				sql_default_val = "'${default_val.replace("'", "''")}'"
 			}
