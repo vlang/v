@@ -182,7 +182,7 @@ fn map_mmap_prot_file(prot int) int {
 // (Windows) Memory mapping API
 // ----------------------------------------------------------------------------
 
-// mmap Create first a (windows) file mapping and then map a view on the content.
+// mmap create a windows file mapping and map a view on the content
 pub fn mmap(args MmapOptions) !voidptr {
 	if args.len <= 0 {
 		return error("Parameter 'len' must be > 0")
@@ -236,7 +236,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 	return map
 }
 
-// munmap Unmap the memory mapping
+// munmap unmap the memory mapping
 pub fn munmap(addr voidptr, len usize) ! {
 	if C.UnmapViewOfFile(addr) == 0 {
 		msg := get_last_error_as_string()
@@ -244,7 +244,7 @@ pub fn munmap(addr voidptr, len usize) ! {
 	}
 }
 
-// mprotect
+// mprotect change memory protection flags
 pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	new_protect := map_mmap_prot_page(prot)
 	old_protect := 0
@@ -255,7 +255,7 @@ pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	}
 }
 
-// msync
+// msync sync memory mapping to disk
 pub fn msync(addr voidptr, len usize, flags int) ! {
 	if C.FlushViewOfFile(addr, len) == 0 {
 		msg := get_last_error_as_string()
@@ -263,7 +263,7 @@ pub fn msync(addr voidptr, len usize, flags int) ! {
 	}
 }
 
-// mlock
+// mlock lock memory pages to prevent swapping
 pub fn mlock(addr voidptr, len usize) ! {
 	if C.VirtualLock(addr, len) == 0 {
 		msg := get_last_error_as_string()
@@ -271,7 +271,7 @@ pub fn mlock(addr voidptr, len usize) ! {
 	}
 }
 
-// munlock
+// munlock unlock memory pages to allow swapping
 pub fn munlock(addr voidptr, len usize) ! {
 	if C.VirtualUnlock(addr, len) == 0 {
 		msg := get_last_error_as_string()

@@ -27,6 +27,7 @@ fn C.msync(addr voidptr, len usize, flags int) int
 fn C.mlock(addr voidptr, len usize) int
 fn C.munlock(addr voidptr, len usize) int
 
+// mmap map files or devices into memory
 pub fn mmap(args MmapOptions) !voidptr {
 	addr := C.mmap(args.addr, args.len, args.prot, args.flags, args.fd, args.offset)
 	if addr != C.MAP_FAILED {
@@ -98,30 +99,35 @@ pub fn mmap(args MmapOptions) !voidptr {
 	}
 }
 
+// munmap unmap memory region
 pub fn munmap(addr voidptr, len usize) ! {
 	if C.munmap(addr, len) != 0 {
 		return error('(${C.errno}) munmap() failed')
 	}
 }
 
+// mprotect change memory protection
 pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	if C.mprotect(addr, len, prot) != 0 {
 		return error('(${C.errno}) mprotect() failed')
 	}
 }
 
+// msync sync memory changes to file
 pub fn msync(addr voidptr, len usize, flags int) ! {
 	if C.msync(addr, len, flags) != 0 {
 		return error('(${C.errno}) msync() failed')
 	}
 }
 
+// mlock lock memory to prevent paging
 pub fn mlock(addr voidptr, len usize) ! {
 	if C.mlock(addr, len) != 0 {
 		return error('(${C.errno}) mlock() failed')
 	}
 }
 
+// munlock unlock memory to allow paging
 pub fn munlock(addr voidptr, len usize) ! {
 	if C.munlock(addr, len) != 0 {
 		return error('(${C.errno}) munlock() failed')

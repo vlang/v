@@ -17,7 +17,7 @@ pub:
 	// beginning of file
 }
 
-// vbytes Cast the memory mapped region to []u8
+// vbytes cast the memory mapped region to a byte array
 pub fn (minfo MmapInfo) vbytes() []u8 {
 	if minfo.fsize == 0 {
 		return []
@@ -27,7 +27,7 @@ pub fn (minfo MmapInfo) vbytes() []u8 {
 	}
 }
 
-// bytestr Cast the memory mapped region to string
+// bytestr cast the memory mapped region to a string
 pub fn (minfo MmapInfo) bytestr() string {
 	if minfo.fsize == 0 {
 		return ''
@@ -45,7 +45,7 @@ pub:
 	data  []u8
 }
 
-// close Unmap the memory mapped region and close the underlying file
+// close unmap the memory mapped region and close the underlying file
 pub fn (mut minfo MmapInfo) close() ! {
 	if minfo.addr != unsafe { nil } && minfo.fsize > 0 {
 		munmap(minfo.addr, minfo.fsize)!
@@ -53,7 +53,7 @@ pub fn (mut minfo MmapInfo) close() ! {
 	minfo.fd.close()
 }
 
-// mmap_file This is a convenience function to memory map a file's content for read-only
+// mmap_file memory map a file's content for read-only access
 pub fn mmap_file(file string) !MmapInfo {
 	fsize := os.file_size(file)
 	if fsize == 0 {
