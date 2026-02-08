@@ -71,22 +71,29 @@ pub fn with_timeout(mut parent Context, timeout time.Duration) (Context, CancelF
 	return with_deadline(mut parent, time.now().add(timeout))
 }
 
+// deadline returns the deadline for this context.
 pub fn (ctx &TimerContext) deadline() ?time.Time {
 	return ctx.deadline
 }
 
+// done returns the done channel from the embedded CancelContext.
 pub fn (mut ctx TimerContext) done() chan int {
 	return ctx.cancel_ctx.done()
 }
 
+// err returns the error from the embedded CancelContext.
 pub fn (mut ctx TimerContext) err() IError {
 	return ctx.cancel_ctx.err()
 }
 
+// value returns the value associated with the given key by delegating
+// to the embedded CancelContext.
 pub fn (ctx &TimerContext) value(key Key) ?Any {
 	return ctx.cancel_ctx.value(key)
 }
 
+// cancel cancels the timer context by delegating to the embedded CancelContext
+// and optionally removing itself from its parent's children.
 pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err IError) {
 	ctx.cancel_ctx.cancel(false, err)
 	if remove_from_parent {
@@ -96,6 +103,8 @@ pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err IError) {
 	}
 }
 
+// str returns a string representation of the TimerContext, showing the
+// parent context name, the deadline time, and the duration remaining.
 pub fn (ctx &TimerContext) str() string {
 	return context_name(ctx.cancel_ctx.context) + '.with_deadline(' + ctx.deadline.str() + ' [' +
 		(time.now() - ctx.deadline).str() + '])'
