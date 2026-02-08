@@ -1,7 +1,8 @@
 # Redis Client for V
 
 This module provides a Redis client implementation in V that supports the 
-Redis Serialization Protocol (RESP) with a type-safe interface for common Redis commands.
+Redis Serialization Protocol (RESP) versions 2 (RESP2) and 3 (RESP3) with
+a type-safe interface for common Redis commands.
 
 ## Features
 
@@ -12,7 +13,6 @@ Redis Serialization Protocol (RESP) with a type-safe interface for common Redis 
 - **Memory Efficient**: Pre-allocated buffers for minimal allocations
 
 ## Quick Start
-
 ```v
 module main
 
@@ -22,10 +22,14 @@ fn main() {
 	// Connect to Redis
 	// Uncomment passwod line if authentication is needed
 	mut db := redis.connect(redis.Config{
-		host: 'localhost'
-		// password: 'your_password'
-		port: 6379
+		// Available Config options (none of which need to be specified if you want the defauilts):
+		// host: 'localhost' - default
+		// password: 'your_password' - no default, you need to supply password if your redis server
+		//                             is set up to need one
+		// port: 6379 - default
+		// tls: false - default, set to true for ssl connection
 	})!
+	println('Server supports RESP${db.version} protocol')
 
 	// Set and get values
 	db.set('name', 'Alice')!
@@ -46,7 +50,6 @@ fn main() {
 ## Supported Commands
 
 ### Key Operations
-
 ```v ignore
 // Set value
 db.set('key', 'value')!
@@ -66,12 +69,11 @@ db.expire('key', 60)!  // 60 seconds
 ```
 
 ### Hash Operations
-
 ```v ignore
 // Set hash fields
 db.hset('user:1', {
     'name': 'Bob',
-    'age': 30,
+    'age': '30',
 })!
 
 // Get single field
@@ -83,15 +85,14 @@ println(user_data)  // Output: {'name': 'Bob', 'age': '30'}
 ```
 
 ### Pipeline Operations
-
 ```v ignore
 // Start pipeline
 db.pipeline_start()
 
 // Queue commands
-db.incr('counter')
-db.set('name', 'Charlie')
-db.get[string]('name')
+db.incr('counter')!
+db.set('name', 'Charlie')!
+db.get[string]('name')!
 
 // Execute and get responses
 responses := db.pipeline_execute()!
@@ -101,7 +102,6 @@ for resp in responses {
 ```
 
 ### Custom Commands
-
 ```v ignore
 // Run raw commands
 resp := db.cmd('SET', 'custom', 'value')!
@@ -129,12 +129,10 @@ result := db.get[string]('nonexistent') or {
 ```
 
 ## Connection Management
-
 ```v ignore
 config := redis.Config{
     host: 'redis.server'
     port: 6379
-    version: 2  // RESP2 protocol
 }
 
 mut db := redis.connect(config)!
