@@ -285,7 +285,11 @@ pub fn (mut s Server) run() ! {
 	opt := 1
 	C.setsockopt(s.socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int))
 
-	addr := net.new_ip(u16(s.port), [u8(0), 0, 0, 0]!)
+	addr := if s.family == .ip6 {
+		net.new_ip6(u16(s.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
+	} else {
+		net.new_ip(u16(s.port), [u8(0), 0, 0, 0]!)
+	}
 	alen := addr.len()
 
 	if C.bind(s.socket_fd, voidptr(&addr), alen) < 0 {
