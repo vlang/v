@@ -31,6 +31,9 @@ $if $pkgconfig('libpq') {
 
 	#flag freebsd -I/usr/local/include
 	#flag freebsd -L/usr/local/lib
+
+	#flag openbsd -I/usr/local/include/postgresql
+	#flag openbsd -L/usr/local/lib
 }
 
 $if cross_compile ? && linux {
@@ -66,10 +69,23 @@ pub mut:
 	vals []?string
 }
 
+pub struct RowNoNull {
+pub mut:
+	vals []string
+}
+
 pub struct Result {
 pub:
 	cols map[string]int
 	rows []Row
+}
+
+// Notification represents a notification received from the server via LISTEN/NOTIFY
+pub struct Notification {
+pub:
+	channel string // notification channel name
+	pid     int    // process ID of notifying server process
+	payload string // notification payload string (may be empty)
 }
 
 pub struct Config {
@@ -92,6 +108,14 @@ pub struct C.PGresult {}
 
 @[typedef]
 pub struct C.PGconn {}
+
+// PGnotify represents a notification received from the server via LISTEN/NOTIFY
+@[typedef]
+pub struct C.PGnotify {
+	relname &char // notification channel name
+	be_pid  int   // process ID of notifying server process
+	extra   &char // notification payload string
+}
 
 pub enum ConnStatusType {
 	ok  = C.CONNECTION_OK
@@ -128,9 +152,9 @@ pub enum ExecStatusType {
 
 fn C.PQconnectdb(const_conninfo &char) &C.PGconn
 
-fn C.PQstatus(const_conn &C.PGconn) int
+fn C.PQstatus(const_conn &C.PGconn) i32
 
-fn C.PQtransactionStatus(const_conn &C.PGconn) int
+fn C.PQtransactionStatus(const_conn &C.PGconn) i32
 
 fn C.PQerrorMessage(const_conn &C.PGconn) &char
 
@@ -138,36 +162,36 @@ fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
 
 //
 
-fn C.PQgetisnull(const_res &C.PGresult, int, int) int
+fn C.PQgetisnull(const_res &C.PGresult, i32, i32) i32
 
-fn C.PQgetvalue(const_res &C.PGresult, int, int) &char
+fn C.PQgetvalue(const_res &C.PGresult, i32, i32) &char
 
-fn C.PQresultStatus(const_res &C.PGresult) int
+fn C.PQresultStatus(const_res &C.PGresult) i32
 
-fn C.PQntuples(const_res &C.PGresult) int
+fn C.PQntuples(const_res &C.PGresult) i32
 
-fn C.PQnfields(const_res &C.PGresult) int
+fn C.PQnfields(const_res &C.PGresult) i32
 
-fn C.PQfname(const_res &C.PGresult, int) &char
+fn C.PQfname(const_res &C.PGresult, i32) &char
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
-fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes int) int
+fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
-fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) int
+fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) i32
 
-fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async int) int
+fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 
-fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams int, const_param_types &&char) &C.PGresult
+fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
-fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -176,6 +200,15 @@ fn C.PQclear(res &C.PGresult)
 fn C.PQfreemem(ptr voidptr)
 
 fn C.PQfinish(conn &C.PGconn)
+
+// LISTEN/NOTIFY support
+fn C.PQnotifies(conn &C.PGconn) &C.PGnotify
+
+fn C.PQconsumeInput(conn &C.PGconn) i32
+
+fn C.PQsocket(conn &C.PGconn) i32
+
+fn C.PQescapeLiteral(conn &C.PGconn, str &char, length usize) &char
 
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
@@ -227,6 +260,22 @@ fn res_to_rows(res voidptr) []Row {
 		rows << row
 	}
 
+	C.PQclear(res)
+	return rows
+}
+
+fn res_to_rows_no_null(res voidptr) []RowNoNull {
+	nr_rows := C.PQntuples(res)
+	nr_cols := C.PQnfields(res)
+	mut rows := []RowNoNull{}
+	for i in 0 .. nr_rows {
+		mut row := RowNoNull{}
+		for j in 0 .. nr_cols {
+			val := C.PQgetvalue(res, i, j)
+			row.vals << unsafe { cstring_to_vstring(val) }
+		}
+		rows << row
+	}
 	C.PQclear(res)
 	return rows
 }
@@ -308,6 +357,12 @@ pub fn (db &DB) q_strings(query string) ![]Row {
 pub fn (db &DB) exec(query string) ![]Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_rows(res, 'exec')
+}
+
+// exec_no_null works like exec, but the fields can't be NULL, no optionals
+pub fn (db &DB) exec_no_null(query string) ![]RowNoNull {
+	res := C.PQexec(db.conn, &char(query.str))
+	return db.handle_error_or_rows_no_null(res, 'exec')
 }
 
 // exec_result submits a command to the database server and wait for the result, returning an error on failure and a `Result` set on success
@@ -412,12 +467,26 @@ fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
+		// TODO make it default
 		$if trace_pg_error ? {
 			eprintln('pg error: ${e}')
 		}
 		return error('pg ${elabel} error:\n${e}')
 	}
 	return res_to_rows(res)
+}
+
+fn (db &DB) handle_error_or_rows_no_null(res voidptr, elabel string) ![]RowNoNull {
+	// TODO copypasta
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		C.PQclear(res)
+		$if trace_pg_error ? {
+			eprintln('pg error: ${e}')
+		}
+		return error('pg ${elabel} error:\n${e}')
+	}
+	return res_to_rows_no_null(res)
 }
 
 // hande_error_or_result is an internal function similar to handle_error_or_rows that returns `Result` instead of `[]Row`
@@ -613,4 +682,104 @@ pub fn (res Result) as_structs[T](mapper fn (Result, Row) !T) ![]T {
 	}
 
 	return typed
+}
+
+// listen registers the connection to receive notifications on the specified channel.
+// After calling this, use consume_input() and get_notification() to receive notifications.
+pub fn (db &DB) listen(channel string) ! {
+	if !channel.is_identifier() {
+		return error('channel name should be a valid identifier')
+	}
+	sql_stmt := 'LISTEN ${channel};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg listen error: "${e}"')
+	}
+}
+
+// unlisten unregisters the connection from receiving notifications on the specified channel.
+// Use unlisten_all() to unregister from all channels.
+pub fn (db &DB) unlisten(channel string) ! {
+	if !channel.is_identifier() {
+		return error('channel name should be a valid identifier')
+	}
+	sql_stmt := 'UNLISTEN ${channel};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg unlisten error: "${e}"')
+	}
+}
+
+// unlisten_all unregisters the connection from all notification channels.
+pub fn (db &DB) unlisten_all() ! {
+	_ := C.PQexec(db.conn, c'UNLISTEN *;')
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg unlisten error: "${e}"')
+	}
+}
+
+// notify sends a notification on the specified channel with an optional payload.
+// All connections currently listening on that channel will receive the notification.
+pub fn (db &DB) notify(channel string, payload string) ! {
+	if !channel.is_identifier() {
+		return error('channel name should be a valid identifier')
+	}
+	mut sql_stmt := ''
+	if payload.len > 0 {
+		// Use PQescapeLiteral to safely escape the payload
+		escaped := C.PQescapeLiteral(db.conn, &char(payload.str), usize(payload.len))
+		if escaped == unsafe { nil } {
+			e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+			return error('pg notify error: failed to escape payload: "${e}"')
+		}
+		sql_stmt = unsafe { 'NOTIFY ${channel}, ' + escaped.vstring() + ';' }
+		C.PQfreemem(escaped)
+	} else {
+		sql_stmt = 'NOTIFY ${channel};'
+	}
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg notify error: "${e}"')
+	}
+}
+
+// consume_input reads any available input from the server.
+// This must be called before get_notification() to ensure pending notifications are processed.
+// Returns true on success, false if there was an error reading from the connection.
+pub fn (db &DB) consume_input() !bool {
+	result := C.PQconsumeInput(db.conn)
+	if result == 0 {
+		e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+		return error('pg consume_input error: "${e}"')
+	}
+	return true
+}
+
+// get_notification returns the next pending notification from the server, if any.
+// Returns none if there are no pending notifications.
+// You should call consume_input() before this to ensure all pending notifications are available.
+pub fn (db &DB) get_notification() ?Notification {
+	notify := C.PQnotifies(db.conn)
+	if notify == unsafe { nil } {
+		return none
+	}
+	defer {
+		C.PQfreemem(notify)
+	}
+	return Notification{
+		channel: unsafe { notify.relname.vstring() }
+		pid:     notify.be_pid
+		payload: unsafe { notify.extra.vstring() }
+	}
+}
+
+// socket returns the file descriptor of the connection socket to the server.
+// This is useful for applications that want to use select() or poll() to wait
+// for notifications without blocking. Returns -1 if no valid socket.
+pub fn (db &DB) socket() int {
+	return C.PQsocket(db.conn)
 }

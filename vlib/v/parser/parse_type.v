@@ -124,6 +124,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			// error is handled by parse_type
 			return 0
 		}
+		if elem_type == ast.chan_type {
+			p.chan_type_error()
+			return 0
+		}
 		// has been explicitly resolved, but size is 0
 		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
@@ -140,6 +144,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	elem_type := p.parse_type()
 	if elem_type.idx() == 0 {
 		// error is set in parse_type
+		return 0
+	}
+	if elem_type == ast.chan_type {
+		p.chan_type_error()
 		return 0
 	}
 	if elem_type.idx() == ast.thread_type_idx {
@@ -199,6 +207,10 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	value_type := p.parse_type()
 	if value_type.idx() == 0 {
 		// error is reported in parse_type
+		return 0
+	}
+	if value_type == ast.chan_type {
+		p.chan_type_error()
 		return 0
 	}
 	if value_type.idx() == ast.void_type_idx {
@@ -291,6 +303,10 @@ fn (mut p Parser) parse_multi_return_type() ast.Type {
 	for p.tok.kind !in [.eof, .rpar] {
 		mr_type := p.parse_type()
 		if mr_type.idx() == 0 {
+			break
+		}
+		if mr_type == ast.chan_type {
+			p.chan_type_error()
 			break
 		}
 		if mr_type.has_flag(.generic) {
@@ -494,7 +510,7 @@ fn (mut p Parser) parse_type() ast.Type {
 
 	if is_option && is_result {
 		p.error_with_pos('the type must be Option or Result', p.prev_tok.pos())
-		return 0
+		return ast.void_type
 	}
 
 	if is_option || is_result {
@@ -566,6 +582,11 @@ fn (mut p Parser) parse_type() ast.Type {
 		typ = p.parse_any_type(language, nr_muls > 0, true, is_option)
 		if typ.idx() == 0 {
 			// error is set in parse_type
+			return 0
+		}
+		// !p.inside_receiver_param check can be removed once (ch chan) functions are removed
+		if typ == ast.chan_type && !p.inside_receiver_param {
+			p.chan_type_error()
 			return 0
 		}
 		if typ == ast.void_type {
@@ -779,7 +800,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
+						if p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok) {
 							return p.parse_generic_inst_type(name, name_pos)
 						}
 						return p.find_type_or_add_placeholder(name, language)
@@ -914,9 +935,6 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
 		return ast.void_type
 	}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()
@@ -1008,12 +1026,15 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 				}
 			}
 		}
+		// mod.Foo[int] -> mod
+		// mod.submod.Foo[int] -> mod.submod
+		mod := name.all_before_last('.')
 
 		idx := p.table.register_sym(ast.TypeSymbol{
 			kind:  .generic_inst
 			name:  bs_name
 			cname: util.no_dots(bs_cname)
-			mod:   p.mod
+			mod:   mod
 			info:  ast.GenericInst{
 				parent_idx:     parent_idx
 				concrete_types: concrete_types

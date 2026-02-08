@@ -1,15 +1,15 @@
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:1:8: warning: module 'arrays' is imported but never used
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:1:8: warning: module 'arrays' is imported but never used. Use `import arrays as _`, to silence this warning, or just remove the unused import line
     1 | import arrays
       |        ~~~~~~
     2 | import maps
     3 | import strings as strs
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:2:8: warning: module 'maps' is imported but never used
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:2:8: warning: module 'maps' is imported but never used. Use `import maps as _`, to silence this warning, or just remove the unused import line
     1 | import arrays
     2 | import maps
       |        ~~~~
     3 | import strings as strs
     4 |
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:3:8: warning: module 'strs (strings)' is imported but never used
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:3:8: warning: module 'strs (strings)' is imported but never used. Use `import strs (strings) as _`, to silence this warning, or just remove the unused import line
     1 | import arrays
     2 | import maps
     3 | import strings as strs

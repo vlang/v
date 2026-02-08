@@ -200,7 +200,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.is_struct_init = struct_init_save
 	}
 	sym_name := f.table.sym(node.typ).name
-	// f.write('<old name: $type_sym.name>')
+	// f.write('<old name: ${type_sym.name}>')
 	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
 		f.no_cur_mod(f.short_module(sym_name)) // TODO: f.type_to_str?
 	} else {

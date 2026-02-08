@@ -1,3 +1,4 @@
+// vtest build: !openbsd
 import os
 import time
 import sokol.audio

@@ -28,10 +28,10 @@ pub fn full_path_to_v(dirs_in int) string {
 	vreal  := os.real_path('v')
 	myself := os.real_path( os.executable() )
 	wd := os.getwd()
-	println('args are: $args')
-	println('vreal   : $vreal')
-	println('myself  : $myself')
-	println('wd      : $wd')
+	println('args are: ${args}')
+	println('vreal   : ${vreal}')
+	println('myself  : ${myself}')
+	println('wd      : ${wd}')
 	*/
 	return vexec
 }
@@ -56,7 +56,7 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 		return error('Could not execute: ${rcmd}')
 	}
 	result := r.output.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
-		wd + os.path_separator, '', vexec_folder, '', '\\', '/']).trim_right('\n\r')
+		wd + os.path_separator, '', vexec_folder, '']).trim_right('\n\r')
 	$if windows {
 		dump(rcmd)
 		dump(r.output)

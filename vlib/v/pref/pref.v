@@ -227,7 +227,7 @@ pub mut:
 	fatal_errors     bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	no_std           bool // when true, do not pass -std=c99 to the C backend
 
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
@@ -252,16 +252,17 @@ pub mut:
 	// wasm settings:
 	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
-	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
+	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi ${name}'. Mostly for low level development where manual memory management is used.
 	// game prototyping flags:
 	div_by_zero_is_zero bool // -div-by-zero-is-zero makes so `x / 0 == 0`, i.e. eliminates the division by zero panics/segfaults
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem     Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls        bool
-	json_errors   bool // -json-errors, for VLS and other tools
-	new_transform bool // temporary for the new transformer
+	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls             bool
+	json_errors        bool // -json-errors, for VLS and other tools
+	new_transform      bool // temporary for the new transformer
+	new_generic_solver bool
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -272,13 +273,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 fn detect_musl(mut res Preferences) {
 	res.is_glibc = true
 	res.is_musl = false
-	if os.exists('/etc/alpine-release') {
-		res.is_musl = true
-		res.is_glibc = false
-		return
-	}
-	my_libs := os.walk_ext('/proc/self/map_files/', '').map(os.real_path(it))
-	if my_libs.any(it.contains('musl')) {
+	musl := os.execute('ldd --version').output.contains('musl')
+	if musl {
 		res.is_musl = true
 		res.is_glibc = false
 	}
@@ -993,13 +989,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					vexe := vexe_path()
 					vroot := os.dir(vexe)
 					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_${os.user_os()}_${arch}.so'
+					so_url := 'https://raw.githubusercontent.com/vlang/photonbin/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
-						os.execute_opt('wget -O "${so_path}" "${so_url}"') or {
-							os.execute_opt('curl -o "${so_path}" "${so_url}"') or {
-								panic('coroutines .so could not be downloaded with wget or curl. Download ${so_url}, place it in ${so_path} then try again.')
-							}
+						os.execute_opt('${os.quoted_path(vexe)} download -o "${so_path}" "${so_url}"') or {
+							panic('coroutines .so could not be downloaded with `v download`. Download ${so_url}, place it in ${so_path} then try again.')
 						}
 						println('done!')
 					}
@@ -1014,8 +1008,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						}
 					}
 				} $else {
-					println('coroutines only work on macos & linux for now')
+					eprintln_exit('coroutines only work on macOS & Linux for now')
 				}
+			}
+			'-new-generic-solver' {
+				res.new_generic_solver = true
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {
@@ -1198,7 +1195,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		m[x] = ''
 	}
 	res.build_options = m.keys()
-	// eprintln('>> res.build_options: $res.build_options')
+	// eprintln('>> res.build_options: ${res.build_options}')
 	res.fill_with_defaults()
 	if res.backend == .c {
 		res.skip_unused = res.build_mode != .build_module

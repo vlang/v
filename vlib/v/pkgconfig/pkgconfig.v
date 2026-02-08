@@ -179,7 +179,7 @@ pub fn (mut pc PkgConfig) atleast(v string) bool {
 	return v0 > v1
 }
 
-pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) !string {
+pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) string {
 	for flag in pcdep.cflags {
 		if pc.cflags.index(flag) == -1 {
 			pc.cflags << flag
@@ -195,7 +195,7 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) !string {
 			pc.libs_private << lib
 		}
 	}
-	return error('')
+	return ''
 }
 
 fn (mut pc PkgConfig) load_requires() ! {
@@ -228,7 +228,7 @@ fn (mut pc PkgConfig) load_require(dep string) ! {
 	if !pc.options.norecurse {
 		pcdep.load_requires()!
 	}
-	pc.extend(pcdep) or {}
+	pc.extend(pcdep)
 }
 
 fn (mut pc PkgConfig) add_path(path string) {

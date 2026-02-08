@@ -614,7 +614,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 		}
 	}
 	// if node.ct_left_value_evaled && node.ct_right_value_evaled {
-	//	c.note('>>> node.ct_left_value: $node.ct_left_value | node.ct_right_value: $node.ct_right_value', node.pos)
+	//	c.note('>>> node.ct_left_value: ${node.ct_left_value} | node.ct_right_value: ${node.ct_right_value}', node.pos)
 	// }
 	match node.op {
 		.left_shift, .right_shift, .unsigned_right_shift {
@@ -703,7 +703,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						}
 					}
 				} else {
-					// c.note('can not evaluate "$node.right" at comptime, err: $err', node.pos)
+					// c.note('can not evaluate "${node.right}" at comptime, err: ${err}', node.pos)
 					return left_type
 				}
 			}
@@ -1282,6 +1282,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
+	c.generic_call_positions[c.build_generic_call_key(func.fkey(), inferred_types)] = node.pos
 }
 
 // is_contains_any_kind_of_pointer check that the type and submember types(arrays, fixed arrays, maps, struct fields, and so on)

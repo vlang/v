@@ -35,6 +35,16 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		name := c_name(field.name)
 		const_name := g.c_const_name(field.name)
 		field_expr := field.expr
+		if field.attrs.contains('cinit') || node.attrs.contains('cinit') {
+			styp := g.styp(field.typ)
+			val := g.expr_string(field.expr)
+			g.global_const_defs[name] = GlobalConstDef{
+				mod:       field.mod
+				def:       '${g.static_non_parallel}${styp} ${const_name} = ${val};'
+				dep_names: g.table.dependent_names_in_expr(field.expr)
+			}
+			continue
+		}
 		match field.expr {
 			ast.ArrayInit {
 				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
@@ -219,7 +229,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
-			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("$escaped_val")')
+			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("${escaped_val}")')
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
@@ -340,7 +350,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if expr_sym.kind == .function {
 		// allow for: `const xyz = abc`, where `abc` is `fn abc() {}`
 		func := (expr_sym.info as ast.FnType).func
-		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname)
+		def = g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ),
+			cname)
 	}
 	init_str := init.str().trim_right('\n')
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{

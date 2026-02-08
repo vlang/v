@@ -114,7 +114,7 @@ pub:
 
 type VectoredExceptionHandler = fn (&ExceptionPointers) int
 
-fn C.AddVectoredExceptionHandler(int, voidptr)
+fn C.AddVectoredExceptionHandler(i32, voidptr)
 
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, voidptr(handler))

@@ -2,6 +2,14 @@ fn main() {
 	assert [1, 2, 3] != []
 	array_with_len()
 	array_with_values()
+	fixed_array()
+}
+
+fn fixed_array() {
+	f := [1, 2, 3]!
+	assert f[0] == 1
+	assert f[1] == 2
+	assert f[2] == 3
 }
 
 fn array_with_len() {

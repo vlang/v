@@ -64,3 +64,14 @@ fn foo() ?string {
 fn test_opt_subexp_field() {
 	assert foo()?.len == 2
 }
+
+fn test_mut_opt_none_if_branch() {
+	mut x := ?int(none)
+
+	if x != none {
+		x = 10
+	} else {
+		x = 5
+	}
+	assert x? == 5
+}

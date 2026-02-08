@@ -76,14 +76,14 @@ where you can write text, rendered for each iteration of the loop:
 
 ```html
 @for i, val in my_vals {
-    <span>$i - $val</span>
+    <span>${i} - ${val}</span>
 }
 ```
 
 One-liner:
 
 ```html
-@for i, val in my_vals { <span>$i - $val</span> }
+@for i, val in my_vals { <span>${i} - ${val}</span> }
 ```
 
 The first example would result in:
@@ -108,7 +108,7 @@ You can also write (and all other for condition syntaxes that are allowed in V):
 
 ```html
 @for i = 0; i < 5; i++ {
-    <span>$i</span>
+    <span>${i}</span>
 }
 ```
 

@@ -1,5 +1,4 @@
 // vtest build: !msvc
-import v.tests.assembly.util
 
 fn test_inline_asm() {
 	a, mut b := 10, 0
@@ -32,17 +31,6 @@ fn test_inline_asm() {
 	assert d == 10
 	assert e == 2
 	assert f == 17
-
-	// g, h, i := 2.3, 4.8, -3.5
-	// asm rv64 {
-	// 	fadd.s $i, $g, $h // test `.` in instruction name
-	// 	: =r (i) as i
-	// 	: r (g) as g
-	// 	  r (g) as h
-	// }
-	// assert g == 2.3
-	// assert h == 4.8
-	// assert i == 7.1
 
 	mut j := 0
 	// do 5*3
@@ -79,7 +67,7 @@ fn test_inline_asm() {
 	l := 5
 	m := &l
 	asm i386 {
-		movd [m], 7 // have to specify size with q
+		movb [m], 7
 		; ; r (m)
 	}
 	assert l == 7
@@ -88,23 +76,24 @@ fn test_inline_asm() {
 	n := [5, 9, 0, 4]
 	asm i386 {
 		loop_start2:
-		addd [in_data + ecx * 4 + 0], 2
+		addw [in_data + ecx * 4 + 0], 2
 		loop loop_start2
-		addd [in_data + ecx * 4 + 0], 2
+		addw [in_data + ecx * 4 + 0], 2
 		; ; c (n.len - 1) // c is counter (loop) register
 		  r (n.data) as in_data
 	}
 	assert n == [7, 11, 2, 6]
 
 	mut manu := Manu{}
-	asm amd64 {
+	asm i386 {
 		mov eax, 0
 		cpuid
-		; =b (manu.ebx) as ebx0
-		  =d (manu.edx) as edx0
-		  =c (manu.ecx) as ecx0
+		; =b (manu.ebx)
+		  =d (manu.edx)
+		  =c (manu.ecx)
+		; ; eax
 	}
-	manu.str()
+	assert manu.str()[0].is_capital()
 }
 
 @[packed]
@@ -116,11 +105,11 @@ mut:
 	zero u8 // for string
 }
 
-fn (m Manu) str() string {
+fn (mut m Manu) str() string {
 	return unsafe {
 		string{
-			str:    &u8(&m)
-			len:    24
+			str:    &u8(m)
+			len:    12
 			is_lit: 1
 		}
 	}
@@ -129,14 +118,14 @@ fn (m Manu) str() string {
 fn test_flag_output() {
 	a, b := 4, 9
 	mut out := false
-	asm amd64 {
+	asm i386 {
 		cmp a, b
 		; =@ccl (out)
 		; r (a)
 		  r (b)
 	}
 	assert out
-	asm amd64 {
+	asm i386 {
 		cmp b, a
 		; =@ccl (out)
 		; r (a)
@@ -145,7 +134,7 @@ fn test_flag_output() {
 	assert !out
 
 	zero := 0
-	asm amd64 {
+	asm i386 {
 		cmp zero, zero
 		; =@ccz (out)
 		; r (zero)
@@ -154,7 +143,7 @@ fn test_flag_output() {
 
 	mut maybe_four := 4
 	mut four := 4
-	asm amd64 {
+	asm i386 {
 		subl four, maybe_four
 		testl four, maybe_four
 		movl maybe_four, 9
@@ -168,17 +157,17 @@ fn test_flag_output() {
 
 fn test_asm_generic() {
 	u := u64(49)
-	b := unsafe { bool(123) }
+	b := unsafe { bool(0) }
 	assert generic_asm(u) == 14
 	assert u == 63
-	assert u64(generic_asm(b)) == 14
-	assert u64(b) == 137
+	assert generic_asm(b) == true
+	assert b == true
 }
 
 fn generic_asm[T](var &T) T {
-	mut ret := T(14)
+	mut ret := unsafe { T(14) }
 	unsafe {
-		asm volatile amd64 {
+		asm volatile i386 {
 			add var, ret
 			; +m (var[0]) as var
 			  +r (ret)

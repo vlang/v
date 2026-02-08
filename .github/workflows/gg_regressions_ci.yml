@@ -31,7 +31,7 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Build local v
         run: make -j4 && ./v symlink

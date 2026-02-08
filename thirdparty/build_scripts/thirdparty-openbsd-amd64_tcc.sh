@@ -67,7 +67,7 @@ popd
 rsync -a --delete tinycc/$TCC_FOLDER/                 $TCC_FOLDER/
 rsync -a          thirdparty/tcc.original/.git/       $TCC_FOLDER/.git/
 # rsync -a          thirdparty/tcc.original/lib/libgc*  $TCC_FOLDER/lib/
-rsync -a          thirdparty/tcc.original/lib/build*  $TCC_FOLDER/lib/
+# rsync -a          thirdparty/tcc.original/lib/build*  $TCC_FOLDER/lib/
 rsync -a          thirdparty/tcc.original/README.md   $TCC_FOLDER/README.md
 rsync -a          $CURRENT_SCRIPT_PATH                $TCC_FOLDER/build.sh
 mv                $TCC_FOLDER/tcc                     $TCC_FOLDER/tcc.exe

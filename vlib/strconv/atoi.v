@@ -131,14 +131,14 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		// check if we are in the cutoff zone
 		if n >= cutoff {
 			// n*base overflows
-			// return error('parse_uint: range error $s')
+			// return error('parse_uint: range error ${s}')
 			return max_val, -3
 		}
 		n *= u64(base)
 		n1 := n + u64(c)
 		if n1 < n || n1 > max_val {
 			// n+v overflows
-			// return error('parse_uint: range error $s')
+			// return error('parse_uint: range error ${s}')
 			return max_val, -3
 		}
 		n = n1
@@ -156,7 +156,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s == '' {
-		// return error('parse_int: syntax error $s')
+		// return error('parse_int: syntax error ${s}')
 		return i64(0)
 	}
 	mut bit_size := _bit_size
@@ -190,11 +190,11 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
 	if !neg && un >= cutoff {
-		// return error('parse_int: range error $s0')
+		// return error('parse_int: range error ${s0}')
 		return i64(cutoff - u64(1))
 	}
 	if neg && un > cutoff {
-		// return error('parse_int: range error $s0')
+		// return error('parse_int: range error ${s0}')
 		return -i64(cutoff)
 	}
 	return if neg { -i64(un) } else { i64(un) }

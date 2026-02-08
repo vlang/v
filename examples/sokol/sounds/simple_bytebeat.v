@@ -1,3 +1,5 @@
+// vtest build: !openbsd
+
 // This program illustrates how to use sokol.audio in a simple console app, *without a gui*.
 // See melody.v for an example of how it can be integrated into a graphics app.
 import time

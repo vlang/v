@@ -325,7 +325,7 @@ fn test_parse_int() {
 	assert strconv.parse_int('2147483648', 10, 32)! == 2147483647
 	assert strconv.parse_int('9223372036854775807', 10, 64)! == 9223372036854775807
 	assert strconv.parse_int('9223372036854775808', 10, 64)! == 9223372036854775807
-	assert strconv.parse_int('baobab', 36, 64)? == 683058467
+	assert strconv.parse_int('baobab', 36, 64)! == 683058467
 	// Invalid bit sizes
 	if x := strconv.parse_int('123', 10, -1) {
 		println(x)

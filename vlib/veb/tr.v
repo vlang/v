@@ -11,13 +11,6 @@ pub fn raw(s string) RawHtml {
 	return RawHtml(s)
 }
 
-/*
-struct TrData {
-	data
-}
-	m map[string]TrData
-	*/
-
 // This function is run once, on app startup. Setting the `tr_map` const.
 // m['en']['house'] == 'House'
 fn load_tr_map() map[string]map[string]string {
@@ -32,14 +25,10 @@ fn load_tr_map() map[string]map[string]string {
 		}
 		x := text.split('-----\n')
 		for s in x {
-			// println('val="${val}"')
 			nl_pos := s.index('\n') or { continue }
 			key := s[..nl_pos]
 			val := s[nl_pos + 1..]
-			// v := vals[i + 1]
-			// println('key="${key}" => val="${v}"')
 			res[lang][key] = val
-			// println(val)
 		}
 	}
 	return res

@@ -162,7 +162,7 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 		// If its not there then end user needs to update their visual studio
 		// installation!
 		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
-		// println('res: "$res"')
+		// println('res: "${res}"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)
 		}
@@ -171,13 +171,13 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 			// println('Unable to find msvc version')
 			return error('Unable to find vs installation')
 		}
-		// println('version: $version')
+		// println('version: ${version}')
 		v := version.trim_space()
 		lib_path := '${res_output}\\VC\\Tools\\MSVC\\${v}\\lib\\${target_arch}'
 		include_path := '${res_output}\\VC\\Tools\\MSVC\\${v}\\include'
 		if os.exists('${lib_path}\\vcruntime.lib') {
 			p := '${res_output}\\VC\\Tools\\MSVC\\${v}\\bin\\Host${host_arch}\\${target_arch}'
-			// println('$lib_path $include_path')
+			// println('${lib_path} ${include_path}')
 			return VsInstallation{
 				exe_path:     p
 				lib_path:     lib_path
@@ -277,8 +277,10 @@ pub fn (mut v Builder) cc_msvc() {
 	// `-w` no warnings
 	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
 	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
-	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
-	a << ['-w', '/we4013', '/volatile:ms', '/F 16777216']
+	// `/F33554432` changes the stack size to 32MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
+	// Note: passing `/FNUMBER` is preferable to `/F NUMBER` for unix shells like bash or in cygwin, that otherwise may treat the `/F` as a folder,
+	// if there is an F: drive in the system (they map c: as /c/, d: as /d/ etc)
+	a << ['-w', '/we4013', '/volatile:ms', '/F33554432']
 	if v.pref.is_prod && !v.pref.no_prod_options {
 		a << '/O2'
 	}
@@ -311,27 +313,12 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.build_mode == .build_module {
 		// Compile only
 		a << '/c'
-	} else if v.pref.build_mode == .default_mode {
-		/*
-		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
-		alibs << '"$b"'
-		if !os.exists(b) {
-			println('`builtin.obj` not found')
-			exit(1)
-		}
-		for imp in v.ast.imports {
-			if imp == 'webview' {
-				continue
-			}
-			alibs << '"' + os.real_path( '${pref.default_module_path}/vlib/${imp}.obj' ) + '"'
-		}
-		*/
 	}
 	if v.pref.sanitize {
 		eprintln('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
-	// a << '"$TmpPath/$v.out_name_c"'
+	// a << '"$TmpPath/${v.out_name_c}"'
 	a << '"' + os.real_path(v.out_name_c) + '"'
 	if !v.ccoptions.debug_mode {
 		v.pref.cleanup_files << os.real_path(v.out_name_c)
@@ -340,7 +327,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'ws2_32.lib']
-	sflags := msvc_string_flags(v.get_os_cflags())
+	sflags := v.msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
@@ -387,7 +374,7 @@ pub fn (mut v Builder) cc_msvc() {
 		a << v.pref.ldflags.trim_space()
 	}
 	v.dump_c_options(a)
-	args := '\xEF\xBB\xBF' + a.join(' ')
+	args := '\xEF\xBB\xBF' + a.join(' ') // write a BOM to indicate the utf8 encoding of the file
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
@@ -422,26 +409,35 @@ pub fn (mut v Builder) cc_msvc() {
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
-	msvc := v.cached_msvc
-	if msvc.valid == false {
+	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
+	msvc := v.cached_msvc
+	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	// msvc expects .obj not .o
 	path_without_o_postfix := path[..path.len - 2] // remove .o
-	mut obj_path := '${path_without_o_postfix}.obj'
+	mut obj_path := if v.pref.is_debug {
+		// compiling in debug mode (-cg / -g), should produce and use its own completely separate .obj file,
+		// since it uses /MDD . Those .obj files can not be mixed with programs/objects compiled with just /MD .
+		// See https://stackoverflow.com/questions/924830/what-is-difference-btw-md-and-mdd-in-visualstudio-c
+		'${path_without_o_postfix}.debug.obj'
+	} else {
+		'${path_without_o_postfix}.obj'
+	}
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
-		// println('$obj_path already built.')
+		// println('${obj_path} already built.')
 		return
 	}
-	println('${obj_path} not found, building it (with msvc)...')
-	flush_stdout()
+	if trace_thirdparty_obj_files {
+		println('${obj_path} not found, building it (with msvc)...')
+	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
 		'${path_without_o_postfix}.c'
 	} else {
 		'${path_without_o_postfix}.cpp'
 	}
-	flags := msvc_string_flags(moduleflags)
+	flags := v.msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
 
@@ -457,13 +453,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if v.pref.is_prod {
 		if !v.pref.no_prod_options {
 			oargs << '/O2'
-			oargs << '/MD'
-			oargs << '/DNDEBUG'
-			oargs << '/DNO_DEBUGGING'
 		}
-	} else {
+	}
+	if v.pref.is_debug {
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
+	} else {
+		oargs << '/MD'
+		oargs << '/DNDEBUG'
+		oargs << '/DNO_DEBUGGING'
 	}
 	oargs << defines
 	oargs << msvc.include_paths()
@@ -479,9 +477,8 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	str_oargs := oargs.join(' ')
 	cmd := '"${msvc.full_cl_exe_path}" ${str_oargs}'
 	// Note: the quotes above ARE balanced.
-	$if trace_thirdparty_obj_files ? {
+	if trace_thirdparty_obj_files {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
-		flush_stdout()
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
 	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
@@ -505,10 +502,13 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 		time.sleep(thirdparty_obj_build_retry_delay)
 	}
 	if res.exit_code != 0 {
-		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
+		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries
+          cmd:\n${cmd}
+       result:\n${res.output}')
 	}
-	println(res.output)
-	flush_stdout()
+	if trace_thirdparty_obj_files {
+		println(res.output)
+	}
 }
 
 const thirdparty_obj_build_max_retries = 5
@@ -523,15 +523,14 @@ mut:
 	other_flags []string
 }
 
-// pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
-pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
+pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
 	mut defines := []string{}
 	mut other_flags := []string{}
 	for flag in cflags {
-		// println('fl: $flag.name | flag arg: $flag.value')
+		// println('fl: ${flag.name} | flag arg: ${flag.value}')
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
@@ -559,7 +558,12 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.value.ends_with('.o') {
 			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
 			// msvc expects .obj not .o
-			other_flags << '"${flag.value}bj"'
+			path_with_no_o := flag.value[..flag.value.len - 2]
+			if v.pref.is_debug {
+				other_flags << '"${path_with_no_o}.debug.obj"'
+			} else {
+				other_flags << '"${path_with_no_o}.obj"'
+			}
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
 		} else {

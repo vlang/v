@@ -182,6 +182,17 @@ pub fn (a array) index(v string) int {
 	return -1
 }
 
+pub fn (a array) last_index(v string) int {
+	for i := a.len - 1; i >= 0; i-- {
+		#if (a.arr.get(i).toString() == v.toString())
+
+		{
+			return i
+		}
+	}
+	return -1
+}
+
 pub fn (a array) slice(start int, end int) array {
 	mut result := a
 	#let slice = a.arr.arr.slice(start,end)
@@ -412,6 +423,11 @@ pub fn (a array) to_number_array() JS.Array {
 		#tmp.push(Number(elem.valueOf()));
 	}
 	return tmp
+}
+
+// push_many - appends multiple values to the end of the array.
+pub fn (mut a array) push_many(val voidptr, size int) {
+	a.insert_many(a.len, val, size)
 }
 
 type EveryFn = fn (JS.Number, JS.Number) JS.Boolean

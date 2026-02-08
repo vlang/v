@@ -72,6 +72,12 @@ pub fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 		ast.ParExpr {
 			return g.get_var_from_expr(node.expr)
 		}
+		ast.CastExpr {
+			// For cast expressions like &u32(), we need to look through
+			// the cast to get the underlying variable because WASM don't have
+			// really pointers like in C
+			return g.get_var_from_expr(node.expr)
+		}
 		ast.SelectorExpr {
 			mut addr := g.get_var_from_expr(node.expr) or {
 				// if place {
@@ -211,6 +217,23 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 				.i32_t { return wasm.constexpr_value(init.val.int()) }
 				.i64_t { return wasm.constexpr_value(init.val.i64()) }
 				else {}
+			}
+		}
+		ast.Ident {
+			mut obj := init.obj
+			if obj !in [ast.ConstField, ast.GlobalField] {
+				obj = init.scope.find(init.name) or { return none }
+			}
+			match mut obj {
+				ast.ConstField {
+					return g.literal_to_constant_expression(typ, obj.expr)
+				}
+				ast.GlobalField {
+					return g.literal_to_constant_expression(typ, obj.expr)
+				}
+				else {
+					return none
+				}
 			}
 		}
 		else {}
@@ -636,6 +659,9 @@ pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existin
 		}
 		ast.IfExpr {
 			g.if_expr(init, expected, existing_rvars)
+		}
+		ast.MatchExpr {
+			g.match_expr(init, expected, existing_rvars)
 		}
 		ast.CallExpr {
 			g.call_expr(init, expected, existing_rvars)

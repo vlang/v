@@ -53,10 +53,13 @@ fn (mut runner NormalTestRunner) free() {
 }
 
 fn normalise_fname(name string) string {
-	return 'fn ' + name.replace('__', '.').replace('main.', '')
+	nt1 := name.replace('__', '.')
+	nt2 := nt1.replace('main.', '')
+	nt3 := 'fn ' + nt2
+	return nt3
 }
 
-fn (mut runner NormalTestRunner) start(ntests int) {
+fn (mut runner NormalTestRunner) start(_ntests int) {
 	unsafe {
 		runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
 	}
@@ -89,7 +92,7 @@ fn (mut runner NormalTestRunner) fn_fail() {
 	runner.fn_fails++
 }
 
-fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, _mod string, fn_name string, errmsg string) {
 	filepath := if runner.use_relative_paths { file.clone() } else { os.real_path(file) }
 	mut final_filepath := filepath + ':${line_nr}:'
 	if runner.use_color {

@@ -82,8 +82,8 @@ pub:
 	all_after_dashdash []string // all options after `--` are ignored, and will be passed to the application unmodified
 pub mut:
 	usage_examples []string // when set, --help will print:
-	// Usage: $appname $usage_examples[0]`
-	//    or: $appname $usage_examples[1]`
+	// Usage: ${appname} ${usage_examples[0]}`
+	//    or: ${appname} ${usage_examples[1]}`
 	// etc
 	default_help_label      string = 'display this help and exit'
 	default_version_label   string = 'output version information and exit'
@@ -156,18 +156,17 @@ pub fn (mut fs FlagParser) usage_example(example string) {
 	fs.usage_examples << example
 }
 
-// add_footer - add a footnote, that will be shown
-// at the bottom of the help screen.
+// footer - adds a footnote, that will be shown at the bottom of the help screen.
 pub fn (mut fs FlagParser) footer(footer string) {
 	fs.footers << footer
 }
 
-// change the application name to be used in 'usage' output
+// application changes the application name to be used in 'usage' output.
 pub fn (mut fs FlagParser) application(name string) {
 	fs.application_name = name
 }
 
-// change the application version to be used in 'usage' output
+// version changes the application version to be used in 'usage' output.
 pub fn (mut fs FlagParser) version(vers string) {
 	fs.application_version = vers
 }
@@ -181,7 +180,9 @@ pub fn (mut fs FlagParser) description(desc string) {
 	}
 }
 
-// in most cases you do not need the first argv for flag parsing
+// skip_executable - removes the first argv (it usually contains the executable name).
+// In most cases you do not need it for flag parsing.
+// This method, allows you to use `mut fp := flag.new_flag_parser(arguments())` directly.
 pub fn (mut fs FlagParser) skip_executable() {
 	fs.args.delete(0)
 }

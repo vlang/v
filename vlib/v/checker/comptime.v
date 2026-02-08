@@ -5,9 +5,11 @@ module checker
 import os
 import v.ast
 import v.pref
+import v.token
 import v.util
 import v.pkgconfig
 import v.type_resolver
+import v.errors
 import strings
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
@@ -15,7 +17,20 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.kind == .compile_error {
-		c.error(c.comptime_call_msg(node), node.pos)
+		// Add call stack information for `$compile_error()`
+		mut call_stack := []errors.CallStackItem{}
+		// Only add call stack if we're inside a function (not at module level)
+		if c.fn_level > 0 && c.table.cur_fn != unsafe { nil } {
+			call_key := c.build_generic_call_key(c.table.cur_fn.fkey(), c.table.cur_concrete_types)
+			pos := c.generic_call_positions[call_key] or { c.table.cur_fn.name_pos }
+			// Use the file path from the position, not the current file
+			file_path := if pos.file_idx >= 0 { c.table.filelist[pos.file_idx] } else { c.file.path }
+			call_stack << errors.CallStackItem{
+				file_path: file_path
+				pos:       pos
+			}
+		}
+		c.error(c.comptime_call_msg(node), node.pos, call_stack: call_stack)
 		return ast.void_type
 	} else if node.kind == .compile_warn {
 		c.warn(c.comptime_call_msg(node), node.pos)
@@ -61,6 +76,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					node.pos)
 				return ast.string_type
 			}
+			escaped_path = c.resolve_pseudo_variables(escaped_path, node.pos) or {
+				return ast.string_type
+			}
 			abs_path := os.real_path(escaped_path)
 			// check absolute path first
 			if !os.exists(abs_path) {
@@ -101,6 +119,70 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
 		c2.check(mut node.veb_tmpl)
+
+		// Cache template file content for error display using the relative path
+		// The template_paths contains full paths, but errors use relative paths from node.veb_tmpl.path
+		if node.veb_tmpl.template_paths.len > 0 {
+			// Cache the main template file
+			main_template_path := node.veb_tmpl.template_paths[0]
+			if content := os.read_file(main_template_path) {
+				util.set_source_for_path(node.veb_tmpl.path, content)
+			}
+		}
+
+		// Fix error line numbers using template line mapping
+		line_map := node.veb_tmpl.template_line_map
+		if line_map.len > 0 {
+			for i, err in c2.errors {
+				if err.pos.line_nr >= 0 && err.pos.line_nr < line_map.len {
+					line_info := line_map[err.pos.line_nr]
+					c2.errors[i] = errors.Error{
+						message:    err.message
+						details:    err.details
+						file_path:  err.file_path
+						pos:        token.Pos{
+							...err.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   err.reporter
+						call_stack: err.call_stack
+					}
+				}
+			}
+			for i, warn in c2.warnings {
+				if warn.pos.line_nr >= 0 && warn.pos.line_nr < line_map.len {
+					line_info := line_map[warn.pos.line_nr]
+					c2.warnings[i] = errors.Warning{
+						message:    warn.message
+						details:    warn.details
+						file_path:  warn.file_path
+						pos:        token.Pos{
+							...warn.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   warn.reporter
+						call_stack: warn.call_stack
+					}
+				}
+			}
+			for i, notice in c2.notices {
+				if notice.pos.line_nr >= 0 && notice.pos.line_nr < line_map.len {
+					line_info := line_map[notice.pos.line_nr]
+					c2.notices[i] = errors.Notice{
+						message:    notice.message
+						details:    notice.details
+						file_path:  notice.file_path
+						pos:        token.Pos{
+							...notice.pos
+							line_nr: line_info.tmpl_line
+						}
+						reporter:   notice.reporter
+						call_stack: notice.call_stack
+					}
+				}
+			}
+		}
+
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices
@@ -287,6 +369,12 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
+			if fields.len == 0 {
+				// force eval `node.stmts` to set their types
+				fields << ast.StructField{
+					typ: ast.error_type
+				}
+			}
 			for field in fields {
 				c.push_new_comptime_info()
 				prev_inside_x_matches_type := c.inside_x_matches_type
@@ -302,15 +390,17 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime.has_different_types = has_different_types
 				c.stmts(mut node.stmts)
 
-				unwrapped_expr_type := c.unwrap_generic(field.typ)
-				tsym := c.table.sym(unwrapped_expr_type)
-				c.markused_comptimefor(mut node, unwrapped_expr_type)
-				if tsym.kind == .array_fixed {
-					info := tsym.info as ast.ArrayFixed
-					if !info.is_fn_ret {
-						// for dumping fixed array we must register the fixed array struct to return from function
-						c.table.find_or_register_array_fixed(info.elem_type, info.size,
-							info.size_expr, true)
+				if field.typ != ast.no_type {
+					unwrapped_expr_type := c.unwrap_generic(field.typ)
+					tsym := c.table.sym(unwrapped_expr_type)
+					c.markused_comptimefor(mut node, unwrapped_expr_type)
+					if tsym.kind == .array_fixed {
+						info := tsym.info as ast.ArrayFixed
+						if !info.is_fn_ret {
+							// for dumping fixed array we must register the fixed array struct to return from function
+							c.table.find_or_register_array_fixed(info.elem_type, info.size,
+								info.size_expr, true)
+						}
 					}
 				}
 				c.inside_x_matches_type = prev_inside_x_matches_type
@@ -344,7 +434,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .methods {
-		methods := sym.get_methods()
+		mut methods := sym.get_methods()
+		if methods.len == 0 {
+			// force eval `node.stmts` to set their types
+			methods << ast.Fn{}
+		}
 		for method in methods {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
@@ -352,8 +446,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
 			c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
-			for j, arg in method.params[1..] {
-				c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
+			if method.params.len > 0 {
+				for j, arg in method.params[1..] {
+					c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
+				}
 			}
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
@@ -366,7 +462,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 
 		func := if sym.info is ast.FnType { &sym.info.func } else { c.comptime.comptime_for_method }
-		params := if func.is_method { func.params[1..] } else { func.params }
+		mut params := if func.is_method { func.params[1..] } else { func.params }
+		if params.len == 0 {
+			// force eval `node.stmts` to set their types
+			params << ast.Param{}
+		}
 		// example: fn (mut d MyStruct) add(x int, y int) string
 		// `d` is params[0], `x` is params[1], `y` is params[2]
 		// so we at least has one param (`d`) for method
@@ -379,7 +479,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.pop_comptime_info()
 		}
 	} else if node.kind == .attributes {
-		attrs := c.table.get_attrs(sym)
+		mut attrs := c.table.get_attrs(sym)
+		if attrs.len == 0 {
+			// force eval `node.stmts` to set their types
+			attrs << ast.Attr{}
+		}
 		for attr in attrs {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
@@ -483,14 +587,16 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				// an existing constant?
 				return c.eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
 			}
-			idx := c.table.cur_fn.generic_names.index(expr.name)
-			if typ := c.table.cur_concrete_types[idx] {
-				sym := c.table.sym(typ)
-				return sym.str()
+			if c.table.cur_fn != unsafe { nil } {
+				idx := c.table.cur_fn.generic_names.index(expr.name)
+				if typ := c.table.cur_concrete_types[idx] {
+					sym := c.table.sym(typ)
+					return sym.str()
+				}
 			}
 		}
 		ast.SelectorExpr {
-			if expr.expr is ast.Ident {
+			if expr.expr is ast.Ident && c.table.cur_fn != unsafe { nil } {
 				idx := c.table.cur_fn.generic_names.index(expr.expr.name)
 				if typ := c.table.cur_concrete_types[idx] {
 					sym := c.table.sym(typ)
@@ -679,10 +785,10 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		}
 		// ast.ArrayInit {}
 		// ast.PrefixExpr {
-		//	c.note('prefixexpr: $expr', expr.pos)
+		//	c.note('prefixexpr: ${expr}', expr.pos)
 		// }
 		else {
-			// eprintln('>>> nlevel: $nlevel | another $expr.type_name() | $expr ')
+			// eprintln('>>> nlevel: ${nlevel} | another ${expr.type_name()} | ${expr} ')
 			return none
 		}
 	}
@@ -788,7 +894,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 
 // check if `ident` is a function generic, such as `T`
 fn (mut c Checker) is_generic_ident(ident string) bool {
-	if !isnil(c.table.cur_fn) && ident in c.table.cur_fn.generic_names
+	if c.table.cur_fn != unsafe { nil } && ident in c.table.cur_fn.generic_names
 		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 		return true
 	}
@@ -806,8 +912,21 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				return c.type_resolver.get_type_from_comptime_var(cond)
 			} else if c.is_generic_ident(cond.name) {
 				// generic type `T`
-				idx := c.table.cur_fn.generic_names.index(cond.name)
-				return c.table.cur_concrete_types[idx]
+				if c.table.cur_fn != unsafe { nil } {
+					idx := c.table.cur_fn.generic_names.index(cond.name)
+					if idx >= 0 && idx < c.table.cur_concrete_types.len {
+						concrete_type := c.table.cur_concrete_types[idx]
+						if concrete_type != 0 {
+							return concrete_type
+						}
+					}
+				}
+				type_idx := c.table.find_type_idx(cond.name)
+				return if type_idx == 0 {
+					ast.void_type
+				} else {
+					ast.new_type(type_idx).set_flag(.generic)
+				}
 			} else if var := cond.scope.find_var(cond.name) {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
@@ -833,11 +952,29 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				// for `indirections` we also return the `typ`
 				return typ
 			}
-			if cond.gkind_field in [.typ, .indirections] {
-				// for `indirections` we also return the `typ`
-				return c.unwrap_generic(cond.name_type)
-			} else if cond.gkind_field == .unaliased_typ {
-				return c.table.unaliased_type(c.unwrap_generic(cond.name_type))
+			if cond.gkind_field in [.typ, .indirections, .unaliased_typ] {
+				if cond.expr is ast.Ident {
+					generic_name := cond.expr.name
+					if c.table.cur_fn != unsafe { nil }
+						&& generic_name in c.table.cur_fn.generic_names {
+						idx := c.table.cur_fn.generic_names.index(generic_name)
+						if idx >= 0 && idx < c.table.cur_concrete_types.len {
+							concrete_type := c.table.cur_concrete_types[idx]
+							if cond.gkind_field == .unaliased_typ {
+								return c.table.unaliased_type(concrete_type)
+							}
+							return concrete_type
+						}
+					}
+				}
+				unwrapped := c.unwrap_generic(cond.name_type)
+				if cond.gkind_field == .unaliased_typ {
+					if unwrapped.idx() == 0 || unwrapped.has_flag(.generic) {
+						return unwrapped
+					}
+					return c.table.unaliased_type(unwrapped)
+				}
+				return unwrapped
 			} else {
 				if cond.expr is ast.TypeOf {
 					return c.type_resolver.typeof_field_type(c.type_resolver.typeof_type(cond.expr.expr,

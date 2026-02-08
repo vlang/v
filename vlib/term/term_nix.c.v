@@ -14,7 +14,7 @@ pub:
 	ws_ypixel u16
 }
 
-fn C.ioctl(fd int, request u64, args ...voidptr) int
+fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 
 // get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {

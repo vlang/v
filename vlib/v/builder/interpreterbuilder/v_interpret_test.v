@@ -1,3 +1,4 @@
+// vtest build: tinyc
 import os
 import rand
 import term

@@ -47,6 +47,7 @@ pub mut:
 	is_index_expr            bool
 	is_mbranch_expr          bool // match a { x...y { } }
 	is_struct_init           bool
+	is_array_init            bool
 	fn_scope                 &ast.Scope = unsafe { nil }
 	wsinfix_depth            int
 	format_state             FormatState
@@ -1839,7 +1840,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		if node.has_init {
 			f.write('init: ')
+			old_is_array_init := f.is_array_init
+			f.is_array_init = true
 			f.expr(node.init_expr)
+			f.is_array_init = old_is_array_init
 		}
 		f.write('}')
 		return
@@ -2043,7 +2047,7 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 
 fn (mut f Fmt) write_static_method(name string, short_name string) {
 	if short_name.contains('.') {
-		indx := short_name.index('.') or { -1 } + 1
+		indx := short_name.index_('.') + 1
 		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
 	} else {
 		f.write(short_name.replace('__static__', '.').capitalize())
@@ -2358,6 +2362,8 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		name := f.short_module(node.name)
 		if node.name.contains('__static__') {
 			f.write_static_method(node.name, name)
+		} else if f.is_array_init && name == 'it' {
+			f.write('index')
 		} else {
 			f.write(name)
 		}
@@ -3077,6 +3083,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	} else {
 		f.write('\tselect ')
 	}
+	if node.has_distinct {
+		f.write('distinct ')
+	}
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
@@ -3096,6 +3105,24 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 		f.write('${node.inserted_var} into ${table_name}')
 	} else {
 		f.write('from ${table_name}')
+	}
+	// Format JOIN clauses
+	for join in node.joins {
+		f.writeln('')
+		f.write('\t')
+		match join.kind {
+			.inner { f.write('join ') }
+			.left { f.write('left join ') }
+			.right { f.write('right join ') }
+			.full_outer { f.write('full outer join ') }
+		}
+		join_sym := f.table.sym(join.table_expr.typ)
+		mut join_table_name := join_sym.name
+		if !join_table_name.starts_with('C.') && !join_table_name.starts_with('JS.') {
+			join_table_name = f.no_cur_mod(f.short_module(join_sym.name))
+		}
+		f.write('${join_table_name} on ')
+		f.expr(join.on_expr)
 	}
 	if node.has_where {
 		f.write(' where ')
@@ -3194,17 +3221,12 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 		f.write('$')
-		fspec_str, needs_braces := node.get_fspec_braces(i)
-		if needs_braces {
-			f.write('{')
-			f.expr(node.exprs[i])
-			f.write(fspec_str)
-			f.write('}')
-		} else {
-			f.write('{')
-			f.expr(node.exprs[i])
-			f.write('}')
-		}
+		fspec_str := node.get_fspec(i)
+
+		f.write('{')
+		f.expr(node.exprs[i])
+		f.write(fspec_str)
+		f.write('}')
 	}
 	f.write(quote)
 }

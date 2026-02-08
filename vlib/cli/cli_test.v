@@ -1,3 +1,4 @@
+// vtest build: tinyc
 module main
 
 import v.util.diff
@@ -8,7 +9,7 @@ const vexe = @VEXE
 const vroot = os.dir(vexe)
 
 fn test_cli_programs() {
-	testdata := os.join_path(vroot, 'vlib', 'cli', 'testdata')
+	testdata := os.join_path(vroot, 'vlib/cli/testdata')
 	mut has_err := false
 	for test in os.walk_ext(testdata, '.vv') {
 		print(test + ' ')

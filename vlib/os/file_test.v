@@ -518,3 +518,11 @@ fn test_write_lines() {
 	assert c1 == c2
 	assert c1.split_into_lines() == some_lines_content.split_into_lines()
 }
+
+fn test_read_from_closed_file() {
+	os.write_file(tfile, 'test')!
+	mut f := os.open(tfile)!
+	f.close()
+	mut buf := []u8{len: 64}
+	assert f.read(mut buf) or { -1 } == -1
+}

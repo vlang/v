@@ -31,7 +31,7 @@ fn test_trace() {
 	assert all_expect_files.len > 0, 'no .v files found in ${trace_tests_path}'
 	mut oks := 0
 	for eidx, efile in all_expect_files.sorted() {
-		// if !efile.contains('sumtype') { gprintln('skipping $efile') continue }
+		// if !efile.contains('sumtype') { gprintln('skipping ${efile}') continue }
 		vfile := efile
 
 		if be_verbose {

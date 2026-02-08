@@ -142,7 +142,7 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 
 // Note: r.reloader() is executed in a new, independent thread
 fn reloader(mut r live.LiveReloadInfo) {
-	//	elog(r,'reloader, r: $r')
+	//	elog(r,'reloader, r: ${r}')
 	mut last_ts := r.last_mod_ts
 	mut monitored_file_paths := r.monitored_files.clone()
 	// it is much more likely that the user will be changing *the latest* files

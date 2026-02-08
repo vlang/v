@@ -111,7 +111,7 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CFLAGS) -std=gnu99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CFLAGS) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
@@ -229,4 +229,3 @@ etags:
 
 ctags:
 	./v$(EXE_EXT) -print-v-files cmd/v | grep -v :parse_text| ctags -L -
-

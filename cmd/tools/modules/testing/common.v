@@ -9,6 +9,7 @@ import sync
 import sync.pool
 import v.pref
 import v.util.vtest
+import v.util.vflags
 import runtime
 import rand
 import strings
@@ -22,9 +23,15 @@ pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
 
+pub const keep_session = os.getenv('VTEST_KEEP_SESSION') == '1'
+
 pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
 
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
+
+pub const show_longest_by_runtime = os.getenv('VTEST_SHOW_LONGEST_BY_RUNTIME').int()
+pub const show_longest_by_comptime = os.getenv('VTEST_SHOW_LONGEST_BY_COMPTIME').int()
+pub const show_longest_by_totaltime = os.getenv('VTEST_SHOW_LONGEST_BY_TOTALTIME').int()
 
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
 
@@ -43,18 +50,19 @@ pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
 // Note, it works with `-no-parallel`, and it works when that whole expr is inside a function, like below:
 pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
+pub const pkgcmd = get_pkgcmd()
+
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const is_go_present = os.execute('go version').exit_code == 0
 
 pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
-	&& os.execute('pkg-config ruby --libs').exit_code == 0
+	&& os.execute('${pkgcmd} ruby --libs').exit_code == 0
 
 pub const is_python_present = os.execute('python --version').exit_code == 0
-	&& os.execute('pkg-config python3 --libs').exit_code == 0
+	&& os.execute('${pkgcmd} python3 --libs').exit_code == 0
 
-pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
-	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
+pub const is_sqlite3_present = get_present_sqlite()
 
 pub const all_processes = get_all_processes()
 
@@ -70,6 +78,23 @@ fn get_max_compilation_retries() int {
 
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
+}
+
+fn get_pkgcmd() string {
+	for cmd in ['pkgconf', 'pkg-config'] {
+		if os.execute('${cmd} --version').exit_code == 0 {
+			return cmd
+		}
+	}
+	return 'false'
+}
+
+fn get_present_sqlite() bool {
+	if os.user_os() == 'windows' {
+		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
+	}
+	return os.execute('sqlite3 --version').exit_code == 0
+		&& os.execute('${pkgcmd} sqlite3 --libs').exit_code == 0
 }
 
 fn get_all_processes() []string {
@@ -245,9 +270,6 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
-		$if windows {
-			skip_files << 'examples/vanilla_http_server' // requires epoll // TODO: find a way to support `// vtest build:` for project folders too...
-		}
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
@@ -276,6 +298,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
+	if keep_session {
+		ts.rm_binaries = false
+		println('> vtmp_dir: ${new_vtmp_dir}')
+	}
+
 	ts.handle_test_runner_option()
 	return ts
 }
@@ -316,6 +343,7 @@ pub fn (mut ts TestSession) add(file string) {
 }
 
 pub fn (mut ts TestSession) test() {
+	unbuffer_stdout()
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
@@ -405,7 +433,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options := [ts.vargs]
+	mut cmd_options := vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
@@ -432,12 +460,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.root_relative {
 		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
 	}
-	file := os.real_path(relative_file)
+	normalised_relative_file := relative_file.replace('\\', '/')
+
+	file := abs_path
 	mtc := MessageThreadContext{
 		file:    file
 		flow_id: thread_id.str()
 	}
-	normalised_relative_file := relative_file.replace('\\', '/')
 
 	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
 	// inside the common session temporary folder, used for all the tests.
@@ -587,7 +616,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		for cretry in 0 .. max_compilation_retries {
 			compile_r = ts.execute(cmd, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
-			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
+			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {
 				break
 			}
@@ -906,11 +935,11 @@ fn check_openssl_present() bool {
 		return false
 	}
 	$if openbsd {
-		return os.execute('eopenssl34 --version').exit_code == 0
-			&& os.execute('pkg-config eopenssl34 --libs').exit_code == 0
+		return os.execute('eopenssl35 --version').exit_code == 0
+			&& os.execute('${pkgcmd} eopenssl35 --libs').exit_code == 0
 	} $else {
 		return os.execute('openssl --version').exit_code == 0
-			&& os.execute('pkg-config openssl --libs').exit_code == 0
+			&& os.execute('${pkgcmd} openssl --libs').exit_code == 0
 	}
 }
 
@@ -928,6 +957,9 @@ pub const is_started_redis = find_started_process('redis-server') or { '' }
 pub fn (mut ts TestSession) setup_build_environment() {
 	facts, mut defines := pref.get_build_facts_and_defines()
 	// add the runtime information, that the test runner has already determined by checking once:
+	if github_job.starts_with('sanitize-') {
+		defines << 'sanitized_job'
+	}
 	if is_started_mysqld != '' {
 		defines << 'started_mysqld'
 	}

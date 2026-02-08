@@ -117,6 +117,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.EnumDecl {}
 		ast.TypeDecl {}
 		ast.InterfaceDecl {}
+		ast.EmptyStmt {
+			// this is intentionally a NOP - EmptyStmt nodes are produced by previous stages, as a replacement of other eliminated nodes.
+		}
 		else {
 			g.n_error('${@LOCATION} bad node: ' + node.type_name())
 		}
@@ -432,7 +435,7 @@ fn (mut g Gen) gen_native_hash_stmt(node ast.HashStmt) {
 		}
 		b := unsafe { C.strtol(&char(word.str), 0, 16) }
 		// b := word.u8()
-		// println('"$word" $b')
+		// println('"${word}" ${b}')
 		g.write8(b)
 	}
 

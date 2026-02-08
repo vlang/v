@@ -8,7 +8,7 @@ $if windows {
 	#flag windows -I@VEXEROOT/thirdparty/sqlite
 	#flag windows -L@VEXEROOT/thirdparty/sqlite
 	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-	#include "sqlite3.h" # The SQLite header file is missing. Please run .github/workflows/windows-install-sqlite.bat to download an SQLite amalgamation.
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 } $else {
 	#flag -lsqlite3
 	#include "sqlite3.h" # The SQLite header file is missing. Please install its development package first.
@@ -91,47 +91,51 @@ pub mut:
 	vals []string
 }
 
+pub type Params = []string | [][]string
+
 //
-fn C.sqlite3_open(&char, &&C.sqlite3) int
+fn C.sqlite3_open(&char, &&C.sqlite3) i32
 
-fn C.sqlite3_close(&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) i32
 
-fn C.sqlite3_busy_timeout(db &C.sqlite3, ms int) int
+fn C.sqlite3_busy_timeout(db &C.sqlite3, ms i32) i32
 
 fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 
 //
-fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, i32, &&C.sqlite3_stmt, &&char) i32
 
-fn C.sqlite3_step(&C.sqlite3_stmt) int
+fn C.sqlite3_step(&C.sqlite3_stmt) i32
 
-fn C.sqlite3_finalize(&C.sqlite3_stmt) int
+fn C.sqlite3_reset(&C.sqlite3_stmt) i32
 
-//
-fn C.sqlite3_column_name(&C.sqlite3_stmt, int) &char
-
-fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &u8
-
-fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) i64
-
-fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
-
-fn C.sqlite3_column_count(&C.sqlite3_stmt) int
-
-fn C.sqlite3_column_type(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_bytes(&C.sqlite3_stmt, int) int
+fn C.sqlite3_finalize(&C.sqlite3_stmt) i32
 
 //
-fn C.sqlite3_errstr(int) &char
+fn C.sqlite3_column_name(&C.sqlite3_stmt, i32) &char
+
+fn C.sqlite3_column_text(&C.sqlite3_stmt, i32) &u8
+
+fn C.sqlite3_column_int(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, i32) i64
+
+fn C.sqlite3_column_double(&C.sqlite3_stmt, i32) f64
+
+fn C.sqlite3_column_count(&C.sqlite3_stmt) i32
+
+fn C.sqlite3_column_type(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_bytes(&C.sqlite3_stmt, i32) i32
+
+//
+fn C.sqlite3_errstr(i32) &char
 
 fn C.sqlite3_errmsg(&C.sqlite3) &char
 
 fn C.sqlite3_free(voidptr)
 
-fn C.sqlite3_changes(&C.sqlite3) int
+fn C.sqlite3_changes(&C.sqlite3) i32
 
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
@@ -357,46 +361,82 @@ pub fn (db &DB) exec_none(query string) int {
 
 // exec_param_many executes a query with parameters provided as ?,
 // and returns either an error on failure, or the full result set on success
-pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 	$if trace_sqlite ? {
 		eprintln('> exec_param_many query: "${query}", params: ${params}')
 	}
 	mut stmt := &C.sqlite3_stmt(unsafe { nil })
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
-	if code != 0 {
+	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
-	for i, param in params {
-		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
-		if code != 0 {
-			return db.error_message(code, query)
-		}
-	}
-	nr_cols := C.sqlite3_column_count(stmt)
-	mut res := 0
+
 	mut rows := []Row{}
-	for {
-		res = C.sqlite3_step(stmt)
-		if res != sqlite_row {
-			if rows.len == 0 && is_error(res) {
-				return db.error_message(res, query)
-			}
-			break
-		}
-		mut row := Row{}
-		for i in 0 .. nr_cols {
-			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
-			if val == &u8(unsafe { nil }) {
-				row.vals << ''
-			} else {
-				row.vals << unsafe { val.vstring() }
+	nr_cols := C.sqlite3_column_count(stmt)
+
+	if params is []string {
+		for i, param in params {
+			code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
+			if code != sqlite_ok {
+				return db.error_message(code, query)
 			}
 		}
-		rows << row
+		for {
+			mut row := Row{}
+			code = C.sqlite3_step(stmt)
+			if is_error(code) {
+				return db.error_message(code, query)
+			}
+			if code == sqlite_done {
+				break
+			}
+			for i in 0 .. nr_cols {
+				val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+				if val == &u8(unsafe { nil }) {
+					row.vals << ''
+				} else {
+					row.vals << unsafe { val.vstring() }
+				}
+			}
+			rows << row
+		}
+	} else if params is [][]string {
+		// Rows to process
+		for params_row in params {
+			mut row := Row{}
+			// Param values to bind
+			for i, param in params_row {
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,
+					0)
+				if code != sqlite_ok {
+					return db.error_message(code, query)
+				}
+			}
+			for {
+				code = C.sqlite3_step(stmt)
+				if is_error(code) {
+					return db.error_message(code, query)
+				}
+				if code == sqlite_done {
+					break
+				}
+				for i in 0 .. nr_cols {
+					val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+					if val == &u8(unsafe { nil }) {
+						row.vals << ''
+					} else {
+						row.vals << unsafe { val.vstring() }
+					}
+				}
+				rows << row
+			}
+			C.sqlite3_reset(stmt)
+		}
 	}
+
 	return rows
 }
 

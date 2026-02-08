@@ -1,6 +1,6 @@
 module os
 
-fn C.setpgid(pid int, pgid int) int
+fn C.setpgid(pid i32, pgid i32) i32
 
 fn (mut p Process) unix_spawn_process() int {
 	mut pipeset := [6]int{}
@@ -154,7 +154,7 @@ fn (mut p Process) win_read_string(_idx int, _maxbytes int) (string, int) {
 	return '', 0
 }
 
-fn (mut p Process) win_is_pending(idx int) bool {
+fn (mut p Process) win_is_pending(_idx int) bool {
 	return false
 }
 

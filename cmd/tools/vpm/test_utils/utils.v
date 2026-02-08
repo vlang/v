@@ -5,11 +5,17 @@ import net
 import time
 
 pub fn set_test_env(test_path string) {
+	unbuffer_stdout()
 	os.setenv('VMODULES', test_path, true)
 	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
 	os.setenv('VPM_FAIL_ON_PROMPT', '1', true)
-	unbuffer_stdout()
+	// Note: setting a local VTMP here, is *very important*, because VTMP is used for
+	// the destination of the temporary clones done by the child `v install` processes.
+	// If it is not done, then there is a small chance, that multiple parallel tests
+	// can do clones to the same exact folders at the same time, which can make them
+	// fail on the CI, with hard to diagnose spurious errors.
+	os.setenv('VTMP', os.join_path(test_path, 'vtmp'), true)
 }
 
 pub fn hg_serve(hg_path string, path string, start_port int) (&os.Process, int) {

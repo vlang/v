@@ -73,19 +73,16 @@ fn (p &Parser) is_array_type() bool {
 		if tok.kind in [.name, .amp] {
 			return true
 		}
-		if tok.kind == .eof {
+		if tok.kind in [.eof, .colon, .dot] {
 			break
 		}
 		i++
-		if tok.kind == .lsbr || tok.kind != .rsbr {
-			continue
-		}
 	}
 	return false
 }
 
 fn (mut p Parser) is_following_concrete_types() bool {
-	if !(p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok)) {
+	if !(p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok)) {
 		return false
 	}
 	mut i := 1
@@ -116,34 +113,30 @@ fn (mut p Parser) is_following_concrete_types() bool {
 @[direct_array_access]
 fn (p &Parser) is_generic_struct_init() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
+	if !lit0_is_capital || p.peek_tok.kind != .lsbr {
 		return false
 	}
-	if p.peek_tok.kind == .lt {
-		return true
-	} else {
-		mut i := 2
-		mut nested_sbr_count := 0
-		for {
-			cur_tok := p.peek_token(i)
-			if cur_tok.kind == .eof
-				|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
+	mut i := 2
+	mut nested_sbr_count := 0
+	for {
+		cur_tok := p.peek_token(i)
+		if cur_tok.kind == .eof
+			|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
+			break
+		}
+		if cur_tok.kind == .lsbr {
+			nested_sbr_count++
+		} else if cur_tok.kind == .rsbr {
+			if nested_sbr_count > 0 {
+				nested_sbr_count--
+			} else {
+				if p.peek_token(i + 1).kind == .lcbr {
+					return true
+				}
 				break
 			}
-			if cur_tok.kind == .lsbr {
-				nested_sbr_count++
-			} else if cur_tok.kind == .rsbr {
-				if nested_sbr_count > 0 {
-					nested_sbr_count--
-				} else {
-					if p.peek_token(i + 1).kind == .lcbr {
-						return true
-					}
-					break
-				}
-			}
-			i++
 		}
+		i++
 	}
 	return false
 }
@@ -153,22 +146,22 @@ fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
 
-// heuristics to detect `func<T>()` from `var < expr`
-// 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
-// 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
-// 4. `f<foo<bar` is generic when bar is not generic T (f<foo<T>(), in contrast, is not generic!)
-// 5. `f<Foo,` is generic when Foo is typename.
-//	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
-// 6. `f<mod.Foo>` is same as case 3
-// 7. `f<mod.Foo,` is same as case 5
+// heuristics to detect `func[T]()` from `var [ expr`
+// 1. `f[[]` is generic(e.g. `f[[]int]`) because `var [ []` is invalid
+// 2. `f[map[` is generic(e.g. `f[map[string]string])
+// 3. `f[foo]` is generic because `v1 [ foo ] v2` is invalid syntax
+// 4. `f[foo[bar` is generic when bar is not generic T (f[foo[T](), in contrast, is not generic!)
+// 5. `f[Foo,` is generic when Foo is typename.
+//	   otherwise it is not generic because it may be multi-value (e.g. `return f [ foo, 0`).
+// 6. `f[mod.Foo]` is same as case 3
+// 7. `f[mod.Foo,` is same as case 5
 // 8. if there is a &, ignore the & and see if it is a type
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 @[direct_array_access]
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
+	if lit0_is_capital || p.peek_tok.kind != .lsbr {
 		return false
 	}
 	mut tok2 := p.peek_token(2)
@@ -197,16 +190,7 @@ fn (p &Parser) is_generic_call() bool {
 			// case 2
 			return true
 		}
-		if p.peek_tok.kind == .lt {
-			return match kind3 {
-				.gt { true } // case 3
-				.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
-				.comma { p.is_typename(tok2) } // case 5
-				// case 6 and 7
-				.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
-				else { false }
-			}
-		} else if p.peek_tok.kind == .lsbr {
+		if p.peek_tok.kind == .lsbr {
 			mut i := 3
 			mut nested_sbr_count := 0
 			for {
@@ -240,7 +224,7 @@ fn (p &Parser) is_generic_call() bool {
 	return false
 }
 
-const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
+const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn]
 
 fn (mut p Parser) is_generic_cast() bool {
 	if !ast.type_can_start_with_token(&p.tok) {
@@ -253,10 +237,10 @@ fn (mut p Parser) is_generic_cast() bool {
 		i++
 		tok := p.peek_token(i)
 
-		if tok.kind in [.lt, .lsbr] {
+		if tok.kind == .lsbr {
 			lt_count++
 			level++
-		} else if tok.kind in [.gt, .rsbr] {
+		} else if tok.kind == .rsbr {
 			level--
 		}
 		if lt_count > 0 && level == 0 {
@@ -268,10 +252,10 @@ fn (mut p Parser) is_generic_cast() bool {
 		}
 	}
 	next_tok := p.peek_token(i + 1)
-	// `next_tok` is the token following the closing `>` of the generic type: MyType<int>{
+	// `next_tok` is the token following the closing `]` of the generic type: MyType[int]{
 	//                                                                                   ^
 	// if `next_tok` is a left paren, then the full expression looks something like
-	// `Foo<string>(` or `Foo<mod.Type>(`, which are valid type casts - return true
+	// `Foo[string](` or `Foo[mod.Type](`, which are valid type casts - return true
 	if next_tok.kind == .lpar {
 		return true
 	}

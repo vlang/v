@@ -51,7 +51,18 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			$if !use_bundled_libgc ? {
-				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+				$if macos {
+					#flag -L@VEXEROOT/thirdparty/tcc/lib
+					#flag -lgc
+					$if tinyc {
+						// this is a problem for compiler paths, containing spaces and commas, but tcc does not support -Xlinker :-|
+						#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
+					} $else {
+						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
+					}
+				} $else {
+					#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+				}
 			}
 		}
 		$if macos {
@@ -82,6 +93,7 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			#flag -L/usr/local/lib
 			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 			#flag -lgc
@@ -152,7 +164,7 @@ fn C.GC_disable()
 fn C.GC_enable()
 
 // returns non-zero if GC is disabled
-fn C.GC_is_disabled() int
+fn C.GC_is_disabled() i32
 
 // protect memory block from being freed before this call
 fn C.GC_reachable_here(voidptr)
@@ -203,9 +215,9 @@ pub struct C.GC_stack_base {
 	// reg_base voidptr
 }
 
-fn C.GC_get_stack_base(voidptr) int
-fn C.GC_register_my_thread(voidptr) int
-fn C.GC_unregister_my_thread() int
+fn C.GC_get_stack_base(voidptr) i32
+fn C.GC_register_my_thread(voidptr) i32
+fn C.GC_unregister_my_thread() i32
 
 // fn C.GC_get_my_stackbottom(voidptr) voidptr
 fn C.GC_set_stackbottom(voidptr, voidptr)

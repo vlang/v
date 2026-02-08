@@ -24,12 +24,12 @@ fn test_double_ptr() {
 		assert x == &j
 	}
 	// ///////
-	mut x := &int(0)
+	mut x := unsafe { &int(0) }
 	unsafe {
 		mut p := &x
 		(*p) = &int(1)
 	}
-	assert ptr_str(x) == ptr_str(&int(1))
+	assert ptr_str(x) == ptr_str(unsafe { &int(1) })
 }
 
 fn test_ptr_infix() {
@@ -55,7 +55,7 @@ fn test_funcs() {
 fn test_if_expr_unsafe() {
 	i := 4
 	ii := 123
-	p := if true { unsafe { &i } } else { unsafe { &ii } }
+	p := if unsafe { true } { unsafe { &i } } else { unsafe { &ii } }
 	assert *p == 4
 }
 

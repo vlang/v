@@ -153,7 +153,7 @@ fn (mut p Person) from_json(f json2.Any) {
 `x.json2` provides methods for turning `Any` types into usable types.
 The following list shows the possible outputs when casting a value to an incompatible type.
 
-1. Casting non-array values as array (`arr()`) will return an array with the value as the content.
+1. Casting non-array values with `as_array()` will return an array with the value as the content.
 2. Casting non-map values as map (`as_map()`) will return a map with the value as the content.
 3. Casting non-string values to string (`str()`) will return the
    JSON string representation of the value.

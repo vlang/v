@@ -29,12 +29,12 @@ pub fn fd_write(fd int, s string) {
 	mut sp := s.str
 	mut remaining := s.len
 	for remaining > 0 {
-		written := C.write(fd, sp, remaining)
+		written := int(C.write(fd, sp, remaining))
 		if written < 0 {
 			return
 		}
 		remaining = remaining - written
-		sp = unsafe { voidptr(sp + written) }
+		sp = unsafe { voidptr(usize(sp) + usize(written)) }
 	}
 }
 
@@ -61,7 +61,7 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 	}
 	unsafe {
 		mut buf := malloc_noscan(maxbytes + 1)
-		nbytes := C.read(fd, buf, maxbytes)
+		nbytes := int(C.read(fd, buf, maxbytes))
 		if nbytes < 0 {
 			free(buf)
 			return '', nbytes
@@ -80,12 +80,12 @@ pub:
 	tv_usec u64
 }
 
-fn C.select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
 
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
-fn C.FD_SET(fd int, fdset &C.fd_set)
-fn C.FD_ISSET(fd int, fdset &C.fd_set) int
+fn C.FD_SET(fd i32, fdset &C.fd_set)
+fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
 // fd_is_pending returns true, when there is pending data, waiting to be read from file descriptor `fd`.
 // If the file descriptor is closed, or if reading from it, will block (there is no data), fd_is_pending returns false.

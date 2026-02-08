@@ -246,7 +246,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				mut d1 := u64(0)
 				mut positive := true
 
-				// println("$ch1 $ch2")
+				// println("${ch1} ${ch2}")
 				match ch1 {
 					// h for 16 bit int
 					// hh for 8 bit int
@@ -482,7 +482,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					mut s := ''
 					tx := fabs(x)
 					if tx < 999_999.0 && tx >= 0.00001 {
-						// println("Here g format_fl [$tx]")
+						// println("Here g format_fl [${tx}]")
 						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
 						tmp := s
 						s = format_fl_old(x,

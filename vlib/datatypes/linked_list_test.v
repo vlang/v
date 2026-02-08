@@ -159,10 +159,10 @@ fn test_linked_list_separate_iterators() {
 	mut it1 := list.iterator()
 	mut it2 := list.iterator()
 	mut it3 := list.iterator()
-	assert it1.next()! == 1
-	assert it1.next()! == 2
-	assert it1.next()! == 3
-	assert it2.next()! == 1
+	assert it1.next()? == 1
+	assert it1.next()? == 2
+	assert it1.next()? == 3
+	assert it2.next()? == 1
 	if _ := it1.next() {
 		assert false
 	} else {
@@ -173,8 +173,8 @@ fn test_linked_list_separate_iterators() {
 	} else {
 		assert true
 	}
-	assert it2.next()! == 2
-	assert it2.next()! == 3
+	assert it2.next()? == 2
+	assert it2.next()? == 3
 	if _ := it2.next() {
 		assert false
 	} else {
@@ -202,10 +202,10 @@ fn test_linked_list_map() {
 	})
 	println(foo)
 	mut iter := foo.field.iterator()
-	assert iter.next()! == {
+	assert iter.next()? == {
 		'one': 1
 	}
-	assert iter.next()! == {
+	assert iter.next()? == {
 		'two': 2
 	}
 }

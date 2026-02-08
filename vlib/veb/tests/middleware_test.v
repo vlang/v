@@ -3,6 +3,7 @@ import net.http
 import os
 import time
 import compress.gzip
+import compress.zstd
 
 const port = 13001
 
@@ -59,6 +60,27 @@ pub fn (app &App) decode_gzip_test(mut ctx Context) veb.Result {
 	return ctx.text('received: ${ctx.req.data}')
 }
 
+@['/zstd']
+pub fn (app &App) zstd_test(mut ctx Context) veb.Result {
+	return ctx.text('zstd response, ${ctx.counter}')
+}
+
+@['/decode_zstd'; post]
+pub fn (app &App) decode_zstd_test(mut ctx Context) veb.Result {
+	return ctx.text('received: ${ctx.req.data}')
+}
+
+@['/content']
+pub fn (app &App) content_test(mut ctx Context) veb.Result {
+	return ctx.text('content response, ${ctx.counter}')
+}
+
+// Test route for double-send regression test
+@['/double_after']
+pub fn (app &App) double_after(mut ctx Context) veb.Result {
+	return ctx.text('handler response')
+}
+
 pub fn (app &App) app_middleware(mut ctx Context) bool {
 	ctx.counter++
 	return true
@@ -77,6 +99,23 @@ fn middleware_unreachable(mut ctx Context) bool {
 fn after_middleware(mut ctx Context) bool {
 	ctx.counter++
 	ctx.res.header.add_custom('X-AFTER', ctx.counter.str()) or { panic('bad') }
+	return true
+}
+
+// Global after-middleware that sends a response (for double-send regression test)
+// Only sends for /double_after route to avoid breaking other tests
+fn global_after_sends_response(mut ctx Context) bool {
+	if ctx.req.url.starts_with('/double_after') {
+		ctx.text('global after response')
+	}
+	return true
+}
+
+// Route after-middleware that also tries to send (should be skipped if global already sent)
+fn route_after_sends_response(mut ctx Context) bool {
+	// Add header to prove this middleware ran (for regression test)
+	ctx.res.header.add_custom('X-ROUTE-AFTER-RAN', 'true') or {}
+	ctx.text('route after response - should not appear')
 	return true
 }
 
@@ -101,6 +140,17 @@ fn testsuite_begin() {
 	// Gzip middleware tests
 	app.Middleware.use(veb.decode_gzip[Context]())
 	app.Middleware.route_use('/gzip', veb.encode_gzip[Context]())
+
+	// Zstd middleware tests
+	app.Middleware.use(veb.decode_zstd[Context]())
+	app.Middleware.route_use('/zstd', veb.encode_zstd[Context]())
+
+	// Auto content encoding middleware (zstd/gzip based on Accept-Encoding)
+	app.Middleware.route_use('/content', veb.encode_auto[Context]())
+
+	// Regression test: global after-middleware sends response, route after-middleware should be skipped
+	app.Middleware.use(handler: global_after_sends_response, after: true)
+	app.Middleware.route_use('/double_after', handler: route_after_sends_response, after: true)
 
 	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
@@ -162,4 +212,75 @@ fn test_decode_gzip_middleware() {
 	x := req.do()!
 
 	assert x.body == 'received: ${original_text}'
+}
+
+// Verifies that encode_zstd compresses responses
+fn test_encode_zstd_middleware() {
+	x := http.get('${localserver}/zstd')!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'zstd', 'Expected zstd encoding, got: ${encoding}'
+
+	decompressed := zstd.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'zstd response, 2'
+}
+
+// Verifies that decode_zstd middleware decompresses request bodies
+fn test_decode_zstd_middleware() {
+	original_text := 'Hello from zstd compressed body!'
+	compressed := zstd.compress(original_text.bytes())!
+
+	mut req := http.new_request(.post, '${localserver}/decode_zstd', compressed.bytestr())
+	req.header.add(.content_encoding, 'zstd')
+	x := req.do()!
+
+	assert x.body == 'received: ${original_text}'
+}
+
+// Verifies that encode_auto uses zstd when client supports it
+fn test_encode_auto_zstd() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'gzip, zstd, br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'zstd', 'Expected zstd encoding when zstd is in Accept-Encoding, got: ${encoding}'
+
+	decompressed := zstd.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'content response, 2'
+}
+
+// Verifies that encode_auto falls back to gzip when client doesn't support zstd
+fn test_encode_auto_gzip_fallback() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'gzip, br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'gzip', 'Expected gzip encoding when zstd is not in Accept-Encoding, got: ${encoding}'
+
+	decompressed := gzip.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'content response, 2'
+}
+
+// Verifies that encode_auto sends uncompressed when no encoding is supported
+fn test_encode_auto_no_compression() {
+	mut req := http.new_request(.get, '${localserver}/content', '')
+	req.header.add(.accept_encoding, 'br')
+	x := req.do()!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == '', 'Expected no encoding when neither gzip nor zstd is in Accept-Encoding, got: ${encoding}'
+	assert x.body == 'content response, 2'
+}
+
+// Regression test: when global after-middleware sends response, route after-middleware should be skipped
+// This tests the fix for "a response cannot be sent twice over one connection" error
+fn test_double_after_middleware_no_error() {
+	x := http.get('${localserver}/double_after')!
+	// Global after-middleware response should be received
+	assert x.body == 'global after response'
+	// Route after-middleware should NOT have run (header should be absent)
+	route_after_ran := x.header.get_custom('X-ROUTE-AFTER-RAN') or { '' }
+	assert route_after_ran == '', 'Route after-middleware should be skipped when global already sent response'
 }

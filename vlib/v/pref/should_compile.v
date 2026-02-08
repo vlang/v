@@ -69,6 +69,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
 			continue
 		}
+		if prefs.backend == .wasm && !prefs.should_compile_wasm(file) {
+			continue
+		}
 		if file.starts_with('.#') {
 			continue
 		}
@@ -113,7 +116,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		res << file
 	}
 	if prefs.is_verbose {
-		// println('>>> prefs: $prefs')
+		// println('>>> prefs: ${prefs}')
 		println('>>> should_compile_filtered_files: res: ${res}')
 	}
 	return res
@@ -237,17 +240,17 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		// where the Android SDK is not used.
 		if file.ends_with('_android.c.v') {
 			// common case, should compile for both cross android and termux
-			// eprintln('prefs.os: $prefs.os | file: $file | common')
+			// eprintln('prefs.os: ${prefs.os} | file: ${file} | common')
 			return true
 		}
 		if file.ends_with('_android_outside_termux.c.v') {
 			// compile code that targets Android, but NOT Termux (i.e. the SDK is available)
-			// eprintln('prefs.os: $prefs.os | file: $file | android_outside_termux')
+			// eprintln('prefs.os: ${prefs.os} | file: ${file} | android_outside_termux')
 			return prefs.os == .android
 		}
 		if file.ends_with('_termux.c.v') {
 			// compile Termux specific code
-			// eprintln('prefs.os: $prefs.os | file: $file | termux specific')
+			// eprintln('prefs.os: ${prefs.os} | file: ${file} | termux specific')
 			return prefs.os == .termux
 		}
 	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
@@ -282,6 +285,14 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 pub fn (prefs &Preferences) should_compile_js(file string) bool {
 	if !file.ends_with('.js.v') && file.split('.').len > 2 {
 		// Probably something like `a.c.v`.
+		return false
+	}
+	return true
+}
+
+pub fn (prefs &Preferences) should_compile_wasm(file string) bool {
+	if !file.ends_with('.wasm.v') && file.count('.') >= 2 {
+		// not .wasm.v not just .v something else like .c.v
 		return false
 	}
 	return true

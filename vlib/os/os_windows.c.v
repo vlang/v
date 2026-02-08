@@ -18,12 +18,12 @@ pub const path_delimiter = ';'
 pub const path_devnull = r'\\.\nul'
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
-fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) i32
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
-fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
+fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
 
-fn C._getpid() int
+fn C._getpid() i32
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
 
@@ -118,7 +118,7 @@ pub struct C._utimbuf {
 	modtime int
 }
 
-fn C._utime(&char, voidptr) int
+fn C._utime(&char, voidptr) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
@@ -429,6 +429,12 @@ pub fn symlink(origin string, target string) ! {
 		return
 	}
 	return error('could not symlink')
+}
+
+// readlink reads the target of a symbolic link.
+// TODO: implement this for windows too.
+pub fn readlink(path string) !string {
+	return error('${@METHOD} not yet supported on windows')
 }
 
 pub fn link(origin string, target string) ! {

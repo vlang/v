@@ -203,6 +203,11 @@ const match_test_suite = [
     TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
     TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
+
+    // test anchor
+    TestItem{"abc", r"^abc$",0,3},
+    TestItem{"abc", r"^abc+$",0,3},
+    TestItem{"abcd", r"^abc+$",-1,0},
 ]
 
 struct TestItemRe {
@@ -645,7 +650,7 @@ fn test_regex() {
 				continue
 			}
 			// q_str := re.get_query()
-			// eprintln("Query: $q_str")
+			// eprintln("Query: ${q_str}")
 			start, end := re.find(to.src)
 
 			if start != to.s || end != to.e {
@@ -654,7 +659,7 @@ fn test_regex() {
 				assert false
 			} else {
 				// tmp_str := text[start..end]
-				// println("found in [$start, $end] => [$tmp_str]")
+				// println("found in [${start}, ${end}] => [${tmp_str}]")
 				assert true
 			}
 			continue
@@ -669,7 +674,7 @@ fn test_regex() {
 			assert false
 			continue
 		}
-		// println("#$c [$to.src] q[$to.q]")
+		// println("#${c} [${to.src}] q[${to.q}]")
 		start, end := re.match_string(to.src)
 
 		mut tmp_str := ''
@@ -904,7 +909,7 @@ fn test_long_query() {
 	// test 1
 	mut re := regex.regex_opt(query) or { panic(err) }
 	mut start, mut end := re.match_string(base_string)
-	// println("$start, $end")
+	// println("${start}, ${end}")
 	assert start >= 0 && end == base_string.len
 
 	// test 2
@@ -919,7 +924,7 @@ fn test_long_query() {
 	query = buf.str()
 	re = regex.regex_opt(query) or { panic(err) }
 	start, end = re.match_string(base_string)
-	// println("$start, $end")
+	// println("${start}, ${end}")
 	assert start >= 0 && end == base_string.len
 }
 

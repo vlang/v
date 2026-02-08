@@ -54,6 +54,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
+	if typ.has_flag(.shared_f) {
+		typ = typ.clear_flag(.shared_f).deref()
+	}
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
@@ -205,6 +208,32 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.expr(expr)
 			g.write(')')
 		} else {
+			if g.is_autofree_tmp && g.is_autofree
+				&& expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+				if expr is ast.CallExpr {
+					old_is_autofree_tmp := g.is_autofree_tmp
+					g.autofree_call_pregen(expr)
+					g.is_autofree_tmp = old_is_autofree_tmp
+				}
+				tmp := g.new_tmp_var()
+				tmp_pos := expr.pos()
+				mut scope := g.file.scope.innermost(tmp_pos.pos)
+				scope.register(ast.Var{
+					name:            tmp
+					typ:             ast.string_type
+					is_autofree_tmp: true
+					pos:             tmp_pos
+				})
+				pos_before := g.out.len
+				if expr.is_auto_deref_var() && fmt != `p` {
+					g.write('*')
+				}
+				g.expr(expr)
+				expr_code := g.out.cut_to(pos_before).trim_space()
+				g.strs_to_free0 << 'string ${tmp} = ${expr_code};'
+				g.write(tmp)
+				return
+			}
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
@@ -270,18 +299,27 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				g.write('*')
 			}
 			g.expr(expr)
+			if typ.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			g.write(')')
 		} else {
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
+			if typ.has_flag(.shared_f) {
+				g.write('->val')
+			}
 		}
 	} else {
 		if expr.is_auto_deref_var() && fmt != `p` {
 			g.write('*')
 		}
 		g.expr(expr)
+		if typ.has_flag(.shared_f) {
+			g.write('->val')
+		}
 	}
 }
 

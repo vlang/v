@@ -166,7 +166,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 	re.flag |= f_src  // enable search mode
 
 	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
-	//print("Find [$start,$end] '${in_txt[start..end]}'")
+	//print("Find [${start},${end}] '${in_txt[start..end]}'")
 	if end > in_txt.len {
 		end = in_txt.len
 	}
@@ -191,7 +191,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 		mut e := -1
 		unsafe {
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			// println("Check: [$tmp_str]")
+			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
 
 			if s >= 0 && e > s {
@@ -281,7 +281,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 		unsafe {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			// println("Check: [$tmp_str]")
+			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
@@ -345,13 +345,13 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 		unsafe {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
-			// println("Check: [$tmp_str]")
+			// println("Check: [${tmp_str}]")
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
 				tmp_str := tos(in_txt.str + i, in_txt.len - i)
 				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
-				// println("Found: $s:$e [${tmp_str[s..e]}]")
+				// println("Found: ${s}:${e} [${tmp_str[s..e]}]")
 				res << tmp_str[..tmp_e]
 				i += e
 				continue
@@ -412,7 +412,7 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 	mut last_end := 0
 
 	for i < in_txt.len {
-		// println("Find Start. $i [${in_txt[i..]}]")
+		// println("Find Start. ${i} [${in_txt[i..]}]")
 		s, e := re.find_from(in_txt, i)
 		// println("Find End.")
 		if s >= 0 && e > s {
@@ -428,7 +428,7 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			}
 			*/
 			repl := repl_fn(re, in_txt, s, e)
-			// println("repl res: $repl")
+			// println("repl res: ${repl}")
 			res.write_string(repl)
 			// res.write_string("[[${in_txt[s..e]}]]")
 
@@ -456,7 +456,7 @@ fn (re &RE) parsed_replace_string(in_txt string, repl string) string {
 		if tmp.len > 0 && tmp[0] >= `0` && tmp[0] <= `9` {
 			group_id := int(tmp[0] - `0`)
 			group := re.get_group_by_id(in_txt, group_id)
-			// println("group: $group_id [$group]")
+			// println("group: ${group_id} [${group}]")
 			res += '${group}${tmp[1..]}'
 		} else {
 			res += '\\' + tmp
@@ -474,7 +474,7 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	mut last_end := 0
 
 	for i < in_txt.len {
-		// println("Find Start. $i [${in_txt[i..]}]")
+		// println("Find Start. ${i} [${in_txt[i..]}]")
 		s, e := re.find_from(in_txt, i)
 		// println("Find End.")
 		if s >= 0 && e > s {
@@ -491,7 +491,7 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 			*/
 			// repl := repl_fn(re, in_txt, s, e)
 			repl := re.parsed_replace_string(in_txt, repl_str)
-			// println("repl res: $repl")
+			// println("repl res: ${repl}")
 			res.write_string(repl)
 			// res.write_string("[[${in_txt[s..e]}]]")
 

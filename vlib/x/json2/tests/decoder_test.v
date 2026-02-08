@@ -19,7 +19,7 @@ fn test_raw_decode_number() {
 
 fn test_raw_decode_array() {
 	raw_arr := json.decode[json.Any]('["Foo", 1]')!
-	arr := raw_arr.arr()
+	arr := raw_arr.as_array()
 	assert arr[0] or { 0 }.str() == 'Foo'
 	assert arr[1] or { 0 }.int() == 1
 }

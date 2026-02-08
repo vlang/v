@@ -1,0 +1,36 @@
+fn print_1(s string) {
+	dump(s)
+}
+
+fn print_2(s string, t string) {
+	dump('${s} ${t}')
+}
+
+fn print_3(s string, t string, u string) {
+	dump('${s} ${t} ${u}')
+}
+
+fn print_4(s string, t string, u string, v string) {
+	dump('${s} ${t} ${u} ${v}')
+}
+
+fn main() {
+  arr4 := ['Hello', 'World', 'V', '!']
+
+  print_1(...['Hello'])
+  print_2(...['Hello', 'World'])
+  print_3(...['Hello', 'World', '!'])
+  print_4(...['Hello', 'World', 'V', '!'])
+  print_4(...arr4)
+
+  print_1(...['Hello', 'World', 'V', '!'])
+  print_1(...arr4)
+  print_2(...['Hello', 'World', 'V', '!'])
+  print_2(...arr4)
+  print_3(...['Hello', 'World', 'V', '!'])
+  print_3(...arr4)
+
+  print_2(...['1'])
+  print_3(...['1', '2'])
+  print_4(...['1', '2', '3'])
+}

@@ -439,7 +439,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.uses_array = true
 					w.mark_by_type(node.typ)
 				}
-			} else {
+			} else { // fixed arrays
 				w.mark_by_type(node.typ)
 			}
 			if node.elem_type.has_flag(.option) {
@@ -454,7 +454,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.CallExpr {
 			w.call_expr(mut node)
-			if node.name == 'json.decode' {
+			if node.is_fn_a_const {
+				w.mark_const_as_used(node.name)
+			} else if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
 			} else if node.name == 'json.encode' && node.args[0].typ != 0 {
 				sym := w.table.final_sym(node.args[0].typ)
@@ -486,6 +488,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				&& w.table.final_sym(node.left_type).kind in [.array_fixed, .array] {
 				w.mark_by_type(node.return_type)
 			}
+			if node.name.contains('new_array_from_c_array') {
+				if !w.inside_in_op {
+					w.uses_array = true
+					w.mark_by_type(node.return_type) // the transformer fills this with the correct type
+				}
+			}
 		}
 		ast.CastExpr {
 			w.expr(node.expr)
@@ -516,6 +524,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeCall {
 			w.expr(node.left)
+			for args in node.args {
+				w.expr(args.expr)
+			}
+			w.expr(node.or_block)
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
@@ -722,7 +734,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				.blank_ident {}
 				else {
 					// `.unresolved`, `.variable`
-					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')
+					// println('>>> else, ast.Ident ${node.name} kind: ${node.kind} ')
 					if node.name in w.all_consts {
 						w.mark_const_as_used(node.name)
 					} else if node.name in w.all_globals {
@@ -1038,7 +1050,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		} else {
 			match left_sym.info {
 				ast.Array, ast.ArrayFixed {
-					if !w.uses_arr_void && node.name in ['contains', 'index'] {
+					if !w.uses_arr_void && node.name in ['contains', 'index', 'last_index'] {
 						if w.table.final_sym(left_sym.info.elem_type).kind == .function {
 							w.uses_arr_void = true
 						}
@@ -1239,6 +1251,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
 			}
+			if isym.info.elem_type.has_flag(.option) {
+				w.used_option++
+			}
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {
@@ -1428,7 +1443,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_memdup {
+	if w.uses_memdup || w.used_none > 0 || w.used_option > 0 {
+		// used_option => used_none => use memdup
 		w.fn_by_name('memdup')
 	}
 	if w.uses_debugger {
@@ -1440,6 +1456,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.features.auto_str || w.uses_dump {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
 		w.fn_by_name('tos3')
+		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
+		w.fn_by_name(builderptr_idx + '.write_string')
+		w.fn_by_name(builderptr_idx + '.writeln')
+		w.fn_by_name(builderptr_idx + '.indent')
 	}
 	if w.uses_index || w.pref.is_shared {
 		w.fn_by_name(array_idx_str + '.slice')
@@ -1689,6 +1709,11 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if w.uses_type_name {
 		charptr_idx_str := ast.charptr_type_idx.str()
 		w.fn_by_name(charptr_idx_str + '.vstring_literal')
+	}
+	if w.used_arr_method['map'] || w.used_arr_method['filter'] {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()

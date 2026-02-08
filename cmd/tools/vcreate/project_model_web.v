@@ -1,11 +1,11 @@
 module main
 
-import os { join_path }
+import os
 
 fn (mut c Create) set_web_project_files() {
 	base := if c.new_dir { c.name } else { '' }
 	c.files << ProjectFiles{
-		path:    join_path(base, 'databases', 'config_databases_sqlite.v')
+		path:    os.join_path(base, 'databases', 'config_databases_sqlite.v')
 		content: "module databases
 
 import db.sqlite // can change to 'db.mysql', 'db.pg'
@@ -17,7 +17,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'templates', 'header_component.html')
+		path:    os.join_path(base, 'templates', 'header_component.html')
 		content: "<nav>
 	<div class='nav-wrapper'>
 		<a href='javascript:window.history.back();' class='left'>
@@ -36,7 +36,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'templates', 'products.css')
+		path:    os.join_path(base, 'templates', 'products.css')
 		content: 'h1.title {
 	font-family: Arial, Helvetica, sans-serif;
 	color: #3b7bbf;
@@ -50,7 +50,7 @@ div.products-table {
 }'
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'templates', 'products.html')
+		path:    os.join_path(base, 'templates', 'products.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -147,7 +147,7 @@ div.products-table {
 </html>"
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'auth_controllers.v')
+		path:    os.join_path(base, 'auth_controllers.v')
 		content: "module main
 
 import vweb
@@ -158,23 +158,22 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 		app.set_status(400, '')
 		return app.text('error: \${err}')
 	}
-
 	return app.json(response)
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'auth_dto.v')
+		path:    os.join_path(base, 'auth_dto.v')
 		content: 'module main
 
 struct AuthRequestDto {
-	username string @[nonull]
-	password string @[nonull]
+	username string
+	password string
 }
 '
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'auth_services.v')
+		path:    os.join_path(base, 'auth_services.v')
 		content: "module main
 
 import crypto.hmac
@@ -202,14 +201,8 @@ struct JwtPayload {
 }
 
 fn (mut app App) service_auth(username string, password string) !string {
-	mut db := databases.create_db_connection() or {
-		eprintln(err)
-		panic(err)
-	}
-
-	defer {
-		db.close() or { panic(err) }
-	}
+	mut db := databases.create_db_connection()!
+	defer { db.close() or { panic(err) } }
 
 	users := sql db {
 		select from User where username == username
@@ -218,36 +211,28 @@ fn (mut app App) service_auth(username string, password string) !string {
 		return error('user not found')
 	}
 	user := users.first()
-
 	if !user.active {
 		return error('user is not active')
 	}
-
 	bcrypt.compare_hash_and_password(password.bytes(), user.password.bytes()) or {
 		return error('Failed to auth user, \${err}')
 	}
-
-	token := make_token(user)
-	return token
+	return make_token(user)
 }
 
 fn make_token(user User) string {
 	secret := 'SECRET_KEY' // os.getenv('SECRET_KEY')
-
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
 		sub: '\${user.id}'
 		name: '\${user.username}'
 		iat: time.now()
 	}
-
 	header := base64.url_encode(json.encode(jwt_header).bytes())
 	payload := base64.url_encode(json.encode(jwt_payload).bytes())
 	signature := base64.url_encode(hmac.new(secret.bytes(), '\${header}.\${payload}'.bytes(),
 		sha256.sum, sha256.block_size).bytestr().bytes())
-
 	jwt := '\${header}.\${payload}.\${signature}'
-
 	return jwt
 }
 
@@ -257,19 +242,16 @@ fn auth_verify(token string) bool {
 	}
 	secret := 'SECRET_KEY' // os.getenv('SECRET_KEY')
 	token_split := token.split('.')
-
 	signature_mirror := hmac.new(secret.bytes(), '\${token_split[0]}.\${token_split[1]}'.bytes(),
 		sha256.sum, sha256.block_size).bytestr().bytes()
-
 	signature_from_token := base64.url_decode(token_split[2])
-
 	return hmac.equal(signature_from_token, signature_mirror)
 	// return true
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'index.html')
+		path:    os.join_path(base, 'index.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -348,14 +330,12 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'main.v')
+		path:    os.join_path(base, 'main.v')
 		content: "module main
 
 import vweb
 import databases
 import os
-
-const port = 8082
 
 struct App {
 	vweb.Context
@@ -366,32 +346,28 @@ pub fn (app App) before_request() {
 }
 
 fn main() {
-	mut db := databases.create_db_connection() or { panic(err) }
-
+	mut db := databases.create_db_connection()!
 	sql db {
 		create table User
 		create table Product
-	} or { panic('error on create table: \${err}') }
-
-	db.close() or { panic(err) }
+	}!
+	db.close()!
 
 	mut app := &App{}
 	app.serve_static('/favicon.ico', 'assets/favicon.ico')
 	// makes all static files available.
 	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
-
-	vweb.run(app, port)
+	vweb.run(app, 8082)
 }
 
 pub fn (mut app App) index() vweb.Result {
 	title := 'vweb app'
-
 	return \$vweb.html()
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'product_controller.v')
+		path:    os.join_path(base, 'product_controller.v')
 		content: "module main
 
 import vweb
@@ -401,21 +377,16 @@ import json
 @['/controller/products'; get]
 pub fn (mut app App) controller_get_all_products() vweb.Result {
 	token := app.req.header.get_custom('token') or { '' }
-
 	if !auth_verify(token) {
 		app.set_status(401, '')
 		return app.text('Not valid token')
 	}
-
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
-
 	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
 		app.set_status(501, '')
 		return app.text('jwt decode error')
 	}
-
 	user_id := jwt_payload.sub
-
 	response := app.service_get_all_products_from(user_id.int()) or {
 		app.set_status(400, '')
 		return app.text('\${err}')
@@ -430,23 +401,17 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 		app.set_status(400, '')
 		return app.text('product name cannot be empty')
 	}
-
 	token := app.req.header.get_custom('token') or { '' }
-
 	if !auth_verify(token) {
 		app.set_status(401, '')
 		return app.text('Not valid token')
 	}
-
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
-
 	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
 		app.set_status(501, '')
 		return app.text('jwt decode error')
 	}
-
 	user_id := jwt_payload.sub
-
 	app.service_add_product(product_name, user_id.int()) or {
 		app.set_status(400, '')
 		return app.text('error: \${err}')
@@ -457,67 +422,48 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'product_entities.v')
+		path:    os.join_path(base, 'product_entities.v')
 		content: "module main
 
 @[table: 'products']
 struct Product {
 	id         int    @[primary; sql: serial]
 	user_id    int
-	name       string @[nonull; sql_type: 'TEXT']
+	name       string @[sql_type: 'TEXT']
 	created_at string @[default: 'CURRENT_TIMESTAMP']
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'product_service.v')
-		content: "module main
+		path:    os.join_path(base, 'product_service.v')
+		content: 'module main
 
 import databases
 
 fn (mut app App) service_add_product(product_name string, user_id int) ! {
 	mut db := databases.create_db_connection()!
-
-	defer {
-		db.close() or { panic(err) }
-	}
-
+	defer { db.close() or { panic(err) } }
 	product_model := Product{
 		name: product_name
 		user_id: user_id
 	}
-
-	mut insert_error := ''
-
 	sql db {
 		insert product_model into Product
-	} or { insert_error = err.msg() }
-
-	if insert_error != '' {
-		return error(insert_error)
-	}
+	}!
 }
 
 fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
-	mut db := databases.create_db_connection() or {
-		println(err)
-		return err
-	}
-
-	defer {
-		db.close() or { panic(err) }
-	}
-
+	mut db := databases.create_db_connection()!
+	defer { db.close() or { panic(err) } }
 	results := sql db {
 		select from Product where user_id == user_id
 	}!
-
 	return results
 }
-"
+'
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'product_view_api.v')
+		path:    os.join_path(base, 'product_view_api.v')
 		content: "module main
 
 import json
@@ -526,37 +472,20 @@ import net.http
 pub fn get_products(token string) ![]Product {
 	mut header := http.new_header()
 	header.add_custom('token', token)!
-	url := 'http://localhost:8082/controller/products'
-
-	mut config := http.FetchConfig{
-		header: header
-	}
-
-	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
-	products := json.decode([]Product, resp.body)!
-
-	return products
+    resp := http.fetch(url: 'http://localhost:8082/controller/products', header: header)!
+	return json.decode([]Product, resp.body)!
 }
 
 pub fn get_product(token string) ![]User {
 	mut header := http.new_header()
 	header.add_custom('token', token)!
-
-	url := 'http://localhost:8082/controller/product'
-
-	mut config := http.FetchConfig{
-		header: header
-	}
-
-	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
-	products := json.decode([]User, resp.body)!
-
-	return products
+    resp := http.fetch(url: 'http://localhost:8082/controller/product', header: header)!
+	return json.decode([]User, resp.body)!
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'product_view.v')
+		path:    os.join_path(base, 'product_view.v')
 		content: "module main
 
 import vweb
@@ -567,18 +496,16 @@ pub fn (mut app App) products() !vweb.Result {
 		app.set_status(400, '')
 		return app.text('\${err}')
 	}
-
 	user := get_user(token) or {
 		app.set_status(400, '')
 		return app.text('Failed to fetch data from the server. Error: \${err}')
 	}
-
 	return \$vweb.html()
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'user_controllers.v')
+		path:    os.join_path(base, 'user_controllers.v')
 		content: "module main
 
 import vweb
@@ -589,12 +516,10 @@ import json
 pub fn (mut app App) controller_get_all_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
-
 	if !auth_verify(token) {
 		app.set_status(401, '')
 		return app.text('Not valid token')
 	}
-
 	response := app.service_get_all_user() or {
 		app.set_status(400, '')
 		return app.text('\${err}')
@@ -606,21 +531,16 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 pub fn (mut app App) controller_get_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
-
 	if !auth_verify(token) {
 		app.set_status(401, '')
 		return app.text('Not valid token')
 	}
-
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
-
 	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
 		app.set_status(501, '')
 		return app.text('jwt decode error')
 	}
-
 	user_id := jwt_payload.sub
-
 	response := app.service_get_user(user_id.int()) or {
 		app.set_status(400, '')
 		return app.text('\${err}')
@@ -648,22 +568,22 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'user_entities.v')
+		path:    os.join_path(base, 'user_entities.v')
 		content: "module main
 
 @[table: 'users']
 pub struct User {
 mut:
 	id       int       @[primary; sql: serial]
-	username string    @[nonull; sql_type: 'TEXT'; unique]
-	password string    @[nonull; sql_type: 'TEXT']
+	username string    @[unique]
+	password string
 	active   bool
 	products []Product @[fkey: 'user_id']
 }
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'user_services.v')
+		path:    os.join_path(base, 'user_services.v')
 		content: "module main
 
 import crypto.bcrypt
@@ -671,56 +591,29 @@ import databases
 
 fn (mut app App) service_add_user(username string, password string) ! {
 	mut db := databases.create_db_connection()!
-
-	defer {
-		db.close() or { panic(err) }
-	}
-
-	hashed_password := bcrypt.generate_from_password(password.bytes(), bcrypt.min_cost) or {
-		eprintln(err)
-		return err
-	}
-
+	defer { db.close() or { panic(err) } }
+	hashed_password := bcrypt.generate_from_password(password.bytes(), bcrypt.min_cost)!
 	user_model := User{
 		username: username
 		password: hashed_password
 		active: true
 	}
-
-	mut insert_error := ''
 	sql db {
 		insert user_model into User
-	} or { insert_error = err.msg() }
-	if insert_error != '' {
-		return error(insert_error)
-	}
+	}!
 }
 
 fn (mut app App) service_get_all_user() ![]User {
-	mut db := databases.create_db_connection() or {
-		println(err)
-		return err
-	}
-
-	defer {
-		db.close() or { panic(err) }
-	}
-
-	results := sql db {
+	mut db := databases.create_db_connection()!
+	defer {	db.close() or { panic(err) } }
+	return sql db {
 		select from User
 	}!
-
-	return results
 }
 
 fn (mut app App) service_get_user(id int) !User {
-	mut db := databases.create_db_connection() or {
-		println(err)
-		return err
-	}
-	defer {
-		db.close() or { panic(err) }
-	}
+	mut db := databases.create_db_connection()!
+	defer { db.close() or { panic(err) } }   
 	results := sql db {
 		select from User where id == id
 	}!
@@ -732,7 +625,7 @@ fn (mut app App) service_get_user(id int) !User {
 "
 	}
 	c.files << ProjectFiles{
-		path:    join_path(base, 'user_view_api.v')
+		path:    os.join_path(base, 'user_view_api.v')
 		content: "module main
 
 import json
@@ -741,32 +634,15 @@ import net.http
 pub fn get_users(token string) ![]User {
 	mut header := http.new_header()
 	header.add_custom('token', token)!
-
-	url := 'http://localhost:8082/controller/users'
-
-	mut config := http.FetchConfig{
-		header: header
-	}
-
-	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
-	users := json.decode([]User, resp.body)!
-
-	return users
+    resp := http.fetch(url: 'http://localhost:8082/controller/users', header: header)!
+	return json.decode([]User, resp.body)!
 }
 
 pub fn get_user(token string) !User {
 	mut header := http.new_header()
 	header.add_custom('token', token)!
-
-	url := 'http://localhost:8082/controller/user'
-
-	mut config := http.FetchConfig{
-		header: header
-	}
-
-	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
+	resp := http.fetch(url: 'http://localhost:8082/controller/user', header: header)!
 	users := json.decode(User, resp.body)!
-
 	return users
 }
 "

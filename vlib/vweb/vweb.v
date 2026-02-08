@@ -458,7 +458,7 @@ interface MiddlewareInterface {
 }
 
 // Generate route structs for an app
-fn generate_routes[T](app &T) !map[string]Route {
+fn generate_routes[T](_app &T) !map[string]Route {
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {

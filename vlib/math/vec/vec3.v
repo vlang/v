@@ -253,16 +253,24 @@ pub fn (v Vec3[T]) unit() Vec3[T] {
 	return Vec3[T]{v.x * invm, v.y * invm, v.z * invm}
 }
 
-// perpendicular returns the `u` projected perpendicular vector to this vector.
+// perpendicular returns the `v` projected perpendicular vector to the 'u' vector.
 @[inline]
 pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
 	return v - v.project(u)
 }
 
 // project returns the projected vector.
+// The projection of vector `v` onto vector `u` is the orthogonal projection
+// of `v` onto a straight line parallel to `u` that passes through the origin.
+// This is equivalent to the vector projection of `v` onto the unit vector in the direction of `u`.
+// and is given by the formula: proj_v(u) = (v · u / |u|^2) * u
+// where "·" denotes the dot product and |u| is the magnitude of vector `u`.
+// If `v` is a zero vector, the result will also be a zero vector.
+// example:
+// TODO: add examples
 pub fn (v Vec3[T]) project(u Vec3[T]) Vec3[T] {
-	percent := v.dot(u) / u.dot(v)
-	return u.mul_scalar(percent)
+	scale := T(v.dot(u) / u.dot(u))
+	return u.mul_scalar(scale)
 }
 
 // eq returns a bool indicating if the two vectors are equal.

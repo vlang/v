@@ -20,9 +20,7 @@
 // Define here to be sure
 #define SP_PROT_TLS1_2_CLIENT 0x00000800
 
-#if !defined(VSCHANNEL_REALLOC)
-#define VSCHANNEL_REALLOC realloc
-#endif
+typedef void* (*vschannel_allocator)(void*, INT64);
 
 typedef struct TlsContext TlsContext;
 
@@ -32,9 +30,9 @@ static void vschannel_init(TlsContext *tls_ctx);
 
 static void vschannel_cleanup(TlsContext *tls_ctx);
 
-static INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out);
+static INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn);
 
-static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length);
+static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length, vschannel_allocator afn);
 
 static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number);
 

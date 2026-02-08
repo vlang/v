@@ -153,10 +153,16 @@ pub fn (mut s Scanner) scan() !token.Token {
 				if c == `\n` {
 					s.inc_line_number()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'incremented line nr to ${s.line_nr}')
+				} else if c == `\r` {
+					// CR should always be followed by a `\n`
+					if s.at() != `\n` {
+						return error(@MOD + '.' + @STRUCT + '.' + @FN +
+							' missing newline/linefeed character after "\\c" carriage return at (${s.line_nr},${s.col}) "${ascii}" near ...${s.excerpt(s.pos, 5)}...')
+					}
 				}
 				// Date-Time in RFC 3339 is allowed to have a space between the date and time in supplement to the 'T'
 				// so we allow space characters to slip through to the parser if the space is between two digits...
-				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-1)).ascii_str()+'" < "$ascii" > "'+u8(s.at()).ascii_str()+'"')
+				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-1)).ascii_str()+'" < "${ascii}" > "'+u8(s.at()).ascii_str()+'"')
 				if c == ` ` && u8(s.peek(-1)).is_digit() && u8(s.at()).is_digit() {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified, what could be, a space between a RFC 3339 date and time ("${ascii}") (${ascii.len})')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
@@ -335,7 +341,7 @@ pub fn (mut s Scanner) reset() {
 // new_token returns a new `token.Token`.
 @[inline]
 fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
-	// println('new_token($lit)')
+	// println('new_token(${lit})')
 	mut col := s.col - len + 1
 	if s.line_nr == 1 {
 		col -= s.header_len
@@ -486,7 +492,7 @@ fn (mut s Scanner) extract_multiline_string() !string {
 		c := u8(s.at())
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `${c.ascii_str()}` / ${c} (quote type: ${quote}/${quote.ascii_str()})')
 
-		if c == `\r` {
+		if c == `\r` && s.peek(1) == `\n` {
 			continue
 		}
 		if c == `\n` {

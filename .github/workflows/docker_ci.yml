@@ -35,7 +35,7 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Show Environment
         run: |
           echo "PWD:"
@@ -53,6 +53,25 @@ jobs:
       - name: Run only essential tests
         run: VTEST_JUST_ESSENTIAL=1 ./v -silent test-self
 
+  docker-alpine-musl-tcc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 241
+    container:
+      image: thevlang/vlang:alpine-build
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Add dependencies
+        run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Build V
+        run: make
+      - name: Check if vpm compiles with tcc
+        run: ./v -show-c-output -showcc -no-retry-compilation -cc tcc cmd/tools/vpm
+      - name: Run only builtin and math tests
+        run: ./v test vlib/builtin
+
   docker-ubuntu-musl:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
@@ -65,7 +84,7 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Build V
         run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works

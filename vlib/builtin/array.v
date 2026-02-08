@@ -724,6 +724,13 @@ pub fn (a &array) clone_to_depth(depth int) array {
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
+	} else if depth > 0 && a.element_size == sizeof(string) && a.len >= 0 && a.cap >= a.len {
+		for i in 0 .. a.len {
+			str_ptr := unsafe { &string(a.get_unsafe(i)) }
+			str_clone := (*str_ptr).clone()
+			unsafe { arr.set_unsafe(i, &str_clone) }
+		}
+		return arr
 	} else {
 		if a.data != 0 && source_capacity_in_bytes > 0 {
 			unsafe { vmemcpy(&u8(arr.data), a.data, source_capacity_in_bytes) }
@@ -988,6 +995,9 @@ pub fn (a array) contains(value voidptr) bool
 
 // index returns the first index at which a given element can be found in the array or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
+
+// last_index returns the last index at which a given element can be found in the array or `-1` if the value is not found.
+pub fn (a array) last_index(value voidptr) int
 
 @[direct_array_access; unsafe]
 pub fn (mut a []string) free() {

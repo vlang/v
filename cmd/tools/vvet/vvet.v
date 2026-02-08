@@ -212,7 +212,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 			prev_line := lines[j]
 			if prev_line.contains('}') { // We've looked back to the above scope, stop here
 				break
-			} else if prev_line.starts_with('[') {
+			} else if prev_line.starts_with('@[') {
 				tags << collect_tags(prev_line)
 				continue
 			} else if prev_line.starts_with('//') { // Single-line comment
@@ -253,7 +253,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 
 			if prev_line.contains('}') { // We've looked back to the above scope, stop here
 				break
-			} else if prev_line.starts_with('[') {
+			} else if prev_line.starts_with('@[') {
 				tags << collect_tags(prev_line)
 				continue
 			}

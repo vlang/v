@@ -87,14 +87,16 @@ fn normalize_mod_path(path string) string {
 	return path.replace('-', '_').to_lower()
 }
 
-fn get_all_modules() []string {
-	url := get_working_server_url() + '/search'
+fn get_all_modules_for_search() []string {
+	working_server_url := get_working_server_url()
+	println('Search server: ${working_server_url} .')
+	url := '${working_server_url}/search'
 	r := http.get(url) or {
 		vpm_error(err.msg(), verbose: true)
 		exit(1)
 	}
 	if r.status_code != 200 {
-		vpm_error('failed to search vpm.vlang.io.', details: 'Status code: ${r.status_code}')
+		vpm_error('failed to search through ${url}', details: 'Status code: ${r.status_code}')
 		exit(1)
 	}
 	s := r.body

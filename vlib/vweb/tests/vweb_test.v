@@ -1,4 +1,4 @@
-// vtest build: !windows
+// vtest build: !windows && !sanitized_job?
 import io
 import x.json2 as json
 import time

@@ -17,7 +17,7 @@ fn main() {
 	pico.serve()
 }
 
-fn handle_conn(mut pv picoev.Picoev, fd int, events int) {
+fn handle_conn(mut pv picoev.Picoev, fd int, _events int) {
 	// setup a nonblocking tcp connection
 	mut conn := &net.TcpConn{
 		sock:        net.tcp_socket_from_handle_raw(fd)

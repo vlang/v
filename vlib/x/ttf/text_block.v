@@ -14,6 +14,7 @@ module ttf
 **********************************************************************/
 // Text_block represents a visual block of TTF text.
 pub struct Text_block {
+pub:
 	x         int // x position of the left high corner
 	y         int // y position of the left high corner
 	w         int // width of the text block
@@ -28,10 +29,10 @@ pub fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, spa
 		return 0
 	}
 	delta := block_w - w
-	// println("num spc: $num_spaces")
-	// println("delta: ${txt} w:$w bw:$block_w space_cw:$space_cw")
+	// println("num spc: ${num_spaces}")
+	// println("delta: ${txt} w:${w} bw:${block_w} space_cw:${space_cw}")
 	res := f32(delta) / f32(num_spaces) / f32(space_cw)
-	// println("res: $res")
+	// println("res: ${res}")
 	return res
 }
 
@@ -101,7 +102,7 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 					bmp.draw_text(tmp_str)
 					//---- DEBUG ----
 					// txt_w , txt_h := bmp.draw_text(tmp_str)
-					// println("printing [${x},${y}] => '${tmp_str}' space_cw: $bmp.space_cw")
+					// println("printing [${x},${y}] => '${tmp_str}' space_cw: ${bmp.space_cw}")
 					// bmp.box(x + left_offset,y + y_base - int((bmp.tf.y_min)*bmp.scale), x + txt_w + left_offset, y + y_base - int((bmp.tf.y_max) * bmp.scale), u32(0x00ff_0000) )
 					//---------------
 					y += y_base

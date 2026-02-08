@@ -27,25 +27,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
-        uses: cross-platform-actions/action@v0.30.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc tcc -no-retry-compilation'
             ./v run ci/freebsd_ci.vsh all
 
@@ -53,25 +61,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
-        uses: cross-platform-actions/action@v0.30.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc clang'
             ./v run ci/freebsd_ci.vsh all
 
@@ -79,24 +95,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
-        uses: cross-platform-actions/action@v0.30.0
+        uses: cross-platform-actions/action@v0.32.0
         with:
           operating_system: freebsd
-          version: '14.3'
+          version: '15.0'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
           run: |
             sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
+            # Install DB packages needed to build examples
+            sudo pkg install -y mariadb118-client postgresql18-client
+            # Install packages needed by Sokol to build examples
+            sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
+            echo "### Build V"
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=3
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=3
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc gcc'
             ./v run ci/freebsd_ci.vsh all

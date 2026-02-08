@@ -4,9 +4,9 @@ mut:
 }
 
 fn (mut s Abc) close() ? {
-	println('> CLOSE 1 s.x: $s.x')
+	println('> CLOSE 1 s.x: ${s.x}')
 	s.x = -1
-	println('> CLOSE 2 s.x: $s.x')
+	println('> CLOSE 2 s.x: ${s.x}')
 }
 
 fn opt2() ?int {

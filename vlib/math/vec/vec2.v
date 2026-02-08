@@ -221,6 +221,17 @@ pub fn (v Vec2[T]) magnitude_y() T {
 }
 
 // dot returns the dot product of `v` and `u`.
+// The dot product is a scalar value that represents the magnitude of one vector
+// projected onto another vector.
+// It is calculated by multiplying the corresponding components of the vectors
+// and summing the results.
+// example:
+// ```v
+// v := vec2[f32](3, 4) //magnitude = 5
+// u := vec2[f32](5, 6) //magnitude = 7.81
+// dot := v.dot(u) // 3*5 + 4*6 = 15 + 24 = 39
+// 	(dot) // Output: 39
+// ```
 pub fn (v Vec2[T]) dot(u Vec2[T]) T {
 	return (v.x * u.x) + (v.y * u.y)
 }
@@ -247,15 +258,28 @@ pub fn (v Vec2[T]) perp_ccw() Vec2[T] {
 	return Vec2[T]{-v.y, v.x}
 }
 
-// perpendicular returns the `u` projected perpendicular vector to this vector.
+// perpendicular returns the `v` projected perpendicular vector to the 'u' vector.
 pub fn (v Vec2[T]) perpendicular(u Vec2[T]) Vec2[T] {
 	return v - v.project(u)
 }
 
 // project returns the projected vector.
+// The projection of vector `v` onto vector `u` is the orthogonal projection
+// of `v` onto a straight line parallel to `u` that passes through the origin.
+// This is equivalent to the vector projection of `v` onto the unit vector in the direction of `u`.
+// and is given by the formula: proj_v(u) = (v · u / |u|^2) * u
+// where "·" denotes the dot product and |u| is the magnitude of vector `u`.
+// If `v` is a zero vector, the result will also be a zero vector.
+// example:
+// ```v
+// v := vec2[f32](3, 4)
+// u := vec2[f32](5, 6)
+// proj := v.project(u)
+// println(proj) // Output: vec2[f32](3.1967213, 3.8360658)
+// ```
 pub fn (v Vec2[T]) project(u Vec2[T]) Vec2[T] {
-	percent := v.dot(u) / u.dot(v)
-	return u.mul_scalar(percent)
+	scale := T(v.dot(u) / u.dot(u))
+	return u.mul_scalar(scale)
 }
 
 // rotate_around_cw returns the vector `v` rotated *clockwise* `radians` around an origin vector `o` in Cartesian space.
@@ -351,6 +375,15 @@ pub fn (p1 Vec2[T]) angle_towards(p2 Vec2[T]) T {
 }
 
 // angle returns the angle in radians of the vector.
+// example:
+// ```v
+// v := vec2[f32](3.0, 4.0)
+// a := v.angle()
+// assert a == 0.64 (approximate value in radians)
+// w := vec2[f32](0.0, 1.0)
+// b := w.angle()
+// assert b == 1.57 (approximate value in radians)
+// ```
 pub fn (v Vec2[T]) angle() T {
 	$if T is f64 {
 		return math.atan2(v.y, v.x)
@@ -361,12 +394,8 @@ pub fn (v Vec2[T]) angle() T {
 
 // abs sets `x` and `y` field values to their absolute values.
 pub fn (mut v Vec2[T]) abs() {
-	if v.x < 0 {
-		v.x = math.abs(v.x)
-	}
-	if v.y < 0 {
-		v.y = math.abs(v.y)
-	}
+	v.x = math.abs(v.x)
+	v.y = math.abs(v.y)
 }
 
 // clean returns a vector with all fields of this vector set to zero (0) if they fall within `tolerance`.
@@ -392,6 +421,14 @@ pub fn (mut v Vec2[T]) clean_tolerance[U](tolerance U) {
 }
 
 // inv returns the inverse, or reciprocal, of the vector.
+// If a field is zero, its inverse is also set to zero to avoid division by zero.
+// the direction the vector points is generally not preserved, but
+// the magnitude of each field is inverted.
+// example:
+// ```v
+// v := vec2[f32](2.0, 4.0)
+// inv_v := v.inv() // inv_v == vec2[f32](0.5, 0.25)
+// ```
 pub fn (v Vec2[T]) inv() Vec2[T] {
 	return Vec2[T]{
 		x: if v.x != 0 { T(1) / v.x } else { 0 }
@@ -400,6 +437,13 @@ pub fn (v Vec2[T]) inv() Vec2[T] {
 }
 
 // normalize normalizes the vector.
+// A normalized vector has the same direction as the original vector but a magnitude of 1.
+// If the vector has a magnitude of 0, a zero vector is returned since we cannot find the direction of a zero-length vector.
+// example:
+// ```v
+// v := vec2[f32](3.0, 4.0)//magnitude = 5.0
+// n := v.normalize() // n == vec2[f32](0.6, 0.8) // magnitude = 1.0
+// ```
 pub fn (v Vec2[T]) normalize() Vec2[T] {
 	m := v.magnitude()
 	if m == 0 {
@@ -412,6 +456,12 @@ pub fn (v Vec2[T]) normalize() Vec2[T] {
 }
 
 // sum returns a sum of all the fields.
+// example:
+// ```v
+// v := vec2[f32](3.0, 4.0)
+// s := v.sum()
+// assert s == 7.0
+// ```
 pub fn (v Vec2[T]) sum() T {
 	return v.x + v.y
 }

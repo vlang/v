@@ -46,7 +46,7 @@ fn new_none_node[T](init bool) &BSTreeNode[T] {
 }
 
 // bind to an actual instance of a node.
-fn (mut node BSTreeNode[T]) bind(mut to_bind BSTreeNode[T], left bool) {
+fn (mut node BSTreeNode[T]) bind(mut to_bind BSTreeNode[T], _left bool) {
 	node.left = to_bind.left
 	node.right = to_bind.right
 	node.value = to_bind.value

@@ -9,6 +9,8 @@ import v.ast
 import v.vmod
 import v.checker
 import v.transformer
+import v.comptime
+import v.generics
 import v.parser
 import v.markused
 import v.depgraph
@@ -23,6 +25,8 @@ pub:
 pub mut:
 	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
+	comptime            &comptime.Comptime       = unsafe { nil }
+	generics            &generics.Generics       = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
 	stats_lines         int // size of backend generated source code in lines
@@ -58,7 +62,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	if pref_.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	table.pointer_size = if pref_.m64 { 8 } else { 4 }
+	table.pointer_size = if pref_.m64 && pref_.backend != .wasm { 8 } else { 4 }
 	mut msvc := MsvcResult{}
 	if pref_.ccompiler == 'msvc' {
 		$if windows {
@@ -82,6 +86,8 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		table:             table
 		checker:           checker.new_checker(table, pref_)
 		transformer:       transformer.new_transformer_with_table(table, pref_)
+		comptime:          comptime.new_comptime_with_table(table, pref_)
+		generics:          generics.new_generics_with_table(table, pref_)
 		compiled_dir:      compiled_dir
 		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
@@ -136,6 +142,17 @@ pub fn (mut b Builder) middle_stages() ! {
 			println('> t: ${t:10} | s.mod: ${s.mod:-40} | s.name: ${'${s.name#[..30]}':-30} | s.is_builtin: ${s.is_builtin:6} | s.is_pub: ${s.is_pub}')
 		}
 	}
+
+	if b.pref.new_generic_solver {
+		util.timing_start('GENERICS')
+		b.generics.solve_files(b.parsed_files)
+		util.timing_measure('GENERICS')
+	}
+
+	util.timing_start('COMPTIME')
+	b.comptime.solve_files(b.parsed_files)
+	util.timing_measure('COMPTIME')
+
 	if b.pref.dump_defines != '' {
 		b.dump_defines()
 	}
@@ -219,7 +236,7 @@ pub fn (mut b Builder) parse_imports() {
 				continue
 			}
 			import_path := b.find_module_path(mod, ast_file.path) or {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (not found)',
 					ast_file.path, imp.pos)
@@ -227,12 +244,12 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (no .v files in "${import_path}")', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (no .v files in "${import_path}")',
 					ast_file.path, imp.pos)
 				continue
 			}
-			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
+			// eprintln('>> ast_file.path: ${ast_file.path} , done: ${done_imports}, `import ${mod}` => ${v_files}')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
 			for file in parsed_files {
@@ -313,7 +330,7 @@ pub fn (mut b Builder) resolve_deps() {
 			for pf in b.parsed_files {
 				if m == pf.mod.name {
 					reordered_parsed_files << pf
-					// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+					// eprintln('pf.mod.name: ${pf.mod.name} | pf.path: ${pf.path}')
 				}
 			}
 		}
@@ -327,7 +344,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
-		// eprintln('p.path: $p.path')
+		// eprintln('p.path: ${p.path}')
 		mut deps := []string{}
 		if p.mod.name !in builtins {
 			deps << 'builtin'
@@ -479,7 +496,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		}
 	}
 	if !b.pref.is_vls && b.checker.nr_errors > 0 && b.pref.path.ends_with('.v')
-		&& os.is_file(b.pref.path) {
+		&& os.is_file(b.pref.path) && !b.pref.path.ends_with('vrepl_temp.v') {
 		if b.checker.errors.any(it.message.starts_with('unknown ')) {
 			// Sometimes users try to `v main.v`, when they have several .v files in their project.
 			// Then, they encounter puzzling errors about missing or unknown types. In this case,

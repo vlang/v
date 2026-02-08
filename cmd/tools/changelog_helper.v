@@ -162,7 +162,7 @@ fn (mut app App) process_line(text string) ! {
 		category = .interpreter
 	} else if is_examples(text) {
 		category = .examples
-		// println("Skipping line (example) $text")
+		// println("Skipping line (example) ${text}")
 		// return
 	} else if is_skip(text) {
 		// Always skip cleanups, typos etc

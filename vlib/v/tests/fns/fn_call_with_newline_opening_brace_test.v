@@ -34,16 +34,14 @@ fn new_address(cfg AddressConfig) &Address
 	}
 }
 
-const (
-	default_address     = new_address(AddressConfig{}) 
-	initialized_address = new_address 
+const default_address     = new_address(AddressConfig{})
+const initialized_address = new_address 
 	(
 		street: '0987 tluafeD tS'
 		city: 'ytiC etirovaF rouY'
 		state: 'ynA eB dluoC'
 		zip: 24
 	)
-)
 // vfmt on
 
 fn (a Address) str() string {

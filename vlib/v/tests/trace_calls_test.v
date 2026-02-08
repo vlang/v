@@ -1,4 +1,4 @@
-// vtest build: !(os_id_ubuntu? && musl?)
+// vtest build: !(os_id_ubuntu? && musl?) && !sanitized_job?
 import os
 
 const vexe = @VEXE

@@ -41,9 +41,21 @@ mut:
 	is_decoded bool
 }
 
-// Decoder represents a JSON decoder.
+// DecoderOptions provides options for JSON decoding.
+// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
+@[params]
+pub struct DecoderOptions {
+pub:
+	// In strict mode, quoted strings are not accepted as numbers.
+	// For example, '"123"' will fail to decode as int in strict mode,
+	// but will succeed in default mode.
+	strict bool
+}
+
+// Decoder is the internal decoding state.
 struct Decoder {
-	json string // json is the JSON data to be decoded.
+	json   string // json is the JSON data to be decoded.
+	strict bool   // strict mode rejects quoted strings as numbers
 mut:
 	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
 	checker_idx  int                   // checker_idx is the current index of the decoder.
@@ -271,8 +283,9 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
+// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
 @[manualfree]
-pub fn decode[T](val string) !T {
+pub fn decode[T](val string, params DecoderOptions) !T {
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -281,7 +294,8 @@ pub fn decode[T](val string) !T {
 		}
 	}
 	mut decoder := Decoder{
-		json: val
+		json:   val
+		strict: params.strict
 	}
 
 	decoder.check_json_format()!
@@ -295,7 +309,7 @@ pub fn decode[T](val string) !T {
 	return result
 }
 
-fn get_dynamic_from_element[T](t T) []T {
+fn get_dynamic_from_element[T](_t T) []T {
 	return []T{}
 }
 
@@ -627,12 +641,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			unsafe { decoder.decode_number(&val)! }
-		} else if value_info.value_kind == .string {
-			// recheck if string contains number
-			decoder.checker_idx = value_info.position + 1
-			decoder.check_number()!
-
-			unsafe { decoder.decode_number(&val)! }
+		} else if value_info.value_kind == .string && !decoder.strict {
+			// In default mode, try to parse quoted strings as numbers
+			val = decoder.decode_number_from_string[T]()!
 		} else {
 			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
@@ -819,70 +830,8 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	}
 }
 
-fn create_value_from_optional[T](val ?T) ?T {
+fn create_value_from_optional[T](_val ?T) ?T {
 	return T{}
-}
-
-fn get_number_max[T](num T) T {
-	$if num is i8 {
-		return max_i8
-	} $else $if num is i16 {
-		return max_i16
-	} $else $if num is i32 {
-		return max_i32
-	} $else $if num is i64 {
-		return max_i64
-	} $else $if num is u8 {
-		return max_u8
-	} $else $if num is u16 {
-		return max_u16
-	} $else $if num is u32 {
-		return max_u32
-	} $else $if num is u64 {
-		return max_u64
-	} $else $if num is int {
-		return max_int
-	}
-	return 0
-}
-
-fn get_number_min[T](num T) T {
-	$if num is i8 {
-		return min_i8
-	} $else $if num is i16 {
-		return min_i16
-	} $else $if num is i32 {
-		return min_i32
-	} $else $if num is i64 {
-		return min_i64
-	} $else $if num is u8 {
-		return min_u8
-	} $else $if num is u16 {
-		return min_u16
-	} $else $if num is u32 {
-		return min_u32
-	} $else $if num is u64 {
-		return min_u64
-	} $else $if num is int {
-		return min_int
-	}
-	return 0
-}
-
-fn get_number_digits[T](num T) int {
-	return $if T.unaliased_typ is i8 || T.unaliased_typ is u8 {
-		3
-	} $else $if T.unaliased_typ is i16 || T.unaliased_typ is u16 {
-		5
-	} $else $if T.unaliased_typ is i32 || T.unaliased_typ is u32 || T.unaliased_typ is int {
-		10
-	} $else $if T.unaliased_typ is i64 {
-		19
-	} $else $if T.unaliased_typ is u64 {
-		20
-	} $else {
-		0
-	}
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
@@ -901,9 +850,15 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 		decoder.decode_error('Number value: `${result}` does not match any field in enum: ${typeof(val).name}')!
 	} else if enum_info.value_kind == .string {
 		mut result := ''
-		unsafe { decoder.decode_value(mut result)! }
+		decoder.decode_string(mut result)!
 
 		$for value in T.values {
+			for attr in value.attrs {
+				if attr.starts_with('json: ') && attr[6..] == result {
+					val = value.value
+					return
+				}
+			}
 			if value.name == result {
 				val = value.value
 				return
@@ -918,107 +873,62 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
-	mut number_info := decoder.current_node.value
-
-	if decoder.json[number_info.position] == `"` { // fake number
-		number_info = ValueInfo{
-			position: number_info.position + 1
-			length:   number_info.length - 2
-		}
+	number_info := decoder.current_node.value
+	str := decoder.json[number_info.position..number_info.position + number_info.length]
+	$match T.unaliased_typ {
+		i8 { *val = strconv.atoi8(str)! }
+		i16 { *val = strconv.atoi16(str)! }
+		i32 { *val = strconv.atoi32(str)! }
+		i64 { *val = strconv.atoi64(str)! }
+		u8 { *val = strconv.atou8(str)! }
+		u16 { *val = strconv.atou16(str)! }
+		u32 { *val = strconv.atou32(str)! }
+		u64 { *val = strconv.atou64(str)! }
+		int { *val = strconv.atoi(str)! }
+		isize { *val = isize(strconv.atoi64(str)!) }
+		usize { *val = usize(strconv.atou64(str)!) }
+		f32 { *val = f32(strconv.atof_quick(str)) }
+		f64 { *val = strconv.atof_quick(str) }
+		$else { return error('`decode_number` can not decode ${T.name} type') }
 	}
+}
 
-	$if T.unaliased_typ is $float {
-		*val = T(strconv.atof_quick(decoder.json[number_info.position..number_info.position +
-			number_info.length]))
-	} $else { // this part is a minefield
-		mut is_negative := false
-		mut index := 0
-
-		if decoder.json[number_info.position] == `-` {
-			$if T.unaliased_typ is u8 || T.unaliased_typ is u16 || T.unaliased_typ is u32
-				|| T.unaliased_typ is u64 || T.unaliased_typ is $enum {
-				decoder.decode_error('expected positive integer for ${typeof(val).name} but got ${decoder.json[number_info.position..
-					number_info.position + number_info.length]}')!
-			}
-
-			is_negative = true
-			index++
-		}
-
-		// doing it like this means the minimum of signed numbers does not overflow before being inverted
-		*val = 0 // initialize to zero before accumulating digits
-		if !is_negative {
-			digit_amount := get_number_digits(*val)
-
-			if number_info.length > digit_amount {
-				decoder.decode_error('overflows ${typeof(val).name}')!
-			}
-
-			for index < int_min(number_info.length, digit_amount - 1) {
-				digit := T(decoder.json[number_info.position + index] - `0`)
-
-				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
-					decoder.decode_error('expected integer but got real number')!
-				}
-
-				*val = *val * 10 + digit
-
-				index++
-			}
-
-			if index == digit_amount - 1 {
-				digit := T(decoder.json[number_info.position + index] - `0`)
-
-				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
-					decoder.decode_error('expected integer but got real number')!
-				}
-
-				type_max := get_number_max(*val)
-				max_digits := type_max / 10
-				last_digit := type_max % 10
-
-				if *val > max_digits || (*val == max_digits && digit > last_digit) {
-					decoder.decode_error('overflows ${typeof(val).name}s')!
-				}
-
-				*val = *val * 10 + digit
-			}
-		} else {
-			digit_amount := get_number_digits(*val) + 1
-
-			if number_info.length > digit_amount {
-				decoder.decode_error('underflows ${typeof(val).name}')!
-			}
-
-			for index < int_min(number_info.length, digit_amount - 1) {
-				digit := T(decoder.json[number_info.position + index] - `0`)
-
-				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
-					decoder.decode_error('expected integer but got real number')!
-				}
-
-				*val = *val * 10 - digit
-
-				index++
-			}
-
-			if index == digit_amount - 1 {
-				digit := T(decoder.json[number_info.position + index] - `0`)
-
-				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
-					decoder.decode_error('expected integer but got real number')!
-				}
-
-				type_min := get_number_min(*val)
-				min_digits := type_min / 10
-				last_digit := type_min % 10
-
-				if *val < min_digits || (*val == min_digits && -digit < last_digit) {
-					decoder.decode_error('underflows ${typeof(val).name}')!
-				}
-
-				*val = *val * 10 - digit
-			}
-		}
+// decode_number_from_string parses a number from a JSON string value (default mode).
+// This extracts the content between quotes and parses it as a number.
+fn (mut decoder Decoder) decode_number_from_string[T]() !T {
+	string_info := decoder.current_node.value
+	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
+	if string_info.length < 2 {
+		return error('invalid string for number conversion')
+	}
+	str := decoder.json[string_info.position + 1..string_info.position + string_info.length - 1]
+	$if T.unaliased_typ is i8 {
+		return T(strconv.atoi8(str)!)
+	} $else $if T.unaliased_typ is i16 {
+		return T(strconv.atoi16(str)!)
+	} $else $if T.unaliased_typ is i32 {
+		return T(strconv.atoi32(str)!)
+	} $else $if T.unaliased_typ is i64 {
+		return T(strconv.atoi64(str)!)
+	} $else $if T.unaliased_typ is u8 {
+		return T(strconv.atou8(str)!)
+	} $else $if T.unaliased_typ is u16 {
+		return T(strconv.atou16(str)!)
+	} $else $if T.unaliased_typ is u32 {
+		return T(strconv.atou32(str)!)
+	} $else $if T.unaliased_typ is u64 {
+		return T(strconv.atou64(str)!)
+	} $else $if T.unaliased_typ is int {
+		return T(strconv.atoi(str)!)
+	} $else $if T.unaliased_typ is isize {
+		return T(isize(strconv.atoi64(str)!))
+	} $else $if T.unaliased_typ is usize {
+		return T(usize(strconv.atou64(str)!))
+	} $else $if T.unaliased_typ is f32 {
+		return T(f32(strconv.atof_quick(str)))
+	} $else $if T.unaliased_typ is f64 {
+		return T(strconv.atof_quick(str))
+	} $else {
+		return error('`decode_number_from_string` cannot decode ${T.name} type')
 	}
 }

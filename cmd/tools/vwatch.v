@@ -15,7 +15,7 @@ const scan_period_ms = 1000 / scan_frequency_hz
 
 const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 
-const default_vweb_suffixes = '*.v,*.html,*.css,*.js,*.md'
+const default_veb_suffixes = '*.v,*.html,*.css,*.js,*.md,*.tr'
 
 fn get_scan_timeout_seconds() int {
 	env_vw_timeout := os.getenv('VWATCH_TIMEOUT').int()
@@ -171,21 +171,21 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 
 		if is_vweb_found {
 			if !os.args.any(it.starts_with('--only-watch')) {
-				context.only_watch = default_vweb_suffixes.split_any(',')
+				context.only_watch = default_veb_suffixes.split_any(',')
 				// vweb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
 				// that are updated by the vweb app, causing a restart of the app, which in turn causes the
 				// browser to reload the current page, that probably triggered the update in the first place.
 				// Note that the problem is not specific to SQLite, any database that stores its files in the
 				// current (project) folder, will also cause this.
 				println('`v watch` detected that you are compiling a vweb project.')
-				println('   Because of that, the `--only-watch=${default_vweb_suffixes}` flag was also implied.')
+				println('   Because of that, the `--only-watch=${default_veb_suffixes}` flag was also implied.')
 				println('   In result, `v watch` will ignore changes to other files.')
 				println('   Add your own --only-watch filter, if you wish to override that choice.')
 				println('')
 			}
 		}
 		context.affected_paths = apaths.keys()
-		// context.elog('vfiles paths to be scanned: $context.affected_paths')
+		// context.elog('vfiles paths to be scanned: ${context.affected_paths}')
 	}
 	// scan all files in the found folders:
 	mut newstats := []VFileStat{}
@@ -282,6 +282,7 @@ fn (mut context Context) kill_pgroup() {
 		context.child_process.signal_pgkill()
 	}
 	context.child_process.wait()
+	context.child_process.close()
 }
 
 fn (mut context Context) run_before_cmd() {
@@ -345,7 +346,7 @@ fn (mut context Context) compilation_runner_loop() {
 						should_restart := RerunCommand.restart in cmds
 						cmds = []
 						if should_restart {
-							// context.elog('>>>>>>>> KILLING $context.child_process.pid')
+							// context.elog('>>>>>>>> KILLING ${context.child_process.pid}')
 							context.kill_pgroup()
 							break
 						}
@@ -398,7 +399,7 @@ fn main() {
 	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
 	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
 	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
-	context.only_watch = fp.string('only-watch', `o`, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
+	context.only_watch = fp.string('only-watch', 0, '', 'Watch only files matching these globe patterns. Example for a markdown renderer project: `v watch --only-watch=*.v,*.md run .`').split_any(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
 	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
 	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')

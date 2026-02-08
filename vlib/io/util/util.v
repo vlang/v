@@ -51,7 +51,7 @@ fn error_for_temporary_folder(fn_name string, d string) !string {
 }
 
 // temp_dir returns a uniquely named, writable, directory path.
-pub fn temp_dir(tdo TempFileOptions) !string {
+pub fn temp_dir(tdo TempDirOptions) !string {
 	mut d := tdo.path
 	if d == '' {
 		d = os.temp_dir()

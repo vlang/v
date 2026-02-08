@@ -109,7 +109,12 @@ pub fn rm(path string) ! {
 	}
 }
 
-pub fn cp(src string, dst string) ! {
+@[params]
+pub struct CopyParams {
+	fail_if_exists bool
+}
+
+pub fn cp(src string, dst string, config CopyParams) ! {
 	$if js_node {
 		err := ''
 		#try {

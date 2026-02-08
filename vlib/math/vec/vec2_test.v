@@ -1,4 +1,4 @@
-import math { close, radians, veryclose }
+import math { close, is_nan, radians, tolerance, veryclose }
 import math.vec
 
 fn test_vec2_int() {
@@ -227,4 +227,96 @@ fn test_vec2_rotate_around_ccw_2() {
 	v = v.rotate_around_ccw(origin, radians(90))
 	assert close(v.x, -1.0)
 	assert close(v.y, -1.0)
+}
+
+// Test for Vec2 projection
+//
+fn test_vec2_project_onto_basic() {
+	v := vec.vec2(5.0, 6.0) // magnitude ~7.81 vector
+	u := vec.vec2(3.0, 4.0) // magnitude 5 vector
+	// hand-computed:
+	// v·u = 5*3 + 6*4 = 39
+	// |u|^2 = 3^2 + 4^2 = 25
+	// scale = 39/25 = 1.56
+	// proj = scale * u = (1.56*3, 1.56*4) = (4.68, 6.24)
+	proj := v.project(u)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, 6.24, vec.vec_epsilon)
+}
+
+// Test for Vec2 projection onto zero vector
+// project v into the null vector
+fn test_vec2_project_onto_zero() {
+	v := vec.vec2(5.0, 6.0)
+	u := vec.vec2(0.0, 0.0)
+	proj := v.project(u)
+	// must be nan
+	assert is_nan(proj.x)
+	assert is_nan(proj.y)
+}
+
+// Test for Vec2 projection of zero vector
+// project a null vector
+fn test_vec2_project_zero_vector() {
+	v := vec.vec2(0.0, 0.0)
+	u := vec.vec2(3.0, 4.0)
+	proj := v.project(u)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+}
+
+// Test for Vec2 projection onto itself
+//
+fn test_vec2_project_onto_self() {
+	u := vec.vec2(3.0, 4.0)
+	proj := u.project(u)
+	assert veryclose(proj.x, u.x)
+	assert veryclose(proj.y, u.y)
+}
+
+// Test for Vec2 projection onto orthogonal vector
+//
+fn test_vec2_project_onto_orthogonal() {
+	v := vec.vec2(0.0, 1.0)
+	u := vec.vec2(1.0, 0.0)
+	proj := u.project(v)
+	// more sensitive to floating point errors so i think close is better here
+	assert close(proj.x, 0.0)
+	assert close(proj.y, 0.0)
+}
+
+// Test for Vec2 projection with negative components
+//
+fn test_vec2_project_negative_components() {
+	v := vec.vec2(5.0, -6.0)
+	u := vec.vec2(-3.0, 4.0)
+	// hand-computed:
+	// v·u = 5*-3 + -6*4 = -15 - 24 = -39
+	// |u|^2 = -3^2 + 4^2 = 9 + 16 = 25
+	// scale = -39/25 = -1.56
+	// proj = scale * u = (-1.56*-3, -1.56*4) = (4.68, -6.24)
+	proj := v.project(u)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
+}
+
+// Test for perpendicularity
+// 'u' and 'v' are already perpendicular so it must return v
+fn test_vec2_perpendicularity_angle() {
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(0.0, 3.0)
+
+	per := v.perpendicular(u)
+	assert tolerance(per.x, v.x, vec.vec_epsilon)
+	assert tolerance(per.y, v.y, vec.vec_epsilon)
+}
+
+// 'u' and 'v' are collinear so it must return the null vector
+fn test_vec2_collinear() {
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(3.0, 0.0)
+
+	per := v.perpendicular(u)
+	assert tolerance(per.x, 0.0, vec.vec_epsilon)
+	assert tolerance(per.y, 0.0, vec.vec_epsilon)
 }

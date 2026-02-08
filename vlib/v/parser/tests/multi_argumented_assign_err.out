@@ -3,5 +3,5 @@ vlib/v/parser/tests/multi_argumented_assign_err.vv:3:10: error: unexpected +=, e
     2 |     mut a, mut b, mut c := 0,1, 2 
     3 |     a, b, c += 1, 2, 4
       |             ~~
-    4 |     println('$a $b $c')
+    4 |     println('${a} ${b} ${c}')
     5 | }

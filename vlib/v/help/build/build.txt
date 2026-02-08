@@ -102,6 +102,8 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
+    Note: gcc versions > 12.0 often have issues with inlining, that manifest with `-prod`.
+    To work around them, you can use `-prod -cflags -fno-inline-small-functions` .
 
   -no-prod-options
     Useful in combination with -prod and -cflags, for allowing more complete customisation,
@@ -110,7 +112,9 @@ NB: the build flags are shared with the run command too:
     will compile the program, without passing `-O3` and `-flto`, that would otherwise
     have been used, but passing `-Os` instead. Note, since `-prod` is used, the V compiler
     itself will still compile your potential `$if prod {` branches, and it will still do the
-    optimisations on the V side, that -prod enables.
+    optimisations on the V side, that -prod enables. You can also use it to compile programs
+    with different optimisation options passed to the C compiler, like `-O2` instead of
+    the default ones, which can be beneficial for working with older or newer buggy compilers.
 
   -no-bounds-checking
     Programs compiled with this option, will do no runtime checking of array access operations.
@@ -207,6 +211,7 @@ NB: the build flags are shared with the run command too:
     Note, this option *does not affect* errors/warnings/notices, just messages that V prints in
     order to be more user friendly, in common situations, that are error prone for new users, and
     that just needlessly take vertical space, once you are well aware of them.
+    Note: setting `VQUIET` to 1, has the same effect.
 
   -v
     Enable verbosity in the V compiler while compiling

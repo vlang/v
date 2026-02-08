@@ -1,3 +1,5 @@
+// vtest build: tinyc && !sanitized_job?
+
 // Build and run files in ./prod/ folder, comparing their output to *.expected.txt files.
 // (Similar to REPL tests, but in -prod mode.)
 import v.slow_tests.repl.runner
@@ -11,7 +13,7 @@ fn test_all_v_prod_files() {
 	options := runner.new_prod_options()
 	mut bmark := benchmark.new_benchmark()
 	for file in options.files {
-		// println('file:$file')
+		// println('file:${file}')
 		bmark.step()
 		fres := runner.run_prod_file(options.wd, options.vexec, file) or {
 			bmark.fail()

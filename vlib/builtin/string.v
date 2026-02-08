@@ -492,11 +492,11 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort(a.idx < b.idx)
-	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
+	mut buf := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
-	mut b_i := 0
+	mut buf_i := 0
 	for i := 0; i < s.len; i++ {
 		if i == cur_idx.idx {
 			// Reached the location of rep, replace it with "with"
@@ -504,9 +504,9 @@ pub fn (s string) replace_each(vals []string) string {
 			with := vals[cur_idx.val_idx + 1]
 			for j in 0 .. with.len {
 				unsafe {
-					b[b_i] = with[j]
+					buf[buf_i] = with[j]
 				}
-				b_i++
+				buf_i++
 			}
 			// Skip the length of rep, since we just replaced it with "with"
 			i += rep.len - 1
@@ -518,14 +518,14 @@ pub fn (s string) replace_each(vals []string) string {
 		} else {
 			// Rep doesnt start here, just copy
 			unsafe {
-				b[b_i] = s.str[i]
+				buf[buf_i] = s.str[i]
 			}
-			b_i++
+			buf_i++
 		}
 	}
 	unsafe {
-		b[new_len] = 0
-		return tos(b, new_len)
+		buf[new_len] = 0
+		return tos(buf, new_len)
 	}
 }
 
@@ -1265,10 +1265,10 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	return res
 }
 
-// index returns the position of the first character of the input string.
+// index_ returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
 @[direct_array_access]
-fn (s string) index_(p string) int {
+pub fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}

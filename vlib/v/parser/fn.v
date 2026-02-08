@@ -44,8 +44,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind in [.lt, .lsbr] {
-		// `foo<int>(10)`
+	if p.tok.kind == .lsbr {
+		// `foo[int](10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
@@ -106,6 +106,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		name_pos:           first_pos
 		args:               args
 		mod:                p.mod
+		kind:               p.call_kind(fn_name)
 		pos:                pos
 		language:           language
 		concrete_types:     concrete_types
@@ -121,6 +122,270 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		comments:           comments
 		is_return_used:     p.expecting_value
 		is_static_method:   is_static_type_method
+	}
+}
+
+fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
+	if fn_name.len < 3 || fn_name.len > 20 {
+		return .unknown
+	}
+	return match fn_name.len {
+		3 {
+			match fn_name {
+				'str' {
+					.str
+				}
+				'map' {
+					.map
+				}
+				'any' {
+					.any
+				}
+				'all' {
+					.all
+				}
+				'pop' {
+					.pop
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		4 {
+			match fn_name {
+				'wait' {
+					.wait
+				}
+				'free' {
+					.free
+				}
+				'keys' {
+					.keys
+				}
+				'sort' {
+					.sort
+				}
+				'trim' {
+					.trim
+				}
+				'last' {
+					.last
+				}
+				'drop' {
+					.drop
+				}
+				'main' {
+					.main
+				}
+				'move' {
+					.move
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		5 {
+			return match fn_name {
+				'count' {
+					.count
+				}
+				'print' {
+					.print
+				}
+				'close' {
+					.close
+				}
+				'slice' {
+					.slice
+				}
+				'clone' {
+					.clone
+				}
+				'index' {
+					.index
+				}
+				'first' {
+					.first
+				}
+				'panic' {
+					.panic
+				}
+				'clear' {
+					.clear
+				}
+				'error' {
+					.error
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		6 {
+			return match fn_name {
+				'values' {
+					.values
+				}
+				'eprint' {
+					.eprint
+				}
+				'sorted' {
+					.sorted
+				}
+				'filter' {
+					.filter
+				}
+				'insert' {
+					.insert
+				}
+				'delete' {
+					.delete
+				}
+				'repeat' {
+					.repeat
+				}
+				'__addr' {
+					.addr
+				}
+				'malloc' {
+					.malloc
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		7 {
+			return match fn_name {
+				'prepend' {
+					.prepend
+				}
+				'writeln' {
+					.writeln
+				}
+				'println' {
+					.println
+				}
+				'try_pop' {
+					.try_pop
+				}
+				'reverse' {
+					.reverse
+				}
+				'reserve' {
+					.reserve
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		8 {
+			return match fn_name {
+				'try_push' {
+					.try_push
+				}
+				'eprintln' {
+					.eprintln
+				}
+				'pointers' {
+					.pointers
+				}
+				'contains' {
+					.contains
+				}
+				'pop_left' {
+					.pop_left
+				}
+				'type_idx' {
+					.type_idx
+				}
+				'C.va_arg' {
+					.va_arg
+				}
+				'JS.await' {
+					.jsawait
+				}
+				'grow_len' {
+					.grow_len
+				}
+				'grow_cap' {
+					.grow_cap
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		9 {
+			return match fn_name {
+				'type_name' {
+					.type_name
+				}
+				'main.main' {
+					.main_main
+				}
+				'push_many' {
+					.push_many
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		10 {
+			return match fn_name {
+				'last_index' {
+					.last_index
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		11 {
+			return match fn_name {
+				'delete_many' {
+					.delete_many
+				}
+				'delete_last' {
+					.delete_last
+				}
+				'json.decode' {
+					.json_decode
+				}
+				'json.encode' {
+					.json_encode
+				}
+				else {
+					.unknown
+				}
+			}
+		}
+		else {
+			return match fn_name {
+				'sort_with_compare' {
+					.sort_with_compare
+				}
+				'sorted_with_compare' {
+					.sorted_with_compare
+				}
+				'reverse_in_place' {
+					.reverse_in_place
+				}
+				'json.encode_pretty' {
+					.json_encode_pretty
+				}
+				'clone_to_depth' {
+					.clone_to_depth
+				}
+				else {
+					.unknown
+				}
+			}
+		}
 	}
 }
 
@@ -393,7 +658,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					is_duplicate = !type_sym.info.has_method(name)
 				}
 			}
-			if is_duplicate {
+			// when formatting, methods in mutually exclusive $if/$else branches
+			// may appear as duplicates since all branches are parsed
+			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
@@ -473,10 +740,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
+	if generic_names.len > 0 {
+		for fna in fn_attrs {
+			if fna.name == 'export' {
+				p.error_with_pos('generic functions cannot be exported', fna.pos)
+				break
+			}
+		}
+	}
 	// Params
 	params_t, are_params_type_only, mut is_variadic, mut is_c_variadic := p.fn_params()
 	if is_c2v_variadic {
 		is_variadic = true
+		is_c_variadic = true
 	}
 	params << params_t
 	// Return type
@@ -486,6 +762,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
+		// Disallow [T] as return type
+		if p.tok.kind == .lsbr && p.peek_tok.kind == .name && p.peek_tok.lit.len == 1
+			&& p.peek_tok.lit[0].is_capital() {
+			return_type_pos = return_type_pos.extend(p.peek_tok.pos()).extend(p.peek_token(2).pos())
+			p.error_with_pos('invalid generic return, use `${p.peek_tok.lit}` instead',
+				return_type_pos)
+		}
 		p.inside_fn_return = true
 		return_type = p.parse_type()
 		p.inside_fn_return = false
@@ -566,7 +849,7 @@ run them via `v file.v` instead',
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
 		}
-		if is_non_local {
+		if is_non_local && !(p.file_backend_mode == .js && type_sym.mod.starts_with('Promise')) {
 			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}. Define an alias and use that instead like `type AliasName = ${type_sym.name}` ',
 				rec.type_pos)
 			return ast.FnDecl{
@@ -701,12 +984,13 @@ run them via `v file.v` instead',
 		}
 	}
 	// if no_body && !name.starts_with('C.') {
-	// 	p.error_with_pos('did you mean C.$name instead of $name', start_pos)
+	// 	p.error_with_pos('did you mean C.${name} instead of ${name}', start_pos)
 	// }
 	fn_decl := ast.FnDecl{
 		name:               name
 		short_name:         short_fn_name
 		mod:                p.mod
+		kind:               p.call_kind(name)
 		stmts:              stmts
 		return_type:        return_type
 		return_type_pos:    return_type_pos
@@ -735,8 +1019,10 @@ run them via `v file.v` instead',
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
 		receiver:              ast.StructField{
-			name: rec.name
-			typ:  rec.typ
+			name:     rec.name
+			typ:      rec.typ
+			type_pos: rec.type_pos
+			pos:      rec.pos
 		}
 		generic_names:         generic_names
 		receiver_pos:          rec.pos
@@ -1039,6 +1325,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				// error is added in parse_type
 				return []ast.Param{}, false, false, false
 			}
+			if param_type == ast.chan_type {
+				p.chan_type_error()
+				return []ast.Param{}, false, false, false
+			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
 					if is_variadic {
@@ -1167,6 +1457,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
+				return []ast.Param{}, false, false, false
+			}
+			if typ == ast.chan_type {
+				p.chan_type_error()
 				return []ast.Param{}, false, false, false
 			}
 			if is_mut {

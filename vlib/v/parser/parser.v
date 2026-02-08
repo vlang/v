@@ -30,6 +30,7 @@ mut:
 	peek_tok                 token.Token
 	language                 ast.Language
 	fn_language              ast.Language // .c for `fn C.abcd()` declarations
+	struct_language          ast.Language // for `struct C.abcd{ embedded struct/union }` declarations
 	expr_level               int          // prevent too deep recursions for pathological programs
 	inside_vlib_file         bool         // true for all vlib/ files
 	inside_test_file         bool         // when inside _test.v or _test.vv file
@@ -72,6 +73,7 @@ mut:
 	inside_orm               bool
 	inside_chan_decl         bool
 	inside_attr_decl         bool
+	inside_lock_exprs        bool
 	array_dim                int               // array dim parsing level
 	fixed_array_dim          int               // fixed array dim parsing level
 	or_is_handled            bool              // ignore `or` in this expression
@@ -128,10 +130,19 @@ pub mut:
 	opened_scopes     int
 	max_opened_scopes int = 100 // values above 300 risk stack overflow
 
-	errors         []errors.Error
-	warnings       []errors.Warning
-	notices        []errors.Notice
-	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
+	errors            []errors.Error
+	warnings          []errors.Warning
+	notices           []errors.Notice
+	template_paths    []string               // record all compiled $tmpl files; needed for `v watch run webserver.v`
+	template_line_map []ast.TemplateLineInfo // line mapping for current template compilation
+	content           ParseContentKind
+}
+
+enum ParseContentKind {
+	file
+	text
+	stmt
+	comptime
 }
 
 // for tests
@@ -140,6 +151,7 @@ pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stm
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
+		content:          .stmt
 		scanner:          scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
 		inside_test_file: true
 		table:            table
@@ -160,6 +172,7 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
+		content:   .comptime
 		file_path: tmpl_path
 		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
 		table:     table
@@ -179,6 +192,7 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
+		content:          .text
 		scanner:          scanner.new_scanner(text, comments_mode, pref_)
 		table:            table
 		pref:             pref_
@@ -253,6 +267,21 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
+fn should_skip_vls_file(pref_ &pref.Preferences, path string) bool {
+	if !pref_.is_vls {
+		return false
+	}
+	if pref_.line_info != '' {
+		project_dir := if os.is_dir(pref_.path) {
+			os.real_path(pref_.path)
+		} else {
+			os.real_path(os.dir(pref_.linfo.path))
+		}
+		return !os.real_path(path).starts_with(project_dir)
+	}
+	return path != pref_.path
+}
+
 pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
@@ -267,13 +296,14 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		table.filelist << path
 	}
 	mut p := Parser{
+		content: .file
 		scanner: scanner.new_scanner_file(path, file_idx, comments_mode, pref_) or { panic(err) }
 		table:   table
 		pref:    pref_
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
 		// Otherwise we'd be parsing entire stdlib in vls mode
 		is_vls:           pref_.is_vls && path == pref_.path
-		is_vls_skip_file: pref_.is_vls && path != pref_.path
+		is_vls_skip_file: should_skip_vls_file(pref_, path)
 		scope:            &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
@@ -289,6 +319,9 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 }
 
 pub fn (mut p Parser) parse() &ast.File {
+	$if trace_parse ? {
+		eprintln('> ${@FILE}:${@LINE} | p.path: ${p.file_path} | content: ${p.content} | nr_tokens: ${p.scanner.all_tokens.len} | nr_lines: ${p.scanner.line_nr} | nr_bytes: ${p.scanner.text.len}')
+	}
 	util.timing_start('PARSE')
 	defer {
 		util.timing_measure_cumulative('PARSE')
@@ -769,7 +802,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					}
 					.key_match {
 						mut pos := p.tok.pos()
-						expr := p.match_expr(true)
+						expr := p.match_expr(true, false)
 						pos.update_last_line(p.prev_tok.line_nr)
 						return ast.ExprStmt{
 							expr: expr
@@ -1080,7 +1113,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.key_match {
 					mut pos := p.tok.pos()
-					expr := p.match_expr(true)
+					expr := p.match_expr(true, false)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1699,7 +1732,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
-		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
+		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name != '' && (is_capital_after_last_dot
 			|| name[0].is_capital()
@@ -1773,7 +1806,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	} else if !known_var && (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
-		&& (!p.inside_for || p.inside_select) {
+		&& (!p.inside_for || p.inside_select) && !p.inside_lock_exprs {
 		alias_array_type := p.alias_array_type()
 		if alias_array_type != ast.void_type {
 			return p.array_init(is_option, alias_array_type)
@@ -2241,6 +2274,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
+			kind:              p.call_kind(field_name)
 			args:              args
 			name_pos:          name_pos
 			pos:               pos
@@ -2310,9 +2344,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types, param_names
 	}
@@ -2363,9 +2394,6 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind == .lt {
-		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
-	}
 	if p.tok.kind != .lsbr {
 		return types
 	}
@@ -2730,12 +2758,8 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 	}
 
-	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.is_vet
-		&& !p.pref.translated && !p.is_translated && !p.pref.is_livemain && !p.pref.building_v
-		&& !p.builtin_mod {
-		p.error('use `v -enable-globals ...` to enable globals')
-		return ast.GlobalDecl{}
-	}
+	// Parser always parses __global declarations correctly
+	// Checker will report an error if globals are not enabled
 	start_pos := p.tok.pos()
 	p.check(.key_global)
 	if p.disallow_declarations_in_script_mode() {
@@ -2991,6 +3015,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		node := ast.SumTypeDecl{
 			name:          name
+			mod:           p.mod
 			typ:           typ
 			is_pub:        is_pub
 			variants:      sum_variants
@@ -3056,6 +3081,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.attrs = []
 	alias_type_decl := ast.AliasTypeDecl{
 		name:        name
+		mod:         p.mod
 		is_pub:      is_pub
 		typ:         idx
 		parent_type: parent_type

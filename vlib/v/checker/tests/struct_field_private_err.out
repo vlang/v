@@ -5,8 +5,15 @@ vlib/v/checker/tests/struct_field_private_err.vv:8:2: error: cannot access priva
       |     ~~~~
     9 | }
    10 |
-vlib/v/checker/tests/struct_field_private_err.vv:11:10: error: cannot access private field `bar` on `amod.FooParams`
-    9 | }
+vlib/v/checker/tests/struct_field_private_err.vv:12:2: error: cannot access private field `x` on `amod.Bcg2[int]`
    10 | 
-   11 | amod.foo(bar: 'bar')
+   11 | _ := amod.Bcg2[int]{
+   12 |     x: 0
+      |     ~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/struct_field_private_err.vv:15:10: error: cannot access private field `bar` on `amod.FooParams`
+   13 | }
+   14 | 
+   15 | amod.foo(bar: 'bar')
       |          ~~~~~~~~~~

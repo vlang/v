@@ -323,7 +323,7 @@ pub fn parse(s string) !Time {
 		return error_invalid_time(0, 'invalid second format: ${second_}')
 	}
 
-	// eprintln('>> iyear: $iyear | imonth: $imonth | iday: $iday | ihour: $ihour | iminute: $iminute | isecond: $isecond')
+	// eprintln('>> iyear: ${iyear} | imonth: ${imonth} | iday: ${iday} | ihour: ${ihour} | iminute: ${iminute} | isecond: ${isecond}')
 	if iyear > 9999 || iyear < -9999 {
 		return error_invalid_time(3, 'year must be between -10000 and 10000')
 	}
@@ -397,7 +397,7 @@ pub fn parse_iso8601(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	t_i := s.index('T') or { -1 }
+	t_i := s.index_('T')
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12, 'malformed date')
@@ -533,6 +533,6 @@ fn parse_iso8601_time(s string) !(int, int, int, int, int, i64, bool) {
 	if plus_min_z == `+` {
 		unix_offset *= -1
 	}
-	// eprintln('parse_iso8601_time s: $s | hour_: $hour_ | minute_: $minute_ | second_: $second_ | microsecond_: $microsecond_ | nanosecond_: $nanosecond_ | unix_offset: $unix_offset | is_local: $is_local_time')
+	// eprintln('parse_iso8601_time s: ${s} | hour_: ${hour_} | minute_: ${minute_} | second_: ${second_} | microsecond_: ${microsecond_} | nanosecond_: ${nanosecond_} | unix_offset: ${unix_offset} | is_local: ${is_local_time}')
 	return hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time
 }

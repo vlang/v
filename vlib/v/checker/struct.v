@@ -31,6 +31,17 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
 		for embed in node.embeds {
+			// gotodef for embedded struct types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(embed.pos) {
+					embed_sym := c.table.sym(embed.typ)
+					pos := embed_sym.info.get_name_pos() or { token.Pos{} }
+					if pos.file_idx != -1 {
+						println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
+						exit(0)
+					}
+				}
+			}
 			embed_sym := c.table.sym(embed.typ)
 			if embed_sym.info is ast.Alias {
 				parent_sym := c.table.sym(embed_sym.info.parent_type)
@@ -174,6 +185,38 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
+			}
+			// gotodef for struct field types
+			if c.pref.is_vls && c.pref.linfo.method == .definition {
+				if c.vls_is_the_node(field.type_pos) {
+					sym := c.table.sym(field.typ)
+					elem_type := match sym.kind {
+						.array {
+							(sym.info as ast.Array).elem_type
+						}
+						.array_fixed {
+							(sym.info as ast.ArrayFixed).elem_type
+						}
+						else {
+							ast.Type(0)
+						}
+					}
+					if elem_type == 0 {
+						pos := sym.info.get_name_pos() or { token.Pos{} }
+						if pos.file_idx != -1 {
+							println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
+							exit(0)
+						}
+					} else {
+						elem_sym := c.table.sym(elem_type)
+						if np := elem_sym.info.get_name_pos() {
+							if np.file_idx != -1 {
+								println('${c.table.filelist[np.file_idx]}:${np.line_nr + 1}:${np.col}')
+								exit(0)
+							}
+						}
+					}
+				}
 			}
 			field_is_generic := field.typ.has_flag(.generic)
 			if c.table.type_kind(field.typ) != .alias
@@ -718,10 +761,17 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				exp_type_is_option := exp_type.has_flag(.option)
 				if !exp_type_is_option {
 					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
-					if got_type.has_flag(.option) {
+					init_field.typ = got_type
+					has_or_block := match mut init_field.expr {
+						ast.IndexExpr { init_field.expr.or_expr.kind != .absent }
+						ast.CallExpr { init_field.expr.or_block.kind != .absent }
+						ast.SelectorExpr { init_field.expr.or_block.kind != .absent }
+						else { false }
+					}
+					if got_type.has_flag(.option) && !has_or_block {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
-					} else if got_type.has_flag(.result) {
+					} else if got_type.has_flag(.result) && !has_or_block {
 						c.error('cannot assign a Result value to a non-option struct field',
 							init_field.pos)
 					}
@@ -763,6 +813,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
 							name:           'clone'
+							kind:           .clone
 							left:           init_field.expr
 							left_type:      got_type
 							is_method:      true
@@ -899,7 +950,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
 					inited_fields)
 			}
-			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
+			// println('>> checked_types.len: ${checked_types.len} | checked_types: ${checked_types} | type_sym: ${type_sym.name} ')
 		}
 		.sum_type {
 			first_typ := (type_sym.info as ast.SumType).variants[0]
@@ -1014,7 +1065,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
 	mut fields := c.table.struct_fields(type_sym)
 	mut checked_types := []ast.Type{}
-
 	for i, mut field in fields {
 		if field.name in inited_fields {
 			if c.mod != type_sym.mod {
@@ -1027,7 +1077,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 							} else {
 								parts.last()
 							}
-							if !c.inside_unsafe {
+							if !c.inside_unsafe && !(c.is_js_backend
+								&& mod_type.starts_with('Promise')) {
 								c.error('cannot access private field `${field.name}` on `${mod_type}`',
 									init_field.pos)
 
@@ -1107,7 +1158,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		/*
 		sym := c.table.sym(field.typ)
 		if sym.kind == .sum_type {
-			c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+			c.warn('sum type field `${type_sym.name}.${field.name}` must be initialized',
 				node.pos)
 		}
 		*/
@@ -1188,6 +1239,10 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 				// an embedded struct field
 				continue
 			}
+			if field.typ.has_flag(.option) {
+				// defaults to `none`
+				continue
+			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
@@ -1229,6 +1284,10 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			}
 			if field.is_embed && sym.language == .v {
 				// an embedded struct field
+				continue
+			}
+			if field.typ.has_flag(.option) {
+				// defaults to `none`
 				continue
 			}
 			checked_types << field.typ

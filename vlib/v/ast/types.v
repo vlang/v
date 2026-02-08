@@ -104,7 +104,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // Note: For a Type, use:
 // * Table.type_to_str(typ) not TypeSymbol.name.
 // * Table.type_kind(typ) not TypeSymbol.kind.
-// Each TypeSymbol is entered into `Table.types`.
+// Each TypeSymbol is entered into `Table.type_symbols`.
 // See also: Table.sym.
 @[minify]
 pub struct TypeSymbol {
@@ -296,6 +296,17 @@ pub mut:
 	name_pos       token.Pos
 }
 
+pub fn (ti TypeInfo) get_name_pos() ?token.Pos {
+	return match ti {
+		Struct, Alias, SumType, Enum, Interface {
+			ti.name_pos
+		}
+		else {
+			none
+		}
+	}
+}
+
 // <atomic.h> defines special typenames
 pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
@@ -397,6 +408,12 @@ pub fn (t Type) deref() Type {
 	return t & 0xff00ffff | (nr_muls - 1) << 16
 }
 
+// flags returns type's flags
+@[inline]
+pub fn (t Type) flags() int {
+	return t >> 16
+}
+
 // has_flag returns whether the given named `flag` is set
 @[inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
@@ -427,6 +444,12 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 		}
 		return typ
 	}
+}
+
+// clear_ref clear refs of type
+@[inline]
+pub fn (t Type) clear_ref() Type {
+	return t & ~0x00FF_0000
 }
 
 // clear option and result flags
@@ -897,7 +920,7 @@ pub enum Kind {
 
 // str returns the internal & source name of the type
 pub fn (t &TypeSymbol) str() string {
-	return t.name
+	return t.name.clone()
 }
 
 // TODO why is this needed? str() returns incorrect amount of &
@@ -1091,7 +1114,8 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 
 pub fn (t &TypeSymbol) is_c_struct() bool {
 	if t.info is Struct {
-		return t.language == .c
+		// `C___VAnonStruct` need special handle, it need to create a new struct
+		return t.language == .c && !t.info.is_anon
 	} else if t.info is Alias {
 		return global_table.final_sym(t.info.parent_type).is_c_struct()
 	}

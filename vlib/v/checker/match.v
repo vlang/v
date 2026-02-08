@@ -6,13 +6,17 @@ import v.token
 import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
-	node.is_expr = c.expected_type != ast.void_type
+	if !node.is_comptime {
+		node.is_expr = c.expected_type != ast.void_type
+	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
 		c.warn('unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.',
 			node.cond.pos)
 	}
-	if node.is_expr {
+	expr_required := c.expected_type != ast.void_type
+		|| (node.is_comptime && node.is_expr && c.fn_level > 0)
+	if node.is_expr || expr_required {
 		c.expected_expr_type = c.expected_type
 		defer(fn) {
 			c.expected_expr_type = ast.void_type
@@ -46,12 +50,15 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	c.check_expr_option_or_result_call(node.cond, cond_type)
-	cond_type_sym := c.table.sym(cond_type)
-	cond_is_option := cond_type.has_flag(.option)
+	if node.cond_type == 0 {
+		return ast.void_type
+	}
+	c.check_expr_option_or_result_call(node.cond, node.cond_type)
+	cond_type_sym := c.table.sym(node.cond_type)
+	cond_is_option := node.cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
-	c.expected_type = cond_type
+	c.expected_type = node.cond_type
 	mut first_iteration := true
 	mut infer_cast_type := ast.void_type
 	mut need_explicit_cast := false
@@ -64,8 +71,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut comptime_match_found_branch := false
 	mut comptime_match_cond_value := ''
 	if node.is_comptime {
-		if node.cond in [ast.ComptimeType, ast.TypeNode]
-			|| (node.cond is ast.Ident && (c.is_generic_ident(node.cond.name))) {
+		if node.cond in [ast.ComptimeType, ast.TypeNode] || (node.cond is ast.Ident
+			&& (c.is_generic_ident(node.cond.name)))
+			|| (node.cond is ast.SelectorExpr && node.cond.gkind_field in [.typ, .unaliased_typ]) {
 			// must be a type `$match`
 			c.inside_x_matches_type = true
 		} else {
@@ -137,7 +145,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				c.cur_ct_id++
 				branch.id = c.cur_ct_id
 			}
-			idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+			mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+			if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != '' {
+				idx_str += '|field_type=${c.comptime.comptime_for_field_type}|'
+			}
 			mut c_str := ''
 			if !branch.is_else {
 				if c.inside_x_matches_type {
@@ -235,6 +246,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 
+		for mut expr in branch.exprs {
+			// (expr) => expr
+			expr = expr.remove_par()
+		}
+
 		if !c.pref.translated && !c.file.is_translated {
 			// check for always true/false match branch
 			for mut expr in branch.exprs {
@@ -276,8 +292,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		if cond_type_sym.kind == .none {
 			c.error('`none` cannot be a match condition', node.pos)
 		}
-		// If the last statement is an expression, return its type
-		if branch.stmts.len > 0 && node.is_expr {
+		if branch.stmts.len > 0 && node.is_expr
+			&& (!node.is_comptime || (node.is_comptime && comptime_match_branch_result)) {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
 				c.expected_type = if c.expected_expr_type != ast.void_type {
@@ -463,7 +479,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				ret_type = if stmt.types.len > 0 { stmt.types[0] } else { c.expected_type }
 			}
 		}
-		first_iteration = false
+		if !node.is_comptime || (node.is_comptime && comptime_match_branch_result) {
+			first_iteration = false
+		}
 		if node.is_comptime {
 			// branches may not have been processed by c.stmts()
 			if has_top_return(branch.stmts) {
@@ -565,6 +583,9 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
+	if node.cond_type.idx() == 0 {
+		return
+	}
 	cond_sym := c.table.sym(node.cond_type)
 	mut enum_ref_checked := false
 	mut is_comptime_value_match := false

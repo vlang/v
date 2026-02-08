@@ -116,7 +116,7 @@ fn (c &Checker) check_number(num ast.Number) ! {
 	mut is_bin, mut is_oct, mut is_hex := false, false, false
 	is_float := lit_lower_case.all_before('e').contains('.')
 	has_exponent_notation := lit_lower_case.contains('e')
-	float_decimal_index := lit.index('.') or { -1 }
+	float_decimal_index := lit.index_('.')
 	// mut is_first_digit := u8(lit[0]).is_digit()
 	mut ascii := u8(lit[0]).ascii_str()
 	is_sign_prefixed := lit[0] in [`+`, `-`]
@@ -377,6 +377,21 @@ fn (c &Checker) check_date(date ast.Date) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" does not have a valid RFC 3339 day indication in ...${c.excerpt(date.pos)}...')
 	}
+	if mm.int() == 2 {
+		ddi := dd.int()
+		if ddi > 28 {
+			if ddi == 29 {
+				yyyyi := yyyy.int()
+				if !(yyyyi % 4 == 0 && (yyyyi % 100 != 0 || yyyyi % 400 == 0)) {
+					return error(@MOD + '.' + @STRUCT + '.' + @FN +
+						' "${lit}" is not a valid RFC 3339 date: ${yyyy} is not a leap year so February can not have 29 days in it ...${c.excerpt(date.pos)}...')
+				}
+			} else {
+				return error(@MOD + '.' + @STRUCT + '.' + @FN +
+					' "${lit}" is not a valid RFC 3339 date: February can not have more that 28 or 29 days in it ...${c.excerpt(date.pos)}...')
+			}
+		}
+	}
 	toml_parse_time(lit) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Date format string "${err}". In ...${c.excerpt(date.pos)}...')
@@ -405,6 +420,32 @@ fn (c &Checker) check_time(t ast.Time) ! {
 			' "${lit}" is not a valid RFC 3339 Time format string in ...${c.excerpt(t.pos)}...')
 	}
 
+	if parts.len > 1 {
+		// Offset
+		offset_parts := parts[1].split(':')
+		if offset_parts.len != 2 {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${parts[1]}" is not a valid RFC 3339 time offset specifier in ...${c.excerpt(t.pos)}...')
+		}
+		hh := offset_parts[0].int()
+		if hh < 0 || hh > 24 {
+			pos := token.Pos{
+				...t.pos
+				pos: t.pos.pos + check_length
+			}
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${hh}" hour specifier in "${parts[1]}" should be between 00 and 24 in ...${c.excerpt(pos)}...')
+		}
+		mm := offset_parts[1].int()
+		if mm < 0 || mm > 59 {
+			pos := token.Pos{
+				...t.pos
+				pos: t.pos.pos + check_length
+			}
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' "${mm}" second specifier in "${parts[1]}" should be between 00 and 59 in ...${c.excerpt(pos)}...')
+		}
+	}
 	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 	mut has_time_offset := false
 	for ch in parts[0]#[8..] {
@@ -430,9 +471,9 @@ pub fn (c &Checker) check_quoted(q ast.Quoted) ! {
 	lit := q.text
 	quote := q.quote.ascii_str()
 	triple_quote := quote + quote + quote
-	if q.is_multiline && lit.ends_with(triple_quote) {
+	if q.is_multiline && lit.ends_with(triple_quote) && !lit.ends_with('\\' + triple_quote) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' string values like "${lit}" has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
+			' string values like "${lit}" has unbalanced quote literals `${quote}` in ...${c.excerpt(q.pos)}...')
 	}
 	c.check_quoted_escapes(q)!
 	c.check_utf8_validity(q)!
@@ -485,7 +526,7 @@ fn (c &Checker) check_quoted_escapes(q ast.Quoted) ! {
 						// Rest of line must only be space chars from this point on
 						for {
 							ch_ := s.next()
-							if ch_ == scanner.end_of_text || ch_ == `\n` {
+							if ch_ == `\n` {
 								break
 							}
 							if !(ch_ == ` ` || ch_ == `\t`) {
@@ -576,7 +617,7 @@ fn (c &Checker) check_unicode_escape(esc_unicode string) ! {
 	sequence = sequence[..hex_digits_len]
 	// TODO: not enforced in BurnSushi testsuite??
 	// if !sequence.is_upper() {
-	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
+	//	return error('Unicode escape sequence `${esc_unicode}` is not in all uppercase.')
 	//}
 	validate_utf8_codepoint_string(sequence.to_upper())!
 	if is_long_esc_type {

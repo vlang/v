@@ -6,7 +6,7 @@ pub mut:
 	tv_nsec i64
 }
 
-fn C.nanosleep(req &C.timespec, rem &C.timespec) int
+fn C.nanosleep(req &C.timespec, rem &C.timespec) i32
 
 // sleep_ms provides a cross platform way to sleep, without having to `import time` for a time.sleep/1 call.
 fn sleep_ms(ms i64) {

@@ -220,3 +220,8 @@ fn (mut p Parser) unexpected_with_pos(pos token.Pos, params ParamsForUnexpected)
 	}
 	return p.error_with_pos(msg, pos)
 }
+
+fn (mut p Parser) chan_type_error() {
+	p.error_with_pos('`chan` has no type specified. Use `chan Type` instead of `chan`',
+		p.prev_tok.pos())
+}

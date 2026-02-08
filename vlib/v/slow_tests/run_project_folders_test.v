@@ -1,3 +1,4 @@
+// vtest build: tinyc
 import os
 import time
 import term
@@ -29,7 +30,7 @@ fn test_v_profile_works() {
 		t := time.ticks()
 		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')
 		delta := time.ticks() - t
-		// eprintln('res: $res')
+		// eprintln('res: ${res}')
 		assert res.exit_code == 0, 'failing res: ${res}'
 		assert res.output.len > 0
 		assert res.output.contains('OK')

@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     name: Build on ubuntu-24.04 riscv64
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd
@@ -50,4 +50,5 @@ jobs:
             file ./v
             ls -la ./v
             ./v test vlib/builtin vlib/os vlib/encoding/binary
+            ./v test vlib/v/slow_tests/assembly
             VTEST_ONLY=closure ./v test vlib/v/tests

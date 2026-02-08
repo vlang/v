@@ -53,6 +53,11 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 			}
 
 			routes[method.name] = route
+		} $else {
+			// If we have route attributes, but the wrong return type, return an error
+			if has_route_attributes(method.attrs) {
+				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+			}
 		}
 	}
 	return routes
@@ -67,11 +72,13 @@ pub fn run[A, X](mut global_app A, port int) {
 pub struct RunParams {
 pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
-	family               net.AddrFamily = .ip6
-	host                 string
-	port                 int  = default_port
-	show_startup_message bool = true
-	timeout_in_seconds   int  = 30
+	family                    net.AddrFamily = .ip6
+	host                      string
+	port                      int  = default_port
+	show_startup_message      bool = true
+	timeout_in_seconds        int  = 30
+	max_request_buffer_size   int  = 8192
+	benchmark_page_generation bool // for the "page rendered in X ms"
 }
 
 struct FileResponse {
@@ -143,8 +150,12 @@ mut:
 	before_accept_loop()
 }
 
+interface HasBeforeRequestOnContext {
+mut:
+	before_request()
+}
+
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
-	// println('\n\nhandle_route() url=${url} routes=${routes}')
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
@@ -165,7 +176,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				// no need to check the result of `validate_middleware`, since a response has to be sent
 				// anyhow. This function makes sure no further middleware is executed.
 				validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
-				validate_middleware[X](mut user_context, route.after_middlewares)
+				// skip route-specific after-middleware if global already sent a response
+				if !user_context.Context.done {
+					validate_middleware[X](mut user_context, route.after_middlewares)
+				}
 			}
 		}
 		// send only the headers, because if the response body is too big, TcpConn code will
@@ -197,8 +211,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// first execute before_request
-	$if A is HasBeforeRequest {
-		app.before_request()
+	$if X is HasBeforeRequestOnContext {
+		user_context.before_request()
 	}
 	// user_context.before_request()
 	if user_context.Context.done {
@@ -219,11 +233,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			return
 		}
 	}
-
-	// defer {
-	// println('USER CONTEXT at end of handle_route')
-	// println(user_context)
-	//}
 
 	// Route matching and match route specific middleware as last step
 	$for method in A.methods {
@@ -253,7 +262,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								return
 							}
 						}
-
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
@@ -262,21 +270,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							} else {
 								user_context.Context.form
 							}
-
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-
-							// println('m1')
 							app.$method(mut user_context, args)
 						} else {
-							// println('m2')
 							app.$method(mut user_context)
 						}
 						return
 					}
 
-					// println('route_words=${route_words} method=${method}')
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
@@ -288,21 +291,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
-
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
 							} else {
 								user_context.Context.form
 							}
-
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
-
-							// println('m3')
 							app.$method(mut user_context, args)
 						} else {
-							// println('m4')
 							app.$method(mut user_context)
 						}
 						return
@@ -315,12 +313,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								return
 							}
 						}
-
 						method_args := params.clone()
 						if method_args.len + 1 != method.args.len {
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
-						// println('m5')
 						app.$method(mut user_context, method_args)
 						return
 					}
@@ -335,7 +331,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
-	// println('route_matches(url_words:${url_words} route_words:${route_words}')
 	// URL path should be at least as long as the route path
 	// except for the catchall route (`/:path...`)
 	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
@@ -344,7 +339,6 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	if url_words.len < route_words.len {
 		return none
 	}
-
 	mut params := []string{cap: url_words.len}
 	if url_words.len == route_words.len {
 		for i in 0 .. url_words.len {
@@ -383,14 +377,45 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
-	base_path := os.base(asked_path)
 
+	// Content negotiation for markdown files (if enabled)
+	if app.enable_markdown_negotiation {
+		accept_header := user_context.req.header.get(.accept) or { '' }
+		if accept_header.contains('text/markdown') {
+			// Try markdown variants in order of priority
+			markdown_variants := [
+				asked_path + '.md',
+				asked_path + '.html.md',
+				asked_path + '/index.html.md',
+			]
+
+			for variant in markdown_variants {
+				if app.static_files[variant] != '' {
+					asked_path = variant
+					break
+				}
+			}
+		}
+	}
+
+	base_path := os.base(asked_path)
 	if !base_path.contains('.') && !asked_path.ends_with('/') {
 		asked_path += '/'
 	}
 
 	if asked_path.ends_with('/') {
-		if app.static_files[asked_path + 'index.html'] != '' {
+		// Check for markdown index first if Accept header requests it and feature is enabled
+		if app.enable_markdown_negotiation {
+			accept_header := user_context.req.header.get(.accept) or { '' }
+			if accept_header.contains('text/markdown')
+				&& app.static_files[asked_path + 'index.html.md'] != '' {
+				asked_path += 'index.html.md'
+			} else if app.static_files[asked_path + 'index.html'] != '' {
+				asked_path += 'index.html'
+			} else if app.static_files[asked_path + 'index.htm'] != '' {
+				asked_path += 'index.htm'
+			}
+		} else if app.static_files[asked_path + 'index.html'] != '' {
 			asked_path += 'index.html'
 		} else if app.static_files[asked_path + 'index.htm'] != '' {
 			asked_path += 'index.htm'
@@ -410,10 +435,12 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 		return false
 	}
 
-	// Configure static file gzip compression settings
+	// Configure static file compression settings
 	user_context.enable_static_gzip = app.enable_static_gzip
-	user_context.static_gzip_max_size = if app.static_gzip_max_size >= 0 {
-		app.static_gzip_max_size
+	user_context.enable_static_zstd = app.enable_static_zstd
+	user_context.enable_static_compression = app.enable_static_compression
+	user_context.static_compression_max_size = if app.static_compression_max_size >= 0 {
+		app.static_compression_max_size
 	} else {
 		1048576 // Default: 1MB
 	}
@@ -441,9 +468,6 @@ fn send_string_ptr(mut conn net.TcpConn, ptr &u8, len int) !int {
 	$if trace_send_string_conn ? {
 		eprintln('> send_string: conn: ${ptr_str(conn)}')
 	}
-	// $if trace_response ? {
-	// 	eprintln('> send_string:\n${s}\n')
-	// }
 	if voidptr(conn) == unsafe { nil } {
 		return error('connection was closed before send_string')
 	}

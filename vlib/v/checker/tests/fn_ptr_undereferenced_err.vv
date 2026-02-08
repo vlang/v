@@ -1,0 +1,11 @@
+module main
+
+fn f_a() {
+}
+
+fn main() {
+	f := f_a
+	ref := &f
+	deref := ref
+	deref()
+}

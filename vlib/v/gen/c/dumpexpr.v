@@ -30,6 +30,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
 					.result))).replace('*', '')
 			}
+		} else if node.expr is ast.CallExpr {
+			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+				'')
 		}
 	}
 	// var.$(field.name)
@@ -42,7 +45,21 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	} else if node.expr is ast.Ident && node.expr.ct_expr {
-		expr_type = g.type_resolver.get_type(node.expr)
+		for {
+			if node.expr.obj is ast.Var {
+				if node.expr.obj.ct_type_var == .field_var && g.comptime.inside_comptime_for
+					&& g.comptime.comptime_for_field_var != '' {
+					expr_type = if node.expr.obj.ct_type_unwrapped || node.expr.obj.is_unwrapped {
+						g.comptime.comptime_for_field_type.clear_flag(.option)
+					} else {
+						g.comptime.comptime_for_field_type
+					}
+					break
+				}
+			}
+			expr_type = g.type_resolver.get_type(node.expr)
+			break
+		}
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
@@ -83,7 +100,25 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if expr_type.has_flag(.option_mut_param_t) {
 			g.write('*')
 		}
-		g.expr(node.expr)
+		for {
+			if node.expr is ast.Ident {
+				if node.expr.obj is ast.Var {
+					if node.expr.obj.ct_type_var == .field_var && g.comptime.inside_comptime_for
+						&& (node.expr.obj.ct_type_unwrapped || node.expr.obj.is_unwrapped) {
+						field_type := g.comptime.comptime_for_field_type
+						if field_type.has_flag(.option) {
+							styp := g.base_type(field_type.clear_flag(.option))
+							is_auto_heap := node.expr.is_auto_heap()
+							ptr := if is_auto_heap { '->' } else { '.' }
+							g.write('(*(${styp}*)${c_name(node.expr.name)}${ptr}data)')
+							break
+						}
+					}
+				}
+			}
+			g.expr(node.expr)
+			break
+		}
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
@@ -100,7 +135,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
-		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
+		// eprintln('>>> dump_type: ${dump_type} | cname: ${cname} | dump_sym: ${dump_sym.name}')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]

@@ -67,5 +67,5 @@ pub fn smoothstep[T](edge0 T, edge1 T, x T) T {
 @[inline]
 pub fn smootherstep[T](edge0 T, edge1 T, x T) T {
 	v := clip((x - edge0) / (edge1 - edge0), 0, 1)
-	return v * v * v * (x * (6 * x - 15) + 10)
+	return v * v * v * (v * (6 * v - 15) + 10)
 }

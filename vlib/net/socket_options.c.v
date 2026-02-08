@@ -1,5 +1,16 @@
 module net
 
+// Protocol specifies the IP protocol to use with raw sockets.
+pub enum Protocol {
+	not_set = 0
+	icmp    = C.IPPROTO_ICMP
+	tcp     = C.IPPROTO_TCP
+	udp     = C.IPPROTO_UDP
+	ipv6    = C.IPPROTO_IPV6
+	raw     = C.IPPROTO_RAW
+	icmpv6  = C.IPPROTO_ICMPV6
+}
+
 pub enum SocketOption {
 	// TODO: SO_ACCEPT_CONN is not here because windows doesn't support it
 	// and there is no easy way to define it

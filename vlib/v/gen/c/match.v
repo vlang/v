@@ -102,8 +102,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		ret_final_sym := g.table.final_sym(node.return_type)
 		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
 			if ret_final_sym.info is ast.FnType {
-				def := g.fn_var_signature(ret_final_sym.info.func.return_type, ret_final_sym.info.func.params.map(it.typ),
-					tmp_var)
+				def := g.fn_var_signature(ast.void_type, ret_final_sym.info.func.return_type,
+					ret_final_sym.info.func.params.map(it.typ), tmp_var)
 				func_decl = '${def} = &${g.styp(node.return_type)};'
 			}
 		}
@@ -136,14 +136,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					}
 					else {
 						// ast.StringLiteral, ast.Ident, ast.RangeExpr can not used in switch cases in C
-						// eprintln('>>>> node.cond: $node.cond | branch expr: ${typeof(expr)} | expr: $expr')
+						// eprintln('>>>> node.cond: ${node.cond} | branch expr: ${typeof(expr)} | expr: ${expr}')
 						can_be_a_switch = false
 						break all_branches
 					}
 				}
 			}
 		}
-		// eprintln('> can_be_a_switch: $can_be_a_switch')
+		// eprintln('> can_be_a_switch: ${can_be_a_switch}')
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
 			&& cond_fsym.is_int() {
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)

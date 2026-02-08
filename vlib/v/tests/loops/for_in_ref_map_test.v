@@ -17,7 +17,7 @@ fn test_for_in_ref_val_ref_map() {
 	}
 
 	for k, val in &mp {
-		assert voidptr(val) == voidptr(expects[k])
+		assert voidptr(val) == voidptr(unsafe { expects[k] })
 	}
 	assert rets == expects
 }
@@ -42,7 +42,7 @@ fn test_for_in_ref_val_ref_map_ident() {
 	}
 
 	for k, val in mp {
-		assert voidptr(val) == voidptr(expects[k])
+		assert voidptr(val) == voidptr(unsafe { expects[k] })
 	}
 	assert rets == expects
 }

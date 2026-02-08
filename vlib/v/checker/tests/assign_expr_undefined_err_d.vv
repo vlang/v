@@ -1,4 +1,4 @@
 fn main() {
-	s := '$s'
+	s := '${s}'
 	println(s)
 }

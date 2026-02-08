@@ -157,7 +157,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('cross') // TODO: remove when `$if cross {` works
 	}
 	if p.gc_mode == .unknown {
-		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
+		if p.backend != .c || p.building_v || p.is_bare {
 			p.gc_mode = .no_gc
 			p.build_options << ['-gc', 'none']
 		} else {
@@ -210,7 +210,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.third_party_option.trim_space(),
 		p.lookup_path.str(),
 	])
-	// eprintln('prefs.cache_manager: $p')
+	// eprintln('prefs.cache_manager: ${p}')
 	// disable use_cache for specific cases:
 	if os.user_os() == 'windows' {
 		p.use_cache = false

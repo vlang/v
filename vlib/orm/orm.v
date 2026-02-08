@@ -89,6 +89,32 @@ pub enum OrderType {
 	desc
 }
 
+// JoinType represents the type of SQL JOIN operation
+pub enum JoinType {
+	inner      // INNER JOIN - returns only matching rows
+	left       // LEFT JOIN - returns all left rows, NULL for non-matching right
+	right      // RIGHT JOIN - returns all right rows, NULL for non-matching left
+	full_outer // FULL OUTER JOIN - returns all rows from both tables
+}
+
+fn (jt JoinType) to_str() string {
+	return match jt {
+		.inner { 'INNER JOIN' }
+		.left { 'LEFT JOIN' }
+		.right { 'RIGHT JOIN' }
+		.full_outer { 'FULL OUTER JOIN' }
+	}
+}
+
+// JoinConfig holds configuration for a JOIN clause in a SELECT query
+pub struct JoinConfig {
+pub mut:
+	kind         JoinType
+	table        Table
+	on_left_col  string // Column from main table (e.g., 'user_id')
+	on_right_col string // Column from joined table (e.g., 'id')
+}
+
 pub enum SQLDialect {
 	default
 	mysql
@@ -182,19 +208,22 @@ pub mut:
 // has_offset - Add an offset to the result
 // fields - Fields to select
 // types - Types to select
+// joins - JOIN clauses for this query
 pub struct SelectConfig {
 pub mut:
-	table      Table
-	is_count   bool
-	has_where  bool
-	has_order  bool
-	order      string
-	order_type OrderType
-	has_limit  bool
-	primary    string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
-	has_offset bool
-	fields     []string
-	types      []int
+	table        Table
+	is_count     bool
+	has_where    bool
+	has_order    bool
+	order        string
+	order_type   OrderType
+	has_limit    bool
+	primary      string = 'id' // should be set if primary is different than 'id' and 'has_limit' is false
+	has_offset   bool
+	has_distinct bool
+	fields       []string
+	types        []int
+	joins        []JoinConfig // JOIN clauses for this query
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -349,6 +378,10 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
+	if cfg.has_distinct {
+		str += 'DISTINCT '
+	}
+
 	if cfg.is_count {
 		str += 'COUNT(*)'
 	} else {
@@ -362,10 +395,24 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	str += ' FROM ${q}${cfg.table.name}${q}'
 
+	// Generate JOIN clauses
+	for join in cfg.joins {
+		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
+		str += ' ON ${q}${cfg.table.name}${q}.${q}${join.on_left_col}${q}'
+		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
+	}
+
 	mut c := start_pos
 
 	if cfg.has_where {
 		str += ' WHERE '
+		$if trace_orm_where ? {
+			eprintln('> orm_select_gen: where.fields.len = ${where.fields.len}')
+			eprintln('> orm_select_gen: where.kinds.len = ${where.kinds.len}')
+			for i, field in where.fields {
+				eprintln('> orm_select_gen: field[${i}] = ${field}')
+			}
+		}
 		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 
@@ -473,6 +520,8 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut field_comments := map[string]string{}
 	mut index_fields := []string{}
 
+	valid_sql_field_names := fields.map(sql_field_name(it))
+
 	for attr in table.attrs {
 		match attr.name {
 			'comment' {
@@ -485,6 +534,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 					index_strings := attr.arg.split(',')
 					for i in index_strings {
 						x := i.trim_space()
+						if x !in valid_sql_field_names {
+							return error("table `${table.name}` has no field's name: `${x}`")
+						}
 						if x.len > 0 && x !in index_fields {
 							index_fields << x
 						}
@@ -511,6 +563,10 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		mut field_comment := ''
 		mut field_name := sql_field_name(field)
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
+			// Struct fields are treated as foreign key references, which requires a primary key
+			if primary_typ == 0 {
+				return error('struct field `${field_name}` in table `${table.name}` requires a primary key field for foreign key reference - add a field with [primary] attribute or use [sql: \'-\'] to skip this field')
+			}
 			field_name = '${field_name}_id'
 			sql_from_v(primary_typ)!
 		}
@@ -640,6 +696,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	fs << unique_fields
+	unique_fields.clear() // ownership transferred to fs to avoid double-free under -autofree
 	str += fs.join(', ')
 	if index_fields.len > 0 && sql_dialect == .mysql {
 		str += ', INDEX `idx_${table.name}` (`'

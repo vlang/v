@@ -276,7 +276,7 @@ pub fn (ctx &Context) text_width(s string) int {
 			ctx.text_width('i') // TODO: fix this in fontstash?
 	}
 	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "$s" = $res')
+	// println('TW "${s}" = ${res}')
 	$if macos {
 		if ctx.native_rendering {
 			return res * 2
@@ -305,4 +305,31 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 	mut buf := [4]f32{}
 	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
+}
+
+// text_width returns the width of the `string` `s` in pixels.
+pub fn (ctx &Context) text_width_f(s string) f32 {
+	$if macos {
+		if ctx.native_rendering {
+			return C.darwin_text_width(s)
+		}
+	}
+	// ctx.set_text_cfg(cfg) TODO
+	if !ctx.font_inited {
+		return 0
+	}
+	mut buf := [4]f32{}
+	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
+	if s.ends_with(' ') {
+		return int((buf[2] - buf[0]) / ctx.scale) +
+			ctx.text_width('i') // TODO: fix this in fontstash?
+	}
+	res := int((buf[2] - buf[0]) / ctx.scale)
+	// println('TW "${s}" = ${res}')
+	$if macos {
+		if ctx.native_rendering {
+			return res * 2
+		}
+	}
+	return (buf[2] - buf[0]) / ctx.scale
 }

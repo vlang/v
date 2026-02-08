@@ -3,6 +3,108 @@ fn test() {
 	println('hello!')
 }
 
+fn str_concat() {
+	a := 'Hello '
+	b := 'V!'
+	d := a + b
+	println(d)
+}
+
+fn str_loop_concat() {
+	mut a := 'Y'
+	for _ in 0 .. 20 {
+		a += 'o'
+	}
+	a += '!'
+	println(a)
+}
+
+fn str_cmp() {
+	a := 'Test???'
+	b := 'TestingMcTestface'
+	c := 'TestingMcTestface'
+
+	println(a != b)
+	println(a == b)
+	println(a == c)
+	println(c != b)
+	println(b == a)
+
+	// Duh
+	println(b == b)
+	println(a == a)
+	println(c == c)
+
+	// Dynamically Generated
+	mut d := ''
+	e := 'aaaaaaaa'
+	for _ in 0 .. 8 {
+		d += 'a'
+	}
+	println(d == e)
+	println(d != e)
+
+	// Complex expressions
+	println(d == e && d == e)
+	println(d == e && d == a)
+
+	println(b < a)
+	println(b > a)
+	println(b <= a)
+	println(b >= a)
+
+	// If eval
+	if b == c {
+		println('B is C')
+	}
+	if a != c {
+		println('A is not C')
+		if a == c {
+			panic('A is C')
+		} else {
+			println('A is not C')
+		}
+	}
+}
+
+fn str_literal() {
+	a := 'Big test'
+	b := 'Such wow'
+	c := 'Helllo!'
+	d := '${a} and ${b}'
+	e := a + '${b}' + '${b}'
+	f := 42
+	array := ['${a}', '${b}', '${c}', '${f}']!
+
+	println('${a}')
+	println('${b}')
+	println('${c}')
+	println('${d}')
+	println('${e}')
+	println('meaning of life is ${f}')
+	println('${a}${c}')
+	println('${b}${a}')
+	println('${c}${a}${e}')
+	println('${a}${c}${c}${a}${b}${a}')
+	println('${b}${a}${b}')
+	println('${c}${a}${b}${a}${b}${a}')
+
+	// No for in array for now
+	println('---')
+	for i in 0 .. 4 {
+		println(array[i])
+	}
+
+	// Concat
+	mut concat := ''
+	for i in 0 .. 10 {
+		concat += '${i} - '
+	}
+	println('${concat}10!')
+
+	// Modifiers or dumps are not supported yet...
+}
+
 fn str_methods() {
 	print(128.str())
 	println(i64(-192322).str())
@@ -16,6 +118,12 @@ fn str_implicit() {
 	println(a + 10)
 }
 
+fn str_plus_assign_with_call_expr() {
+	mut str := 'a'
+	str += 1.str()
+	println(str)
+}
+
 fn assertions() {
 	assert true, 'hello'
 	assert true
@@ -27,6 +135,11 @@ fn main() {
 	test()
 	str_methods()
 	str_implicit()
+	str_concat()
+	str_cmp()
+	str_loop_concat()
+	str_literal()
+	str_plus_assign_with_call_expr()
 	assertions()
 
 	// panic('nooo!')

@@ -26,7 +26,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		// TODO: why can pos be -1?
 		return
 	}
-	// eprintln('> free_scope_vars($pos)')
+	// eprintln('> free_scope_vars(${pos})')
 	scope := g.file.scope.innermost(pos)
 	// g.writeln('// scope start pos=${scope.start_pos} ')
 	if scope.start_pos == 0 {

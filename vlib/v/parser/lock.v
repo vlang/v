@@ -1,63 +1,6 @@
 module parser
 
-import v.token
 import v.ast
-
-// parse `x` or `x.y.z` - no index, no struct literals (`{` starts lock block)
-fn (mut p Parser) lockable() ast.Expr {
-	mut names := []string{}
-	mut positions := []token.Pos{}
-	mut pos := p.tok.pos()
-	for {
-		if p.tok.kind != .name {
-			p.unexpected(got: '`${p.tok.lit}`', expecting: 'field or variable name')
-		}
-		names << p.tok.lit
-		positions << pos
-		p.next()
-		if p.tok.kind != .dot {
-			break
-		}
-		p.next()
-		pos.extend(p.tok.pos())
-	}
-	mut expr := ast.Expr(ast.Ident{
-		language: ast.Language.v
-		pos:      positions[0]
-		mod:      p.mod
-		name:     names[0]
-		is_mut:   true
-		info:     ast.IdentVar{}
-		scope:    p.scope
-	})
-	for i := 1; i < names.len; i++ {
-		expr = ast.SelectorExpr{
-			expr:       expr
-			field_name: names[i]
-			next_token: if i < names.len - 1 { token.Kind.dot } else { p.tok.kind }
-			is_mut:     true
-			pos:        positions[i]
-			scope:      p.scope
-		}
-	}
-	return expr
-}
-
-// like `expr_list()` but only lockables are allowed, `{` starts lock block (not struct literal)
-fn (mut p Parser) lockable_list() []ast.Expr {
-	mut exprs := []ast.Expr{}
-	for {
-		expr := p.lockable()
-		if expr !is ast.Comment {
-			exprs << expr
-			if p.tok.kind != .comma {
-				break
-			}
-			p.next()
-		}
-	}
-	return exprs
-}
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO: Handle aliasing sync
@@ -79,10 +22,12 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			break
 		}
 		if p.tok.kind == .name {
-			exprs := p.lockable_list()
+			p.inside_lock_exprs = true
+			exprs := p.expr_list(true)
+			p.inside_lock_exprs = false
 			for e in exprs {
 				if !e.is_lockable() {
-					p.error_with_pos('`${e}` cannot be locked - only `x` or `x.y` are supported',
+					p.error_with_pos('`${e}` cannot be locked - only `x`, `x.y` or `x.$(y)` are supported',
 						e.pos())
 				}
 				lockeds << e

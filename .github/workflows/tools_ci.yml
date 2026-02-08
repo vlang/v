@@ -33,9 +33,9 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
         run: ./v fmt -verify cmd/
       - name: Check build-tools
@@ -73,9 +73,9 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
@@ -93,9 +93,9 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
-        run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+        run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Check build tools
         run: ./v build-tools
       - name: Test tools
@@ -117,9 +117,9 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Build V
-        run: make -j4 && ./v -cg -o v cmd/v
+        run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
@@ -132,3 +132,98 @@ jobs:
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
         run: ./v -silent -W -cstrict test-self cmd
+
+  tools-freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        cc: [tcc, gcc, clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tests tools on FreeBSD with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: freebsd
+          version: '15.0'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          environment_variables: VFLAGS
+          run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            if [ "$VFLAGS" = "-cc gcc" ]; then
+              sudo pkg install -y gcc
+            fi
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s freebsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            # Build V
+            echo "### Build V"
+            printf "VFLAGS = %s\n" "$VFLAGS"
+            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
+            # Code in cmd/ is formatted
+            echo "### Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            # Check build-tools
+            echo "### Check build tools"
+            ./v -silent -N -W -check build-tools
+            # Test tools
+            echo "### Test tools"
+            ./v -silent test-self cmd
+            # Test tools (-cstrict)
+            if [ "$VFLAGS" != "-cc tcc" ]; then
+              echo "### Test tools (-cstrict)"
+              ./v -silent -W -cstrict test-self cmd
+            fi
+
+  tools-openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        cc: [tcc, clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tests tools on OpenBSD with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: openbsd
+          version: '7.8'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          environment_variables: VFLAGS
+          run: |
+            sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s openbsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            # Build V
+            echo "### Build V"
+            printf "VFLAGS = %s\n" "$VFLAGS"
+            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
+            # Code in cmd/ is formatted
+            echo "### Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            # Check build-tools
+            echo "### Check build tools"
+            ./v -silent -N -W -check build-tools
+            # Test tools
+            echo "### Test tools"
+            ./v -silent test-self cmd
+            # Test tools (-cstrict)
+            if [ "$VFLAGS" != "-cc tcc" ]; then
+              echo "### Test tools (-cstrict)"
+              ./v -silent -W -cstrict test-self cmd
+            fi

@@ -3,10 +3,6 @@
 // that can be found in the LICENSE file.
 module http
 
-$if gcboehm ? {
-	#define VSCHANNEL_REALLOC GC_REALLOC
-}
-
 #flag windows -I @VEXEROOT/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"
@@ -24,7 +20,7 @@ fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, pat
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff)
+	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, v_realloc)
 	C.vschannel_cleanup(&ctx)
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {

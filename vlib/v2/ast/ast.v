@@ -99,14 +99,14 @@ pub type Type = AnonStructType
 	| TupleType
 
 pub fn (exprs []Expr) name_list() string {
-	mut name_list := ''
-	for i, expr in exprs {
-		name_list += expr.name()
+	mut out := ''
+	for i := 0; i < exprs.len; i++ {
+		out = out + exprs[i].name()
 		if i < exprs.len - 1 {
-			name_list += ','
+			out = out + ','
 		}
 	}
-	return name_list
+	return out
 }
 
 pub fn (t Type) name() string {
@@ -115,8 +115,7 @@ pub fn (t Type) name() string {
 			'${t.name.name()}[${t.params.name_list()}]'
 		}
 		else {
-			panic('Type.name(): unsupported expr `${t.type_name()}`, currently only supports `ast.Ident` & `ast.SelectorExpr`')
-			// expr.str()
+			'Type'
 		}
 	}
 }
@@ -166,38 +165,134 @@ pub fn (expr Expr) name() string {
 			'${expr.op}${expr.expr.name()}'
 		}
 		SelectorExpr {
-			expr.name()
+			expr.lhs.name() + '.' + expr.rhs.name
 		}
 		StringLiteral {
 			"'${expr.value}'"
 		}
 		Type {
-			expr.name()
+			'Type'
 		}
 		UnsafeExpr {
 			// TODO:
 			'UnsafeExpr'
 		}
 		else {
-			panic('Expr.name(): unsupported expr `${expr.type_name()}`, add it?')
-			// expr.str()
+			'Expr'
 		}
 	}
 }
 
 pub fn (expr Expr) pos() token.Pos {
 	return match expr {
+		AsCastExpr {
+			expr.pos
+		}
+		ArrayInitExpr {
+			expr.pos
+		}
+		AssocExpr {
+			expr.pos
+		}
+		BasicLiteral {
+			expr.pos
+		}
+		CallExpr {
+			expr.pos
+		}
+		CallOrCastExpr {
+			expr.pos
+		}
+		CastExpr {
+			expr.pos
+		}
+		ComptimeExpr {
+			expr.pos
+		}
+		FnLiteral {
+			expr.pos
+		}
+		GenericArgOrIndexExpr {
+			expr.pos
+		}
+		GenericArgs {
+			expr.pos
+		}
 		Ident {
+			expr.pos
+		}
+		IfExpr {
+			expr.pos
+		}
+		IfGuardExpr {
+			expr.pos
+		}
+		IndexExpr {
+			expr.pos
+		}
+		InfixExpr {
+			expr.pos
+		}
+		InitExpr {
+			expr.pos
+		}
+		KeywordOperator {
+			expr.pos
+		}
+		LambdaExpr {
+			expr.pos
+		}
+		LockExpr {
+			expr.pos
+		}
+		MapInitExpr {
+			expr.pos
+		}
+		MatchExpr {
+			expr.pos
+		}
+		ModifierExpr {
+			expr.pos
+		}
+		OrExpr {
+			expr.pos
+		}
+		ParenExpr {
+			expr.pos
+		}
+		PostfixExpr {
+			expr.pos
+		}
+		PrefixExpr {
+			expr.pos
+		}
+		RangeExpr {
+			expr.pos
+		}
+		SelectExpr {
 			expr.pos
 		}
 		SelectorExpr {
 			expr.pos
-			// NOTE: should we remove `pos` from `SelectorExpr` and use `expr.lhs.pos()` instead?
-			// which would always get the position of the left most part of the `SelectorExpr`
-			// expr.lhs.pos()
+		}
+		SqlExpr {
+			expr.pos
+		}
+		StringInterLiteral {
+			expr.pos
+		}
+		StringLiteral {
+			expr.pos
+		}
+		Tuple {
+			expr.pos
+		}
+		UnsafeExpr {
+			expr.pos
 		}
 		else {
-			panic('Expr.pos(): TODO: add ${expr.type_name()}')
+			// Default for expressions without pos field (EmptyExpr, FieldInit, Keyword, Type)
+			0
 		}
 	}
 }
@@ -226,6 +321,11 @@ pub fn (lang Language) str() string {
 	}
 }
 
+pub enum DeferMode {
+	scoped   // default: defer to end of current scope
+	function // defer(fn): defer to end of function
+}
+
 // Expressions
 pub struct ArrayInitExpr {
 pub:
@@ -249,12 +349,14 @@ pub:
 	typ    Expr
 	expr   Expr
 	fields []FieldInit
+	pos    token.Pos
 }
 
 pub struct BasicLiteral {
 pub:
 	kind  token.Token
 	value string
+	pos   token.Pos
 }
 
 pub struct CallExpr {
@@ -304,18 +406,21 @@ pub:
 	typ           FnType
 	captured_vars []Expr
 	stmts         []Stmt
+	pos           token.Pos
 }
 
 pub struct GenericArgs {
 pub:
 	lhs  Expr
 	args []Expr // concrete types
+	pos  token.Pos
 }
 
 pub struct GenericArgOrIndexExpr {
 pub:
 	lhs  Expr
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct Ident {
@@ -329,11 +434,13 @@ pub:
 	cond      Expr = empty_expr
 	else_expr Expr = empty_expr
 	stmts     []Stmt
+	pos       token.Pos
 }
 
 pub struct IfGuardExpr {
 pub:
 	stmt AssignStmt
+	pos  token.Pos
 }
 
 pub struct InfixExpr {
@@ -349,12 +456,14 @@ pub:
 	lhs      Expr
 	expr     Expr
 	is_gated bool
+	pos      token.Pos
 }
 
 pub struct InitExpr {
 pub:
 	typ    Expr
 	fields []FieldInit
+	pos    token.Pos
 }
 
 pub struct Keyword {
@@ -366,17 +475,20 @@ pub struct KeywordOperator {
 pub:
 	op    token.Token
 	exprs []Expr
+	pos   token.Pos
 }
 
 pub struct Tuple {
 pub:
 	exprs []Expr
+	pos   token.Pos
 }
 
 pub struct LambdaExpr {
 pub:
 	args []Ident
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct LockExpr {
@@ -384,6 +496,7 @@ pub:
 	lock_exprs  []Expr
 	rlock_exprs []Expr
 	stmts       []Stmt
+	pos         token.Pos
 }
 
 pub struct MapInitExpr {
@@ -426,6 +539,7 @@ pub struct ModifierExpr {
 pub:
 	kind token.Token
 	expr Expr
+	pos  token.Pos
 }
 
 // pub fn (expr ModifierExpr) unwrap() Expr {
@@ -450,12 +564,14 @@ pub:
 pub struct ParenExpr {
 pub:
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct PostfixExpr {
 pub:
 	op   token.Token
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct PrefixExpr {
@@ -470,6 +586,7 @@ pub:
 	op    token.Token // `..` exclusive | `...` inclusive
 	start Expr
 	end   Expr
+	pos   token.Pos
 }
 
 pub struct SelectExpr {
@@ -495,7 +612,7 @@ pub fn (se SelectorExpr) leftmost() Expr {
 }
 
 // pub fn (expr Expr) str() string {
-// 	return 'Expr.str() - $expr.type_name()'
+// 	return 'Expr.str() - ${expr.type_name()}'
 // }
 
 pub fn (se SelectorExpr) name() string {
@@ -521,7 +638,7 @@ pub fn (s StringLiteralKind) str() string {
 // TODO: allow overriding this method in main v compiler
 // that is why this method was renamed from `from_string`
 @[direct_array_access]
-pub fn StringLiteralKind.from_string_tinyv(s string) !StringLiteralKind {
+pub fn StringLiteralKind.from_string_tinyv(s string) StringLiteralKind {
 	match s[0] {
 		`c` {
 			return .c
@@ -536,7 +653,7 @@ pub fn StringLiteralKind.from_string_tinyv(s string) !StringLiteralKind {
 		}
 		else {}
 	}
-	return error('invalid string prefix `${s}`')
+	return .v
 }
 
 // NOTE: I'm using two nodes StringLiteral & StringInterLiteral
@@ -545,6 +662,7 @@ pub struct StringLiteral {
 pub:
 	kind  StringLiteralKind
 	value string
+	pos   token.Pos
 }
 
 pub struct StringInterLiteral {
@@ -552,6 +670,7 @@ pub:
 	kind   StringLiteralKind
 	values []string
 	inters []StringInter
+	pos    token.Pos
 }
 
 pub struct StringInter {
@@ -579,7 +698,7 @@ pub enum StringInterFormat {
 	string
 }
 
-pub fn StringInterFormat.from_u8(c u8) !StringInterFormat {
+pub fn StringInterFormat.from_u8(c u8) StringInterFormat {
 	return match c {
 		`b` { .binary }
 		`c` { .character }
@@ -591,7 +710,7 @@ pub fn StringInterFormat.from_u8(c u8) !StringInterFormat {
 		`o` { .octal }
 		`p` { .pointer_address }
 		`s` { .string }
-		else { error('unknown formatter `${c.ascii_str()}`') }
+		else { .unformatted }
 	}
 }
 
@@ -614,11 +733,13 @@ pub fn (sif StringInterFormat) str() string {
 pub struct SqlExpr {
 pub:
 	expr Expr
+	pos  token.Pos
 }
 
 pub struct UnsafeExpr {
 pub:
 	stmts []Stmt
+	pos   token.Pos
 }
 
 // Statements
@@ -645,6 +766,12 @@ pub fn (attributes []Attribute) has(name string) bool {
 	for attribute in attributes {
 		if attribute.name == name {
 			return true
+		}
+		// Also check value when it's a simple identifier (e.g., @[flag])
+		if attribute.name == '' {
+			if attribute.value is Ident && attribute.value.name == name {
+				return true
+			}
 		}
 	}
 	return false
@@ -675,6 +802,7 @@ pub:
 
 pub struct DeferStmt {
 pub:
+	mode  DeferMode
 	stmts []Stmt
 }
 
@@ -789,6 +917,7 @@ pub struct StructDecl {
 pub:
 	attributes     []Attribute
 	is_public      bool
+	is_union       bool
 	embedded       []Expr
 	language       Language = .v
 	name           string
@@ -839,10 +968,18 @@ pub:
 
 pub fn (ft &FnType) str() string {
 	mut s := 'fn('
-	for param in ft.params {
-		s += param.name + param.typ.str()
+	for i := 0; i < ft.params.len; i++ {
+		param := ft.params[i]
+		s = s + param.name + param.typ.name()
+		if i < ft.params.len - 1 {
+			s = s + ', '
+		}
 	}
-	s += ') ' + ft.return_type.str()
+	if ft.return_type is EmptyExpr {
+		s = s + ')'
+	} else {
+		s = s + ') ' + ft.return_type.name()
+	}
 	return s
 }
 

@@ -483,3 +483,68 @@ fn test_implements() {
 	handle_implements(e)
 	println('implements ok')
 }
+
+interface VtableDrawable {
+	draw() int
+}
+
+interface VtableCalculator {
+	add(a int, b int) int
+	multiply(x int) int
+}
+
+struct VtablePoint {
+	x int
+	y int
+}
+
+fn (p VtablePoint) draw() int {
+	return p.x * 1000 + p.y
+}
+
+fn (p VtablePoint) add(a int, b int) int {
+	return p.x + p.y + a + b
+}
+
+fn (p VtablePoint) multiply(x int) int {
+	return (p.x + p.y) * x
+}
+
+fn test_interface_value_receiver_dispatch() {
+	p1 := VtablePoint{
+		x: 7
+		y: 3
+	}
+	d1 := VtableDrawable(p1)
+	assert d1.draw() == 7003
+
+	p2 := VtablePoint{
+		x: 15
+		y: 25
+	}
+	d2 := VtableDrawable(p2)
+	assert d2.draw() == 15025
+
+	p3 := VtablePoint{
+		x: 1
+		y: 1
+	}
+	d3 := VtableDrawable(p3)
+	assert d3.draw() + d3.draw() == 2002
+}
+
+fn test_interface_value_receiver_dispatch_with_params() {
+	calc := VtableCalculator(VtablePoint{
+		x: 10
+		y: 5
+	})
+	assert calc.add(3, 7) == 25
+	assert calc.multiply(4) == 60
+
+	calc2 := VtableCalculator(VtablePoint{
+		x: 2
+		y: 3
+	})
+	assert calc2.add(1, 1) == 7
+	assert calc2.multiply(10) == 50
+}

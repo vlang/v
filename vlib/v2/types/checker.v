@@ -9,34 +9,168 @@ import v2.errors
 import v2.pref
 import v2.token
 
-struct Environment {
-mut:
+pub struct Environment {
+pub mut:
 	// errors with no default value
 	scopes shared map[string]&Scope = map[string]&Scope{}
+	// Function scopes - stores the scope for each function by qualified name (module__fn_name)
+	// This allows later passes (transformer, codegen) to look up local variable types
+	fn_scopes shared map[string]&Scope = map[string]&Scope{}
 	// types map[int]Type
-	// TODO:
-	// methods map...
-	// methods map[int][]&Fn
-	methods           map[string][]&Fn
+	// methods - shared for parallel type checking
+	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
+	// Expression types - maps position to computed type for direct access
+	// This simplifies the type system by storing types directly rather than through scopes
+	expr_types       map[int]Type
+	expr_type_slots  map[int]int
+	expr_type_values []Type
 }
 
 pub fn Environment.new() &Environment {
-	return &Environment{}
+	return &Environment{
+		expr_types:      map[int]Type{}
+		expr_type_slots: map[int]int{}
+	}
 }
 
-enum DeferredKind {
+// set_expr_type stores the computed type for an expression at a given position
+pub fn (mut e Environment) set_expr_type(pos int, typ Type) {
+	e.expr_types[pos] = typ
+	if slot := e.expr_type_slots[pos] {
+		e.expr_type_values[slot] = typ
+		return
+	}
+	e.expr_type_values << typ
+	e.expr_type_slots[pos] = e.expr_type_values.len - 1
+}
+
+// get_expr_type retrieves the computed type for an expression at a given position
+pub fn (e &Environment) get_expr_type(pos int) ?Type {
+	if slot := e.expr_type_slots[pos] {
+		return e.expr_type_values[slot]
+	}
+	return none
+}
+
+// lookup_method looks up a method by receiver type name and method name
+// Returns the method's FnType if found
+pub fn (e &Environment) lookup_method(type_name string, method_name string) ?FnType {
+	methods := rlock e.methods {
+		e.methods[type_name] or { []&Fn{} }
+	}
+	for method in methods {
+		if method.get_name() == method_name {
+			typ := method.get_typ()
+			if typ is FnType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+// lookup_fn looks up a function by module and name in the environment's scopes
+// Returns the function's FnType if found
+pub fn (e &Environment) lookup_fn(module_name string, fn_name string) ?FnType {
+	mut scope := &Scope(unsafe { nil })
+	mut found_scope := false
+	lock e.scopes {
+		if s := e.scopes[module_name] {
+			scope = unsafe { s }
+			found_scope = true
+		}
+	}
+	if !found_scope {
+		return none
+	}
+	if obj := scope.lookup_parent(fn_name, 0) {
+		if obj is Fn {
+			typ := obj.get_typ()
+			if typ is FnType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+// lookup_local_var looks up a local variable by name in the given scope.
+// Walks up the scope chain to find the variable and returns its type.
+pub fn (e &Environment) lookup_local_var(scope &Scope, name string) ?Type {
+	mut s := unsafe { scope }
+	if obj := s.lookup_parent(name, 0) {
+		return obj.typ()
+	}
+	return none
+}
+
+// set_fn_scope stores the scope for a function by its qualified name
+pub fn (mut e Environment) set_fn_scope(module_name string, fn_name string, scope &Scope) {
+	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	lock e.fn_scopes {
+		e.fn_scopes[key] = scope
+	}
+}
+
+// get_fn_scope retrieves the scope for a function by its qualified name
+pub fn (e &Environment) get_fn_scope(module_name string, fn_name string) ?&Scope {
+	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
+	mut scope := &Scope(unsafe { nil })
+	mut found_scope := false
+	lock e.fn_scopes {
+		if s := e.fn_scopes[key] {
+			scope = unsafe { s }
+			found_scope = true
+		}
+	}
+	if !found_scope {
+		return none
+	}
+	return scope
+}
+
+pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic
 	struct_decl
 	const_decl
 }
 
-struct Deferred {
+pub struct Deferred {
+pub:
 	kind  DeferredKind
 	func  fn () = unsafe { nil }
 	scope &Scope
+}
+
+struct PendingConstField {
+	scope &Scope
+	field ast.FieldInit
+}
+
+struct PendingInterfaceDecl {
+	scope &Scope
+	decl  ast.InterfaceDecl
+}
+
+struct PendingStructDecl {
+	scope &Scope
+	decl  ast.StructDecl
+}
+
+struct PendingTypeDecl {
+	scope &Scope
+	decl  ast.TypeDecl
+}
+
+struct PendingFnBody {
+	scope         &Scope
+	decl          ast.FnDecl
+	typ           FnType
+	scope_fn_name string
+	module_name   string
 }
 
 struct Checker {
@@ -49,8 +183,18 @@ mut:
 	file_set      &token.FileSet
 	scope         &Scope = new_scope(unsafe { nil })
 	c_scope       &Scope = new_scope(unsafe { nil })
-	deferred      []Deferred
 	expected_type ?Type
+	// Current file's module name (for saving function scopes)
+	cur_file_module string
+	// Function root scope - used to flatten local variable types for transformer lookup
+	fn_root_scope &Scope = unsafe { nil }
+	// when true, function declarations only register signatures and queue body checking
+	collect_fn_signatures_only bool
+	pending_const_fields       []PendingConstField
+	pending_interface_decls    []PendingInterfaceDecl
+	pending_struct_decls       []PendingStructDecl
+	pending_type_decls         []PendingTypeDecl
+	pending_fn_bodies          []PendingFnBody
 
 	generic_params []string
 	// TODO: remove once fields/methods with same name
@@ -66,18 +210,55 @@ pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Enviro
 	}
 }
 
+// qualify_type_name returns the fully qualified type name with module prefix.
+// e.g., "File" in module "ast" becomes "ast__File".
+// Builtin types and main module types are not prefixed.
+fn (c &Checker) qualify_type_name(name string) string {
+	// Don't qualify builtin or main module types
+	if c.cur_file_module == 'builtin' || c.cur_file_module == '' || c.cur_file_module == 'main' {
+		return name
+	}
+	return '${c.cur_file_module}__${name}'
+}
+
+fn to_optional_type(typ Type) ?Type {
+	return typ
+}
+
+fn object_from_type(typ Type) Object {
+	return typ
+}
+
+fn with_generic_params(fn_type FnType, params []string) FnType {
+	return FnType{
+		generic_params: params
+		params:         fn_type.params
+		return_type:    fn_type.return_type
+		is_variadic:    fn_type.is_variadic
+		attributes:     fn_type.attributes
+		generic_types:  fn_type.generic_types
+	}
+}
+
+fn fn_with_return_type(fn_type FnType, return_type Type) FnType {
+	return FnType{
+		generic_params: fn_type.generic_params
+		params:         fn_type.params
+		return_type:    to_optional_type(return_type)
+		is_variadic:    fn_type.is_variadic
+		attributes:     fn_type.attributes
+		generic_types:  fn_type.generic_types
+	}
+}
+
 pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scope {
-	// return c.env.scopes[module_name] or {
-	// 	s := new_scope(parent)
-	// 	c.env.scopes[module_name] = s
-	// 	s
-	// }
 	return lock c.env.scopes {
-		c.env.scopes[module_name] or {
-			s := new_scope(parent)
-			c.env.scopes[module_name] = s
-			s
+		mut scope := c.env.scopes[module_name] or { &Scope(unsafe { nil }) }
+		if scope == unsafe { nil } {
+			scope = new_scope(parent)
+			c.env.scopes[module_name] = scope
 		}
+		scope
 	}
 }
 
@@ -85,38 +266,15 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 	// c.file_set = unsafe { file_set }
 	c.preregister_all_scopes(files)
 	c.preregister_all_types(files)
+	c.collect_fn_signatures_only = true
+	c.preregister_all_fn_signatures(files)
+	c.collect_fn_signatures_only = false
 
 	for file in files {
 		c.check_file(file)
 	}
-	// c.log('DEFERRED - START')
-	// TODO: a better way to do this, please.
-	// ideally just resolve what needs to be
-	// const decl
-	for d in c.deferred {
-		if d.kind != .const_decl {
-			continue
-		}
-		c.scope = d.scope
-		d.func()
-	}
-	// fn decls
-	for d in c.deferred {
-		if d.kind != .fn_decl {
-			continue
-		}
-		c.scope = d.scope
-		d.func()
-	}
-	// fn decls - generic
-	for d in c.deferred {
-		if d.kind != .fn_decl_generic {
-			continue
-		}
-		c.scope = d.scope
-		d.func()
-	}
-	// c.log('DEFERRED - END')
+	c.process_pending_const_fields()
+	c.process_pending_fn_bodies()
 }
 
 pub fn (mut c Checker) check_file(file ast.File) {
@@ -127,6 +285,8 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 	mut sw := time.new_stopwatch()
 	start_no_time:
+	// Track current file's module for function scope saving
+	c.cur_file_module = file.mod
 	// file_scope := new_scope(c.mod.scope)
 	// mut mod_scope := new_scope(c.mod.scope)
 	// c.env.scopes[file.mod] = mod_scope
@@ -145,7 +305,12 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	for stmt in file.stmts {
 		// if stmt is ast.Decl {
 		match stmt {
-			ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
+			// Types and constants are pre-registered in preregister_all_types
+			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
+				continue
+			}
+			// Functions are pre-registered in preregister_all_fn_signatures
+			ast.FnDecl {
 				continue
 			}
 			else {
@@ -163,7 +328,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 }
 
-fn (mut c Checker) preregister_scopes(file ast.File) {
+pub fn (mut c Checker) preregister_scopes(file ast.File) {
 	builtin_scope := c.get_module_scope('builtin', universe)
 
 	mod_scope := c.get_module_scope(file.mod, builtin_scope)
@@ -198,13 +363,16 @@ fn (mut c Checker) preregister_all_scopes(files []ast.File) {
 	}
 }
 
-fn (mut c Checker) preregister_types(file ast.File) {
-	mut mod_scope := c.env.scopes[file.mod] or { panic('scope should exist') }
+pub fn (mut c Checker) preregister_types(file ast.File) {
+	c.cur_file_module = file.mod
+	mut mod_scope := lock c.env.scopes {
+		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	}
 	c.scope = mod_scope
 	for stmt in file.stmts {
 		// if stmt is ast.Decl {
 		match stmt {
-			ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {}
+			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {}
 			else {
 				continue
 			}
@@ -218,40 +386,59 @@ fn (mut c Checker) preregister_all_types(files []ast.File) {
 	for file in files {
 		c.preregister_types(file)
 	}
-	// c.log('DEFERRED - START')
-	for d in c.deferred {
-		if d.kind != .struct_decl {
-			continue
-		}
-		c.scope = d.scope
-		d.func()
+	c.process_pending_interface_decls()
+	c.process_pending_struct_decls()
+	c.process_pending_type_decls()
+}
+
+// preregister_all_fn_signatures registers all function/method signatures
+// before processing any function bodies. This ensures methods are available
+// when checking code that calls them, regardless of file order.
+fn (mut c Checker) preregister_all_fn_signatures(files []ast.File) {
+	for file in files {
+		c.preregister_fn_signatures(file)
 	}
-	// c.log('DEFERRED - END')
+}
+
+pub fn (mut c Checker) preregister_fn_signatures(file ast.File) {
+	c.cur_file_module = file.mod
+	mut mod_scope := lock c.env.scopes {
+		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	}
+	c.scope = mod_scope
+	prev_collect := c.collect_fn_signatures_only
+	c.collect_fn_signatures_only = true
+	for stmt in file.stmts {
+		// Only process function declarations
+		if stmt is ast.FnDecl {
+			c.decl(stmt)
+		}
+	}
+	c.collect_fn_signatures_only = prev_collect
 }
 
 fn (mut c Checker) decl(decl ast.Stmt) {
 	match decl {
 		ast.ConstDecl {
 			for field in decl.fields {
-				// c.log('const decl: $field.name')
+				// c.log('const decl: ${field.name}')
+				mut int_val := 0
+				if field.value is ast.BasicLiteral {
+					if field.value.kind == .number {
+						int_val = field.value.value.int()
+					}
+				}
 				obj := Const{
-					mod:  c.mod
-					name: field.name
+					mod:     c.mod
+					name:    field.name
+					int_val: int_val
 					// typ: c.expr(field.value)
 				}
 				c.scope.insert(obj.name, obj)
-				// TODO: check if contains references to other consts and only
-				// delay those. or keep deferring until type is known otherwise error
-				// work out best way to do this, and use same approach for everything
-				c.later(fn [mut c, field] () {
-					// c.log('updating const $field.name type')
-					const_type := c.expr(field.value)
-					if mut cd := c.scope.lookup(field.name) {
-						if mut cd is Const {
-							cd.typ = const_type.typed_default()
-						}
-					}
-				}, .const_decl)
+				c.pending_const_fields << PendingConstField{
+					scope: c.scope
+					field: field
+				}
 			}
 		}
 		ast.EnumDecl {
@@ -264,12 +451,19 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				}
 			}
 			// as_type := decl.as_type !is ast.EmptyExpr { c.expr(decl.as_type) } else { Type(int_) }
+			mut is_flag := false
+			for attr in decl.attributes {
+				if attr.name == 'flag' {
+					is_flag = true
+					break
+				}
+			}
 			obj := Enum{
-				is_flag: decl.attributes.has('flag')
-				name:    decl.name
+				is_flag: is_flag
+				name:    c.qualify_type_name(decl.name)
 				fields:  fields
 			}
-			c.scope.insert(obj.name, Type(obj))
+			c.scope.insert(decl.name, Type(obj))
 		}
 		ast.FnDecl {
 			// if decl.typ.generic_params.len > 0 {
@@ -283,91 +477,47 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			c.fn_decl(decl)
 		}
 		ast.GlobalDecl {
-			// for field in decl.fields {
-			// 	// field_type := c.expr(field.typ)
-			// 	// if field.name == 'g_timers' {
-			// 	// 	// dump(field.typ)
-			// 	// 	panic('# g_timers: $field_type.name()')
-			// 	// }
-			// 	obj := Global{
-			// 		name: field.name
-			// 		// typ: c.expr(field.typ)
-			// 		typ: c.expr(field.value)
-			// 	}
-			// 	// c.log('GlobalDecl: $field.name - $obj.typ.type_name()')
-			// 	c.scope.insert(field.name, obj)
-			// }
+			for field in decl.fields {
+				mut field_type := Type(int_)
+				if field.typ !is ast.EmptyExpr {
+					field_type = c.expr(field.typ)
+				} else if field.value !is ast.EmptyExpr {
+					field_type = c.expr(field.value)
+				}
+				obj := Global{
+					name: field.name
+					typ:  field_type
+				}
+				c.scope.insert(field.name, obj)
+			}
 		}
 		ast.InterfaceDecl {
 			// TODO:
 			obj := Interface{
-				name: decl.name
+				name: c.qualify_type_name(decl.name)
 			}
 			c.scope.insert(decl.name, Type(obj))
-			interface_decl := decl
-			mut scope := c.scope
-			c.later(fn [mut c, mut scope, interface_decl] () {
-				mut fields := []Field{}
-				for field in interface_decl.fields {
-					fields << Field{
-						name: field.name
-						typ:  c.expr(field.typ)
-					}
-				}
-				if mut id := scope.lookup(interface_decl.name) {
-					if mut id is Type {
-						if mut id is Interface {
-							id.fields = fields
-						}
-					}
-				}
-			}, .struct_decl)
+			c.pending_interface_decls << PendingInterfaceDecl{
+				scope: c.scope
+				decl:  decl
+			}
 		}
 		ast.StructDecl {
-			// c.log(' # StructDecl: $decl.name')
+			// c.log(' # StructDecl: ${decl.name}')
 			// TODO: clean this up
-			struct_decl := decl
-			c.later(fn [mut c, struct_decl] () {
-				// c.log('add fields: $struct_decl.name')
-				mut fields := []Field{}
-				for field in struct_decl.fields {
-					fields << Field{
-						name: field.name
-						typ:  c.expr(field.typ)
-					}
-				}
-				mut embedded := []Struct{}
-				for embedded_expr in struct_decl.embedded {
-					embedded_type := c.expr(embedded_expr)
-					if embedded_type is Struct {
-						embedded << embedded_type
-					} else {
-						c.error_with_pos('can only structs, `${embedded_type.name()}` is not a struct.',
-							struct_decl.pos)
-					}
-				}
-				mut update_scope := if struct_decl.language == .c { c.c_scope } else { c.scope }
-				// TODO: work best way to do this?
-				// modify the original type since, that is
-				// the one every Type will be pointing to
-				if mut sd := update_scope.lookup(struct_decl.name) {
-					if mut sd is Type {
-						if mut sd is Struct {
-							sd.fields = fields
-							sd.embedded = embedded
-						}
-					}
-				}
-				// obj := types.Struct{
-				// 	name: struct_decl.name
-				// 	fields: fields
-				// }
-				// typ := Type(obj)
-				// c.scope.insert(struct_decl.name, typ)
-			}, .struct_decl)
-			// c.log('struct decl: $decl.name')
+			c.pending_struct_decls << PendingStructDecl{
+				scope: c.scope
+				decl:  decl
+			}
+			// c.log('struct decl: ${decl.name}')
+			// Don't qualify C types
+			qualified_name := if decl.language == .c {
+				decl.name
+			} else {
+				c.qualify_type_name(decl.name)
+			}
 			obj := Struct{
-				name: decl.name
+				name: qualified_name
 				// fields: [Field{name: 'len', typ: ast.Ident{name: 'int'}}]
 				// fields: [Field{name: 'len'}]
 			}
@@ -380,49 +530,32 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			}
 		}
 		ast.TypeDecl {
-			type_decl := decl
 			// alias
 			if decl.variants.len == 0 {
 				alias_type := Alias{
-					name: decl.name
+					name: c.qualify_type_name(decl.name)
 					// TODO: defer
 					// parent: c.expr(decl.base_type)
 				}
 				mut typ := Type(alias_type)
 				c.scope.insert(decl.name, typ)
-				c.later(fn [mut c, type_decl] () {
-					// mut obj := c.scope.lookup(type_decl.name) or { panic(err.msg()) }
-					// mut typ := obj.typ()
-					// if mut typ is Alias {
-					// 	typ.base_type = c.expr(type_decl.base_type)
-					// }
-					if mut obj := c.scope.lookup(type_decl.name) {
-						if mut obj is Type {
-							if mut obj is Alias {
-								obj.base_type = c.expr(type_decl.base_type)
-							}
-						}
-					}
-				}, .struct_decl)
+				c.pending_type_decls << PendingTypeDecl{
+					scope: c.scope
+					decl:  decl
+				}
 			}
 			// sum type
 			else {
 				sum_type := SumType{
-					name: decl.name
+					name: c.qualify_type_name(decl.name)
 					// variants: decl.variants
 				}
 				mut typ := Type(sum_type)
 				c.scope.insert(decl.name, typ)
-				c.later(fn [mut c, type_decl] () {
-					mut obj := c.scope.lookup(type_decl.name) or { panic(err.msg()) }
-					mut typ := obj.typ()
-					// mut typ := c.expr(ast.Ident{name: type_decl.name})
-					if mut typ is SumType {
-						for variant in type_decl.variants {
-							typ.variants << c.expr(variant)
-						}
-					}
-				}, .struct_decl)
+				c.pending_type_decls << PendingTypeDecl{
+					scope: c.scope
+					decl:  decl
+				}
 			}
 		}
 		else {}
@@ -433,6 +566,32 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	// TODO: will this work with Primitive? might need to add comparison methods
 	if got_type == exp_type {
 		return true
+	}
+	// unwrap aliases for compatibility checks
+	if exp_type is Alias {
+		return c.check_types(exp_type.base_type, got_type)
+	}
+	if got_type is Alias {
+		return c.check_types(exp_type, got_type.base_type)
+	}
+	// Treat all `string` spellings as equivalent:
+	// builtin string type, legacy `struct string`, and aliases named `string`.
+	if c.is_string_like(exp_type) && c.is_string_like(got_type) {
+		return true
+	}
+	// Some paths rebuild semantically identical types as distinct objects.
+	// If the fully rendered type names match exactly, treat them as compatible.
+	if exp_type.name() == got_type.name() {
+		return true
+	}
+	// allow nil in expression contexts that expect pointer-like values
+	if got_type is Nil {
+		match exp_type {
+			FnType, Interface, Pointer {
+				return true
+			}
+			else {}
+		}
 	}
 	// number literals
 	if exp_type.is_number() && got_type.is_number_literal() {
@@ -447,12 +606,39 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 		// 	return true
 		// }
 	}
+	// sum type: accept any variant type
+	if exp_type is SumType {
+		if got_type in exp_type.variants {
+			return true
+		}
+	}
 
 	return false
 }
 
+fn (c &Checker) is_string_struct(typ Type) bool {
+	if typ is Struct {
+		return typ.name == 'string' || typ.name.ends_with('__string')
+	}
+	return false
+}
+
+fn (c &Checker) is_string_like(typ Type) bool {
+	return typ.name() == 'string' || c.is_string_struct(typ)
+}
+
 fn (mut c Checker) expr(expr ast.Expr) Type {
-	c.log('expr: ${expr.type_name()}')
+	typ := c.expr_impl(expr)
+	// Store the computed type in the environment for expressions with positions
+	pos := expr.pos()
+	if pos > 0 {
+		c.env.set_expr_type(pos, typ)
+	}
+	return typ
+}
+
+fn (mut c Checker) expr_impl(expr ast.Expr) Type {
+	c.log('expr: ${expr.name()}')
 	match expr {
 		ast.ArrayInitExpr {
 			// c.log('ArrayInit:')
@@ -475,7 +661,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					// `[Type.value_a, .value_b]`
 					// set expected type for checking `.value_b`
 					if first_elem_type is Enum {
-						c.expected_type = first_elem_type
+						c.expected_type = to_optional_type(first_elem_type)
 					}
 					first_elem_type
 				}
@@ -491,23 +677,22 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 					// sum type, check variants
 					if (expected_type is SumType && elem_type !in expected_type.variants)
-						&& elem_type != first_elem_type // everything else
-					  {
+						&& !c.check_types(first_elem_type, elem_type) { // everything else
 						// TODO: add general method for promotion/coercion
 						c.error_with_pos('expecting element of type: ${first_elem_type.name()}, got ${elem_type.name()}',
 							expr.pos)
 					}
 				}
 				c.expected_type = expected_type_prev
-				return if is_fixed {
-					ArrayFixed{
-						len:       expr.exprs.len
+				if is_fixed {
+					arr_len := expr.exprs.len
+					return ArrayFixed{
+						len:       arr_len
 						elem_type: first_elem_type
 					}
-				} else {
-					Array{
-						elem_type: first_elem_type
-					}
+				}
+				return Array{
+					elem_type: first_elem_type
 				}
 			}
 			// `[]int{}`
@@ -519,7 +704,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(expr.typ)
 		}
 		ast.BasicLiteral {
-			// c.log('ast.BasicLiteral: $expr.kind.str(): $expr.value')
+			// c.log('ast.BasicLiteral: ${expr.kind.str()}: ${expr.value}')
 			match expr.kind {
 				.char {
 					return char_
@@ -542,7 +727,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 		}
 		ast.CallOrCastExpr {
-			// c.log('CallOrCastExpr: $lhs_type.name()')
+			// c.log('CallOrCastExpr: ${lhs_type.name()}')
 			// lhs_type := c.expr(expr.lhs)
 			// // call
 			// if lhs_type is FnType {
@@ -573,15 +758,15 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		ast.ComptimeExpr {
 			cexpr := c.resolve_expr(expr.expr)
 			// TODO: move to checker, where `ast.*Or*` nodes will be resolved.
-			if cexpr !in [ast.CallExpr, ast.IfExpr] {
-				c.error_with_pos('unsupported comptime: ${cexpr.type_name()}', expr.pos)
+			if cexpr !is ast.CallExpr && cexpr !is ast.IfExpr {
+				c.error_with_pos('unsupported comptime: ${cexpr.name()}', expr.pos)
 			}
-			// TODO: $if dynamic_bohem ...
+			// Handle compile-time $if/$else - evaluate condition and check only the matching branch
 			if cexpr is ast.IfExpr {
-				c.log('TODO: comptime IfExpr')
+				c.comptime_if_else(cexpr)
 				return void_
 			}
-			c.log('ComptimeExpr: ' + cexpr.type_name())
+			c.log('ComptimeExpr: ' + cexpr.name())
 			// return c.expr(cexpr)
 		}
 		ast.EmptyExpr {
@@ -609,10 +794,8 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 			lhs_type := c.expr(expr.lhs)
 			if lhs_type is FnType {
-				return FnType{
-					...lhs_type
-					generic_params: args
-				}
+				fn_type := lhs_type as FnType
+				return Type(with_generic_params(fn_type, args))
 			}
 
 			return Struct{
@@ -624,7 +807,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(c.resolve_generic_arg_or_index_expr(expr))
 		}
 		ast.Ident {
-			// c.log('ident: $expr.name')
+			// c.log('ident: ${expr.name}')
 			obj := c.ident(expr)
 			typ := obj.typ()
 			// TODO:
@@ -642,11 +825,8 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				c.assign_stmt(expr.cond.stmt, true)
 				c.stmt_list(expr.stmts)
 				c.close_scope()
-				if expr.else_expr is ast.IfExpr {
-					c.open_scope()
-					c.scope.insert('err', Type(Struct{ name: 'Error' }))
-					c.stmt_list(expr.else_expr.stmts)
-					c.close_scope()
+				if expr.else_expr !is ast.EmptyExpr {
+					c.expr(expr.else_expr)
 				}
 				// TODO: never used, add a special type?
 				return void_
@@ -664,23 +844,56 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			lhs_type := c.expr(expr.lhs)
 			// TODO: make sure lhs_type is indexable
 			// if !lhs_type.is_indexable() { c.error('cannot index ${lhs_type.name()}') }
-			value_type := if expr.expr is ast.RangeExpr {
-				lhs_type
+			// For slicing (RangeExpr), return the same type as the container
+			// For single index, return the element type
+			is_range := expr.expr is ast.RangeExpr
+			mut container_type := lhs_type
+			// Const/global strings can be represented as pointer-to-string in some paths.
+			// For direct indexing/slicing expressions, treat them as plain strings.
+			mut lhs_check := lhs_type
+			for lhs_check is Alias {
+				lhs_check = (lhs_check as Alias).base_type
+			}
+			if lhs_check is Pointer {
+				mut ptr_base := (lhs_check as Pointer).base_type
+				for ptr_base is Alias {
+					ptr_base = (ptr_base as Alias).base_type
+				}
+				if ptr_base is String {
+					is_explicit_deref := expr.lhs is ast.PrefixExpr
+						&& (expr.lhs as ast.PrefixExpr).op == .mul
+					if !is_explicit_deref {
+						container_type = string_
+					}
+				}
+			}
+			value_type := if is_range {
+				container_type
 			} else {
-				lhs_type.value_type()
+				container_type.value_type()
 			}
 			// c.log('IndexExpr: ${value_type.name()} / ${lhs_type.name()}')
 			return value_type
 		}
 		ast.InfixExpr {
 			lhs_type := c.expr(expr.lhs)
-			// TODO: why was I setting expected type for enum here?
-			// expected_type := c.expected_type
-			// if lhs_type is Enum {
-			// 	c.expected_type = lhs_type
-			// }
-			c.expr(expr.rhs)
-			// c.expected_type = expected_type
+			// Preserve enum context for shorthand RHS values like `.void_t`.
+			expected_type := c.expected_type
+			if lhs_type is Enum {
+				c.expected_type = to_optional_type(Type(lhs_type))
+			}
+			if expr.op == .and {
+				// In `a is T && a.field ...`, RHS is evaluated only when the smart-cast is true.
+				// Type-check RHS in a nested scope with casts from LHS applied.
+				c.open_scope()
+				sc_names, sc_types := c.extract_smartcasts(expr.lhs)
+				c.apply_smartcasts(sc_names, sc_types)
+				c.expr(expr.rhs)
+				c.close_scope()
+			} else {
+				c.expr(expr.rhs)
+			}
+			c.expected_type = expected_type
 			if expr.op.is_comparison() {
 				return bool_
 			}
@@ -693,21 +906,28 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// 	typ_expr = expr.typ.lhs
 			// }
 			typ := c.expr(expr.typ)
-			// TODO:
-			// if typ is ast.ChannelType {
-			// 	for field in expr.fields {
-			// 		match field.name {
-			// 			'cap' {}
-			// 			else { c.error_with_pos('unknown channel attribute `${key}`') }
-			// 		}
-			// 	}
-			// }
-			// TODO:
-			// for field in expr.fields {
-			// 	if field.value !is ast.EmptyExpr {
-			// 		field_expr_type := c.expr(field.value)
-			// 	}
-			// }
+			// Visit field value expressions to store their types in the environment
+			if typ is Struct {
+				for field in expr.fields {
+					if field.value !is ast.EmptyExpr {
+						expected_type_prev := c.expected_type
+						for sf in typ.fields {
+							if sf.name == field.name {
+								c.expected_type = to_optional_type(sf.typ)
+								break
+							}
+						}
+						c.expr(field.value)
+						c.expected_type = expected_type_prev
+					}
+				}
+			} else {
+				for field in expr.fields {
+					if field.value !is ast.EmptyExpr {
+						c.expr(field.value)
+					}
+				}
+			}
 			return typ
 		}
 		ast.KeywordOperator {
@@ -716,6 +936,25 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			match expr.op {
 				.key_go, .key_spawn {
 					return Thread{}
+				}
+				.key_typeof {
+					// typeof(expr) returns a comptime TypeInfo with .name and .idx
+					return Struct{
+						name:   'TypeInfo'
+						fields: [
+							Field{
+								name: 'name'
+								typ:  string_
+							},
+							Field{
+								name: 'idx'
+								typ:  int_
+							},
+						]
+					}
+				}
+				.key_sizeof, .key_isreftype {
+					return int_
 				}
 				else {
 					return typ
@@ -748,7 +987,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		}
 		ast.ModifierExpr {
 			// if expr.expr !is ast.Ident && expr.expr !is ast.Type {
-			// 	panic('not ident: $expr.expr.type_name()')
+			// 	panic('not ident: ${expr.expr.type_name()}')
 			// }
 			return c.expr(expr.expr)
 		}
@@ -757,9 +996,17 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			cond_type := c.expr(cond).unwrap()
 			// c.log('OrExpr: ${cond_type.name()}')
 			if expr.stmts.len > 0 {
+				mut err_type := Type(string_)
+				if obj := c.scope.lookup_parent('IError', 0) {
+					err_type = obj.typ()
+				}
+				c.open_scope()
+				c.scope.insert('err', err_type)
+				c.scope.insert('errcode', Type(int_))
 				last_stmt := expr.stmts.last()
 				if last_stmt is ast.ExprStmt {
 					expr_stmt_type := c.expr(last_stmt.expr).unwrap()
+					c.close_scope()
 					// c.log('OrExpr: last_stmt_type: ${cond_type.name()}')
 					// TODO: non returning call (currently just checking void)
 					// should probably lookup function/method and check for noreturn attribute?
@@ -773,6 +1020,8 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 					return cond_type
 				}
+				c.stmt_list(expr.stmts)
+				c.close_scope()
 			}
 			return cond_type
 		}
@@ -780,24 +1029,12 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(expr.expr)
 		}
 		ast.PostfixExpr {
-			// TODO:
-			// typ := c.expr(expr.expr)
-			// if typ is FnType {
-			// 	if rt := typ.return_type {
-			// 		if rt in [OptionType, ResultType] { return typ }
-			// 	}
-			// 	if expr.op == .not {
-			// 		return_type := OptionType{base_type: typ.return_type or { void_ }}
-			// 		return FnType{...typ, return_type: return_type}
-			// 	}
-			// 	else if expr.op == .question {
-			// 		return_type := ResultType{base_type: typ.return_type or { void_ }}
-			// 		return FnType{...typ, return_type: return_type}
-			// 	}
-			// }
-			// return typ
-
-			return c.expr(expr.expr)
+			typ := c.expr(expr.expr)
+			// The `!` operator (error propagation) unwraps result/option types
+			if expr.op == .not {
+				return typ.unwrap()
+			}
+			return typ
 		}
 		ast.PrefixExpr {
 			expr_type := c.expr(expr.expr)
@@ -809,6 +1046,14 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				if expr_type is Pointer {
 					// c.log('DEREF')
 					return expr_type.base_type
+				} else if expr_type is Interface {
+					// Interface types are internally pointers, so dereference is valid
+					// This handles match narrowing where the concrete type is still behind a pointer
+					return expr_type
+				} else if expr_type is Struct {
+					// Allow deref on structs narrowed from interfaces in match expressions
+					// TODO: properly track interface narrowing instead of this workaround
+					return expr_type
 				} else {
 					c.error_with_pos('deref on non pointer type `${expr_type.name()}`',
 						expr.pos)
@@ -842,10 +1087,13 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.selector_expr(expr)
 		}
 		ast.StringInterLiteral {
-			// TODO:
 			return string_
 		}
 		ast.StringLiteral {
+			// C strings (c'...' or c"...") return charptr
+			if expr.kind == .c {
+				return charptr_
+			}
 			return string_
 		}
 		ast.Tuple {
@@ -858,80 +1106,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 		}
 		ast.Type {
-			match expr {
-				ast.AnonStructType {}
-				ast.ArrayType {
-					return Array{
-						elem_type: c.expr(expr.elem_type)
-					}
-				}
-				ast.ArrayFixedType {
-					// TODO:
-					return Array{
-						elem_type: c.expr(expr.elem_type)
-					}
-				}
-				ast.ChannelType {
-					return Channel{
-						elem_type: if expr.elem_type !is ast.EmptyExpr {
-							c.expr(expr.elem_type)
-						} else {
-							none
-						}
-					}
-				}
-				ast.FnType {
-					return c.fn_type(expr, FnTypeAttribute.empty)
-				}
-				ast.GenericType {
-					// TODO:
-					return c.expr(expr.name)
-					// return c
-				}
-				ast.MapType {
-					return Map{
-						key_type:   c.expr(expr.key_type)
-						value_type: c.expr(expr.value_type)
-					}
-				}
-				ast.NilType {
-					return nil_
-				}
-				ast.NoneType {
-					return none_
-				}
-				ast.OptionType {
-					return OptionType{
-						base_type: c.expr(expr.base_type)
-					}
-				}
-				ast.ResultType {
-					return ResultType{
-						base_type: c.expr(expr.base_type)
-					}
-				}
-				ast.ThreadType {
-					return Thread{
-						elem_type: if expr.elem_type !is ast.EmptyExpr {
-							c.expr(expr.elem_type)
-						} else {
-							none
-						}
-					}
-				}
-				ast.TupleType {
-					mut types := []Type{}
-					for tx in expr.types {
-						types << c.expr(tx)
-					}
-					return Tuple{
-						types: types
-					}
-				}
-				// else{
-				// 	c.log('expr.Type: not implemented ${expr.type_name()} - ${typeof(expr).name}')
-				// }
-			}
+			return c.type_node_expr(expr)
 		}
 		ast.UnsafeExpr {
 			// TODO: proper
@@ -944,10 +1119,112 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// perhaps use a struct and set the type and other info in it when needed
 			return void_
 		}
+		ast.LockExpr {
+			// Lock expression - check statements and return last expression type
+			c.stmt_list(expr.stmts)
+			if expr.stmts.len > 0 {
+				last_stmt := expr.stmts.last()
+				if last_stmt is ast.ExprStmt {
+					return c.expr(last_stmt.expr)
+				}
+			}
+			return void_
+		}
 		else {}
 	}
 	// TODO: remove (add all variants)
-	c.log('expr: unhandled ${expr.type_name()}')
+	c.log('expr: unhandled ${expr.name()}')
+	return int_
+}
+
+fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
+	if type_expr is ast.ArrayType {
+		arr_type := type_expr as ast.ArrayType
+		return Array{
+			elem_type: c.expr(arr_type.elem_type)
+		}
+	}
+	if type_expr is ast.ArrayFixedType {
+		arr_fixed_type := type_expr as ast.ArrayFixedType
+		mut len := 0
+		if arr_fixed_type.len is ast.BasicLiteral {
+			if arr_fixed_type.len.kind == .number {
+				len = arr_fixed_type.len.value.int()
+			}
+		} else if arr_fixed_type.len is ast.Ident {
+			if obj := c.scope.lookup_parent(arr_fixed_type.len.name, arr_fixed_type.len.pos) {
+				if obj is Const {
+					len = obj.int_val
+				}
+			}
+		}
+		return ArrayFixed{
+			len:       len
+			elem_type: c.expr(arr_fixed_type.elem_type)
+		}
+	}
+	if type_expr is ast.ChannelType {
+		ch_type := type_expr as ast.ChannelType
+		if ch_type.elem_type !is ast.EmptyExpr {
+			return Channel{
+				elem_type: to_optional_type(c.expr(ch_type.elem_type))
+			}
+		}
+		return Channel{}
+	}
+	if type_expr is ast.FnType {
+		fn_type := type_expr as ast.FnType
+		return c.fn_type(fn_type, FnTypeAttribute.empty)
+	}
+	if type_expr is ast.GenericType {
+		gen_type := type_expr as ast.GenericType
+		return c.expr(gen_type.name)
+	}
+	if type_expr is ast.MapType {
+		map_type := type_expr as ast.MapType
+		return Map{
+			key_type:   c.expr(map_type.key_type)
+			value_type: c.expr(map_type.value_type)
+		}
+	}
+	if type_expr is ast.NilType {
+		return nil_
+	}
+	if type_expr is ast.NoneType {
+		return none_
+	}
+	if type_expr is ast.OptionType {
+		opt_type := type_expr as ast.OptionType
+		return OptionType{
+			base_type: c.expr(opt_type.base_type)
+		}
+	}
+	if type_expr is ast.ResultType {
+		res_type := type_expr as ast.ResultType
+		return ResultType{
+			base_type: c.expr(res_type.base_type)
+		}
+	}
+	if type_expr is ast.ThreadType {
+		thread_type := type_expr as ast.ThreadType
+		if thread_type.elem_type !is ast.EmptyExpr {
+			return Thread{
+				elem_type: to_optional_type(c.expr(thread_type.elem_type))
+			}
+		}
+		return Thread{}
+	}
+	if type_expr is ast.TupleType {
+		tuple_type := type_expr as ast.TupleType
+		mut types := []Type{}
+		for tx in tuple_type.types {
+			types << c.expr(tx)
+		}
+		return Tuple{
+			types: types
+		}
+	}
+	c.log('expr.Type: unhandled ${type_expr.type_name()}')
 	return int_
 }
 
@@ -972,7 +1249,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 		// }
 		ast.GlobalDecl {
 			for field in stmt.fields {
-				// c.log('GlobalDecl: $field.name - $obj.typ.type_name()')
+				// c.log('GlobalDecl: ${field.name} - ${obj.typ.type_name()}')
 				field_type := if field.typ !is ast.EmptyExpr {
 					c.expr(field.typ)
 				} else {
@@ -1009,17 +1286,35 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 					}
 					key_type := expr_type.key_type()
 					c.scope.insert(stmt.init.key.name, key_type)
+					if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
+						c.fn_root_scope.objects[stmt.init.key.name] = object_from_type(key_type)
+					}
 				}
 				mut value_type := expr_type.value_type()
+				// For iterator structs (e.g. RunesIterator), value_type() returns
+				// the struct itself. The transformer lowers these to direct iteration,
+				// so don't flatten the stale iterator type to fn_root_scope.
+				is_iterator_struct := value_type is Struct
 				if stmt.init.value is ast.ModifierExpr {
+					// Store the non-ref type for fn_root_scope because the transformer
+					// lowers mutable for-in loops to indexed access with value copies.
+					non_ref_value_type := value_type
 					if stmt.init.value.kind == .key_mut {
-						value_type = value_type.ref()
+						value_type = Type(value_type.ref())
 					}
 					if stmt.init.value.expr is ast.Ident {
 						c.scope.insert(stmt.init.value.expr.name, value_type)
+						if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
+							&& c.fn_root_scope != c.scope {
+							c.fn_root_scope.objects[stmt.init.value.expr.name] = object_from_type(non_ref_value_type)
+						}
 					}
 				} else if stmt.init.value is ast.Ident {
 					c.scope.insert(stmt.init.value.name, value_type)
+					if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
+						&& c.fn_root_scope != c.scope {
+						c.fn_root_scope.objects[stmt.init.value.name] = object_from_type(value_type)
+					}
 				}
 			} else {
 				if stmt.cond !is ast.EmptyExpr {
@@ -1037,7 +1332,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 			c.close_scope()
 		}
 		ast.ImportStmt {
-			// c.log('import: $stmt.name as $stmt.alias')
+			// c.log('import: ${stmt.name} as ${stmt.alias}')
 		}
 		ast.ReturnStmt {
 			c.log('ReturnStmt:')
@@ -1055,18 +1350,176 @@ fn (mut c Checker) stmt_list(stmts []ast.Stmt) {
 	}
 }
 
-fn (mut c Checker) later(func fn (), kind DeferredKind) {
-	c.deferred << Deferred{
-		kind:  kind
-		func:  func
-		scope: c.scope
+fn (mut c Checker) process_pending_const_fields() {
+	for pending in c.pending_const_fields {
+		c.scope = pending.scope
+		const_type := c.expr(pending.field.value)
+		mut scope := pending.scope
+		if mut cd := scope.lookup(pending.field.name) {
+			if mut cd is Const {
+				cd.typ = const_type.typed_default()
+			}
+		}
 	}
+	c.pending_const_fields.clear()
+}
+
+fn (mut c Checker) process_pending_interface_decls() {
+	for pending in c.pending_interface_decls {
+		c.scope = pending.scope
+		mut fields := []Field{}
+		for field in pending.decl.fields {
+			fields << Field{
+				name:         field.name
+				typ:          c.expr(field.typ)
+				default_expr: field.value
+			}
+		}
+		mut scope := pending.scope
+		if mut id := scope.lookup(pending.decl.name) {
+			if mut id is Type {
+				if mut id is Interface {
+					id.fields = fields
+				}
+			}
+		}
+	}
+	c.pending_interface_decls.clear()
+}
+
+fn (mut c Checker) process_pending_struct_decls() {
+	for pending in c.pending_struct_decls {
+		c.scope = pending.scope
+		mut fields := []Field{}
+		for field in pending.decl.fields {
+			fields << Field{
+				name:         field.name
+				typ:          c.expr(field.typ)
+				default_expr: field.value
+			}
+		}
+		mut embedded := []Struct{}
+		for embedded_expr in pending.decl.embedded {
+			embedded_type := c.expr(embedded_expr)
+			if embedded_type is Struct {
+				embedded << embedded_type
+			} else {
+				c.error_with_pos('can only structs, `${embedded_type.name()}` is not a struct.',
+					pending.decl.pos)
+			}
+		}
+		mut update_scope := if pending.decl.language == .c { c.c_scope } else { pending.scope }
+		if mut sd := update_scope.lookup(pending.decl.name) {
+			if mut sd is Type {
+				if mut sd is Struct {
+					sd.fields = fields
+					sd.embedded = embedded
+				}
+			}
+		}
+	}
+	c.pending_struct_decls.clear()
+}
+
+fn (mut c Checker) process_pending_type_decls() {
+	for pending in c.pending_type_decls {
+		c.scope = pending.scope
+		mut scope := pending.scope
+		if pending.decl.variants.len == 0 {
+			if mut obj := scope.lookup(pending.decl.name) {
+				if mut obj is Type {
+					if mut obj is Alias {
+						obj.base_type = c.expr(pending.decl.base_type)
+					}
+				}
+			}
+			continue
+		}
+		if mut obj := scope.lookup(pending.decl.name) {
+			if mut obj is Type {
+				if mut obj is SumType {
+					for variant in pending.decl.variants {
+						obj.variants << c.expr(variant)
+					}
+				}
+			}
+		}
+	}
+	c.pending_type_decls.clear()
+}
+
+fn (mut c Checker) process_pending_fn_bodies() {
+	for pending in c.pending_fn_bodies {
+		c.check_pending_fn_body(pending)
+	}
+	c.pending_fn_bodies.clear()
+}
+
+fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
+	if pending.decl.typ.generic_params.len > 0 {
+		mut generic_types := []map[string]Type{}
+		mut has_generic_types := false
+		for name, inferred in c.env.generic_types {
+			if name == pending.decl.name {
+				generic_types = inferred.clone()
+				has_generic_types = true
+				break
+			}
+		}
+		if !has_generic_types {
+			// Skip checking generic functions that are never instantiated.
+			return
+		}
+		c.env.cur_generic_types << generic_types
+	}
+	if pending.typ.generic_params.len == 0
+		|| (pending.typ.generic_params.len > 0 && c.env.cur_generic_types.len > 0) {
+		prev_scope := c.scope
+		prev_fn_root_scope := c.fn_root_scope
+		c.scope = pending.scope
+		c.fn_root_scope = pending.scope
+		expected_type := c.expected_type
+		c.expected_type = pending.typ.return_type
+		c.stmt_list(pending.decl.stmts)
+		c.expected_type = expected_type
+		c.fn_root_scope = prev_fn_root_scope
+		c.env.set_fn_scope(pending.module_name, pending.scope_fn_name, pending.scope)
+		c.scope = prev_scope
+	}
+	c.env.cur_generic_types = []
+}
+
+// take_deferred is kept for compatibility with parallel type-checking plumbing.
+pub fn (mut c Checker) take_deferred() []Deferred {
+	return []Deferred{}
+}
+
+// add_deferred is kept for compatibility with parallel type-checking plumbing.
+pub fn (mut c Checker) add_deferred(items []Deferred) {
+	_ = items
+}
+
+// process_struct_deferred is kept for compatibility with parallel type-checking plumbing.
+pub fn (mut c Checker) process_struct_deferred() {
+	c.process_pending_interface_decls()
+	c.process_pending_struct_decls()
+	c.process_pending_type_decls()
+}
+
+// process_all_deferred is kept for compatibility with parallel type-checking plumbing.
+pub fn (mut c Checker) process_all_deferred() {
+	c.process_struct_deferred()
+	c.process_pending_const_fields()
+	c.process_pending_fn_bodies()
 }
 
 fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 	for i, lx in stmt.lhs {
 		// TODO: proper / tuple (handle multi return)
-		rx := stmt.rhs[i] or { stmt.rhs[0] }
+		mut rx := stmt.rhs[0]
+		if i < stmt.rhs.len {
+			rx = stmt.rhs[i]
+		}
 		// lhs_type := c.scope.lookup_parent
 		// TODO: ident field for blank ident?
 		mut is_blank_ident := false
@@ -1079,11 +1532,11 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		}
 		expected_type := c.expected_type
 		if lhs_type is Enum {
-			c.expected_type = lhs_type
+			c.expected_type = to_optional_type(Type(lhs_type))
 		}
 		rhs_type := c.expr(rx)
 		// if t := expected_type {
-		// 	c.log('AssignStmt: setting expected_type to: $t.name()')
+		// 	c.log('AssignStmt: setting expected_type to: ${t.name()}')
 		// } else {
 		// 	c.log('AssignStmt: setting expected_type to: none')
 		// }
@@ -1110,7 +1563,15 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		// or some method to use modifiers
 		lx_unwrapped := c.unwrap_expr(lx)
 		if lx_unwrapped is ast.Ident {
+			$if debug ? {
+				eprintln('DEBUG: assign_stmt inserting var "${lx_unwrapped.name}" type=${expr_type.name()} into scope')
+			}
 			c.scope.insert(lx_unwrapped.name, expr_type)
+			// Also insert into function root scope for transformer type lookups
+			// This flattens nested scope variables into the function scope
+			if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
+				c.fn_root_scope.insert(lx_unwrapped.name, expr_type)
+			}
 		}
 	}
 }
@@ -1222,9 +1683,7 @@ fn (mut c Checker) extract_smartcasts(expr ast.Expr) ([]ast.Expr, []Type) {
 			types << c.expr(c.unwrap_expr(expr_u.rhs))
 			// typ := c.expr(expr_u.rhs)
 			// types << typ
-		}
-		// TODO: is this just needed for && ?
-		else {
+		} else if expr_u.op == .and {
 			lhs_names, lhs_types := c.extract_smartcasts(c.unwrap_expr(expr_u.lhs))
 			rhs_names, rhs_types := c.extract_smartcasts(c.unwrap_expr(expr_u.rhs))
 			names << lhs_names
@@ -1242,17 +1701,19 @@ fn (mut c Checker) extract_smartcasts(expr ast.Expr) ([]ast.Expr, []Type) {
 }
 
 fn (mut c Checker) fn_decl(decl ast.FnDecl) {
-	// c.log('ast.FnDecl: $decl.name: $c.file.name')
+	// c.log('ast.FnDecl: ${decl.name}: ${c.file.name}')
 	// c.log('return type:')
 	// c.expr(decl.typ.return_type)
 	mut prev_scope := c.scope
 	c.open_scope()
 	// mut fn_scope := c.scope
 	// if decl.typ.generic_params.len > 0 {
-	// 	eprintln('## GENERIC FN DECL: $decl.name')
+	// 	eprintln('## GENERIC FN DECL: ${decl.name}')
 	// }
-	mut typ := Type(c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes)))
-	obj := Fn{
+	fn_typ := c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes))
+	mut typ := Type(fn_typ)
+	// Heap-allocate Fn so pointer stored in env.methods remains valid
+	obj := &Fn{
 		name: decl.name
 		typ:  typ
 	}
@@ -1287,56 +1748,172 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			receiver_type
 		}
 		// type_name := if base_type is Interface { receiver_type.name() } else { base_type.name() }
-		// c.env.methods[type_name] << &obj
-		// c.env.methods[receiver_type.base_type().name()] << &obj
-		unsafe { c.env.methods[method_owner_type.name()] << &obj }
+		// Register method in shared methods map (safe inside lock)
+		method_type_name := method_owner_type.name()
+		lock c.env.methods {
+			mut methods_for_type := c.env.methods[method_type_name] or { []&Fn{} }
+			methods_for_type << obj
+			c.env.methods[method_type_name] = methods_for_type
+		}
 		c.log('registering method: ${decl.name} for ${receiver_type.name()} - ${method_owner_type.name()} - ${receiver_base_type.name()}')
-		c.scope.insert(decl.receiver.name, c.expr(decl.receiver.typ))
+		// Note: receiver was already inserted at line 1515 with correct type (including Pointer for mut)
 	} else {
 		if decl.language == .c {
-			c.c_scope.insert(decl.name, obj)
+			c.c_scope.insert(decl.name, *obj)
 		} else {
-			prev_scope.insert(decl.name, obj)
+			prev_scope.insert(decl.name, *obj)
 		}
 	}
-	fn_decl := decl
-	deferred_kind := if decl.typ.generic_params.len > 0 {
-		DeferredKind.fn_decl_generic
+	fn_scope := c.scope
+	scope_fn_name := if decl.is_method {
+		// Get receiver type name for method scope key.
+		// Keep alias receiver names (e.g. `Builder`) instead of unwrapping to base
+		// array/map types, otherwise transformer cannot retrieve method scopes.
+		// Strip module prefix since set_fn_scope already prepends the module.
+		mut receiver_type := c.expr(decl.receiver.typ)
+		mut recv_scope_type := receiver_type
+		if receiver_type is Pointer {
+			recv_scope_type = receiver_type.base_type()
+		}
+		mut recv_name := if recv_scope_type is Alias {
+			recv_scope_type.name()
+		} else {
+			recv_scope_type.base_type().name()
+		}
+		if c.cur_file_module != '' {
+			prefix := '${c.cur_file_module}__'
+			if recv_name.starts_with(prefix) {
+				recv_name = recv_name[prefix.len..]
+			}
+		}
+		'${recv_name}__${decl.name}'
 	} else {
-		DeferredKind.fn_decl
+		decl.name
 	}
-	// if decl.typ.generic_params.len == 0 {
-	c.later(fn [mut c, fn_decl, typ] () {
-		// if fn_decl.typ.generic_params.len > 0 {
-		// 	panic('GENERIC FN')
-		// }
-		// eprintln('@@ FnDecl: $fn_decl.name - $fn_decl.typ.generic_params.len')
-		if typ is FnType {
-			if fn_decl.typ.generic_params.len > 0 {
-				// eprintln('## DEFERRED GENERIC FN: $fn_decl.name - $typ.generic_params.len')
-				// eprintln('FnType:')
-				// eprintln(typ)
-				generic_types := c.env.generic_types[fn_decl.name] or {
-					c.error_with_pos('missing generic type information for ${fn_decl.name}',
-						fn_decl.pos)
-				}
-				c.env.cur_generic_types << generic_types
-				// c.env.cur_generic_types << typ.generic_types
-				// // dump(generic_types)
-			}
-			// if typ.generic_params.len == 0 || (typ.generic_params.len > 0 && typ.generic_types.len > 0) {
-			if typ.generic_params.len == 0
-				|| (typ.generic_params.len > 0 && c.env.cur_generic_types.len > 0) {
-				expected_type := c.expected_type
-				c.expected_type = typ.return_type
-				c.stmt_list(fn_decl.stmts)
-				c.expected_type = expected_type
-			}
-			c.env.cur_generic_types = []
-		}
-	}, deferred_kind)
-	// }
+	module_name := c.cur_file_module
+	pending := PendingFnBody{
+		scope:         fn_scope
+		decl:          decl
+		typ:           fn_typ
+		scope_fn_name: scope_fn_name
+		module_name:   module_name
+	}
+	if c.collect_fn_signatures_only {
+		c.pending_fn_bodies << pending
+	} else {
+		c.check_pending_fn_body(pending)
+	}
 	c.close_scope()
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression
+fn (c &Checker) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return c.eval_comptime_flag(cond.name)
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !c.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return c.eval_comptime_cond(cond.lhs) && c.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return c.eval_comptime_cond(cond.lhs) || c.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			if cond.op == .question {
+				if cond.expr is ast.Ident {
+					return c.eval_comptime_flag(cond.expr.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return c.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+	return false
+}
+
+// eval_comptime_flag evaluates a single comptime flag/identifier
+fn (c &Checker) eval_comptime_flag(name string) bool {
+	match name {
+		'macos', 'darwin' {
+			$if macos {
+				return true
+			}
+			return false
+		}
+		'linux' {
+			$if linux {
+				return true
+			}
+			return false
+		}
+		'windows' {
+			$if windows {
+				return true
+			}
+			return false
+		}
+		'freebsd' {
+			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'x64', 'amd64' {
+			$if amd64 {
+				return true
+			}
+			return false
+		}
+		'arm64', 'aarch64' {
+			$if arm64 {
+				return true
+			}
+			return false
+		}
+		else {
+			// Unknown flag - return false
+			return false
+		}
+	}
+}
+
+// comptime_if_else checks a compile-time $if/$else expression,
+// only processing the branch that matches the current platform
+fn (mut c Checker) comptime_if_else(node ast.IfExpr) {
+	if c.eval_comptime_cond(node.cond) {
+		// Condition is true - check the then branch
+		c.stmt_list(node.stmts)
+	} else {
+		// Condition is false - check the else branch
+		match node.else_expr {
+			ast.IfExpr {
+				// Check if this is a plain $else block (empty condition) or chained $else $if
+				if node.else_expr.cond is ast.EmptyExpr {
+					// Plain $else { ... } - statements are in the IfExpr.stmts
+					c.stmt_list(node.else_expr.stmts)
+				} else {
+					// Chained $else $if - check recursively
+					c.comptime_if_else(node.else_expr)
+				}
+			}
+			ast.EmptyExpr {
+				// No else branch
+			}
+			else {
+				// Other expression types - just evaluate
+				_ = c.expr(node.else_expr)
+			}
+		}
+	}
 }
 
 fn (mut c Checker) if_expr(expr ast.IfExpr) Type {
@@ -1413,15 +1990,15 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 	expr_type := c.expr(expr.expr)
 	expected_type := c.expected_type
 	if expr_type is Enum {
-		c.expected_type = expr_type
+		c.expected_type = to_optional_type(Type(expr_type))
 	}
 	mut last_stmt_type := Type(void_)
-	for i, branch in expr.branches {
+	for _, branch in expr.branches {
 		c.open_scope()
 		for cond in branch.cond {
 			expr_unwrapped := c.unwrap_ident(expr.expr)
 			cond_type := c.expr(cond)
-			if cond in [ast.Ident, ast.SelectorExpr] {
+			if cond is ast.Ident || cond is ast.SelectorExpr {
 				// `.value` enum value (without type)
 				if cond is ast.SelectorExpr && cond.lhs is ast.EmptyExpr {
 					continue
@@ -1447,14 +2024,8 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 				// TODO: fix last branch / void expr
 				// actually make sure its an else branch
 				if _ := expected_type {
-					if i > 0 && (i < expr.branches.len - 1 && t !is Void) {
-						// if t != last_stmt_type {
-						if !t.is_compatible_with(last_stmt_type) {
-							// TODO: better error message
-							c.error_with_pos('${i} all branches must return same type (exp ${last_stmt_type.name()} got ${t.name()})',
-								last_stmt.expr.pos())
-						}
-					}
+					// TODO: re-enable type checking for match branches when v2 handles sum types better
+					// Currently disabled because v2 checker doesn't understand sum type compatibility
 					last_stmt_type = t
 				}
 			}
@@ -1471,7 +2042,7 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexExpr) ast.Expr {
 	lhs_type := c.expr(expr.lhs)
 	// expr_type := c.expr(expr.expr)
-	if lhs_type is FnType {
+	if c.is_callable_type(lhs_type) {
 		return ast.GenericArgs{
 			lhs:  expr.lhs
 			args: [expr.expr]
@@ -1485,10 +2056,27 @@ fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexE
 	}
 }
 
+fn (c &Checker) is_callable_type(t Type) bool {
+	match t {
+		FnType {
+			return true
+		}
+		Alias {
+			return c.is_callable_type(t.base_type)
+		}
+		Pointer {
+			return c.is_callable_type(t.base_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut c Checker) resolve_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
 	lhs_type := c.expr(expr.lhs)
 	// expr_type := c.expr(expr.expr)
-	if lhs_type is FnType {
+	if c.is_callable_type(lhs_type) {
 		return ast.CallExpr{
 			lhs:  expr.lhs
 			args: [expr.expr]
@@ -1584,28 +2172,29 @@ fn (mut c Checker) unwrap_lhs_expr(expr ast.Expr) ast.Expr {
 	}
 }
 
+fn (mut c Checker) add_inferred_generic_type(mut type_map map[string]Type, name string, typ Type) ! {
+	if existing := type_map[name] {
+		// TODO: might need custom eq methods
+		if existing != typ && typ !is NamedType {
+			return error('${name} was previously used as ${existing.name()}, got ${typ.name()}')
+		}
+	}
+	type_map[name] = typ
+}
+
 // TODO: clean up & add any missing cases & missing recursion
 fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_map map[string]Type) ! {
-	map_type := fn [mut type_map] (name string, typ Type) ! {
-		if existing := type_map[name] {
-			// TODO: might need custom eq methods
-			if existing != typ && typ !is NamedType {
-				return error('${name} was previously used as ${existing.name()}, got ${typ.name()}')
-			}
-		}
-		type_map[name] = typ
-	}
 	match param_type {
 		Array {
 			if param_type.elem_type is NamedType && arg_type is Array {
-				map_type(param_type.elem_type, arg_type.elem_type)!
+				c.add_inferred_generic_type(mut type_map, param_type.elem_type, arg_type.elem_type)!
 			}
 		}
 		Channel {
 			if pt_et := param_type.elem_type {
 				if pt_et is NamedType && arg_type is Channel {
 					if at_et := arg_type.elem_type {
-						map_type(pt_et, at_et)!
+						c.add_inferred_generic_type(mut type_map, pt_et, at_et)!
 					}
 				}
 			}
@@ -1626,38 +2215,40 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		Map {
 			if arg_type is Map {
 				if param_type.key_type is NamedType {
-					map_type(param_type.key_type, arg_type.key_type)!
+					c.add_inferred_generic_type(mut type_map, param_type.key_type, arg_type.key_type)!
 				}
 				if param_type.value_type is NamedType {
-					map_type(param_type.value_type, arg_type.value_type)!
+					c.add_inferred_generic_type(mut type_map, param_type.value_type, arg_type.value_type)!
 				}
 			}
 		}
 		NamedType {
-			map_type(param_type, arg_type)!
+			c.add_inferred_generic_type(mut type_map, param_type, arg_type)!
 		}
 		Struct {}
 		OptionType {
 			if param_type.base_type is NamedType && arg_type is OptionType {
-				map_type(param_type.base_type, arg_type.base_type)!
+				c.add_inferred_generic_type(mut type_map, param_type.base_type.name(),
+					arg_type.base_type)!
 			}
 		}
 		ResultType {
 			if param_type.base_type is NamedType && arg_type is ResultType {
-				map_type(param_type.base_type, arg_type.base_type)!
+				c.add_inferred_generic_type(mut type_map, param_type.base_type.name(),
+					arg_type.base_type)!
 			}
 		}
 		Thread {
 			if pt_et := param_type.elem_type {
 				if pt_et is NamedType && arg_type is Thread {
 					if at_et := arg_type.elem_type {
-						map_type(pt_et, at_et)!
+						c.add_inferred_generic_type(mut type_map, pt_et, at_et)!
 					}
 				}
 			}
 		}
 		else {
-			println('missing ${param_type.type_name()}')
+			println('missing ${param_type.name()}')
 		}
 	}
 }
@@ -1672,7 +2263,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	mut fn_ := c.expr(lhs_expr)
 	// fn_ := c.expr(expr.lhs)
 	c.expecting_method = expecting_method
-	// c.log('call expr: $fn_.type_name() - $fn_.name() - ${lhs_expr.type_name()}')
+	// c.log('call expr: ${fn_.type_name()} - ${fn_.name()} - ${lhs_expr.type_name()}')
 
 	// if expr.lhs is PrefixExpr {
 	// 	xpr.op
@@ -1691,12 +2282,11 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			fn_ = FnType{}
 		} else if fn_ is Primitive && expr.lhs.rhs.name == 'elapsed' {
 			// c.log('#### ${expr.lhs.rhs.name}')
-			fn_ = FnType{
-				return_type: Type(Alias{
-					name:      'Duration'
-					base_type: i64_
-				})
-			}
+			elapsed_ret := Type(Alias{
+				name:      'Duration'
+				base_type: i64_
+			})
+			fn_ = fn_with_return_type(FnType{}, elapsed_ret)
 		}
 		// }
 	}
@@ -1704,14 +2294,39 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	// 	c.log('GENERIC CALL: ')
 
 	// }
+	// In C, a name can be both a struct type and a function (e.g., `statvfs`).
+	// If we resolved to a Struct but we're in a call expression with C. prefix,
+	// treat it as a C function call returning int.
+	if fn_ is Struct {
+		if lhs_expr is ast.SelectorExpr {
+			if lhs_expr.lhs is ast.Ident {
+				if lhs_expr.lhs.name == 'C' {
+					for arg in expr.args {
+						c.expr(arg)
+					}
+					return int_
+				}
+			}
+		}
+	}
 	if mut fn_ is Alias {
 		fn_ = fn_.base_type
+	}
+	// When a selector resolved to a non-FnType (e.g., a field that shadows
+	// a sum type method due to smartcasting), try finding the method on the
+	// resolved type. For example, `cur.base_type()` where `cur` is smartcast
+	// to `Alias` resolves `base_type` as a field of type `Type` (SumType),
+	// but `base_type()` is a method on `Type`.
+	if fn_ !is FnType && lhs_expr is ast.SelectorExpr {
+		if method := c.find_method(fn_, lhs_expr.rhs.name) {
+			fn_ = method
+		}
 	}
 	if mut fn_ is FnType {
 		if fn_.generic_params.len > 0 {
 			// file := c.file_set.file(expr.pos)
 			// pos := file.position(expr.pos)
-			// eprintln('GENERIC CALL: $expr.lhs.name() - $expr.pos - $file.name:$pos.line')
+			// eprintln('GENERIC CALL: ${expr.lhs.name()} - ${expr.pos} - ${file.name}:${pos.line}')
 			mut generic_type_map := map[string]Type{}
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
@@ -1723,7 +2338,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 					generic_types << generic_type
 					generic_type_map[generic_param] = generic_type
 				}
-				// eprintln('GENERIC TYPES: $expr.lhs.name()')
+				// eprintln('GENERIC TYPES: ${expr.lhs.name()}')
 				// dump(generic_types)
 			}
 			// infer generic types from args
@@ -1731,7 +2346,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// TODO: move above (to be done globally)
 				// once error is fixed
 				mut arg_types := []Type{}
-				// eprintln('INFERRED GENERIC TYPES: $expr.lhs.name()')
+				// eprintln('INFERRED GENERIC TYPES: ${expr.lhs.name()}')
 				for i, arg in expr.args {
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
@@ -1743,15 +2358,15 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 						c.error_with_pos(err.msg(), expr.pos)
 					}
 					// if param.typ !is NamedType {
-					// 	eprintln('Generic argument: $param.typ.name() - $arg_type.name()')
-					// 	eprintln('should be NamedType but got $param.typ.name()')
+					// 	eprintln('Generic argument: ${param.typ.name()} - ${arg_type.name()}')
+					// 	eprintln('should be NamedType but got ${param.typ.name()}')
 					// }
 				}
 			}
-			// eprintln('## GENERIC TYPE MAP: $expr.lhs.name()')
+			// eprintln('## GENERIC TYPE MAP: ${expr.lhs.name()}')
 			// eprintln('========================')
 			// for k,v in generic_type_map {
-			// 	eprintln(' * $k -> $v')
+			// 	eprintln(' * ${k} -> ${v}')
 			// }
 			// eprintln('========================')
 			// if expr.lhs is ast.Ident {
@@ -1779,19 +2394,41 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				if rt := fn_.return_type {
 					// c.log('#### it variable inserted')
 					// fn_.scope.insert('it', rt)
-					c.scope.insert('it', rt.value_type())
+					it_type := rt.value_type()
+					c.scope.objects['it'] = it_type
 				}
 				if lhs_expr.rhs.name == 'map' {
 					rt := c.expr(expr.args[0])
 					c.log('map: ${rt.name()}')
-					fn_ = FnType{
-						...fn_
-						return_type: Array{
-							elem_type: rt
-						}
-					}
+					fn_ = fn_with_return_type(fn_, Type(Array{
+						elem_type: rt
+					}))
 				}
 			}
+		}
+		// Type-check call arguments with parameter context so shorthand enum
+		// selectors like `.assign` resolve against the callee parameter type.
+		// Skip sort/sorted comparator sugar because that lambda form is lowered later.
+		is_sort_cmp_call := lhs_expr is ast.SelectorExpr && lhs_expr.rhs.name in ['sort', 'sorted']
+			&& expr.args.len == 1
+		if fn_.generic_params.len == 0 && !is_sort_cmp_call {
+			prev_expected := c.expected_type
+			for i, arg in expr.args {
+				if i < fn_.params.len {
+					c.expected_type = to_optional_type(fn_.params[i].typ)
+				} else if fn_.is_variadic && fn_.params.len > 0 {
+					variadic_type := fn_.params[fn_.params.len - 1].typ
+					if variadic_type is Array {
+						c.expected_type = to_optional_type(variadic_type.elem_type)
+					} else {
+						c.expected_type = to_optional_type(variadic_type)
+					}
+				} else {
+					c.expected_type = prev_expected
+				}
+				c.expr(arg)
+			}
+			c.expected_type = prev_expected
 		}
 		// TODO/FIXME: is FnType.return_type goin to stay optional
 		// or not and just use void in case of returning nothing
@@ -1813,7 +2450,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		c.expr(arg)
 	}
 
-	c.error_with_pos('call on non fn: ${fn_.type_name()}', expr.pos)
+	c.error_with_pos('call on non fn: ${fn_.name()}', expr.pos)
 }
 
 // TODO:
@@ -1890,7 +2527,7 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 		generic_params: generic_params
 		params:         params
 		// return_type: return_type
-		return_type: c.expr(fn_type.return_type)
+		return_type: to_optional_type(c.expr(fn_type.return_type))
 		is_variadic: is_variadic
 		attributes:  attributes
 		// scope: c.scope
@@ -1922,7 +2559,7 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 		for generic_types in c.env.cur_generic_types {
 			if generic_type := generic_types[ident.name] {
 				// eprintln('## replaced generic type ${ident.name} with ${generic_type.name()}')
-				return generic_type
+				return object_from_type(generic_type)
 			}
 		}
 
@@ -1950,7 +2587,7 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 		// TODO: proper
 		if ident.name in ['compile_error', 'compile_warn'] {
 			return Type(FnType{
-				return_type: void_
+				return_type: to_optional_type(void_)
 			})
 		}
 
@@ -1966,12 +2603,12 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	c.log('## selector_expr')
 	// file := c.file_set.file(expr.pos)
 	// pos := file.position(expr.pos)
-	// c.log('${expr.name()} - $expr.rhs.name')
+	// c.log('${expr.name()} - ${expr.rhs.name}')
 	// println('selector_expr: ${expr.rhs.name} - ${file.name}:${pos.line} - ${pos.column}')
 
 	// TODO: check todo in scope.v
-	if expr.lhs in [ast.Ident, ast.SelectorExpr] {
-		// println('looking for smartcast $expr.name()')
+	if expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr {
+		// println('looking for smartcast ${expr.name()}')
 		if cast_type := c.scope.lookup_field_smartcast(expr.name()) {
 			// println('## 1 found smartcast for ${expr.name()} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
 			return cast_type
@@ -1979,14 +2616,14 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 		if cast_type := c.scope.lookup_field_smartcast(expr.lhs.name()) {
 			// println('## 2 found smartcast for ${expr.lhs.name()} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
 			return c.find_field_or_method(cast_type, expr.rhs.name) or {
-				c.error_with_pos('## smartcast field lookup error ' + err.msg(), expr.pos)
+				c.error_with_pos('## smartcast field lookup error: ${err.msg()}', expr.pos)
 			}
 		}
 	}
 
 	if expr.lhs is ast.Ident {
 		lhs_obj := c.ident(expr.lhs)
-		// c.log('LHS.RHS: $expr.lhs.name . $expr.rhs.name - $lhs_obj.typ().name()')
+		// c.log('LHS.RHS: ${expr.lhs.name} . ${expr.rhs.name} - ${lhs_obj.typ().name()}')
 		match lhs_obj {
 			Const {
 				return c.find_field_or_method(lhs_obj.typ, expr.rhs.name) or {
@@ -2004,7 +2641,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				rhs_obj := mod_scope.lookup_parent(expr.rhs.name, expr.rhs.pos) or {
 					// TODO: proper
 					if expr.lhs.name == 'C' {
-						// c.log('assuming C constant: $expr.lhs.name . $expr.rhs.name')
+						// c.log('assuming C constant: ${expr.lhs.name} . ${expr.rhs.name}')
 						return int_
 					}
 					mod_scope.print(true)
@@ -2018,7 +2655,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 				}
 			}
 			// SmartCastSelector {
-			// 	c.log('@@ found smart cast selector: $expr.rhs.name')
+			// 	c.log('@@ found smart cast selector: ${expr.rhs.name}')
 			// 	if expr.rhs.name == lhs_obj.field {
 			// 		return lhs_obj.cast_type
 			// 		// return c.find_field_or_method(lhs_obj.cast_type, expr.rhs.name) or { c.error_with_pos(err.msg(), expr.pos) }
@@ -2026,13 +2663,13 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 			// 	return c.find_field_or_method(lhs_obj.origin, expr.rhs.name) or { c.error_with_pos(err.msg(), expr.pos) }
 			// }
 			else {
-				c.error_with_pos('unsupported ${lhs_obj.type_name()} - ${expr.rhs.name}',
+				c.error_with_pos('unsupported ${lhs_obj.typ().name()} - ${expr.rhs.name}',
 					0)
 			}
 		}
 	}
 	// else {
-	// 	panic('unexpected expr.lhs: $expr.lhs.type_name()')
+	// 	panic('unexpected expr.lhs: ${expr.lhs.type_name()}')
 	// }
 	// TODO: this will be removed
 	// unset when checking lhs, only needed for rightmost selector
@@ -2064,44 +2701,41 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 		}
 		Array {
+			arr_type := t as Array
+			if name == 'str' || name == 'hex' {
+				return fn_with_return_type(FnType{}, string_)
+			}
 			// TODO: has to be a better way
 			// there is probably no reason to look these up, and just do what we do above
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('array', 0) or { panic('missing builtin array type') }
 			at_type := at.typ()
-			// c.log('ARRAY: looking for field or method $name on $t.name()')
+			// c.log('ARRAY: looking for field or method ${name} on ${t.name()}')
 			// // dump(t)
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
 				c.log('found ${name}')
 				if field_or_method_type is FnType {
-					if name in ['clone', 'map', 'filter'] {
-						// c.log('SNEAKY: $t.name()')
+					fn_type := field_or_method_type as FnType
+					if name in ['clone', 'map', 'filter', 'repeat', 'reverse', 'sorted'] {
+						// c.log('SNEAKY: ${t.name()}')
 						// return t
-						return FnType{
-							...field_or_method_type
-							return_type: t
-						}
+						return fn_with_return_type(fn_type, Type(arr_type))
 					}
 					// TODO: proper PLEASE! :D
-					else if name in ['first', 'last'] {
-						return FnType{
-							...field_or_method_type
-							return_type: t.elem_type
-						}
+					// Array methods that return the element type
+					else if name in ['first', 'last', 'pop'] {
+						return fn_with_return_type(fn_type, arr_type.elem_type)
 					}
 				}
 				return field_or_method_type
 			}
 		}
 		ArrayFixed {
+			arr_fixed_type := t as ArrayFixed
 			if name in ['clone', 'map', 'filter'] {
-				return FnType{
-					return_type: t
-				}
+				return fn_with_return_type(FnType{}, Type(arr_fixed_type))
 			} else if name in ['first', 'last'] {
-				return FnType{
-					return_type: t.elem_type
-				}
+				return fn_with_return_type(FnType{}, arr_fixed_type.elem_type)
 			} else if name == 'len' {
 				return int_
 			}
@@ -2117,17 +2751,21 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 		}
 		Enum {
-			for field in t.fields {
+			enum_type := t as Enum
+			for field in enum_type.fields {
 				if field.name == name {
-					return t
+					return Type(enum_type)
 					// return int_
 				}
+			}
+			if name == 'str' {
+				return fn_with_return_type(FnType{}, string_)
 			}
 			// flags - compiler magic (currently)
 			if name == 'has' {
 				return bool_
 			} else if name == 'all' {
-				return int_
+				return bool_
 			} else if name in ['clear', 'set'] {
 				return void_
 			}
@@ -2145,19 +2783,21 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 		}
 		Map {
+			map_type := t as Map
+			if name == 'str' {
+				return fn_with_return_type(FnType{}, string_)
+			}
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('map', 0) or { panic('missing builtin map type') }
 			at_type := at.typ()
-			// c.log('MAP: looking for field or method $name on $t.name()')
+			// c.log('MAP: looking for field or method ${name} on ${t.name()}')
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
 				if name == 'keys' {
 					if field_or_method_type is FnType {
-						return FnType{
-							...field_or_method_type
-							return_type: Array{
-								elem_type: t.key_type
-							}
-						}
+						fn_type := field_or_method_type as FnType
+						return fn_with_return_type(fn_type, Type(Array{
+							elem_type: map_type.key_type
+						}))
 					}
 				}
 				return field_or_method_type
@@ -2166,7 +2806,40 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		Pointer {
 			return c.find_field_or_method(t.base_type, name)!
 		}
+		OptionType {
+			if name == 'state' {
+				return u8_
+			}
+			if name == 'err' {
+				mut builtin_scope := c.get_module_scope('builtin', universe)
+				if obj := builtin_scope.lookup_parent('IError', 0) {
+					return obj.typ()
+				}
+				return Type(Interface{
+					name: 'IError'
+				})
+			}
+			if name == 'data' {
+				return t.base_type
+			}
+			return c.find_field_or_method(t.base_type, name)!
+		}
 		ResultType {
+			if name == 'is_error' {
+				return bool_
+			}
+			if name == 'err' {
+				mut builtin_scope := c.get_module_scope('builtin', universe)
+				if obj := builtin_scope.lookup_parent('IError', 0) {
+					return obj.typ()
+				}
+				return Type(Interface{
+					name: 'IError'
+				})
+			}
+			if name == 'data' {
+				return t.base_type
+			}
 			return c.find_field_or_method(t.base_type, name)!
 		}
 		// TODO:
@@ -2186,9 +2859,9 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 		Struct {
 			for field in t.fields {
-				// c.log('comparing field $field.name with $name for $t.name')
+				// c.log('comparing field ${field.name} with ${name} for ${t.name}')
 				if field.name == name {
-					c.log('found field ${name} for ${t.name}: ${field.typ.name()} (${field.typ.type_name()})')
+					c.log('found field ${name} for ${t.name}: ${field.typ.name()}')
 					return field.typ
 				}
 			}
@@ -2225,12 +2898,12 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			// }
 		}
 		Thread {
+			thread_type := t as Thread
 			// TODO:
 			if name == 'wait' {
 				c.open_scope()
-				fn_type := FnType{
-					return_type: t.elem_type or { t }
-				}
+				wait_return_type := thread_type.elem_type or { Type(thread_type) }
+				fn_type := fn_with_return_type(FnType{}, wait_return_type)
 				c.close_scope()
 				return fn_type
 			}
@@ -2240,11 +2913,11 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 	}
 	// else if t is FnType {
-	// 			c.log('FnType: $t.name')
+	// 			c.log('FnType: ${t.name}')
 	// }
 
 	// // dump(t)
-	// c.log('returning none for $t.type_name() - $name')
+	// c.log('returning none for ${t.type_name()} - ${name}')
 	if method := c.find_method(t, name) {
 		return method
 	}
@@ -2252,7 +2925,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		// dump(t.fields)
 	}
 	base_type := t.base_type()
-	return error('cannot find field or method: `${name}` for type ${t.type_name()} - ${t.name()} - (base: ${base_type.type_name()})')
+	return error('cannot find field or method: `${name}` for type ${t.name()} - (base: ${base_type.name()})')
 }
 
 fn (mut c Checker) find_method(t Type, name string) !Type {
@@ -2261,17 +2934,27 @@ fn (mut c Checker) find_method(t Type, name string) !Type {
 	// I think we will for aliases, probably not other types. we might
 	// need to differentiate then for base_type / base_type in this case
 	mut base_type := t.base_type()
+	// Builtin sum methods are compiler magic and are not declared in env.methods.
+	// Keep them in checker lookup so selector resolution does not fall through
+	// to sum-field checks (e.g. `expr.type_name()` on `ast.Expr`).
+	if base_type is SumType {
+		if name == 'type_name' {
+			return fn_with_return_type(FnType{}, string_)
+		}
+	}
 	// TODO: interface methods
 	// if base_type is Interface { base_type = t }
 	base_type_name := if t is Pointer { base_type.name() } else { t.name() }
-	// c.log('base_type_name: $base_type_name - $t.type_name() - $base_type.type_name()')
-	if methods := c.env.methods[base_type_name] {
-		for method in methods {
-			// c.log('# $method.name - $name')
-			if method.name == name {
-				c.log('found method ${name} for ${t.name()}')
-				return method.typ
-			}
+	// c.log('base_type_name: ${base_type_name} - ${t.type_name()} - ${base_type.type_name()}')
+	// Lookup method in shared methods map
+	methods := rlock c.env.methods {
+		c.env.methods[base_type_name] or { []&Fn{} }
+	}
+	for method in methods {
+		// c.log('# ${method.name} - ${name}')
+		if method.name == name {
+			c.log('found method ${name} for ${t.name()}')
+			return method.typ
 		}
 	}
 	return error('cannot find method `${name}` for `${t.name()}`')
@@ -2306,6 +2989,11 @@ fn (mut c Checker) error_message(msg string, kind errors.Kind, pos token.Positio
 
 @[noreturn]
 fn (mut c Checker) error_with_pos(msg string, pos token.Pos) {
+	if pos == 0 {
+		// Handle expressions without position info - use current file if available
+		eprintln('error: ${msg} (no position info)')
+		exit(1)
+	}
 	file := c.file_set.file(pos)
 	c.error_with_position(msg, file.position(pos), file)
 }

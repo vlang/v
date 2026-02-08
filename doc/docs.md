@@ -1347,6 +1347,10 @@ println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
 
+Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
+So without the `.clone()` call the result of the code above will be the same. Make the slice in an
+`unsafe {}` block if you want to reuse memory, otherwise use explicit cloning.
+
 ##### Slices with negative indexes
 
 V supports array and string slices with negative indexes.
@@ -4717,6 +4721,42 @@ m := <-ch or {
 y := <-ch2 ?
 ```
 
+Note: buffered channels can be closed while they have unread values in them.
+The buffered values can be retrieved, even after the closing:
+```v
+ich := chan int{cap: 5}
+for i in 0 .. 5 {
+	ich <- i
+}
+
+for _ in 0 .. 2 {
+	x := <-ich or { break }
+	eprintln('>>  loop 0..2 | x: ${x} | ich.closed: ${ich.closed}')
+}
+
+ich.close()
+
+for {
+	x := <-ich or { break }
+	eprintln('>> final loop | x: ${x} | ich.closed: ${ich.closed}')
+}
+```
+... will produce:
+```
+>>  loop 0..2 | x: 0 | ich.closed: false
+>>  loop 0..2 | x: 1 | ich.closed: false
+>> final loop | x: 2 | ich.closed: true
+>> final loop | x: 3 | ich.closed: true
+>> final loop | x: 4 | ich.closed: true
+```
+
+Note: reading from the .closed field of the channel in the example,
+is done just for clarity of illustration. The recommended way to pop values
+from the channel is with: `x := <-ich or { break }` in a `for` loop,
+which will cleanly break out of the loop, when the channel is closed and empty.
+Avoid manually checking, whether the channel was closed or not, because that
+can introduce data races, if you are not careful.
+
 #### Channel Select
 
 The `select` command allows monitoring several channels at the same time
@@ -5568,6 +5608,31 @@ sql db {
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
 
+### Troubleshooting compilation problems with SQLite on Windows
+On Windows, if you get a compilation error, about a missing sqlite3.h file, you have to run:
+`v vlib/db/sqlite/install_thirdparty_sqlite.vsh` once, then retry your compilation.
+
+### Using the self contained SQLite module
+V also maintains a separate `sqlite` module, that wraps an SQLite amalgamation, but otherwise
+has the same API as the `db.sqlite` module. Its benefit, is that with it, you do not need to
+install a separate system level sqlite package/library on your system (which can be hard on
+some systems like windows, or systems with musl for example).
+Its negative is that it can make your compilations a bit slower (since it compiles SQLite
+from C, in addition to your own code).
+
+To use it, do:
+```sh
+v install sqlite
+```
+and later, in your code, use this:
+```v ignore
+import sqlite
+```
+instead of:
+```v ignore
+import db.sqlite
+```
+
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
@@ -6146,7 +6211,7 @@ V will still type check the function and all its calls, *even* if they will not 
 final executable, due to the passed -d flags.
 
 In order to see it in action, run the following example with `v run example.v` once,
-and then a second time with `v -d trace_logs example.v`:
+and then a second time with `v -d trace_logs run example.v`:
 ```v
 @[if trace_logs ?]
 fn elog(s string) {
@@ -6212,6 +6277,7 @@ that are substituted at compile time:
 - `@CCOMPILER` => replaced with the C compiler type, for example 'gcc' .
 - `@BACKEND` => replaced with current language backend, for example 'c' or 'golang' .
 - `@PLATFORM` => replaced with the platform type, for example 'amd64' .
+
 Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
 By default, they are based on the current time of the compilation/build. They can be overridden
 by setting the environment variable `SOURCE_DATE_EPOCH`. That is also useful while making
@@ -6491,6 +6557,13 @@ fn main() {
 
 V can embed arbitrary files into the executable with the `$embed_file(<path>)`
 compile time call. Paths can be absolute or relative to the source file.
+
+Paths could also use the compile time pseudo variables `@VEXEROOT`,
+`@VMODROOT`, `@DIR`, `$d` and `$env`.
+
+```v ignore
+logo := $embed_file('@VEXEROOT/examples/assets/logo.png')
+```
 
 Note that by default, using `$embed_file(file)`, will always embed the whole content
 of the file, but you can modify that behaviour by passing: `-d embed_only_metadata`
@@ -7882,8 +7955,19 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can also use `#flag` directives, to link to static C libraries, which
+will be added last (note the .a suffix):
+```v oksyntax
+#flag /path/to/ffi.a
+```
+If you need to reverse the order (prepend the static library in the libs section of the
+C compilation line, before other libs), use:
+```v oksyntax
+#flag /path/to/ffi.a@START_LIBS
+```
+
 You can (optionally) use different flags for different targets.
-Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
+Every OS listed in [Compile time code](#compile-time-code) is supported as flags.
 
 > [!NOTE]
 > Each flag must go on its own line (for now)
@@ -8337,7 +8421,7 @@ exists the file will be overridden. If you want to rebuild each time and not kee
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
-env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox).
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox and OpenBSD).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices

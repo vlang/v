@@ -31,8 +31,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	language := p.parse_language()
+	mut language := p.parse_language()
 	name_pos := p.tok.pos()
+	if p.inside_struct_field_decl && language == .v {
+		// anon struct/union language should keep the same language of outside
+		language = p.struct_language
+	} else {
+		old_struct_language := p.struct_language
+		p.struct_language = language
+		defer(fn) {
+			p.struct_language = old_struct_language
+		}
+	}
 	p.check_for_impure_v(language, name_pos)
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
@@ -396,7 +406,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			fields << ast.StructField{
 				name:             field_name
 				typ:              typ
-				pos:              field_pos
+				pos:              if is_embed { type_pos } else { field_pos }
 				type_pos:         type_pos
 				option_pos:       option_pos
 				pre_comments:     pre_field_comments
@@ -543,6 +553,13 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.init_generic_types = []ast.Type{}
 	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	sym := p.table.sym(typ)
+	struct_name := sym.name.all_after_last('.')
+	if sym.kind == .placeholder && struct_name.len > 0 && !struct_name[0].is_capital()
+		&& !sym.name.starts_with('C.') {
+		p.error_with_pos('struct name must begin with capital letter', first_pos)
+		return ast.StructInit{}
+	}
 	struct_init_generic_types := p.init_generic_types.clone()
 	if is_option {
 		typ = typ.set_flag(.option)

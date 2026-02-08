@@ -14,27 +14,27 @@ $if !android {
 #include <semaphore.h>
 
 @[trusted]
-fn C.pthread_mutex_init(voidptr, voidptr) int
-fn C.pthread_mutex_lock(voidptr) int
-fn C.pthread_mutex_trylock(voidptr) int
-fn C.pthread_mutex_unlock(voidptr) int
-fn C.pthread_mutex_destroy(voidptr) int
-fn C.pthread_rwlockattr_init(voidptr) int
-fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
-fn C.pthread_rwlockattr_destroy(voidptr) int
-fn C.pthread_rwlock_init(voidptr, voidptr) int
-fn C.pthread_rwlock_rdlock(voidptr) int
-fn C.pthread_rwlock_wrlock(voidptr) int
-fn C.pthread_rwlock_tryrdlock(voidptr) int
-fn C.pthread_rwlock_trywrlock(voidptr) int
-fn C.pthread_rwlock_unlock(voidptr) int
-fn C.pthread_rwlock_destroy(voidptr) int
-fn C.sem_init(voidptr, int, u32) int
-fn C.sem_post(voidptr) int
-fn C.sem_wait(voidptr) int
-fn C.sem_trywait(voidptr) int
-fn C.sem_timedwait(voidptr, voidptr) int
-fn C.sem_destroy(voidptr) int
+fn C.pthread_mutex_init(voidptr, voidptr) i32
+fn C.pthread_mutex_lock(voidptr) i32
+fn C.pthread_mutex_trylock(voidptr) i32
+fn C.pthread_mutex_unlock(voidptr) i32
+fn C.pthread_mutex_destroy(voidptr) i32
+fn C.pthread_rwlockattr_init(voidptr) i32
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+fn C.pthread_rwlockattr_destroy(voidptr) i32
+fn C.pthread_rwlock_init(voidptr, voidptr) i32
+fn C.pthread_rwlock_rdlock(voidptr) i32
+fn C.pthread_rwlock_wrlock(voidptr) i32
+fn C.pthread_rwlock_tryrdlock(voidptr) i32
+fn C.pthread_rwlock_trywrlock(voidptr) i32
+fn C.pthread_rwlock_unlock(voidptr) i32
+fn C.pthread_rwlock_destroy(voidptr) i32
+fn C.sem_init(voidptr, i32, u32) i32
+fn C.sem_post(voidptr) i32
+fn C.sem_wait(voidptr) i32
+fn C.sem_trywait(voidptr) i32
+fn C.sem_timedwait(voidptr, voidptr) i32
+fn C.sem_destroy(voidptr) i32
 
 pub struct C.pthread_mutex {}
 

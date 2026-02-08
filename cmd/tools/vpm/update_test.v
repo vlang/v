@@ -1,3 +1,4 @@
+// vtest build: !musl? && !sanitized_job?
 // vtest retry: 3
 import os
 import rand
@@ -11,6 +12,7 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
+	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
 

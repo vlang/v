@@ -44,6 +44,7 @@ For a list of all features and fixes, check out the changelog.
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [x] Implicit Veb contexts passed to requests
 - [x] Direct C/C++ interop without generating wrappers (via -experimental for now)
+- [x] Allow `$if` everywhere: top level, inside struct definitions, etc
 
 ## [Version 0.6]
 
@@ -58,7 +59,6 @@ For a list of all features and fixes, check out the changelog.
 - [ ] `recover()` from panics
 - [ ] -usecache on by default
 - [ ] ORM migrations
-- [ ] Allow `$if` everywhere: top level, inside struct definitions, etc
 - [ ] Make ORM work without installing developer libs (libpq-dev etc)
 
 ## [Version 1.0]

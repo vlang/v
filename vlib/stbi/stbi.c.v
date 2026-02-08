@@ -54,11 +54,11 @@ pub mut:
 // Configuration functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_set_flip_vertically_on_load(should_flip int)
-fn C.stbi_flip_vertically_on_write(flag int)
-fn C.set_png_compression_level(level int)
-fn C.write_force_png_filter(level int)
-fn C.write_tga_with_rle(level int)
+fn C.stbi_set_flip_vertically_on_load(should_flip i32)
+fn C.stbi_flip_vertically_on_write(flag i32)
+fn C.set_png_compression_level(level i32)
+fn C.write_force_png_filter(level i32)
+fn C.write_tga_with_rle(level i32)
 
 pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)
@@ -109,9 +109,9 @@ pub fn (img &Image) free() {
 // Load functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &u8
-fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &u8
-fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file &int, desired_channels int) &u8
+fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
+fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
+fn C.stbi_load_from_memory(buffer &u8, len i32, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 
 @[params]
 pub struct LoadParams {
@@ -170,8 +170,8 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 // Resize functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8,
-	output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
+fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w i32, input_h i32, input_stride_in_bytes i32, output_pixels &u8,
+	output_w i32, output_h i32, output_stride_in_bytes i32, num_channels i32) i32
 
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
@@ -201,10 +201,10 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 // Write functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &u8, stride_in_bytes int) int
-fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &u8) int
-fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &u8) int
-fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality int) int
+fn C.stbi_write_png(filename &char, w i32, h i32, comp i32, buffer &u8, stride_in_bytes i32) i32
+fn C.stbi_write_bmp(filename &char, w i32, h i32, comp i32, buffer &u8) i32
+fn C.stbi_write_tga(filename &char, w i32, h i32, comp i32, buffer &u8) i32
+fn C.stbi_write_jpg(filename &char, w i32, h i32, comp i32, buffer &u8, quality i32) i32
 
 // fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &u8) int // buffer &u8 => buffer &f32
 
@@ -246,7 +246,7 @@ pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int)
 /*
 pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
-		return error('stbi_image failed to write hdr file to "$path"')
+		return error('stbi_image failed to write hdr file to "${path}"')
 	}
 }
 */

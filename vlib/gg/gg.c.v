@@ -27,9 +27,9 @@ struct C.XRRCrtcInfo {
 	height u32
 }
 
-fn C.XOpenDisplay(int) voidptr
-fn C.XCloseDisplay(voidptr) int
-fn C.DefaultScreen(voidptr) int
+fn C.XOpenDisplay(i32) voidptr
+fn C.XCloseDisplay(voidptr) i32
+fn C.DefaultScreen(voidptr) i32
 fn C.DefaultRootWindow(voidptr) u64
 fn C.XRRGetScreenResources(voidptr, u64) &C.XRRScreenResources
 fn C.XRRGetOutputPrimary(voidptr, u64) u64
@@ -52,7 +52,7 @@ $if windows {
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 
 // call Windows API to get screen size
-fn C.GetSystemMetrics(int) int
+fn C.GetSystemMetrics(i32) i32
 
 pub type TouchPoint = C.sapp_touchpoint
 
@@ -81,15 +81,15 @@ pub mut:
 
 pub struct Config {
 pub:
-	width         int     // desired start width of the window
-	height        int     // desired start height of the window
+	width         int = 800 // desired start width of the window
+	height        int = 600 // desired start height of the window
 	retina        bool    // TODO: implement or deprecate
 	resizable     bool    // TODO: implement or deprecate
-	user_data     voidptr // a custom pointer to the application data/instance
+	user_data     voidptr // a custom pointer to the application data/instance. When it is not set explicitly, it will default to a pointer to the current gg.Context instance.
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
 	// window_user_ptr voidptr
-	window_title      string // the desired title of the window
+	window_title      string = 'A GG Window. Set window_title: to change it.' // the desired title of the window
 	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
 	borderless_window bool  // TODO: implement or deprecate
@@ -100,6 +100,8 @@ pub:
 	native_frame_fn   FNCb   = unsafe { nil }
 	cleanup_fn        FNCb   = unsafe { nil } // Called once, after Sokol determines that the application is finished/closed. Put your app specific cleanup/free actions here.
 	fail_fn           FNFail = unsafe { nil } // Called once per Sokol error/log message. TODO: currently it does nothing with latest Sokol, reimplement using Sokol's new sapp_logger APIs.
+
+	update_fn FNUpdate = unsafe { nil } // Called once at the start of each frame, so usually ~60 times a second. The first argument is the delta `dt` time passed, since the *previous* update call (in seconds).
 
 	event_fn FNEvent  = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG.
 	on_event FNEvent2 = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG. Same as event_fn, just the parameter order is different. TODO: deprecate this, in favor of event_fn
@@ -202,7 +204,10 @@ pub mut:
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
-	timer       time.StopWatch
+	//
+	timer        time.StopWatch // starts right after new_context, and can be controlled/stopped/restarted in whatever way the user wants.
+	update_timer time.StopWatch // measures how much time has passed since the start of the frame.
+	// Note: when there is an update_fn, this timer is reset by GG itself, at the start of each frame.
 
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
@@ -218,7 +223,8 @@ pub mut:
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different
-	fps FPSConfig
+	fps         FPSConfig
+	has_started bool
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -242,7 +248,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
-	// println('ctx.scale=$ctx.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	// println('ctx.scale=${ctx.scale} is_high_dpi=${is_high_dpi} fb_w=${fb_w} fb_h=${fb_h}')
 	// if ctx.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(ctx.config.font_path) } $else { true }
@@ -287,6 +293,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.pipeline.init_pipeline()
 
 	ctx.timer = time.new_stopwatch()
+	ctx.update_timer = time.new_stopwatch()
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is
@@ -310,6 +317,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 		ctx.config.init_fn(ctx.user_data)
 	}
+	ctx.has_started = true
 	// Create images now that we can do that after sg is inited
 	if ctx.native_rendering {
 		return
@@ -347,6 +355,11 @@ fn gg_frame_fn(mut ctx Context) {
 		if ctx.ticks > 3 {
 			return
 		}
+	}
+	if ctx.config.update_fn != unsafe { nil } {
+		dt := ctx.update_timer.elapsed().seconds()
+		ctx.update_timer.restart()
+		ctx.config.update_fn(f32(dt), ctx.user_data)
 	}
 	ctx.config.frame_fn(ctx.user_data)
 	ctx.needs_refresh = false
@@ -402,66 +415,66 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		ctx.pressed_keys_edge[key_idx] = prev != next
 	}
 	if ctx.config.event_fn != unsafe { nil } {
-		ctx.config.event_fn(e, ctx.config.user_data)
+		ctx.config.event_fn(e, ctx.user_data)
 	} else if ctx.config.on_event != unsafe { nil } {
-		ctx.config.on_event(ctx.config.user_data, e)
+		ctx.config.on_event(ctx.user_data, e)
 	}
 	match e.typ {
 		.mouse_move {
 			if ctx.config.move_fn != unsafe { nil } {
-				ctx.config.move_fn(e.mouse_x, e.mouse_y, ctx.config.user_data)
+				ctx.config.move_fn(e.mouse_x, e.mouse_y, ctx.user_data)
 			}
 		}
 		.mouse_down {
 			if ctx.config.click_fn != unsafe { nil } {
-				ctx.config.click_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.config.user_data)
+				ctx.config.click_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.user_data)
 			}
 		}
 		.mouse_up {
 			if ctx.config.unclick_fn != unsafe { nil } {
-				ctx.config.unclick_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.config.user_data)
+				ctx.config.unclick_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.user_data)
 			}
 		}
 		.mouse_leave {
 			if ctx.config.leave_fn != unsafe { nil } {
-				ctx.config.leave_fn(e, ctx.config.user_data)
+				ctx.config.leave_fn(e, ctx.user_data)
 			}
 		}
 		.mouse_enter {
 			if ctx.config.enter_fn != unsafe { nil } {
-				ctx.config.enter_fn(e, ctx.config.user_data)
+				ctx.config.enter_fn(e, ctx.user_data)
 			}
 		}
 		.mouse_scroll {
 			if ctx.config.scroll_fn != unsafe { nil } {
-				ctx.config.scroll_fn(e, ctx.config.user_data)
+				ctx.config.scroll_fn(e, ctx.user_data)
 			}
 		}
 		.key_down {
 			if ctx.config.keydown_fn != unsafe { nil } {
-				ctx.config.keydown_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
+				ctx.config.keydown_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.user_data)
 			}
 		}
 		.key_up {
 			if ctx.config.keyup_fn != unsafe { nil } {
-				ctx.config.keyup_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
+				ctx.config.keyup_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.user_data)
 			}
 		}
 		.char {
 			if ctx.config.char_fn != unsafe { nil } {
-				ctx.config.char_fn(e.char_code, ctx.config.user_data)
+				ctx.config.char_fn(e.char_code, ctx.user_data)
 			}
 		}
 		.resized {
 			ctx.scale = dpi_scale()
 			ctx.ft.scale = ctx.scale
 			if ctx.config.resized_fn != unsafe { nil } {
-				ctx.config.resized_fn(e, ctx.config.user_data)
+				ctx.config.resized_fn(e, ctx.user_data)
 			}
 		}
 		.quit_requested {
 			if ctx.config.quit_fn != unsafe { nil } {
-				ctx.config.quit_fn(e, ctx.config.user_data)
+				ctx.config.quit_fn(e, ctx.user_data)
 			}
 		}
 		else {
@@ -481,12 +494,12 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			e.key_code = .invalid
 			e.typ = .char
 			if ctx.config.event_fn != unsafe { nil } {
-				ctx.config.event_fn(e, ctx.config.user_data)
+				ctx.config.event_fn(e, ctx.user_data)
 			} else if ctx.config.on_event != unsafe { nil } {
-				ctx.config.on_event(ctx.config.user_data, e)
+				ctx.config.on_event(ctx.user_data, e)
 			}
 			if ctx.config.char_fn != unsafe { nil } {
-				ctx.config.char_fn(e.char_code, ctx.config.user_data)
+				ctx.config.char_fn(e.char_code, ctx.user_data)
 			}
 		}
 	}
@@ -495,7 +508,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 fn gg_cleanup_fn(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	if ctx.config.cleanup_fn != unsafe { nil } {
-		ctx.config.cleanup_fn(ctx.config.user_data)
+		ctx.config.cleanup_fn(ctx.user_data)
 	}
 	gfx.shutdown()
 }
@@ -504,7 +517,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	vmsg := unsafe { tos3(msg) }
 	if ctx.config.fail_fn != unsafe { nil } {
-		ctx.config.fail_fn(vmsg, ctx.config.user_data)
+		ctx.config.fail_fn(vmsg, ctx.user_data)
 	} else {
 		eprintln('gg error: ${vmsg}')
 	}

@@ -78,7 +78,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.is_builtin() && !str_fn_name.starts_with('builtin__') {
 		str_fn_name = 'builtin__${str_fn_name}'
 	}
-	if sym.has_method_with_generic_parent('str') {
+	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
 		match mut sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
 				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
@@ -282,7 +282,6 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count) {')
 	old := g.reset_tmp_count()
 	defer { g.tmp_count = old }
-	g.auto_str_funcs.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
 	if str_method_expects_ptr {
 		it_arg := if is_c_struct { 'it' } else { '&it' }
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${it_arg});')
@@ -290,12 +289,10 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
 	}
-	g.auto_str_funcs.writeln('\tstring res = builtin__str_intp(3, _MOV((StrIntpData[]){
-		{_SLIT0, ${si_s_code}, {.d_s = indents }},
+	g.auto_str_funcs.writeln('\tstring res = builtin__str_intp(2, _MOV((StrIntpData[]){
 		{_S("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = tmp_ds }},
 		{_S(")"), 0, {.d_c = 0 }}
 	}));')
-	g.auto_str_funcs.writeln('\tbuiltin__string_free(&indents);')
 	g.auto_str_funcs.writeln('\tbuiltin__string_free(&tmp_ds);')
 	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
@@ -403,6 +400,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 	mut fn_builder := strings.new_builder(512)
 	clean_interface_v_type_name := util.strip_main_name(typ_str)
 	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) { /* gen_str_for_interface */')
+	fn_builder.writeln('\tif (x._typ == 0 && x._object == NULL) return _S("nil");')
 	for typ in info.types {
 		sub_sym := g.table.sym(ast.mktyp(typ))
 		if g.pref.skip_unused && sub_sym.idx !in g.table.used_features.used_syms {
@@ -568,7 +566,27 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 	}
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return sync__Channel_auto_str(x, _S("${elem_type_name}")); }')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return indent_${str_fn_name}(x, 0);}')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) {')
+	g.auto_str_funcs.writeln('\tstring indents = builtin__string_repeat(_S("    "), indent_count);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(64);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("chan "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("${elem_type_name}"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("{\\n"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, indents);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("    cap: "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, builtin__int_str(x->cap));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S(", closed: "));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, x->closed != 0 ? _S("true") : _S("false"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("\\n"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, indents);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("}"));')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\tbuiltin__string_free(&indents);')
+	g.auto_str_funcs.writeln('\treturn res;')
+	g.auto_str_funcs.writeln('}')
 }
 
 fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name string) {
@@ -1053,7 +1071,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				left_fn_name := util.no_dots(left_cc_type)
 				'${left_fn_name}_str'
 			}
-			if sym.info is ast.Struct {
+			if sym.info is ast.Struct && !g.pref.new_generic_solver {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
@@ -1126,7 +1144,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				if field.typ.is_ptr() && sym.kind in [.struct, .interface] {
 					funcprefix += '(indent_count > 25)? _S("<probably circular>") : '
 				}
-				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: $funcprefix | func: $func')
+				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: ${funcprefix} | func: ${func}')
 				if caller_should_free {
 					tmpvar := g.new_tmp_var()
 					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}${func};',
@@ -1188,7 +1206,11 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		if sym.kind == .struct {
 			if sym.info is ast.Struct && sym.info.is_anon && !_field_type.has_flag(.option)
 				&& !_field_type.has_flag(.shared_f) {
-				typed_obj := '*(${sym.cname}*)&(${obj})'
+				typed_obj := if lang == .c {
+					'(${sym.cname}*)&(${obj})'
+				} else {
+					'*(${sym.cname}*)&(${obj})'
+				}
 				return '${fn_name}(${typed_obj})', true
 			}
 		}
@@ -1264,7 +1286,7 @@ fn data_str(x StrIntpType) string {
 }
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface, .chan]
 }
 
 fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {

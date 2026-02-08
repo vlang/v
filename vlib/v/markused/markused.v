@@ -127,7 +127,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
-			core_fns << 'vgettid'
 			core_fns << 'C.gettid'
 			core_fns << 'v.trace_calls.on_c_main'
 			core_fns << 'v.trace_calls.current_time'
@@ -445,7 +444,7 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 			if skip {
 				continue
 			}
-			// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+			// eprintln('vgt: ${vgt} | pvgt: ${pvgt} | sym_app.name: ${sym_app.name} | m.name: ${m.name}')
 			all_fn_root_names << pvgt + '.' + m.name
 		}
 	}

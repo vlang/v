@@ -16,6 +16,9 @@ fn trace_qualify(callfn string, mod string, file_path string, kind_res string, r
 // 2022-01-30 TODO: this seems to always just return `mod` itself, for modules inside the V main folder.
 // 2022-01-30 It does also return `mod` itself, for stuff installed in ~/.vmodules like `vls` but for
 // 2022-01-30 other reasons (see res 2 below).
+
+// qualify_import is used by V's parser, to find the full module name of import statements.
+// Do not use it.
 pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) string {
 	// comments are from workdir: /v/vls
 	mut mod_paths := pref_.lookup_path.clone()
@@ -51,6 +54,8 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 // 2022-01-30 qualify_module - used by V's parser to find the full module name
 // 2022-01-30 i.e. when parsing `module textscanner`, inside vlib/strings/textscanner/textscanner.v
 // 2022-01-30 it will return `strings.textscanner`
+
+// qualify_module - used by V's parser to find the full module name. Do not use it.
 pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) string {
 	if mod == 'main' {
 		trace_qualify(@FN, mod, file_path, 'module_res 1', mod, 'main')

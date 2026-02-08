@@ -143,11 +143,15 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 		if arg_typ.is_ptr() {
 			c.table.used_features.auto_str_ptr = true
 		}
-		if !c.table.used_features.auto_str_arr {
+		if !c.table.used_features.auto_str_arr || !c.table.used_features.auto_str_ptr {
 			sym := c.table.final_sym(arg_typ)
 			if sym.kind == .array {
 				c.table.used_features.auto_str_arr = true
 			} else if sym.info is ast.Struct {
+				if !c.table.used_features.auto_str_ptr {
+					c.table.used_features.auto_str_ptr = sym.info.fields.any(it.typ.is_ptr()
+						|| it.typ.is_pointer())
+				}
 				c.table.used_features.auto_str_arr = sym.info.fields.any(c.table.final_sym(it.typ).kind == .array)
 			}
 		}

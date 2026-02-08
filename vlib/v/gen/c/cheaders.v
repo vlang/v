@@ -188,8 +188,7 @@ const c_common_macros = '
 #else
 	#define _MOV
 #endif
-// tcc does not support has_include properly yet, turn it off completely
-#if defined(__TINYC__) && defined(__has_include)
+#if defined(__TINYC__) && defined(__has_include) // tcc does not support has_include properly yet, turn it off completely
 #undef __has_include
 #endif
 //likely and unlikely macros
@@ -309,11 +308,10 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h> // for va_list
-#ifdef __TERMUX__
-#if defined __BIONIC_AVAILABILITY_GUARD && __BIONIC_AVAILABILITY_GUARD(28)
-#else
-void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
-#endif
+#if defined(__TINYC__)
+// https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
+// gnu headers use to #define __attribute__ to empty for non-gcc compilers
+#undef __attribute__
 #endif
 //================================== GLOBALS =================================*/
 void _vinit(int ___argc, voidptr ___argv);
@@ -346,25 +344,34 @@ void _vcleanup(void);
 	#include <sys/time.h>
 	#include <unistd.h> // sleep
 	extern char **environ;
+	#include <pthread.h>
+	#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+		// musl does not have that
+		#define pthread_rwlockattr_setkind_np(a, b)
+	#endif
 #endif
-#if defined(__CYGWIN__) && !defined(_WIN32)
-	#error Cygwin is not supported, please use MinGW or Visual Studio.
-#endif
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)
 	#include <sys/types.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
+	#include <sys/wait.h> // for os__wait
 #endif
 #ifdef __OpenBSD__
-	#include <sys/types.h>
 	#include <sys/resource.h>
-	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 #ifdef __FreeBSD__
 	#include <signal.h>
 	#include <execinfo.h>
 #endif
 #ifdef __NetBSD__
-	#include <sys/wait.h> // os__wait uses wait on nix
+	#include <sys/wait.h> // for os__wait
+#endif
+#ifdef __TERMUX__
+#if !defined(__BIONIC_AVAILABILITY_GUARD)
+	#define __BIONIC_AVAILABILITY_GUARD(api_level) 0
+#endif
+#if __BIONIC_AVAILABILITY_GUARD(28)
+#else
+void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
+#endif
 #endif
 #ifdef _WIN32
 	#define WINVER 0x0600
@@ -398,12 +405,9 @@ void _vcleanup(void);
 		#include <dbghelp.h>
 		#pragma comment(lib, "Dbghelp")
 	#endif
-#else
-	#include <pthread.h>
-	#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
-		// musl does not have that
-		#define pthread_rwlockattr_setkind_np(a, b)
-	#endif
+#endif
+#if defined(__CYGWIN__) && !defined(_WIN32)
+	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 #if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
 	#undef PRId64
@@ -509,9 +513,8 @@ voidptr builtin__memdup(voidptr src, isize size);
 '
 
 const c_wyhash_headers = '
-// ============== wyhash ==============
-#ifndef wyhash_final_version_3
-#define wyhash_final_version_3
+#ifndef wyhash_final_version_4_2
+#define wyhash_final_version_4_2
 #ifndef WYHASH_CONDOM
 // protections that produce different results:
 // 1: normal valid behavior
@@ -598,34 +601,35 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}
 // wyhash main function
 static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){
-	const uint8_t *p=(const uint8_t *)key; seed^=*secret;	uint64_t a, b;
+	const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0],secret[1]);	uint64_t a, b;
 	if (_likely_(len<=16)) {
 		if (_likely_(len>=4)) { a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }
 		else if (_likely_(len>0)) { a=_wyr3(p,len); b=0; }
 		else a=b=0;
 	} else {
 		size_t i=len;
-		if (_unlikely_(i>48)) {
+		if (_unlikely_(i>=48)) {
 			uint64_t see1=seed, see2=seed;
 			do {
 				seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);
 				see1=_wymix(_wyr8(p+16)^secret[2],_wyr8(p+24)^see1);
 				see2=_wymix(_wyr8(p+32)^secret[3],_wyr8(p+40)^see2);
 				p+=48; i-=48;
-			} while(_likely_(i>48));
+			} while(_likely_(i>=48));
 			seed^=see1^see2;
 		}
 		while(_unlikely_(i>16)) { seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);  i-=16; p+=16; }
 		a=_wyr8(p+i-16);  b=_wyr8(p+i-8);
 	}
-	return _wymix(secret[1]^len,_wymix(a^secret[1],b^seed));
+	a^=secret[1]; b^=seed;  _wymum(&a,&b);
+	return  _wymix(a^secret[0]^len,b^secret[1]);
 }
 // the default secret parameters
-static const uint64_t _wyp[4] = {0xa0761d6478bd642f, 0xe7037ed1a0b428db, 0x8ebc6af09c88c6e3, 0x589965cc75374cc3};
+static const uint64_t _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};
 // a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
-static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0xa0761d6478bd642f; B^=0xe7037ed1a0b428db; _wymum(&A,&B); return _wymix(A^0xa0761d6478bd642f,B^0xe7037ed1a0b428db);}
+static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0x2d358dccaa6c78a5ull; B^=0x8bb84b93962eacc9ull; _wymum(&A,&B); return _wymix(A^0x2d358dccaa6c78a5ull,B^0x8bb84b93962eacc9ull);}
 // the wyrand PRNG that pass BigCrush and PractRand
-static inline uint64_t wyrand(uint64_t *seed){ *seed+=0xa0761d6478bd642f; return _wymix(*seed,*seed^0xe7037ed1a0b428db);}
+static inline uint64_t wyrand(uint64_t *seed){ *seed+=0x2d358dccaa6c78a5ull; return _wymix(*seed,*seed^0x8bb84b93962eacc9ull);}
 #ifndef __vinix__
 // convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}

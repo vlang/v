@@ -25,7 +25,7 @@ const i32_ = Primitive{
 }
 // TODO: represent platform specific size
 // will this be calculated at compile time?
-const int_ = Primitive{
+pub const int_ = Primitive{
 	props: .integer
 	// size: 32
 }
@@ -63,6 +63,8 @@ const f64_ = Primitive{
 	size:  64
 }
 // complex / non primitives
+// String struct is defined in cmd/v2/builtin/string.v:
+// pub struct string { str &u8, len int, is_lit int }
 const string_ = String(0)
 const chan_ = Channel{}
 const char_ = Char(0)

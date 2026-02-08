@@ -1,8 +1,8 @@
-vlib/v/checker/tests/unused_import_err.vv:1:8: warning: module 'te (term)' is imported but never used
+vlib/v/checker/tests/unused_import_err.vv:1:8: warning: module 'te (term)' is imported but never used. Use `import te (term) as _`, to silence this warning, or just remove the unused import line
     1 | import term as te
       |        ~~~~
     2 | import te.ui
-vlib/v/checker/tests/unused_import_err.vv:2:8: warning: module 'ui (te.ui)' is imported but never used
+vlib/v/checker/tests/unused_import_err.vv:2:8: warning: module 'ui (te.ui)' is imported but never used. Use `import ui (te.ui) as _`, to silence this warning, or just remove the unused import line
     1 | import term as te
     2 | import te.ui
       |        ~~~~~

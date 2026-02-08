@@ -86,7 +86,7 @@ fn test_alias_of_pointer() {
 	println('Actual handle value is: ${handle}')
 	println('Memory address of handle is: ${&handle}')
 
-	example(handle)
+	unsafe { example(handle) }
 	assert '${handle}' == '0'
 }
 

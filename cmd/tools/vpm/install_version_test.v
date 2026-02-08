@@ -1,3 +1,4 @@
+// vtest build: !musl? && !sanitized_job?
 // vtest retry: 3
 module main
 
@@ -13,6 +14,7 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
+	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
 
@@ -152,7 +154,7 @@ fn test_install_from_hg_url_with_version_tag() ! {
 	res = os.execute('${vexe} install -v --hg http://127.0.0.1:${port}@v0.1.0')
 	p.signal_kill()
 	if res.exit_code != 0 {
-		assert false, 'location: $@LOCATION, res:\n${res}'
+		assert false, 'location: ${@LOCATION}, res:\n${res}'
 	}
 	// Get manifest from the vmodules directory.
 	manifest := get_vmod('my_awesome_v_module')

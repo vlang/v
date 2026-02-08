@@ -2,8 +2,9 @@ import x.json2 as json
 
 enum Bar {
 	a
-	b
+	b  @[json: 'BBB']
 	c = 10
+	e  @[badattr: 'bad'; foobar]
 }
 
 type BarAlias = Bar
@@ -42,12 +43,29 @@ fn test_number_decode_fails() {
 
 fn test_string_decode() {
 	assert json.decode[Bar]('"a"')! == Bar.a
-	assert json.decode[Bar]('"b"')! == Bar.b
+	assert json.decode[Bar]('"BBB"')! == Bar.b
 	assert json.decode[Bar]('"c"')! == Bar.c
 
 	assert json.decode[BarAlias]('"a"')! == Bar.a
-	assert json.decode[BarAlias]('"b"')! == Bar.b
+	assert json.decode[BarAlias]('"BBB"')! == Bar.b
 	assert json.decode[BarAlias]('"c"')! == Bar.c
+}
+
+fn test_string_decode_uses_only_json_attr() {
+	assert json.decode[Bar]('"e"')! == Bar.e
+	assert json.decode[BarAlias]('"e"')! == Bar.e
+	for badval in ['"badattr: bad"', '"bad"', '"foobar"'] {
+		if _ := json.decode[Bar](badval) {
+			assert false, '${badval} must not be decoded to Bar'
+		} else {
+			assert true
+		}
+		if _ := json.decode[BarAlias](badval) {
+			assert false, '${badval} must not be decoded to BarAlias'
+		} else {
+			assert true
+		}
+	}
 }
 
 fn test_string_decode_fails() {
@@ -92,4 +110,16 @@ fn test_invalid_decode_fails() {
 			assert err.message == 'Data: Expected number or string value for enum, got: boolean'
 		}
 	}
+}
+
+fn test_map_string_enum_decode() {
+	m := json.decode[map[string]Bar]('{"foo": "a", "bar": "b", "baz": "c"}')!
+	assert m['foo'] == .a
+	assert m['bar'] == .b
+	assert m['baz'] == .c
+
+	m2 := json.decode[map[string]Bar]('{"x": 0, "y": 1, "z": 10}')!
+	assert m2['x'] == .a
+	assert m2['y'] == .b
+	assert m2['z'] == .c
 }

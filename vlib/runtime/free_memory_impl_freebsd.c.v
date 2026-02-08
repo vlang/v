@@ -1,6 +1,6 @@
 module runtime
 
-fn C.sysctlnametomib(name charptr, mib &int, len &usize) int
+fn C.sysctlnametomib(name charptr, mib &int, len &usize) i32
 
 fn free_memory_impl() !usize {
 	$if cross ? {

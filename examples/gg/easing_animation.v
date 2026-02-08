@@ -86,7 +86,7 @@ fn (mut app App) change_functions(direction int) {
 	app.kind = all_keys[idx]
 }
 
-fn (mut app App) on_event(ev &gg.Event, x voidptr) {
+fn (mut app App) on_event(ev &gg.Event, _x voidptr) {
 	if ev.typ != .key_down {
 		return
 	}

@@ -17,6 +17,7 @@ const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'o
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
+	unbuffer_stdout()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names

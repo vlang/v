@@ -422,7 +422,7 @@ fn (mut app App) draw_header() {
 		app.ui.draw_text(0, 0, ' ${app.msg} ')
 		app.ui.reset()
 	}
-	//'tick: $app.ui.frame_count | ' +
+	//'tick: ${app.ui.frame_count} | ' +
 	app.ui.draw_text(3, 2, 'terminal size: (${app.ui.window_width}, ${app.ui.window_height}) | primary color: ${app.primary_color.hex()} | secondary color: ${app.secondary_color.hex()}')
 	app.ui.horizontal_separator(3)
 }

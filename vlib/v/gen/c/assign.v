@@ -37,16 +37,24 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			or_expr := (expr as ast.Ident).or_expr
 			stmts := or_expr.stmts
 			scope := or_expr.scope
+			last_stmt := stmts.last()
 			// handles stmt block which returns something
 			// e.g. { return none }
-			if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-				g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false,
-					scope, expr.pos())
+			if stmts.len > 0 && last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
+				var_expr_name := c_name(var_expr.str())
+				if last_stmt.expr is ast.Ident && last_stmt.expr.or_expr.kind != .absent {
+					g.write('${var_expr_name} = ')
+					g.expr_with_opt_or_block(last_stmt.expr, last_stmt.typ, var_expr,
+						ret_typ, in_heap)
+				} else {
+					g.gen_or_block_stmts(var_expr_name, '', stmts, ret_typ, false, scope,
+						expr.pos())
+				}
 			} else {
 				// handles stmt block which doesn't returns value
 				// e.g. { return }
 				g.stmts(stmts)
-				if stmts.len > 0 && stmts.last() is ast.ExprStmt {
+				if stmts.len > 0 && last_stmt is ast.ExprStmt {
 					g.writeln(';')
 				}
 				g.write_defer_stmts(scope, false, expr.pos())
@@ -118,8 +126,9 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			defer {
 				g.past_tmp_var_done(past)
 			}
-			styp := g.base_type(ret_typ)
-			decl_styp := g.styp(ret_typ).replace('*', '_ptr')
+			unwrapped_ret := g.unwrap_generic(ret_typ)
+			styp := g.base_type(unwrapped_ret)
+			decl_styp := g.styp(unwrapped_ret).replace('*', '_ptr')
 			g.writeln('${decl_styp} ${past.tmp_var};')
 			is_none := expr is ast.CastExpr && expr.expr is ast.None
 			if is_none {
@@ -159,11 +168,14 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && !g.is_arraymap_set
+	unwrapped_expr_typ := g.unwrap_generic(expr_typ)
+	unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+	if unwrapped_expr_typ.has_flag(.option) && unwrapped_ret_typ.has_flag(.option)
+		&& !g.is_arraymap_set
 		&& expr in [ast.SelectorExpr, ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
-			if expr_typ.idx() != ret_typ.idx() {
-				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
+			if unwrapped_expr_typ.idx() != unwrapped_ret_typ.idx() {
+				return g.expr_opt_with_cast(expr, unwrapped_expr_typ, unwrapped_ret_typ)
 			}
 		}
 		g.expr(expr)
@@ -174,7 +186,8 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 	} else {
 		tmp_out_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
+		g.expr_with_tmp_var(expr, unwrapped_expr_typ, unwrapped_ret_typ, tmp_out_var,
+			true)
 		return tmp_out_var
 	}
 	return ''
@@ -498,7 +511,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 					if (is_decl || blank_assign) && left is ast.Ident {
-						sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
+						sig := g.fn_var_signature(val.typ, val.decl.return_type, val.decl.params.map(it.typ),
 							ident.name)
 						g.write(sig + ' = ')
 					} else {
@@ -696,6 +709,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				pos := g.out.len
 				g.expr(left)
+				struct_info := g.table.final_sym(var_type)
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
@@ -717,19 +731,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write(';')
 					}
 					return
-				} else if left_sym.kind == .alias && g.table.final_sym(var_type).kind == .struct {
-					struct_info := g.table.final_sym(var_type)
-					if struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
-						mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
-						method_name = g.generic_fn_name(struct_info.info.concrete_types,
-							method_name)
-						g.write(' = ${method_name}(')
-						g.expr(left)
-						g.write(', ')
-						g.expr(val)
-						g.writeln(');')
-						return
-					}
+				} else if left_sym.kind == .alias && struct_info.kind == .struct
+					&& struct_info.info is ast.Struct && struct_info.info.generic_types.len > 0 {
+					mut method_name := struct_info.cname + '_' + util.replace_op(extracted_op)
+					method_name = g.generic_fn_name(struct_info.info.concrete_types, method_name)
+					g.write(' = ${method_name}(')
+					g.expr(left)
+					g.write(', ')
+					g.expr(val)
+					g.writeln(');')
+					return
 				} else {
 					if g.table.final_sym(g.unwrap_generic(var_type)).kind == .array_fixed {
 						g.go_back_to(pos)
@@ -791,32 +802,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					ret_styp := g.styp(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
-					ret_styp := g.styp(right_sym.info.func.return_type)
-					mut call_conv := ''
-					mut msvc_call_conv := ''
-					for attr in right_sym.info.func.attrs {
-						match attr.name {
-							'callconv' {
-								if g.is_cc_msvc {
-									msvc_call_conv = '__${attr.arg} '
-								} else {
-									call_conv = '${attr.arg}'
-								}
-							}
-							else {}
-						}
-					}
-					call_conv_attribute_suffix := if call_conv.len != 0 {
-						'__attribute__((${call_conv}))'
-					} else {
-						''
-					}
-					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
-					def_pos := g.definitions.len
-					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false,
-						false)
-					g.definitions.go_back(g.definitions.len - def_pos)
-					g.write(')${call_conv_attribute_suffix}')
+					g.write_fntype_decl(fn_name, right_sym.info, var_type.nr_muls())
 				}
 			} else {
 				if is_decl {
@@ -967,7 +953,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write('&')
 					}
 					tmp_var := g.new_tmp_var()
-					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+					g.expr_with_tmp_var(val, val_type, var_type, tmp_var, true)
 				} else if is_fixed_array_var {
 					// TODO: Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
@@ -1009,7 +995,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						is_option_unwrapped := val is ast.Ident && val.or_expr.kind != .absent
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
-						if is_auto_heap && !is_fn_var {
+						// For large structs (with large fixed arrays), avoid stack-allocated
+						// compound literals which can cause stack overflow. Use vcalloc directly.
+						mut is_large_struct_heap := false
+						if is_auto_heap && !is_fn_var && val is ast.StructInit
+							&& g.struct_has_large_fixed_array(val.typ) {
+							is_large_struct_heap = true
+						}
+						if is_auto_heap && !is_fn_var && !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
@@ -1054,14 +1047,69 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							tmp_var := g.expr_with_var(val, var_type, false)
 							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
 								unaliased_right_sym.info.size)
+						} else if is_large_struct_heap && val is ast.StructInit {
+							// For large structs, use vcalloc directly to avoid stack overflow
+							// from compound literals on the stack
+							tmp_var := g.new_tmp_var()
+							stmt_str := g.go_before_last_stmt()
+							g.empty_line = true
+							g.writeln('${styp}* ${tmp_var} = (${styp}*)builtin__vcalloc(sizeof(${styp}));')
+							// Initialize non-zero fields
+							val_sym := g.table.final_sym(val.typ)
+							if val_sym.info is ast.Struct {
+								for init_field in val.init_fields {
+									if init_field.typ == 0 {
+										continue
+									}
+									field_name := c_name(init_field.name)
+									g.write('${tmp_var}->${field_name} = ')
+									g.expr(init_field.expr)
+									g.writeln(';')
+								}
+								// Handle fields with default values
+								for field in val_sym.info.fields {
+									mut found := false
+									for init_field in val.init_fields {
+										if init_field.name == field.name {
+											found = true
+											break
+										}
+									}
+									if !found && field.has_default_expr {
+										field_name := c_name(field.name)
+										g.write('${tmp_var}->${field_name} = ')
+										g.expr(field.default_expr)
+										g.writeln(';')
+									}
+								}
+							}
+							g.empty_line = false
+							g.write2(stmt_str, tmp_var)
 						} else {
 							old_inside_assign_fn_var := g.inside_assign_fn_var
 							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
 								&& is_fn_var
-							g.expr(val)
+							mut nval := val
+							if val is ast.PrefixExpr && val.right is ast.CallExpr {
+								call_expr := val.right as ast.CallExpr
+								if call_expr.name == 'new_array_from_c_array' {
+									nval = call_expr
+									if !var_type.has_flag(.shared_f) {
+										g.write('HEAP(${g.styp(var_type.clear_ref())}, ')
+									}
+									g.expr(nval)
+									if !var_type.has_flag(.shared_f) {
+										g.write(')')
+									}
+								}
+							}
+							if nval == val {
+								g.expr(nval)
+							}
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
-						if !is_fn_var && is_auto_heap && !is_option_auto_heap {
+						if !is_fn_var && is_auto_heap && !is_option_auto_heap
+							&& !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {

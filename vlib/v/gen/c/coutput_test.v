@@ -1,4 +1,4 @@
-// vtest build: !self_sandboxed_packaging?
+// vtest build: !self_sandboxed_packaging? && !sanitized_job?
 import os
 import time
 import term
@@ -143,7 +143,7 @@ fn test_c_must_have_files() {
 		for idx_expected_line, eline in expected_lines {
 			if does_line_match_one_of_generated_lines(eline, generated_c_lines) {
 				nmatches++
-				// eprintln('> testing: $must_have_path has line: $eline')
+				// eprintln('> testing: ${must_have_path} has line: ${eline}')
 			} else {
 				failed_patterns << eline
 				description += '\n failed pattern: `${eline}`'
@@ -245,7 +245,13 @@ pub fn get_file_options(file string) FileOptions {
 	return res
 }
 
+const github_job = os.getenv('GITHUB_JOB')
+
 fn should_skip(relpath string) bool {
+	if github_job == 'docker-ubuntu-musl' && relpath.ends_with('autofree_sql_or_block.vv') {
+		eprintln('> skipping ${relpath} on docker-ubuntu-musl, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
+		return true
+	}
 	if user_os == 'windows' {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')

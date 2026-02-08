@@ -1,0 +1,13 @@
+vlib/v/checker/tests/option_in_operator_err.vv:19:11: error: unwrapped Option cannot be used with `in`
+   17 | 
+   18 |     // Optional struct field with map
+   19 |     _ = item.owner_id in m
+      |              ~~~~~~~~
+   20 | 
+   21 |     // Optional function return with array
+vlib/v/checker/tests/option_in_operator_err.vv:22:6: error: unwrapped Option cannot be used with `in`
+   20 | 
+   21 |     // Optional function return with array
+   22 |     _ = get_opt() in arr
+      |         ~~~~~~~~~
+   23 | }

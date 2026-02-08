@@ -5,6 +5,23 @@ module c
 import v.ast
 import v.util
 
+// orm_field_access_name converts an ORM field name to proper C struct member access.
+// For embedded struct fields like "Payload.some_field", this returns "Payload.some_field"
+// (keeping the dot for C member access). For regular fields, it uses c_name().
+fn orm_field_access_name(field_name string) string {
+	if field_name.contains('.') {
+		// Embedded struct field - keep the dots for proper C struct member access
+		// e.g., "Payload.some_field" -> "Payload.some_field"
+		parts := field_name.split('.')
+		mut result := []string{}
+		for part in parts {
+			result << c_name(part)
+		}
+		return result.join('.')
+	}
+	return c_name(field_name)
+}
+
 enum SqlExprSide {
 	left
 	right
@@ -51,6 +68,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
 	hack_stmt_line := g.build_sql_stmt_line_from_sql_expr(node)
@@ -106,6 +124,7 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	if node.kind != .create {
 		node.fields = g.filter_struct_fields_by_orm_attrs(node.fields)
@@ -209,6 +228,10 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 
 		for field in node.fields {
 			g.writeln('// `${table_name}`.`${field.name}`')
+			// Safety check: ensure field type is valid (not 0 and not still generic)
+			if field.typ == 0 || field.typ.has_flag(.generic) {
+				verror('ORM: field `${field.name}` in table `${table_name}` has unresolved type - this may be due to using a generic struct that was not properly instantiated')
+			}
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
 			typ := match true {
@@ -490,12 +513,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				typ = g.table.sym(final_field_typ).cname
 			}
 			typ = vint2int(typ)
-			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
+			var := '${node.object_var}${member_access_type}${orm_field_access_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
-				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${c_name(field.name)}'
+				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${orm_field_access_name(field.name)}'
 				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
@@ -543,7 +566,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				typ = 'time'
 			}
 			typ = vint2int(typ)
-			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${c_name(primary_field.name)});')
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${orm_field_access_name(primary_field.name)});')
 		}
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
@@ -943,6 +966,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+	g.sql_table_typ = node.table_expr.typ
 
 	g.writeln('// sql { select from `${table_name}` }')
 	g.writeln('${result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
@@ -977,6 +1001,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('.has_limit = ${node.has_limit},')
 	g.writeln('.has_offset = ${node.has_offset},')
+	g.writeln('.has_distinct = ${node.has_distinct},')
 
 	if primary_field.name != '' {
 		g.writeln('.primary = _S("${primary_field.name}"),')
@@ -1026,6 +1051,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	}
 	g.indent--
 	g.writeln('),')
+	// Generate JOIN clauses array
+	g.write_orm_joins(node.joins)
 	g.indent--
 	g.writeln('},')
 
@@ -1134,7 +1161,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			array_get_call_code := '(*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, ${idx})), ${fields_idx}))'
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
-			field_var := '${tmp}.${c_name(field.name)}'
+			field_var := '${tmp}.${orm_field_access_name(field.name)}'
 			field_c_typ := g.styp(final_field_typ)
 			if sym.kind == .struct && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(final_field_typ)] or { continue }
@@ -1236,7 +1263,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				fields_idx++
 			} else if sym.kind == .enum {
 				mut typ := sym.cname
-				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
+				g.writeln('${tmp}.${orm_field_access_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
 				fields_idx++
 			} else {
 				g.writeln('${field_var} = *(${array_get_call_code}._${sym.cname});')
@@ -1317,10 +1344,19 @@ fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.
+// For generic types, uses ngname (name without generic params) to get the base table name.
 fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 	sym := g.table.sym(typ)
 	info := sym.struct_info()
-	mut table_name := util.strip_mod_name(sym.name)
+	// Use ngname for generic types to strip the generic parameters (e.g., Message[Payload] -> Message)
+	// Fall back to stripping manually from name if ngname is empty
+	base_name := if sym.ngname.len > 0 {
+		sym.ngname
+	} else {
+		// Strip generic parameters manually (e.g., main.Message[main.Payload] -> main.Message)
+		sym.name.all_before('[')
+	}
+	mut table_name := util.strip_mod_name(base_name)
 
 	if attr := info.attrs.find_first('table') {
 		table_name = attr.arg
@@ -1331,7 +1367,14 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
 fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
-	info := g.table.sym(ast.idx_to_type(g.table.type_idxs[g.sql_table_name])).struct_info()
+	// Use sql_table_typ directly for proper generic type support
+	sym := g.table.sym(g.sql_table_typ)
+	// For GenericInst types, get the struct info from the parent type
+	info := if sym.info is ast.GenericInst {
+		g.table.type_symbols[sym.info.parent_idx].struct_info()
+	} else {
+		sym.struct_info()
+	}
 
 	for field in info.fields {
 		if field.name == name {
@@ -1387,4 +1430,76 @@ fn get_auto_field_idxs(fields []ast.StructField) []int {
 		}
 	}
 	return ret
+}
+
+// write_orm_joins writes C code for the joins array in SelectConfig
+fn (mut g Gen) write_orm_joins(joins []ast.JoinClause) {
+	if joins.len == 0 {
+		g.writeln('.joins = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__JoinConfig), 0),')
+		return
+	}
+
+	g.writeln('.joins = builtin__new_array_from_c_array(${joins.len}, ${joins.len}, sizeof(orm__JoinConfig),')
+	g.indent++
+	g.writeln('_MOV((orm__JoinConfig[${joins.len}]){')
+	g.indent++
+
+	for join in joins {
+		g.writeln('(orm__JoinConfig){')
+		g.indent++
+
+		// Write join kind
+		kind_str := match join.kind {
+			.inner { 'orm__JoinType__inner' }
+			.left { 'orm__JoinType__left' }
+			.right { 'orm__JoinType__right' }
+			.full_outer { 'orm__JoinType__full_outer' }
+		}
+		g.writeln('.kind = ${kind_str},')
+
+		// Write joined table info
+		g.write('.table = ')
+		g.write_orm_table_struct(join.table_expr.typ)
+		g.writeln(',')
+
+		// Extract column names from the ON expression (should be an InfixExpr)
+		left_col, right_col := g.extract_join_columns(join.on_expr)
+		g.writeln('.on_left_col = _S("${left_col}"),')
+		g.writeln('.on_right_col = _S("${right_col}"),')
+
+		g.indent--
+		g.writeln('},')
+	}
+
+	g.indent--
+	g.writeln('})')
+	g.indent--
+	g.writeln('),')
+}
+
+// extract_join_columns extracts the left and right column names from a JOIN ON expression.
+// The ON expression is expected to be an InfixExpr like: User.dept_id == Department.id
+// Returns (left_col, right_col) where left_col is from the main table, right_col is from the joined table.
+fn (g &Gen) extract_join_columns(on_expr ast.Expr) (string, string) {
+	if on_expr is ast.InfixExpr {
+		left_col := g.extract_join_field_name(on_expr.left)
+		right_col := g.extract_join_field_name(on_expr.right)
+		return left_col, right_col
+	}
+
+	// Fallback: return empty strings if the expression is not the expected format
+	return '', ''
+}
+
+// extract_join_field_name extracts a field name from a JOIN ON expression operand.
+// Handles both SelectorExpr (Table.field) and EnumVal (when parser interprets Type.field as enum).
+fn (g &Gen) extract_join_field_name(expr ast.Expr) string {
+	if expr is ast.SelectorExpr {
+		return expr.field_name
+	}
+	if expr is ast.EnumVal {
+		// EnumVal.val contains the field name (e.g., "department_id" from "User.department_id")
+		return expr.val
+	}
+	return ''
 }

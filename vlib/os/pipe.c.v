@@ -1,9 +1,9 @@
 module os
 
-fn C._dup(fd int) int
-fn C._dup2(fd1 int, fd2 int) int
-fn C._pipe(fds &int, size u32, mode int) int
-fn C.dup(fd int) int
+fn C._dup(fd i32) i32
+fn C._dup2(fd1 i32, fd2 i32) i32
+fn C._pipe(fds &int, size u32, mode i32) i32
+fn C.dup(fd i32) i32
 
 const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
 const fd_stderr = $if windows { 2 } $else { C.STDERR_FILENO }
@@ -23,7 +23,7 @@ pub fn fd_dup2(fd1 int, fd2 int) int {
 // Pipe represents a bidirectional communication channel
 @[noinit]
 pub struct Pipe {
-mut:
+pub mut:
 	read_fd  int = -1
 	write_fd int = -1
 }
@@ -65,7 +65,7 @@ pub fn (p &Pipe) read(mut buffer []u8) !int {
 	if result == -1 {
 		return error('Read failed')
 	}
-	return result
+	return int(result)
 }
 
 // write writes data from the buffer to the pipe
@@ -74,7 +74,16 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 	if result == -1 {
 		return error('Write failed')
 	}
-	return result
+	return int(result)
+}
+
+// write_string writes data from the string to the pipe
+pub fn (p &Pipe) write_string(s string) !int {
+	result := C.write(p.write_fd, voidptr(s.str), s.len)
+	if result == -1 {
+		return error('Write failed')
+	}
+	return int(result)
 }
 
 // slurp reads all data from the pipe until EOF

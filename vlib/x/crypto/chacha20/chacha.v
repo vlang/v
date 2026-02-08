@@ -212,7 +212,14 @@ pub fn (c Cipher) counter() u64 {
 
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
-	unsafe { c.reset() }
+	// start of .reset() inline
+	unsafe {
+		c.Stream.reset()
+		c.block.reset()
+	}
+	c.length = 0
+	// end of .reset() inline
+
 	// we use c.Stream.mode info to get 64-bit counter capability
 	w64 := if c.mode == .original { true } else { false }
 	opt := Options{

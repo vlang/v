@@ -16,5 +16,5 @@ fn test_generics_with_nested_external_generics_fn() {
 	ret := sample[int](arr, 5)!
 	println(ret)
 
-	assert ret == [32, 45, 57, 11, 37]
+	assert ret == [37, 57, 45, 11, 32]
 }

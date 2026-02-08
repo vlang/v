@@ -2,7 +2,7 @@ module json2
 
 import time
 
-fn copy_type[T](t T) T {
+fn copy_type[T](_t T) T {
 	return T{}
 }
 
@@ -97,7 +97,7 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 	return false
 }
 
-fn get_array_element_type[T](arr []T) T {
+fn get_array_element_type[T](_arr []T) T {
 	return T{}
 }
 
@@ -118,7 +118,7 @@ fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) boo
 	return false
 }
 
-fn get_map_element_type[U, V](m map[U]V) V {
+fn get_map_element_type[U, V](_m map[U]V) V {
 	return V{}
 }
 

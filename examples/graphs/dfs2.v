@@ -24,7 +24,6 @@ fn main() {
 		'H': ['E', 'F', 'G']
 	}
 
-	// println('Graph: $graph')
 	path_01 := depth_first_search_path(graph_01, 'A', 'F')
 	println('\n Graph_01: all path pattern from node A to node F is:')
 	print_pattern(path_01)

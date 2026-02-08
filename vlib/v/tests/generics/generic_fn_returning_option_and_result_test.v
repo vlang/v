@@ -7,7 +7,7 @@ fn get_value_result[T]() !T {
 }
 
 fn test_generic_function_that_returns_an_option() {
-	value := get_value[&int]() or { &int(0) }
+	value := get_value[&int]() or { unsafe { &int(0) } }
 	assert value == unsafe { nil }
 	sval := get_value[string]() or { 'abc' }
 	assert sval == 'abc'
@@ -20,6 +20,6 @@ fn test_generic_function_that_returns_an_error() {
 	assert sval == 'xyz'
 	ival := get_value_result[int]() or { 456 }
 	assert ival == 456
-	pval := get_value_result[&int]() or { &int(789) }
-	assert u64(pval) == u64(&int(789))
+	pval := get_value_result[&int]() or { unsafe { &int(789) } }
+	assert u64(pval) == u64(unsafe { &int(789) })
 }

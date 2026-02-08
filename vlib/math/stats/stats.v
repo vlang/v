@@ -50,7 +50,7 @@ pub fn geometric_mean[T](data []T) T {
 		return math.pow(sum, f64(1.0) / data.len)
 	} $else {
 		// use f32 for f32/int/...
-		return T(math.powf(sum, f32(1.0) / data.len))
+		return T(math.powf(f32(sum), f32(1.0) / data.len))
 	}
 }
 
@@ -131,7 +131,7 @@ pub fn rms[T](data []T) T {
 		// use f32 for f32/int/...
 		mut sum := f32(0)
 		for v in data {
-			sum += math.powf(v, 2)
+			sum += math.powf(f32(v), 2)
 		}
 		return T(math.sqrtf(sum / data.len))
 	}
@@ -203,7 +203,7 @@ pub fn population_stddev[T](data []T) T {
 	$if T is f64 {
 		return math.sqrt(population_variance[T](data))
 	} $else {
-		return T(math.sqrtf(population_variance[T](data)))
+		return T(math.sqrtf(f32(population_variance[T](data))))
 	}
 }
 
@@ -218,7 +218,7 @@ pub fn population_stddev_mean[T](data []T, mean T) T {
 	$if T is f64 {
 		return math.sqrt(population_variance_mean[T](data, mean))
 	} $else {
-		return T(math.sqrtf(population_variance_mean[T](data, mean)))
+		return T(math.sqrtf(f32(population_variance_mean[T](data, mean))))
 	}
 }
 
@@ -234,7 +234,7 @@ pub fn sample_stddev[T](data []T) T {
 	$if T is f64 {
 		return math.sqrt(sample_variance[T](data))
 	} $else {
-		return T(math.sqrtf(sample_variance[T](data)))
+		return T(math.sqrtf(f32(sample_variance[T](data))))
 	}
 }
 

@@ -19,9 +19,9 @@ struct Context {
 	veb.Context
 }
 
-pub fn (app &App) before_request() {
+pub fn (ctx &Context) before_request() {
 	$if trace_before_request ? {
-		eprintln('[veb] before_request: ${app.req.method} ${app.req.url}')
+		eprintln('[veb] before_request: ${ctx.req.method} ${ctx.req.url}')
 	}
 }
 

@@ -176,7 +176,7 @@ fn (mut pv Picoev) handle_timeout() {
 }
 
 // accept_callback accepts a new connection from `listen_fd` and adds it to the event loop.
-fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
+fn accept_callback(listen_fd int, _events int, cb_arg voidptr) {
 	mut pv := unsafe { &Picoev(cb_arg) }
 	accepted_fd := accept(listen_fd)
 	if accepted_fd == -1 {
@@ -293,7 +293,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 	}
 }
 
-fn default_error_callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response, error IError) {
+fn default_error_callback(_data voidptr, _req picohttpparser.Request, mut res picohttpparser.Response, error IError) {
 	elog('picoev: ${error}')
 	res.end()
 }

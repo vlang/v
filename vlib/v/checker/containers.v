@@ -314,16 +314,36 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
-	c.expected_type = node.elem_type
+	mut expected_elem_type := node.elem_type
+	if node.elem_type.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
+		if c.table.cur_fn.generic_names.len > 0
+			&& c.table.cur_concrete_types.len == c.table.cur_fn.generic_names.len {
+			expr := node.init_expr
+			if expr is ast.CallExpr {
+				if func := c.table.find_fn(expr.name) {
+					if !func.return_type.has_flag(.generic) {
+						expected_elem_type = c.table.unwrap_generic_type(node.elem_type,
+							c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+					}
+				}
+			}
+		}
+	}
+	c.expected_type = expected_elem_type
 	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
-	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
+	if !expected_elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
 	}
-	if node.elem_type.is_number() && init_typ.is_number() {
+	if expected_elem_type.is_number() && init_typ.is_number() {
 		return
 	}
-	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
+	if c.table.type_kind(expected_elem_type) == .interface {
+		if c.type_implements(init_typ, expected_elem_type, init_expr.pos()) {
+			return
+		}
+	}
+	c.check_expected(init_typ, expected_elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
@@ -793,12 +813,12 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	if !node.is_stmt {
 		c.error('array append cannot be used in an expression', node.pos)
 	}
-	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
-		c.error('unwrapped Option cannot be used in an infix expression', node.pos)
-	}
-	right_pos := node.right.pos()
 	mut right_sym := c.table.sym(right_type)
 	mut left_sym := c.table.sym(left_type)
+	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
+		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+	}
+	right_pos := node.right.pos()
 	// `array << elm`
 	c.check_expr_option_or_result_call(node.right, right_type)
 	node.auto_locked, _ = c.fail_if_immutable(mut node.left)

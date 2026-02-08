@@ -38,7 +38,7 @@ fn test_bloom_filter_false_positive() {
 	assert b.exists('hello world') == true
 	assert b.exists('v is awesome') == true
 	assert b.exists('power by v') == true
-	assert b.exists('my world') == true // false positive
+	assert b.exists('his world') == true // false positive
 }
 
 fn test_bloom_filter_fast_union_intersection() {

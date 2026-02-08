@@ -55,7 +55,7 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -silent build-examples')
+		exec('v build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -64,8 +64,7 @@ fn build_examples() {
 fn build_examples_v_compiled_with_tcc() {
 	exec('v -o vtcc -cc tcc cmd/v')
 	if common.is_github_job {
-		// ensure that examples/veb/veb_example.v etc compiles
-		exec('./vtcc -silent build-examples')
+		exec('./vtcc build-examples')
 	} else {
 		exec('./vtcc -progress build-examples')
 	}
@@ -125,6 +124,10 @@ fn test_readline() {
 	exec('v -silent test examples/readline/')
 }
 
+fn test_inline_assembly() {
+	exec('v test vlib/v/slow_tests/assembly')
+}
+
 const all_tasks = {
 	'test_symlink':                       Task{test_symlink, 'Test symlink'}
 	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
@@ -147,6 +150,7 @@ const all_tasks = {
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
+	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
 
 common.run(all_tasks)

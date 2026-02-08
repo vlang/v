@@ -47,9 +47,11 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.offset = 0
 	s.pos = 0
 	s.lit = ''
-	// s.in_str_incomplete = false
-	// s.in_str_inter = false
-	// s.str_inter_cbr_depth = 0
+	s.insert_semi = false
+	s.in_str_incomplete = false
+	s.in_str_inter = false
+	s.str_inter_cbr_depth = 0
+	s.str_quote = 0
 	// init
 	s.file = unsafe { file }
 	s.src = src
@@ -386,7 +388,6 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .rpar
 		}
 		`[` {
-			s.insert_semi = true
 			return .lsbr
 		}
 		`]` {
@@ -584,6 +585,10 @@ fn (mut s Scanner) number() {
 		else if !has_exponent && c in [`e`, `E`] {
 			has_exponent = true
 			s.offset++
+			// consume optional sign after exponent
+			if s.offset < s.src.len && s.src[s.offset] in [`+`, `-`] {
+				s.offset++
+			}
 			continue
 		}
 		break

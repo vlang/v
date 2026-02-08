@@ -259,7 +259,7 @@ pub:
 	pos      token.Pos
 }
 
-// 'name: $name'
+// 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string
@@ -365,7 +365,6 @@ pub:
 	has_default_expr bool
 	has_prev_newline bool
 	has_break_line   bool
-	attrs            []Attr
 	is_pub           bool
 	default_val      string
 	is_mut           bool
@@ -374,6 +373,7 @@ pub:
 	is_deprecated    bool
 	is_embed         bool
 pub mut:
+	attrs            []Attr
 	next_comments    []Comment
 	is_recursive     bool
 	is_part_of_union bool
@@ -587,6 +587,7 @@ pub:
 	name                  string // 'math.bits.normalize'
 	short_name            string // 'normalize'
 	mod                   string // 'math.bits'
+	kind                  CallKind
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
@@ -726,7 +727,7 @@ pub mut:
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
 	//
-	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some $x $y')`,
+	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`
 	// Note: the same type, has to support also a .write_decimal(n i64) method.
 }
@@ -813,6 +814,72 @@ pub:
 	pos   token.Pos
 }
 
+pub enum CallKind {
+	unknown
+	str
+	wait
+	free
+	try_push
+	try_pop
+	keys
+	values
+	slice
+	map
+	insert
+	prepend
+	sort_with_compare
+	sorted_with_compare
+	sort
+	sorted
+	filter
+	any
+	all
+	count
+	clone
+	clone_to_depth
+	trim
+	contains
+	index
+	last_index
+	first
+	last
+	pop_left
+	pop
+	delete
+	delete_many
+	delete_last
+	drop
+	reverse
+	reverse_in_place
+	panic
+	json_decode
+	json_encode
+	json_encode_pretty
+	repeat
+	type_name
+	type_idx
+	clear
+	reserve
+	move
+	main_main
+	va_arg
+	addr
+	main
+	jsawait
+	error
+	grow_cap
+	grow_len
+	eprint
+	eprintln
+	print
+	println
+	close
+	pointers
+	push_many
+	malloc
+	writeln
+}
+
 // function or method call expr
 @[minify]
 pub struct CallExpr {
@@ -820,6 +887,7 @@ pub:
 	pos      token.Pos
 	name_pos token.Pos
 	mod      string
+	kind     CallKind
 pub mut:
 	name                   string // left.name()
 	is_method              bool
@@ -832,6 +900,7 @@ pub mut:
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	is_static_method       bool // it is a static method call
 	is_variadic            bool
+	is_c_variadic          bool // it is a C variadic
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
@@ -847,7 +916,7 @@ pub mut:
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
-	concrete_types         []Type // concrete types, e.g. <int, string>
+	concrete_types         []Type // concrete types, e.g. [int, string]
 	concrete_list_pos      token.Pos
 	raw_concrete_types     []Type
 	free_receiver          bool // true if the receiver expression needs to be freed
@@ -1010,6 +1079,13 @@ pub mut:
 	len           int
 }
 
+// TemplateLineInfo maps a generated code line to the original template location
+pub struct TemplateLineInfo {
+pub:
+	tmpl_path string // path to the template file (for @include support)
+	tmpl_line int    // 0-based line number in the template
+}
+
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
 // That array is then passed to V's checker.
@@ -1039,13 +1115,15 @@ pub mut:
 	imported_symbols      map[string]string         // used for `import {symbol}`, it maps symbol => module.symbol
 	imported_symbols_trie token.KeywordsMatcherTrie // constructed from imported_symbols, to accelerate presense checks
 	imported_symbols_used map[string]bool
-	errors                []errors.Error   // all the checker errors in the file
-	warnings              []errors.Warning // all the checker warnings in the file
-	notices               []errors.Notice  // all the checker notices in the file
+	errors                []errors.Error         // all the checker errors in the file
+	warnings              []errors.Warning       // all the checker warnings in the file
+	notices               []errors.Notice        // all the checker notices in the file
+	call_stack            []errors.CallStackItem // call stack for this file (used for template errors)
 	generic_fns           []&FnDecl
-	global_labels         []string // from `asm { .globl labelname }`
-	template_paths        []string // all the .html/.md files that were processed with $tmpl
-	unique_prefix         string   // a hash of the `.path` field, used for making anon fn generation unique
+	global_labels         []string           // from `asm { .globl labelname }`
+	template_paths        []string           // all the .html/.md files that were processed with $tmpl
+	template_line_map     []TemplateLineInfo // maps generated line -> original template location
+	unique_prefix         string             // a hash of the `.path` field, used for making anon fn generation unique
 	//
 	is_parse_text    bool // true for files, produced by parse_text
 	is_template_text bool // true for files, produced by parse_comptime
@@ -1507,6 +1585,7 @@ pub mut:
 pub struct AliasTypeDecl {
 pub:
 	name     string
+	mod      string
 	is_pub   bool
 	typ      Type
 	pos      token.Pos
@@ -1522,6 +1601,7 @@ pub mut:
 pub struct SumTypeDecl {
 pub:
 	name          string
+	mod           string
 	is_pub        bool
 	pos           token.Pos
 	name_pos      token.Pos
@@ -2216,18 +2296,37 @@ pub mut:
 	end_comments    []Comment
 }
 
+// JoinKind represents the type of SQL JOIN operation
+pub enum JoinKind {
+	inner      // INNER JOIN - returns only matching rows
+	left       // LEFT JOIN - returns all left rows, NULL for non-matching right
+	right      // RIGHT JOIN - returns all right rows, NULL for non-matching left
+	full_outer // FULL OUTER JOIN - returns all rows from both tables
+}
+
+// JoinClause represents a JOIN clause in an SQL SELECT query
+pub struct JoinClause {
+pub:
+	kind JoinKind
+	pos  token.Pos
+pub mut:
+	table_expr TypeNode // The table being joined (e.g., Department in `join Department`)
+	on_expr    Expr     // The ON condition (e.g., `User.dept_id == Department.id`)
+}
+
 pub struct SqlExpr {
 pub:
 	is_count     bool
 	is_insert    bool // for insert expressions
 	inserted_var string
 
-	has_where  bool
-	has_order  bool
-	has_limit  bool
-	has_offset bool
-	has_desc   bool
-	is_array   bool
+	has_where    bool
+	has_order    bool
+	has_limit    bool
+	has_offset   bool
+	has_desc     bool
+	has_distinct bool
+	is_array     bool
 	// is_generated indicates a statement is generated by ORM for complex queries with related tables.
 	is_generated bool
 	pos          token.Pos
@@ -2242,12 +2341,62 @@ pub mut:
 	fields      []StructField
 	sub_structs map[int]SqlExpr
 	or_expr     OrExpr
+	joins       []JoinClause // JOIN clauses for this query
 }
 
 pub struct NodeError {
 pub:
 	idx int // index for referencing the related File error
 	pos token.Pos
+}
+
+pub fn (e Expr) type() Type {
+	return match e {
+		AnonFn { e.typ }
+		ArrayDecompose { e.expr_type }
+		ArrayInit { e.typ }
+		AsCast { e.typ }
+		AtExpr { string_type }
+		BoolLiteral { bool_type }
+		CTempVar { e.typ }
+		CallExpr { e.return_type }
+		CastExpr { e.typ }
+		ChanInit { e.typ }
+		CharLiteral { char_type }
+		ComptimeCall { e.result_type }
+		ComptimeSelector { e.typ }
+		ConcatExpr { e.return_type }
+		DumpExpr { e.expr_type }
+		EnumVal { e.typ }
+		FloatLiteral { float_literal_type }
+		Ident { e.info.typ }
+		IfExpr { e.typ }
+		IfGuardExpr { e.expr_type }
+		IndexExpr { e.typ }
+		InfixExpr { e.promoted_type }
+		IntegerLiteral { int_literal_type }
+		IsRefType { e.typ }
+		LambdaExpr { e.typ }
+		Likely { e.expr.type() }
+		LockExpr { e.typ }
+		MapInit { e.typ }
+		MatchExpr { e.return_type }
+		Nil { voidptr_type }
+		ParExpr { e.expr.type() }
+		PostfixExpr { e.typ }
+		PrefixExpr { e.right_type }
+		RangeExpr { e.typ }
+		SelectorExpr { e.typ }
+		SizeOf { e.typ }
+		SqlExpr { e.typ }
+		StringInterLiteral { string_type }
+		StringLiteral { string_type }
+		StructInit { e.typ }
+		TypeNode { e.typ }
+		TypeOf { e.typ }
+		UnsafeExpr { e.expr.type() }
+		else { void_type }
+	}
 }
 
 @[inline]
@@ -2409,6 +2558,7 @@ pub fn (e &Expr) is_lockable() bool {
 	return match e {
 		Ident { true }
 		SelectorExpr { e.expr.is_lockable() }
+		ComptimeSelector { true }
 		else { false }
 	}
 }

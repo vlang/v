@@ -141,7 +141,6 @@ fn collect_v_files(path string, recursive bool) ![]string {
 		}
 		if recursive && os.is_dir(file) && !os.is_link(file) {
 			all_files << collect_v_files(file, recursive)!
-			continue
 		}
 	}
 	return all_files

@@ -1,0 +1,20 @@
+vlib/v/checker/tests/array_init_decompose_extra_params.vv:33:11: error: array decompose has 1 element but 2 are needed for `print_2`
+   31 |   print_3(...arr4)
+   32 |
+   33 |   print_2(...['1'])
+      |           ~~~~~~~~
+   34 |   print_3(...['1', '2'])
+   35 |   print_4(...['1', '2', '3'])
+vlib/v/checker/tests/array_init_decompose_extra_params.vv:34:11: error: array decompose has 2 elements but 3 are needed for `print_3`
+   32 |
+   33 |   print_2(...['1'])
+   34 |   print_3(...['1', '2'])
+      |           ~~~~~~~~~~~~~
+   35 |   print_4(...['1', '2', '3'])
+   36 | }
+vlib/v/checker/tests/array_init_decompose_extra_params.vv:35:11: error: array decompose has 3 elements but 4 are needed for `print_4`
+   33 |   print_2(...['1'])
+   34 |   print_3(...['1', '2'])
+   35 |   print_4(...['1', '2', '3'])
+      |           ~~~~~~~~~~~~~~~~~~
+   36 | }

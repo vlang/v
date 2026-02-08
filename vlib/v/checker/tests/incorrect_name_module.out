@@ -1,4 +1,4 @@
-vlib/v/checker/tests/incorrect_name_module.vv:4:8: warning: module 'os' is imported but never used
+vlib/v/checker/tests/incorrect_name_module.vv:4:8: warning: module 'os' is imported but never used. Use `import os as _`, to silence this warning, or just remove the unused import line
     2 | 
     3 | import math as _
     4 | import os

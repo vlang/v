@@ -55,6 +55,9 @@ V supports the following commands:
                                example: `v watch run hello.v`
   where                        Find and print the location of current project
                                declarations.
+  quest                        Help us make V better, by doing a small randomly
+                               selected task, like triaging an issue, improving
+                               the documentation, testing, etc.
 
 * Installation Management Utilities:
   symlink                      Create a symbolic link for V.

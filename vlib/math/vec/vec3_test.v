@@ -1,3 +1,4 @@
+import math { tolerance, veryclose }
 import math.vec
 
 fn test_vec3_int() {
@@ -87,4 +88,69 @@ fn test_vec3_f64_utils_2() {
 	assert invv2.x == 0.5
 	assert invv2.y == 0.5
 	assert invv2.z == 0.25
+}
+
+// sample tests for vec3 projection
+fn test_vec3_project_onto_basic() {
+	v := vec.vec3(5.0, 6.0, 0.0) // magnitude ~7.81 vector
+	u := vec.vec3(3.0, 4.0, 0.0) // magnitude 5 vector
+	// hand-computed:
+	// v·u = 5*3 + 6*4 + 0*0 = 39
+	// |u|^2 = 3^2 + 4^2 +0^2 = 25
+	// scale = 39/25 = 1.56
+	// proj = scale * u = (1.56*3, 1.56*4, 1.56*0) = (4.68, 6.24, 0)
+	proj := v.project(u)
+	assert veryclose(proj.x, 4.68)
+	assert veryclose(proj.y, 6.24)
+	assert veryclose(proj.z, 0.0)
+}
+
+// Test for Vec3 projection onto zero vector
+//
+fn test_vec3_project_onto_zero() {
+	v := vec.vec3(0.0, 0.0, 0.0)
+	u := vec.vec3(3.0, 4.0, 0.0)
+	proj := v.project(u)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+	assert proj.z == 0.0
+}
+
+// Test for vec3 projection at an angle
+//
+fn test_vec3_project_onto_angle() {
+	v := vec.vec3(1.0, 1.0, 0.0) // magnitude sqrt(2) vector
+	u := vec.vec3(1.0, 0.0, 0.0) // magnitude 1 vector
+	// hand-computed:
+	// v·u = 1*1 + 1*0 + 0*0 = 1
+	// |u|^2 = 1^2 + 0^2 +0^2 = 1
+	// scale = 1/1 = 1
+	// proj = scale * u = (1*1, 1*0, 1*0) = (1, 0, 0)
+	proj := v.project(u)
+	assert veryclose(proj.x, 1.0)
+	assert veryclose(proj.y, 0.0)
+	assert veryclose(proj.z, 0.0)
+}
+
+// Test for perpendicularity
+// 'u' and 'v' are already perpendicular so it must return v
+fn test_vec3_perpendicularity_angle() {
+	u := vec.vec3(1.0, 0.0, 0.0)
+	v := vec.vec3(0.0, 3.0, 2.0)
+
+	per := v.perpendicular(u)
+	assert tolerance(per.x, v.x, vec.vec_epsilon)
+	assert tolerance(per.y, v.y, vec.vec_epsilon)
+	assert tolerance(per.z, v.z, vec.vec_epsilon)
+}
+
+// 'u' and 'v' are collinear so the result must be the null vector
+fn test_vec3_collinear() {
+	u := vec.vec3(1.0, 0.0, 0.0)
+	v := vec.vec3(3.0, 0.0, 0.0)
+
+	per := v.perpendicular(u)
+	assert tolerance(per.x, 0.0, vec.vec_epsilon)
+	assert tolerance(per.y, 0.0, vec.vec_epsilon)
+	assert tolerance(per.z, 0.0, vec.vec_epsilon)
 }

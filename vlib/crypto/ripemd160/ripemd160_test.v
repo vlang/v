@@ -29,6 +29,7 @@ fn test_vectors() {
 				md.write(tv.i.bytes()[tv.i.len / 2..]) or { panic(err) }
 			}
 			assert md.sum([]).hex() == tv.o
+			assert ripemd160.hexhash(tv.i) == tv.o
 			md.reset()
 		}
 	}

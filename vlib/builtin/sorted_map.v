@@ -4,8 +4,6 @@
 
 module builtin
 
-// import strings
-
 // B-trees are balanced search trees with all leaves at
 // the same level. B-trees are generally faster than
 // binary search trees due to the better locality of
@@ -432,7 +430,7 @@ pub fn (m &SortedMap) keys() []string {
 }
 
 fn (mut n mapnode) free() {
-	println('TODO')
+	// TODO
 }
 
 pub fn (mut m SortedMap) free() {
@@ -441,20 +439,3 @@ pub fn (mut m SortedMap) free() {
 	}
 	m.root.free()
 }
-
-pub fn (m SortedMap) print() {
-	println('TODO')
-}
-
-// pub fn (m map_string) str() string {
-// 	if m.len == 0 {
-// 		return '{}'
-// 	}
-// 	mut sb := strings.new_builder(50)
-// 	sb.writeln('{')
-// 	for key, val  in m {
-// 		sb.writeln('  "$key" => "$val"')
-// 	}
-// 	sb.writeln('}')
-// 	return sb.str()
-// }

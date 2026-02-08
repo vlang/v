@@ -53,7 +53,18 @@ typedef volatile uintptr_t atomic_uintptr_t;
 
 extern void atomic_thread_fence (int memory_order);
 extern void __atomic_thread_fence (int memory_order);
-#define atomic_thread_fence(order) __atomic_thread_fence (order)
+
+// workaround for tcc/aarch64; Note: latest prebuilt tcc works, and does not need this hack:
+#if !defined(__APPLE__)
+#if (defined(__aarch64__) || defined(_M_ARM64))
+    // `_V_atomic_thread_fence` is defined in `atomic.S`
+    extern void _V_atomic_thread_fence(int memory_order);
+    #define atomic_thread_fence(order) _V_atomic_thread_fence(order)
+    #define __atomic_thread_fence(order) _V_atomic_thread_fence(order)
+#else
+    #define atomic_thread_fence(order) __atomic_thread_fence(order)
+#endif
+#endif
 
 // use functions for 64, 32 and 8 bit from libatomic directly
 // since tcc is not capible to use "generic" C functions

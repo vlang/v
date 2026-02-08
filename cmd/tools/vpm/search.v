@@ -12,7 +12,7 @@ fn vpm_search(keywords []string) {
 		vpm_error('specify at least one keyword to search for.')
 		exit(2)
 	}
-	modules := get_all_modules()
+	modules := get_all_modules_for_search()
 	installed_modules := get_installed_modules()
 	joined := search_keys.join(', ')
 	mut index := 0

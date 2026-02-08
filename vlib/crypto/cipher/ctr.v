@@ -66,17 +66,16 @@ pub fn (mut x Ctr) xor_key_stream(mut dst []u8, src []u8) {
 			if x.out_used == x.out.len {
 				x.b.encrypt(mut x.out, x.next)
 				x.out_used = 0
+				// increment counter
+				for i := x.next.len - 1; i >= 0; i-- {
+					x.next[i]++
+					if x.next[i] != 0 {
+						break
+					}
+				}
 			}
 
 			n := xor_bytes(mut local_dst, local_src, x.out[x.out_used..])
-
-			// increment counter
-			for i := x.next.len - 1; i >= 0; i-- {
-				x.next[i]++
-				if x.next[i] != 0 {
-					break
-				}
-			}
 
 			local_dst = local_dst[n..]
 			local_src = local_src[n..]

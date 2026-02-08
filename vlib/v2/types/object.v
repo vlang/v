@@ -18,6 +18,7 @@ mut:
 
 struct Const {
 	ObjectCommon
+	int_val int
 }
 
 struct Global {
@@ -29,4 +30,14 @@ struct Fn {
 	name string
 	// typ  FnType // signature
 	typ Type // signature
+}
+
+// get_name returns the function's name
+pub fn (f &Fn) get_name() string {
+	return f.name
+}
+
+// get_typ returns the function's type (FnType)
+pub fn (f &Fn) get_typ() Type {
+	return f.typ
 }

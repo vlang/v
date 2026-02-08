@@ -7,7 +7,7 @@ fn send_1[A, B](res A, b B) string {
 		result: res
 	}
 	println(b)
-	return '$msg'
+	return '${msg}'
 }
 
 fn send_2[A, B](res A, b B) string {
@@ -15,7 +15,7 @@ fn send_2[A, B](res A, b B) string {
 		result: res
 	}
 	println(b)
-	return '$msg'
+	return '${msg}'
 }
 
 fn main() {

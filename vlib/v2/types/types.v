@@ -33,7 +33,7 @@ pub type Type = Alias
 	| Void
 
 @[flag]
-enum Properties {
+pub enum Properties {
 	boolean
 	float
 	integer
@@ -58,23 +58,27 @@ enum Properties {
 // 	untyped_float
 // }
 
-struct Primitive {
+pub struct Primitive {
+pub:
 	// kind  PrimitiveKind
 	props Properties
 	size  u8
 }
 
-struct Alias {
+pub struct Alias {
+pub:
 	name string
-mut:
+pub mut:
 	base_type Type
 }
 
-struct Array {
+pub struct Array {
+pub:
 	elem_type Type
 }
 
-struct ArrayFixed {
+pub struct ArrayFixed {
+pub:
 	len       int
 	elem_type Type
 }
@@ -83,7 +87,8 @@ struct Channel {
 	elem_type ?Type
 }
 
-struct Enum {
+pub struct Enum {
+pub:
 	// TODO: store attributes enum or bool?
 	is_flag bool
 	name    string
@@ -91,7 +96,8 @@ struct Enum {
 	// fields	map[string]Type
 }
 
-struct OptionType {
+pub struct OptionType {
+pub:
 	base_type Type
 }
 
@@ -101,7 +107,8 @@ struct Parameter {
 	is_mut bool
 }
 
-struct ResultType {
+pub struct ResultType {
+pub:
 	base_type Type
 }
 
@@ -140,20 +147,37 @@ mut:
 	// 	scope          &Scope
 }
 
-struct Interface {
+// get_return_type returns the function's return type, or none if void
+pub fn (f &FnType) get_return_type() ?Type {
+	return f.return_type
+}
+
+// get_param_types returns function parameter types in declaration order.
+pub fn (f &FnType) get_param_types() []Type {
+	mut param_types := []Type{cap: f.params.len}
+	for param in f.params {
+		param_types << param.typ
+	}
+	return param_types
+}
+
+pub struct Interface {
+pub:
 	name string
-mut:
+pub mut:
 	fields []Field
 	// fields map[string]Type
 	// TODO:
 }
 
-struct Map {
+pub struct Map {
+pub:
 	key_type   Type
 	value_type Type
 }
 
-struct Pointer {
+pub struct Pointer {
+pub:
 	base_type Type
 }
 
@@ -167,9 +191,11 @@ type NamedType = string
 // 	name string
 // }
 
-struct Field {
-	name string
-	typ  Type
+pub struct Field {
+pub:
+	name         string
+	typ          Type
+	default_expr ast.Expr = ast.empty_expr
 }
 
 // struct Method {
@@ -177,10 +203,11 @@ struct Field {
 // 	typ  FnType
 // }
 
-struct Struct {
+pub struct Struct {
+pub:
 	name           string
 	generic_params []string
-mut:
+pub mut:
 	embedded []Struct
 	// embedded       []Type
 	fields []Field
@@ -228,7 +255,7 @@ type Void = u8
 type Nil = u8
 type None = u8
 
-fn (t Type) base_type() Type {
+pub fn (t Type) base_type() Type {
 	match t {
 		// TODO: add base_type method
 		Alias {
@@ -251,9 +278,11 @@ fn (t Type) base_type() Type {
 }
 
 // return the key type used with for in loops
-fn (t Type) key_type() Type {
+pub fn (t Type) key_type() Type {
 	match t {
+		Alias { return t.base_type.key_type() }
 		Map { return t.key_type }
+		Pointer { return t.base_type.key_type() }
 		// TODO: struct here is 'struct string', need to fix this.
 		// we could use an alias? remove once fixed.
 		// Array, ArrayFixed, String, Struct { return int_ }
@@ -264,16 +293,46 @@ fn (t Type) key_type() Type {
 }
 
 // return the value type used with for in loops
-fn (t Type) value_type() Type {
+pub fn (t Type) value_type() Type {
 	match t {
-		Array, ArrayFixed { return t.elem_type }
-		Channel { return t.elem_type or { t } } // TODO: ?
-		Map { return t.value_type }
-		Pointer { return t.base_type.value_type() }
-		String { return u8_ }
-		Thread { return t.elem_type or { t } } // TODO: ?
-		OptionType, ResultType { return t.base_type.value_type() }
-		else { return t.base_type() }
+		Alias {
+			return t.base_type.value_type()
+		}
+		Array, ArrayFixed {
+			return t.elem_type
+		}
+		Channel {
+			if elem_type := t.elem_type {
+				return elem_type
+			}
+			return Type(t)
+		} // TODO: ?
+		Map {
+			return t.value_type
+		}
+		Pointer {
+			if t.base_type is String {
+				// `&string` is used as pointer-to-first-string in several builtin APIs.
+				// Indexing it should yield `string`, not `u8`.
+				return string_
+			}
+			return t.base_type.value_type()
+		}
+		String {
+			return u8_
+		}
+		Thread {
+			if elem_type := t.elem_type {
+				return elem_type
+			}
+			return Type(t)
+		} // TODO: ?
+		OptionType, ResultType {
+			return t.base_type.value_type()
+		}
+		else {
+			return t.base_type()
+		}
 	}
 }
 
@@ -283,14 +342,13 @@ fn (t Type) typed_default() Type {
 	// this handles int & float
 	if t is Primitive && t.is_number_literal() {
 		mut concrete_props := t.props
-		concrete_props.clear(.untyped)
+		concrete_props.clear(Properties.untyped)
 		// TODO: platform dependant size - see universe
-		size := u8(if t.props.has(.float) { 32 } else { 0 })
-		return Primitive{
-			...t
+		size := u8(if t.props.has(Properties.float) { 32 } else { 0 })
+		return Type(Primitive{
 			props: concrete_props
 			size:  size
-		}
+		})
 	}
 	return t
 }
@@ -324,12 +382,17 @@ fn (t Type) deref() Type {
 fn (t Type) is_compatible_with(t2 Type) bool {
 	if t == t2 {
 		return true
-	} else if t is Alias {
-		return t.base_type.is_compatible_with(t2)
-	} else if t2 is Alias {
-		return t.is_compatible_with(t2.base_type)
 	}
-	return false
+	// Unwrap aliases for comparison
+	mut t1_unwrapped := t
+	mut t2_unwrapped := t2
+	if t is Alias {
+		t1_unwrapped = t.base_type
+	}
+	if t2 is Alias {
+		t2_unwrapped = t2.base_type
+	}
+	return t1_unwrapped == t2_unwrapped
 }
 
 fn (t Type) is_float() bool {
@@ -403,7 +466,7 @@ fn (t Primitive) is_int_literal() bool {
 	return t.props.has(.untyped) && t.props.has(.integer)
 }
 
-fn (t Type) name() string {
+pub fn (t Type) name() string {
 	match t {
 		Primitive, Alias, Array, ArrayFixed, Channel, Char, Enum, FnType, Interface, ISize, Map,
 		OptionType, Pointer, ResultType, Rune, String, Struct, SumType, Thread, Tuple, USize, Void,
@@ -436,7 +499,6 @@ fn (t Primitive) name() string {
 	} else if t.props.has(.float) {
 		return 'f${t.size}'
 	}
-	println(t)
 	panic(t.props.str())
 	return 'malformed primitive' // lol
 	// TODO: match seems broke when multuple flags are set
@@ -449,16 +511,16 @@ fn (t Primitive) name() string {
 	// 	}
 	// 	.integer {
 	// 		if t.props.has(.unsigned) {
-	// 			return 'u$t.size'
+	// 			return 'u${t.size}'
 	// 		} else {
 	// 			if t.size == 32 {
 	// 				return 'int'
 	// 			}
-	// 			return 'i$t.size'
+	// 			return 'i${t.size}'
 	// 		}
 	// 	}
 	// 	.float {
-	// 		return 'f$t.size'
+	// 		return 'f${t.size}'
 	// 	}
 	// 	else {
 	// 		println(t)
@@ -554,14 +616,30 @@ fn (t SumType) name() string {
 	return t.name
 }
 
+// get_sum_type_name returns the name of a SumType (public accessor)
+pub fn (t SumType) get_name() string {
+	return t.name
+}
+
+pub fn sum_type_name(t SumType) string {
+	return t.name
+}
+
+// get_variants returns the variant types of a SumType
+pub fn (t SumType) get_variants() []Type {
+	return t.variants
+}
+
 fn (t Thread) name() string {
 	return 'thread'
 }
 
 fn (t Tuple) name() string {
-	// TODO: use faster method
-	types_str := t.types.map(|typ| typ.name()).join(', ')
-	return 'tuple (${types_str})'
+	mut names := []string{cap: t.types.len}
+	for typ in t.types {
+		names << typ.name()
+	}
+	return 'tuple (${names.join(', ')})'
 }
 
 fn (t ISize) name() string {

@@ -1,0 +1,22 @@
+template_call_position_test.txt:3:2: error: undefined ident: `unknown_var` (veb action: main__main)
+    1 | Hello World!
+    2 | This is a template file.
+    3 | @unknown_var
+      |  ~~~~~~~~~~~
+called from vlib/v/checker/tests/template_call_position.vv:4:2
+    2 |
+    3 | fn main() {
+    4 |     $tmpl('template_call_position_test.txt')
+      |     ^
+    5 | }
+template_call_position_test.txt:3:2: error: expression does not return a value (veb action: main__main)
+    1 | Hello World!
+    2 | This is a template file.
+    3 | @unknown_var
+      |  ~~~~~~~~~~~
+called from vlib/v/checker/tests/template_call_position.vv:4:2
+    2 |
+    3 | fn main() {
+    4 |     $tmpl('template_call_position_test.txt')
+      |     ^
+    5 | }

@@ -6,9 +6,9 @@ $if !musl ? {
 	#include <sys/cdefs.h> // needed for cross compiling to linux
 }
 
-fn C.epoll_create(__flags int) int
-fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
-fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
+fn C.epoll_create(__flags i32) i32
+fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
+fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
 
 @[typedef]
 union C.epoll_data {

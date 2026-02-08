@@ -36,16 +36,23 @@ fn test_for_methods() {
 		$if method.return_type is string {
 			v := test.$method()
 			r += v.str()
+			if method.name == 's' {
+				assert method.location.ends_with('vlib/v/tests/comptime/comptime_call_test.v:11:15')
+			} else if method.name == 's2' {
+				assert method.location.ends_with('vlib/v/tests/comptime/comptime_call_test.v:15:15')
+			}
 		} $else $if method.return_type is int {
 			// TODO
 			// v := test.$method()
 			v := '?'
 			r += v.str()
 			assert method.name == 'i'
+			assert method.location.ends_with('vlib/v/tests/comptime/comptime_call_test.v:7:15')
 		} $else {
 			// no return type
 			test.$method()
 			assert method.name == 'v'
+			assert method.location.ends_with('vlib/v/tests/comptime/comptime_call_test.v:3:15')
 		}
 	}
 	assert r == '?testTwo'

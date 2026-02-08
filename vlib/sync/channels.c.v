@@ -4,8 +4,8 @@ import time
 import rand
 
 // how often to try to get data without blocking before to wait for semaphore
-const spinloops = 750
-const spinloops_sem = 4000
+const spinloops = u32(750)
+const spinloops_sem = u32(4000)
 
 enum BufferElemStat {
 	unused = 0
@@ -118,10 +118,6 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 	}
 }
 
-pub fn (ch &Channel) auto_str(typename string) string {
-	return 'chan ${typename}{cap: ${ch.cap}, closed: ${ch.closed}}'
-}
-
 pub fn (mut ch Channel) close() {
 	open_val := u16(0)
 	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
@@ -180,7 +176,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { u32(1), u32(1) } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -361,7 +357,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { u32(1), u32(1) } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {

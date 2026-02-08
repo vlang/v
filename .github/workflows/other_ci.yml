@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Environment info
@@ -47,11 +47,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout V ${{ github.head_ref }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           path: v
       - name: Checkout V master
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: vlang/v
           path: vmaster
@@ -71,7 +71,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -87,7 +87,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -111,7 +111,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 10
       - name: Build v
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build local v
         run: |
           make -j4 && ./v symlink

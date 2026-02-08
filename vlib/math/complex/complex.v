@@ -138,7 +138,7 @@ pub fn (c Complex) ln() Complex {
 // Based on
 // http://www.milefoot.com/math/complex/summaryops.htm
 pub fn (c Complex) log(base Complex) Complex {
-	return base.ln().divide(c.ln())
+	return c.ln().divide(base.ln())
 }
 
 // Complex Argument
@@ -372,5 +372,5 @@ pub fn (c Complex) acsch() Complex {
 
 // Complex Equals
 pub fn (c1 Complex) equals(c2 Complex) bool {
-	return c1.re == c2.re && c1.im == c2.im
+	return c1.re.eq_epsilon(c2.re) && c1.im.eq_epsilon(c2.im)
 }

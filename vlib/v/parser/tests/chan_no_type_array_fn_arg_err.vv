@@ -1,0 +1,1 @@
+fn takes_array(chans []chan) {}

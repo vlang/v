@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_mut_compare_rune_string_err.vv:4:6: error: infix expr: cannot use `string` (right expression) as `rune`
+    2 |     s := 'Hello, World!'
+    3 |     for mut c in s.runes() {
+    4 |         if c == ' ' {
+      |            ~~~~~~~~
+    5 |             c = `x`
+    6 |         }

@@ -4,7 +4,7 @@ module main
 #flag @VMODROOT/implementation.o
 #include "@VMODROOT/implementation.h"
 
-fn C.sizeof_char() int
+fn C.sizeof_char() i32
 
 fn test_the_implementation_object_file_was_compiled_with_a_c_plus_plus_compiler() {
 	res := C.sizeof_char()

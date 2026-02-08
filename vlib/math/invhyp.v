@@ -4,10 +4,8 @@ import math.internal
 
 // acosh returns the non-negative area hyperbolic cosine of x
 pub fn acosh(x f64) f64 {
-	if x == 0.0 {
-		return 0.0
-	} else if x > 1.0 / internal.sqrt_f64_epsilon {
-		return log(x) + pi * 2
+	if x > 1.0 / internal.sqrt_f64_epsilon {
+		return log(x) + ln2
 	} else if x > 2.0 {
 		return log(2.0 * x - 1.0 / (sqrt(x * x - 1.0) + x))
 	} else if x > 1.0 {
@@ -25,7 +23,7 @@ pub fn asinh(x f64) f64 {
 	a := abs(x)
 	s := if x < 0 { -1.0 } else { 1.0 }
 	if a > 1.0 / internal.sqrt_f64_epsilon {
-		return s * (log(a) + pi * 2.0)
+		return s * (log(a) + ln2)
 	} else if a > 2.0 {
 		return s * log(2.0 * a + 1.0 / (a + sqrt(a * a + 1.0)))
 	} else if a > internal.sqrt_f64_epsilon {

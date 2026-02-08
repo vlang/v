@@ -39,7 +39,7 @@ jobs:
       VFLAGS: -no-parallel
       B_LFLAGS: -lm -lpthread
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Build V

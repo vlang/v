@@ -6,6 +6,7 @@ module parser
 import os
 import v.ast
 import v.token
+import v.errors
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
@@ -375,6 +376,16 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
+	// Store call stack info for template errors
+	file.call_stack = [
+		errors.CallStackItem{
+			file_path: p.file_path
+			pos:       start_pos
+		},
+	]
+	// Transfer template paths and line mapping from parser to file for error reporting
+	file.template_paths = p.template_paths
+	file.template_line_map = p.template_line_map
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
 		is_vweb:     true

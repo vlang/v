@@ -28,11 +28,11 @@ pub mut:
 	is_opened bool
 }
 
-fn C.fseeko(&C.FILE, u64, int) int
+fn C.fseeko(&C.FILE, u64, i32) i32
 
-fn C._fseeki64(&C.FILE, u64, int) int
+fn C._fseeki64(&C.FILE, u64, i32) i32
 
-fn C.getc(&C.FILE) int
+fn C.getc(&C.FILE) i32
 
 fn C.freopen(&char, &char, &C.FILE) &C.FILE
 
@@ -128,7 +128,7 @@ pub fn open(path string) !File {
 		$if !android {
 			fd := C.syscall(sys_open, path.str, 511)
 			if fd == -1 {
-				return error('failed to open file "$path"')
+				return error('failed to open file "${path}"')
 			}
 			return File{
 				fd: fd
@@ -208,6 +208,9 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
 	if buf.len == 0 {
 		return Eof{}
 	}
@@ -390,6 +393,9 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []u8 {
 // A read call is either stopped, if the buffer is full, a newline was read or EOF.
 // On EOF, the method returns 0. The methods will also return any IO error encountered.
 pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
@@ -429,6 +435,9 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
 pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) !int {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
@@ -440,6 +449,9 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) !int {
 
 // read_from implements the RandomReader interface.
 pub fn (f &File) read_from(pos u64, mut buf []u8) !int {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
 	if buf.len == 0 {
 		return 0
 	}
@@ -451,6 +463,9 @@ pub fn (f &File) read_from(pos u64, mut buf []u8) !int {
 // read_into_ptr reads at most `max_size` bytes from the file and writes it into ptr.
 // Returns the amount of bytes read or an error.
 pub fn (f &File) read_into_ptr(ptr &u8, max_size int) !int {
+	if !f.is_opened {
+		return error_file_not_opened()
+	}
 	return fread(ptr, 1, max_size, f.cfile)
 }
 

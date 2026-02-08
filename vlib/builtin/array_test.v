@@ -556,6 +556,29 @@ fn test_find_index() {
 	assert d.index(`u`) == -1
 }
 
+fn test_find_last_index() {
+	// string
+	a := ['v', 'is', 'great', 'is', 'k', 'm']
+	assert a.last_index('v') == 0
+	assert a.last_index('is') == 3
+	assert a.last_index('gre') == -1
+	// int
+	b := [1, 2, 3, 4, 0, 1, 2, 3, 0, 1, 2, 3]
+	assert b.last_index(1) == 9
+	assert b.last_index(4) == 3
+	assert b.last_index(5) == -1
+	// byte
+	c := [0x22, 0x33, 0x55, 0x22, 0x44, 0x55]
+	assert c.last_index(0x22) == 3
+	assert c.last_index(0x55) == 5
+	assert c.last_index(0x99) == -1
+	// char
+	d := [`a`, `b`, `c`, `e`, `a`, `b`, `c`, `k`]
+	assert d.last_index(`b`) == 5
+	assert d.last_index(`c`) == 6
+	assert d.last_index(`u`) == -1
+}
+
 fn test_multi() {
 	a := [[1, 2, 3], [4, 5, 6]]
 	assert a.len == 2
@@ -962,7 +985,7 @@ fn test_for_last() {
 	numbers := [1, 2, 3, 4]
 	mut s := '['
 	for num in numbers {
-		s += '$num'
+		s += '${num}'
 		if !last {
 			s += ', '
 
@@ -1061,31 +1084,31 @@ fn test_drop() {
 	mut a := [1, 2]
 	a << 3 // pushing assures reallocation; a.cap now should be bigger:
 	assert a.cap > 3
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 
 	a.drop(-1000)
 	assert a == [1, 2, 3] // a.drop( negative ) should NOT modify the array
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 
 	a.drop(2)
 	assert a == [3]
 	assert a.cap > a.len
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 
 	a.drop(10)
 	assert a == []
 	assert a.cap > a.len
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 
 	a << 123
 	a << 456
 	a << 789
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 	assert a == [123, 456, 789]
 
 	a.drop(10)
 	assert a == []
-	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	// eprintln('>>> a.cap: ${a.cap} | a.len: ${a.len}')
 
 	unsafe { a.free() } // test offset OK
 }
