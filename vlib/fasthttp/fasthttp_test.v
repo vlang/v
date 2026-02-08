@@ -112,3 +112,36 @@ fn test_new_server() {
 
 	assert server.port == 8080
 }
+
+fn test_server_ipv4_ipv6_binding() {
+	// Test IPv4 binding
+	handler := fn (req HttpRequest) !HttpResponse {
+		return HttpResponse{
+			content: 'HTTP/1.1 200 OK\r\n\r\nIPv4 test'.bytes()
+		}
+	}
+
+	server_ipv4 := new_server(ServerConfig{
+		family:  .ip
+		port:    8081
+		handler: handler
+	}) or {
+		assert false, 'Failed to create IPv4 server: ${err}'
+		return
+	}
+
+	// Test IPv6 binding
+	server_ipv6 := new_server(ServerConfig{
+		family:  .ip6
+		port:    8082
+		handler: handler
+	}) or {
+		assert false, 'Failed to create IPv6 server: ${err}'
+		return
+	}
+
+	// Verify both servers were created successfully
+	// Note: family field is not exported, so we can't directly test it
+	assert server_ipv4.port == 8081
+	assert server_ipv6.port == 8082
+}
