@@ -799,7 +799,7 @@ age := 12
 println('age = ${age}')
 ```
 
-See all methods of [string](https://modules.vlang.io/index.html#string)
+See all methods of [string](https://modules.vlang.io/builtin.html#string)
 and related modules [strings](https://modules.vlang.io/strings.html),
 [strconv](https://modules.vlang.io/strconv.html).
 
