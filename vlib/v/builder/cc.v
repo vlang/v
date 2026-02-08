@@ -80,7 +80,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			if ccompiler == 'tcc' && res.output.starts_with('tcc: error: could not run') {
 				println('${highlight_word('Suggestion')}: try using a different C compiler with `-cc gcc` or `-cc clang`.')
 				println('${highlight_word('Suggestion')}: or build TCC for the target architecture yourself.')
-				println('${highlight_word('Note')}: you should build an 32bit version of `${@VROOT}/thirdparty/tcc/lib/libgc.a` first or use `-gc none`.')
+				println('${highlight_word('Note')}: you should build an 32bit version of `${@VEXEROOT}/thirdparty/tcc/lib/libgc.a` first or use `-gc none`.')
 				exit(1)
 			} else {
 				println('Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.')

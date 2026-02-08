@@ -11,7 +11,7 @@ fn test_rand_is_initialized_before_main() {
 //
 
 const last_constant = fn_that_calls_a_method_on_a_constant()
-const a_constant = os.join_path(@VROOT, 'a')
+const a_constant = os.join_path(@VEXEROOT, 'a')
 
 fn fn_that_calls_a_method_on_a_constant() string {
 	return a_constant.replace('\\', '/')

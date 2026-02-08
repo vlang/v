@@ -65,7 +65,7 @@ fn run(args []string) !string {
 // test_toml_rs_toml_rs run though 'testdata/toml_rs/crates/test-suite/tests/*' if found.
 fn test_toml_rs_toml_rs() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_rs/crates/test-suite/tests'
+	test_root := '${@VEXEROOT}/vlib/toml/tests/testdata/toml_rs/crates/test-suite/tests'
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
