@@ -1523,8 +1523,13 @@ fn (g &Gen) lookup_type_from_env(name string, module_name string) ?types.Type {
 	if g.mod.env == unsafe { nil } {
 		return none
 	}
-	mut scope := lock g.mod.env.scopes {
-		g.mod.env.scopes[module_name] or { g.mod.env.scopes['builtin'] or { return none } }
+	mut scope := &types.Scope(unsafe { nil })
+	if s := g.mod.env.get_scope(module_name) {
+		scope = s
+	} else if s := g.mod.env.get_scope('builtin') {
+		scope = s
+	} else {
+		return none
 	}
 	if obj := scope.lookup_parent(name, 0) {
 		if obj is types.Type {
