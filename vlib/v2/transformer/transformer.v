@@ -5876,9 +5876,11 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 						end_expr,
 						ast.Expr(ast.KeywordOperator{
 							op:    .key_sizeof
-							exprs: [ast.Expr(ast.Ident{
-								name: elem_c_name
-							})]
+							exprs: [
+								ast.Expr(ast.Ident{
+									name: elem_c_name
+								}),
+							]
 						}),
 						lhs,
 					]
