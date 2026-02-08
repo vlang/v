@@ -152,6 +152,15 @@ pub fn (f &FnType) get_return_type() ?Type {
 	return f.return_type
 }
 
+// get_param_types returns function parameter types in declaration order.
+pub fn (f &FnType) get_param_types() []Type {
+	mut param_types := []Type{cap: f.params.len}
+	for param in f.params {
+		param_types << param.typ
+	}
+	return param_types
+}
+
 pub struct Interface {
 pub:
 	name string
@@ -184,8 +193,9 @@ type NamedType = string
 
 pub struct Field {
 pub:
-	name string
-	typ  Type
+	name         string
+	typ          Type
+	default_expr ast.Expr = ast.empty_expr
 }
 
 // struct Method {
@@ -292,7 +302,10 @@ pub fn (t Type) value_type() Type {
 			return t.elem_type
 		}
 		Channel {
-			return t.elem_type or { Type(t) }
+			if elem_type := t.elem_type {
+				return elem_type
+			}
+			return Type(t)
 		} // TODO: ?
 		Map {
 			return t.value_type
@@ -309,7 +322,10 @@ pub fn (t Type) value_type() Type {
 			return u8_
 		}
 		Thread {
-			return t.elem_type or { Type(t) }
+			if elem_type := t.elem_type {
+				return elem_type
+			}
+			return Type(t)
 		} // TODO: ?
 		OptionType, ResultType {
 			return t.base_type.value_type()
@@ -326,14 +342,13 @@ fn (t Type) typed_default() Type {
 	// this handles int & float
 	if t is Primitive && t.is_number_literal() {
 		mut concrete_props := t.props
-		concrete_props.clear(.untyped)
+		concrete_props.clear(Properties.untyped)
 		// TODO: platform dependant size - see universe
-		size := u8(if t.props.has(.float) { 32 } else { 0 })
-		return Primitive{
-			...t
+		size := u8(if t.props.has(Properties.float) { 32 } else { 0 })
+		return Type(Primitive{
 			props: concrete_props
 			size:  size
-		}
+		})
 	}
 	return t
 }
@@ -484,7 +499,6 @@ fn (t Primitive) name() string {
 	} else if t.props.has(.float) {
 		return 'f${t.size}'
 	}
-	println(t)
 	panic(t.props.str())
 	return 'malformed primitive' // lol
 	// TODO: match seems broke when multuple flags are set
@@ -604,6 +618,10 @@ fn (t SumType) name() string {
 
 // get_sum_type_name returns the name of a SumType (public accessor)
 pub fn (t SumType) get_name() string {
+	return t.name
+}
+
+pub fn sum_type_name(t SumType) string {
 	return t.name
 }
 

@@ -5,14 +5,13 @@
 module optimize
 
 import v2.ssa
-import time
+import time as _
 
 // Set to true to enable verification after each optimization pass (for debugging)
 const debug_verify = false
 
 // Optimize Module
 pub fn optimize(mut m ssa.Module) {
-	t := time.now()
 	// 1. Build Control Flow Graph (Predecessors)
 	build_cfg(mut m)
 	$if debug_verify {
@@ -31,31 +30,9 @@ pub fn optimize(mut m ssa.Module) {
 		verify_and_panic(m, 'promote_memory_to_register')
 	}
 
-	// 4. Scalar Optimizations (run until fixed point)
-	mut opt_changed := true
-	for opt_changed {
-		opt_changed = false
-		opt_changed = constant_fold(mut m) || opt_changed
-		opt_changed = branch_fold(mut m) || opt_changed
-		opt_changed = dead_code_elimination(mut m) || opt_changed
-		opt_changed = simplify_phi_nodes(mut m) || opt_changed
-	}
-	$if debug_verify {
-		verify_and_panic(m, 'scalar_optimizations')
-	}
+	// 4. Simplify trivial Phi Nodes
+	simplify_phi_nodes(mut m)
 
-	merge_blocks(mut m)
-	remove_unreachable_blocks(mut m)
-	$if debug_verify {
-		verify_and_panic(m, 'block_optimizations')
-	}
-
-	// 6. Eliminate Phi Nodes (Lower to Copies for Backend)
-	// This includes Critical Edge Splitting and Briggs Parallel Copy Resolution
+	// 5. Eliminate Phi Nodes (convert to copies in predecessor blocks)
 	eliminate_phi_nodes(mut m)
-	$if debug_verify {
-		verify_and_panic(m, 'eliminate_phi_nodes')
-	}
-
-	println('SSA optimization took ${time.since(t)}')
 }

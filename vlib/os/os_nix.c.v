@@ -341,7 +341,7 @@ pub fn execute(cmd string) Result {
 	unsafe {
 		pbuf := &buf[0]
 		for {
-			len := C.read(fd, pbuf, 4096)
+			len := int(C.read(fd, pbuf, 4096))
 			if len == 0 {
 				break
 			}

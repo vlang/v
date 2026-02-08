@@ -89,6 +89,18 @@ pub mut:
 	globals    []ssa.GlobalVar
 }
 
+fn clone_value_ids(values []ssa.ValueID) []ssa.ValueID {
+	return values.clone()
+}
+
+fn clone_block_ids(blocks []ssa.BlockID) []ssa.BlockID {
+	return blocks.clone()
+}
+
+fn opcode_label(op ssa.OpCode) string {
+	return int(op).str()
+}
+
 pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 	mut mod := Module{
 		name:       ssa_mod.name
@@ -110,15 +122,15 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			index: val.index
 			kind:  value_kind_from_ssa(val.kind)
 			name:  val.name
-			uses:  val.uses.clone()
+			uses:  clone_value_ids(val.uses)
 		}
 	}
 
 	for i, instr in ssa_mod.instrs {
 		mod.instrs[i] = Instruction{
 			op:               instr.op
-			operands:         instr.operands.clone()
-			selected_op:      instr.op.str()
+			operands:         clone_value_ids(instr.operands)
+			selected_op:      opcode_label(instr.op)
 			abi_ret_indirect: false
 			abi_arg_class:    []AbiArgClass{}
 			typ:              instr.typ
@@ -133,9 +145,9 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			val_id: blk.val_id
 			name:   blk.name
 			parent: blk.parent
-			instrs: blk.instrs.clone()
-			preds:  blk.preds.clone()
-			succs:  blk.succs.clone()
+			instrs: clone_value_ids(blk.instrs)
+			preds:  clone_block_ids(blk.preds)
+			succs:  clone_block_ids(blk.succs)
 		}
 	}
 
@@ -146,8 +158,8 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			typ:              f.typ
 			linkage:          f.linkage
 			call_conv:        f.call_conv
-			blocks:           f.blocks.clone()
-			params:           f.params.clone()
+			blocks:           clone_block_ids(f.blocks)
+			params:           clone_value_ids(f.params)
 			abi_ret_indirect: false
 			abi_param_class:  []AbiArgClass{len: f.params.len, init: .in_reg}
 		}

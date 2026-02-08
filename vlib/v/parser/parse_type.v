@@ -510,7 +510,7 @@ fn (mut p Parser) parse_type() ast.Type {
 
 	if is_option && is_result {
 		p.error_with_pos('the type must be Option or Result', p.prev_tok.pos())
-		return 0
+		return ast.void_type
 	}
 
 	if is_option || is_result {

@@ -1944,9 +1944,6 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 			parent_sym := g.table.sym(sym.info.parent_type)
 			if parent_sym.info is ast.ArrayFixed {
 				mut elem_sym := g.table.sym(parent_sym.info.elem_type)
-				if !elem_sym.is_builtin() {
-					is_fixed_array_of_non_builtin = true
-				}
 
 				mut parent_elem_info := parent_sym.info as ast.ArrayFixed
 				mut parent_elem_styp := g.styp(sym.info.parent_type)
@@ -1965,6 +1962,15 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 						break
 					}
 				}
+				// Determine based on the base element type (after walking
+				// through all nesting levels) whether the fixed array
+				// contains non-builtin types. For non-builtins (structs,
+				// enums), write_sorted_types handles the typedefs after
+				// struct definitions, so skip emitting them here.
+				if !elem_sym.is_builtin() {
+					is_fixed_array_of_non_builtin = true
+					out.clear()
+				}
 				if out.len != 0 {
 					g.type_definitions.writeln(out.str())
 				}
@@ -1981,7 +1987,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 		g.type_definitions.writeln('#define ${sym.cname} ${sym.cname#[3..]}')
 		return
 	}
-	if is_fixed_array_of_non_builtin && levels == 0 {
+	if is_fixed_array_of_non_builtin {
 		g.alias_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
 	} else {
 		g.type_definitions.writeln('typedef ${parent_styp} ${sym.cname};')

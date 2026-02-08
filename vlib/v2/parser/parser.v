@@ -79,16 +79,20 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	if p.tok in [.attribute, .lsbr] {
 		attribute_stmt := p.attribute_stmt()
 		top_stmts << attribute_stmt
-		if attribute_stmt is []ast.Attribute {
-			attributes = attribute_stmt.clone()
-			for attribute in attributes {
-				if attribute.value is ast.Ident {
-					if attribute.value.name !in ['has_globals', 'generated', 'manualfree',
-						'translated'] {
-						p.warn('invalid file level attribute `${attribute.name}` (or should `${p.tok}` support attributes)')
+		match attribute_stmt {
+			[]ast.Attribute {
+				attrs := attribute_stmt as []ast.Attribute
+				for attribute in attrs {
+					attributes << attribute
+					if attribute.value is ast.Ident {
+						if attribute.value.name !in ['has_globals', 'generated', 'manualfree',
+							'translated'] {
+							p.warn('invalid file level attribute `${attribute.name}` (or should `${p.tok}` support attributes)')
+						}
 					}
 				}
 			}
+			else {}
 		}
 	}
 	// TODO: script mode support?
@@ -312,14 +316,16 @@ fn (mut p Parser) stmt() ast.Stmt {
 			expr := p.expr(.lowest)
 			// label `start:`
 			if p.tok == .colon {
-				name := match expr {
-					ast.Ident { expr.name }
-					else { p.error('expecting identifier') }
+				mut name := ''
+				if expr is ast.Ident {
+					name = expr.name
+				} else {
+					p.error('expecting identifier')
 				}
 				p.next()
 				return ast.LabelStmt{
 					name: name
-					stmt: if p.tok == .key_for { p.for_stmt() } else { ast.empty_stmt }
+					stmt: if p.tok == .key_for { ast.Stmt(p.for_stmt()) } else { ast.empty_stmt }
 				}
 			}
 			return p.complete_simple_stmt(expr, false)
@@ -388,10 +394,12 @@ fn (mut p Parser) complete_simple_stmt(expr ast.Expr, expecting_semi bool) ast.S
 			return assign_stmt
 		}
 		// multi return values (last statement, no return keyword)
-		return ast.ExprStmt{ast.Tuple{
-			exprs: exprs
-			pos:   tuple_pos
-		}}
+		return ast.ExprStmt{
+			expr: ast.Expr(ast.Tuple{
+				exprs: exprs
+				pos:   tuple_pos
+			})
+		}
 	} else if p.tok.is_assignment() {
 		assign_stmt := p.assign_stmt([expr])
 		// TODO: best way? decide if we will force them
@@ -456,7 +464,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			else if captured_vars.len > 0 {
 				expr_0 := captured_vars[0]
 				if expr_0 is ast.Ident {
-					if expr_0.name[0].is_capital() {
+					if u8(expr_0.name[0]).is_capital() {
 						generic_params = captured_vars.clone()
 						captured_vars = []
 					}
@@ -481,7 +489,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 		}
 		.key_if {
-			lhs = p.if_expr(false)
+			lhs = ast.Expr(p.if_expr(false))
 		}
 		// NOTE: I would much rather dump, likely, and unlikely were
 		// some type of comptime fn/macro's which come as part of the
@@ -727,14 +735,14 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					for i := exprs_arr.len - 1; i >= 0; i-- {
 						exprs2 := exprs_arr[i]
 						if exprs2.len == 0 {
-							lhs = ast.Type(ast.ArrayType{
+							lhs = ast.Expr(ast.Type(ast.ArrayType{
 								elem_type: elem_type
-							})
+							}))
 						} else if exprs2.len == 1 {
-							lhs = ast.Type(ast.ArrayFixedType{
+							lhs = ast.Expr(ast.Type(ast.ArrayFixedType{
 								elem_type: elem_type
 								len:       exprs2[0]
-							})
+							}))
 						} else {
 							// TODO: use same error message as typ() `expect(.rsbr)`
 							p.error('expecting single expr for fixed array length')
@@ -791,10 +799,10 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 			// (`[n]type{}` | `[n]type`) - single-dimensional fixed array with one size expr
 			else if exprs.len == 1 && p.tok in [.amp, .name] {
-				lhs = ast.Type(ast.ArrayFixedType{
+				lhs = ast.Expr(ast.Type(ast.ArrayFixedType{
 					elem_type: p.expect_type()
 					len:       exprs[0]
-				})
+				}))
 				// `[n]type{}`
 				if p.tok == .lcbr && !p.exp_lcbr {
 					p.next()
@@ -826,9 +834,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 			// (`[]type{}` | `[][]type{}` | `[]&type{len: 2}`) | `[]type`
 			else if p.tok in [.amp, .lsbr, .name] {
-				lhs = ast.Type(ast.ArrayType{
+				lhs = ast.Expr(ast.Type(ast.ArrayType{
 					elem_type: p.expect_type()
-				})
+				}))
 				// `[]type{}`
 				if p.tok == .lcbr && !p.exp_lcbr {
 					p.next()
@@ -979,9 +987,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 			// raw/c/js string: `r'hello'`
 			else if p.tok == .string {
-				lhs = p.string_literal(ast.StringLiteralKind.from_string_tinyv(lit) or {
-					p.error(err.msg())
-				})
+				lhs = p.string_literal(ast.StringLiteralKind.from_string_tinyv(lit))
 			}
 			// `ident{}`
 			else if p.tok == .lcbr && !p.exp_lcbr {
@@ -1061,8 +1067,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			else if args.len == 1 {
 				// definitely a cast
 				if lhs is ast.Type {
+					lhs_type := lhs as ast.Type
 					lhs = ast.CastExpr{
-						typ:  lhs
+						typ:  ast.Expr(lhs_type)
 						expr: args[0]
 						pos:  pos
 					}
@@ -1137,7 +1144,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						}
 					}
 					// `ident[ident]()` this will be determined at a later stage by checking lhs
-					else if expr in [ast.Ident, ast.SelectorExpr] {
+					else if expr is ast.Ident || expr is ast.SelectorExpr {
 						lhs = ast.GenericArgOrIndexExpr{
 							lhs:  lhs
 							expr: expr
@@ -1158,7 +1165,8 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					// `fn[GenericStructA[int]]` | `GenericStructA[GenericStructB[int]]]` nested generic args
 					// TODO: make sure this does not cause false positives, may need extra check (.comma, .rsbr)
 					// if p.exp_pt && expr in [ast.GenericArgs, ast.Ident, ast.SelectorExpr] && p.tok in [.comma, .rsbr] {
-					if p.exp_pt && expr in [ast.GenericArgs, ast.Ident, ast.SelectorExpr] {
+					if p.exp_pt && (expr is ast.GenericArgs || expr is ast.Ident
+						|| expr is ast.SelectorExpr) {
 						lhs = ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
@@ -1550,7 +1558,7 @@ fn (mut p Parser) comptime_expr() ast.Expr {
 	match p.tok {
 		.key_if {
 			return ast.ComptimeExpr{
-				expr: p.if_expr(true)
+				expr: ast.Expr(p.if_expr(true))
 				pos:  pos
 			}
 		}
@@ -1569,7 +1577,7 @@ fn (mut p Parser) comptime_stmt() ast.Stmt {
 	match p.tok {
 		.key_for {
 			return ast.ComptimeStmt{
-				stmt: p.for_stmt()
+				stmt: ast.Stmt(p.for_stmt())
 			}
 		}
 		.key_if {
@@ -1608,19 +1616,19 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 		if p.tok == .key_in {
 			// p.expect(.key_in)
 			p.next()
-			init = ast.ForInStmt{
+			init = ast.Stmt(ast.ForInStmt{
 				key:   expr
 				value: expr2
 				expr:  p.expr(.lowest)
-			}
+			})
 		} else if p.tok == .lcbr {
 			// `for x in y {`
 			// TODO: maybe handle this differently
 			if mut expr is ast.InfixExpr && expr.op == .key_in {
-				init = ast.ForInStmt{
+				init = ast.Stmt(ast.ForInStmt{
 					value: expr.lhs
 					expr:  expr.rhs
-				}
+				})
 			}
 			// `for x < y {`
 			else {
@@ -1642,7 +1650,7 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 					if !p.tok.is_assignment() {
 						p.error('expecting assignment `for a, b, c := 1, 2, 3; ... {`')
 					}
-					init = p.assign_stmt(exprs)
+					init = ast.Stmt(p.assign_stmt(exprs))
 				}
 			}
 			p.expect(.semicolon)
@@ -1740,7 +1748,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		// p.expect(.key_else)
 		// p.next()
-		else_expr = p.if_expr(is_comptime)
+		else_expr = ast.Expr(p.if_expr(is_comptime))
 	}
 	return ast.IfExpr{
 		cond:      cond
@@ -2022,10 +2030,10 @@ fn (mut p Parser) fn_arguments() []ast.Expr {
 			.logical_or {
 				lambda_pos := p.pos
 				p.next()
-				ast.LambdaExpr{
+				ast.Expr(ast.LambdaExpr{
 					expr: p.expr(.lowest)
 					pos:  lambda_pos
-				}
+				})
 			}
 			// lambda expression - with args
 			.pipe {
@@ -2037,11 +2045,11 @@ fn (mut p Parser) fn_arguments() []ast.Expr {
 					le_args << p.ident()
 				}
 				p.expect(.pipe)
-				ast.LambdaExpr{
+				ast.Expr(ast.LambdaExpr{
 					args: le_args
 					expr: p.expr(.lowest)
 					pos:  lambda_pos
-				}
+				})
 			}
 			else {
 				p.expr(.lowest)
@@ -2189,9 +2197,14 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 			} else {
 				p.error('expecting field name')
 			}
+			field_typ := if p.tok == .lpar {
+				ast.Expr(ast.Type(p.fn_type()))
+			} else {
+				p.expect_type()
+			}
 			fields << ast.FieldDecl{
 				name: field_name
-				typ:  if p.tok == .lpar { ast.Type(p.fn_type()) } else { p.expect_type() }
+				typ:  field_typ
 			}
 		}
 		// embedded interface
@@ -2280,9 +2293,11 @@ fn (mut p Parser) struct_decl_fields(language ast.Language) ([]ast.Expr, []ast.F
 			continue
 		}
 		// field
-		field_name := match embed_or_name {
-			ast.Ident { embed_or_name.name }
-			else { p.error('invalid field name') }
+		mut field_name := ''
+		if embed_or_name is ast.Ident {
+			field_name = embed_or_name.name
+		} else {
+			p.error('invalid field name')
 		}
 		field_type := p.expect_type()
 		// field - default value
@@ -2326,7 +2341,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		pos:   p.pos
 		stmt:  stmt
 		stmts: stmts
-		next:  if p.tok != .rcbr { p.select_expr() } else { ast.empty_expr }
+		next:  if p.tok != .rcbr { ast.Expr(p.select_expr()) } else { ast.empty_expr }
 	}
 	return select_expr
 }
@@ -2373,7 +2388,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 				// ast.BasicLiteral { field_name = value.value }
 				// ast.StringLiteral { field_name = value.value }
 				ast.Ident { field_name = value.name }
-				else { p.error('expected field name, got ${value.type_name()}') }
+				else { p.error('expected field name, got ${value.name()}') }
 			}
 			p.next()
 			value = p.expr(.lowest)
@@ -2461,7 +2476,7 @@ fn (mut p Parser) string_inter() ast.StringInter {
 		// 	_ = p.lit()
 		// }
 		if p.tok == .name {
-			format = ast.StringInterFormat.from_u8(p.lit[0]) or { p.error(err.msg()) }
+			format = ast.StringInterFormat.from_u8(p.lit[0])
 			p.next()
 		}
 	}
