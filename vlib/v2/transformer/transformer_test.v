@@ -10,7 +10,10 @@ import v2.types
 fn create_test_transformer() &Transformer {
 	env := &types.Environment{}
 	return &Transformer{
-		env: unsafe { env }
+		env:                         unsafe { env }
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
 	}
 }
 
@@ -23,8 +26,11 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 		scope.insert(name, typ)
 	}
 	return &Transformer{
-		env:   unsafe { env }
-		scope: scope
+		env:                         unsafe { env }
+		scope:                       scope
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
 	}
 }
 
@@ -234,6 +240,72 @@ fn test_transform_index_expr_array_slice_lowered() {
 	assert call.args.len == 3
 	// Inclusive range `...` should become end + 1.
 	assert call.args[2] is ast.InfixExpr
+}
+
+fn test_transform_call_or_cast_expr_array_contains_fixed_array() {
+	mut t := create_transformer_with_vars({
+		'a': types.Type(types.ArrayFixed{
+			len:       3
+			elem_type: types.int_
+		})
+	})
+	expr := ast.CallOrCastExpr{
+		lhs:  ast.SelectorExpr{
+			lhs: ast.Ident{
+				name: 'a'
+			}
+			rhs: ast.Ident{
+				name: 'contains'
+			}
+		}
+		expr: ast.BasicLiteral{
+			kind:  .number
+			value: '2'
+		}
+	}
+	result := t.transform_call_or_cast_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'Array_fixed_int_3_contains'
+	assert call.args.len == 2
+	assert call.args[0] is ast.Ident
+	assert (call.args[0] as ast.Ident).name == 'a'
+	assert 'Array_fixed_int_3_contains' in t.needed_array_contains_fns
+}
+
+fn test_transform_call_expr_array_contains_fixed_array() {
+	mut t := create_transformer_with_vars({
+		'a': types.Type(types.ArrayFixed{
+			len:       3
+			elem_type: types.int_
+		})
+	})
+	expr := ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'array__contains'
+		}
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'a'
+			}),
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}
+			}),
+		]
+	}
+	result := t.transform_call_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'Array_fixed_int_3_contains'
+	assert call.args.len == 2
+	assert call.args[1] is ast.BasicLiteral
+	assert 'Array_fixed_int_3_contains' in t.needed_array_contains_fns
 }
 
 fn test_transform_map_init_expr_non_empty_lowers_to_runtime_ctor() {

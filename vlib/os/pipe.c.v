@@ -65,7 +65,7 @@ pub fn (p &Pipe) read(mut buffer []u8) !int {
 	if result == -1 {
 		return error('Read failed')
 	}
-	return result
+	return int(result)
 }
 
 // write writes data from the buffer to the pipe
@@ -74,7 +74,7 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 	if result == -1 {
 		return error('Write failed')
 	}
-	return result
+	return int(result)
 }
 
 // write_string writes data from the string to the pipe
@@ -83,7 +83,7 @@ pub fn (p &Pipe) write_string(s string) !int {
 	if result == -1 {
 		return error('Write failed')
 	}
-	return result
+	return int(result)
 }
 
 // slurp reads all data from the pipe until EOF
