@@ -80,7 +80,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			if ccompiler == 'tcc' && res.output.starts_with('tcc: error: could not run') {
 				println('${highlight_word('Suggestion')}: try using a different C compiler with `-cc gcc` or `-cc clang`.')
 				println('${highlight_word('Suggestion')}: or build TCC for the target architecture yourself.')
-				println('${highlight_word('Note')}: you should build an 32bit version of `${@VROOT}/thirdparty/tcc/lib/libgc.a` first or use `-gc none`.')
+				println('${highlight_word('Note')}: you should build an 32bit version of `${@VEXEROOT}/thirdparty/tcc/lib/libgc.a` first or use `-gc none`.')
 				exit(1)
 			} else {
 				println('Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.')
@@ -281,6 +281,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if have_flto {
 			optimization_options << '-flto'
 		}
+		// gcc versions newer than 10.2, produce buggy programs, usually triggered by optimising inlined small functions, when both -flto and -O3 are used.
+		// Using -fno-strict-aliasing prevents that. See https://github.com/vlang/v/issues/26512 .
+		optimization_options << '-fno-strict-aliasing'
 	}
 	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {

@@ -4,8 +4,8 @@ import os
 import net.http
 
 fn main() {
-	os.chdir(@VROOT)! // make sure that the workfolder is stable
-	tloc := os.join_path(@VROOT, 'thirdparty')
+	os.chdir(@VEXEROOT)! // make sure that the workfolder is stable
+	tloc := os.join_path(@VEXEROOT, 'thirdparty')
 	loc := os.join_path(tloc, 'wabt')
 	if os.exists(loc) {
 		eprintln('thirdparty/wabt exists, will not overwrite')

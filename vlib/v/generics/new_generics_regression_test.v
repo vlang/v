@@ -14,12 +14,15 @@ import log
 import term
 
 const vexe = @VEXE
-const vroot = @VROOT
+const vroot = @VEXEROOT
 const vtrace_output = os.getenv('VTRACE_OUTPUT').int() != 0
 
 fn testsuite_begin() {
-	os.chdir(@VROOT)!
+	unbuffer_stdout()
+	os.chdir(vroot)!
 	os.setenv('VJOBS', '1', true)
+	// important, when this test itself is run through `v test`; this simplify the handling of the output of the inner `v test` commands
+	os.setenv('VCOLORS', 'never', true)
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {

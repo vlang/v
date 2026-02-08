@@ -10,7 +10,7 @@ fn separator() {
 }
 
 fn test_trace_fns() {
-	os.chdir(@VROOT)!
+	os.chdir(@VEXEROOT)!
 	folder := os.join_path('vlib', 'v', 'tests', 'testdata', 'trace_calls')
 	fpath := os.join_path(folder, 'single_println.vv')
 	should_match_fpath := os.join_path(folder, 'single_println.vv.must_match.simple')
@@ -23,7 +23,7 @@ fn test_trace_fns() {
 }
 
 fn test_tracing() {
-	os.chdir(@VROOT)!
+	os.chdir(@VEXEROOT)!
 	folder := os.join_path('vlib', 'v', 'tests', 'testdata', 'trace_calls')
 	files := os.walk_ext(folder, '.vv')
 	for fpath in files {
