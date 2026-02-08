@@ -34,27 +34,8 @@ pub const ms_invalidate = 4
 // Define the Windows functions
 // ----------------------------------------------------------------------------
 
-/*
-HANDLE CreateFileMappingA(
-  HANDLE                hFile,
-  LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
-  DWORD                 flProtect,
-  DWORD                 dwMaximumSizeHigh,
-  DWORD                 dwMaximumSizeLow,
-  LPCSTR                lpName
-);
-*/
 fn C.CreateFileMapping(hFile os.HANDLE, lpFileMappingAttributes voidptr, flProtect int, dwMaxSizeHigh int, dwMaxSizeLow int, lpName &char) os.HANDLE
 
-/*
-LPVOID MapViewOfFile(
-  HANDLE hFileMappingObject,
-  DWORD  dwDesiredAccess,
-  DWORD  dwFileOffsetHigh,
-  DWORD  dwFileOffsetLow,
-  usize dwNumberOfBytesToMap
-);
-*/
 fn C.MapViewOfFile(hFileMappingObject os.HANDLE, dwDesiredAccess int, dwFileOffsetHigh int, dwFileOffsetLow int, dwNumberOfBytesToMap usize) voidptr
 
 fn C.UnmapViewOfFile(addr voidptr) int
@@ -63,32 +44,12 @@ fn C.VirtualUnlock(addr voidptr, len usize) int
 fn C.FlushViewOfFile(addr voidptr, len usize) int
 
 fn C.GetLastError() int
+fn C.SetLastError(dwErrorCode int)
 
-/*
-intptr_t _get_osfhandle(
-   int fd
-);
-*/
 fn C._get_osfhandle(fd int) os.HANDLE
 
-/*
-HLOCAL LocalFree(
-  _Frees_ptr_opt_ HLOCAL hMem
-);
-*/
 fn C.LocalFree(hMEM voidptr) voidptr
 
-/*
-DWORD FormatMessageA(
-  DWORD   dwFlags,
-  LPCVOID lpSource,
-  DWORD   dwMessageId,
-  DWORD   dwLanguageId,
-  LPSTR   lpBuffer,
-  DWORD   nSize,
-  va_list *Arguments
-);
-*/
 fn C.FormatMessageA(dwFlags int, lpSource voidptr, dwMessageId int, dwLanguageId int, lpBuffer voidptr, nSize int, arguments voidptr) int
 
 // ----------------------------------------------------------------------------
@@ -197,7 +158,13 @@ pub fn mmap(args MmapOptions) !voidptr {
 	dw_max_size_high := int((max_size >> 32) & 0xFFFFFFFF)
 
 	h := if (args.flags & map_anonymous) == 0 {
-		C._get_osfhandle(args.fd)
+		file_handle := C._get_osfhandle(args.fd)
+		if file_handle == C.INVALID_HANDLE_VALUE {
+			// Clear any potential error from GetLastError before returning our error
+			C.SetLastError(0)
+			return error('Bad file descriptor: unable to get OS file handle from fd ${args.fd}')
+		}
+		file_handle
 	} else {
 		C.INVALID_HANDLE_VALUE
 	}
@@ -210,8 +177,10 @@ pub fn mmap(args MmapOptions) !voidptr {
 	if fm == C.NULL {
 		msg := get_last_error_as_string()
 		return error('CreateFileMapping() failed: ${msg}')
-	} else {
-		defer {
+	}
+
+	defer {
+		if fm != C.NULL {
 			C.CloseHandle(fm)
 		}
 	}
@@ -220,7 +189,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 		args.len)
 	if map_ == C.NULL {
 		msg := get_last_error_as_string()
-		return error('MapViewOfFile() failed: ${msg}')
+		return error('MapViewOfFile() failed: ${msg}. Handle: ${h}, File mapping: ${fm}')
 	}
 
 	return map_
