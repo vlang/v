@@ -62,16 +62,6 @@ fn C.VirtualLock(addr voidptr, len usize) int
 fn C.VirtualUnlock(addr voidptr, len usize) int
 fn C.FlushViewOfFile(addr voidptr, len usize) int
 
-/*
-BOOL VirtualProtect(
-  LPVOID lpAddress,
-  usize dwSize,
-  DWORD  flNewProtect,
-  PDWORD lpflOldProtect
-);
-*/
-fn C.VirtualProtect(lpAddress voidptr, dwSize usize, flNewProtect int, lpflOldProtect &int) int
-
 fn C.GetLastError() int
 
 /*
@@ -226,14 +216,14 @@ pub fn mmap(args MmapOptions) !voidptr {
 		}
 	}
 
-	map := C.MapViewOfFile(fm, desired_access, dw_file_offset_high, dw_file_offset_low,
+	map_ := C.MapViewOfFile(fm, desired_access, dw_file_offset_high, dw_file_offset_low,
 		args.len)
-	if map == C.NULL {
+	if map_ == C.NULL {
 		msg := get_last_error_as_string()
 		return error('MapViewOfFile() failed: ${msg}')
 	}
 
-	return map
+	return map_
 }
 
 // munmap unmap the memory mapping
