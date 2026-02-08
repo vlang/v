@@ -677,7 +677,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					}
 					// sum type, check variants
 					if (expected_type is SumType && elem_type !in expected_type.variants)
-						&& !c.check_types(first_elem_type, elem_type) // everything else {
+						&& !c.check_types(first_elem_type, elem_type) { // everything else
 						// TODO: add general method for promotion/coercion
 						c.error_with_pos('expecting element of type: ${first_elem_type.name()}, got ${elem_type.name()}',
 							expr.pos)
