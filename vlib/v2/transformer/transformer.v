@@ -11883,6 +11883,16 @@ fn (t &Transformer) type_to_c_name(typ types.Type) string {
 			if typ.props.has(.boolean) {
 				return 'bool'
 			}
+			if typ.props.has(.untyped) {
+				if typ.props.has(.integer) {
+					return 'int_literal'
+				} else if typ.props.has(.float) {
+					return 'float_literal'
+				}
+			}
+			if typ.props.has(.float) {
+				return 'f${typ.size}'
+			}
 			if typ.props.has(.unsigned) {
 				match typ.size {
 					8 { return 'u8' }

@@ -205,10 +205,10 @@ pub:
 
 pub struct Struct {
 pub:
-	name           string
-	generic_params []string
+	name string
 pub mut:
-	embedded []Struct
+	generic_params []string
+	embedded       []Struct
 	// embedded       []Type
 	fields []Field
 	// fields	 map[string]Type

@@ -4,7 +4,7 @@ set -e
 # Build v2 with v1
 rm v2 || true
 V=${V:-$HOME/code/v/v}
-$V v2.v
+$V -gc none v2.v
 
 rm v3 || true
 rm v3.c || true

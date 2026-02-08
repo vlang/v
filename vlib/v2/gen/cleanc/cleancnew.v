@@ -49,6 +49,10 @@ mut:
 	cur_fn_mut_params      map[string]bool   // names of mut params in current function
 	global_var_modules     map[string]string // global var name → module name
 	primitive_type_aliases map[string]bool   // type names that are aliases for primitive types
+	// Generic function support
+	generic_fn_decls     map[string]GenericFnDeclInfo // mangled fn name -> decl info
+	generic_fn_instances map[string]map[string]string // mangled fn name -> (type param -> concrete type)
+	generic_type_map     map[string]string            // active mapping during generic fn body generation
 }
 
 struct InterfaceMethodInfo {
@@ -71,6 +75,12 @@ struct FixedArrayInfo {
 struct MapTypeInfo {
 	key_c_type   string
 	value_c_type string
+}
+
+struct GenericFnDeclInfo {
+	decl   ast.FnDecl
+	mod    string
+	params []string // generic type parameter names e.g. ['T']
 }
 
 const primitive_types = ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
@@ -332,7 +342,7 @@ pub fn (mut g Gen) gen() string {
 		g.set_file_module(file)
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {
-				if stmt.language == .c {
+				if stmt.language == .c || stmt.generic_params.len > 0 {
 					continue
 				}
 				name := g.get_struct_name(stmt)
@@ -390,7 +400,7 @@ pub fn (mut g Gen) gen() string {
 		g.set_file_module(file)
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {
-				if stmt.language == .c {
+				if stmt.language == .c || stmt.generic_params.len > 0 {
 					continue
 				}
 				all_structs << StructDeclInfo{
@@ -464,8 +474,22 @@ pub fn (mut g Gen) gen() string {
 				if stmt.language == .c && stmt.stmts.len == 0 {
 					continue
 				}
-				// Skip generic functions - they have unresolved type params
+				// Store generic functions for later instantiation
 				if stmt.typ.generic_params.len > 0 {
+					mut gp_names := []string{}
+					for gp in stmt.typ.generic_params {
+						if gp is ast.Ident {
+							gp_names << gp.name
+						}
+					}
+					fn_name_g := g.get_fn_name(stmt)
+					if fn_name_g != '' && gp_names.len > 0 {
+						g.generic_fn_decls[fn_name_g] = GenericFnDeclInfo{
+							decl:   stmt
+							mod: g.cur_module
+							params: gp_names
+						}
+					}
 					continue
 				}
 				fn_name := g.get_fn_name(stmt)
@@ -483,6 +507,23 @@ pub fn (mut g Gen) gen() string {
 		}
 	}
 	g.sb.writeln('')
+	// Pre-scan: Walk AST to find calls to generic functions and determine
+	// concrete types, so we can emit forward declarations before function bodies.
+	g.prescan_generic_fn_calls()
+	// Emit forward declarations for generic function instances
+	for fn_name, type_map in g.generic_fn_instances {
+		info := g.generic_fn_decls[fn_name] or { continue }
+		saved_map := g.generic_type_map.clone()
+		saved_module := g.cur_module
+		g.generic_type_map = type_map.clone()
+		g.cur_module = info.mod
+		g.gen_fn_head(info.decl)
+		g.sb.writeln(';')
+		g.generic_type_map = saved_map.clone()
+		g.cur_module = saved_module
+	}
+	g.sb.writeln('')
+
 	// Emit map inline helpers after function forward declarations (needs map__get etc.)
 	g.emit_map_helpers()
 	g.emit_ierror_wrappers()
@@ -492,6 +533,12 @@ pub fn (mut g Gen) gen() string {
 	for file in g.files {
 		g.gen_file(file)
 	}
+
+	// Pass 6: Emit concrete generic function instantiations (bodies only, fwd decls already emitted)
+	g.emit_generic_fn_instances()
+
+	// Pass 7: Generate test runner main if this is a test build
+	g.emit_test_runner_main()
 
 	return g.sb.str()
 }
@@ -620,6 +667,7 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('typedef void* chan;')
 	g.sb.writeln('typedef double float_literal;')
 	g.sb.writeln('typedef int64_t int_literal;')
+	g.sb.writeln('static void __fn_literal_stub() {} // no-op stub for unimplemented fn literals')
 	// wyhash implementation used by builtin/map and hash modules.
 	g.sb.writeln('#ifndef wyhash_final_version_4_2')
 	g.sb.writeln('#define wyhash_final_version_4_2')
@@ -951,7 +999,7 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 fn (mut g Gen) collect_decl_type_aliases_from_stmt(stmt ast.Stmt) {
 	match stmt {
 		ast.StructDecl {
-			if stmt.language == .c {
+			if stmt.language == .c || stmt.generic_params.len > 0 {
 				return
 			}
 			for emb in stmt.embedded {
@@ -1992,6 +2040,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if typ == 'float_literal' {
 				typ = 'f64'
 			}
+			if is_generic_placeholder_type_name(typ) {
+				typ = 'int'
+			}
 			g.write_indent()
 			g.sb.write_string('${typ} ${name} = ')
 			g.gen_expr(rhs_expr)
@@ -2201,7 +2252,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				if obj !is types.Module {
 					scoped_type := g.types_type_to_c(obj.typ())
 					if (typ == '' || typ == 'int' || typ == 'int_literal') && scoped_type != ''
-						&& scoped_type !in ['int', 'void'] {
+						&& scoped_type !in ['int', 'void']
+						&& !is_generic_placeholder_type_name(scoped_type) {
 						typ = scoped_type
 					}
 				}
@@ -2209,20 +2261,34 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		lhs_typ := g.get_expr_type(lhs)
 		if lhs_typ != '' && lhs_typ !in ['int', 'int_literal', 'float_literal'] && lhs_typ != 'void'
+			&& !is_generic_placeholder_type_name(lhs_typ)
 			&& (typ == '' || typ == 'int' || typ == 'void*' || typ == 'voidptr') {
 			typ = lhs_typ
 		}
 		if rhs is ast.CallExpr {
 			if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
-				if ret != '' && ret != 'int' {
+				if ret != '' && ret != 'int' && !is_generic_placeholder_type_name(ret) {
 					if !(ret in ['void*', 'voidptr'] && typ !in ['', 'int', 'void*', 'voidptr']) {
 						typ = ret
+					}
+				}
+				// Generic return type: infer from first argument
+				if is_generic_placeholder_type_name(ret) && rhs.args.len > 0 {
+					arg_type := g.get_expr_type(rhs.args[0])
+					if arg_type != '' && !is_generic_placeholder_type_name(arg_type) {
+						typ = if arg_type == 'int_literal' {
+							'int'
+						} else if arg_type == 'float_literal' {
+							'f64'
+						} else {
+							arg_type
+						}
 					}
 				}
 			}
 		} else if rhs is ast.CallOrCastExpr {
 			if ret := g.get_call_return_type(rhs.lhs, 1) {
-				if ret != '' && ret != 'int' {
+				if ret != '' && ret != 'int' && !is_generic_placeholder_type_name(ret) {
 					if !(ret in ['void*', 'voidptr'] && typ !in ['', 'int', 'void*', 'voidptr']) {
 						typ = ret
 					}
@@ -2236,11 +2302,15 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if rhs_type == 'int' {
 			if rhs is ast.CallExpr {
 				if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
-					rhs_type = ret
+					if !is_generic_placeholder_type_name(ret) {
+						rhs_type = ret
+					}
 				}
 			} else if rhs is ast.CallOrCastExpr {
 				if ret := g.get_call_return_type(rhs.lhs, 1) {
-					rhs_type = ret
+					if !is_generic_placeholder_type_name(ret) {
+						rhs_type = ret
+					}
 				}
 			}
 		}
@@ -2273,7 +2343,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if (typ == '' || typ == 'int' || typ == 'int_literal' || typ == 'void*' || typ == 'voidptr')
 			&& rhs_type != '' && rhs_type !in ['int', 'int_literal', 'float_literal']
-			&& !rhs_type.starts_with('_result_') && !rhs_type.starts_with('_option_') {
+			&& !rhs_type.starts_with('_result_') && !rhs_type.starts_with('_option_')
+			&& !is_generic_placeholder_type_name(rhs_type) {
 			typ = rhs_type
 		}
 		if name != '' && rhs_type.starts_with('_result_') && !typ.starts_with('_result_') {
@@ -2355,7 +2426,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
-		if typ == '' {
+		if typ == '' || is_generic_placeholder_type_name(typ) {
 			typ = 'int'
 		}
 		g.sb.write_string('${typ} ${name} = ')
@@ -2404,7 +2475,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			&& !g.is_module_ident(lhs.name) && !g.is_module_local_const_or_global(lhs.name)
 			&& lhs.name !in ['errno', 'stdin', 'stdout', 'stderr', 'environ'] {
 			mut decl_type := g.get_expr_type(rhs)
-			if decl_type == '' || decl_type in ['int_literal', 'float_literal'] {
+			if decl_type == '' || decl_type in ['int_literal', 'float_literal']
+				|| is_generic_placeholder_type_name(decl_type) {
 				decl_type = 'int'
 			}
 			if decl_type in ['void', 'void*', 'voidptr'] {
@@ -2750,6 +2822,15 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		if typ_name == '' {
 			continue
 		}
+		// Array/Map fields used by value require the underlying struct body
+		if field.typ is ast.Type && field.typ is ast.ArrayType
+			&& 'body_array' !in g.emitted_types {
+			return false
+		}
+		if field.typ is ast.Type && field.typ is ast.MapType
+			&& 'body_map' !in g.emitted_types {
+			return false
+		}
 		if field.typ is ast.Type {
 			if field.typ is ast.OptionType {
 				opt_typ := field.typ as ast.OptionType
@@ -2844,6 +2925,13 @@ fn (g &Gen) contains_call_expr(e ast.Expr) bool {
 	if e is ast.CallOrCastExpr {
 		return g.contains_call_expr(e.expr)
 	}
+	if e is ast.ArrayInitExpr {
+		for elem in e.exprs {
+			if g.contains_call_expr(elem) {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -2865,8 +2953,8 @@ fn (mut g Gen) get_struct_name(node ast.StructDecl) string {
 }
 
 fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
-	// Skip C extern struct declarations
-	if node.language == .c {
+	// Skip C extern struct declarations and uninstantiated generic structs
+	if node.language == .c || node.generic_params.len > 0 {
 		return
 	}
 
@@ -4620,10 +4708,10 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.FnLiteral {
-			g.sb.write_string('/* [TODO] FnLiteral */ NULL')
+			g.sb.write_string('/* [TODO] FnLiteral */ (void*)__fn_literal_stub')
 		}
 		ast.LambdaExpr {
-			g.sb.write_string('/* [TODO] LambdaExpr */ NULL')
+			g.sb.write_string('/* [TODO] LambdaExpr */ (void*)__fn_literal_stub')
 		}
 		ast.ComptimeExpr {
 			// $if comptime should be resolved by transformer; @FN etc. handled here
@@ -6855,6 +6943,18 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 			}
 		}
 	}
+	// Track calls to generic functions for later instantiation
+	if c_name in g.generic_fn_decls {
+		info := g.generic_fn_decls[c_name]
+		if info.params.len > 0 && call_args.len > 0 && c_name !in g.generic_fn_instances {
+			first_arg_type := g.get_expr_type(call_args[0])
+			if first_arg_type != '' && !is_generic_placeholder_type_name(first_arg_type) {
+				mut type_map := map[string]string{}
+				type_map[info.params[0]] = first_arg_type
+				g.generic_fn_instances[c_name] = type_map.clone()
+			}
+		}
+	}
 	g.sb.write_string('${c_name}(')
 	mut total_args := call_args.len
 	if param_types := g.fn_param_types[c_name] {
@@ -7016,6 +7116,13 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 		types.None {
 			return 'void'
 		}
+		types.NamedType {
+			name := string(t)
+			if name in g.generic_type_map {
+				return g.generic_type_map[name]
+			}
+			return name
+		}
 		else {
 			return 'int'
 		}
@@ -7138,12 +7245,19 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return 'IError'
 		}
 		if local_type := g.get_local_var_c_type(node.name) {
-			return local_type
+			if !is_generic_placeholder_type_name(local_type) {
+				return local_type
+			}
+			// Generic placeholder from scope: try generic_type_map
+			if concrete := g.generic_type_map[local_type] {
+				return concrete
+			}
+			// Fall through to env/inference
 		}
 		// Prefer scope-backed type resolution for identifiers (type names, locals, aliases).
 		if raw_type := g.get_raw_type(node) {
 			typ_name := g.types_type_to_c(raw_type)
-			if typ_name != '' {
+			if typ_name != '' && !is_generic_placeholder_type_name(typ_name) {
 				return typ_name
 			}
 		}
@@ -7153,14 +7267,21 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		match node {
 			ast.CallExpr {
 				if ret := g.get_call_return_type(node.lhs, node.args.len) {
-					if ret != '' {
+					if ret != '' && !is_generic_placeholder_type_name(ret) {
 						return ret
+					}
+					// Generic return type: infer from first argument
+					if ret != '' && is_generic_placeholder_type_name(ret) && node.args.len > 0 {
+						arg_type := g.get_expr_type(node.args[0])
+						if arg_type != '' && !is_generic_placeholder_type_name(arg_type) {
+							return arg_type
+						}
 					}
 				}
 			}
 			ast.CallOrCastExpr {
 				if ret := g.get_call_return_type(node.lhs, 1) {
-					if ret != '' {
+					if ret != '' && !is_generic_placeholder_type_name(ret) {
 						return ret
 					}
 				}
@@ -7172,7 +7293,16 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			else {}
 		}
 		if node !is ast.IndexExpr && node !is ast.SelectorExpr {
-			return t
+			// If the type is a generic placeholder (e.g. T from unresolved generics),
+			// check the active generic type map or fall through to inference.
+			if is_generic_placeholder_type_name(t) {
+				if concrete := g.generic_type_map[t] {
+					return concrete
+				}
+				// Fall through to structural inference below
+			} else {
+				return t
+			}
 		}
 	}
 	// Fallback inference
@@ -7210,6 +7340,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				if lhs_t.ends_with('Fn') || rhs_t.ends_with('Fn') {
 					return 'u64'
 				}
+			}
+			// Prefer non-generic-placeholder type from either side
+			if is_generic_placeholder_type_name(lhs_t) && !is_generic_placeholder_type_name(rhs_t)
+				&& rhs_t != '' {
+				return rhs_t
 			}
 			return lhs_t
 		}
@@ -7393,7 +7528,16 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				}
 			}
 			if ret := g.get_call_return_type(node.lhs, node.args.len) {
-				return ret
+				if !is_generic_placeholder_type_name(ret) {
+					return ret
+				}
+				// Generic return type: infer concrete type from first argument
+				if node.args.len > 0 {
+					arg_type := g.get_expr_type(node.args[0])
+					if arg_type != '' && !is_generic_placeholder_type_name(arg_type) {
+						return arg_type
+					}
+				}
 			}
 			return 'int'
 		}
@@ -7465,6 +7609,10 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 	match e {
 		ast.Ident {
 			name := e.name
+			// Replace generic type parameters with concrete types during instantiation
+			if concrete := g.generic_type_map[name] {
+				return concrete
+			}
 			if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune',
 				'f32', 'f64', 'usize', 'isize'] {
 				return name
@@ -8791,6 +8939,13 @@ fn (mut g Gen) try_emit_const_dynamic_array_call(name string, value ast.Expr) bo
 	if cap_expr == '0' {
 		cap_expr = len_expr
 	}
+	// Check if array elements contain function calls (not allowed in C static initializers).
+	// The transformer generates a runtime init function for these.
+	for e in array_data.exprs {
+		if g.contains_call_expr(e) {
+			return false
+		}
+	}
 	data_name := '__const_array_data_${name}'
 	if array_data.exprs.len > 0 {
 		g.sb.write_string('static ${elem_type} ${data_name}[${array_data.exprs.len}] = {')
@@ -8842,7 +8997,7 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 				fixed_array_len = array_value.exprs.len
 			}
 		}
-		if is_fixed_array_const && fixed_array_elem != '' {
+		if is_fixed_array_const && fixed_array_elem != '' && !g.contains_call_expr(field.value) {
 			g.fixed_array_globals[name] = true
 			if fixed_array_len > 0 {
 				g.sb.write_string('static const ${fixed_array_elem} ${name}[${fixed_array_len}] = ')
@@ -8872,20 +9027,18 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			g.sb.write_string('string ${name} = ')
 			g.gen_expr(field.value)
 			g.sb.writeln(';')
-		} else if typ in ['bool', 'char', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
-			'u32', 'u64', 'usize', 'isize', 'f32', 'f64', 'float_literal', 'int_literal'] {
-			// Qualified const names are safe as macros and work in C constant-expression
-			// contexts (array sizes, static initializers). Keep unqualified names as
-			// typed globals to avoid macro collisions with local identifiers.
-			if name.contains('__') {
-				g.sb.write_string('#define ${name} ')
-				g.gen_expr(field.value)
-				g.sb.writeln('')
-			} else {
-				g.sb.write_string('static const ${typ} ${name} = ')
-				g.gen_expr(field.value)
-				g.sb.writeln(';')
-			}
+		} else if typ in ['bool', 'char', 'rune', 'int', 'i8', 'i16', 'i32', 'u8', 'u16',
+			'u32', 'int_literal'] {
+			// Use anonymous enum for integer-compatible constants. Unlike #define,
+			// enum values don't cause name collisions with function parameters/variables,
+			// while still being true compile-time constants in C (usable as array sizes).
+			g.sb.write_string('enum { ${name} = (')
+			g.gen_expr(field.value)
+			g.sb.writeln(') };')
+		} else if typ in ['i64', 'u64', 'usize', 'isize', 'f32', 'f64', 'float_literal'] {
+			g.sb.write_string('static const ${typ} ${name} = ')
+			g.gen_expr(field.value)
+			g.sb.writeln(';')
 		} else {
 			// Fallback for aggregate literals and other complex consts.
 			g.sb.write_string('#define ${name} ')
@@ -9254,4 +9407,225 @@ fn (mut g Gen) write_indent() {
 	for _ in 0 .. g.indent {
 		g.sb.write_string('\t')
 	}
+}
+
+// prescan_generic_fn_calls walks all AST function bodies to find calls to
+// generic functions and record their concrete type instantiations, so that
+// forward declarations can be emitted before function bodies.
+fn (mut g Gen) prescan_generic_fn_calls() {
+	if g.generic_fn_decls.len == 0 {
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				g.prescan_stmts_for_generic_calls(stmt.stmts)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) prescan_stmts_for_generic_calls(stmts []ast.Stmt) {
+	for stmt in stmts {
+		g.prescan_stmt_for_generic_calls(stmt)
+	}
+}
+
+fn (mut g Gen) prescan_stmt_for_generic_calls(stmt ast.Stmt) {
+	match stmt {
+		ast.AssignStmt {
+			for rhs_expr in stmt.rhs {
+				g.prescan_expr_for_generic_calls(rhs_expr)
+			}
+			for lhs_expr in stmt.lhs {
+				g.prescan_expr_for_generic_calls(lhs_expr)
+			}
+		}
+		ast.ExprStmt {
+			g.prescan_expr_for_generic_calls(stmt.expr)
+		}
+		ast.ReturnStmt {
+			for ret_expr in stmt.exprs {
+				g.prescan_expr_for_generic_calls(ret_expr)
+			}
+		}
+		ast.ForStmt {
+			g.prescan_expr_for_generic_calls(stmt.cond)
+			g.prescan_stmts_for_generic_calls(stmt.stmts)
+			g.prescan_stmt_for_generic_calls(stmt.post)
+		}
+		ast.ForInStmt {
+			g.prescan_expr_for_generic_calls(stmt.expr)
+		}
+		ast.BlockStmt {
+			g.prescan_stmts_for_generic_calls(stmt.stmts)
+		}
+		ast.DeferStmt {
+			g.prescan_stmts_for_generic_calls(stmt.stmts)
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) prescan_expr_for_generic_calls(expr ast.Expr) {
+	if expr is ast.CallExpr {
+		// Check if this call targets a known generic function
+		mut fn_name := ''
+		if expr.lhs is ast.Ident {
+			fn_name = sanitize_fn_ident(expr.lhs.name)
+			if fn_name != '' && g.cur_module != '' && g.cur_module != 'main'
+				&& g.cur_module != 'builtin' && !fn_name.contains('__') {
+				fn_name = '${g.cur_module}__${fn_name}'
+			}
+		}
+		if fn_name in g.generic_fn_decls && fn_name !in g.generic_fn_instances {
+			info := g.generic_fn_decls[fn_name]
+			if info.params.len > 0 && expr.args.len > 0 {
+				// Try to determine the concrete type from the first argument
+				arg_type := g.get_expr_type(expr.args[0])
+				if arg_type != '' && !is_generic_placeholder_type_name(arg_type) {
+					mut type_map := map[string]string{}
+					type_map[info.params[0]] = arg_type
+					g.generic_fn_instances[fn_name] = type_map.clone()
+				}
+			}
+		}
+		// Recurse into arguments
+		for arg in expr.args {
+			g.prescan_expr_for_generic_calls(arg)
+		}
+	} else if expr is ast.InfixExpr {
+		g.prescan_expr_for_generic_calls(expr.lhs)
+		g.prescan_expr_for_generic_calls(expr.rhs)
+	} else if expr is ast.PrefixExpr {
+		g.prescan_expr_for_generic_calls(expr.expr)
+	} else if expr is ast.ParenExpr {
+		g.prescan_expr_for_generic_calls(expr.expr)
+	} else if expr is ast.CastExpr {
+		g.prescan_expr_for_generic_calls(expr.expr)
+	} else if expr is ast.IndexExpr {
+		g.prescan_expr_for_generic_calls(expr.lhs)
+		g.prescan_expr_for_generic_calls(expr.expr)
+	} else if expr is ast.SelectorExpr {
+		g.prescan_expr_for_generic_calls(expr.lhs)
+	} else if expr is ast.CallOrCastExpr {
+		g.prescan_expr_for_generic_calls(expr.lhs)
+		g.prescan_expr_for_generic_calls(expr.expr)
+	} else if expr is ast.IfExpr {
+		g.prescan_expr_for_generic_calls(expr.cond)
+		g.prescan_stmts_for_generic_calls(expr.stmts)
+		g.prescan_expr_for_generic_calls(expr.else_expr)
+	} else if expr is ast.MatchExpr {
+		g.prescan_expr_for_generic_calls(expr.expr)
+		for branch in expr.branches {
+			g.prescan_stmts_for_generic_calls(branch.stmts)
+		}
+	}
+}
+
+// emit_generic_fn_instances generates concrete function instantiations for
+// generic functions that were called during code generation. For each recorded
+// call, the generic type parameters (e.g. T) are mapped to the concrete types
+// inferred from the call arguments, and the function is emitted with those types.
+fn (mut g Gen) emit_generic_fn_instances() {
+	if g.generic_fn_instances.len == 0 {
+		return
+	}
+	g.sb.writeln('')
+	g.sb.writeln('// --- Generic function instantiations ---')
+	for fn_name, type_map in g.generic_fn_instances {
+		info := g.generic_fn_decls[fn_name] or { continue }
+		// Set the generic type mapping so expr_type_to_c resolves T to concrete type
+		g.generic_type_map = type_map.clone()
+		g.cur_module = info.mod
+		g.cur_fn_name = info.decl.name
+		g.runtime_local_types = map[string]string{}
+
+		// Set function scope for type lookups
+		if g.env != unsafe { nil } {
+			if fn_scope := g.env.get_fn_scope(info.mod, info.decl.name) {
+				g.cur_fn_scope = fn_scope
+			} else {
+				g.cur_fn_scope = unsafe { nil }
+			}
+		}
+
+		// Determine return type with generic mapping active
+		g.cur_fn_ret_type = if info.decl.typ.return_type !is ast.EmptyExpr {
+			g.expr_type_to_c(info.decl.typ.return_type)
+		} else {
+			'void'
+		}
+
+		// Track mut parameter names
+		g.cur_fn_mut_params = map[string]bool{}
+		if info.decl.is_method && info.decl.receiver.name != '' && info.decl.receiver.is_mut {
+			g.cur_fn_mut_params[info.decl.receiver.name] = true
+		}
+		for param in info.decl.typ.params {
+			if param.is_mut {
+				g.cur_fn_mut_params[param.name] = true
+			}
+		}
+
+		// Emit function body (forward declaration already emitted in prescan phase)
+		g.gen_fn_head(info.decl)
+		g.sb.writeln(' {')
+		g.indent++
+		g.gen_stmts(info.decl.stmts)
+		g.indent--
+		g.sb.writeln('}')
+		g.sb.writeln('')
+
+		// Clear the generic type mapping
+		g.generic_type_map = map[string]string{}
+	}
+}
+
+fn (mut g Gen) emit_test_runner_main() {
+	// Detect if any source file is a test file
+	mut test_fns := []string{}
+	mut init_fns := []string{}
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				mod := file.mod
+				prefix := if mod != '' && mod != 'main' && mod != 'builtin' {
+					'${mod}__'
+				} else {
+					''
+				}
+				if file.name.ends_with('_test.v') && stmt.name.starts_with('test_') {
+					test_fns << '${prefix}${stmt.name}'
+				}
+				if stmt.name.contains('__v_init_consts_') {
+					init_fns << '${prefix}${stmt.name}'
+				}
+			}
+		}
+	}
+	if test_fns.len == 0 {
+		return
+	}
+	// Check that no user-defined main exists
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'main' && file.mod in ['', 'main'] {
+				return
+			}
+		}
+	}
+	g.sb.writeln('')
+	g.sb.writeln('// --- Test runner ---')
+	g.sb.writeln('int main(int argc, char** argv) {')
+	g.sb.writeln('\tbuiltin_init();')
+	for init_fn in init_fns {
+		g.sb.writeln('\t${init_fn}();')
+	}
+	for fn_name in test_fns {
+		g.sb.writeln('\t${fn_name}();')
+	}
+	g.sb.writeln('\treturn 0;')
+	g.sb.writeln('}')
 }

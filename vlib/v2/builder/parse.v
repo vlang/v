@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
+import os
 import v2.ast
 import v2.parser
 
@@ -27,8 +28,11 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('math.bits')), mut
 			b.file_set)
 	}
+	// For internal module tests (_test.v files with a non-main module declaration),
+	// expand to include all .v files from the module directory.
+	mut expanded_files := expand_test_files(files)
 	// parse user files
-	ast_files << parser_reused.parse_files(files, mut b.file_set)
+	ast_files << parser_reused.parse_files(expanded_files, mut b.file_set)
 	skip_imports := b.pref.skip_imports
 	if skip_imports {
 		return ast_files
@@ -48,4 +52,44 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		}
 	}
 	return ast_files
+}
+
+// expand_test_files detects internal module tests and expands them to include
+// all non-test .v files from the same module directory, matching v1 behavior.
+fn expand_test_files(files []string) []string {
+	mut expanded := []string{}
+	mut added_dirs := []string{}
+	for file in files {
+		expanded << os.real_path(file)
+		if !file.contains('_test.') {
+			continue
+		}
+		// Read the file to check its module declaration
+		content := os.read_file(file) or { continue }
+		lines := content.split_into_lines()
+		for line in lines {
+			trimmed := line.trim_space()
+			if trimmed.len == 0 || trimmed.starts_with('//') {
+				continue
+			}
+			if trimmed.starts_with('module ') {
+				mod_name := trimmed['module '.len..].trim_space()
+				if mod_name != 'main' {
+					// Internal module test: add all non-test .v files from the module dir
+					dir := os.dir(os.real_path(file))
+					if dir !in added_dirs {
+						added_dirs << dir
+						module_files := get_v_files_from_dir(dir)
+						for mf in module_files {
+							if mf !in expanded {
+								expanded << mf
+							}
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+	return expanded
 }

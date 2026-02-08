@@ -1390,6 +1390,16 @@ fn (mut c Checker) process_pending_interface_decls() {
 fn (mut c Checker) process_pending_struct_decls() {
 	for pending in c.pending_struct_decls {
 		c.scope = pending.scope
+		// Extract generic parameter names from the struct declaration
+		mut generic_params := []string{}
+		for generic_param in pending.decl.generic_params {
+			if generic_param is ast.Ident {
+				generic_params << generic_param.name
+			}
+		}
+		if generic_params.len > 0 {
+			c.generic_params = generic_params
+		}
 		mut fields := []Field{}
 		for field in pending.decl.fields {
 			fields << Field{
@@ -1397,6 +1407,9 @@ fn (mut c Checker) process_pending_struct_decls() {
 				typ:          c.expr(field.typ)
 				default_expr: field.value
 			}
+		}
+		if generic_params.len > 0 {
+			c.generic_params = []
 		}
 		mut embedded := []Struct{}
 		for embedded_expr in pending.decl.embedded {
@@ -1414,6 +1427,7 @@ fn (mut c Checker) process_pending_struct_decls() {
 				if mut sd is Struct {
 					sd.fields = fields
 					sd.embedded = embedded
+					sd.generic_params = generic_params
 				}
 			}
 		}

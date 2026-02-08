@@ -150,7 +150,7 @@ fn (mut b Builder) gen_cleanc() {
 		if version_res.exit_code == 0 && version_res.output.contains('clang') {
 			error_limit_flag = ' -ferror-limit=0'
 		}
-		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name}${error_limit_flag}'
+		cc_cmd := '${cc} ${cc_flags} -w ${c_file} -o ${output_name}${error_limit_flag} -lm'
 		if os.getenv('V2VERBOSE') != '' {
 			dump(cc_cmd)
 		}
