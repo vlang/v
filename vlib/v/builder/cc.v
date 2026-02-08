@@ -281,6 +281,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if have_flto {
 			optimization_options << '-flto'
 		}
+		// gcc versions newer than 10.2, produce buggy programs, usually triggered by optimising inlined small functions, when both -flto and -O3 are used.
+		// Using -fno-strict-aliasing prevents that. See https://github.com/vlang/v/issues/26512 .
+		optimization_options << '-fno-strict-aliasing'
 	}
 	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {
