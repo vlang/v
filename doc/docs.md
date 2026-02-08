@@ -1202,7 +1202,7 @@ There are further built-in methods for arrays:
 * `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
-See all methods of [array](https://modules.vlang.io/index.html#array)
+See all methods of [array](https://modules.vlang.io/builtin.html#array)
 
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 
