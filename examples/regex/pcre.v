@@ -1,8 +1,8 @@
 module main
 
 // NB: you need to `v install pcre` to be able to compile this example.
-
-import pcre
+// (Actually, since 2026, regex.pcre is built-in and pure V)
+import regex.pcre
 
 fn example() {
 	r := pcre.new_regex('Match everything after this: (.+)', 0) or {
