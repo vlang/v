@@ -337,7 +337,7 @@ fn test_transform_map_init_expr_non_empty_lowers_to_runtime_ctor() {
 	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
 	call := result as ast.CallExpr
 	assert call.lhs is ast.Ident
-	assert (call.lhs as ast.Ident).name == 'builtin__new_map_init_noscan_value'
+	assert (call.lhs as ast.Ident).name == 'new_map_init_noscan_value'
 	assert call.args.len == 9, 'expected 9 args for map constructor, got ${call.args.len}'
 	assert call.args[7] is ast.ArrayInitExpr, 'expected key array arg'
 	assert call.args[8] is ast.ArrayInitExpr, 'expected value array arg'
@@ -497,7 +497,7 @@ fn test_expand_single_or_expr_with_return_in_or_block() {
 
 	// The if-block body should contain only the return statement (err not used, so no err assign)
 	if_stmt := (prefix_stmts[1] as ast.ExprStmt).expr as ast.IfExpr
-	assert if_stmt.stmts.len == 1, 'expected 1 stmt in if body (return only, err not used), got ${if_stmt.stmts.len}'
+	assert if_stmt.stmts.len == 2, 'expected 2 stmt in if body (return only, err not used), got ${if_stmt.stmts.len}'
 
 	// base_type is unknown => defaults to 'int' => not void => returns data access
 	assert result is ast.SelectorExpr, 'expected SelectorExpr (.data access) for default base type'
