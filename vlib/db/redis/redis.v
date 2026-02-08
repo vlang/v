@@ -87,6 +87,13 @@ pub mut:
 	version  int @[deprecated] // ignored - RESP version auto handled in connect
 }
 
+fn resp2_auth(password string, mut db DB) ! {
+	db.version = 2
+	if password.len > 0 {
+		db.auth(password)!
+	}
+}
+
 // connect establishes a connection to a Redis server
 pub fn connect(config Config) !DB {
 	mut db := DB{
@@ -124,20 +131,14 @@ pub fn connect(config Config) !DB {
 	// send HELLO and attempt to read response. If any step fails, fallback to RESP2 + AUTH.
 	db.write_data(db.cmd_buf) or {
 		// write failed (connection error?) — fallback to RESP2 and perform AUTH if needed
-		db.version = 2
-		if config.password.len > 0 {
-			db.auth(config.password)!
-		}
+		resp2_auth(config.password, mut db)!
 		return db
 	}
 
 	// Try to read and consume HELLO response. If HELLO fails (unknown command / error),
 	// treat as not-supported and fall back to RESP2 + AUTH.
 	db.read_response() or {
-		db.version = 2
-		if config.password.len > 0 {
-			db.auth(config.password)!
-		}
+		resp2_auth(config.password, mut db)!
 		return db
 	}
 
@@ -655,15 +656,17 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 
 	// If zero-length payload, read exactly the 2-byte terminator CRLF reliably
 	if data_length == 0 {
-		mut term := []u8{len: 2}
-		mut total_term := 0
-		for total_term < 2 {
-			mut ptr := unsafe { &term[total_term] }
-			n := db.read_ptr_data(ptr, 2 - total_term)! // read remaining terminator bytes
-			if n == 0 && total_term < 2 {
+		mut term := [2]u8{}
+		n := db.read_ptr_data(&term[0], 2)! // read remaining terminator bytes
+		match n {
+			0, 1 {
 				return error('`read_response_bulk_string()`: incomplete terminator for empty string')
 			}
-			total_term += n
+			else {
+				if n > 2 {
+					return error('`read_response_bulk_string()`: should never get here - more than 2 bytes read?!?')
+				}
+			}
 		}
 		if term[0] != `\r` || term[1] != `\n` {
 			return error('invalid terminator for empty string')
@@ -698,7 +701,7 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 		return error('`read_response_bulk_string()`: invalid data terminator')
 	}
 
-	return data_buf.clone()
+	return data_buf
 }
 
 // read_header reads a CRLF-terminated header (returns content without trailing CRLF)
@@ -835,7 +838,7 @@ fn (mut db DB) read_resp3_map_payload() !RedisValue {
 		return map[string]RedisValue{}
 	}
 	mut pairs := []RedisValue{cap: int(count) * 2}
-	for _ in 0 .. int(count) {
+	for _ in 0 .. count {
 		key := db.read_response()!
 		val := db.read_response()!
 		pairs << key
@@ -877,7 +880,7 @@ fn (mut db DB) read_resp3_attr_payload() !RedisValue {
 		return map[string]RedisValue{}
 	}
 	mut kv := map[string]RedisValue{}
-	for _ in 0 .. int(count) {
+	for _ in 0 .. count {
 		k := db.read_response()!
 		v := db.read_response()!
 		match k {
@@ -905,7 +908,7 @@ fn (mut db DB) read_resp3_set_payload() !RedisSet {
 		}
 	}
 	mut elems := []RedisValue{cap: int(count)}
-	for _ in 0 .. int(count) {
+	for _ in 0 .. count {
 		elems << db.read_response()!
 	}
 	return RedisSet{
@@ -923,7 +926,7 @@ fn (mut db DB) read_resp3_push_payload() !RedisPush {
 		}
 	}
 	mut elems := []RedisValue{cap: int(count)}
-	for _ in 0 .. int(count) {
+	for _ in 0 .. count {
 		elems << db.read_response()!
 	}
 	return RedisPush{

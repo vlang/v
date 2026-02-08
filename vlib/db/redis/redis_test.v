@@ -397,7 +397,10 @@ fn test_fuzz_random_binary_many() ! {
 	for iter in 0 .. count {
 		// size up to ~200 KiB
 		size := int((x % 200_000) + 1)
-		mut data := []u8{len: size, init: rand.u8() + 0 * index}
+		mut data := []u8{len: size}
+		for i in 0 .. size {
+			data[i] = rand.u8()
+		}
 		key := 'fuzz_big_${iter}'
 		assert db.set(key, data.clone())! == 'OK'
 		got := db.get[[]u8](key)!
@@ -424,7 +427,10 @@ fn test_fuzz_crlf_random_positions() ! {
 	for t in 0 .. trials {
 		// size between 1 KiB and 32 KiB
 		size := int((x % 31_744) + 1024)
-		mut data := []u8{len: size, init: rand.u8() + 0 * index}
+		mut data := []u8{len: size}
+		for i in 0 .. size {
+			data[i] = rand.u8()
+		}
 		// place a CRLF at a pseudo-random position; sometimes force it near boundaries
 		pos := int(x % u64(size - 2))
 		data[pos] = `\r`
@@ -484,7 +490,10 @@ fn test_fuzz_random_binary_small() {
 	for iter := 0; iter < 20; iter++ {
 		// pseudo-random size in [1, 4096]
 		size := int((x % 4096) + 1)
-		mut data := []u8{len: size, init: rand.u32() + 0 * index}
+		mut data := []u8{len: size}
+		for i in 0 .. size {
+			data[i] = rand.u8()
+		}
 		k := 'fuzz_small_${iter}'
 		assert db.set(k, data.clone())! == 'OK'
 		got := db.get[[]u8](k)!
