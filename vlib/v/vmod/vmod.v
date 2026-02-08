@@ -4,7 +4,7 @@ import os
 
 const mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 
-// used during lookup for v.mod to support @VROOT
+// used during lookup for v.mod to support @VEXEROOT
 const private_file_cacher = new_mod_file_cacher()
 
 pub fn get_cache() &ModFileCacher {

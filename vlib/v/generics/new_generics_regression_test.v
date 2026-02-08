@@ -14,11 +14,11 @@ import log
 import term
 
 const vexe = @VEXE
-const vroot = @VROOT
+const vroot = @VEXEROOT
 const vtrace_output = os.getenv('VTRACE_OUTPUT').int() != 0
 
 fn testsuite_begin() {
-	os.chdir(@VROOT)!
+	os.chdir(@VEXEROOT)!
 	os.setenv('VJOBS', '1', true)
 }
 

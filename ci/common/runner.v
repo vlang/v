@@ -38,7 +38,8 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 }
 
 const self_command = 'v ' +
-	os.real_path(os.executable()).replace_once(os.real_path(@VROOT), '').trim_left('/\\') + '.vsh'
+	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +
+	'.vsh'
 
 pub const is_github_job = os.getenv('GITHUB_JOB') != ''
 

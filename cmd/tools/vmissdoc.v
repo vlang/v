@@ -283,7 +283,8 @@ fn main() {
 	for path in opt.additional_args {
 		if path in ['@vlib', '@cmd', '@examples'] {
 			rpath := path[1..]
-			total += opt.report_undocumented_functions_in_path(os.join_path(@VROOT, rpath))
+			total += opt.report_undocumented_functions_in_path(os.join_path(@VEXEROOT,
+				rpath))
 			continue
 		}
 		if os.is_file(path) || os.is_dir(path) {
