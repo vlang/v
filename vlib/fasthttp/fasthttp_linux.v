@@ -120,7 +120,11 @@ fn create_server_socket(server Server) int {
 		return -1
 	}
 
-	addr := net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
+	addr := if server.family == .ip6 {
+		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
+	} else {
+		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
+	}
 	alen := addr.len()
 	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
