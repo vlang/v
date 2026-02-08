@@ -237,9 +237,9 @@ pub fn munmap(addr voidptr, len usize) ! {
 // mprotect change memory protection flags
 pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	new_protect := map_mmap_prot_page(prot)
-	old_protect := 0
+	old_protect := u32(0)
 
-	if C.VirtualProtect(addr, len, new_protect, &old_protect) == 0 {
+	if !C.VirtualProtect(addr, len, new_protect, &old_protect) {
 		msg := get_last_error_as_string()
 		return error('mprotect() failed: ${msg}')
 	}
