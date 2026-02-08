@@ -1,7 +1,8 @@
 // vtest build: started_redis?
-import os
-import time
 import db.redis
+import os
+import rand
+import time
 
 const redis_password = os.getenv('VREDIS_PASSWORD')
 
@@ -291,31 +292,21 @@ fn test_large_binary_bulk_string() ! {
 
 	// Create a large binary payload (~200 KB) with a repeating pattern,
 	// including zero bytes and CRLF sequences to exercise edge cases.
-	size := 200 * 1024 // 200 KiB
-	mut data := []u8{len: size, init: u8(index % 256)}
+	mut data := []u8{len: 204800, init: u8(index & 0xFF)}
 
 	// inject some CRLF and zero-byte sequences at several spots
-	if size > 100 {
-		data[50] = `\r`
-		data[51] = `\n`
-		data[1000] = 0
-		data[1001] = `\r`
-		data[1002] = `\n`
-	}
+	data[50] = `\r`
+	data[51] = `\n`
+	data[1000] = 0
+	data[1001] = `\r`
+	data[1002] = `\n`
 
 	// store binary data
 	assert db.set('bigbin', data.clone())! == 'OK'
 
 	// retrieve as []u8 using typed get
 	got := db.get[[]u8]('bigbin')!
-	assert got.len == data.len
-	// spot-check a few offsets to ensure exact match
-	assert got[0] == data[0]
-	assert got[50] == data[50]
-	assert got[51] == data[51]
-	assert got[1000] == data[1000]
-	assert got[1001] == data[1001]
-	assert got[1002] == data[1002]
+	assert got == data
 
 	// also test with small binary containing embedded CRLF and NUL
 	small := [u8(0), `a`, `b`, `\r`, `\n`, `c`]
@@ -338,7 +329,7 @@ fn test_very_large_payload() ! {
 
 	// Build a very large payload (> 1 MiB). Use ~1.2 MiB to be safely above 1 MiB.
 	size := 1_200_000
-	mut big := []u8{len: size, init: u8(index % 256)}
+	mut big := []u8{len: size, init: u8(index & 0xFF)}
 	// Put a few sentinel checks
 	big[0] = 0
 	big[1023] = `\r`
@@ -348,12 +339,7 @@ fn test_very_large_payload() ! {
 	// store and retrieve
 	assert db.set('hugebin', big.clone())! == 'OK'
 	got := db.get[[]u8]('hugebin')!
-	assert got.len == big.len
-	// spot checks
-	assert got[0] == big[0]
-	assert got[1023] == big[1023]
-	assert got[1024] == big[1024]
-	assert got[size - 1] == big[size - 1]
+	assert got == big
 
 	// cleanup
 	db.del('hugebin')!
@@ -405,31 +391,20 @@ fn test_fuzz_random_binary_many() ! {
 	db.cmd('FLUSHALL')!
 
 	// LCG PRNG seed using process id
-	seed := u64(os.getpid())
-	mut x := seed
+	mut x := u64(os.getpid())
 
 	count := 50
-	for iter := 0; iter < count; iter++ {
+	for iter in 0 .. count {
 		// size up to ~200 KiB
 		size := int((x % 200_000) + 1)
-		mut data := []u8{len: size}
-		for i in 0 .. size {
-			x = x * 6364136223846793005 + 1442695040888963407
-			data[i] = u8((x >> 16) & 0xFF)
-		}
+		mut data := []u8{len: size, init: rand.u8()}
 		key := 'fuzz_big_${iter}'
 		assert db.set(key, data.clone())! == 'OK'
 		got := db.get[[]u8](key)!
-		assert got.len == data.len
-		// quick spot-checks for integrity
-		if data.len > 3 {
-			assert got[0] == data[0]
-			assert got[data.len / 2] == data[data.len / 2]
-			assert got[data.len - 1] == data[data.len - 1]
-		}
+		assert got == data
 		// clean up
 		db.del(key)!
-		// mix seed
+
 		x += u64(size) * u64(iter + 1)
 	}
 }
@@ -449,11 +424,7 @@ fn test_fuzz_crlf_random_positions() ! {
 	for t in 0 .. trials {
 		// size between 1 KiB and 32 KiB
 		size := int((x % 31_744) + 1024)
-		mut data := []u8{len: size}
-		for i in 0 .. size {
-			x = x * 6364136223846793005 + 1442695040888963407
-			data[i] = u8((x >> 8) & 0xFF)
-		}
+		mut data := []u8{len: size, init: rand.u8()}
 		// place a CRLF at a pseudo-random position; sometimes force it near boundaries
 		pos := int(x % u64(size - 2))
 		data[pos] = `\r`
@@ -466,13 +437,7 @@ fn test_fuzz_crlf_random_positions() ! {
 		key := 'fuzz_crlf_${t}'
 		assert db.set(key, data.clone())! == 'OK'
 		got := db.get[[]u8](key)!
-		assert got.len == data.len
-		assert got[pos] == `\r`
-		assert got[pos + 1] == `\n`
-		if t % 5 == 0 && size > 4097 {
-			assert got[4095] == `\r`
-			assert got[4096] == `\n`
-		}
+		assert got == data
 		db.del(key)!
 		x += u64(pos) + 1
 	}
@@ -519,12 +484,7 @@ fn test_fuzz_random_binary_small() {
 	for iter := 0; iter < 20; iter++ {
 		// pseudo-random size in [1, 4096]
 		size := int((x % 4096) + 1)
-		mut data := []u8{len: size}
-		for i in 0 .. size {
-			// LCG step
-			x = x * 6364136223846793005 + 1442695040888963407
-			data[i] = u8((x >> 32) & 0xFF)
-		}
+		mut data := []u8{len: size, init: rand.u32()}
 		k := 'fuzz_small_${iter}'
 		assert db.set(k, data.clone())! == 'OK'
 		got := db.get[[]u8](k)!
