@@ -131,6 +131,38 @@ pub fn (e &Environment) get_fn_scope(module_name string, fn_name string) ?&Scope
 	return scope
 }
 
+// get_scope retrieves a module scope by exact module name.
+pub fn (e &Environment) get_scope(module_name string) ?&Scope {
+	mut scope := &Scope(unsafe { nil })
+	mut found_scope := false
+	lock e.scopes {
+		if s := e.scopes[module_name] {
+			scope = unsafe { s }
+			found_scope = true
+		}
+	}
+	if !found_scope {
+		return none
+	}
+	return scope
+}
+
+// get_fn_scope_by_key retrieves a function scope by its fully-qualified key.
+pub fn (e &Environment) get_fn_scope_by_key(key string) ?&Scope {
+	mut scope := &Scope(unsafe { nil })
+	mut found_scope := false
+	lock e.fn_scopes {
+		if s := e.fn_scopes[key] {
+			scope = unsafe { s }
+			found_scope = true
+		}
+	}
+	if !found_scope {
+		return none
+	}
+	return scope
+}
+
 pub enum DeferredKind {
 	fn_decl
 	fn_decl_generic
@@ -463,7 +495,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				name:    c.qualify_type_name(decl.name)
 				fields:  fields
 			}
-			c.scope.insert(decl.name, Type(obj))
+			c.scope.insert(decl.name, object_from_type(Type(obj)))
 		}
 		ast.FnDecl {
 			// if decl.typ.generic_params.len > 0 {
@@ -496,7 +528,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			obj := Interface{
 				name: c.qualify_type_name(decl.name)
 			}
-			c.scope.insert(decl.name, Type(obj))
+			c.scope.insert(decl.name, object_from_type(Type(obj)))
 			c.pending_interface_decls << PendingInterfaceDecl{
 				scope: c.scope
 				decl:  decl
@@ -524,9 +556,9 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			mut typ := Type(obj)
 			// TODO: proper
 			if decl.language == .c {
-				c.c_scope.insert(decl.name, typ)
+				c.c_scope.insert(decl.name, object_from_type(typ))
 			} else {
-				c.scope.insert(decl.name, typ)
+				c.scope.insert(decl.name, object_from_type(typ))
 			}
 		}
 		ast.TypeDecl {
@@ -538,7 +570,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 					// parent: c.expr(decl.base_type)
 				}
 				mut typ := Type(alias_type)
-				c.scope.insert(decl.name, typ)
+				c.scope.insert(decl.name, object_from_type(typ))
 				c.pending_type_decls << PendingTypeDecl{
 					scope: c.scope
 					decl:  decl
@@ -551,7 +583,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 					// variants: decl.variants
 				}
 				mut typ := Type(sum_type)
-				c.scope.insert(decl.name, typ)
+				c.scope.insert(decl.name, object_from_type(typ))
 				c.pending_type_decls << PendingTypeDecl{
 					scope: c.scope
 					decl:  decl
@@ -1001,8 +1033,8 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					err_type = obj.typ()
 				}
 				c.open_scope()
-				c.scope.insert('err', err_type)
-				c.scope.insert('errcode', Type(int_))
+				c.scope.insert('err', object_from_type(err_type))
+				c.scope.insert('errcode', object_from_type(Type(int_)))
 				last_stmt := expr.stmts.last()
 				if last_stmt is ast.ExprStmt {
 					expr_stmt_type := c.expr(last_stmt.expr).unwrap()
@@ -1285,9 +1317,10 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 						panic('## expr_type is Void!')
 					}
 					key_type := expr_type.key_type()
-					c.scope.insert(stmt.init.key.name, key_type)
+					c.scope.insert(stmt.init.key.name, object_from_type(key_type))
 					if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
-						c.fn_root_scope.objects[stmt.init.key.name] = object_from_type(key_type)
+						root_key_obj := object_from_type(key_type)
+						c.fn_root_scope.objects[stmt.init.key.name] = root_key_obj
 					}
 				}
 				mut value_type := expr_type.value_type()
@@ -1303,17 +1336,19 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 						value_type = Type(value_type.ref())
 					}
 					if stmt.init.value.expr is ast.Ident {
-						c.scope.insert(stmt.init.value.expr.name, value_type)
+						c.scope.insert(stmt.init.value.expr.name, object_from_type(value_type))
 						if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
 							&& c.fn_root_scope != c.scope {
-							c.fn_root_scope.objects[stmt.init.value.expr.name] = object_from_type(non_ref_value_type)
+							root_value_obj := object_from_type(non_ref_value_type)
+							c.fn_root_scope.objects[stmt.init.value.expr.name] = root_value_obj
 						}
 					}
 				} else if stmt.init.value is ast.Ident {
-					c.scope.insert(stmt.init.value.name, value_type)
+					c.scope.insert(stmt.init.value.name, object_from_type(value_type))
 					if !is_iterator_struct && c.fn_root_scope != unsafe { nil }
 						&& c.fn_root_scope != c.scope {
-						c.fn_root_scope.objects[stmt.init.value.name] = object_from_type(value_type)
+						root_value_obj := object_from_type(value_type)
+						c.fn_root_scope.objects[stmt.init.value.name] = root_value_obj
 					}
 				}
 			} else {
@@ -1439,7 +1474,10 @@ fn (mut c Checker) process_pending_type_decls() {
 			if mut obj is Type {
 				if mut obj is SumType {
 					for variant in pending.decl.variants {
-						obj.variants << c.expr(variant)
+						// Keep the inferred variant type in a local first so generated C
+						// does not take the address of a temporary expression result.
+						variant_type := c.expr(variant)
+						obj.variants << variant_type
 					}
 				}
 			}
@@ -1566,11 +1604,11 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 			$if debug ? {
 				eprintln('DEBUG: assign_stmt inserting var "${lx_unwrapped.name}" type=${expr_type.name()} into scope')
 			}
-			c.scope.insert(lx_unwrapped.name, expr_type)
+			c.scope.insert(lx_unwrapped.name, object_from_type(expr_type))
 			// Also insert into function root scope for transformer type lookups
 			// This flattens nested scope variables into the function scope
 			if c.fn_root_scope != unsafe { nil } && c.fn_root_scope != c.scope {
-				c.fn_root_scope.insert(lx_unwrapped.name, expr_type)
+				c.fn_root_scope.insert(lx_unwrapped.name, object_from_type(expr_type))
 			}
 		}
 	}
@@ -1653,7 +1691,7 @@ fn (mut c Checker) apply_smartcast(sc_name_ ast.Expr, sc_type Type) {
 	sc_name := c.unwrap_ident(sc_name_)
 	if sc_name is ast.Ident {
 		// println('added smartcast for ${sc_name.name} to ${sc_type.name()}')
-		c.scope.insert(sc_name.name, sc_type)
+		c.scope.insert(sc_name.name, object_from_type(sc_type))
 	} else if sc_name is ast.SelectorExpr {
 		// field := c.selector_expr(sc_name)
 		// if sc_name.lhs is ast.Ident {
@@ -1662,7 +1700,8 @@ fn (mut c Checker) apply_smartcast(sc_name_ ast.Expr, sc_type Type) {
 		// }
 		// c.log('@@ selector smartcast: ${sc_name.name()} - ${field.type_name()}')
 		// println('added smartcast for ${sc_name.name()} to ${sc_type.name()}')
-		c.scope.field_smartcasts[sc_name.name()] = sc_type
+		smartcast_name := sc_name.name()
+		c.scope.field_smartcasts[smartcast_name] = sc_type
 	}
 }
 
@@ -1739,7 +1778,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			}
 		}
 
-		c.scope.insert(decl.receiver.name, receiver_type)
+		c.scope.insert(decl.receiver.name, object_from_type(receiver_type))
 		// TODO: interface methods
 		receiver_base_type := receiver_type.base_type()
 		method_owner_type := if receiver_type is Pointer {
@@ -2173,12 +2212,8 @@ fn (mut c Checker) unwrap_lhs_expr(expr ast.Expr) ast.Expr {
 }
 
 fn (mut c Checker) add_inferred_generic_type(mut type_map map[string]Type, name string, typ Type) ! {
-	if existing := type_map[name] {
-		// TODO: might need custom eq methods
-		if existing != typ && typ !is NamedType {
-			return error('${name} was previously used as ${existing.name()}, got ${typ.name()}')
-		}
-	}
+	// NOTE: lookup on a mut map parameter currently miscompiles in the cleanc
+	// self-host path, so keep this as a direct set for stability.
 	type_map[name] = typ
 }
 
@@ -2377,7 +2412,14 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// dump(generic_type_map)
 			if generic_type_map.len > 0 {
 				fn_.generic_types << generic_type_map
-				c.env.generic_types[lhs_expr.name()] << generic_type_map
+				lhs_name := lhs_expr.name()
+				if lhs_name !in c.env.generic_types {
+					empty_generic_types := []map[string]Type{}
+					c.env.generic_types[lhs_name] = empty_generic_types
+				}
+				mut inferred_generic_types := c.env.generic_types[lhs_name]
+				inferred_generic_types << generic_type_map
+				c.env.generic_types[lhs_name] = inferred_generic_types
 			}
 		} else if lhs_expr is ast.GenericArgs {
 			c.error_with_pos('cannot call non generic function with generic argument list',
@@ -2395,7 +2437,8 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 					// c.log('#### it variable inserted')
 					// fn_.scope.insert('it', rt)
 					it_type := rt.value_type()
-					c.scope.objects['it'] = it_type
+					it_obj := object_from_type(it_type)
+					c.scope.objects['it'] = it_obj
 				}
 				if lhs_expr.rhs.name == 'map' {
 					rt := c.expr(expr.args[0])
@@ -2512,7 +2555,7 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 			typ:    param_type
 			is_mut: param.is_mut
 		}
-		c.scope.insert(param.name, param_type)
+		c.scope.insert(param.name, object_from_type(param_type))
 	}
 	// if return type is generic replace with NamedType
 	// mut return_type := if fn_type.return_type is ast.Ident {

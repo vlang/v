@@ -114,6 +114,124 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 	return b
 }
 
+fn map_has_key_int(m map[string]int, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_has_key_bool(m map[string]bool, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_has_key_type_id(m map[string]TypeID, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_has_key_value_id(m map[string]ValueID, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_has_key_string(m map[string]string, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_has_key_map_bytes(m map[string][2]int, key string) bool {
+	for k, _ in m {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+fn map_get_int(m map[string]int, key string) ?int {
+	for k, v in m {
+		if k == key {
+			return v
+		}
+	}
+	return none
+}
+
+fn map_get_type_id(m map[string]TypeID, key string) ?TypeID {
+	for k, v in m {
+		if k == key {
+			return v
+		}
+	}
+	return none
+}
+
+fn map_get_value_id(m map[string]ValueID, key string) ?ValueID {
+	for k, v in m {
+		if k == key {
+			return v
+		}
+	}
+	return none
+}
+
+fn map_get_string(m map[string]string, key string) ?string {
+	for k, v in m {
+		if k == key {
+			return v
+		}
+	}
+	return none
+}
+
+fn (b &Builder) get_struct_type_id(name string) ?TypeID {
+	return map_get_type_id(b.struct_types, name)
+}
+
+fn (b &Builder) get_var_ptr(name string) ?ValueID {
+	return map_get_value_id(b.vars, name)
+}
+
+fn (b &Builder) get_type_alias_base(name string) ?string {
+	return map_get_string(b.type_alias_bases, name)
+}
+
+fn (b &Builder) get_func_ret_type(name string) ?TypeID {
+	return map_get_type_id(b.func_ret_types, name)
+}
+
+fn (b &Builder) get_enum_value(name string) ?int {
+	return map_get_int(b.enum_values, name)
+}
+
+fn (b &Builder) get_iface_concrete_type(name string) ?string {
+	return map_get_string(b.iface_concrete_types, name)
+}
+
+fn (b &Builder) get_array_size(name string) ?int {
+	return map_get_int(b.var_array_sizes, name)
+}
+
 // lookup_type_in_scope looks up a type by name in the environment's scopes.
 // First tries module scope, then builtin scope.
 // Returns none if not found or if env is nil.
@@ -121,12 +239,13 @@ fn (b &Builder) lookup_type_in_scope(name string, module_name string) ?types.Typ
 	if b.env == unsafe { nil } {
 		return none
 	}
-	// Try module scope first
-	mut scope := lock b.env.scopes {
-		b.env.scopes[module_name] or {
-			// Try builtin scope as fallback
-			b.env.scopes['builtin'] or { return none }
-		}
+	mut scope := &types.Scope(unsafe { nil })
+	if s := b.env.get_scope(module_name) {
+		scope = s
+	} else if s := b.env.get_scope('builtin') {
+		scope = s
+	} else {
+		return none
 	}
 	if obj := scope.lookup_parent(name, 0) {
 		if obj is types.Type {
@@ -162,12 +281,13 @@ fn (b &Builder) lookup_var_type_from_env(name string) ?types.Type {
 	if b.env == unsafe { nil } {
 		return none
 	}
-	// Try current module scope first
-	mut scope := lock b.env.scopes {
-		b.env.scopes[b.cur_module] or {
-			// Try builtin scope as fallback
-			b.env.scopes['builtin'] or { return none }
-		}
+	mut scope := &types.Scope(unsafe { nil })
+	if s := b.env.get_scope(b.cur_module) {
+		scope = s
+	} else if s := b.env.get_scope('builtin') {
+		scope = s
+	} else {
+		return none
 	}
 	if obj := scope.lookup_parent(name, 0) {
 		return obj.typ()
@@ -215,7 +335,7 @@ fn (b &Builder) get_type_name_from_env(var_name string) string {
 // First checks the local var_struct_types map, then falls back to environment lookup.
 fn (b &Builder) get_var_struct_type(var_name string) ?string {
 	// First try local tracking map (set during SSA building)
-	if struct_type := b.var_struct_types[var_name] {
+	if struct_type := map_get_string(b.var_struct_types, var_name) {
 		return struct_type
 	}
 	// Fall back to environment lookup
@@ -250,7 +370,7 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 		}
 		types.Struct {
 			// Check if already registered
-			if struct_id := b.struct_types[t.name] {
+			if struct_id := b.get_struct_type_id(t.name) {
 				return struct_id
 			}
 			// Convert and register
@@ -270,7 +390,7 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 		}
 		types.String {
 			// String is a special type - return the string struct
-			if struct_id := b.struct_types['string'] {
+			if struct_id := b.get_struct_type_id('string') {
 				return struct_id
 			}
 			// Should not happen if register_string_type() was called
@@ -345,7 +465,7 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 					return b.mod.type_store.get_int(8)
 				}
 				'string' {
-					if struct_id := b.struct_types['string'] {
+					if struct_id := b.get_struct_type_id('string') {
 						return struct_id
 					}
 					return 0 // Should not happen since string is pre-registered
@@ -356,7 +476,7 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 				}
 				else {
 					// Check if it's a struct type
-					if struct_t := b.struct_types[typ.name] {
+					if struct_t := b.get_struct_type_id(typ.name) {
 						return struct_t
 					}
 					// Default to i64 for unknown types
@@ -469,7 +589,7 @@ fn (b Builder) get_receiver_type_name(typ ast.Expr) string {
 fn (mut b Builder) register_builtin_types() {
 	// Register string struct type: { str &u8, len int, is_lit int }
 	// This is 24 bytes on 64-bit: 8 (ptr) + 8 (int) + 8 (int)
-	if _ := b.struct_types['string'] {
+	if map_has_key_type_id(b.struct_types, 'string') {
 		return
 	}
 	i64_t := b.mod.type_store.get_int(64)
@@ -563,7 +683,7 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 			// For methods, add receiver as first parameter (always as pointer)
 			if stmt.is_method {
 				if stmt.receiver.typ is ast.Ident {
-					if struct_t := b.struct_types[stmt.receiver.typ.name] {
+					if struct_t := b.get_struct_type_id(stmt.receiver.typ.name) {
 						param_types << b.mod.type_store.get_ptr(struct_t)
 					} else {
 						param_types << i64_t
@@ -602,7 +722,7 @@ pub fn (mut b Builder) build_fn_signatures(file ast.File) {
 					receiver_type_name = receiver_module + '__' + receiver_type_name
 				} else {
 					// Resolve type aliases for method name mangling (only for main/builtin types)
-					if base_type := b.type_alias_bases[receiver_type_name] {
+					if base_type := b.get_type_alias_base(receiver_type_name) {
 						receiver_type_name = base_type
 					}
 				}
@@ -667,7 +787,7 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 					receiver_type_name = receiver_module + '__' + receiver_type_name
 				} else {
 					// Resolve type aliases for method name mangling (only for main/builtin types)
-					if base_type := b.type_alias_bases[receiver_type_name] {
+					if base_type := b.get_type_alias_base(receiver_type_name) {
 						receiver_type_name = base_type
 					}
 				}
@@ -866,7 +986,10 @@ fn (mut b Builder) generate_array_contains_stub(name string) {
 
 	// array__contains_T takes (array, elem) -> bool
 	// The array is passed as a pointer to struct, elem is an i64
-	array_t := if st := b.struct_types['array'] { st } else { i64_t }
+	mut array_t := i64_t
+	if st := b.get_struct_type_id('array') {
+		array_t = st
+	}
 	array_ptr_t := b.mod.type_store.get_ptr(array_t)
 
 	fn_id := b.mod.new_function(name, bool_t, [array_ptr_t, i64_t])
@@ -963,7 +1086,10 @@ fn (mut b Builder) generate_str_stub(name string) {
 	save_func := b.cur_func
 	save_block := b.cur_block
 
-	string_t := if st := b.struct_types['string'] { st } else { i64_t }
+	mut string_t := i64_t
+	if st := b.get_struct_type_id('string') {
+		string_t = st
+	}
 	string_ptr_t := b.mod.type_store.get_ptr(string_t)
 
 	fn_id := b.mod.new_function(name, string_ptr_t, [ptr_t])
@@ -1018,7 +1144,10 @@ fn (mut b Builder) generate_array_eq_stub() {
 	save_func := b.cur_func
 	save_block := b.cur_block
 
-	array_t := if st := b.struct_types['array'] { st } else { i64_t }
+	mut array_t := i64_t
+	if st := b.get_struct_type_id('array') {
+		array_t = st
+	}
 	array_ptr_t := b.mod.type_store.get_ptr(array_t)
 
 	// array__eq(a1 *array, a2 *array) -> bool
@@ -1120,7 +1249,7 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 
 		if receiver.typ is ast.Ident {
 			struct_type_name = receiver.typ.name
-			if struct_t := b.struct_types[receiver.typ.name] {
+			if struct_t := b.get_struct_type_id(receiver.typ.name) {
 				// Always use pointer for receiver (structs are passed by reference)
 				receiver_type = b.mod.type_store.get_ptr(struct_t)
 			}
@@ -1128,7 +1257,7 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 			// Handle pointer receiver types like &map
 			if receiver.typ.op == .amp && receiver.typ.expr is ast.Ident {
 				struct_type_name = receiver.typ.expr.name
-				if struct_t := b.struct_types[struct_type_name] {
+				if struct_t := b.get_struct_type_id(struct_type_name) {
 					receiver_type = b.mod.type_store.get_ptr(struct_t)
 				}
 			}
@@ -1162,7 +1291,7 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 
 		// Check if parameter type is a struct (look up by name)
 		if param.typ is ast.Ident {
-			if struct_t := b.struct_types[param.typ.name] {
+			if struct_t := b.get_struct_type_id(param.typ.name) {
 				struct_type_name = param.typ.name
 				// V passes structs by pointer (reference) for efficiency
 				param_type = b.mod.type_store.get_ptr(struct_t)
@@ -1170,7 +1299,7 @@ fn (mut b Builder) build_fn(decl ast.FnDecl, fn_id int) {
 		} else if param.typ is ast.SelectorExpr {
 			// Module-qualified type like strings.Builder
 			type_name := param.typ.rhs.name
-			if struct_t := b.struct_types[type_name] {
+			if struct_t := b.get_struct_type_id(type_name) {
 				struct_type_name = type_name
 				param_type = b.mod.type_store.get_ptr(struct_t)
 			}
@@ -1374,7 +1503,7 @@ fn (mut b Builder) stmt_for_in_array(node ast.ForStmt, for_in ast.ForInStmt, key
 	// Get array length from tracked sizes or the expression
 	mut arr_len_val := 0
 	if for_in.expr is ast.Ident {
-		if size := b.var_array_sizes[for_in.expr.name] {
+		if size := b.get_array_size(for_in.expr.name) {
 			arr_len_val = size
 		}
 	} else if for_in.expr is ast.ArrayInitExpr {
@@ -1553,7 +1682,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 						// Track enum type for variables assigned enum values (e.g., color1 := Color.red)
 						if rhs_expr.lhs is ast.Ident {
 							enum_name := '${rhs_expr.lhs.name}__${rhs_expr.rhs.name}'
-							if enum_name in b.enum_values {
+							if map_has_key_int(b.enum_values, enum_name) {
 								b.var_struct_types[name] = rhs_expr.lhs.name
 							}
 						}
@@ -1564,7 +1693,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 							sel := rhs_expr.lhs
 							if sel.lhs is ast.Ident {
 								enum_name := '${sel.lhs.name}__${sel.rhs.name}'
-								if enum_name in b.enum_values {
+								if map_has_key_int(b.enum_values, enum_name) {
 									b.var_struct_types[name] = sel.lhs.name
 								}
 							}
@@ -1586,7 +1715,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 						// Track interface boxing: d := Drawable(point)
 						if rhs_expr.lhs is ast.Ident {
 							iface_name := rhs_expr.lhs.name
-							if iface_name in b.interface_names {
+							if map_has_key_bool(b.interface_names, iface_name) {
 								b.var_struct_types[name] = iface_name
 								// Also track the concrete type for direct method calls
 								concrete := b.infer_concrete_type(rhs_expr.expr)
@@ -1621,7 +1750,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				if lhs_expr is ast.IndexExpr {
 					if lhs_expr.lhs is ast.Ident {
 						var_name := lhs_expr.lhs.name
-						if var_name in b.var_map_types {
+						if map_has_key_map_bytes(b.var_map_types, var_name) {
 							// Map set: use simple inline map set
 							map_ptr := b.vars[var_name]
 							key_val := b.expr(lhs_expr.expr)
@@ -1779,7 +1908,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 
 				// Check if field type is a function pointer type alias or FnType
 				if field.typ is ast.Ident {
-					if field.typ.name in b.fn_type_aliases {
+					if map_has_key_bool(b.fn_type_aliases, field.typ.name) {
 						b.fn_ptr_fields['${node.name}.${field.name}'] = true
 						// eprintln('DEBUG: Registered fn_ptr_field: ${node.name}.${field.name} (type: ${field.typ.name})')
 					}
@@ -1813,7 +1942,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				mut field_type := b.mod.type_store.get_int(64) // default to int64
 				if field.typ is ast.Ident {
 					type_name := field.typ.name
-					if st := b.struct_types[type_name] {
+					if st := b.get_struct_type_id(type_name) {
 						// Field is a struct type
 						field_type = st
 					}
@@ -1941,7 +2070,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 				// Type alias: look up the base type
 				if node.base_type is ast.Ident {
 					base_name := node.base_type.name
-					if st := b.struct_types[base_name] {
+					if st := b.get_struct_type_id(base_name) {
 						// Alias to existing struct type
 						b.struct_types[node.name] = st
 					} else {
@@ -1969,7 +2098,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 							// Map to 'array' for method resolution
 							b.type_alias_bases[node.name] = 'array'
 							// Register the type itself
-							if array_t := b.struct_types['array'] {
+							if array_t := b.get_struct_type_id('array') {
 								b.struct_types[node.name] = array_t
 							}
 							// Track which module this type belongs to
@@ -1979,7 +2108,7 @@ fn (mut b Builder) stmt(node ast.Stmt) {
 							// Map type alias (e.g., type Map = map[int]int)
 							// Map to 'map' for method resolution
 							b.type_alias_bases[node.name] = 'map'
-							if map_t := b.struct_types['map'] {
+							if map_t := b.get_struct_type_id('map') {
 								b.struct_types[node.name] = map_t
 							}
 							b.type_modules[node.name] = b.cur_module
@@ -2043,7 +2172,7 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 			// Check if this is an enum value access (EnumName.value)
 			if node.lhs is ast.Ident {
 				enum_name := '${node.lhs.name}__${node.rhs.name}'
-				if enum_val := b.enum_values[enum_name] {
+				if enum_val := b.get_enum_value(enum_name) {
 					i64_t := b.mod.type_store.get_int(64)
 					return b.mod.add_value_node(.constant, i64_t, '${enum_val}', 0)
 				}
@@ -2052,7 +2181,7 @@ fn (mut b Builder) expr(node ast.Expr) ValueID {
 			if node.lhs is ast.EmptyExpr {
 				if b.cur_match_type != '' {
 					enum_name := '${b.cur_match_type}__${node.rhs.name}'
-					if enum_val := b.enum_values[enum_name] {
+					if enum_val := b.get_enum_value(enum_name) {
 						i64_t := b.mod.type_store.get_int(64)
 						return b.mod.add_value_node(.constant, i64_t, '${enum_val}', 0)
 					}
@@ -2349,7 +2478,7 @@ fn (mut b Builder) expr_init(node ast.InitExpr) ValueID {
 
 	// Try to get struct type from the type name in the init expression
 	if node.typ is ast.Ident {
-		if st := b.struct_types[node.typ.name] {
+		if st := b.get_struct_type_id(node.typ.name) {
 			struct_t = st
 		}
 	}
@@ -2410,7 +2539,7 @@ fn (mut b Builder) expr_selector(node ast.SelectorExpr) ValueID {
 	// Check for map.len access
 	if node.lhs is ast.Ident && node.rhs.name == 'len' {
 		var_name := node.lhs.name
-		if var_name in b.var_map_types {
+		if map_has_key_map_bytes(b.var_map_types, var_name) {
 			// Map len access - load the len field from our simple map struct
 			// Simple map structure: [len, keys[0..31], values[0..31]]
 			// len is at index 0
@@ -2446,7 +2575,7 @@ fn (mut b Builder) expr_index(node ast.IndexExpr) ValueID {
 	// Check if this is a map access (m[key])
 	if node.lhs is ast.Ident {
 		var_name := node.lhs.name
-		if var_name in b.var_map_types {
+		if map_has_key_map_bytes(b.var_map_types, var_name) {
 			// Map access: use simple inline map get
 			map_ptr := b.vars[var_name]
 			key_val := b.expr(node.expr)
@@ -3124,7 +3253,8 @@ fn (mut b Builder) expr_match(node ast.MatchExpr) ValueID {
 	} else if node.expr is ast.SelectorExpr {
 		if node.expr.lhs is ast.Ident {
 			// Check if LHS is an enum name
-			for key, _ in b.enum_values {
+			enum_keys := b.enum_values.keys()
+			for key in enum_keys {
 				if key.starts_with('${node.expr.lhs.name}__') {
 					b.cur_match_type = node.expr.lhs.name
 					break
@@ -3217,7 +3347,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 		// and we're in a non-main/non-builtin module, try with module prefix
 		if !name.contains('__') && b.cur_module != 'main' && b.cur_module != 'builtin' {
 			prefixed := b.cur_module + '__' + name
-			if prefixed in b.func_ret_types {
+			if map_has_key_type_id(b.func_ret_types, prefixed) {
 				name = prefixed
 			}
 		}
@@ -3236,13 +3366,13 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 		}
 		// Fix transformer's single-underscore Type_method naming to SSA double-underscore convention
 		// e.g., 'int_str' -> 'int__str', 'sync__RwMutex_rlock' -> 'sync__RwMutex__rlock'
-		if name !in b.func_ret_types && name.contains('_') {
+		if !map_has_key_type_id(b.func_ret_types, name) && name.contains('_') {
 			// Try each _ as __ to find a matching function
 			for i := name.len - 1; i >= 0; i-- {
 				if name[i] == `_` && (i == 0 || name[i - 1] != `_`)
 					&& (i == name.len - 1 || name[i + 1] != `_`) {
 					candidate := '${name[..i]}__${name[i + 1..]}'
-					if candidate in b.func_ret_types {
+					if map_has_key_type_id(b.func_ret_types, candidate) {
 						name = candidate
 						break
 					}
@@ -3269,7 +3399,7 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 			} else if struct_type_name := b.get_var_struct_type(receiver_name) {
 				// Check if this is a function pointer field call (e.g., m.key_eq_fn(args))
 				fn_ptr_key := '${struct_type_name}.${method_name}'
-				if fn_ptr_key in b.fn_ptr_fields {
+				if map_has_key_bool(b.fn_ptr_fields, fn_ptr_key) {
 					// Function pointer field call - load the function pointer and do indirect call
 					// Get the struct pointer
 					var_ptr := b.addr(ast.Expr(lhs.lhs))
@@ -3306,10 +3436,10 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 						args.prepend(fn_ptr)
 						return b.mod.add_instr(.call_indirect, b.cur_block, i32_t, args)
 					}
-				} else if struct_type_name in b.interface_names {
+				} else if map_has_key_bool(b.interface_names, struct_type_name) {
 					// Check if this is an interface type - use direct call with concrete type
 					// Look up the concrete type for this interface variable
-					if concrete_type := b.iface_concrete_types[receiver_name] {
+					if concrete_type := b.get_iface_concrete_type(receiver_name) {
 						// Use direct call with the concrete type
 						name = '${concrete_type}__${method_name}'
 						is_method_call = true
@@ -3347,21 +3477,22 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 						&& receiver_module != 'builtin' {
 						candidate := receiver_module + '__' + struct_type_name
 						candidate_fn := '${candidate}__${mangled_method}'
-						if candidate_fn in b.func_ret_types {
+						if map_has_key_type_id(b.func_ret_types, candidate_fn) {
 							mangled_type = candidate
-						} else if base_type := b.type_alias_bases[struct_type_name] {
+						} else if base_type := b.get_type_alias_base(struct_type_name) {
 							// Method not found on module type, try alias base (e.g., array)
 							mangled_type = base_type
 						} else {
 							mangled_type = candidate
 						}
-					} else if base_type := b.type_alias_bases[struct_type_name] {
+					} else if base_type := b.get_type_alias_base(struct_type_name) {
 						mangled_type = base_type
 					}
 					name = '${mangled_type}__${mangled_method}'
 					is_method_call = true
 					// Check if this is a flag enum method
-					if mangled_type in b.flag_enum_names && mangled_method in ['has', 'all'] {
+					if map_has_key_bool(b.flag_enum_names, mangled_type)
+						&& mangled_method in ['has', 'all'] {
 						flag_enum_receiver_type = mangled_type
 					}
 					// Get the receiver - need to load the struct pointer from the variable
@@ -3394,7 +3525,8 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 				if inferred_type != '' {
 					name = '${inferred_type}__${mangled_method_name}'
 					// Check if this is a flag enum method
-					if inferred_type in b.flag_enum_names && mangled_method_name in ['has', 'all'] {
+					if map_has_key_bool(b.flag_enum_names, inferred_type)
+						&& mangled_method_name in ['has', 'all'] {
 						flag_enum_receiver_type = inferred_type
 					}
 				} else {
@@ -3423,7 +3555,8 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 			if inferred_type != '' {
 				name = '${inferred_type}__${mangled_mname}'
 				// Check if this is a flag enum method
-				if inferred_type in b.flag_enum_names && mangled_mname in ['has', 'all'] {
+				if map_has_key_bool(b.flag_enum_names, inferred_type)
+					&& mangled_mname in ['has', 'all'] {
 					flag_enum_receiver_type = inferred_type
 				}
 			} else {
@@ -3451,26 +3584,26 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 	}
 
 	// Generate stubs for type-specialized functions that don't have V implementations
-	if name.starts_with('array__contains_') && name !in b.func_ret_types {
+	if name.starts_with('array__contains_') && !map_has_key_type_id(b.func_ret_types, name) {
 		b.generate_array_contains_stub(name)
 	}
-	if name == 'array__eq' && name !in b.func_ret_types {
+	if name == 'array__eq' && !map_has_key_type_id(b.func_ret_types, name) {
 		b.generate_array_eq_stub()
 	}
 	// Generate no-op stubs for sync RwMutex methods (single-threaded in native backend)
-	if name !in b.func_ret_types && name.contains('RwMutex') {
+	if !map_has_key_type_id(b.func_ret_types, name) && name.contains('RwMutex') {
 		b.generate_noop_stub(name)
 	}
 	// Remap double-underscore method names to single-underscore for transformer-generated functions
 	// e.g., Array_int__str -> Array_int_str (transformer uses single underscore for these)
-	if name !in b.func_ret_types && name.ends_with('__str') {
+	if !map_has_key_type_id(b.func_ret_types, name) && name.ends_with('__str') {
 		candidate := name[..name.len - 5] + '_str'
-		if candidate in b.func_ret_types {
+		if map_has_key_type_id(b.func_ret_types, candidate) {
 			name = candidate
 		}
 	}
 	// Generate str() stubs for types that don't have an implementation
-	if name !in b.func_ret_types && name.ends_with('__str') {
+	if !map_has_key_type_id(b.func_ret_types, name) && name.ends_with('__str') {
 		b.generate_str_stub(name)
 	}
 
@@ -3479,7 +3612,10 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 	args.prepend(fn_val)
 
 	// Look up the return type from tracked functions
-	ret_type := if rt := b.func_ret_types[name] { rt } else { i32_t }
+	mut ret_type := i32_t
+	if rt := b.get_func_ret_type(name) {
+		ret_type = rt
+	}
 
 	return b.mod.add_instr(.call, b.cur_block, ret_type, args)
 }
@@ -3655,16 +3791,17 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 			return b.expr(node.expr)
 		}
 		// Check if this is interface boxing: Drawable(point)
-		if cast_name in b.interface_names {
+		if map_has_key_bool(b.interface_names, cast_name) {
 			return b.expr_interface_box(cast_name, node.expr)
 		}
 		// Check if this is a type alias cast: Builder([]u8{...})
-		if cast_name in b.type_alias_bases || cast_name in b.struct_types {
+		if map_has_key_string(b.type_alias_bases, cast_name)
+			|| map_has_key_type_id(b.struct_types, cast_name) {
 			// Type cast to a struct/alias type - just evaluate the expression
 			return b.expr(node.expr)
 		}
 		// Check if this is an enum cast: StrIntpType(1)
-		if cast_name in b.enum_names {
+		if map_has_key_bool(b.enum_names, cast_name) {
 			// Enum cast - just evaluate the expression (enums are ints)
 			return b.expr(node.expr)
 		}
@@ -3696,7 +3833,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 		// Resolve intra-module calls
 		if !name.contains('__') && b.cur_module != 'main' && b.cur_module != 'builtin' {
 			prefixed := b.cur_module + '__' + name
-			if prefixed in b.func_ret_types {
+			if map_has_key_type_id(b.func_ret_types, prefixed) {
 				name = prefixed
 			}
 		}
@@ -3713,12 +3850,12 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 			}
 		}
 		// Fix transformer's single-underscore Type_method naming to SSA double-underscore convention
-		if name !in b.func_ret_types && name.contains('_') {
+		if !map_has_key_type_id(b.func_ret_types, name) && name.contains('_') {
 			for i := name.len - 1; i >= 0; i-- {
 				if name[i] == `_` && (i == 0 || name[i - 1] != `_`)
 					&& (i == name.len - 1 || name[i + 1] != `_`) {
 					candidate := '${name[..i]}__${name[i + 1..]}'
-					if candidate in b.func_ret_types {
+					if map_has_key_type_id(b.func_ret_types, candidate) {
 						name = candidate
 						break
 					}
@@ -3737,7 +3874,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 				ptr_t := b.mod.type_store.get_ptr(i32_t)
 				// Check if this is a function pointer field call (e.g., m.hash_fn(args))
 				fn_ptr_key := '${struct_type_name}.${method_name}'
-				if fn_ptr_key in b.fn_ptr_fields {
+				if map_has_key_bool(b.fn_ptr_fields, fn_ptr_key) {
 					// Function pointer field call - load the function pointer and do indirect call
 					var_ptr := b.addr(ast.Expr(node.lhs.lhs))
 					ptr_typ := b.mod.values[var_ptr].typ
@@ -3785,20 +3922,21 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 					&& receiver_module2 != 'builtin' {
 					candidate := receiver_module2 + '__' + struct_type_name
 					candidate_fn := '${candidate}__${method_name}'
-					if candidate_fn in b.func_ret_types {
+					if map_has_key_type_id(b.func_ret_types, candidate_fn) {
 						mangled_type = candidate
-					} else if base_type := b.type_alias_bases[struct_type_name] {
+					} else if base_type := b.get_type_alias_base(struct_type_name) {
 						mangled_type = base_type
 					} else {
 						mangled_type = candidate
 					}
-				} else if base_type := b.type_alias_bases[struct_type_name] {
+				} else if base_type := b.get_type_alias_base(struct_type_name) {
 					mangled_type = base_type
 				}
 				name = '${mangled_type}__${method_name}'
 				is_method_call = true
 				// Check if this is a flag enum method
-				if mangled_type in b.flag_enum_names && method_name in ['has', 'all'] {
+				if map_has_key_bool(b.flag_enum_names, mangled_type)
+					&& method_name in ['has', 'all'] {
 					flag_enum_receiver_type = mangled_type
 				}
 				// Get the receiver - need to load the struct pointer from the variable
@@ -3827,7 +3965,8 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 				if inferred_type != '' {
 					name = '${inferred_type}__${mangled_method}'
 					// Check if this is a flag enum method - SET cur_match_type
-					if inferred_type in b.flag_enum_names && mangled_method in ['has', 'all'] {
+					if map_has_key_bool(b.flag_enum_names, inferred_type)
+						&& mangled_method in ['has', 'all'] {
 						flag_enum_receiver_type = inferred_type
 					}
 				} else {
@@ -3856,7 +3995,8 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 			if inferred_type != '' {
 				name = '${inferred_type}__${mangled_mname}'
 				// Check if this is a flag enum method
-				if inferred_type in b.flag_enum_names && mangled_mname in ['has', 'all'] {
+				if map_has_key_bool(b.flag_enum_names, inferred_type)
+					&& mangled_mname in ['has', 'all'] {
 					flag_enum_receiver_type = inferred_type
 				}
 			} else {
@@ -3883,14 +4023,14 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 	}
 
 	// Remap double-underscore method names to single-underscore for transformer-generated functions
-	if name !in b.func_ret_types && name.ends_with('__str') {
+	if !map_has_key_type_id(b.func_ret_types, name) && name.ends_with('__str') {
 		candidate := name[..name.len - 5] + '_str'
-		if candidate in b.func_ret_types {
+		if map_has_key_type_id(b.func_ret_types, candidate) {
 			name = candidate
 		}
 	}
 	// Generate str() stubs for types that don't have an implementation
-	if name !in b.func_ret_types && name.ends_with('__str') {
+	if !map_has_key_type_id(b.func_ret_types, name) && name.ends_with('__str') {
 		b.generate_str_stub(name)
 	}
 
@@ -3899,7 +4039,10 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 
 	// Look up the return type from tracked functions
 	i64_t := b.mod.type_store.get_int(64)
-	ret_type := if rt := b.func_ret_types[name] { rt } else { i64_t }
+	mut ret_type := i64_t
+	if rt := b.get_func_ret_type(name) {
+		ret_type = rt
+	}
 
 	return b.mod.add_instr(.call, b.cur_block, ret_type, args)
 }
@@ -4313,7 +4456,7 @@ fn (mut b Builder) expr_heap_alloc(node ast.InitExpr) ValueID {
 	mut struct_t := 0
 
 	if node.typ is ast.Ident {
-		if st := b.struct_types[node.typ.name] {
+		if st := b.get_struct_type_id(node.typ.name) {
 			struct_t = st
 		}
 	}
@@ -4360,7 +4503,7 @@ fn (mut b Builder) expr_postfix(node ast.PostfixExpr) ValueID {
 	// Handle i++ / i--
 	if node.expr is ast.Ident {
 		name := (node.expr as ast.Ident).name
-		if ptr := b.vars[name] {
+		if ptr := b.get_var_ptr(name) {
 			if ptr != 0 {
 				i32_t := b.mod.type_store.get_int(64)
 
@@ -4407,7 +4550,7 @@ fn (mut b Builder) addr(node ast.Expr) ValueID {
 	match node {
 		ast.Ident {
 			// Check locals
-			if ptr := b.vars[node.name] {
+			if ptr := b.get_var_ptr(node.name) {
 				// FIX: Ensure it is a valid ID (0 is invalid now)
 				if ptr != 0 {
 					return ptr
