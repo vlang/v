@@ -21,15 +21,18 @@ fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 
 fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes, keys, values)
+	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes,
+		keys, values)
 }
 
 fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes, keys, values)
+	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes,
+		keys, values)
 }
 
 fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn,
 	n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes, keys, values)
+	return new_map_init(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes,
+		keys, values)
 }
