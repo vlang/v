@@ -14,17 +14,18 @@ pub struct Gen {
 	env   &types.Environment = unsafe { nil }
 	pref  &pref.Preferences  = unsafe { nil }
 mut:
-	sb                  strings.Builder
-	indent              int
-	cur_fn_scope        &types.Scope = unsafe { nil }
-	cur_fn_name         string
-	cur_fn_ret_type     string
-	cur_module          string
-	emitted_types       map[string]bool
-	fn_param_is_ptr     map[string][]bool
-	fn_param_types      map[string][]string
-	fn_return_types     map[string]string
-	runtime_local_types map[string]string
+	sb                     strings.Builder
+	indent                 int
+	cur_fn_scope           &types.Scope = unsafe { nil }
+	cur_fn_name            string
+	cur_fn_ret_type        string
+	cur_module             string
+	emitted_types          map[string]bool
+	fn_param_is_ptr        map[string][]bool
+	fn_param_types         map[string][]string
+	fn_return_types        map[string]string
+	fn_names_in_decl_order []string
+	runtime_local_types    map[string]string
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -281,14 +282,15 @@ pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
-		files:               files
-		env:                 unsafe { env }
-		pref:                unsafe { p }
-		sb:                  strings.new_builder(4096)
-		fn_param_is_ptr:     map[string][]bool{}
-		fn_param_types:      map[string][]string{}
-		fn_return_types:     map[string]string{}
-		runtime_local_types: map[string]string{}
+		files:                  files
+		env:                    unsafe { env }
+		pref:                   unsafe { p }
+		sb:                     strings.new_builder(4096)
+		fn_param_is_ptr:        map[string][]bool{}
+		fn_param_types:         map[string][]string{}
+		fn_return_types:        map[string]string{}
+		fn_names_in_decl_order: []string{}
+		runtime_local_types:    map[string]string{}
 
 		fixed_array_fields:     map[string]bool{}
 		fixed_array_field_elem: map[string]string{}
@@ -305,6 +307,10 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		emitted_option_structs: map[string]bool{}
 		embedded_field_owner:   map[string]string{}
 	}
+}
+
+fn (g &Gen) use_prealloc_allocator() bool {
+	return g.pref != unsafe { nil } && g.pref.use_prealloc_allocator
 }
 
 pub fn (mut g Gen) gen() string {
@@ -455,6 +461,8 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('')
 
 	// Pass 4: Function forward declarations
+	mut test_fn_names := []string{}
+	mut has_main := false
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -472,6 +480,12 @@ pub fn (mut g Gen) gen() string {
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
 					continue
+				}
+				if fn_name == 'main' {
+					has_main = true
+				}
+				if stmt.name.starts_with('test_') && !stmt.is_method && stmt.typ.params.len == 0 {
+					test_fn_names << fn_name
 				}
 				if g.env != unsafe { nil } {
 					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
@@ -494,6 +508,25 @@ pub fn (mut g Gen) gen() string {
 		g.gen_file(file)
 	}
 
+	// Generate test runner main if this is a test file (has test_ functions but no main)
+	if !has_main && test_fn_names.len > 0 {
+		g.sb.writeln('')
+		g.sb.writeln('int main(int ___argc, char** ___argv) {')
+		g.sb.writeln('\tg_main_argc = ___argc;')
+		g.sb.writeln('\tg_main_argv = (void*)___argv;')
+		for test_fn in test_fn_names {
+			msg_run := 'Running test: ${test_fn}...'
+			msg_ok := '  OK'
+			g.sb.writeln('\tprintln((string){"${msg_run}", sizeof("${msg_run}") - 1});')
+			g.sb.writeln('\t${test_fn}();')
+			g.sb.writeln('\tprintln((string){"${msg_ok}", sizeof("${msg_ok}") - 1});')
+		}
+		msg_all := 'All ${test_fn_names.len} tests passed.'
+		g.sb.writeln('\tprintln((string){"${msg_all}", sizeof("${msg_all}") - 1});')
+		g.sb.writeln('\treturn 0;')
+		g.sb.writeln('}')
+	}
+
 	return g.sb.str()
 }
 
@@ -505,8 +538,7 @@ fn (mut g Gen) emit_interface_method_wrappers() {
 	mut emitted := map[string]bool{}
 	mut iface_names := g.interface_methods.keys()
 	iface_names.sort()
-	mut fn_names := g.fn_param_is_ptr.keys()
-	fn_names.sort()
+	fn_names := g.fn_names_in_decl_order
 	for iface_name in iface_names {
 		methods := g.interface_methods[iface_name]
 		for method in methods {
@@ -621,6 +653,9 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('typedef void* chan;')
 	g.sb.writeln('typedef double float_literal;')
 	g.sb.writeln('typedef int64_t int_literal;')
+	if g.use_prealloc_allocator() {
+		g.write_prealloc_allocator_preamble()
+	}
 	// wyhash implementation used by builtin/map and hash modules.
 	g.sb.writeln('#ifndef wyhash_final_version_4_2')
 	g.sb.writeln('#define wyhash_final_version_4_2')
@@ -710,6 +745,170 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('')
 }
 
+fn (mut g Gen) write_prealloc_allocator_preamble() {
+	preamble := [
+		'// prealloc arena allocator (enabled by -prealloc)',
+		'static void* (*v2_sys_malloc_fn)(size_t) = malloc;',
+		'static void* (*v2_sys_realloc_fn)(void*, size_t) = realloc;',
+		'static void (*v2_sys_free_fn)(void*) = free;',
+		'typedef struct v2_realloc_chunk {',
+		'    u8* data;',
+		'    size_t used;',
+		'    size_t cap;',
+		'    struct v2_realloc_chunk* prev;',
+		'} v2_realloc_chunk;',
+		'typedef union v2_realloc_header {',
+		'    struct {',
+		'        size_t size;',
+		'    } meta;',
+		'    max_align_t _align;',
+		'} v2_realloc_header;',
+		'static v2_realloc_chunk* v2_realloc_current_chunk = NULL;',
+		'static int v2_realloc_cleanup_registered = 0;',
+		'static const size_t v2_realloc_min_chunk_cap = ((size_t)64 * 1024 * 1024);',
+		'static void v2_realloc_alloc_panic(size_t bytes) {',
+		'    fprintf(stderr, "v2 -prealloc arena: allocation failed for %zu bytes\\n", bytes);',
+		'    exit(1);',
+		'}',
+		'static size_t v2_realloc_align_up(size_t value, size_t align) {',
+		'    if (align == 0) {',
+		'        return value;',
+		'    }',
+		'    size_t rem = value % align;',
+		'    return rem == 0 ? value : value + (align - rem);',
+		'}',
+		'static void v2_realloc_cleanup(void) {',
+		'    v2_realloc_chunk* chunk = v2_realloc_current_chunk;',
+		'    while (chunk != NULL) {',
+		'        v2_realloc_chunk* prev = chunk->prev;',
+		'        v2_sys_free_fn(chunk->data);',
+		'        v2_sys_free_fn(chunk);',
+		'        chunk = prev;',
+		'    }',
+		'    v2_realloc_current_chunk = NULL;',
+		'}',
+		'static void v2_realloc_add_chunk(size_t min_cap) {',
+		'    size_t cap = v2_realloc_min_chunk_cap;',
+		'    if (v2_realloc_current_chunk != NULL && v2_realloc_current_chunk->cap > cap) {',
+		'        cap = v2_realloc_current_chunk->cap;',
+		'    }',
+		'    while (cap < min_cap) {',
+		'        size_t next = cap * 2;',
+		'        if (next <= cap) {',
+		'            cap = min_cap;',
+		'            break;',
+		'        }',
+		'        cap = next;',
+		'    }',
+		'    v2_realloc_chunk* chunk = (v2_realloc_chunk*)v2_sys_malloc_fn(sizeof(v2_realloc_chunk));',
+		'    if (chunk == NULL) {',
+		'        v2_realloc_alloc_panic(sizeof(v2_realloc_chunk));',
+		'    }',
+		'    chunk->data = (u8*)v2_sys_realloc_fn(NULL, cap);',
+		'    if (chunk->data == NULL) {',
+		'        v2_realloc_alloc_panic(cap);',
+		'    }',
+		'    chunk->used = 0;',
+		'    chunk->cap = cap;',
+		'    chunk->prev = v2_realloc_current_chunk;',
+		'    v2_realloc_current_chunk = chunk;',
+		'    if (!v2_realloc_cleanup_registered) {',
+		'        atexit(v2_realloc_cleanup);',
+		'        v2_realloc_cleanup_registered = 1;',
+		'    }',
+		'}',
+		'static v2_realloc_chunk* v2_realloc_find_chunk(const u8* ptr) {',
+		'    for (v2_realloc_chunk* chunk = v2_realloc_current_chunk; chunk != NULL; chunk = chunk->prev) {',
+		'        const u8* start = chunk->data;',
+		'        const u8* end = chunk->data + chunk->used;',
+		'        if (ptr > start && ptr <= end) {',
+		'            return chunk;',
+		'        }',
+		'    }',
+		'    return NULL;',
+		'}',
+		'static void* v2_realloc_malloc(size_t size) {',
+		'    if (size == 0) {',
+		'        size = 1;',
+		'    }',
+		'    size_t align = sizeof(max_align_t);',
+		'    size_t needed = sizeof(v2_realloc_header) + size;',
+		'    if (v2_realloc_current_chunk == NULL) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'    }',
+		'    size_t offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    if (offset + needed > v2_realloc_current_chunk->cap) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'        offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    }',
+		'    v2_realloc_header* header = (v2_realloc_header*)(v2_realloc_current_chunk->data + offset);',
+		'    header->meta.size = size;',
+		'    v2_realloc_current_chunk->used = offset + needed;',
+		'    return (void*)(header + 1);',
+		'}',
+		'static void* v2_realloc_calloc(size_t count, size_t size) {',
+		'    if (count == 0 || size == 0) {',
+		'        return v2_realloc_malloc(1);',
+		'    }',
+		'    if (count > ((size_t)-1) / size) {',
+		'        v2_realloc_alloc_panic((size_t)-1);',
+		'    }',
+		'    size_t total = count * size;',
+		'    void* ptr = v2_realloc_malloc(total);',
+		'    memset(ptr, 0, total);',
+		'    return ptr;',
+		'}',
+		'static void* v2_realloc_realloc(void* ptr, size_t new_size) {',
+		'    if (ptr == NULL) {',
+		'        return v2_realloc_malloc(new_size);',
+		'    }',
+		'    if (new_size == 0) {',
+		'        new_size = 1;',
+		'    }',
+		'    v2_realloc_chunk* chunk = v2_realloc_find_chunk((const u8*)ptr);',
+		'    if (chunk == NULL) {',
+		'        void* out = v2_sys_realloc_fn(ptr, new_size);',
+		'        if (out == NULL) {',
+		'            v2_realloc_alloc_panic(new_size);',
+		'        }',
+		'        return out;',
+		'    }',
+		'    v2_realloc_header* header = ((v2_realloc_header*)ptr) - 1;',
+		'    size_t old_size = header->meta.size;',
+		'    size_t header_offset = (size_t)((u8*)header - chunk->data);',
+		'    size_t alloc_start = header_offset + sizeof(v2_realloc_header);',
+		'    size_t alloc_end = alloc_start + old_size;',
+		'    if (chunk == v2_realloc_current_chunk && alloc_end == chunk->used) {',
+		'        size_t new_end = alloc_start + new_size;',
+		'        if (new_end <= chunk->cap) {',
+		'            header->meta.size = new_size;',
+		'            chunk->used = new_end;',
+		'            return ptr;',
+		'        }',
+		'    }',
+		'    void* new_ptr = v2_realloc_malloc(new_size);',
+		'    size_t copy_size = old_size < new_size ? old_size : new_size;',
+		'    memcpy(new_ptr, ptr, copy_size);',
+		'    return new_ptr;',
+		'}',
+		'static void v2_realloc_free(void* ptr) {',
+		'    if (ptr == NULL) {',
+		'        return;',
+		'    }',
+		'    if (v2_realloc_find_chunk((const u8*)ptr) != NULL) {',
+		'        return;',
+		'    }',
+		'    v2_sys_free_fn(ptr);',
+		'}',
+		'#define malloc(n) v2_realloc_malloc((size_t)(n))',
+		'#define calloc(c, n) v2_realloc_calloc((size_t)(c), (size_t)(n))',
+		'#define realloc(p, n) v2_realloc_realloc((p), (size_t)(n))',
+		'#define free(p) v2_realloc_free((p))',
+	].join('\n')
+	g.sb.write_string(preamble)
+	g.sb.write_string('\n\n')
+}
+
 fn is_c_identifier_like(name string) bool {
 	if name.len == 0 {
 		return false
@@ -766,12 +965,12 @@ fn (mut g Gen) collect_module_type_names() {
 						}
 						fields[field.name] = true
 					}
-					cloned_fields := fields.clone()
-					g.enum_type_fields[enum_name] = cloned_fields
+					mut cloned_fields := fields.clone()
+					g.enum_type_fields[enum_name] = cloned_fields.move()
 					if enum_name.contains('__') {
 						short_name := enum_name.all_after_last('__')
-						short_cloned_fields := fields.clone()
-						g.enum_type_fields[short_name] = short_cloned_fields
+						mut short_cloned_fields := fields.clone()
+						g.enum_type_fields[short_name] = short_cloned_fields.move()
 					}
 				}
 				ast.TypeDecl {
@@ -857,6 +1056,7 @@ fn (mut g Gen) collect_fn_signatures() {
 					g.fn_param_is_ptr[fn_name] = params
 					g.fn_param_types[fn_name] = param_types
 					g.fn_return_types[fn_name] = ret_type
+					g.fn_names_in_decl_order << fn_name
 				}
 				else {}
 			}
@@ -952,8 +1152,9 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 			g.register_alias_type('_result_${base}')
 		}
 		types.Alias {
-			g.collect_aliases_from_type(t.base_type)
-			g.register_alias_type(t.name)
+			// Alias payloads from self-host env caches can be malformed.
+			// Decls are collected from AST, so skip runtime alias recursion here.
+			return
 		}
 		types.Pointer {
 			g.collect_aliases_from_type(t.base_type)
@@ -1301,8 +1502,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			if node.expr is ast.UnsafeExpr {
 				unsafe_expr := node.expr as ast.UnsafeExpr
+				if unsafe_expr.stmts.len > 1 {
+					g.write_indent()
+					g.sb.writeln('{')
+					g.indent++
+				}
 				for stmt in unsafe_expr.stmts {
 					g.gen_stmt(stmt)
+				}
+				if unsafe_expr.stmts.len > 1 {
+					g.indent--
+					g.write_indent()
+					g.sb.writeln('}')
 				}
 				return
 			}
@@ -2384,7 +2595,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
-		if typ == '' {
+		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
 		g.sb.write_string('${typ} ${name} = ')
@@ -3233,7 +3444,7 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	mut is_iface := false
-	if scope := g.env_scope(g.cur_module) {
+	if mut scope := g.env_scope(g.cur_module) {
 		if obj := scope.lookup_parent(type_name, 0) {
 			if obj is types.Type && obj is types.Interface {
 				is_iface = true
@@ -3304,7 +3515,7 @@ fn (g &Gen) is_enum_type(name string) bool {
 	// Also check the types.Environment
 	if g.env != unsafe { nil } {
 		mut found := false
-		if scope := g.env_scope(g.cur_module) {
+		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
 				if obj is types.Type && obj is types.Enum {
 					found = true
@@ -3396,7 +3607,7 @@ fn (mut g Gen) is_module_ident(name string) bool {
 	}
 	if g.env != unsafe { nil } {
 		mut found := false
-		if scope := g.env_scope(g.cur_module) {
+		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
 				found = obj is types.Module
 			}
@@ -3445,14 +3656,33 @@ fn escape_char_literal_content(raw string) string {
 	return sb.str()
 }
 
-fn escape_c_string_literal_content(raw string) string {
+fn escape_c_string_literal_content(raw string, kind ast.StringLiteralKind) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	for ch in raw {
-		if ch == `"` {
-			sb.write_u8(`\\`)
-			sb.write_u8(`"`)
-		} else {
-			sb.write_u8(ch)
+		match ch {
+			`"` {
+				sb.write_u8(`\\`)
+				sb.write_u8(`"`)
+			}
+			`\n` {
+				sb.write_string('\\n')
+			}
+			`\r` {
+				sb.write_string('\\r')
+			}
+			`\t` {
+				sb.write_string('\\t')
+			}
+			`\\` {
+				if kind == .raw {
+					sb.write_string('\\\\')
+				} else {
+					sb.write_u8(`\\`)
+				}
+			}
+			else {
+				sb.write_u8(ch)
+			}
 		}
 	}
 	return sb.str()
@@ -3661,17 +3891,27 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.sb.write_string('false')
 			} else if node.kind == .char {
 				raw := strip_literal_quotes(node.value)
-				escaped := escape_char_literal_content(raw)
-				g.sb.write_u8(`'`)
-				g.sb.write_string(escaped)
-				g.sb.write_u8(`'`)
+				if raw.len > 1 && raw[0] != `\\` {
+					// Multi-byte UTF-8 character: emit as numeric codepoint
+					runes := raw.runes()
+					if runes.len > 0 {
+						g.sb.write_string(int(runes[0]).str())
+					} else {
+						g.sb.write_string("'${raw}'")
+					}
+				} else {
+					escaped := escape_char_literal_content(raw)
+					g.sb.write_u8(`'`)
+					g.sb.write_string(escaped)
+					g.sb.write_u8(`'`)
+				}
 			} else {
 				g.sb.write_string(sanitize_c_number_literal(node.value))
 			}
 		}
 		ast.StringLiteral {
 			val := strip_literal_quotes(node.value)
-			escaped := escape_c_string_literal_content(val)
+			escaped := escape_c_string_literal_content(val, node.kind)
 			if node.kind == .c {
 				// C string literal: emit raw C string
 				g.sb.write_u8(`"`)
@@ -3719,17 +3959,17 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				if node.name in g.global_var_modules
 					&& g.global_var_modules[node.name] == g.cur_module {
 					g.sb.write_string('${g.cur_module}__${node.name}')
-					} else {
-						is_local_var := g.get_local_var_c_type(node.name) != none
-						const_key := 'const_${g.cur_module}__${node.name}'
-						global_key := 'global_${g.cur_module}__${node.name}'
-						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-							&& !node.name.contains('__') && !is_local_var
-							&& ((const_key in g.emitted_types || global_key in g.emitted_types)
-							|| g.is_module_local_const_or_global(node.name)) {
-							g.sb.write_string('${g.cur_module}__${node.name}')
-						} else if g.cur_module != '' && g.cur_module != 'main'
-							&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
+				} else {
+					is_local_var := g.get_local_var_c_type(node.name) != none
+					const_key := 'const_${g.cur_module}__${node.name}'
+					global_key := 'global_${g.cur_module}__${node.name}'
+					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+						&& !node.name.contains('__') && !is_local_var
+						&& ((const_key in g.emitted_types || global_key in g.emitted_types)
+						|| g.is_module_local_const_or_global(node.name)) {
+						g.sb.write_string('${g.cur_module}__${node.name}')
+					} else if g.cur_module != '' && g.cur_module != 'main'
+						&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
 						&& !g.is_module_ident(node.name) && g.is_module_local_fn(node.name)
 						&& !g.is_type_name(node.name) {
 						g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
@@ -4426,6 +4666,12 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
+			// typeof(x).name -> just emit the typeof string directly (already a string)
+			if node.lhs is ast.KeywordOperator && node.lhs.op == .key_typeof
+				&& node.rhs.name == 'name' {
+				g.gen_keyword_operator(node.lhs)
+				return
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if node.lhs is ast.Ident && node.lhs.name == 'C' {
 				g.sb.write_string(node.rhs.name)
@@ -4505,15 +4751,15 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					return
 				}
 			}
-				// Fixed-size array `.len` becomes compile-time length.
-				if node.rhs.name == 'len' {
-					if node.lhs is ast.Ident {
-						mut fixed_name := node.lhs.name
-						module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
-						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-							&& module_const_key in g.emitted_types {
-							fixed_name = '${g.cur_module}__${node.lhs.name}'
-						}
+			// Fixed-size array `.len` becomes compile-time length.
+			if node.rhs.name == 'len' {
+				if node.lhs is ast.Ident {
+					mut fixed_name := node.lhs.name
+					module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
+					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+						&& module_const_key in g.emitted_types {
+						fixed_name = '${g.cur_module}__${node.lhs.name}'
+					}
 					if fixed_name in g.fixed_array_globals {
 						g.sb.write_string('((int)(sizeof(${fixed_name}) / sizeof(${fixed_name}[0])))')
 						return
@@ -5940,23 +6186,85 @@ struct SumVariantMatch {
 }
 
 fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, expr ast.Expr) SumVariantMatch {
+	// Handle module constants used as sum variants in selfhosted checker code
+	// (e.g. char_, string_, void_, nil_, none_).
+	if expr is ast.Ident {
+		variant_hint := match expr.name {
+			'char_' {
+				'Char'
+			}
+			'string_' {
+				'String'
+			}
+			'void_' {
+				'Void'
+			}
+			'nil_' {
+				'Nil'
+			}
+			'none_' {
+				'None'
+			}
+			'rune_' {
+				'Rune'
+			}
+			'usize_' {
+				'USize'
+			}
+			'isize_' {
+				'ISize'
+			}
+			'thread_' {
+				'Thread'
+			}
+			'chan_' {
+				'Channel'
+			}
+			'bool_', 'i8_', 'i16_', 'i32_', 'int_', 'i64_', 'u8_', 'u16_', 'u32_', 'u64_', 'f32_',
+			'f64_', 'int_literal_', 'float_literal_' {
+				'Primitive'
+			}
+			else {
+				''
+			}
+		}
+		if variant_hint != '' {
+			for i, v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if v_short == variant_hint || v == variant_hint || v.ends_with('__${variant_hint}') {
+					return SumVariantMatch{
+						tag:          i
+						field_name:   v
+						is_primitive: variant_hint == 'Primitive'
+						inner_type:   ''
+					}
+				}
+			}
+		}
+	}
+
 	// For InitExpr, infer from the struct type name
 	if expr is ast.InitExpr {
 		init_type := g.expr_type_to_c(expr.typ)
-		if init_type != '' {
-			init_short := if init_type.contains('__') {
-				init_type.all_after_last('__')
+		mut resolved_init_type := init_type
+		if (resolved_init_type == '' || resolved_init_type == 'int') && expr.typ is ast.Ident {
+			resolved_init_type = expr.typ.name.replace('.', '__')
+		}
+		if resolved_init_type != '' {
+			init_short := if resolved_init_type.contains('__') {
+				resolved_init_type.all_after_last('__')
 			} else {
-				init_type
+				resolved_init_type
 			}
 			for i, v in variants {
-				if v == init_short || v == init_type || init_type.ends_with('__${v}')
-					|| v.ends_with('__${init_type}') {
+				if v == init_short || v == resolved_init_type
+					|| resolved_init_type.ends_with('__${v}')
+					|| v.ends_with('__${resolved_init_type}') {
 					return SumVariantMatch{
 						tag:          i
 						field_name:   v
 						is_primitive: false
-						inner_type:   init_type
+						inner_type:   resolved_init_type
 					}
 				}
 			}
@@ -7665,7 +7973,7 @@ fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.cur_module == '' {
 		return none
 	}
-	if module_scope := g.env_scope(g.cur_module) {
+	if mut module_scope := g.env_scope(g.cur_module) {
 		if obj := module_scope.lookup(name) {
 			return obj
 		}
@@ -7736,7 +8044,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		}
 		// Fallback to module scopes when function scope chain misses the symbol.
 		if g.cur_module != '' {
-			if mod_scope := g.env_scope(g.cur_module) {
+			if mut mod_scope := g.env_scope(g.cur_module) {
 				if obj := mod_scope.lookup_parent(node.name, 0) {
 					if obj !is types.Module {
 						return obj.typ()
@@ -7745,7 +8053,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 			}
 		}
 		if g.cur_module != 'builtin' {
-			if builtin_scope := g.env_scope('builtin') {
+			if mut builtin_scope := g.env_scope('builtin') {
 				if obj := builtin_scope.lookup_parent(node.name, 0) {
 					if obj !is types.Module {
 						return obj.typ()
@@ -7778,7 +8086,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 				}
 			}
 			if g.cur_module != '' {
-				if mod_scope := g.env_scope(g.cur_module) {
+				if mut mod_scope := g.env_scope(g.cur_module) {
 					if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
 						if obj is types.Module {
 							if rhs_obj := obj.lookup(node.rhs.name) {

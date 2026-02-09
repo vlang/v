@@ -5,7 +5,6 @@ module redis
 import math.big
 import net
 import net.ssl
-import os
 import strings
 
 // RESP3 wrapper types

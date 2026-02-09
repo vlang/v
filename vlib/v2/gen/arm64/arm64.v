@@ -1524,9 +1524,9 @@ fn (g &Gen) lookup_type_from_env(name string, module_name string) ?types.Type {
 		return none
 	}
 	mut scope := &types.Scope(unsafe { nil })
-	if s := g.mod.env.get_scope(module_name) {
+	if mut s := g.mod.env.get_scope(module_name) {
 		scope = s
-	} else if s := g.mod.env.get_scope('builtin') {
+	} else if mut s := g.mod.env.get_scope('builtin') {
 		scope = s
 	} else {
 		return none
