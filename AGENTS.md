@@ -581,6 +581,22 @@ skipped coverage in the summary.
 * JS/native/wasm: prefer small, focused test files with
   `-b js|native|wasm` and `-show-c-output` where applicable; avoid
   broad `-b <backend> test vlib/`.
+* Quick code location technique:
+  When debugging code generation issues, add unique comment tags to
+  relevant code generation points (e.g., `/*tom51*/`) in the compiler
+  source. Rebuild and generate C code, then search the generated file for these
+  tags to quickly map generated C code back to the exact compiler source
+  location. This is especially useful when multiple code paths generate
+  similar-looking output and you need to identify which path is actually used.
+  Example:
+  ```v
+  // In vlib/v/gen/c/assign.v:
+  g.write('builtin___option_ok/*tom51*/(&(${styp}[]) { ')
+
+  // After rebuild, search generated C code for "tom51":
+  // builtin___option_ok/*tom51*/(&(int[]) { ... });
+  ```
+  Remember to remove these debug tags after fixing the issue.
 
 ## Compiler Architecture
 The V compiler has the following stages, orchestrated by the
