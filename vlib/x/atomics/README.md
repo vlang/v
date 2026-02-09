@@ -55,7 +55,7 @@ See the [examples](examples/) directory for complete runnable examples.
 ### Basic Usage
 
 ```v
-import atomics
+import x.atomics
 
 fn main() {
 	mut value := i32(0)
@@ -77,7 +77,7 @@ fn main() {
 ### Compare-and-Swap (CAS)
 
 ```v
-import atomics
+import x.atomics
 
 fn main() {
 	mut flag := u32(0)
