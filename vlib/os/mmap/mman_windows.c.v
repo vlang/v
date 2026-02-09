@@ -11,7 +11,6 @@ import os
 // Constants: please make sure, the same constants exist in *_nix.c.v
 // ----------------------------------------------------------------------------
 
-// TODO I would prefer the different constants to be an enum. Should be more type-safe.
 pub const prot_none = 0
 pub const prot_read = 1
 pub const prot_write = 2
@@ -55,36 +54,6 @@ fn C.FormatMessageA(dwFlags int, lpSource voidptr, dwMessageId int, dwLanguageId
 // ----------------------------------------------------------------------------
 // (Windows) Implementations
 // ----------------------------------------------------------------------------
-
-// get_last_error_as_string  Retrieve the (windows) last-error-ID and
-// determine the associated error message
-fn get_last_error_as_string() string {
-	// Get the error message ID, if any.
-	error_message_id := C.GetLastError()
-	if error_message_id == 0 {
-		return '(0) no error'
-	}
-	// eprintln("Error id: $error_message_id")
-
-	mut message_buffer := &char(C.NULL)
-
-	// Ask Win32 to give us the string version of that message ID.
-	// The parameters we pass in, tells Win32 to create the buffer
-	// that holds the message for us (because we don't yet know how
-	// long the message string will be).
-	size := C.FormatMessageA(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM | C.FORMAT_MESSAGE_IGNORE_INSERTS,
-		C.NULL, error_message_id, C.MAKELANGID(C.LANG_NEUTRAL, C.SUBLANG_DEFAULT), &message_buffer,
-		0, C.NULL)
-
-	// Copy the error message
-	message := unsafe { message_buffer.vstring_with_len(size) }
-	// eprintln("Error msg: $message")
-
-	// Free the Win32's string's buffer.
-	C.LocalFree(message_buffer)
-
-	return '(${error_message_id}) ${message}'
-}
 
 // map_mmap_prot_page  Determine the windows code needed to set 'protection'
 // of the memory mapped region.
@@ -175,8 +144,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 
 	fm := C.CreateFileMapping(h, C.NULL, protect, dw_max_size_high, dw_max_size_low, C.NULL)
 	if fm == C.NULL {
-		msg := get_last_error_as_string()
-		return error('CreateFileMapping() failed: ${msg}')
+		return os.error_win32()
 	}
 
 	defer {
@@ -188,8 +156,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 	map_ := C.MapViewOfFile(fm, desired_access, dw_file_offset_high, dw_file_offset_low,
 		args.len)
 	if map_ == C.NULL {
-		msg := get_last_error_as_string()
-		return error('MapViewOfFile() failed: ${msg}. Handle: ${h}, File mapping: ${fm}')
+		return os.error_win32()
 	}
 
 	return map_
@@ -198,8 +165,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 // munmap unmap the memory mapping
 pub fn munmap(addr voidptr, len usize) ! {
 	if C.UnmapViewOfFile(addr) == 0 {
-		msg := get_last_error_as_string()
-		return error('munmap() failed: ${msg}')
+		return os.error_win32()
 	}
 }
 
@@ -209,31 +175,27 @@ pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	old_protect := u32(0)
 
 	if !C.VirtualProtect(addr, len, new_protect, &old_protect) {
-		msg := get_last_error_as_string()
-		return error('mprotect() failed: ${msg}')
+		return os.error_win32()
 	}
 }
 
 // msync sync memory mapping to disk
 pub fn msync(addr voidptr, len usize, flags int) ! {
 	if C.FlushViewOfFile(addr, len) == 0 {
-		msg := get_last_error_as_string()
-		return error('msync() failed: ${msg}')
+		return os.error_win32()
 	}
 }
 
 // mlock lock memory pages to prevent swapping
 pub fn mlock(addr voidptr, len usize) ! {
 	if C.VirtualLock(addr, len) == 0 {
-		msg := get_last_error_as_string()
-		return error('mlock() failed: ${msg}')
+		return os.error_win32()
 	}
 }
 
 // munlock unlock memory pages to allow swapping
 pub fn munlock(addr voidptr, len usize) ! {
 	if C.VirtualUnlock(addr, len) == 0 {
-		msg := get_last_error_as_string()
-		return error('munlock() failed: ${msg}')
+		return os.error_win32()
 	}
 }
