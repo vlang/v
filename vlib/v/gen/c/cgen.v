@@ -5963,13 +5963,25 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	} else if g.inside_or_block {
 		typ = g.or_expr_return_type.clear_option_and_result()
 	}
-	styp := g.styp(typ)
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
 	if !is_multi {
 		g.expr(node.vals[0])
 	} else {
-		types := (g.table.sym(typ).info as ast.MultiReturn).types
+		// When typ is also a multi-return type, use it to get the types array,
+		// as it may have more accurate type information (e.g., with option types).
+		// Otherwise, fall back to using node.return_type.
+		typ_sym := g.table.sym(typ)
+		types := if typ_sym.kind == .multi_return {
+			(typ_sym.info as ast.MultiReturn).types
+		} else {
+			(sym.info as ast.MultiReturn).types
+		}
+		styp := if typ_sym.kind == .multi_return {
+			g.styp(typ)
+		} else {
+			g.styp(node.return_type.clear_option_and_result())
+		}
 		g.write('(${styp}){')
 		for i, expr in node.vals {
 			g.write('.arg${i}=')
