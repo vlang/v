@@ -57,8 +57,11 @@ pub fn (e &Environment) get_expr_type(pos int) ?Type {
 // lookup_method looks up a method by receiver type name and method name
 // Returns the method's FnType if found
 pub fn (e &Environment) lookup_method(type_name string, method_name string) ?FnType {
-	methods := rlock e.methods {
-		e.methods[type_name] or { []&Fn{} }
+	mut methods := []&Fn{}
+	rlock e.methods {
+		if type_name in e.methods {
+			methods = unsafe { e.methods[type_name] }
+		}
 	}
 	for method in methods {
 		if method.get_name() == method_name {
@@ -77,8 +80,8 @@ pub fn (e &Environment) lookup_fn(module_name string, fn_name string) ?FnType {
 	mut scope := &Scope(unsafe { nil })
 	mut found_scope := false
 	lock e.scopes {
-		if s := e.scopes[module_name] {
-			scope = unsafe { s }
+		if module_name in e.scopes {
+			scope = unsafe { e.scopes[module_name] }
 			found_scope = true
 		}
 	}
@@ -120,8 +123,8 @@ pub fn (e &Environment) get_fn_scope(module_name string, fn_name string) ?&Scope
 	mut scope := &Scope(unsafe { nil })
 	mut found_scope := false
 	lock e.fn_scopes {
-		if s := e.fn_scopes[key] {
-			scope = unsafe { s }
+		if key in e.fn_scopes {
+			scope = unsafe { e.fn_scopes[key] }
 			found_scope = true
 		}
 	}
@@ -136,8 +139,8 @@ pub fn (e &Environment) get_scope(module_name string) ?&Scope {
 	mut scope := &Scope(unsafe { nil })
 	mut found_scope := false
 	lock e.scopes {
-		if s := e.scopes[module_name] {
-			scope = unsafe { s }
+		if module_name in e.scopes {
+			scope = unsafe { e.scopes[module_name] }
 			found_scope = true
 		}
 	}
@@ -152,8 +155,8 @@ pub fn (e &Environment) get_fn_scope_by_key(key string) ?&Scope {
 	mut scope := &Scope(unsafe { nil })
 	mut found_scope := false
 	lock e.fn_scopes {
-		if s := e.fn_scopes[key] {
-			scope = unsafe { s }
+		if key in e.fn_scopes {
+			scope = unsafe { e.fn_scopes[key] }
 			found_scope = true
 		}
 	}
@@ -284,14 +287,16 @@ fn fn_with_return_type(fn_type FnType, return_type Type) FnType {
 }
 
 pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scope {
-	return lock c.env.scopes {
-		mut scope := c.env.scopes[module_name] or { &Scope(unsafe { nil }) }
-		if scope == unsafe { nil } {
+	mut scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if module_name in c.env.scopes {
+			scope = unsafe { c.env.scopes[module_name] }
+		} else {
 			scope = new_scope(parent)
 			c.env.scopes[module_name] = scope
 		}
-		scope
 	}
+	return scope
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
@@ -322,11 +327,12 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	// file_scope := new_scope(c.mod.scope)
 	// mut mod_scope := new_scope(c.mod.scope)
 	// c.env.scopes[file.mod] = mod_scope
-	mut mod_scope := lock c.env.scopes {
-		c.env.scopes[file.mod] or {
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if file.mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[file.mod] }
+		} else {
 			panic('not found for mod: ${file.mod}')
-			// c.env.scopes[file.mod] = c.mod.scope
-			// c.mod.scope
 		}
 	}
 	c.scope = mod_scope
@@ -397,8 +403,13 @@ fn (mut c Checker) preregister_all_scopes(files []ast.File) {
 
 pub fn (mut c Checker) preregister_types(file ast.File) {
 	c.cur_file_module = file.mod
-	mut mod_scope := lock c.env.scopes {
-		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if file.mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[file.mod] }
+		} else {
+			panic('scope should exist for mod: ${file.mod}')
+		}
 	}
 	c.scope = mod_scope
 	for stmt in file.stmts {
@@ -434,8 +445,13 @@ fn (mut c Checker) preregister_all_fn_signatures(files []ast.File) {
 
 pub fn (mut c Checker) preregister_fn_signatures(file ast.File) {
 	c.cur_file_module = file.mod
-	mut mod_scope := lock c.env.scopes {
-		c.env.scopes[file.mod] or { panic('scope should exist for mod: ${file.mod}') }
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if file.mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[file.mod] }
+		} else {
+			panic('scope should exist for mod: ${file.mod}')
+		}
 	}
 	c.scope = mod_scope
 	prev_collect := c.collect_fn_signatures_only
@@ -689,13 +705,15 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				// }
 				// TODO: promote [0] - proper
 				expected_type_prev := c.expected_type
-				expected_type := c.expected_type or {
+				mut expected_type := first_elem_type
+				if exp_type := c.expected_type {
+					expected_type = exp_type
+				} else {
 					// `[Type.value_a, .value_b]`
 					// set expected type for checking `.value_b`
 					if first_elem_type is Enum {
 						c.expected_type = to_optional_type(first_elem_type)
 					}
-					first_elem_type
 				}
 
 				for i, elem_expr in expr.exprs {
@@ -739,7 +757,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// c.log('ast.BasicLiteral: ${expr.kind.str()}: ${expr.value}')
 			match expr.kind {
 				.char {
-					return char_
+					return Type(char_)
 				}
 				.key_false, .key_true {
 					return bool_
@@ -796,14 +814,14 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// Handle compile-time $if/$else - evaluate condition and check only the matching branch
 			if cexpr is ast.IfExpr {
 				c.comptime_if_else(cexpr)
-				return void_
+				return Type(void_)
 			}
 			c.log('ComptimeExpr: ' + cexpr.name())
 			// return c.expr(cexpr)
 		}
 		ast.EmptyExpr {
 			// TODO:
-			return void_
+			return Type(void_)
 		}
 		ast.FnLiteral {
 			return c.fn_type(expr.typ, FnTypeAttribute.empty)
@@ -845,7 +863,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// TODO:
 			if expr.name == 'string' {
 				if typ is Struct {
-					return string_
+					return Type(string_)
 				}
 			}
 			return typ
@@ -861,7 +879,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					c.expr(expr.else_expr)
 				}
 				// TODO: never used, add a special type?
-				return void_
+				return Type(void_)
 			}
 
 			// normal if
@@ -895,7 +913,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					is_explicit_deref := expr.lhs is ast.PrefixExpr
 						&& (expr.lhs as ast.PrefixExpr).op == .mul
 					if !is_explicit_deref {
-						container_type = string_
+						container_type = Type(string_)
 					}
 				}
 			}
@@ -1002,9 +1020,11 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			}
 			// `{}`
 			if expr.keys.len == 0 {
-				return c.expected_type or {
-					c.error_with_pos('empty map {} used in unsupported context', expr.pos)
+				if exp_type := c.expected_type {
+					return exp_type
 				}
+				c.error_with_pos('empty map {} used in unsupported context', expr.pos)
+				return Type(void_)
 			}
 			// `{key: value}`
 			key0_type := c.expr(expr.keys[0])
@@ -1109,9 +1129,11 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				// c.log('got enum value')
 				// // dump(expr)
 				// return c.expected_type
-				return c.expected_type or {
-					c.error_with_pos('c.expected_type is not set', expr.pos)
+				if exp_type := c.expected_type {
+					return exp_type
 				}
+				c.error_with_pos('c.expected_type is not set', expr.pos)
+				return Type(void_)
 
 				// return int_
 			}
@@ -1119,14 +1141,14 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			return c.selector_expr(expr)
 		}
 		ast.StringInterLiteral {
-			return string_
+			return Type(string_)
 		}
 		ast.StringLiteral {
 			// C strings (c'...' or c"...") return charptr
 			if expr.kind == .c {
 				return charptr_
 			}
-			return string_
+			return Type(string_)
 		}
 		ast.Tuple {
 			mut types := []Type{}
@@ -1149,7 +1171,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			}
 			// TODO: impl: avoid returning types everywhere / using void
 			// perhaps use a struct and set the type and other info in it when needed
-			return void_
+			return Type(void_)
 		}
 		ast.LockExpr {
 			// Lock expression - check statements and return last expression type
@@ -1160,7 +1182,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					return c.expr(last_stmt.expr)
 				}
 			}
-			return void_
+			return Type(void_)
 		}
 		else {}
 	}
@@ -1220,10 +1242,10 @@ fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
 		}
 	}
 	if type_expr is ast.NilType {
-		return nil_
+		return Type(nil_)
 	}
 	if type_expr is ast.NoneType {
-		return none_
+		return Type(none_)
 	}
 	if type_expr is ast.OptionType {
 		opt_type := type_expr as ast.OptionType
@@ -1773,9 +1795,9 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 				c.error_with_pos('use `mut Type` not `mut &Type`. TODO: proper error message',
 					decl.receiver.pos)
 			}
-			receiver_type = Pointer{
+			receiver_type = Type(Pointer{
 				base_type: receiver_type
-			}
+			})
 		}
 
 		c.scope.insert(decl.receiver.name, object_from_type(receiver_type))
@@ -1790,7 +1812,10 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		// Register method in shared methods map (safe inside lock)
 		method_type_name := method_owner_type.name()
 		lock c.env.methods {
-			mut methods_for_type := c.env.methods[method_type_name] or { []&Fn{} }
+			mut methods_for_type := []&Fn{}
+			if method_type_name in c.env.methods {
+				methods_for_type = unsafe { c.env.methods[method_type_name] }
+			}
 			methods_for_type << obj
 			c.env.methods[method_type_name] = methods_for_type
 		}
@@ -2100,13 +2125,10 @@ fn (c &Checker) is_callable_type(t Type) bool {
 		FnType {
 			return true
 		}
-		Alias {
-			return c.is_callable_type(t.base_type)
-		}
-		Pointer {
-			return c.is_callable_type(t.base_type)
-		}
 		else {
+			// In self-host mode we can observe malformed transitional alias/pointer
+			// payloads during ambiguous call-or-cast resolution. Be conservative
+			// here and only treat direct function types as callable.
 			return false
 		}
 	}
@@ -2314,14 +2336,14 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		if fn_ is Primitive && expr.lhs.rhs.name == 'start' {
 			// c.log('#### ${expr.lhs.rhs.name}')
 			// what is going on here?
-			fn_ = FnType{}
+			fn_ = Type(FnType{})
 		} else if fn_ is Primitive && expr.lhs.rhs.name == 'elapsed' {
 			// c.log('#### ${expr.lhs.rhs.name}')
 			elapsed_ret := Type(Alias{
 				name:      'Duration'
 				base_type: i64_
 			})
-			fn_ = fn_with_return_type(FnType{}, elapsed_ret)
+			fn_ = Type(fn_with_return_type(FnType{}, elapsed_ret))
 		}
 		// }
 	}
@@ -2443,9 +2465,10 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				if lhs_expr.rhs.name == 'map' {
 					rt := c.expr(expr.args[0])
 					c.log('map: ${rt.name()}')
-					fn_ = fn_with_return_type(fn_, Type(Array{
+					fn_type := fn_ as FnType
+					fn_ = Type(fn_with_return_type(fn_type, Type(Array{
 						elem_type: rt
-					}))
+					})))
 				}
 			}
 		}
@@ -2486,7 +2509,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			c.log('returning: ${return_type.name()}')
 			return return_type
 		}
-		return void_
+		return Type(void_)
 	}
 
 	for arg in expr.args {
@@ -2537,17 +2560,17 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 				if i < fn_type.params.len - 1 {
 					c.error_with_pos('variadic must be last parameter.', param.pos)
 				}
-				param_type = Array{
+				param_type = Type(Array{
 					elem_type: param_type
-				}
+				})
 				is_variadic = true
 			}
 		}
 		// if param.is_mut && param_type !is Pointer {
 		if param.is_mut {
-			param_type = Pointer{
+			param_type = Type(Pointer{
 				base_type: param_type
-			}
+			})
 		}
 		params << Parameter{
 			name: param.name
@@ -2630,13 +2653,14 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 		// TODO: proper
 		if ident.name in ['compile_error', 'compile_warn'] {
 			return Type(FnType{
-				return_type: to_optional_type(void_)
+				return_type: to_optional_type(Type(void_))
 			})
 		}
 
 		// c.scope.print(false)
 		// c.scope.print(true)
 		c.error_with_pos('unknown ident `${ident.name} - ${ident.pos}`', ident.pos)
+		return Type(void_)
 	}
 	c.log('ident: ${ident.name} - ${obj.typ().name()}')
 	return obj
@@ -2660,6 +2684,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 			// println('## 2 found smartcast for ${expr.lhs.name()} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
 			return c.find_field_or_method(cast_type, expr.rhs.name) or {
 				c.error_with_pos('## smartcast field lookup error: ${err.msg()}', expr.pos)
+				return Type(void_)
 			}
 		}
 	}
@@ -2671,11 +2696,13 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 			Const {
 				return c.find_field_or_method(lhs_obj.typ, expr.rhs.name) or {
 					c.error_with_pos(err.msg(), expr.pos)
+					return Type(void_)
 				}
 			}
 			Global {
 				return c.find_field_or_method(lhs_obj.typ, expr.rhs.name) or {
 					c.error_with_pos(err.msg(), expr.pos)
+					return Type(void_)
 				}
 			}
 			Module {
@@ -2689,12 +2716,14 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 					}
 					mod_scope.print(true)
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
+					return Type(void_)
 				}
 				return rhs_obj.typ()
 			}
 			Type {
 				return c.find_field_or_method(lhs_obj, expr.rhs.name) or {
 					c.error_with_pos(err.msg(), expr.pos)
+					return Type(void_)
 				}
 			}
 			// SmartCastSelector {
@@ -2708,6 +2737,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 			else {
 				c.error_with_pos('unsupported ${lhs_obj.typ().name()} - ${expr.rhs.name}',
 					0)
+				return Type(void_)
 			}
 		}
 	}
@@ -2722,6 +2752,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	c.expecting_method = expecting_method
 	return c.find_field_or_method(lhs_type, expr.rhs.name) or {
 		c.error_with_pos(err.msg(), expr.pos)
+		return Type(void_)
 	}
 }
 
@@ -2729,6 +2760,12 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 	// TODO: is this the best way to do this?
 	// this whole field/method search needs to be cleaned up
 	// fields and method with same name should not be allowed to begin with!
+	if name in ['vbytes', 'vstring', 'vstring_with_len', 'vstring_literal',
+		'vstring_literal_with_len'] {
+		if method := c.find_builtin_ptr_helper_method(name) {
+			return method
+		}
+	}
 	if c.expecting_method {
 		if method := c.find_method(t, name) {
 			return method
@@ -2746,7 +2783,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		Array {
 			arr_type := t as Array
 			if name == 'str' || name == 'hex' {
-				return fn_with_return_type(FnType{}, string_)
+				return fn_with_return_type(FnType{}, Type(string_))
 			}
 			// TODO: has to be a better way
 			// there is probably no reason to look these up, and just do what we do above
@@ -2802,7 +2839,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 				}
 			}
 			if name == 'str' {
-				return fn_with_return_type(FnType{}, string_)
+				return fn_with_return_type(FnType{}, Type(string_))
 			}
 			// flags - compiler magic (currently)
 			if name == 'has' {
@@ -2810,7 +2847,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			} else if name == 'all' {
 				return bool_
 			} else if name in ['clear', 'set'] {
-				return void_
+				return Type(void_)
 			}
 		}
 		Interface {
@@ -2828,7 +2865,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		Map {
 			map_type := t as Map
 			if name == 'str' {
-				return fn_with_return_type(FnType{}, string_)
+				return fn_with_return_type(FnType{}, Type(string_))
 			}
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('map', 0) or { panic('missing builtin map type') }
@@ -2945,7 +2982,10 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			// TODO:
 			if name == 'wait' {
 				c.open_scope()
-				wait_return_type := thread_type.elem_type or { Type(thread_type) }
+				mut wait_return_type := Type(thread_type)
+				if elem_type := thread_type.elem_type {
+					wait_return_type = elem_type
+				}
 				fn_type := fn_with_return_type(FnType{}, wait_return_type)
 				c.close_scope()
 				return fn_type
@@ -2971,6 +3011,15 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 	return error('cannot find field or method: `${name}` for type ${t.name()} - (base: ${base_type.name()})')
 }
 
+fn (mut c Checker) find_builtin_ptr_helper_method(name string) ?Type {
+	for ptr_typ in [Type(voidptr_), Type(byteptr_), Type(charptr_)] {
+		if method := c.find_method(ptr_typ, name) {
+			return method
+		}
+	}
+	return none
+}
+
 fn (mut c Checker) find_method(t Type, name string) !Type {
 	c.log('looking for method `${name}` on type `${t.name()}`')
 	// TODO: do we need to look for methods on the non base type first?
@@ -2982,7 +3031,7 @@ fn (mut c Checker) find_method(t Type, name string) !Type {
 	// to sum-field checks (e.g. `expr.type_name()` on `ast.Expr`).
 	if base_type is SumType {
 		if name == 'type_name' {
-			return fn_with_return_type(FnType{}, string_)
+			return fn_with_return_type(FnType{}, Type(string_))
 		}
 	}
 	// TODO: interface methods
@@ -2990,8 +3039,11 @@ fn (mut c Checker) find_method(t Type, name string) !Type {
 	base_type_name := if t is Pointer { base_type.name() } else { t.name() }
 	// c.log('base_type_name: ${base_type_name} - ${t.type_name()} - ${base_type.type_name()}')
 	// Lookup method in shared methods map
-	methods := rlock c.env.methods {
-		c.env.methods[base_type_name] or { []&Fn{} }
+	mut methods := []&Fn{}
+	rlock c.env.methods {
+		if base_type_name in c.env.methods {
+			methods = unsafe { c.env.methods[base_type_name] }
+		}
 	}
 	for method in methods {
 		// c.log('# ${method.name} - ${name}')

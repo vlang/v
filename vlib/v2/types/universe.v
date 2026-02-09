@@ -77,19 +77,19 @@ const none_ = None(0)
 const byteptr_ = Alias{
 	name:      'byteptr'
 	base_type: Pointer{
-		base_type: byte_
+		base_type: Type(byte_)
 	}
 }
 const charptr_ = Alias{
 	name:      'charptr'
 	base_type: Pointer{
-		base_type: char_
+		base_type: Type(char_)
 	}
 }
 const voidptr_ = Alias{
 	name:      'voidptr'
 	base_type: Pointer{
-		base_type: void_
+		base_type: Type(void_)
 	}
 }
 const int_literal_ = Primitive{

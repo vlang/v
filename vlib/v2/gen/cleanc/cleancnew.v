@@ -766,12 +766,12 @@ fn (mut g Gen) collect_module_type_names() {
 						}
 						fields[field.name] = true
 					}
-					cloned_fields := fields.clone()
-					g.enum_type_fields[enum_name] = cloned_fields
+					mut cloned_fields := fields.clone()
+					g.enum_type_fields[enum_name] = cloned_fields.move()
 					if enum_name.contains('__') {
 						short_name := enum_name.all_after_last('__')
-						short_cloned_fields := fields.clone()
-						g.enum_type_fields[short_name] = short_cloned_fields
+						mut short_cloned_fields := fields.clone()
+						g.enum_type_fields[short_name] = short_cloned_fields.move()
 					}
 				}
 				ast.TypeDecl {
@@ -952,8 +952,9 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 			g.register_alias_type('_result_${base}')
 		}
 		types.Alias {
-			g.collect_aliases_from_type(t.base_type)
-			g.register_alias_type(t.name)
+			// Alias payloads from self-host env caches can be malformed.
+			// Decls are collected from AST, so skip runtime alias recursion here.
+			return
 		}
 		types.Pointer {
 			g.collect_aliases_from_type(t.base_type)
@@ -2384,7 +2385,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
-		if typ == '' {
+		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
 		g.sb.write_string('${typ} ${name} = ')
@@ -3233,7 +3234,7 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	mut is_iface := false
-	if scope := g.env_scope(g.cur_module) {
+	if mut scope := g.env_scope(g.cur_module) {
 		if obj := scope.lookup_parent(type_name, 0) {
 			if obj is types.Type && obj is types.Interface {
 				is_iface = true
@@ -3304,7 +3305,7 @@ fn (g &Gen) is_enum_type(name string) bool {
 	// Also check the types.Environment
 	if g.env != unsafe { nil } {
 		mut found := false
-		if scope := g.env_scope(g.cur_module) {
+		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
 				if obj is types.Type && obj is types.Enum {
 					found = true
@@ -3396,7 +3397,7 @@ fn (mut g Gen) is_module_ident(name string) bool {
 	}
 	if g.env != unsafe { nil } {
 		mut found := false
-		if scope := g.env_scope(g.cur_module) {
+		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
 				found = obj is types.Module
 			}
@@ -3719,17 +3720,17 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				if node.name in g.global_var_modules
 					&& g.global_var_modules[node.name] == g.cur_module {
 					g.sb.write_string('${g.cur_module}__${node.name}')
-					} else {
-						is_local_var := g.get_local_var_c_type(node.name) != none
-						const_key := 'const_${g.cur_module}__${node.name}'
-						global_key := 'global_${g.cur_module}__${node.name}'
-						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-							&& !node.name.contains('__') && !is_local_var
-							&& ((const_key in g.emitted_types || global_key in g.emitted_types)
-							|| g.is_module_local_const_or_global(node.name)) {
-							g.sb.write_string('${g.cur_module}__${node.name}')
-						} else if g.cur_module != '' && g.cur_module != 'main'
-							&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
+				} else {
+					is_local_var := g.get_local_var_c_type(node.name) != none
+					const_key := 'const_${g.cur_module}__${node.name}'
+					global_key := 'global_${g.cur_module}__${node.name}'
+					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+						&& !node.name.contains('__') && !is_local_var
+						&& ((const_key in g.emitted_types || global_key in g.emitted_types)
+						|| g.is_module_local_const_or_global(node.name)) {
+						g.sb.write_string('${g.cur_module}__${node.name}')
+					} else if g.cur_module != '' && g.cur_module != 'main'
+						&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
 						&& !g.is_module_ident(node.name) && g.is_module_local_fn(node.name)
 						&& !g.is_type_name(node.name) {
 						g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
@@ -4505,15 +4506,15 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					return
 				}
 			}
-				// Fixed-size array `.len` becomes compile-time length.
-				if node.rhs.name == 'len' {
-					if node.lhs is ast.Ident {
-						mut fixed_name := node.lhs.name
-						module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
-						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-							&& module_const_key in g.emitted_types {
-							fixed_name = '${g.cur_module}__${node.lhs.name}'
-						}
+			// Fixed-size array `.len` becomes compile-time length.
+			if node.rhs.name == 'len' {
+				if node.lhs is ast.Ident {
+					mut fixed_name := node.lhs.name
+					module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
+					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+						&& module_const_key in g.emitted_types {
+						fixed_name = '${g.cur_module}__${node.lhs.name}'
+					}
 					if fixed_name in g.fixed_array_globals {
 						g.sb.write_string('((int)(sizeof(${fixed_name}) / sizeof(${fixed_name}[0])))')
 						return
@@ -5940,23 +5941,85 @@ struct SumVariantMatch {
 }
 
 fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, expr ast.Expr) SumVariantMatch {
+	// Handle module constants used as sum variants in selfhosted checker code
+	// (e.g. char_, string_, void_, nil_, none_).
+	if expr is ast.Ident {
+		variant_hint := match expr.name {
+			'char_' {
+				'Char'
+			}
+			'string_' {
+				'String'
+			}
+			'void_' {
+				'Void'
+			}
+			'nil_' {
+				'Nil'
+			}
+			'none_' {
+				'None'
+			}
+			'rune_' {
+				'Rune'
+			}
+			'usize_' {
+				'USize'
+			}
+			'isize_' {
+				'ISize'
+			}
+			'thread_' {
+				'Thread'
+			}
+			'chan_' {
+				'Channel'
+			}
+			'bool_', 'i8_', 'i16_', 'i32_', 'int_', 'i64_', 'u8_', 'u16_', 'u32_', 'u64_', 'f32_',
+			'f64_', 'int_literal_', 'float_literal_' {
+				'Primitive'
+			}
+			else {
+				''
+			}
+		}
+		if variant_hint != '' {
+			for i, v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if v_short == variant_hint || v == variant_hint || v.ends_with('__${variant_hint}') {
+					return SumVariantMatch{
+						tag:          i
+						field_name:   v
+						is_primitive: variant_hint == 'Primitive'
+						inner_type:   ''
+					}
+				}
+			}
+		}
+	}
+
 	// For InitExpr, infer from the struct type name
 	if expr is ast.InitExpr {
 		init_type := g.expr_type_to_c(expr.typ)
-		if init_type != '' {
-			init_short := if init_type.contains('__') {
-				init_type.all_after_last('__')
+		mut resolved_init_type := init_type
+		if (resolved_init_type == '' || resolved_init_type == 'int') && expr.typ is ast.Ident {
+			resolved_init_type = expr.typ.name.replace('.', '__')
+		}
+		if resolved_init_type != '' {
+			init_short := if resolved_init_type.contains('__') {
+				resolved_init_type.all_after_last('__')
 			} else {
-				init_type
+				resolved_init_type
 			}
 			for i, v in variants {
-				if v == init_short || v == init_type || init_type.ends_with('__${v}')
-					|| v.ends_with('__${init_type}') {
+				if v == init_short || v == resolved_init_type
+					|| resolved_init_type.ends_with('__${v}')
+					|| v.ends_with('__${resolved_init_type}') {
 					return SumVariantMatch{
 						tag:          i
 						field_name:   v
 						is_primitive: false
-						inner_type:   init_type
+						inner_type:   resolved_init_type
 					}
 				}
 			}
@@ -7665,7 +7728,7 @@ fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.cur_module == '' {
 		return none
 	}
-	if module_scope := g.env_scope(g.cur_module) {
+	if mut module_scope := g.env_scope(g.cur_module) {
 		if obj := module_scope.lookup(name) {
 			return obj
 		}
@@ -7736,7 +7799,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		}
 		// Fallback to module scopes when function scope chain misses the symbol.
 		if g.cur_module != '' {
-			if mod_scope := g.env_scope(g.cur_module) {
+			if mut mod_scope := g.env_scope(g.cur_module) {
 				if obj := mod_scope.lookup_parent(node.name, 0) {
 					if obj !is types.Module {
 						return obj.typ()
@@ -7745,7 +7808,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 			}
 		}
 		if g.cur_module != 'builtin' {
-			if builtin_scope := g.env_scope('builtin') {
+			if mut builtin_scope := g.env_scope('builtin') {
 				if obj := builtin_scope.lookup_parent(node.name, 0) {
 					if obj !is types.Module {
 						return obj.typ()
@@ -7778,7 +7841,7 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 				}
 			}
 			if g.cur_module != '' {
-				if mod_scope := g.env_scope(g.cur_module) {
+				if mut mod_scope := g.env_scope(g.cur_module) {
 					if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
 						if obj is types.Module {
 							if rhs_obj := obj.lookup(node.rhs.name) {

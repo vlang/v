@@ -428,11 +428,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	mut lhs := ast.empty_expr
 	match p.tok {
 		.char, .key_false, .key_true, .number {
-			lhs = ast.BasicLiteral{
+			lhs = ast.Expr(ast.BasicLiteral{
 				kind:  p.tok
 				value: p.lit()
 				pos:   p.pos
-			}
+			})
 		}
 		.string {
 			lhs = p.string_literal(.v)
@@ -481,12 +481,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			if p.exp_pt && (p.tok != .lcbr || p.exp_lcbr) {
 				return ast.Type(typ)
 			}
-			lhs = ast.FnLiteral{
+			lhs = ast.Expr(ast.FnLiteral{
 				typ:           typ
 				stmts:         p.block()
 				captured_vars: captured_vars
 				pos:           fn_pos
-			}
+			})
 		}
 		.key_if {
 			lhs = ast.Expr(p.if_expr(false))
@@ -502,30 +502,30 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// p.expect(.lpar)
 			if p.tok == .lpar {
 				p.next()
-				lhs = ast.KeywordOperator{
+				lhs = ast.Expr(ast.KeywordOperator{
 					op:    op
-					exprs: [p.expr_or_type(.lowest)]
+					exprs: []ast.Expr{len: 1, init: p.expr_or_type(.lowest)}
 					pos:   kw_pos
-				}
+				})
 				p.expect(.rpar)
 			} else {
 				// TODO: is this the best way to handle this? (prob not :D)
 				// this allows `typeof[type]()` to work
-				lhs = ast.Ident{
+				lhs = ast.Expr(ast.Ident{
 					name: op.str()
 					pos:  kw_pos
-				}
+				})
 			}
 		}
 		.key_dump, .key_likely, .key_unlikely {
 			kw_pos := p.pos
 			op := p.tok()
 			p.expect(.lpar)
-			lhs = ast.KeywordOperator{
+			lhs = ast.Expr(ast.KeywordOperator{
 				op:    op
-				exprs: [p.expr(.lowest)]
+				exprs: []ast.Expr{len: 1, init: p.expr(.lowest)}
 				pos:   kw_pos
-			}
+			})
 			p.expect(.rpar)
 		}
 		.key_offsetof {
@@ -534,21 +534,21 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			p.expect(.lpar)
 			expr := p.expr(.lowest)
 			p.expect(.comma)
-			lhs = ast.KeywordOperator{
+			lhs = ast.Expr(ast.KeywordOperator{
 				op:    op
 				exprs: [expr, p.expr(.lowest)]
 				pos:   kw_pos
-			}
+			})
 			p.expect(.rpar)
 		}
 		.key_go, .key_spawn {
 			kw_pos := p.pos
 			op := p.tok()
-			lhs = ast.KeywordOperator{
+			lhs = ast.Expr(ast.KeywordOperator{
 				op:    op
-				exprs: [p.expr(.lowest)]
+				exprs: []ast.Expr{len: 1, init: p.expr(.lowest)}
 				pos:   kw_pos
-			}
+			})
 		}
 		.key_nil {
 			p.next()
@@ -626,10 +626,10 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			exp_lcbr := p.exp_lcbr
 			p.exp_lcbr = false
 			// p.log('ast.ParenExpr:')
-			lhs = ast.ParenExpr{
+			lhs = ast.Expr(ast.ParenExpr{
 				expr: p.expr(.lowest)
 				pos:  paren_pos
-			}
+			})
 			p.exp_lcbr = exp_lcbr
 			p.expect(.rpar)
 		}
@@ -673,11 +673,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				}
 			}
 			p.next()
-			lhs = ast.MapInitExpr{
+			lhs = ast.Expr(ast.MapInitExpr{
 				keys: keys
 				vals: vals
 				pos:  pos
-			}
+			})
 		}
 		.lsbr {
 			// ArrayInitExpr: `[1,2,3,4]` | `[]type{}` | `[]type{len: 4}` | `[2]type{init: 0}` etc...
@@ -761,11 +761,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 							}
 						}
 						p.next()
-						lhs = ast.ArrayInitExpr{
+						lhs = ast.Expr(ast.ArrayInitExpr{
 							typ:  lhs
 							init: init
 							pos:  pos
-						}
+						})
 					}
 					// `[2]type`
 					// casts are completed in expr loop
@@ -779,21 +779,21 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				}
 				// `[1][0]` | `[1,2,3,4][0]` | `[[1,2,3,4]][0][1]` <-- index directly after init
 				else {
-					lhs = ast.ArrayInitExpr{
+					lhs = ast.Expr(ast.ArrayInitExpr{
 						exprs: exprs
 						pos:   pos
-					}
+					})
 					for i := 1; i < exprs_arr.len; i++ {
 						exprs2 := exprs_arr[i]
 						if exprs2.len != 1 {
 							// TODO: use same error message as IndexExpr in expr loop `expect(.rsbr)`
 							p.error('invalid index expr')
 						}
-						lhs = ast.IndexExpr{
+						lhs = ast.Expr(ast.IndexExpr{
 							lhs:  lhs
 							expr: exprs2[0]
 							pos:  pos
-						}
+						})
 					}
 				}
 			}
@@ -816,11 +816,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						}
 					}
 					p.next()
-					lhs = ast.ArrayInitExpr{
+					lhs = ast.Expr(ast.ArrayInitExpr{
 						typ:  lhs
 						init: init
 						pos:  pos
-					}
+					})
 				}
 				// `[n]type`
 				// casts are completed in expr loop
@@ -855,13 +855,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						}
 					}
 					p.next()
-					lhs = ast.ArrayInitExpr{
+					lhs = ast.Expr(ast.ArrayInitExpr{
 						typ:  lhs
 						init: init
 						cap:  cap
 						len:  len
 						pos:  pos
-					}
+					})
 				}
 				// `[]type`
 				// casts are completed in expr loop
@@ -879,7 +879,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					p.error('expecting at least one initialization expr: `[expr, expr2]!`')
 				}
 				p.next()
-				lhs = ast.ArrayInitExpr{
+				lhs = ast.Expr(ast.ArrayInitExpr{
 					exprs: exprs
 					// NOTE: indicates fixed `!`
 					len: ast.PostfixExpr{
@@ -888,13 +888,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						pos:  pos
 					}
 					pos: pos
-				}
+				})
 				// `[]` | `[1,2,3,4]`
 			} else {
-				lhs = ast.ArrayInitExpr{
+				lhs = ast.Expr(ast.ArrayInitExpr{
 					exprs: exprs
 					pos:   pos
-				}
+				})
 			}
 		}
 		.key_match {
@@ -933,19 +933,19 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 			// rcbr
 			p.next()
-			lhs = ast.MatchExpr{
+			lhs = ast.Expr(ast.MatchExpr{
 				expr:     expr
 				branches: branches
 				pos:      match_pos
-			}
+			})
 		}
 		.key_atomic, .key_mut, .key_shared, .key_static, .key_volatile {
 			mod_pos := p.pos
-			lhs = ast.ModifierExpr{
+			lhs = ast.Expr(ast.ModifierExpr{
 				kind: p.tok()
 				expr: p.expr(.highest)
 				pos:  mod_pos
-			}
+			})
 		}
 		.key_unsafe {
 			// p.log('ast.UnsafeExpr')
@@ -953,10 +953,10 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			p.next()
 			// exp_lcbr := p.exp_lcbr
 			// p.exp_lcbr = false
-			lhs = ast.UnsafeExpr{
+			lhs = ast.Expr(ast.UnsafeExpr{
 				stmts: p.block()
 				pos:   unsafe_pos
-			}
+			})
 			// p.exp_lcbr = exp_lcbr
 		}
 		.name {
@@ -980,10 +980,10 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					}
 				}
 				p.expect(.rcbr)
-				lhs = ast.SqlExpr{
+				lhs = ast.Expr(ast.SqlExpr{
 					expr: expr
 					pos:  sql_pos
-				}
+				})
 			}
 			// raw/c/js string: `r'hello'`
 			else if p.tok == .string {
@@ -1017,11 +1017,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		else {
 			if p.tok.is_prefix() {
 				// NOTE: just use .highest for now, later we might need to define for each op
-				lhs = ast.PrefixExpr{
+				lhs = ast.Expr(ast.PrefixExpr{
 					pos:  p.pos
 					op:   p.tok()
 					expr: p.expr(.highest)
-				}
+				})
 			} else {
 				p.error('expr: unexpected token `${p.tok}`')
 			}
@@ -1037,10 +1037,10 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		// if we choose not to support or chaining
 		if p.tok == .key_as {
 			p.next()
-			lhs = ast.AsCastExpr{
+			lhs = ast.Expr(ast.AsCastExpr{
 				expr: lhs
 				typ:  p.expect_type()
-			}
+			})
 		}
 		// call | cast
 		else if p.tok == .lpar {
@@ -1053,11 +1053,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// definitely a call since we have `!` | `?`
 			// fncall()! (Propagate Result) | fncall()? (Propagate Option)
 			if p.tok in [.not, .question] {
-				lhs = ast.CallExpr{
+				lhs = ast.Expr(ast.CallExpr{
 					lhs:  lhs
 					args: args
 					pos:  pos
-				}
+				})
 				// lhs = ast.PostfixExpr{
 				// 	expr: lhs
 				// 	op: p.tok()
@@ -1068,28 +1068,28 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				// definitely a cast
 				if lhs is ast.Type {
 					lhs_type := lhs as ast.Type
-					lhs = ast.CastExpr{
+					lhs = ast.Expr(ast.CastExpr{
 						typ:  ast.Expr(lhs_type)
 						expr: args[0]
 						pos:  pos
-					}
+					})
 				}
 				// work this out after type checking
 				else {
-					lhs = ast.CallOrCastExpr{
+					lhs = ast.Expr(ast.CallOrCastExpr{
 						lhs:  lhs
 						expr: args[0]
 						pos:  pos
-					}
+					})
 				}
 			}
 			// definitely a call (0 args, or more than 1 arg)
 			else {
-				lhs = ast.CallExpr{
+				lhs = ast.Expr(ast.CallExpr{
 					lhs:  lhs
 					args: args
 					pos:  pos
-				}
+				})
 			}
 		}
 		// NOTE: if we want we can handle init like this
@@ -1107,12 +1107,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				p.expect(.lsbr)
 				// gated, even if followed by `(` we know it's `arr#[fn_idx]()` and not `fn[int]()`
 				// println('HERE')
-				lhs = ast.IndexExpr{
+				lhs = ast.Expr(ast.IndexExpr{
 					lhs:      lhs
 					expr:     p.range_expr(p.expr(.lowest))
 					is_gated: true
 					pos:      idx_pos
-				}
+				})
 				p.expect(.rsbr)
 			}
 			// `array[idx]` | `array[fn_idx]()` | fn[int]()` | `GenericStruct[int]{}`
@@ -1137,27 +1137,27 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				else if p.tok == .lpar {
 					// multiple exprs | `fn[GenericStruct[int]]()` nested generic args
 					if exprs.len > 1 || expr is ast.GenericArgs {
-						lhs = ast.GenericArgs{
+						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
 							pos:  idx_pos
-						}
+						})
 					}
 					// `ident[ident]()` this will be determined at a later stage by checking lhs
 					else if expr is ast.Ident || expr is ast.SelectorExpr {
-						lhs = ast.GenericArgOrIndexExpr{
+						lhs = ast.Expr(ast.GenericArgOrIndexExpr{
 							lhs:  lhs
 							expr: expr
 							pos:  idx_pos
-						}
+						})
 					}
 					// `array[0]()` we know its an index
 					else {
-						lhs = ast.IndexExpr{
+						lhs = ast.Expr(ast.IndexExpr{
 							lhs:  lhs
 							expr: expr
 							pos:  idx_pos
-						}
+						})
 					}
 				}
 				// `array[idx]` | `fn[GenericStructA[int], GenericStructB[int]]`
@@ -1167,17 +1167,17 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					// if p.exp_pt && expr in [ast.GenericArgs, ast.Ident, ast.SelectorExpr] && p.tok in [.comma, .rsbr] {
 					if p.exp_pt && (expr is ast.GenericArgs || expr is ast.Ident
 						|| expr is ast.SelectorExpr) {
-						lhs = ast.GenericArgs{
+						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
 							pos:  idx_pos
-						}
+						})
 					} else {
-						lhs = ast.IndexExpr{
+						lhs = ast.Expr(ast.IndexExpr{
 							lhs:  lhs
 							expr: expr
 							pos:  idx_pos
-						}
+						})
 					}
 				}
 			}
@@ -1195,21 +1195,21 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				// TODO: properly handle comptime selector
 				// For now, consume the expression and use a placeholder
 				_ = p.expr(.lowest)
-				lhs = ast.SelectorExpr{
+				lhs = ast.Expr(ast.SelectorExpr{
 					lhs: lhs
 					rhs: ast.Ident{
 						name: '__comptime_selector__'
 						pos:  p.pos
 					}
 					pos: p.pos
-				}
+				})
 			} else {
-				lhs = ast.SelectorExpr{
+				lhs = ast.Expr(ast.SelectorExpr{
 					lhs: lhs
 					// rhs: p.expr(.lowest)
 					rhs: p.ident_or_keyword()
 					pos: p.pos
-				}
+				})
 			}
 		}
 		// doing this here since it can be
@@ -1217,20 +1217,20 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		// eg. `struct.field?.field`
 		// NOTE: should this require parens?
 		else if p.tok in [.not, .question] {
-			lhs = ast.PostfixExpr{
+			lhs = ast.Expr(ast.PostfixExpr{
 				op:   p.tok()
 				expr: lhs
 				pos:  p.pos
-			}
+			})
 		} else if p.tok == .key_or {
 			// p.log('ast.OrExpr')
 			pos := p.pos
 			p.next()
-			lhs = ast.OrExpr{
+			lhs = ast.Expr(ast.OrExpr{
 				expr:  lhs
 				stmts: p.block()
 				pos:   pos
-			}
+			})
 		}
 		// range - only create RangeExpr at lowest precedence to avoid
 		// consuming `..` inside higher-precedence expressions like `a + b..`
@@ -1263,7 +1263,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		if p.tok.is_infix() {
 			pos := p.pos
 			op := p.tok()
-			lhs = ast.InfixExpr{
+			lhs = ast.Expr(ast.InfixExpr{
 				op:  op
 				lhs: lhs
 				// `x in y` allow range for this case, eg. `x in 1..10`
@@ -1277,13 +1277,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					p.expr(op.right_binding_power())
 				}
 				pos: pos
-			}
+			})
 		} else if p.tok.is_postfix() {
-			lhs = ast.PostfixExpr{
+			lhs = ast.Expr(ast.PostfixExpr{
 				op:   p.tok()
 				expr: lhs
 				pos:  p.pos
-			}
+			})
 		} else {
 			break
 		}
@@ -1461,10 +1461,10 @@ fn (mut p Parser) attributes() []ast.Attribute {
 		if p.tok == .key_unsafe {
 			p.next()
 			// name = 'unsafe'
-			value = ast.Ident{
+			value = ast.Expr(ast.Ident{
 				name: 'unsafe'
 				pos:  p.pos
-			}
+			})
 		}
 		// TODO: properly
 		// consider using normal if expr
@@ -1713,18 +1713,18 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	if p.tok == .comma {
 		s := p.complete_simple_stmt(cond, false)
 		if s is ast.AssignStmt {
-			cond = ast.IfGuardExpr{
+			cond = ast.Expr(ast.IfGuardExpr{
 				stmt: s
 				pos:  guard_pos
-			}
+			})
 		} else {
 			p.error('expecting assignment `if a, b := c {`')
 		}
 	} else if p.tok in [.assign, .decl_assign] {
-		cond = ast.IfGuardExpr{
+		cond = ast.Expr(ast.IfGuardExpr{
 			stmt: p.assign_stmt([cond])
 			pos:  guard_pos
-		}
+		})
 	}
 	p.exp_lcbr = exp_lcbr
 	// Allow `{` on next line after if condition (skip semicolon)
