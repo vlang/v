@@ -646,16 +646,42 @@ fn (t &Transformer) get_var_type_name(name string) string {
 	if typ is types.String {
 		return 'string'
 	}
+	if typ is types.Char {
+		return 'char'
+	}
+	if typ is types.Rune {
+		return 'rune'
+	}
+	if typ is types.ISize {
+		return 'isize'
+	}
+	if typ is types.USize {
+		return 'usize'
+	}
+	if typ is types.Void {
+		return 'void'
+	}
+	if typ is types.Nil {
+		return 'nil'
+	}
+	if typ is types.None {
+		return 'none'
+	}
 	if typ is types.Struct {
 		return typ.name
 	}
 	if typ is types.Pointer {
+		base_name := t.type_to_name(typ.base_type)
+		if base_name != '' {
+			return '${base_name}*'
+		}
 		if typ.base_type is types.String {
 			return '&string'
 		}
+		return '&void'
 	}
 	if typ is types.Primitive {
-		return typ.name()
+		return types.Type(typ).name()
 	}
 	// Some malformed/self-host transitional types can carry incomplete payloads.
 	// Avoid forcing `Type.name()` on those values here.
@@ -1985,7 +2011,7 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				new_stmts << s
 			}
 			// Use arr.data as condition
-			cond_expr = ast.SelectorExpr{
+			cond_expr = ast.Expr(ast.SelectorExpr{
 				lhs: ast.Ident{
 					name: guard_var_name
 					pos:  synth_pos
@@ -1993,7 +2019,7 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				rhs: ast.Ident{
 					name: 'data'
 				}
-			}
+			})
 			modified_if := ast.IfExpr{
 				cond:      cond_expr
 				stmts:     t.transform_stmts(new_stmts)
@@ -3233,11 +3259,11 @@ fn (mut t Transformer) expand_return_if_expr(ie ast.IfExpr) []ast.Stmt {
 					else_stmts << s
 				}
 			}
-			else_expr = ast.IfExpr{
+			else_expr = ast.Expr(ast.IfExpr{
 				cond:      ast.empty_expr
 				stmts:     else_stmts
 				else_expr: ast.empty_expr
-			}
+			})
 		} else {
 			// else-if chain - recursively expand
 			expanded_else := t.expand_return_if_expr(else_ie)
@@ -3247,22 +3273,22 @@ fn (mut t Transformer) expand_return_if_expr(ie ast.IfExpr) []ast.Stmt {
 				else_expr = expr_stmt.expr
 			} else {
 				// Fallback: wrap in else block
-				else_expr = ast.IfExpr{
+				else_expr = ast.Expr(ast.IfExpr{
 					cond:      ast.empty_expr
 					stmts:     expanded_else
 					else_expr: ast.empty_expr
-				}
+				})
 			}
 		}
 	} else {
 		// Simple else - wrap the expression in return
-		else_expr = ast.IfExpr{
+		else_expr = ast.Expr(ast.IfExpr{
 			cond:      ast.empty_expr
 			stmts:     [ast.Stmt(ast.ReturnStmt{
 				exprs: [ie.else_expr]
 			})]
 			else_expr: ast.empty_expr
-		}
+		})
 	}
 
 	// Create the transformed if expression (used as statement)
@@ -3330,25 +3356,25 @@ fn (mut t Transformer) expand_assign_if_expr(lhs ast.Expr, ie ast.IfExpr) []ast.
 					else_stmts << s
 				}
 			}
-			else_expr = ast.IfExpr{
+			else_expr = ast.Expr(ast.IfExpr{
 				cond:      ast.empty_expr
 				stmts:     else_stmts
 				else_expr: ast.empty_expr
-			}
+			})
 		} else {
 			expanded_else := t.expand_assign_if_expr(lhs, else_ie)
 			if expanded_else.len > 0 && expanded_else[0] is ast.ExprStmt {
 				else_expr = (expanded_else[0] as ast.ExprStmt).expr
 			} else {
-				else_expr = ast.IfExpr{
+				else_expr = ast.Expr(ast.IfExpr{
 					cond:      ast.empty_expr
 					stmts:     expanded_else
 					else_expr: ast.empty_expr
-				}
+				})
 			}
 		}
 	} else {
-		else_expr = ast.IfExpr{
+		else_expr = ast.Expr(ast.IfExpr{
 			cond:      ast.empty_expr
 			stmts:     [
 				ast.Stmt(ast.AssignStmt{
@@ -3358,7 +3384,7 @@ fn (mut t Transformer) expand_assign_if_expr(lhs ast.Expr, ie ast.IfExpr) []ast.
 				}),
 			]
 			else_expr: ast.empty_expr
-		}
+		})
 	}
 
 	transformed_if := ast.IfExpr{
@@ -3627,14 +3653,10 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_option = false
 			}
 			if base_type == '' {
-				match call_type {
-					types.ResultType {
-						base_type = call_type.base_type.name()
-					}
-					types.OptionType {
-						base_type = call_type.base_type.name()
-					}
-					else {}
+				if call_type is types.ResultType {
+					base_type = call_type.base_type.name()
+				} else if call_type is types.OptionType {
+					base_type = call_type.base_type.name()
 				}
 			}
 		} else if ret_type := t.get_method_return_type(call_expr) {
@@ -3648,14 +3670,10 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 					is_option = false
 				}
 				if base_type == '' {
-					match ret_type {
-						types.ResultType {
-							base_type = ret_type.base_type.name()
-						}
-						types.OptionType {
-							base_type = ret_type.base_type.name()
-						}
-						else {}
+					if ret_type is types.ResultType {
+						base_type = ret_type.base_type.name()
+					} else if ret_type is types.OptionType {
+						base_type = ret_type.base_type.name()
 					}
 				}
 			}
@@ -3671,14 +3689,10 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 						is_option = false
 					}
 					if base_type == '' {
-						match fn_ret {
-							types.ResultType {
-								base_type = fn_ret.base_type.name()
-							}
-							types.OptionType {
-								base_type = fn_ret.base_type.name()
-							}
-							else {}
+						if fn_ret is types.ResultType {
+							base_type = fn_ret.base_type.name()
+						} else if fn_ret is types.OptionType {
+							base_type = fn_ret.base_type.name()
 						}
 					}
 				}
@@ -3700,14 +3714,10 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_option = false
 			}
 			if base_type == '' {
-				match ret_type {
-					types.ResultType {
-						base_type = ret_type.base_type.name()
-					}
-					types.OptionType {
-						base_type = ret_type.base_type.name()
-					}
-					else {}
+				if ret_type is types.ResultType {
+					base_type = ret_type.base_type.name()
+				} else if ret_type is types.OptionType {
+					base_type = ret_type.base_type.name()
 				}
 			}
 		}
@@ -5300,6 +5310,18 @@ fn (t &Transformer) strip_pos(e ast.Expr) ast.Expr {
 				name: e.name
 			}
 		}
+		ast.PrefixExpr {
+			return ast.PrefixExpr{
+				op:   e.op
+				expr: t.strip_pos(e.expr)
+			}
+		}
+		ast.CastExpr {
+			return ast.CastExpr{
+				typ:  e.typ
+				expr: t.strip_pos(e.expr)
+			}
+		}
 		else {
 			return e
 		}
@@ -5825,23 +5847,23 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 	// `a..b` -> b, `a...b` -> b + 1, `a..` -> lhs.len.
 	mut end_expr := ast.Expr(ast.empty_expr)
 	if range.end is ast.EmptyExpr {
-		end_expr = ast.SelectorExpr{
+		end_expr = ast.Expr(ast.SelectorExpr{
 			lhs: lhs
 			rhs: ast.Ident{
 				name: 'len'
 			}
-		}
+		})
 	} else {
 		end_expr = t.transform_expr(range.end)
 		if range.op == .ellipsis {
-			end_expr = ast.InfixExpr{
+			end_expr = ast.Expr(ast.InfixExpr{
 				op:  .plus
 				lhs: end_expr
 				rhs: ast.BasicLiteral{
 					kind:  .number
 					value: '1'
 				}
-			}
+			})
 		}
 	}
 
@@ -7123,23 +7145,23 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 	for i := branches.len - 1; i >= 0; i-- {
 		branch := branches[i]
 		if branch.cond.len == 0 {
-			current = ast.IfExpr{
+			current = ast.Expr(ast.IfExpr{
 				cond:      ast.empty_expr
 				stmts:     branch.stmts
 				else_expr: current
 				pos:       branch.pos
-			}
+			})
 			continue
 		}
 
 		branch_cond := t.build_match_branch_cond(match_expr, branch.cond, is_match_true,
 			is_match_false)
-		current = ast.IfExpr{
+		current = ast.Expr(ast.IfExpr{
 			cond:      branch_cond
 			stmts:     branch.stmts
 			else_expr: current
 			pos:       branch.pos
-		}
+		})
 	}
 	return current
 }
@@ -7151,12 +7173,12 @@ fn (mut t Transformer) build_match_branch_cond(match_expr ast.Expr, conds []ast.
 		if branch_cond is ast.EmptyExpr {
 			branch_cond = single_cond
 		} else {
-			branch_cond = ast.InfixExpr{
+			branch_cond = ast.Expr(ast.InfixExpr{
 				op:  .logical_or
 				lhs: branch_cond
 				rhs: single_cond
 				pos: cond.pos()
-			}
+			})
 		}
 	}
 	return branch_cond
@@ -7747,11 +7769,11 @@ fn (t &Transformer) join_and_terms(terms []ast.Expr) ast.Expr {
 	}
 	mut out := terms[0]
 	for i in 1 .. terms.len {
-		out = ast.InfixExpr{
+		out = ast.Expr(ast.InfixExpr{
 			op:  token.Token.and
 			lhs: out
 			rhs: terms[i]
-		}
+		})
 	}
 	return out
 }
@@ -7852,11 +7874,11 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				post_terms := if is_idx + 1 < terms.len { terms[is_idx + 1..] } else { []ast.Expr{} }
 				mut inner_cond := terms[is_idx]
 				if post_terms.len > 0 {
-					inner_cond = ast.InfixExpr{
+					inner_cond = ast.Expr(ast.InfixExpr{
 						op:  token.Token.and
 						lhs: inner_cond
 						rhs: t.join_and_terms(post_terms)
-					}
+					})
 				}
 				inner_if := ast.IfExpr{
 					cond:      inner_cond
@@ -8008,7 +8030,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 											if inner_tag >= 0 {
 												// Transform inner LHS with outer smartcast
 												transformed_inner_lhs := t.transform_expr(orig_inner.lhs)
-												inner_tag_check = ast.InfixExpr{
+												inner_tag_check = ast.Expr(ast.InfixExpr{
 													op:  token.Token.eq
 													lhs: ast.SelectorExpr{
 														lhs: transformed_inner_lhs
@@ -8020,7 +8042,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 														kind:  token.Token.number
 														value: '${inner_tag}'
 													}
-												}
+												})
 												// Push inner smartcast for body
 												inner_qv := if inner_vmodule != '' {
 													'${inner_vmodule}__${inner_vname}'
@@ -8503,15 +8525,15 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				// Try to see if this is a map index
 				if _ := t.get_map_type_for_expr(rhs.lhs) {
 					// This is a map access - generate "key in map" check
-					cond_expr = ast.InfixExpr{
+					cond_expr = ast.Expr(ast.InfixExpr{
 						op:  .key_in
 						lhs: rhs.expr // the key expression
 						rhs: rhs.lhs  // the map expression
 						pos: rhs.pos
-					}
+					})
 				} else {
 					// This is an array access - generate bounds check: index < array.len
-					cond_expr = ast.InfixExpr{
+					cond_expr = ast.Expr(ast.InfixExpr{
 						op:  .lt
 						lhs: t.transform_expr(rhs.expr) // the index expression
 						rhs: ast.SelectorExpr{
@@ -8521,7 +8543,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							}
 						}
 						pos: rhs.pos
-					}
+					})
 				}
 			}
 
@@ -8959,8 +8981,39 @@ fn (t &Transformer) infer_variant_type(value ast.Expr, variants []string) string
 	if value is ast.Ident {
 		// Check scope for the variable type
 		var_type := t.get_var_type_name(value.name)
-		if var_type != '' && var_type in variants {
-			return var_type
+		if var_type != '' {
+			if var_type in variants {
+				return var_type
+			}
+			var_type_short := if var_type.contains('__') {
+				var_type.all_after_last('__')
+			} else {
+				var_type
+			}
+			for v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if var_type_short == v_short || var_type_short == v {
+					return v
+				}
+			}
+		}
+		// Fallback for constants/type aliases that are not tracked as variables.
+		inferred_ident_type := t.infer_expr_type(value)
+		if inferred_ident_type != '' {
+			if inferred_ident_type in variants {
+				return inferred_ident_type
+			}
+			ident_short := if inferred_ident_type.contains('__') {
+				inferred_ident_type.all_after_last('__')
+			} else {
+				inferred_ident_type
+			}
+			for v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if ident_short == v_short || ident_short == v {
+					return v
+				}
+			}
 		}
 	}
 	if value is ast.SelectorExpr {
@@ -9190,10 +9243,10 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				if rhs_type is types.Pointer {
 					map_ptr = rhs_trans
 				} else if t.can_take_address_expr(rhs_trans) {
-					map_ptr = ast.PrefixExpr{
+					map_ptr = ast.Expr(ast.PrefixExpr{
 						op:   .amp
 						expr: rhs_trans
-					}
+					})
 				} else {
 					map_ptr = t.addr_of_expr_with_temp(expr.rhs, map_typ)
 				}
@@ -9486,7 +9539,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				if expr_type is types.String {
 					lhs_is_str = true
 				}
-				if expr_type is types.Struct && expr_type.name == 'string' {
+				if expr_type is types.Struct && (expr_type as types.Struct).name == 'string' {
 					lhs_is_str = true
 				}
 			}
@@ -9496,7 +9549,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 				if expr_type is types.String {
 					rhs_is_str = true
 				}
-				if expr_type is types.Struct && expr_type.name == 'string' {
+				if expr_type is types.Struct && (expr_type as types.Struct).name == 'string' {
 					rhs_is_str = true
 				}
 			}
@@ -10520,6 +10573,27 @@ fn (t &Transformer) type_to_name(typ types.Type) string {
 	if typ is types.String {
 		return 'string'
 	}
+	if typ is types.Char {
+		return 'char'
+	}
+	if typ is types.Rune {
+		return 'rune'
+	}
+	if typ is types.ISize {
+		return 'isize'
+	}
+	if typ is types.USize {
+		return 'usize'
+	}
+	if typ is types.Void {
+		return 'void'
+	}
+	if typ is types.Nil {
+		return 'nil'
+	}
+	if typ is types.None {
+		return 'none'
+	}
 	if typ is types.Map {
 		// Convert Map type to 'Map_K_V' format
 		key_type := t.type_to_name(typ.key_type)
@@ -10596,23 +10670,29 @@ fn (t &Transformer) is_interface_type(type_name string) bool {
 
 // get_current_scope returns the scope for the current module
 fn (t &Transformer) get_current_scope() ?&types.Scope {
-	return lock t.env.scopes {
-		t.env.scopes[t.cur_module] or { return none }
+	lock t.env.scopes {
+		if t.cur_module in t.env.scopes {
+			return unsafe { t.env.scopes[t.cur_module] }
+		}
 	}
+	return none
 }
 
 // get_module_scope returns the scope for a specific module
 fn (t &Transformer) get_module_scope(module_name string) ?&types.Scope {
-	return lock t.env.scopes {
-		t.env.scopes[module_name] or { return none }
+	lock t.env.scopes {
+		if module_name in t.env.scopes {
+			return unsafe { t.env.scopes[module_name] }
+		}
 	}
+	return none
 }
 
 // is_cast_type_name checks if a name is a type name that appears in casts (not a function)
 fn (t &Transformer) is_cast_type_name(name string) bool {
 	// Built-in primitive types
 	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool',
-		'byte', 'rune', 'usize', 'isize', 'string', 'byteptr', 'charptr', 'voidptr'] {
+		'byte', 'char', 'rune', 'usize', 'isize', 'string', 'byteptr', 'charptr', 'voidptr'] {
 		return true
 	}
 	// Type names start with uppercase in V
@@ -12391,7 +12471,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 					return true
 				}
 				// Also check for struct named 'string' (V's string type)
-				if typ is types.Struct && typ.name == 'string' {
+				if typ is types.Struct && (typ as types.Struct).name == 'string' {
 					return true
 				}
 			}
@@ -12412,7 +12492,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 					if typ is types.String {
 						return true
 					}
-					if typ is types.Struct && typ.name == 'string' {
+					if typ is types.Struct && (typ as types.Struct).name == 'string' {
 						return true
 					}
 				}
@@ -12478,7 +12558,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			if elem_type is types.String {
 				return true
 			}
-			if elem_type is types.Struct && elem_type.name == 'string' {
+			if elem_type is types.Struct && (elem_type as types.Struct).name == 'string' {
 				return true
 			}
 		}
@@ -12504,7 +12584,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 						if return_type is types.String {
 							return true
 						}
-						if return_type is types.Struct && return_type.name == 'string' {
+						if return_type is types.Struct
+							&& (return_type as types.Struct).name == 'string' {
 							return true
 						}
 					}
@@ -12518,7 +12599,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 						if return_type is types.String {
 							return true
 						}
-						if return_type is types.Struct && return_type.name == 'string' {
+						if return_type is types.Struct
+							&& (return_type as types.Struct).name == 'string' {
 							return true
 						}
 					}
@@ -12561,7 +12643,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 							if return_type is types.String {
 								return true
 							}
-							if return_type is types.Struct && return_type.name == 'string' {
+							if return_type is types.Struct
+								&& (return_type as types.Struct).name == 'string' {
 								return true
 							}
 						}
@@ -12585,7 +12668,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 							if return_type is types.String {
 								return true
 							}
-							if return_type is types.Struct && return_type.name == 'string' {
+							if return_type is types.Struct
+								&& (return_type as types.Struct).name == 'string' {
 								return true
 							}
 						}
@@ -12611,7 +12695,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 						if return_type is types.String {
 							return true
 						}
-						if return_type is types.Struct && return_type.name == 'string' {
+						if return_type is types.Struct
+							&& (return_type as types.Struct).name == 'string' {
 							return true
 						}
 					}
@@ -12625,7 +12710,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 						if return_type is types.String {
 							return true
 						}
-						if return_type is types.Struct && return_type.name == 'string' {
+						if return_type is types.Struct
+							&& (return_type as types.Struct).name == 'string' {
 							return true
 						}
 					}
@@ -12655,7 +12741,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 							if return_type is types.String {
 								return true
 							}
-							if return_type is types.Struct && return_type.name == 'string' {
+							if return_type is types.Struct
+								&& (return_type as types.Struct).name == 'string' {
 								return true
 							}
 						}
@@ -12677,7 +12764,8 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 							if return_type is types.String {
 								return true
 							}
-							if return_type is types.Struct && return_type.name == 'string' {
+							if return_type is types.Struct
+								&& (return_type as types.Struct).name == 'string' {
 								return true
 							}
 						}
@@ -12721,7 +12809,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		if elem_type is types.String {
 			return true
 		}
-		if elem_type is types.Struct && elem_type.name == 'string' {
+		if elem_type is types.Struct && (elem_type as types.Struct).name == 'string' {
 			return true
 		}
 	}
@@ -12833,10 +12921,27 @@ fn (t &Transformer) is_string_returning_method(method_name string) bool {
 	]
 }
 
+fn (t &Transformer) is_pointer_type(typ types.Type) bool {
+	match typ {
+		types.Pointer {
+			return true
+		}
+		types.Alias {
+			return t.is_pointer_type(typ.base_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // is_pointer_type_expr returns true if the expression is of a pointer type
 fn (t &Transformer) is_pointer_type_expr(expr ast.Expr) bool {
 	if expr is ast.Ident {
-		// Check scope for variable type
+		if typ := t.lookup_var_type(expr.name) {
+			return t.is_pointer_type(typ)
+		}
+		// Fallback to string-based check for partial type info.
 		var_type := t.get_var_type_name(expr.name)
 		if var_type != '' {
 			// Check for both '*' suffix (C-style) and '&' prefix (V reference types)
