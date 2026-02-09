@@ -1,6 +1,6 @@
 module main
 
-import atomics
+import x.atomics
 
 fn increment(counter &i64) {
 	atomics.add_i64(counter, 1)
