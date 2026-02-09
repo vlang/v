@@ -5,7 +5,7 @@ module atomics
 // Panics if dest is not 4-byte aligned.
 pub fn add_i32(dest &i32, delta i32) i32 {
 	mut result := i32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -13,18 +13,18 @@ pub fn add_i32(dest &i32, delta i32) i32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, delta
 			lock xadd [rdx], eax
 			add eax, delta
 			mov result, eax
-
-		2:
-			; =r(result)
-			;  r(dest) r(delta)
-			;  eax rdx
-			   memory
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; eax
+			  rdx
+			  memory
 		}
 	} $else {
 		asm volatile amd64 {
@@ -33,21 +33,21 @@ pub fn add_i32(dest &i32, delta i32) i32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, delta
 			lock xadd [rdx], eax
 			add eax, delta
 			mov result, eax
-
-		2:
-			; =r(result)
-			;  r(dest) r(delta)
-			;  eax rdx
-			   memory
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; eax
+			  rdx
+			  memory
 		}
 	}
-	// vfmt on
+
 	return result
 }
 
@@ -56,7 +56,7 @@ pub fn add_i32(dest &i32, delta i32) i32 {
 // Panics if dest is not 4-byte aligned.
 pub fn swap_i32(dest &i32, new i32) i32 {
 	mut old := i32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -64,17 +64,16 @@ pub fn swap_i32(dest &i32, new i32) i32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, new
 			xchg [rdx], eax
 			mov old, eax
-
-		2:
-			; =r(old)
-			; r(dest) as dest
-			  r(new) as new
-			; eax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (new)
+			; eax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -84,21 +83,20 @@ pub fn swap_i32(dest &i32, new i32) i32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, new
 			xchg [rdx], eax
 			mov old, eax
-
-		2:
-			; =r(old)
-			; r(dest) as dest
-			  r(new) as new
-			; eax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (new)
+			; eax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return old
 }
 
@@ -106,7 +104,6 @@ pub fn swap_i32(dest &i32, new i32) i32 {
 // The operation is performed with sequential consistency.
 // Panics if dest is not 4-byte aligned.
 pub fn store_i32(dest &i32, value i32) {
-	// vfmt off
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -114,16 +111,15 @@ pub fn store_i32(dest &i32, value i32) {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, value
 			xchg eax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; eax rdx memory
+			2:
+			; ; r (dest)
+			  r (value)
+			; eax
+			  rdx
+			  memory
 		}
 	} $else {
 		asm volatile amd64 {
@@ -132,19 +128,17 @@ pub fn store_i32(dest &i32, value i32) {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, value
 			xchg eax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; eax rdx memory
+			2:
+			; ; r (dest)
+			  r (value)
+			; eax
+			  rdx
+			  memory
 		}
 	}
-	// vfmt on
 }
 
 // load_i32 atomically loads and returns the value at num.
@@ -152,7 +146,7 @@ pub fn store_i32(dest &i32, value i32) {
 // Panics if num is not 4-byte aligned.
 pub fn load_i32(num &i32) i32 {
 	mut out := i32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, num
@@ -160,15 +154,14 @@ pub fn load_i32(num &i32) i32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, [rdx]
 			mov out, eax
-
-		2:
-			; =r(out)
-			; r(num)
-			; eax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; eax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -178,19 +171,18 @@ pub fn load_i32(num &i32) i32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, [rdx]
 			mov out, eax
-
-		2:
-			; =r(out)
-			; r(num)
-			; eax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; eax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return out
 }
 
@@ -201,7 +193,7 @@ pub fn load_i32(num &i32) i32 {
 // Panics if addr is not 4-byte aligned.
 pub fn cas_i32(addr &i32, old i32, new i32) bool {
 	mut swapped := false
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, addr
@@ -209,18 +201,20 @@ pub fn cas_i32(addr &i32, old i32, new i32) bool {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, old
 			mov ecx, new
 			lock cmpxchg [rdx], ecx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; eax ecx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; eax
+			  ecx
+			  rdx
 			  memory
 		}
 	} $else {
@@ -230,22 +224,24 @@ pub fn cas_i32(addr &i32, old i32, new i32) bool {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, old
 			mov ecx, new
 			lock cmpxchg [rdx], ecx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; eax ecx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; eax
+			  ecx
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return swapped
 }
 
@@ -253,7 +249,6 @@ pub fn cas_i32(addr &i32, old i32, new i32) bool {
 // The operation is performed with sequential consistency.
 // Panics if dest is not 8-byte aligned.
 pub fn store_i64(dest &i64, value i64) {
-	// vfmt off
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -261,16 +256,14 @@ pub fn store_i64(dest &i64, value i64) {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; rax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -280,20 +273,17 @@ pub fn store_i64(dest &i64, value i64) {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; rax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
 }
 
 // load_i64 atomically loads and returns the value at num.
@@ -301,7 +291,7 @@ pub fn store_i64(dest &i64, value i64) {
 // Panics if num is not 8-byte aligned.
 pub fn load_i64(num &i64) i64 {
 	mut out := i64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, num
@@ -309,15 +299,14 @@ pub fn load_i64(num &i64) i64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, [rdx]
 			mov out, rax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -327,19 +316,18 @@ pub fn load_i64(num &i64) i64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, [rdx]
 			mov out, rax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return out
 }
 
@@ -348,7 +336,7 @@ pub fn load_i64(num &i64) i64 {
 // Panics if dest is not 8-byte aligned.
 pub fn add_i64(dest &i64, delta i64) i64 {
 	mut result := i64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -356,18 +344,17 @@ pub fn add_i64(dest &i64, delta i64) i64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, delta
 			lock xadd [rdx], rax
 			add rax, delta
 			mov result, rax
-
-		2:
-			; =r(result) as result
-			; r(delta) as delta
-			  r(dest) as dest
-			; rax rdx
+			2:
+			; =r (result)
+			; r (delta)
+			  r (dest)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -377,22 +364,21 @@ pub fn add_i64(dest &i64, delta i64) i64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, delta
 			lock xadd [rdx], rax
 			add rax, delta
 			mov result, rax
-
-		2:
-			; =r(result) as result
-			; r(delta) as delta
-			  r(dest) as dest
-			; rax rdx
+			2:
+			; =r (result)
+			; r (delta)
+			  r (dest)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return result
 }
 
@@ -401,7 +387,7 @@ pub fn add_i64(dest &i64, delta i64) i64 {
 // Panics if dest is not 8-byte aligned.
 pub fn swap_i64(dest &i64, value i64) i64 {
 	mut old := i64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -409,16 +395,16 @@ pub fn swap_i64(dest &i64, value i64) i64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
 			mov old, rax
-
-		2:
-			; =r(old)
-			; r(dest) r(value)
-			; rax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -428,20 +414,20 @@ pub fn swap_i64(dest &i64, value i64) i64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
 			mov old, rax
-
-		2:
-			; =r(old)
-			; r(dest) r(value)
-			; rax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return old
 }
 
@@ -452,7 +438,7 @@ pub fn swap_i64(dest &i64, value i64) i64 {
 // Panics if addr is not 8-byte aligned.
 pub fn cas_i64(addr &i64, old i64, new i64) bool {
 	mut swapped := false
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, addr
@@ -460,18 +446,20 @@ pub fn cas_i64(addr &i64, old i64, new i64) bool {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, old
 			mov rcx, new
 			lock cmpxchgq [rdx], rcx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; rax rcx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; rax
+			  rcx
+			  rdx
 			  memory
 		}
 	} $else {
@@ -481,22 +469,24 @@ pub fn cas_i64(addr &i64, old i64, new i64) bool {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, old
 			mov rcx, new
 			lock cmpxchgq [rdx], rcx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; rax rcx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; rax
+			  rcx
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return swapped
 }
 
@@ -505,7 +495,7 @@ pub fn cas_i64(addr &i64, old i64, new i64) bool {
 // Panics if dest is not 4-byte aligned.
 pub fn add_u32(dest &u32, delta u32) u32 {
 	mut result := u32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -513,18 +503,18 @@ pub fn add_u32(dest &u32, delta u32) u32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, delta
 			lock xadd [rdx], eax
 			add eax, delta
 			mov result, eax
-
-		2:
-			; =r(result)
-			;  r(dest) r(delta)
-			;  rax rdx
-			   memory
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; rax
+			  rdx
+			  memory
 		}
 	} $else {
 		asm volatile amd64 {
@@ -533,21 +523,21 @@ pub fn add_u32(dest &u32, delta u32) u32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, delta
 			lock xadd [rdx], eax
 			add eax, delta
 			mov result, eax
-
-		2:
-			; =r(result)
-			;  r(dest) r(delta)
-			;  rax rdx
-			   memory
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; rax
+			  rdx
+			  memory
 		}
 	}
-	// vfmt on
+
 	return result
 }
 
@@ -556,7 +546,7 @@ pub fn add_u32(dest &u32, delta u32) u32 {
 // Panics if dest is not 4-byte aligned.
 pub fn swap_u32(dest &u32, new u32) u32 {
 	mut old := u32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -564,17 +554,16 @@ pub fn swap_u32(dest &u32, new u32) u32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, new
 			xchg [rdx], eax
 			mov old, eax
-
-		2:
-			; =r(old)
-			; r(dest) as dest
-			  r(new) as new
-			; eax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (new)
+			; eax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -584,21 +573,20 @@ pub fn swap_u32(dest &u32, new u32) u32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, new
 			xchg [rdx], eax
 			mov old, eax
-
-		2:
-			; =r(old)
-			; r(dest) as dest
-			  r(new) as new
-			; eax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (new)
+			; eax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return old
 }
 
@@ -606,7 +594,6 @@ pub fn swap_u32(dest &u32, new u32) u32 {
 // The operation is performed with sequential consistency.
 // Panics if dest is not 4-byte aligned.
 pub fn store_u32(dest &u32, value u32) {
-	// vfmt off
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -614,16 +601,14 @@ pub fn store_u32(dest &u32, value u32) {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, value
 			xchg eax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; eax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; eax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -633,20 +618,17 @@ pub fn store_u32(dest &u32, value u32) {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, value
 			xchg eax, [rdx]
-
-		2:
-			;
-			; r(dest) as dest
-			  r(value) as value
-			; eax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; eax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
 }
 
 // load_u32 atomically loads and returns the value at num.
@@ -654,7 +636,7 @@ pub fn store_u32(dest &u32, value u32) {
 // Panics if num is not 4-byte aligned.
 pub fn load_u32(num &u32) u32 {
 	mut out := u32(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, num
@@ -662,15 +644,14 @@ pub fn load_u32(num &u32) u32 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, [rdx]
 			mov out, eax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 		}
 	} $else {
 		asm volatile amd64 {
@@ -679,18 +660,17 @@ pub fn load_u32(num &u32) u32 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, [rdx]
 			mov out, eax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 		}
 	}
-	// vfmt on
+
 	return out
 }
 
@@ -701,7 +681,7 @@ pub fn load_u32(num &u32) u32 {
 // Panics if addr is not 4-byte aligned.
 pub fn cas_u32(addr &u32, old u32, new u32) bool {
 	mut swapped := false
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, addr
@@ -709,18 +689,20 @@ pub fn cas_u32(addr &u32, old u32, new u32) bool {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, old
 			mov ecx, new
 			lock cmpxchg [rdx], ecx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; eax ecx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; eax
+			  ecx
+			  rdx
 			  memory
 		}
 	} $else {
@@ -730,22 +712,24 @@ pub fn cas_u32(addr &u32, old u32, new u32) bool {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov eax, old
 			mov ecx, new
 			lock cmpxchg [rdx], ecx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; eax ecx rdx
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; eax
+			  ecx
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return swapped
 }
 
@@ -754,7 +738,7 @@ pub fn cas_u32(addr &u32, old u32, new u32) bool {
 // Panics if num is not 8-byte aligned.
 pub fn load_u64(num &u64) u64 {
 	mut out := u64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, num
@@ -762,15 +746,14 @@ pub fn load_u64(num &u64) u64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, [rdx]
 			mov out, rax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -780,19 +763,18 @@ pub fn load_u64(num &u64) u64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, [rdx]
 			mov out, rax
-
-		2:
-			; =r(out)
-			; r(num)
-			; rax rdx
+			2:
+			; =r (out)
+			; r (num)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return out
 }
 
@@ -800,7 +782,6 @@ pub fn load_u64(num &u64) u64 {
 // The operation is performed with sequential consistency.
 // Panics if dest is not 8-byte aligned.
 pub fn store_u64(dest &u64, value u64) {
-	// vfmt off
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -808,16 +789,14 @@ pub fn store_u64(dest &u64, value u64) {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
-
-		2:
-			;
-			;r(dest) as dest
-			 r(value) as value
-			; rax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -827,20 +806,17 @@ pub fn store_u64(dest &u64, value u64) {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg rax, [rdx]
-
-		2:
-			;
-			;r(dest) as dest
-			 r(value) as value
-			; rax rdx
+			2:
+			; ; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
 }
 
 // add_u64 atomically adds delta to the value at dest and returns the new value.
@@ -848,7 +824,7 @@ pub fn store_u64(dest &u64, value u64) {
 // Panics if dest is not 8-byte aligned.
 pub fn add_u64(dest &u64, delta u64) u64 {
 	mut result := u64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -856,17 +832,17 @@ pub fn add_u64(dest &u64, delta u64) u64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, delta
 			lock xadd [rdx], rax
 			add rax, delta
 			mov result, rax
-
-		2:
-			; =r(result)
-			; r(dest) r(delta)
-			; rax rdx
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -876,21 +852,21 @@ pub fn add_u64(dest &u64, delta u64) u64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, delta
 			lock xadd [rdx], rax
 			add rax, delta
 			mov result, rax
-
-		2:
-			; =r(result)
-			; r(dest) r(delta)
-			; rax rdx
+			2:
+			; =r (result)
+			; r (dest)
+			  r (delta)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return result
 }
 
@@ -899,7 +875,7 @@ pub fn add_u64(dest &u64, delta u64) u64 {
 // Panics if dest is not 8-byte aligned.
 pub fn swap_u64(dest &u64, value u64) u64 {
 	mut old := u64(0)
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, dest
@@ -907,16 +883,16 @@ pub fn swap_u64(dest &u64, value u64) u64 {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg [rdx], rax
 			mov old, rax
-
-		2:
-			; =r(old)
-			; r(dest) r(value)
-			; rax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	} $else {
@@ -926,20 +902,20 @@ pub fn swap_u64(dest &u64, value u64) u64 {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, value
 			xchg [rdx], rax
 			mov old, rax
-
-		2:
-			; =r(old)
-			; r(dest) r(value)
-			; rax rdx
+			2:
+			; =r (old)
+			; r (dest)
+			  r (value)
+			; rax
+			  rdx
 			  memory
 		}
 	}
-	// vfmt on
+
 	return old
 }
 
@@ -950,7 +926,7 @@ pub fn swap_u64(dest &u64, value u64) u64 {
 // Panics if addr is not 8-byte aligned.
 pub fn cas_u64(addr &u64, old u64, new u64) bool {
 	mut swapped := false
-	// vfmt off
+
 	$if prod {
 		asm volatile amd64 {
 			mov rdx, addr
@@ -958,19 +934,21 @@ pub fn cas_u64(addr &u64, old u64, new u64) bool {
 			jz '1f'
 			ud2
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, old
 			mov rcx, new
 			lock cmpxchgq [rdx], rcx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; rax rcx rdx
-			memory
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; rax
+			  rcx
+			  rdx
+			  memory
 		}
 	} $else {
 		asm volatile amd64 {
@@ -979,21 +957,23 @@ pub fn cas_u64(addr &u64, old u64, new u64) bool {
 			jz '1f'
 			call panicUnaligned
 			jmp '2f'
-
-		1:
+			1:
 			mov rax, old
 			mov rcx, new
 			lock cmpxchgq [rdx], rcx
 			sete al
 			mov swapped, al
-
-		2:
-			;=r(swapped)
-			;r(addr) r(old) r(new)
-			; rax rcx rdx
-			memory
+			2:
+			; =r (swapped)
+			; r (addr)
+			  r (old)
+			  r (new)
+			; rax
+			  rcx
+			  rdx
+			  memory
 		}
 	}
-	// vfmt on
+
 	return swapped
 }
