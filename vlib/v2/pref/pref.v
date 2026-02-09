@@ -69,14 +69,14 @@ fn detect_vroot() string {
 
 pub fn new_preferences() Preferences {
 	return Preferences{
-		backend: if os.user_os() == 'macos' { .arm64 } else { .x64 }
+		backend: .cleanc
 	}
 }
 
 // new_preferences_from_args parses full args list including option values
 pub fn new_preferences_from_args(args []string) Preferences {
-	// Default backend based on OS: macOS defaults to arm64, others to x64
-	default_backend := if os.user_os() == 'macos' { 'arm64' } else { 'x64' }
+	// Default backend is cleanc
+	default_backend := 'cleanc'
 	mut backend_str_long := cmdline.option(args, '-backend', '')
 	if backend_str_long.len == 0 {
 		backend_str_long = ''
@@ -92,7 +92,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	} else {
 		default_backend
 	}
-	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
+	mut backend := Backend.cleanc
 	match backend_str {
 		'cleanc' { backend = .cleanc }
 		'v' { backend = .v }

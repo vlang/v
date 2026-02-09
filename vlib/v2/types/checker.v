@@ -757,7 +757,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// c.log('ast.BasicLiteral: ${expr.kind.str()}: ${expr.value}')
 			match expr.kind {
 				.char {
-					return Type(char_)
+					return Type(rune_)
 				}
 				.key_false, .key_true {
 					return bool_
@@ -1114,10 +1114,10 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			return c.expr(expr.expr)
 		}
 		ast.RangeExpr {
-			c.expr(expr.start)
+			start_type := c.expr(expr.start)
 			c.expr(expr.end)
 			return Type(Array{
-				elem_type: int_
+				elem_type: start_type
 			})
 		}
 		ast.SelectExpr {

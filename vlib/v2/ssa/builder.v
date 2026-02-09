@@ -3489,6 +3489,14 @@ fn (mut b Builder) expr_call(node ast.CallExpr) ValueID {
 						mangled_type = base_type
 					}
 					name = '${mangled_type}__${mangled_method}'
+					// If method not found, try lowercase type name (e.g., Array -> array)
+					if !map_has_key_type_id(b.func_ret_types, name) {
+						lower_name := '${mangled_type.to_lower()}__${mangled_method}'
+						if map_has_key_type_id(b.func_ret_types, lower_name) {
+							name = lower_name
+							mangled_type = mangled_type.to_lower()
+						}
+					}
 					is_method_call = true
 					// Check if this is a flag enum method
 					if map_has_key_bool(b.flag_enum_names, mangled_type)
@@ -3786,7 +3794,7 @@ fn (mut b Builder) expr_call_or_cast(node ast.CallOrCastExpr) ValueID {
 	if node.lhs is ast.Ident {
 		cast_name := node.lhs.name
 		if cast_name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'f32', 'f64',
-			'voidptr', 'charptr', 'byteptr', 'usize', 'isize', 'rune', 'bool'] {
+			'voidptr', 'charptr', 'byteptr', 'usize', 'isize', 'rune', 'bool', 'char', 'byte'] {
 			// Type cast: just evaluate the expression (enums are already ints in SSA)
 			return b.expr(node.expr)
 		}
