@@ -408,7 +408,8 @@ pub fn (mut g Gen) gen() string {
 		for info in all_structs {
 			g.cur_module = info.mod
 			name := g.get_struct_name(info.decl)
-			if 'body_${name}' in g.emitted_types {
+			body_key := 'body_${name}'
+			if body_key in g.emitted_types {
 				continue
 			}
 			// Check if all field types are already defined
@@ -765,10 +766,12 @@ fn (mut g Gen) collect_module_type_names() {
 						}
 						fields[field.name] = true
 					}
-					g.enum_type_fields[enum_name] = fields.clone()
+					cloned_fields := fields.clone()
+					g.enum_type_fields[enum_name] = cloned_fields
 					if enum_name.contains('__') {
 						short_name := enum_name.all_after_last('__')
-						g.enum_type_fields[short_name] = fields.clone()
+						short_cloned_fields := fields.clone()
+						g.enum_type_fields[short_name] = short_cloned_fields
 					}
 				}
 				ast.TypeDecl {
@@ -793,6 +796,13 @@ fn (mut g Gen) collect_runtime_aliases() {
 	// Also use type-checker output so aliases used only in expressions are captured.
 	if g.env != unsafe { nil } {
 		for _, typ in g.env.expr_types {
+			// Some self-host runs leave zero-value Type entries in expr_types.
+			// Those decode as `types.Alias` with an invalid payload.
+			// Skip top-level aliases from env cache; declarations are collected
+			// from the AST path above.
+			if typ is types.Alias {
+				continue
+			}
 			g.collect_aliases_from_type(typ)
 		}
 	}
@@ -855,11 +865,14 @@ fn (mut g Gen) collect_fn_signatures() {
 }
 
 fn (mut g Gen) emit_ierror_wrappers() {
-	if 'body_IError' !in g.emitted_types && 'body_builtin__IError' !in g.emitted_types {
+	body_ierror_key := 'body_IError'
+	body_builtin_ierror_key := 'body_builtin__IError'
+	if body_ierror_key !in g.emitted_types && body_builtin_ierror_key !in g.emitted_types {
 		return
 	}
 	mut emitted_any := false
 	mut base_set := map[string]bool{}
+	error_code_fn := 'Error__code'
 	for fn_name, ret_type in g.fn_return_types {
 		if !fn_name.ends_with('__msg') || ret_type != 'string' {
 			continue
@@ -882,9 +895,10 @@ fn (mut g Gen) emit_ierror_wrappers() {
 		g.sb.writeln('\treturn ${base}__msg(*(${base}*)_obj);')
 		g.sb.writeln('}')
 		g.sb.writeln('static int IError_${base}_code_wrapper(void* _obj) {')
-		if '${base}__code' in g.fn_return_types {
+		code_fn := '${base}__code'
+		if code_fn in g.fn_return_types {
 			g.sb.writeln('\treturn ${base}__code(*(${base}*)_obj);')
-		} else if 'Error__code' in g.fn_return_types {
+		} else if error_code_fn in g.fn_return_types {
 			g.sb.writeln('\treturn Error__code(*(Error*)_obj);')
 		} else {
 			g.sb.writeln('\t(void)_obj;')
@@ -1027,7 +1041,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if g.option_result_payload_invalid(val_type) || val_type == 'void' {
 		return false
 	}
-	if 'body_IError' !in g.emitted_types && 'body_builtin__IError' !in g.emitted_types {
+	ierror_body_key := 'body_IError'
+	ierror_builtin_body_key := 'body_builtin__IError'
+	if ierror_body_key !in g.emitted_types && ierror_builtin_body_key !in g.emitted_types {
 		return false
 	}
 	if val_type in primitive_types || val_type in ['bool', 'char', 'void*', 'u8*', 'char*'] {
@@ -1035,7 +1051,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	}
 	// `string` is a struct payload and needs its body emitted before sizeof(string).
 	if val_type == 'string' || val_type == 'builtin__string' {
-		return 'body_string' in g.emitted_types || 'body_builtin__string' in g.emitted_types
+		string_body_key := 'body_string'
+		builtin_string_body_key := 'body_builtin__string'
+		return string_body_key in g.emitted_types || builtin_string_body_key in g.emitted_types
 	}
 	if val_type == 'IError' || val_type == 'builtin__IError' {
 		return true
@@ -1044,7 +1062,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 		return true
 	}
 	if val_type.starts_with('Array_fixed_') {
-		return 'body_${val_type}' in g.emitted_types || 'alias_${val_type}' in g.emitted_types
+		body_key := 'body_${val_type}'
+		alias_key := 'alias_${val_type}'
+		return body_key in g.emitted_types || alias_key in g.emitted_types
 	}
 	if val_type.starts_with('Array_') {
 		return true
@@ -1052,8 +1072,10 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if val_type.starts_with('Map_') {
 		return true
 	}
-	if 'body_${val_type}' in g.emitted_types || 'enum_${val_type}' in g.emitted_types
-		|| 'alias_${val_type}' in g.emitted_types {
+	body_key := 'body_${val_type}'
+	enum_key := 'enum_${val_type}'
+	alias_key := 'alias_${val_type}'
+	if body_key in g.emitted_types || enum_key in g.emitted_types || alias_key in g.emitted_types {
 		return true
 	}
 	return false
@@ -1140,8 +1162,10 @@ fn (mut g Gen) emit_runtime_aliases() {
 			if info.elem_type in primitive_types
 				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
 				g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
-				g.emitted_types['alias_${name}'] = true
-				g.emitted_types['body_${name}'] = true
+				alias_key := 'alias_${name}'
+				body_key := 'body_${name}'
+				g.emitted_types[alias_key] = true
+				g.emitted_types[body_key] = true
 			}
 		}
 	}
@@ -1199,8 +1223,10 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 				continue // already emitted in emit_runtime_aliases
 			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
-			g.emitted_types['alias_${name}'] = true
-			g.emitted_types['body_${name}'] = true
+			alias_key := 'alias_${name}'
+			body_key := 'body_${name}'
+			g.emitted_types[alias_key] = true
+			g.emitted_types[body_key] = true
 		}
 	}
 }
@@ -2199,10 +2225,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if name != '' && g.cur_fn_scope != unsafe { nil } {
 			if obj := g.cur_fn_scope.lookup_parent(name, 0) {
 				if obj !is types.Module {
-					scoped_type := g.types_type_to_c(obj.typ())
-					if (typ == '' || typ == 'int' || typ == 'int_literal') && scoped_type != ''
-						&& scoped_type !in ['int', 'void'] {
-						typ = scoped_type
+					obj_type := obj.typ()
+					if obj_type !is types.Alias {
+						scoped_type := g.types_type_to_c(obj_type)
+						if (typ == '' || typ == 'int' || typ == 'int_literal') && scoped_type != ''
+							&& scoped_type !in ['int', 'void'] {
+							typ = scoped_type
+						}
 					}
 				}
 			}
@@ -2739,8 +2768,11 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	for emb in node.embedded {
 		emb_name := g.field_type_name(emb)
 		if emb_name != '' && emb_name !in primitive_types {
-			if 'body_${emb_name}' !in g.emitted_types && 'enum_${emb_name}' !in g.emitted_types
-				&& 'alias_${emb_name}' !in g.emitted_types {
+			emb_body_key := 'body_${emb_name}'
+			emb_enum_key := 'enum_${emb_name}'
+			emb_alias_key := 'alias_${emb_name}'
+			if emb_body_key !in g.emitted_types && emb_enum_key !in g.emitted_types
+				&& emb_alias_key !in g.emitted_types {
 				return false
 			}
 		}
@@ -2782,8 +2814,11 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 			continue
 		}
 		// Check if this type's body has been emitted
-		if 'body_${typ_name}' !in g.emitted_types && 'enum_${typ_name}' !in g.emitted_types
-			&& 'alias_${typ_name}' !in g.emitted_types {
+		typ_body_key := 'body_${typ_name}'
+		typ_enum_key := 'enum_${typ_name}'
+		typ_alias_key := 'alias_${typ_name}'
+		if typ_body_key !in g.emitted_types && typ_enum_key !in g.emitted_types
+			&& typ_alias_key !in g.emitted_types {
 			return false
 		}
 	}
@@ -2891,11 +2926,12 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			for ef in embedded.fields {
 				key := name + '.' + ef.name
 				g.embedded_field_owner[key] = emb_type
-				g.struct_field_types[key] = g.types_type_to_c(ef.typ)
+				embedded_field_type := g.types_type_to_c(ef.typ)
+				g.struct_field_types[key] = embedded_field_type
 				if name.contains('__') {
 					short_key := name.all_after_last('__') + '.' + ef.name
 					g.embedded_field_owner[short_key] = emb_type
-					g.struct_field_types[short_key] = g.types_type_to_c(ef.typ)
+					g.struct_field_types[short_key] = embedded_field_type
 				}
 			}
 		}
@@ -2904,6 +2940,13 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	mut has_shared_fields := false
 	for field in node.fields {
 		field_name := escape_c_keyword(field.name)
+		field_lookup_type := g.expr_type_to_c(field.typ)
+		field_key := '${name}.${field.name}'
+		g.struct_field_types[field_key] = field_lookup_type
+		if name.contains('__') {
+			short_field_key := '${name.all_after_last('__')}.${field.name}'
+			g.struct_field_types[short_field_key] = field_lookup_type
+		}
 		if field.typ is ast.Type && field.typ is ast.ArrayFixedType {
 			fixed_typ := field.typ as ast.ArrayFixedType
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
@@ -2930,7 +2973,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		if field.typ is ast.ModifierExpr && field.typ.kind == .key_shared {
 			has_shared_fields = true
 		}
-		field_type := g.expr_type_to_c(field.typ)
+		field_type := field_lookup_type
 		g.sb.writeln('\t${field_type} ${field_name};')
 	}
 	// Add mutex field for shared fields
@@ -2950,13 +2993,11 @@ fn (mut g Gen) lookup_struct_type(struct_name string) types.Struct {
 	}
 	mod_name := if g.cur_module != '' { g.cur_module } else { 'main' }
 	mut out := types.Struct{}
-	lock g.env.scopes {
-		if scope := g.env.scopes[mod_name] {
-			if obj := scope.objects[struct_name] {
-				typ := obj.typ()
-				if typ is types.Struct {
-					out = typ
-				}
+	if scope := g.env_scope(mod_name) {
+		if obj := scope.objects[struct_name] {
+			typ := obj.typ()
+			if typ is types.Struct {
+				out = typ
 			}
 		}
 	}
@@ -3006,10 +3047,12 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 	}
 	g.sb.writeln('} ${name};')
 	g.sb.writeln('')
-	if '${name}__str' !in g.fn_return_types {
+	enum_str_fn := '${name}__str'
+	if enum_str_fn !in g.fn_return_types {
 		g.sb.writeln('#define ${name}__str(v) int__str((int)(v))')
 	}
-	if '${name}_str' !in g.fn_return_types {
+	enum_short_str_fn := '${name}_str'
+	if enum_short_str_fn !in g.fn_return_types {
 		g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
 	}
 	g.sb.writeln('')
@@ -3190,12 +3233,10 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	mut is_iface := false
-	lock g.env.scopes {
-		if mut scope := g.env.scopes[g.cur_module] {
-			if obj := scope.lookup_parent(type_name, 0) {
-				if obj is types.Type && obj is types.Interface {
-					is_iface = true
-				}
+	if scope := g.env_scope(g.cur_module) {
+		if obj := scope.lookup_parent(type_name, 0) {
+			if obj is types.Type && obj is types.Interface {
+				is_iface = true
 			}
 		}
 	}
@@ -3251,22 +3292,22 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 
 fn (g &Gen) is_enum_type(name string) bool {
 	// Check emitted_types for enum_Name or enum_module__Name
-	if 'enum_${name}' in g.emitted_types {
+	enum_key := 'enum_${name}'
+	if enum_key in g.emitted_types {
 		return true
 	}
 	qualified := g.get_qualified_name(name)
-	if 'enum_${qualified}' in g.emitted_types {
+	qualified_enum_key := 'enum_${qualified}'
+	if qualified_enum_key in g.emitted_types {
 		return true
 	}
 	// Also check the types.Environment
 	if g.env != unsafe { nil } {
 		mut found := false
-		lock g.env.scopes {
-			if mut scope := g.env.scopes[g.cur_module] {
-				if obj := scope.lookup_parent(name, 0) {
-					if obj is types.Type && obj is types.Enum {
-						found = true
-					}
+		if scope := g.env_scope(g.cur_module) {
+			if obj := scope.lookup_parent(name, 0) {
+				if obj is types.Type && obj is types.Enum {
+					found = true
 				}
 			}
 		}
@@ -3326,13 +3367,19 @@ fn (g &Gen) is_type_name(name string) bool {
 	}
 	// Check if it's a known emitted type (enum, struct, alias, sum type, interface)
 	qualified := g.get_qualified_name(name)
-	if 'enum_${name}' in g.emitted_types || 'enum_${qualified}' in g.emitted_types {
+	enum_key := 'enum_${name}'
+	qualified_enum_key := 'enum_${qualified}'
+	if enum_key in g.emitted_types || qualified_enum_key in g.emitted_types {
 		return true
 	}
-	if 'body_${name}' in g.emitted_types || 'body_${qualified}' in g.emitted_types {
+	body_key := 'body_${name}'
+	qualified_body_key := 'body_${qualified}'
+	if body_key in g.emitted_types || qualified_body_key in g.emitted_types {
 		return true
 	}
-	if 'alias_${name}' in g.emitted_types || 'alias_${qualified}' in g.emitted_types {
+	alias_key := 'alias_${name}'
+	qualified_alias_key := 'alias_${qualified}'
+	if alias_key in g.emitted_types || qualified_alias_key in g.emitted_types {
 		return true
 	}
 	if name in g.emitted_types || qualified in g.emitted_types {
@@ -3349,11 +3396,9 @@ fn (mut g Gen) is_module_ident(name string) bool {
 	}
 	if g.env != unsafe { nil } {
 		mut found := false
-		lock g.env.scopes {
-			if mut scope := g.env.scopes[g.cur_module] {
-				if obj := scope.lookup_parent(name, 0) {
-					found = obj is types.Module
-				}
+		if scope := g.env_scope(g.cur_module) {
+			if obj := scope.lookup_parent(name, 0) {
+				found = obj is types.Module
 			}
 		}
 		if found {
@@ -3518,7 +3563,8 @@ fn (mut g Gen) register_tuple_alias(elem_types []string) string {
 	}
 	name := 'Tuple_${parts.join('_')}'
 	if name !in g.tuple_aliases {
-		g.tuple_aliases[name] = elem_types.clone()
+		cloned_elem_types := elem_types.clone()
+		g.tuple_aliases[name] = cloned_elem_types
 	}
 	return name
 }
@@ -3673,16 +3719,17 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				if node.name in g.global_var_modules
 					&& g.global_var_modules[node.name] == g.cur_module {
 					g.sb.write_string('${g.cur_module}__${node.name}')
-				} else {
-					is_local_var := g.get_local_var_c_type(node.name) != none
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-						&& !node.name.contains('__') && !is_local_var
-						&& (('const_${g.cur_module}__${node.name}' in g.emitted_types
-						|| 'global_${g.cur_module}__${node.name}' in g.emitted_types)
-						|| g.is_module_local_const_or_global(node.name)) {
-						g.sb.write_string('${g.cur_module}__${node.name}')
-					} else if g.cur_module != '' && g.cur_module != 'main'
-						&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
+					} else {
+						is_local_var := g.get_local_var_c_type(node.name) != none
+						const_key := 'const_${g.cur_module}__${node.name}'
+						global_key := 'global_${g.cur_module}__${node.name}'
+						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+							&& !node.name.contains('__') && !is_local_var
+							&& ((const_key in g.emitted_types || global_key in g.emitted_types)
+							|| g.is_module_local_const_or_global(node.name)) {
+							g.sb.write_string('${g.cur_module}__${node.name}')
+						} else if g.cur_module != '' && g.cur_module != 'main'
+							&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
 						&& !g.is_module_ident(node.name) && g.is_module_local_fn(node.name)
 						&& !g.is_type_name(node.name) {
 						g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
@@ -4458,14 +4505,15 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					return
 				}
 			}
-			// Fixed-size array `.len` becomes compile-time length.
-			if node.rhs.name == 'len' {
-				if node.lhs is ast.Ident {
-					mut fixed_name := node.lhs.name
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-						&& 'const_${g.cur_module}__${node.lhs.name}' in g.emitted_types {
-						fixed_name = '${g.cur_module}__${node.lhs.name}'
-					}
+				// Fixed-size array `.len` becomes compile-time length.
+				if node.rhs.name == 'len' {
+					if node.lhs is ast.Ident {
+						mut fixed_name := node.lhs.name
+						module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
+						if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+							&& module_const_key in g.emitted_types {
+							fixed_name = '${g.cur_module}__${node.lhs.name}'
+						}
 					if fixed_name in g.fixed_array_globals {
 						g.sb.write_string('((int)(sizeof(${fixed_name}) / sizeof(${fixed_name}[0])))')
 						return
@@ -6385,7 +6433,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		arg_type_name = arg_type_name.trim_space().trim_left('&').trim_left('*')
 		if arg_type_name != '' && (arg_type_name == expected_ctor_type
 			|| arg_type_name == expected_ctor_type.all_after_last('__')) {
-			call_args = call_args[1..].clone()
+			call_args.delete(0)
 		}
 	}
 	if call_args.len == 1 && g.is_type_name(name) && !name.ends_with('__new') {
@@ -7030,6 +7078,11 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	pos := e.pos()
 	if pos != 0 {
 		if typ := g.env.get_expr_type(pos) {
+			// Self-hosting can leave malformed alias payloads in env expr cache.
+			// Skip those entries and fall back to AST/scope-based inference.
+			if typ is types.Alias {
+				return none
+			}
 			return g.types_type_to_c(typ)
 		}
 	}
@@ -7088,20 +7141,19 @@ fn (mut g Gen) ensure_cur_fn_scope() ?&types.Scope {
 	}
 	suffix := '__${g.cur_fn_name}'
 	mut matched_key := ''
-	lock g.env.fn_scopes {
-		for key, _ in g.env.fn_scopes {
-			if key.ends_with(suffix) {
-				matched_key = key
-				break
-			}
+	fn_scope_keys := lock g.env.fn_scopes {
+		g.env.fn_scopes.keys()
+	}
+	for key in fn_scope_keys {
+		if key.ends_with(suffix) {
+			matched_key = key
+			break
 		}
 	}
 	if matched_key != '' {
-		lock g.env.fn_scopes {
-			if fn_scope := g.env.fn_scopes[matched_key] {
-				g.cur_fn_scope = fn_scope
-				return fn_scope
-			}
+		if fn_scope := g.env_fn_scope_by_key(matched_key) {
+			g.cur_fn_scope = fn_scope
+			return fn_scope
 		}
 	}
 	return none
@@ -7142,9 +7194,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		}
 		// Prefer scope-backed type resolution for identifiers (type names, locals, aliases).
 		if raw_type := g.get_raw_type(node) {
-			typ_name := g.types_type_to_c(raw_type)
-			if typ_name != '' {
-				return typ_name
+			// Self-host transitional env values can carry malformed alias payloads.
+			if raw_type !is types.Alias {
+				typ_name := g.types_type_to_c(raw_type)
+				if typ_name != '' {
+					return typ_name
+				}
 			}
 		}
 	}
@@ -7192,9 +7247,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				return field_type
 			}
 			if raw_type := g.get_raw_type(node) {
-				resolved := g.types_type_to_c(raw_type)
-				if resolved != '' {
-					return resolved
+				if raw_type !is types.Alias {
+					resolved := g.types_type_to_c(raw_type)
+					if resolved != '' {
+						return resolved
+					}
 				}
 			}
 			return 'int'
@@ -7267,18 +7324,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 						return g.types_type_to_c(raw_type.value_type)
 					}
 					types.Alias {
-						match raw_type.base_type {
-							types.Array {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
-							}
-							types.ArrayFixed {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
-							}
-							types.Map {
-								return g.types_type_to_c(raw_type.base_type.value_type)
-							}
-							else {}
-						}
+						// Avoid alias payload dereference in self-host fallback path.
 					}
 					types.Pointer {
 						match raw_type.base_type {
@@ -7295,21 +7341,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 								return g.types_type_to_c(raw_type.base_type.value_type)
 							}
 							types.Alias {
-								match raw_type.base_type.base_type {
-									types.Pointer {
-										return g.types_type_to_c(raw_type.base_type.base_type)
-									}
-									types.Array {
-										return g.types_type_to_c(raw_type.base_type.base_type.elem_type)
-									}
-									types.ArrayFixed {
-										return g.types_type_to_c(raw_type.base_type.base_type.elem_type)
-									}
-									types.Map {
-										return g.types_type_to_c(raw_type.base_type.base_type.value_type)
-									}
-									else {}
-								}
+								// Avoid nested alias payload dereference in self-host fallback path.
 							}
 							types.String {
 								return 'string'
@@ -7612,6 +7644,20 @@ fn (g &Gen) is_c_type_name(name string) bool {
 		'mach_timebase_info_data_t']
 }
 
+fn (g &Gen) env_scope(module_name string) ?&types.Scope {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	return g.env.get_scope(module_name)
+}
+
+fn (g &Gen) env_fn_scope_by_key(key string) ?&types.Scope {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	return g.env.get_fn_scope_by_key(key)
+}
+
 fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.env == unsafe { nil } {
 		return none
@@ -7619,11 +7665,9 @@ fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.cur_module == '' {
 		return none
 	}
-	lock g.env.scopes {
-		if mut module_scope := g.env.scopes[g.cur_module] {
-			if obj := module_scope.lookup(name) {
-				return obj
-			}
+	if module_scope := g.env_scope(g.cur_module) {
+		if obj := module_scope.lookup(name) {
+			return obj
 		}
 	}
 	return none
@@ -7692,23 +7736,19 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		}
 		// Fallback to module scopes when function scope chain misses the symbol.
 		if g.cur_module != '' {
-			lock g.env.scopes {
-				if mut mod_scope := g.env.scopes[g.cur_module] {
-					if obj := mod_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							return obj.typ()
-						}
+			if mod_scope := g.env_scope(g.cur_module) {
+				if obj := mod_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						return obj.typ()
 					}
 				}
 			}
 		}
 		if g.cur_module != 'builtin' {
-			lock g.env.scopes {
-				if mut builtin_scope := g.env.scopes['builtin'] {
-					if obj := builtin_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							return obj.typ()
-						}
+			if builtin_scope := g.env_scope('builtin') {
+				if obj := builtin_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						return obj.typ()
 					}
 				}
 			}
@@ -7738,14 +7778,12 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 				}
 			}
 			if g.cur_module != '' {
-				lock g.env.scopes {
-					if mut mod_scope := g.env.scopes[g.cur_module] {
-						if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
-							if obj is types.Module {
-								if rhs_obj := obj.lookup(node.rhs.name) {
-									if rhs_obj !is types.Module {
-										return rhs_obj.typ()
-									}
+				if mod_scope := g.env_scope(g.cur_module) {
+					if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
+						if obj is types.Module {
+							if rhs_obj := obj.lookup(node.rhs.name) {
+								if rhs_obj !is types.Module {
+									return rhs_obj.typ()
 								}
 							}
 						}
@@ -7806,17 +7844,15 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 		mod_name = type_name.all_before_last('__')
 		type_name = type_name.all_after_last('__')
 	}
-	lock g.env.scopes {
-		if mut scope := g.env.scopes[mod_name] {
+	if scope := g.env_scope(mod_name) {
+		if obj := scope.objects[type_name] {
+			return obj.typ()
+		}
+	}
+	if mod_name != 'builtin' {
+		if scope := g.env_scope('builtin') {
 			if obj := scope.objects[type_name] {
 				return obj.typ()
-			}
-		}
-		if mod_name != 'builtin' {
-			if mut scope := g.env.scopes['builtin'] {
-				if obj := scope.objects[type_name] {
-					return obj.typ()
-				}
 			}
 		}
 	}
@@ -8165,23 +8201,27 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
 	}
 	if struct_name != '' {
-		if field_type := g.struct_field_types[struct_name + '.' + sel.rhs.name] {
+		field_key := struct_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[field_key] {
 			return field_type
 		}
 	}
 	if struct_name.contains('__') {
 		short_name := struct_name.all_after_last('__')
-		if field_type := g.struct_field_types[short_name + '.' + sel.rhs.name] {
+		short_field_key := short_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[short_field_key] {
 			return field_type
 		}
 	}
 	if struct_name.contains('.') {
 		mangled_name := struct_name.replace('.', '__')
-		if field_type := g.struct_field_types[mangled_name + '.' + sel.rhs.name] {
+		mangled_field_key := mangled_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[mangled_field_key] {
 			return field_type
 		}
 		short_dot := struct_name.all_after_last('.')
-		if field_type := g.struct_field_types[short_dot + '.' + sel.rhs.name] {
+		short_dot_field_key := short_dot + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[short_dot_field_key] {
 			return field_type
 		}
 	}
@@ -8252,13 +8292,15 @@ fn (mut g Gen) fixed_array_selector_elem_type(sel ast.SelectorExpr) string {
 		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
 	}
 	if struct_name != '' {
-		if elem := g.fixed_array_field_elem['${struct_name}.${sel.rhs.name}'] {
+		field_key := '${struct_name}.${sel.rhs.name}'
+		if elem := g.fixed_array_field_elem[field_key] {
 			return elem
 		}
 	}
 	if struct_name.contains('__') {
 		short_name := struct_name.all_after_last('__')
-		if elem := g.fixed_array_field_elem['${short_name}.${sel.rhs.name}'] {
+		short_field_key := '${short_name}.${sel.rhs.name}'
+		if elem := g.fixed_array_field_elem[short_field_key] {
 			return elem
 		}
 	}
@@ -8642,10 +8684,12 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 		if field.value is ast.SelectorExpr {
 			sel := field.value as ast.SelectorExpr
 			if sel.lhs is ast.EmptyExpr {
-				mut expected_enum := g.struct_field_types['${type_name}.${field.name}'] or { '' }
+				expected_enum_key := '${type_name}.${field.name}'
+				mut expected_enum := g.struct_field_types[expected_enum_key] or { '' }
 				if expected_enum == '' && type_name.contains('__') {
 					short_type := type_name.all_after_last('__')
-					expected_enum = g.struct_field_types['${short_type}.${field.name}'] or { '' }
+					short_expected_enum_key := '${short_type}.${field.name}'
+					expected_enum = g.struct_field_types[short_expected_enum_key] or { '' }
 				}
 				if expected_enum != '' && g.is_enum_type(expected_enum) {
 					g.sb.write_string('${g.normalize_enum_name(expected_enum)}__${sel.rhs.name}')
@@ -9167,10 +9211,12 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 }
 
 fn (mut g Gen) should_deref_init_field_value(struct_type string, field_name string, value ast.Expr) bool {
-	mut expected := g.struct_field_types['${struct_type}.${field_name}'] or { '' }
+	expected_key := '${struct_type}.${field_name}'
+	mut expected := g.struct_field_types[expected_key] or { '' }
 	if expected == '' && struct_type.contains('__') {
 		short_struct := struct_type.all_after_last('__')
-		expected = g.struct_field_types['${short_struct}.${field_name}'] or { '' }
+		short_expected_key := '${short_struct}.${field_name}'
+		expected = g.struct_field_types[short_expected_key] or { '' }
 	}
 	if expected == '' || is_type_name_pointer_like(expected) {
 		return false
