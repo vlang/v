@@ -67,7 +67,7 @@ fn bench_u64(name string, f fn (&u64, u64), iters int) {
 	ns_per_op := f64(elapsed.nanoseconds()) / f64(iters)
 
 	keepalive_u64(v)
-	println('${name}: ${ns_per_op:.3} ns/op (total: ${elapsed}, iters: ${iters})')
+	println('${name:-17s}: ${ns_per_op:6.3f} ns/op (total: ${elapsed:9}, iters: ${iters})')
 }
 
 fn bench_u32(name string, f fn (&u32, u32), iters int) {
@@ -86,7 +86,7 @@ fn bench_u32(name string, f fn (&u32, u32), iters int) {
 	ns_per_op := f64(elapsed.nanoseconds()) / f64(iters)
 
 	keepalive_u32(v)
-	println('${name}: ${ns_per_op:.3} ns/op (total: ${elapsed}, iters: ${iters})')
+	println('${name:-17s}: ${ns_per_op:6.3f} ns/op (total: ${elapsed:9}, iters: ${iters})')
 }
 
 fn bench_i64(name string, f fn (&i64, i64), iters int) {
@@ -105,7 +105,7 @@ fn bench_i64(name string, f fn (&i64, i64), iters int) {
 	ns_per_op := f64(elapsed.nanoseconds()) / f64(iters)
 
 	keepalive_i64(v)
-	println('${name}: ${ns_per_op:.3} ns/op (total: ${elapsed}, iters: ${iters})')
+	println('${name:-17s}: ${ns_per_op:6.3f} ns/op (total: ${elapsed:9}, iters: ${iters})')
 }
 
 fn bench_i32(name string, f fn (&i32, i32), iters int) {
@@ -124,7 +124,7 @@ fn bench_i32(name string, f fn (&i32, i32), iters int) {
 	ns_per_op := f64(elapsed.nanoseconds()) / f64(iters)
 
 	keepalive_i32(v)
-	println('${name}: ${ns_per_op:.3} ns/op (total: ${elapsed}, iters: ${iters})')
+	println('${name:-17s}: ${ns_per_op:6.3f} ns/op (total: ${elapsed:9}, iters: ${iters})')
 }
 
 fn std_store_u64(addr &u64, val u64) {
