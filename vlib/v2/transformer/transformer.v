@@ -421,7 +421,9 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 	}
 	// Fallback: scan all module scopes for local/private functions.
 	lock t.env.scopes {
-		for _, scope_ptr in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for module_name in scope_names {
+			scope_ptr := t.env.scopes[module_name] or { continue }
 			mut scope := unsafe { scope_ptr }
 			if obj := scope.lookup_parent(fn_name, 0) {
 				if obj is types.Fn {
@@ -641,7 +643,23 @@ fn (t &Transformer) is_interface_var(name string) bool {
 // get_var_type_name returns the type name of a variable from scope lookup
 fn (t &Transformer) get_var_type_name(name string) string {
 	typ := t.lookup_var_type(name) or { return '' }
-	return typ.name()
+	if typ is types.String {
+		return 'string'
+	}
+	if typ is types.Struct {
+		return typ.name
+	}
+	if typ is types.Pointer {
+		if typ.base_type is types.String {
+			return '&string'
+		}
+	}
+	if typ is types.Primitive {
+		return typ.name()
+	}
+	// Some malformed/self-host transitional types can carry incomplete payloads.
+	// Avoid forcing `Type.name()` on those values here.
+	return ''
 }
 
 // v_type_name_to_c_name converts V-style type names to C-style names
@@ -685,7 +703,9 @@ fn (t &Transformer) qualify_type_name(type_name string) string {
 	}
 	// Search all module scopes to find which module defines this type
 	lock t.env.scopes {
-		for mod_name, scope in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for mod_name in scope_names {
+			scope := t.env.scopes[mod_name] or { continue }
 			if obj := scope.objects[type_name] {
 				if obj is types.Type {
 					// Found it - qualify with module name (except builtin and main)
@@ -8729,7 +8749,9 @@ fn (t &Transformer) type_expr_name_full(expr ast.Expr) string {
 fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name string) string {
 	// Look up the struct type in scopes
 	lock t.env.scopes {
-		for _, scope in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for scope_name in scope_names {
+			scope := t.env.scopes[scope_name] or { continue }
 			// Try the struct name directly
 			if obj := scope.objects[struct_name] {
 				if obj is types.Type {
@@ -9461,16 +9483,20 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// Also check type environment for expression types if is_string_expr didn't find it
 		if !lhs_is_str {
 			if expr_type := t.get_expr_type(expr.lhs) {
-				type_name := t.type_to_c_name(expr_type)
-				if type_name == 'string' {
+				if expr_type is types.String {
+					lhs_is_str = true
+				}
+				if expr_type is types.Struct && expr_type.name == 'string' {
 					lhs_is_str = true
 				}
 			}
 		}
 		if !rhs_is_str {
 			if expr_type := t.get_expr_type(expr.rhs) {
-				type_name := t.type_to_c_name(expr_type)
-				if type_name == 'string' {
+				if expr_type is types.String {
+					rhs_is_str = true
+				}
+				if expr_type is types.Struct && expr_type.name == 'string' {
 					rhs_is_str = true
 				}
 			}
@@ -9613,31 +9639,36 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// Only applies to specific known struct types that define operator methods
 	if expr.op in [.plus, .minus, .mul, .div, .mod] {
 		if lhs_type := t.get_expr_type(expr.lhs) {
-			type_name := t.type_to_c_name(lhs_type)
-			// Only transform known struct types with operator overloading
-			// Note: Don't include primitive types, pointer types, or type aliases like Duration (i64)
-			known_struct_ops := ['time__Time']
-			if type_name in known_struct_ops {
-				// Determine operator method name
-				op_name := match expr.op {
-					.plus { '__plus' }
-					.minus { '__minus' }
-					.mul { '__mul' }
-					.div { '__div' }
-					.mod { '__mod' }
-					else { '' }
-				}
-				if op_name != '' {
-					// Generate function call: Type__op(lhs, rhs)
-					fn_name := '${type_name}${op_name}'
-					return ast.CallExpr{
-						lhs:  ast.Ident{
-							name: fn_name
+			match lhs_type {
+				types.Struct {
+					type_name := t.type_to_c_name(lhs_type)
+					// Only transform known struct types with operator overloading
+					known_struct_ops := ['time__Time']
+					if type_name in known_struct_ops {
+						// Determine operator method name
+						op_name := match expr.op {
+							.plus { '__plus' }
+							.minus { '__minus' }
+							.mul { '__mul' }
+							.div { '__div' }
+							.mod { '__mod' }
+							else { '' }
 						}
-						args: [t.transform_expr(expr.lhs), t.transform_expr(expr.rhs)]
-						pos:  expr.pos
+						if op_name != '' {
+							// Generate function call: Type__op(lhs, rhs)
+							fn_name := '${type_name}${op_name}'
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: fn_name
+								}
+								args: [t.transform_expr(expr.lhs),
+									t.transform_expr(expr.rhs)]
+								pos:  expr.pos
+							}
+						}
 					}
 				}
+				else {}
 			}
 		}
 	}
@@ -10347,7 +10378,9 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 	}
 
 	lock t.env.scopes {
-		for scope_name, scope in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for scope_name in scope_names {
+			scope := t.env.scopes[scope_name] or { continue }
 			// Try the lookup name directly in the appropriate module scope
 			if lookup_module != '' && scope_name == lookup_module {
 				// Look in the module scope
@@ -10410,7 +10443,9 @@ fn (t &Transformer) get_field_type_name(typ types.Type, field_name string) strin
 // for a struct field, if the field is an array of sum types. Returns '' otherwise.
 fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_name string) string {
 	lock t.env.scopes {
-		for _, scope in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for scope_name in scope_names {
+			scope := t.env.scopes[scope_name] or { continue }
 			// Try direct name and short name (for cross-module types like ast__CallExpr)
 			names := if struct_name.contains('__') {
 				[struct_name, struct_name.all_after_last('__')]
@@ -10445,7 +10480,9 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 // get_field_array_elem_c_name returns the C type name for the element type of an array field
 fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
 	lock t.env.scopes {
-		for _, scope in t.env.scopes {
+		scope_names := t.env.scopes.keys()
+		for scope_name in scope_names {
+			scope := t.env.scopes[scope_name] or { continue }
 			if obj := scope.objects[struct_name] {
 				if obj is types.Type {
 					if obj is types.Struct {
@@ -10590,6 +10627,11 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	pos := expr.pos()
 	if pos > 0 {
 		if typ := t.env.get_expr_type(pos) {
+			// Some cached env entries in self-host cleanc mode can hold malformed
+			// alias payloads. Ignore them and fall through to scope-based lookup.
+			if typ is types.Alias {
+				return none
+			}
 			// For SelectorExpr, the env type may be overwritten by a parent IndexExpr
 			// that shares the same position. Always fall through to struct field lookup
 			// which is more reliable for field access.
@@ -10647,12 +10689,8 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 				return obj.typ()
 			}
 		}
-		// Final fallback to position-based environment type.
-		if pos > 0 {
-			if typ := t.env.get_expr_type(pos) {
-				return typ
-			}
-		}
+		// Do not fall back to pos-based env cache for identifiers here.
+		// Ident positions are frequently shared/clobbered by enclosing expressions.
 		return none
 	}
 	if expr is ast.SelectorExpr {
@@ -11385,18 +11423,17 @@ fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
 	// Check for variable references with known array types
 	if expr is ast.Ident {
 		if typ := t.lookup_var_type(expr.name) {
-			base_type := t.unwrap_alias_and_pointer_type(typ)
-			match base_type {
+			match typ {
 				types.Array {
-					elem_type := t.array_elem_type_name_for_helpers(base_type.elem_type)
+					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
 					if elem_type != '' && elem_type != 'void' {
 						return 'Array_${elem_type}'
 					}
 				}
 				types.ArrayFixed {
-					elem_type := t.array_elem_type_name_for_helpers(base_type.elem_type)
+					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
 					if elem_type != '' && elem_type != 'void' {
-						return 'Array_fixed_${elem_type}_${base_type.len}'
+						return 'Array_fixed_${elem_type}_${typ.len}'
 					}
 				}
 				else {}
@@ -11525,19 +11562,19 @@ fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
 
 fn (t &Transformer) unwrap_alias_and_pointer_type(typ types.Type) types.Type {
 	mut cur := typ
-	for cur is types.Pointer || cur is types.Alias {
+	for cur is types.Pointer {
 		cur = cur.base_type()
 	}
 	return cur
 }
 
 fn (t &Transformer) array_elem_type_name_for_helpers(elem_type types.Type) string {
-	mut cur := elem_type
-	for cur is types.Alias {
-		cur = cur.base_type()
-	}
-	if cur is types.FnType {
+	if elem_type is types.FnType {
 		return 'voidptr'
+	}
+	if elem_type is types.Alias {
+		// Avoid dereferencing malformed alias payloads in self-host mode.
+		return ''
 	}
 	return t.type_to_c_name(elem_type)
 }

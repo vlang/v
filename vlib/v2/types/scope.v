@@ -159,8 +159,10 @@ pub fn (obj &Object) typ() Type {
 		Type {
 			return obj
 		}
-		// else {
-		// 	panic('missing obj.typ() for ${obj.type_name()}')
-		// }
+		else {
+			// Defensive fallback for malformed Object tags observed in the
+			// self-host cleanc path; prevents zero-initialized Type crashes.
+			return Type(int_)
+		}
 	}
 }
