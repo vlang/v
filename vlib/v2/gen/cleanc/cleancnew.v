@@ -14,17 +14,18 @@ pub struct Gen {
 	env   &types.Environment = unsafe { nil }
 	pref  &pref.Preferences  = unsafe { nil }
 mut:
-	sb                  strings.Builder
-	indent              int
-	cur_fn_scope        &types.Scope = unsafe { nil }
-	cur_fn_name         string
-	cur_fn_ret_type     string
-	cur_module          string
-	emitted_types       map[string]bool
-	fn_param_is_ptr     map[string][]bool
-	fn_param_types      map[string][]string
-	fn_return_types     map[string]string
-	runtime_local_types map[string]string
+	sb                     strings.Builder
+	indent                 int
+	cur_fn_scope           &types.Scope = unsafe { nil }
+	cur_fn_name            string
+	cur_fn_ret_type        string
+	cur_module             string
+	emitted_types          map[string]bool
+	fn_param_is_ptr        map[string][]bool
+	fn_param_types         map[string][]string
+	fn_return_types        map[string]string
+	fn_names_in_decl_order []string
+	runtime_local_types    map[string]string
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -281,14 +282,15 @@ pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
-		files:               files
-		env:                 unsafe { env }
-		pref:                unsafe { p }
-		sb:                  strings.new_builder(4096)
-		fn_param_is_ptr:     map[string][]bool{}
-		fn_param_types:      map[string][]string{}
-		fn_return_types:     map[string]string{}
-		runtime_local_types: map[string]string{}
+		files:                  files
+		env:                    unsafe { env }
+		pref:                   unsafe { p }
+		sb:                     strings.new_builder(4096)
+		fn_param_is_ptr:        map[string][]bool{}
+		fn_param_types:         map[string][]string{}
+		fn_return_types:        map[string]string{}
+		fn_names_in_decl_order: []string{}
+		runtime_local_types:    map[string]string{}
 
 		fixed_array_fields:     map[string]bool{}
 		fixed_array_field_elem: map[string]string{}
@@ -305,6 +307,10 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		emitted_option_structs: map[string]bool{}
 		embedded_field_owner:   map[string]string{}
 	}
+}
+
+fn (g &Gen) use_prealloc_allocator() bool {
+	return g.pref != unsafe { nil } && g.pref.use_prealloc_allocator
 }
 
 pub fn (mut g Gen) gen() string {
@@ -478,8 +484,7 @@ pub fn (mut g Gen) gen() string {
 				if fn_name == 'main' {
 					has_main = true
 				}
-				if stmt.name.starts_with('test_') && !stmt.is_method
-					&& stmt.typ.params.len == 0 {
+				if stmt.name.starts_with('test_') && !stmt.is_method && stmt.typ.params.len == 0 {
 					test_fn_names << fn_name
 				}
 				if g.env != unsafe { nil } {
@@ -533,8 +538,7 @@ fn (mut g Gen) emit_interface_method_wrappers() {
 	mut emitted := map[string]bool{}
 	mut iface_names := g.interface_methods.keys()
 	iface_names.sort()
-	mut fn_names := g.fn_param_is_ptr.keys()
-	fn_names.sort()
+	fn_names := g.fn_names_in_decl_order
 	for iface_name in iface_names {
 		methods := g.interface_methods[iface_name]
 		for method in methods {
@@ -649,6 +653,9 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('typedef void* chan;')
 	g.sb.writeln('typedef double float_literal;')
 	g.sb.writeln('typedef int64_t int_literal;')
+	if g.use_prealloc_allocator() {
+		g.write_prealloc_allocator_preamble()
+	}
 	// wyhash implementation used by builtin/map and hash modules.
 	g.sb.writeln('#ifndef wyhash_final_version_4_2')
 	g.sb.writeln('#define wyhash_final_version_4_2')
@@ -736,6 +743,170 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('static inline void sync__RwMutex_unlock(sync__RwMutex* m) { pthread_rwlock_unlock(&m->mutex); }')
 	g.sb.writeln('')
 	g.sb.writeln('')
+}
+
+fn (mut g Gen) write_prealloc_allocator_preamble() {
+	preamble := [
+		'// prealloc arena allocator (enabled by -prealloc)',
+		'static void* (*v2_sys_malloc_fn)(size_t) = malloc;',
+		'static void* (*v2_sys_realloc_fn)(void*, size_t) = realloc;',
+		'static void (*v2_sys_free_fn)(void*) = free;',
+		'typedef struct v2_realloc_chunk {',
+		'    u8* data;',
+		'    size_t used;',
+		'    size_t cap;',
+		'    struct v2_realloc_chunk* prev;',
+		'} v2_realloc_chunk;',
+		'typedef union v2_realloc_header {',
+		'    struct {',
+		'        size_t size;',
+		'    } meta;',
+		'    max_align_t _align;',
+		'} v2_realloc_header;',
+		'static v2_realloc_chunk* v2_realloc_current_chunk = NULL;',
+		'static int v2_realloc_cleanup_registered = 0;',
+		'static const size_t v2_realloc_min_chunk_cap = ((size_t)64 * 1024 * 1024);',
+		'static void v2_realloc_alloc_panic(size_t bytes) {',
+		'    fprintf(stderr, "v2 -prealloc arena: allocation failed for %zu bytes\\n", bytes);',
+		'    exit(1);',
+		'}',
+		'static size_t v2_realloc_align_up(size_t value, size_t align) {',
+		'    if (align == 0) {',
+		'        return value;',
+		'    }',
+		'    size_t rem = value % align;',
+		'    return rem == 0 ? value : value + (align - rem);',
+		'}',
+		'static void v2_realloc_cleanup(void) {',
+		'    v2_realloc_chunk* chunk = v2_realloc_current_chunk;',
+		'    while (chunk != NULL) {',
+		'        v2_realloc_chunk* prev = chunk->prev;',
+		'        v2_sys_free_fn(chunk->data);',
+		'        v2_sys_free_fn(chunk);',
+		'        chunk = prev;',
+		'    }',
+		'    v2_realloc_current_chunk = NULL;',
+		'}',
+		'static void v2_realloc_add_chunk(size_t min_cap) {',
+		'    size_t cap = v2_realloc_min_chunk_cap;',
+		'    if (v2_realloc_current_chunk != NULL && v2_realloc_current_chunk->cap > cap) {',
+		'        cap = v2_realloc_current_chunk->cap;',
+		'    }',
+		'    while (cap < min_cap) {',
+		'        size_t next = cap * 2;',
+		'        if (next <= cap) {',
+		'            cap = min_cap;',
+		'            break;',
+		'        }',
+		'        cap = next;',
+		'    }',
+		'    v2_realloc_chunk* chunk = (v2_realloc_chunk*)v2_sys_malloc_fn(sizeof(v2_realloc_chunk));',
+		'    if (chunk == NULL) {',
+		'        v2_realloc_alloc_panic(sizeof(v2_realloc_chunk));',
+		'    }',
+		'    chunk->data = (u8*)v2_sys_realloc_fn(NULL, cap);',
+		'    if (chunk->data == NULL) {',
+		'        v2_realloc_alloc_panic(cap);',
+		'    }',
+		'    chunk->used = 0;',
+		'    chunk->cap = cap;',
+		'    chunk->prev = v2_realloc_current_chunk;',
+		'    v2_realloc_current_chunk = chunk;',
+		'    if (!v2_realloc_cleanup_registered) {',
+		'        atexit(v2_realloc_cleanup);',
+		'        v2_realloc_cleanup_registered = 1;',
+		'    }',
+		'}',
+		'static v2_realloc_chunk* v2_realloc_find_chunk(const u8* ptr) {',
+		'    for (v2_realloc_chunk* chunk = v2_realloc_current_chunk; chunk != NULL; chunk = chunk->prev) {',
+		'        const u8* start = chunk->data;',
+		'        const u8* end = chunk->data + chunk->used;',
+		'        if (ptr > start && ptr <= end) {',
+		'            return chunk;',
+		'        }',
+		'    }',
+		'    return NULL;',
+		'}',
+		'static void* v2_realloc_malloc(size_t size) {',
+		'    if (size == 0) {',
+		'        size = 1;',
+		'    }',
+		'    size_t align = sizeof(max_align_t);',
+		'    size_t needed = sizeof(v2_realloc_header) + size;',
+		'    if (v2_realloc_current_chunk == NULL) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'    }',
+		'    size_t offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    if (offset + needed > v2_realloc_current_chunk->cap) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'        offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    }',
+		'    v2_realloc_header* header = (v2_realloc_header*)(v2_realloc_current_chunk->data + offset);',
+		'    header->meta.size = size;',
+		'    v2_realloc_current_chunk->used = offset + needed;',
+		'    return (void*)(header + 1);',
+		'}',
+		'static void* v2_realloc_calloc(size_t count, size_t size) {',
+		'    if (count == 0 || size == 0) {',
+		'        return v2_realloc_malloc(1);',
+		'    }',
+		'    if (count > ((size_t)-1) / size) {',
+		'        v2_realloc_alloc_panic((size_t)-1);',
+		'    }',
+		'    size_t total = count * size;',
+		'    void* ptr = v2_realloc_malloc(total);',
+		'    memset(ptr, 0, total);',
+		'    return ptr;',
+		'}',
+		'static void* v2_realloc_realloc(void* ptr, size_t new_size) {',
+		'    if (ptr == NULL) {',
+		'        return v2_realloc_malloc(new_size);',
+		'    }',
+		'    if (new_size == 0) {',
+		'        new_size = 1;',
+		'    }',
+		'    v2_realloc_chunk* chunk = v2_realloc_find_chunk((const u8*)ptr);',
+		'    if (chunk == NULL) {',
+		'        void* out = v2_sys_realloc_fn(ptr, new_size);',
+		'        if (out == NULL) {',
+		'            v2_realloc_alloc_panic(new_size);',
+		'        }',
+		'        return out;',
+		'    }',
+		'    v2_realloc_header* header = ((v2_realloc_header*)ptr) - 1;',
+		'    size_t old_size = header->meta.size;',
+		'    size_t header_offset = (size_t)((u8*)header - chunk->data);',
+		'    size_t alloc_start = header_offset + sizeof(v2_realloc_header);',
+		'    size_t alloc_end = alloc_start + old_size;',
+		'    if (chunk == v2_realloc_current_chunk && alloc_end == chunk->used) {',
+		'        size_t new_end = alloc_start + new_size;',
+		'        if (new_end <= chunk->cap) {',
+		'            header->meta.size = new_size;',
+		'            chunk->used = new_end;',
+		'            return ptr;',
+		'        }',
+		'    }',
+		'    void* new_ptr = v2_realloc_malloc(new_size);',
+		'    size_t copy_size = old_size < new_size ? old_size : new_size;',
+		'    memcpy(new_ptr, ptr, copy_size);',
+		'    return new_ptr;',
+		'}',
+		'static void v2_realloc_free(void* ptr) {',
+		'    if (ptr == NULL) {',
+		'        return;',
+		'    }',
+		'    if (v2_realloc_find_chunk((const u8*)ptr) != NULL) {',
+		'        return;',
+		'    }',
+		'    v2_sys_free_fn(ptr);',
+		'}',
+		'#define malloc(n) v2_realloc_malloc((size_t)(n))',
+		'#define calloc(c, n) v2_realloc_calloc((size_t)(c), (size_t)(n))',
+		'#define realloc(p, n) v2_realloc_realloc((p), (size_t)(n))',
+		'#define free(p) v2_realloc_free((p))',
+	].join('\n')
+	g.sb.write_string(preamble)
+	g.sb.write_string('\n\n')
 }
 
 fn is_c_identifier_like(name string) bool {
@@ -885,6 +1056,7 @@ fn (mut g Gen) collect_fn_signatures() {
 					g.fn_param_is_ptr[fn_name] = params
 					g.fn_param_types[fn_name] = param_types
 					g.fn_return_types[fn_name] = ret_type
+					g.fn_names_in_decl_order << fn_name
 				}
 				else {}
 			}
@@ -3484,20 +3656,33 @@ fn escape_char_literal_content(raw string) string {
 	return sb.str()
 }
 
-fn escape_c_string_literal_content(raw string) string {
+fn escape_c_string_literal_content(raw string, kind ast.StringLiteralKind) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	for ch in raw {
-		if ch == `"` {
-			sb.write_u8(`\\`)
-			sb.write_u8(`"`)
-		} else if ch == `\n` {
-			sb.write_u8(`\\`)
-			sb.write_u8(`n`)
-		} else if ch == `\r` {
-			sb.write_u8(`\\`)
-			sb.write_u8(`r`)
-		} else {
-			sb.write_u8(ch)
+		match ch {
+			`"` {
+				sb.write_u8(`\\`)
+				sb.write_u8(`"`)
+			}
+			`\n` {
+				sb.write_string('\\n')
+			}
+			`\r` {
+				sb.write_string('\\r')
+			}
+			`\t` {
+				sb.write_string('\\t')
+			}
+			`\\` {
+				if kind == .raw {
+					sb.write_string('\\\\')
+				} else {
+					sb.write_u8(`\\`)
+				}
+			}
+			else {
+				sb.write_u8(ch)
+			}
 		}
 	}
 	return sb.str()
@@ -3726,7 +3911,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			val := strip_literal_quotes(node.value)
-			escaped := escape_c_string_literal_content(val)
+			escaped := escape_c_string_literal_content(val, node.kind)
 			if node.kind == .c {
 				// C string literal: emit raw C string
 				g.sb.write_u8(`"`)

@@ -240,9 +240,9 @@ fn (b &Builder) lookup_type_in_scope(name string, module_name string) ?types.Typ
 		return none
 	}
 	mut scope := &types.Scope(unsafe { nil })
-	if s := b.env.get_scope(module_name) {
+	if mut s := b.env.get_scope(module_name) {
 		scope = s
-	} else if s := b.env.get_scope('builtin') {
+	} else if mut s := b.env.get_scope('builtin') {
 		scope = s
 	} else {
 		return none
@@ -282,9 +282,9 @@ fn (b &Builder) lookup_var_type_from_env(name string) ?types.Type {
 		return none
 	}
 	mut scope := &types.Scope(unsafe { nil })
-	if s := b.env.get_scope(b.cur_module) {
+	if mut s := b.env.get_scope(b.cur_module) {
 		scope = s
-	} else if s := b.env.get_scope('builtin') {
+	} else if mut s := b.env.get_scope('builtin') {
 		scope = s
 	} else {
 		return none

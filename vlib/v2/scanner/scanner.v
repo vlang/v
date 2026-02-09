@@ -576,8 +576,8 @@ fn (mut s Scanner) number() {
 			continue
 		}
 		// fraction (only if next char after '.' is a digit, not a letter like '.hex()')
-		else if !has_decimal && c == `.` && s.src[s.offset + 1] != `.`
-			&& s.src[s.offset + 1] >= `0` && s.src[s.offset + 1] <= `9` {
+		else if !has_decimal && c == `.` && s.src[s.offset + 1] != `.` && s.src[s.offset + 1] >= `0`
+			&& s.src[s.offset + 1] <= `9` {
 			has_decimal = true
 			s.offset++
 			continue
