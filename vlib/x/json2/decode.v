@@ -460,7 +460,26 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				// field loop
 				for {
 					if current_field_info == unsafe { nil } {
-						decoder.current_node = decoder.current_node.next // skip value
+						// The key doesn't match any field in the struct, skip the entire value
+						// including all nested objects/arrays
+						decoder.current_node = decoder.current_node.next // move to value node
+						
+						if decoder.current_node != unsafe { nil } {
+							// Calculate the end position of this value
+							value_end := decoder.current_node.value.position + decoder.current_node.value.length
+							
+							// Skip all nodes that belong to this value (nested content)
+							for {
+								if decoder.current_node == unsafe { nil } {
+									break
+								}
+								// Check if current node is still within the value's boundaries
+								if decoder.current_node.value.position >= value_end {
+									break
+								}
+								decoder.current_node = decoder.current_node.next
+							}
+						}
 
 						break
 					}
