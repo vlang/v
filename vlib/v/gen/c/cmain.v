@@ -121,7 +121,12 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stdout);')
 			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stderr);')
 			g.writeln('\t(void)err;')
+			g.writeln('} else {')
+			g.writeln('\tFILE* res_fp = 0;')
+			g.writeln('\tfreopen_s(&res_fp, "NUL", "w", stdout);')
+			g.writeln('\tfreopen_s(&res_fp, "NUL", "w", stderr);')
 			g.writeln('}')
+
 			return
 		}
 		// Console application
