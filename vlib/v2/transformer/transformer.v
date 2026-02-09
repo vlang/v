@@ -5310,6 +5310,18 @@ fn (t &Transformer) strip_pos(e ast.Expr) ast.Expr {
 				name: e.name
 			}
 		}
+		ast.PrefixExpr {
+			return ast.PrefixExpr{
+				op:   e.op
+				expr: t.strip_pos(e.expr)
+			}
+		}
+		ast.CastExpr {
+			return ast.CastExpr{
+				typ:  e.typ
+				expr: t.strip_pos(e.expr)
+			}
+		}
 		else {
 			return e
 		}
@@ -10680,7 +10692,7 @@ fn (t &Transformer) get_module_scope(module_name string) ?&types.Scope {
 fn (t &Transformer) is_cast_type_name(name string) bool {
 	// Built-in primitive types
 	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool',
-		'byte', 'rune', 'usize', 'isize', 'string', 'byteptr', 'charptr', 'voidptr'] {
+		'byte', 'char', 'rune', 'usize', 'isize', 'string', 'byteptr', 'charptr', 'voidptr'] {
 		return true
 	}
 	// Type names start with uppercase in V

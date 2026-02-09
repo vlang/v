@@ -455,6 +455,8 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('')
 
 	// Pass 4: Function forward declarations
+	mut test_fn_names := []string{}
+	mut has_main := false
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -472,6 +474,13 @@ pub fn (mut g Gen) gen() string {
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
 					continue
+				}
+				if fn_name == 'main' {
+					has_main = true
+				}
+				if stmt.name.starts_with('test_') && !stmt.is_method
+					&& stmt.typ.params.len == 0 {
+					test_fn_names << fn_name
 				}
 				if g.env != unsafe { nil } {
 					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
@@ -492,6 +501,25 @@ pub fn (mut g Gen) gen() string {
 	// Pass 5: Everything else (function bodies, consts, globals, etc.)
 	for file in g.files {
 		g.gen_file(file)
+	}
+
+	// Generate test runner main if this is a test file (has test_ functions but no main)
+	if !has_main && test_fn_names.len > 0 {
+		g.sb.writeln('')
+		g.sb.writeln('int main(int ___argc, char** ___argv) {')
+		g.sb.writeln('\tg_main_argc = ___argc;')
+		g.sb.writeln('\tg_main_argv = (void*)___argv;')
+		for test_fn in test_fn_names {
+			msg_run := 'Running test: ${test_fn}...'
+			msg_ok := '  OK'
+			g.sb.writeln('\tprintln((string){"${msg_run}", sizeof("${msg_run}") - 1});')
+			g.sb.writeln('\t${test_fn}();')
+			g.sb.writeln('\tprintln((string){"${msg_ok}", sizeof("${msg_ok}") - 1});')
+		}
+		msg_all := 'All ${test_fn_names.len} tests passed.'
+		g.sb.writeln('\tprintln((string){"${msg_all}", sizeof("${msg_all}") - 1});')
+		g.sb.writeln('\treturn 0;')
+		g.sb.writeln('}')
 	}
 
 	return g.sb.str()
@@ -1302,8 +1330,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			if node.expr is ast.UnsafeExpr {
 				unsafe_expr := node.expr as ast.UnsafeExpr
+				if unsafe_expr.stmts.len > 1 {
+					g.write_indent()
+					g.sb.writeln('{')
+					g.indent++
+				}
 				for stmt in unsafe_expr.stmts {
 					g.gen_stmt(stmt)
+				}
+				if unsafe_expr.stmts.len > 1 {
+					g.indent--
+					g.write_indent()
+					g.sb.writeln('}')
 				}
 				return
 			}
@@ -3452,6 +3490,12 @@ fn escape_c_string_literal_content(raw string) string {
 		if ch == `"` {
 			sb.write_u8(`\\`)
 			sb.write_u8(`"`)
+		} else if ch == `\n` {
+			sb.write_u8(`\\`)
+			sb.write_u8(`n`)
+		} else if ch == `\r` {
+			sb.write_u8(`\\`)
+			sb.write_u8(`r`)
 		} else {
 			sb.write_u8(ch)
 		}
@@ -3662,10 +3706,20 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.sb.write_string('false')
 			} else if node.kind == .char {
 				raw := strip_literal_quotes(node.value)
-				escaped := escape_char_literal_content(raw)
-				g.sb.write_u8(`'`)
-				g.sb.write_string(escaped)
-				g.sb.write_u8(`'`)
+				if raw.len > 1 && raw[0] != `\\` {
+					// Multi-byte UTF-8 character: emit as numeric codepoint
+					runes := raw.runes()
+					if runes.len > 0 {
+						g.sb.write_string(int(runes[0]).str())
+					} else {
+						g.sb.write_string("'${raw}'")
+					}
+				} else {
+					escaped := escape_char_literal_content(raw)
+					g.sb.write_u8(`'`)
+					g.sb.write_string(escaped)
+					g.sb.write_u8(`'`)
+				}
 			} else {
 				g.sb.write_string(sanitize_c_number_literal(node.value))
 			}
@@ -4427,6 +4481,12 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
+			// typeof(x).name -> just emit the typeof string directly (already a string)
+			if node.lhs is ast.KeywordOperator && node.lhs.op == .key_typeof
+				&& node.rhs.name == 'name' {
+				g.gen_keyword_operator(node.lhs)
+				return
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if node.lhs is ast.Ident && node.lhs.name == 'C' {
 				g.sb.write_string(node.rhs.name)
