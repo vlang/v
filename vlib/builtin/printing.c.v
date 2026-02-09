@@ -56,6 +56,7 @@ pub fn eprint(s string) {
 }
 
 // flush_stdout flushes the stdout buffer, ensuring all remaining data is written.
+// See also unbuffer_stdout() .
 pub fn flush_stdout() {
 	$if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
