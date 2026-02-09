@@ -1,6 +1,6 @@
 module main
 
-import atomics
+import x.atomics
 
 fn main() {
 	// Basic atomic load and store operations
