@@ -1,6 +1,6 @@
 module main
 
-import atomics
+import x.atomics
 import time
 
 $if windows {
