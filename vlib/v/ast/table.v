@@ -32,6 +32,7 @@ pub mut:
 	used_consts    map[string]bool // filled in by markused
 	used_globals   map[string]bool // filled in by markused
 	used_syms      map[int]bool    // filled in by markused
+	used_str       map[Type]bool   // filled in by markused
 	used_veb_types []Type          // veb context types, filled in by checker
 	used_maps      int             // how many times maps were used, filled in by markused
 	used_none      int             // how many times `none` was used, filled in by markused
