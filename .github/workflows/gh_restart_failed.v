@@ -14,30 +14,48 @@ struct Check {
 	workflow string
 }
 
+struct GhRun {
+	database_id   i64    @[json: databaseId]
+	workflow_name string @[json: workflowName]
+}
+
+struct GhJob {
+	name        string
+	status      string
+	conclusion  string
+	url         string
+	database_id i64 @[json: databaseId]
+}
+
+struct GhRunView {
+	jobs          []GhJob
+	workflow_name string @[json: workflowName]
+}
+
 fn main() {
 	unbuffer_stdout()
 	if os.args.len != 2 {
-		println('Usage: v run gh_restart_failed.v <PR_NUMBER>')
+		println('Usage: v run gh_restart_failed.v <PR_NUMBER|REF>')
 		return
 	}
-	pr_number := os.args[1].int()
-	println(c(tg, 'Fetching checks for PR ${m(pr_number)}...'))
-	// Fetch checks using gh CLI
-	cmd := 'gh pr checks ${pr_number} --json name,bucket,state,link,workflow'
-	res := os.execute(cmd)
-	if res.exit_code != 0 {
-		println('Error fetching checks: ${res.output}')
-		return
-	}
-	checks := json.decode([]Check, res.output) or {
-		println('Failed to decode JSON: ${err}')
-		return
+	arg := os.args[1]
+	mut is_pr := true
+	if arg.len > 5 {
+		is_pr = false
+	} else {
+		for r in arg {
+			if !r.is_digit() {
+				is_pr = false
+				break
+			}
+		}
 	}
 	mut failed := []Check{}
 	mut cancelled := []Check{}
 	mut succeeded := 0
 	mut in_progress := 0
 	mut total := 0
+	checks := if is_pr { get_checks_for_pr(arg.int()) } else { get_checks_for_commit(arg) }
 	for check in checks {
 		total++
 		match check.bucket {
@@ -136,4 +154,66 @@ fn main() {
 
 fn m(metric int) string {
 	return c(tb, metric.str())
+}
+
+fn get_checks_for_pr(pr_number int) []Check {
+	mut checks := []Check{}
+	println(c(tg, 'Fetching checks for PR ${m(pr_number)}...'))
+	cmd := 'gh pr checks ${pr_number} --json name,bucket,state,link,workflow'
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		println('Error fetching checks: ${res.output}')
+		exit(1)
+	}
+	checks = json.decode([]Check, res.output) or {
+		println('Failed to decode JSON: ${err}')
+		exit(1)
+	}
+	return checks
+}
+
+fn get_checks_for_commit(commit string) []Check {
+	mut checks := []Check{}
+	println(c(tg, 'Fetching checks for ref ${c(tb, commit)}...'))
+	runs_res := os.execute('gh run list --commit ${commit} --limit 100 --json databaseId,workflowName')
+	if runs_res.exit_code != 0 {
+		println('Error fetching runs: ${runs_res.output}')
+		exit(1)
+	}
+	runs := json.decode([]GhRun, runs_res.output) or {
+		println('Failed to decode runs JSON: ${err}')
+		exit(1)
+	}
+	for run in runs {
+		view_res := os.execute('gh run view ${run.database_id} --json jobs,workflowName')
+		if view_res.exit_code != 0 {
+			continue
+		}
+		view := json.decode(GhRunView, view_res.output) or { continue }
+		for job in view.jobs {
+			mut bucket := 'pass'
+			mut state := job.conclusion.to_upper()
+			if state == '' {
+				state = job.status.to_upper()
+			}
+			if job.conclusion == 'failure' {
+				bucket = 'fail'
+			} else if job.conclusion == 'cancelled' {
+				bucket = 'cancel'
+			} else if job.status in ['in_progress', 'queued', 'waiting'] {
+				bucket = 'pending'
+				if state == '' {
+					state = 'PENDING'
+				}
+			}
+			checks << Check{
+				name:     job.name
+				bucket:   bucket
+				state:    state
+				link:     job.url
+				workflow: view.workflow_name
+			}
+		}
+	}
+	return checks
 }
