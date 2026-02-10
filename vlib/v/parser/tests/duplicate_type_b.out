@@ -3,3 +3,8 @@ vlib/v/parser/tests/duplicate_type_b.vv:3:8: error: cannot register struct `Foo`
     2 |
     3 | struct Foo {}
       |        ~~~
+Details: vlib/v/parser/tests/duplicate_type_b.vv:1:1: details: another declaration was found here
+    1 | interface Foo {}
+      | ^
+    2 |
+    3 | struct Foo {}
