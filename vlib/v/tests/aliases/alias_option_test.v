@@ -11,5 +11,5 @@ fn test_alias_option() {
 	v := ?int(42)
 	result := is_some(v)
 	println('Has value: ${result}')
-	assert result == true
+	assert result
 }
