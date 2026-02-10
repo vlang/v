@@ -79,8 +79,8 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 53 failed, 208 passed, 261 total.'
-const expected_summary_generics = 'Summary for all V _test.v files: 52 failed, 209 passed, 261 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 53 failed, 209 passed, 262 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 52 failed, 210 passed, 262 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 14 failed, 5 passed, 19 total.'
