@@ -205,7 +205,25 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			node.typ
 		}
-		mut styp := g.styp(node_typ)
+		// For generic functions, if the if-expression's type was set to a concrete type
+		// by the checker but we're generating a different generic instance, we need to
+		// use the correct concrete type from cur_concrete_types
+		resolved_typ := if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+			&& g.cur_concrete_types.len > 0 {
+			// Try to unwrap generic, and if that doesn't work, check if we should use
+			// the function's return type
+			unwrapped := g.unwrap_generic(node_typ)
+			if unwrapped == node_typ && g.cur_fn.return_type.has_flag(.generic) {
+				// The node type didn't unwrap, but the function return type is generic
+				// This means node_typ might be a stale concrete type from another instance
+				g.unwrap_generic(g.cur_fn.return_type)
+			} else {
+				unwrapped
+			}
+		} else {
+			g.unwrap_generic(node_typ)
+		}
+		mut styp := g.styp(resolved_typ)
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
 			if node.typ != ast.void_type {
@@ -237,7 +255,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if tmp != '' {
 			if node.typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
-				g.write2(g.styp(g.last_if_option_type), ' ')
+				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else {
 				g.write('${styp} ')
 			}
