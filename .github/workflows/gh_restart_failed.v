@@ -172,47 +172,56 @@ fn get_checks_for_pr(pr_number int) []Check {
 	return checks
 }
 
+struct GhCheckRun {
+	name       string
+	status     string
+	conclusion string
+	html_url   string @[json: html_url]
+}
+
+struct GhCheckRunsResponse {
+	total_count int          @[json: total_count]
+	check_runs  []GhCheckRun @[json: check_runs]
+}
+
 fn get_checks_for_commit(commit string) []Check {
 	mut checks := []Check{}
 	println(c(tg, 'Fetching checks for ref ${c(tb, commit)}...'))
-	runs_res := execute_with_progress('gh run list --commit ${commit} --limit 100 --json databaseId,workflowName')
-	if runs_res.exit_code != 0 {
-		println('Error fetching runs: ${runs_res.output}')
+	// Fetch all check runs for this commit in one go
+	cmd := 'gh api repos/:owner/:repo/commits/${commit}/check-runs?per_page=100'
+	res := execute_with_progress(cmd)
+	if res.exit_code != 0 {
+		println('Error fetching check runs: ${res.output}')
 		exit(1)
 	}
-	runs := json.decode([]GhRun, runs_res.output) or {
-		println('Failed to decode runs JSON: ${err}')
+	response := json.decode(GhCheckRunsResponse, res.output) or {
+		println('Failed to decode check runs JSON: ${err}')
 		exit(1)
 	}
-	for run in runs {
-		view_res := execute_with_progress('gh run view ${run.database_id} --json jobs,workflowName')
-		if view_res.exit_code != 0 {
-			continue
+	for cr in response.check_runs {
+		mut bucket := 'pass'
+		mut state := cr.conclusion.to_upper()
+		if state == '' {
+			state = cr.status.to_upper()
 		}
-		view := json.decode(GhRunView, view_res.output) or { continue }
-		for job in view.jobs {
-			mut bucket := 'pass'
-			mut state := job.conclusion.to_upper()
+		if cr.conclusion == 'failure' {
+			bucket = 'fail'
+		} else if cr.conclusion == 'cancelled' {
+			bucket = 'cancel'
+		} else if cr.status in ['in_progress', 'queued', 'waiting'] {
+			bucket = 'pending'
 			if state == '' {
-				state = job.status.to_upper()
+				state = 'PENDING'
 			}
-			if job.conclusion == 'failure' {
-				bucket = 'fail'
-			} else if job.conclusion == 'cancelled' {
-				bucket = 'cancel'
-			} else if job.status in ['in_progress', 'queued', 'waiting'] {
-				bucket = 'pending'
-				if state == '' {
-					state = 'PENDING'
-				}
-			}
-			checks << Check{
-				name:     job.name
-				bucket:   bucket
-				state:    state
-				link:     job.url
-				workflow: view.workflow_name
-			}
+		}
+		// The API doesn't directly give workflow name, but it's often in the name
+		// or we can just use the job name for both if it's not available.
+		checks << Check{
+			name:     cr.name
+			bucket:   bucket
+			state:    state
+			link:     cr.html_url
+			workflow: 'Actions' // Default if unknown
 		}
 	}
 	return checks
