@@ -1,9 +1,11 @@
 import os
 import json
 import term
+import time
 
 const c = term.colorize
 const tg = term.green
+const tm = term.magenta
 const tb = term.bold
 
 struct Check {
@@ -128,12 +130,10 @@ fn main() {
 				// Attempt restart
 				// Using --job <job_id> with run_id
 				restart_cmd := 'gh run rerun ${run_id} --job ${job_id}'
-				restart_res := os.execute(restart_cmd)
+				restart_res := execute_with_progress(restart_cmd)
 				if restart_res.exit_code == 0 {
-					println('OK')
 					restarted_count++
 				} else {
-					println('Failed')
 					println('  Error: ${restart_res.output.trim_space()}')
 				}
 			}
@@ -160,7 +160,7 @@ fn get_checks_for_pr(pr_number int) []Check {
 	mut checks := []Check{}
 	println(c(tg, 'Fetching checks for PR ${m(pr_number)}...'))
 	cmd := 'gh pr checks ${pr_number} --json name,bucket,state,link,workflow'
-	res := os.execute(cmd)
+	res := execute_with_progress(cmd)
 	if res.exit_code != 0 {
 		println('Error fetching checks: ${res.output}')
 		exit(1)
@@ -175,7 +175,7 @@ fn get_checks_for_pr(pr_number int) []Check {
 fn get_checks_for_commit(commit string) []Check {
 	mut checks := []Check{}
 	println(c(tg, 'Fetching checks for ref ${c(tb, commit)}...'))
-	runs_res := os.execute('gh run list --commit ${commit} --limit 100 --json databaseId,workflowName')
+	runs_res := execute_with_progress('gh run list --commit ${commit} --limit 100 --json databaseId,workflowName')
 	if runs_res.exit_code != 0 {
 		println('Error fetching runs: ${runs_res.output}')
 		exit(1)
@@ -185,7 +185,7 @@ fn get_checks_for_commit(commit string) []Check {
 		exit(1)
 	}
 	for run in runs {
-		view_res := os.execute('gh run view ${run.database_id} --json jobs,workflowName')
+		view_res := execute_with_progress('gh run view ${run.database_id} --json jobs,workflowName')
 		if view_res.exit_code != 0 {
 			continue
 		}
@@ -216,4 +216,26 @@ fn get_checks_for_commit(commit string) []Check {
 		}
 	}
 	return checks
+}
+
+fn execute_with_progress(cmd string) os.Result {
+	start := time.now()
+	start_str := start.hhmmss()
+	mut stop := false
+	spawn fn (cmd string, start_str string, start time.Time, mut stop &bool) {
+		for !*stop {
+			elapsed := time.since(start).seconds()
+			print('\rRunning ${c(tm, cmd)} [started at ${start_str}] ... elapsed ${elapsed:.1f}s')
+			os.flush()
+			time.sleep(100 * time.millisecond)
+		}
+	}(cmd, start_str, start, mut &stop)
+
+	res := os.execute(cmd)
+	stop = true
+	time.sleep(150 * time.millisecond)
+	elapsed := time.since(start).seconds()
+	status := if res.exit_code == 0 { 'OK' } else { 'Failed' }
+	println('\rCommand ${c(tm, cmd)} [started at ${start_str}] ... done in ${elapsed:.1f}s. Status: ${status}.')
+	return res
 }
