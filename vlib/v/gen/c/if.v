@@ -215,8 +215,23 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			unwrapped := g.unwrap_generic(node_typ)
 			if unwrapped == node_typ && g.cur_fn.return_type.has_flag(.generic) {
 				// The node type didn't unwrap, but the function return type is generic
-				// This means node_typ might be a stale concrete type from another instance
-				g.unwrap_generic(g.cur_fn.return_type)
+				// Get the unwrapped function return type for this instance
+				mut fn_ret_typ := g.unwrap_generic(g.cur_fn.return_type)
+				if g.inside_or_block {
+					fn_ret_typ = fn_ret_typ.clear_option_and_result()
+				}
+				// Check if the function return type directly matches one of the concrete types
+				// If it does, the if expression type should also match that concrete type
+				fn_ret_is_direct_generic := g.cur_concrete_types.any(it == fn_ret_typ)
+				if fn_ret_is_direct_generic && node_typ != fn_ret_typ {
+					// The function returns T directly, and node_typ doesn't match the current T
+					// This means node_typ is stale from another instance
+					fn_ret_typ
+				} else {
+					// Either the function return type is wrapped (like !T or []T),
+					// or node_typ is correct for this instance
+					unwrapped
+				}
 			} else {
 				unwrapped
 			}
