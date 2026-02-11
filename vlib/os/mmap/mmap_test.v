@@ -78,7 +78,7 @@ fn test_mmap_file_lowlevel() {
 
 	// Read mapped memory
 	mapped_data := unsafe { &u8(addr) }
-	content := tos(mapped_data, test_content.len)
+	content := unsafe { tos(mapped_data, test_content.len) }
 	assert content == test_content
 
 	// Clean up
