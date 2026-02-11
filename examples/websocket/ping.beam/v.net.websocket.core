@@ -1,0 +1,786 @@
+module 'v.net.websocket' ['Server.on_connect'/2,
+                'Server.on_message'/2,
+                'Server.on_message_ref'/3,
+                'Server.on_close'/2,
+                'Server.on_close_ref'/3,
+                'Client.on_message'/2,
+                'Client.on_message_ref'/3,
+                'Client.on_error'/2,
+                'Client.on_error_ref'/3,
+                'Client.on_open'/2,
+                'Client.on_open_ref'/3,
+                'Client.on_close'/2,
+                'Client.on_close_ref'/3,
+                'Server.send_connect_event'/2,
+                'Client.send_message_event'/2,
+                'Client.send_error_event'/2,
+                'Client.send_close_event'/3,
+                'Client.send_open_event'/1,
+                'Client.handshake'/1,
+                'Server.handle_server_handshake'/2,
+                'Server.parse_client_handshake'/3,
+                'Client.read_handshake_str'/1,
+                'Client.read_handshake'/2,
+                'Client.check_handshake_response'/3,
+                'Client.socket_read'/2,
+                'Client.socket_read_ptr'/3,
+                'Client.socket_write'/2,
+                'Client.shutdown_socket'/1,
+                'Client.dial_socket'/1,
+                'Client.validate_frame'/2,
+                'is_control_frame'/1,
+                'is_data_frame'/1,
+                'Client.read_payload'/2,
+                'Client.validate_utf_8'/3,
+                'Client.read_next_message'/1,
+                'Client.payload_from_fragments'/2,
+                'Client.opcode_from_fragments'/1,
+                'Client.parse_frame_header'/1,
+                'Frame.unmask_sequence'/2,
+                'Uri.str'/1,
+                'setup_default_logger'/0,
+                'htonl64'/1,
+                'create_masking_key'/0,
+                'create_key_challenge_response'/1,
+                'get_nonce'/1,
+                'new_client'/2,
+                'Client.connect'/1,
+                'Client.listen'/1,
+                'Client.manage_clean_close'/1,
+                'Client.ping'/1,
+                'Client.pong'/1,
+                'Client.write_ptr'/4,
+                'Client.write'/3,
+                'Client.write_string'/2,
+                'Client.close'/3,
+                'Client.send_control_frame'/4,
+                'parse_uri'/1,
+                'Client.set_state'/2,
+                'Client.get_state'/1,
+                'Client.assert_not_connected'/1,
+                'Client.reset_state'/1,
+                'Client.debug_log'/2,
+                'Message.free'/1,
+                'Client.free'/1,
+                'new_server'/4,
+                'Server.set_ping_interval'/2,
+                'Server.get_ping_interval'/1,
+                'Server.listen'/1,
+                'Server.close'/1,
+                'Server.handle_ping'/1,
+                'Server.serve_client'/2,
+                'Server.handle_handshake'/3,
+                'Server.attach_client'/3,
+                'Server.setup_callbacks'/2,
+                'delete_client_cb'/4,
+                'Server.accept_new_client'/1,
+                'Server.set_state'/2,
+                'Server.get_state'/1,
+                'Server.free'/1,
+                'Flag__static__from'/1,
+                'State__static__from'/1,
+                'OPCode__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'Server.on_connect'/2 =
+            fun (S, Fun) ->
+                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('accept_client_callbacks', S)), 0) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        do  call 'erlang':'bsl'(call 'erlang':'map_get'('accept_client_callbacks', S), Fun)
+                            'ok'
+                end
+        'Server.on_message'/2 =
+            fun (S, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('message_callbacks', S), ~{'handler'=>Fun,{'vbeam','type'}=>'MessageEventHandler'}~)
+        'Server.on_message_ref'/3 =
+            fun (S, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('message_callbacks', S), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'MessageEventHandler'}~)
+        'Server.on_close'/2 =
+            fun (S, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('close_callbacks', S), ~{'handler'=>Fun,{'vbeam','type'}=>'CloseEventHandler'}~)
+        'Server.on_close_ref'/3 =
+            fun (S, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('close_callbacks', S), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'CloseEventHandler'}~)
+        'Client.on_message'/2 =
+            fun (Ws, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('message_callbacks', Ws), ~{'handler'=>Fun,{'vbeam','type'}=>'MessageEventHandler'}~)
+        'Client.on_message_ref'/3 =
+            fun (Ws, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('message_callbacks', Ws), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'MessageEventHandler'}~)
+        'Client.on_error'/2 =
+            fun (Ws, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('error_callbacks', Ws), ~{'handler'=>Fun,{'vbeam','type'}=>'ErrorEventHandler'}~)
+        'Client.on_error_ref'/3 =
+            fun (Ws, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('error_callbacks', Ws), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'ErrorEventHandler'}~)
+        'Client.on_open'/2 =
+            fun (Ws, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('open_callbacks', Ws), ~{'handler'=>Fun,{'vbeam','type'}=>'OpenEventHandler'}~)
+        'Client.on_open_ref'/3 =
+            fun (Ws, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('open_callbacks', Ws), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'OpenEventHandler'}~)
+        'Client.on_close'/2 =
+            fun (Ws, Fun) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('close_callbacks', Ws), ~{'handler'=>Fun,{'vbeam','type'}=>'CloseEventHandler'}~)
+        'Client.on_close_ref'/3 =
+            fun (Ws, Fun, Ref) ->
+                call 'erlang':'bsl'(call 'erlang':'map_get'('close_callbacks', Ws), ~{'handler2'=>Fun,'ref'=>Ref,'is_ref'=>'true',{'vbeam','type'}=>'CloseEventHandler'}~)
+        'Server.send_connect_event'/2 =
+            fun (S, C) ->
+                case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('accept_client_callbacks', S)), 0) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        let <Fun> =
+                            call 'lists':'nth'(1, call 'erlang':'map_get'('accept_client_callbacks', S))
+                        in  let <Res> =
+                                try apply Fun(C) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                            in  Res
+                end
+        'Client.send_message_event'/2 =
+            fun (Ws, Msg) ->
+                do  apply 'Client.debug_log'/2(Ws, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+        'Client.send_error_event'/2 =
+            fun (Ws, Error) ->
+                do  apply 'Client.debug_log'/2(Ws, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+        'Client.send_close_event'/3 =
+            fun (Ws, Code, Reason) ->
+                do  apply 'Client.debug_log'/2(Ws, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+        'Client.send_open_event'/1 =
+            fun (Ws) ->
+                do  apply 'Client.debug_log'/2(Ws, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    'ok'
+        'Client.handshake'/1 =
+            fun (Ws) ->
+                let <Nonce> =
+                    apply 'get_nonce'/1(call 'erlang':'map_get'('nonce_size', Ws))
+                in  let <Seckey> =
+                        call 'v.encoding.base64':'encode_str'(Nonce)
+                    in  let <Sb> =
+                            call 'v.strings':'new_builder'(1024)
+                        in  do  apply 'Builder.write_string'/2(Sb, #{#<71>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  apply 'Builder.write_string'/2(Sb, call 'erlang':'map_get'('resource', call 'erlang':'map_get'('uri', Ws)))
+                                    do  apply 'Builder.write_string'/2(Sb, call 'erlang':'map_get'('querystring', call 'erlang':'map_get'('uri', Ws)))
+                                        do  apply 'Builder.write_string'/2(Sb, #{#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                                            do  apply 'Builder.write_string'/2(Sb, call 'erlang':'map_get'('hostname', call 'erlang':'map_get'('uri', Ws)))
+                                                do  apply 'Builder.write_string'/2(Sb, #{#<58>(8,1,'integer',['unsigned'|['big']])}#)
+                                                    do  apply 'Builder.write_string'/2(Sb, call 'erlang':'map_get'('port', call 'erlang':'map_get'('uri', Ws)))
+                                                        do  apply 'Builder.write_string'/2(Sb, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                            do  apply 'Builder.write_string'/2(Sb, #{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                do  apply 'Builder.write_string'/2(Sb, Seckey)
+                                                                    do  apply 'Builder.write_string'/2(Sb, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                        do  let <_1> =
+                                                                            fun (Key) ->
+                                                                                let <Val> =
+                                                                                    call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<44>(8,1,'integer',['unsigned'|['big']])}#, apply 'Header.custom_values'/3(call 'erlang':'map_get'('header', Ws), Key, ~{{'vbeam','type'}=>'HeaderQueryConfig'}~)))
+                                                                                in  apply 'Builder.write_string'/2(Sb, call 'erlang':'iolist_to_binary'([#{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[Key|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Val|[]]]]]))
+                                                                        in  call 'lists':'foreach'(_1, apply 'Header.keys'/1(call 'erlang':'map_get'('header', Ws)))
+                                                                            do  apply 'Builder.write_string'/2(Sb, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                                let <Handshake> =
+                                                                                    apply 'Builder.str'/1(Sb)
+                                                                                in  let <Handshake_bytes> =
+                                                                                        call 'erlang':'binary_to_list'(Handshake)
+                                                                                    in  do  apply 'Client.debug_log'/2(Ws, call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Handshake|[]]]))
+                                                                                            do  try apply 'Client.socket_write'/2(Ws, Handshake_bytes) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                                                                                do  try apply 'Client.read_handshake'/2(Ws, Seckey) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                                                                                    'ok'
+        'Server.handle_server_handshake'/2 =
+            fun (S, C) ->
+                let <Msg> =
+                    try apply 'Client.read_handshake_str'/1(C) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  let <Handshake_response> =
+                        try apply 'Server.parse_client_handshake'/3(S, Msg, C) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                    in  let <Client> =
+                            try apply 'Server.parse_client_handshake'/3(S, Msg, C) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                        in  Handshake_response
+        'Server.parse_client_handshake'/3 =
+            fun (S, Client_handshake, C) ->
+                do  'ok'
+                    let <Lines> =
+                        call 'binary':'split'(Client_handshake, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                    in  let <Get_tokens> =
+                            call 'binary':'split'(call 'lists':'nth'(1, Lines), #{#<32>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                        in  case call 'erlang':'<'(call 'erlang':'length'(Get_tokens), 3) of
+                                <'true'> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Get_tokens|[]]]), 1)
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'=/='(call 'string':'trim'(call 'lists':'nth'(1, Get_tokens)), #{#<71>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}#) of
+                                        <'true'> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[call 'lists':'nth'(1, Get_tokens)|[#{#<39>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[]]]]), 2)
+                                        <'false'> when 'true' -> 
+                                            case call 'erlang':'=/='(call 'string':'trim'(call 'lists':'nth'(3, Get_tokens)), #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#) of
+                                                <'true'> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Get_tokens|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<39>(8,1,'integer',['unsigned'|['big']])}#|[]]]]), 3)
+                                                <'false'> when 'true' -> 
+                                                    let <Seckey> =
+                                                        #{  }#
+                                                    in  let <Flags> =
+                                                            []
+                                                        in  let <Key> =
+                                                                #{  }#
+                                                            in  do  let <_1> =
+                                                                    fun (I) ->
+                                                                        do  case call 'erlang':'or'(call 'erlang':'=<'(call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines)), 0), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines), #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                            let <Keys> =
+                                                                                call 'lists':'map'(call 'string':'trim'(It), call 'binary':'split'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines), #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                                                            in  case call 'string':'lowercase'(call 'lists':'nth'(1, Keys)) of <#{#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Flags, 'has_upgrade') <#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Flags, 'has_connection') <#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(Flags, 'has_accept') <_> when 'true' -> 'ok' end
+                                                                in  let <_2> =
+                                                                        call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(Lines), 1))
+                                                                    in  call 'lists':'foreach'(_1, _2)
+                                                                    case call 'erlang':'<'(call 'erlang':'length'(Flags), 3) of
+                                                                        <'true'> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Client_handshake|[]]]), 4)
+                                                                        <'false'> when 'true' -> 
+                                                                            let <Server_handshake> =
+                                                                                call 'erlang':'iolist_to_binary'([#{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Seckey|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                                            in  let <Server_client> =
+                                                                                    ~{'resource_name'=>call 'lists':'nth'(2, Get_tokens),'client_key'=>Key,'client'=>C,'server'=>S,{'vbeam','type'}=>'ServerClient'}~
+                                                                                in  Server_handshake
+                                                                    end
+                                            end
+                                    end
+                            end
+        'Client.read_handshake_str'/1 =
+            fun (Ws) ->
+                let <Total_bytes_read> =
+                    0
+                in  let <Msg> =
+                        [1024|[]]
+                    in  let <Buffer> =
+                            [1|[]]
+                        in  let <Res> =
+                                call 'erlang':'list_to_binary'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, Total_bytes_read), 1), Msg))
+                            in  Res
+        'Client.read_handshake'/2 =
+            fun (Ws, Seckey) ->
+                let <Msg> =
+                    try apply 'Client.read_handshake_str'/1(Ws) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  do  try apply 'Client.check_handshake_response'/3(Ws, Msg, Seckey) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                        'ok'
+        'Client.check_handshake_response'/3 =
+            fun (Ws, Handshake_response, Seckey) ->
+                do  apply 'Client.debug_log'/2(Ws, call 'erlang':'iolist_to_binary'([#{#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[Handshake_response|[]]]))
+                    let <Lines> =
+                        call 'binary':'split'(Handshake_response, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                    in  let <Header> =
+                            call 'lists':'nth'(1, Lines)
+                        in  case call 'erlang':'and'(call 'erlang':'not'(case call 'string':'prefix'(Header, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end), call 'erlang':'not'(case call 'string':'prefix'(Header, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end)) of
+                                <'true'> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Header|[]]]), 6)
+                                <'false'> when 'true' -> 
+                                    do  let <_1> =
+                                        fun (I) ->
+                                            do  case call 'erlang':'or'(call 'erlang':'=<'(call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines)), 0), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines), #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                let <Keys> =
+                                                    call 'lists':'map'(call 'string':'trim'(It), call 'binary':'split'(call 'lists':'nth'(call 'erlang':'+'(I, 1), Lines), #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                                in  case call 'string':'lowercase'(call 'lists':'nth'(1, Keys)) of <#{#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('flags', Ws), 'has_upgrade') <#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('flags', Ws), 'has_connection') <#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('flags', Ws), 'has_accept') <_> when 'true' -> 'ok' end
+                                    in  let <_2> =
+                                            call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(Lines), 1))
+                                        in  call 'lists':'foreach'(_1, _2)
+                                        case call 'erlang':'<'(call 'erlang':'length'(call 'erlang':'map_get'('flags', Ws)), 3) of
+                                            <'true'> when 'true' -> apply 'error_with_code'/2(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, 8)
+                                            <'false'> when 'true' -> 
+                                                'ok'
+                                        end
+                            end
+        'Client.socket_read'/2 =
+            fun (Ws, Buffer) ->
+                do  'false'
+                    call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'Client.socket_read_ptr'/3 =
+            fun (Ws, Buf_ptr, Len) ->
+                do  'false'
+                    call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'Client.socket_write'/2 =
+            fun (Ws, Bytes) ->
+                'false'
+        'Client.shutdown_socket'/1 =
+            fun (Ws) ->
+                do  apply 'Client.debug_log'/2(Ws, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+                    do  case call 'erlang':'map_get'('is_ssl', Ws) of <'true'> when 'true' -> try apply 'SSLConn.shutdown'/1(call 'erlang':'map_get'('ssl_conn', Ws)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok' <'false'> when 'true' -> try 'ok' of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok' end
+                        'ok'
+        'Client.dial_socket'/1 =
+            fun (Ws) ->
+                let <Tcp_address> =
+                    call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('hostname', call 'erlang':'map_get'('uri', Ws))|[#{#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('port', call 'erlang':'map_get'('uri', Ws))|[]]]])
+                in  let <T> =
+                        try {'ok', 'false'} of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    in  let <Optval> =
+                            1
+                        in  do  try apply 'TcpSocket.set_option_int'/3(call 'erlang':'map_get'('sock', T), 'keep_alive', Optval) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                do  apply 'TcpConn.set_read_timeout'/2(T, call 'erlang':'map_get'('read_timeout', Ws))
+                                    do  apply 'TcpConn.set_write_timeout'/2(T, call 'erlang':'map_get'('write_timeout', Ws))
+                                        do  case call 'erlang':'map_get'('is_ssl', Ws) of <'true'> when 'true' -> try apply 'SSLConn.connect'/3(call 'erlang':'map_get'('ssl_conn', Ws), T, call 'erlang':'map_get'('hostname', call 'erlang':'map_get'('uri', Ws))) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            T
+        'Client.validate_frame'/2 =
+            fun (Ws, Frame) ->
+                case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'map_get'('rsv1', Frame), call 'erlang':'map_get'('rsv2', Frame)), call 'erlang':'map_get'('rsv3', Frame)) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('opcode', Frame), 3), call 'erlang':'=<'(call 'erlang':'map_get'('opcode', Frame), 7)), call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('opcode', Frame), 11), call 'erlang':'=<'(call 'erlang':'map_get'('opcode', Frame), 15))) of
+                            <'true'> when 'true' -> call 'erlang':'error'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'and'(call 'erlang':'map_get'('has_mask', Frame), call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws))) of
+                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                    <'false'> when 'true' -> 
+                                        do  case apply 'is_control_frame'/1(call 'erlang':'map_get'('opcode', Frame)) of <'true'> when 'true' -> 
+                                            case call 'erlang':'not'(call 'erlang':'map_get'('fin', Frame)) of
+                                                <'true'> when 'true' -> call 'erlang':'error'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                                <'false'> when 'true' -> 
+                                                    case call 'erlang':'>'(call 'erlang':'map_get'('payload_len', Frame), 125) of <'true'> when 'true' -> 
+                                                        do  try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                                                            call 'erlang':'error'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#)
+                                                     <'false'> when 'true' -> 'ok' end
+                                            end
+                                         <'false'> when 'true' -> 'ok' end
+                                            case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('fin', Frame), 'false'), call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('fragments', Ws)), 0)), call 'erlang':'=:='(call 'erlang':'map_get'('opcode', Frame), 'continuation')) of
+                                                <'true'> when 'true' -> call 'erlang':'error'(Err_msg)
+                                                <'false'> when 'true' -> 
+                                                    'ok'
+                                            end
+                                end
+                        end
+                end
+        'is_control_frame'/1 =
+            fun (Opcode) ->
+                call 'erlang':'not'(call 'lists':'member'(Opcode, ['text_frame'|['binary_frame'|['continuation'|[]]]]))
+        'is_data_frame'/1 =
+            fun (Opcode) ->
+                call 'lists':'member'(Opcode, ['text_frame'|['binary_frame'|[]]])
+        'Client.read_payload'/2 =
+            fun (Ws, Frame) ->
+                case call 'erlang':'=:='(call 'erlang':'map_get'('payload_len', Frame), 0) of
+                    <'true'> when 'true' -> []
+                    <'false'> when 'true' -> 
+                        let <Buffer> =
+                            []
+                        in  let <Read_buf> =
+                                [1|[]]
+                            in  let <Bytes_read> =
+                                    0
+                                in  case call 'erlang':'=/='(Bytes_read, call 'erlang':'map_get'('payload_len', Frame)) of
+                                        <'true'> when 'true' -> call 'erlang':'error'(#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                                        <'false'> when 'true' -> 
+                                            do  case call 'erlang':'map_get'('has_mask', Frame) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                Buffer
+                                    end
+                end
+        'Client.validate_utf_8'/3 =
+            fun (Ws, Opcode, Payload) ->
+                case call 'erlang':'and'(call 'lists':'member'(Opcode, ['text_frame'|['close'|[]]]), call 'erlang':'not'(call 'v.encoding.utf8':'validate'(call 'erlang':'map_get'('data', Payload), call 'erlang':'length'(Payload)))) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        'ok'
+                end
+        'Client.read_next_message'/1 =
+            fun (Ws) ->
+                call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'Client.payload_from_fragments'/2 =
+            fun (Ws, Fin_payload) ->
+                let <Total_size> =
+                    0
+                in  let <Total_size_1> =
+                        let <_2> =
+                            fun (F, Total_sizeAcc) ->
+                                let <Total_sizeOut_4> =
+                                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('data', F)), 0) of <'true'> when 'true' -> call 'erlang':'length'(call 'erlang':'map_get'('data', F)) <'false'> when 'true' -> Total_sizeAcc end
+                                in  Total_sizeOut_4
+                        in  call 'lists':'foldl'(_2, Total_size, call 'erlang':'map_get'('fragments', Ws))
+                    in  let <Total_size_5> =
+                            call 'erlang':'length'(Fin_payload)
+                        in  case call 'erlang':'=:='(Total_size_5, 0) of
+                                <'true'> when 'true' -> []
+                                <'false'> when 'true' -> 
+                                    let <Total_buffer> =
+                                        []
+                                    in  do  let <_6> =
+                                            fun (F) ->
+                                                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('data', F)), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Total_buffer, call 'erlang':'map_get'('data', F)) <'false'> when 'true' -> 'ok' end
+                                        in  call 'lists':'foreach'(_6, call 'erlang':'map_get'('fragments', Ws))
+                                            do  call 'erlang':'bsl'(Total_buffer, Fin_payload)
+                                                Total_buffer
+                            end
+        'Client.opcode_from_fragments'/1 =
+            fun (Ws) ->
+                call 'erlang':'map_get'('opcode', call 'lists':'nth'(1, call 'erlang':'map_get'('fragments', Ws)))
+        'Client.parse_frame_header'/1 =
+            fun (Ws) ->
+                let <Buffer> =
+                    [256|[]]
+                in  let <Bytes_read> =
+                        0
+                    in  let <Frame> =
+                            ~{{'vbeam','type'}=>'Frame'}~
+                        in  let <Rbuff> =
+                                [1|[]]
+                            in  let <Mask_end_byte> =
+                                    0
+                                in  Frame
+        'Frame.unmask_sequence'/2 =
+            fun (F, Buffer) ->
+                'ok'
+        'Uri.str'/1 =
+            fun (U) ->
+                call 'erlang':'map_get'('url', U)
+        'setup_default_logger'/0 =
+            fun () ->
+                let <L> =
+                    ~{{'vbeam','type'}=>'Log'}~
+                in  do  'ok'
+                        L
+        'htonl64'/1 =
+            fun (Payload_len) ->
+                let <Ret> =
+                    []
+                in  do  call 'v.encoding.binary':'big_endian_put_u64'(Ret, Payload_len)
+                        Ret
+        'create_masking_key'/0 =
+            fun () ->
+                try call 'v.rand':'bytes'(4) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> [0|[0|[0|[0|[]]]]]
+        'create_key_challenge_response'/1 =
+            fun (Seckey) ->
+                case call 'erlang':'=:='(call 'erlang':'length'(Seckey), 0) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        let <Guid> =
+                            #{#<50>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#
+                        in  let <Sha1buf> =
+                                call 'erlang':'iolist_to_binary'([Seckey|[Guid|[]]])
+                            in  let <Shabytes> =
+                                    call 'erlang':'binary_to_list'(Sha1buf)
+                                in  let <Hash> =
+                                        call 'crypto':'hash'('sha256', Shabytes)
+                                    in  let <B64> =
+                                            call 'erlang':'term_to_binary'(Hash)
+                                        in  B64
+                end
+        'get_nonce'/1 =
+            fun (Nonce_size) ->
+                call 'v.rand':'string_from_set'(#{#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<55>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<81>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<88>(8,1,'integer',['unsigned'|['big']]),#<89>(8,1,'integer',['unsigned'|['big']]),#<90>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']])}#, Nonce_size)
+        'new_client'/2 =
+            fun (Address, Opt) ->
+                let <Uri> =
+                    try apply 'parse_uri'/1(Address) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  ~{'conn'=>'nil','is_server'=>'false','ssl_conn'=>try call 'v.net.ssl':'new_ssl_conn'(~{{'vbeam','type'}=>'SSLConnectConfig'}~) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok','is_ssl'=>case call 'string':'prefix'(Address, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end,'logger'=>call 'erlang':'map_get'('logger', Opt),'uri'=>Uri,'client_state'=>~{'state'=>'closed',{'vbeam','type'}=>'ClientState'}~,'id'=>call 'v.rand':'uuid_v4'(),'header'=>call 'v.net.http':'new_header'(),'read_timeout'=>call 'erlang':'map_get'('read_timeout', Opt),'write_timeout'=>call 'erlang':'map_get'('write_timeout', Opt),{'vbeam','type'}=>'Client'}~
+        'Client.connect'/1 =
+            fun (Ws) ->
+                do  try apply 'Client.assert_not_connected'/1(Ws) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    do  apply 'Client.set_state'/2(Ws, 'connecting')
+                        do  'ok'
+                            do  try apply 'Client.dial_socket'/1(Ws) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                do  try apply 'Client.handshake'/1(Ws) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                    do  apply 'Client.set_state'/2(Ws, 'open')
+                                        do  'ok'
+                                            do  apply 'Client.send_open_event'/1(Ws)
+                                                'ok'
+        'Client.listen'/1 =
+            fun (Ws) ->
+                let <Log_msg> =
+                    call 'erlang':'iolist_to_binary'([#{#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('is_server', Ws))|[#{#<41>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                in  do  'ok'
+                        do  apply 'string.free'/1(Log_msg)
+                            'ok'
+        'Client.manage_clean_close'/1 =
+            fun (Ws) ->
+                apply 'Client.send_close_event'/3(Ws, 1000, #{#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)
+        'Client.ping'/1 =
+            fun (Ws) ->
+                do  try apply 'Client.send_control_frame'/4(Ws, 'ping', #{#<80>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']])}#, []) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    'ok'
+        'Client.pong'/1 =
+            fun (Ws) ->
+                do  try apply 'Client.send_control_frame'/4(Ws, 'pong', #{#<80>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']])}#, []) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    'ok'
+        'Client.write_ptr'/4 =
+            fun (Ws, Bytes, Payload_len, Code) ->
+                case call 'erlang':'or'(call 'erlang':'=/='(apply 'Client.get_state'/1(Ws), 'open'), call 'erlang':'<'(call 'erlang':'map_get'('handle', call 'erlang':'map_get'('sock', call 'erlang':'map_get'('conn', Ws))), 1)) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        let <Header_len> =
+                            call 'erlang':'+'(call 'erlang':'+'(2, case call 'erlang':'>'(Payload_len, 125) of <'true'> when 'true' -> 2 <'false'> when 'true' -> 0 end), case call 'erlang':'>'(Payload_len, 16#ffff) of <'true'> when 'true' -> 6 <'false'> when 'true' -> 0 end)
+                        in  let <Header_len_1> =
+                                case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> 4 <'false'> when 'true' -> Header_len end
+                            in  let <Header> =
+                                    []
+                                in  do  call 'erlang':'bor'(Code, 16#80)
+                                        let <Masking_key> =
+                                            apply 'create_masking_key'/0()
+                                        in  do  case call 'erlang':'map_get'('is_server', Ws) of <'true'> when 'true' -> case call 'erlang':'=<'(Payload_len, 125) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(Payload_len, 125), call 'erlang':'=<'(Payload_len, 16#ffff)) of <'true'> when 'true' -> 
+                                                let <Len16> =
+                                                    call 'v.net.conv':'hton16'(Payload_len)
+                                                in  do  126
+                                                        apply 'vmemcpy'/3(call 'lists':'nth'(3, Header), Len16, 2)
+                                             <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(Payload_len, 16#ffff), call 'erlang':'=<'(Payload_len, 16#7fffffff)) of <'true'> when 'true' -> 
+                                                let <Len_bytes> =
+                                                    apply 'htonl64'/1(Payload_len)
+                                                in  do  127
+                                                        apply 'vmemcpy'/3(call 'lists':'nth'(3, Header), call 'erlang':'map_get'('data', Len_bytes), 8)
+                                             <'false'> when 'true' -> 'ok' end end end <'false'> when 'true' -> case call 'erlang':'=<'(Payload_len, 125) of <'true'> when 'true' -> 
+                                                do  call 'erlang':'bor'(Payload_len, 16#80)
+                                                    do  call 'lists':'nth'(1, Masking_key)
+                                                        do  call 'lists':'nth'(2, Masking_key)
+                                                            do  call 'lists':'nth'(3, Masking_key)
+                                                                'ok'
+                                             <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(Payload_len, 125), call 'erlang':'=<'(Payload_len, 16#ffff)) of <'true'> when 'true' -> 
+                                                let <Len16_2> =
+                                                    call 'v.net.conv':'hton16'(Payload_len)
+                                                in  do  call 'erlang':'bor'(126, 16#80)
+                                                        do  apply 'vmemcpy'/3(call 'lists':'nth'(3, Header), Len16_2, 2)
+                                                            do  call 'lists':'nth'(1, Masking_key)
+                                                                do  call 'lists':'nth'(2, Masking_key)
+                                                                    do  call 'lists':'nth'(3, Masking_key)
+                                                                        'ok'
+                                             <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(Payload_len, 16#ffff), call 'erlang':'=<'(Payload_len, 16#7fffffff)) of <'true'> when 'true' -> 
+                                                let <Len64> =
+                                                    apply 'htonl64'/1(Payload_len)
+                                                in  do  call 'erlang':'bor'(127, 16#80)
+                                                        do  apply 'vmemcpy'/3(call 'lists':'nth'(3, Header), call 'erlang':'map_get'('data', Len64), 8)
+                                                            do  call 'lists':'nth'(1, Masking_key)
+                                                                do  call 'lists':'nth'(2, Masking_key)
+                                                                    do  call 'lists':'nth'(3, Masking_key)
+                                                                        'ok'
+                                             <'false'> when 'true' -> 
+                                                do  try 'ok' of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                                    call 'erlang':'error'(#{#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                             end end end end
+                                                let <Len> =
+                                                    call 'erlang':'+'(call 'erlang':'length'(Header), Payload_len)
+                                                in  let <Frame_buf> =
+                                                        []
+                                                    in  do  case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                            let <Written_len> =
+                                                                try apply 'Client.socket_write'/2(Ws, Frame_buf) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok'
+                                                            in  Written_len
+                end
+        'Client.write'/3 =
+            fun (Ws, Bytes, Code) ->
+                apply 'Client.write_ptr'/4(Ws, call 'erlang':'map_get'('data', Bytes), call 'erlang':'length'(Bytes), Code)
+        'Client.write_string'/2 =
+            fun (Ws, Str) ->
+                apply 'Client.write_ptr'/4(Ws, call 'erlang':'map_get'('str', Str), call 'erlang':'length'(Str), 'text_frame')
+        'Client.close'/3 =
+            fun (Ws, Code, Message) ->
+                do  apply 'Client.debug_log'/2(Ws, call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Code)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Message|[]]]]]))
+                    let <Ws_state> =
+                        apply 'Client.get_state'/1(Ws)
+                    in  case call 'erlang':'or'(call 'lists':'member'(Ws_state, ['closed'|['closing'|[]]]), call 'erlang':'=<'(call 'erlang':'map_get'('handle', call 'erlang':'map_get'('sock', call 'erlang':'map_get'('conn', Ws))), 1)) of
+                            <'true'> when 'true' -> call 'erlang':'error'(Err_msg)
+                            <'false'> when 'true' -> 
+                                do  apply 'Client.set_state'/2(Ws, 'closing')
+                                    do  case call 'erlang':'>'(Code, 0) of <'true'> when 'true' -> 
+                                        let <Code_> =
+                                            call 'v.net.conv':'hton16'(Code)
+                                        in  let <Message_len> =
+                                                call 'erlang':'+'(call 'erlang':'length'(Message), 2)
+                                            in  let <Close_frame> =
+                                                    []
+                                                in  do  call 'erlang':'band'(Code_, 16#FF)
+                                                        do  call 'erlang':'bsr'(Code_, 8)
+                                                            do  let <_1> =
+                                                                fun (I) ->
+                                                                    'ok'
+                                                            in  let <_2> =
+                                                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Message), 1))
+                                                                in  call 'lists':'foreach'(_1, _2)
+                                                                do  try apply 'Client.send_control_frame'/4(Ws, 'close', #{#<67>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}#, Close_frame) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                                                    apply 'array.free'/1(Close_frame)
+                                     <'false'> when 'true' -> try apply 'Client.send_control_frame'/4(Ws, 'close', #{#<67>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']])}#, []) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok' end
+                                        do  []
+                                            'ok'
+                        end
+        'Client.send_control_frame'/4 =
+            fun (Ws, Code, Frame_typ, Payload) ->
+                do  apply 'Client.debug_log'/2(Ws, call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Code|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Frame_typ|[]]]]]))
+                    case call 'erlang':'and'(call 'erlang':'not'(call 'lists':'member'(apply 'Client.get_state'/1(Ws), ['open'|['closing'|[]]])), call 'erlang':'>'(call 'erlang':'map_get'('handle', call 'erlang':'map_get'('sock', call 'erlang':'map_get'('conn', Ws))), 1)) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            let <Header_len> =
+                                case call 'erlang':'map_get'('is_server', Ws) of <'true'> when 'true' -> 2 <'false'> when 'true' -> 6 end
+                            in  let <Frame_len> =
+                                    call 'erlang':'+'(Header_len, call 'erlang':'length'(Payload))
+                                in  let <Control_frame> =
+                                        []
+                                    in  let <Masking_key> =
+                                            case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> apply 'create_masking_key'/0() <'false'> when 'true' -> [] end
+                                        in  do  call 'erlang':'bor'(Code, 16#80)
+                                                do  case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> 
+                                                    do  call 'erlang':'bor'(call 'erlang':'length'(Payload), 16#80)
+                                                        do  call 'lists':'nth'(1, Masking_key)
+                                                            do  call 'lists':'nth'(2, Masking_key)
+                                                                do  call 'lists':'nth'(3, Masking_key)
+                                                                    'ok'
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    do  case call 'erlang':'=:='(Code, 'close') of <'true'> when 'true' -> case call 'erlang':'>='(call 'erlang':'length'(Payload), 2) of <'true'> when 'true' -> case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> 
+                                                        let <Parsed_payload> =
+                                                            []
+                                                        in  do  apply 'vmemcpy'/3(call 'erlang':'map_get'('data', Parsed_payload), call 'lists':'nth'(1, Payload), call 'erlang':'length'(Payload))
+                                                                do  0
+                                                                    do  let <_1> =
+                                                                        fun (I) ->
+                                                                            'ok'
+                                                                    in  let <_2> =
+                                                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Payload), 1))
+                                                                        in  call 'lists':'foreach'(_1, _2)
+                                                                        apply 'array.free'/1(Parsed_payload)
+                                                     <'false'> when 'true' -> apply 'vmemcpy'/3(call 'lists':'nth'(3, Control_frame), call 'lists':'nth'(1, Payload), call 'erlang':'length'(Payload)) end <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'not'(call 'erlang':'map_get'('is_server', Ws)) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'length'(Payload), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'length'(Payload), 0) of <'true'> when 'true' -> apply 'vmemcpy'/3(call 'lists':'nth'(3, Control_frame), call 'lists':'nth'(1, Payload), call 'erlang':'length'(Payload)) <'false'> when 'true' -> 'ok' end end end
+                                                        do  try apply 'Client.socket_write'/2(Ws, Control_frame) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Frame_typ|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                            'ok'
+                    end
+        'parse_uri'/1 =
+            fun (Url) ->
+                let <U> =
+                    try call 'v.net.urllib':'parse'(Url) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  let <Request_uri> =
+                        apply 'URL.request_uri'/1(U)
+                    in  let <V> =
+                            call 'binary':'split'(Request_uri, #{#<63>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                        in  let <Port> =
+                                apply 'URL.port'/1(U)
+                            in  let <Uri> =
+                                    apply 'URL.str'/1(U)
+                                in  let <Port_2> =
+                                        case call 'erlang':'=:='(Port, #{  }#) of <'true'> when 'true' -> case case call 'string':'prefix'(Uri, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<56>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case case call 'string':'prefix'(Uri, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> #{#<52>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> apply 'URL.port'/1(U) end end <'false'> when 'true' -> Port end
+                                    in  let <Querystring> =
+                                            case call 'erlang':'>'(call 'erlang':'length'(V), 1) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<63>(8,1,'integer',['unsigned'|['big']])}#|[call 'lists':'nth'(2, V)|[]]]) <'false'> when 'true' -> #{  }# end
+                                        in  ~{'url'=>Url,'hostname'=>apply 'URL.hostname'/1(U),'port'=>Port_2,'resource'=>call 'lists':'nth'(1, V),'querystring'=>Querystring,{'vbeam','type'}=>'Uri'}~
+        'Client.set_state'/2 =
+            fun (Ws, State) ->
+                'false'
+        'Client.get_state'/1 =
+            fun (Ws) ->
+                'false'
+        'Client.assert_not_connected'/1 =
+            fun (Ws) ->
+                do  case apply 'Client.get_state'/1(Ws) of <'connecting'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) <'open'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) <'closing'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) <_> when 'true' -> 'ok' end
+                    'ok'
+        'Client.reset_state'/1 =
+            fun (Ws) ->
+                do  'false'
+                    'ok'
+        'Client.debug_log'/2 =
+            fun (Ws, Text) ->
+                case call 'erlang':'map_get'('is_server', Ws) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+        'Message.free'/1 =
+            fun (M) ->
+                apply 'array.free'/1(call 'erlang':'map_get'('payload', M))
+        'Client.free'/1 =
+            fun (C) ->
+                'ok'
+        'new_server'/4 =
+            fun (Family, Port, Route, Opt) ->
+                ~{'ls'=>'nil','family'=>Family,'port'=>Port,'logger'=>call 'erlang':'map_get'('logger', Opt),{'vbeam','type'}=>'Server'}~
+        'Server.set_ping_interval'/2 =
+            fun (S, Seconds) ->
+                'false'
+        'Server.get_ping_interval'/1 =
+            fun (S) ->
+                'false'
+        'Server.listen'/1 =
+            fun (S) ->
+                do  'ok'
+                    do  try {'ok', 'false'} of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        do  apply 'Server.set_state'/2(S, 'open')
+                            do  call 'vbeam_task':'async'(fun () -> apply 'Server.handle_ping'/1(S))
+                                do  'ok'
+                                    'ok'
+        'Server.close'/1 =
+            fun (S) ->
+                'ok'
+        'Server.handle_ping'/1 =
+            fun (S) ->
+                let <Clients_to_remove> =
+                    []
+                in  'ok'
+        'Server.serve_client'/2 =
+            fun (S, C) ->
+                do  'ok'
+                    let <Handshake_response> =
+                        try apply 'Server.handle_server_handshake'/2(S, C) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    in  let <Server_client> =
+                            try apply 'Server.handle_server_handshake'/2(S, C) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                        in  do  try apply 'Server.attach_client'/3(S, Server_client, Handshake_response) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                do  try apply 'Client.listen'/1(C) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' ->                                 do  'ok'
+                                    Err
+
+                                    'ok'
+        'Server.handle_handshake'/3 =
+            fun (S, Conn, Key) ->
+                let <Logger> =
+                    ~{{'vbeam','type'}=>'Log'}~
+                in  do  'ok'
+                        let <C> =
+                            ~{'is_server'=>'true','conn'=>Conn,'is_ssl'=>'false','logger'=>Logger,'client_state'=>~{'state'=>'open',{'vbeam','type'}=>'ClientState'}~,'last_pong_ut'=>0,'id'=>call 'v.rand':'uuid_v4'(),{'vbeam','type'}=>'Client'}~
+                        in  let <Server_client> =
+                                ~{'resource_name'=>#{#<71>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}#,'client_key'=>Key,'client'=>C,'server'=>S,{'vbeam','type'}=>'ServerClient'}~
+                            in  let <Digest> =
+                                    try apply 'create_key_challenge_response'/1(Key) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                                in  let <Handshake_response> =
+                                        call 'erlang':'iolist_to_binary'([#{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Digest|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                    in  do  try apply 'Server.attach_client'/3(S, Server_client, Handshake_response) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                            do  call 'vbeam_task':'async'(fun () -> apply 'Server.handle_ping'/1(S))
+                                                do  try apply 'Client.listen'/1(C) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' ->                                                 do  'ok'
+                                                    Err
+
+                                                    Server_client
+        'Server.attach_client'/3 =
+            fun (S, Server_client, Handshake_response) ->
+                let <Accept> =
+                    try apply 'Server.send_connect_event'/2(S, Server_client) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  case call 'erlang':'not'(Accept) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            do  try apply 'Client.socket_write'/2(call 'erlang':'map_get'('client', Server_client), call 'erlang':'binary_to_list'(Handshake_response)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                do  'false'
+                                    do  apply 'Server.setup_callbacks'/2(S, Server_client)
+                                        'ok'
+                    end
+        'Server.setup_callbacks'/2 =
+            fun (S, Sc) ->
+                do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('message_callbacks', S)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('close_callbacks', S)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        apply 'Client.on_close_ref'/3(call 'erlang':'map_get'('client', Sc), fun (_fref0, _fref1, _fref2, _fref3) -> call 'v.net.websocket':'delete_client_cb'(_fref0, _fref1, _fref2, _fref3), Sc)
+        'delete_client_cb'/4 =
+            fun (C, _code, _reason, Sc) ->
+                do  'ok'
+                    do  'false'
+                        'ok'
+        'Server.accept_new_client'/1 =
+            fun (S) ->
+                let <New_conn> =
+                    try {'ok', 'false'} of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  let <C> =
+                        ~{'is_server'=>'true','conn'=>New_conn,'ssl_conn'=>try call 'v.net.ssl':'new_ssl_conn'(~{{'vbeam','type'}=>'SSLConnectConfig'}~) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok','logger'=>call 'erlang':'map_get'('logger', S),'client_state'=>~{'state'=>'open',{'vbeam','type'}=>'ClientState'}~,'last_pong_ut'=>0,'id'=>call 'v.rand':'uuid_v4'(),{'vbeam','type'}=>'Client'}~
+                    in  C
+        'Server.set_state'/2 =
+            fun (S, State) ->
+                'false'
+        'Server.get_state'/1 =
+            fun (S) ->
+                'false'
+        'Server.free'/1 =
+            fun (S) ->
+                do  'false'
+                    'ok'
+        'Flag__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'State__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'OPCode__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.net.websocket')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.net.websocket', _0)
+        end

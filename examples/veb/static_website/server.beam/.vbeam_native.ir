@@ -1,0 +1,41 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 8,
+            body => [
+                {call, {sym, <<"executable">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"dir">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"chdir">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {vreg, 3}, {vreg, 0}},
+                {mov_imm, {vreg, 4}, 1},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 4}},
+                {call, {sym, <<"handle_static">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov_imm, {vreg, 6}, 8080},
+                {mov, {preg, x0}, {vreg, 3}},
+                {mov, {preg, x1}, {vreg, 6}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

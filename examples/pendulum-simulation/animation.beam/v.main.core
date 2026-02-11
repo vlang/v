@@ -1,0 +1,37 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  'ok'
+                do  call 'v.log':'use_stdout'()
+                    let <Args> =
+                        try call 'v.sim.args':'parse_args'(~{'extra_workers'=>1,{'vbeam','type'}=>'ParserSettings'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    in  let <App> =
+                            call 'v.sim.anim':'new_app'(Args)
+                        in  let <Workers> =
+                                []
+                            in  let <Bmark> =
+                                    call 'v.benchmark':'start'()
+                                in  do  let <_2> =
+                                        fun (Id) ->
+                                            call 'erlang':'bsl'(Workers, call 'vbeam_task':'async'(fun () -> call 'v.sim':'sim_worker'(Id, call 'erlang':'map_get'('request_chan', App), [call 'erlang':'map_get'('result_chan', App)|[]])))
+                                    in  let <_3> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('workers', Args), 1))
+                                        in  call 'lists':'foreach'(_2, _3)
+                                        let <Handle_request> =
+                                            fun (Request) ->                                             do  call 'erlang':'<-'(call 'erlang':'map_get'('request_chan', App), Request)
+                                                'ok'
+
+                                        in  do  call 'vbeam_task':'async'(fun () -> 'ok')
+                                                call 'v.sim':'run'(call 'erlang':'map_get'('params', Args), ~{'grid'=>call 'erlang':'map_get'('grid', Args),'on_request'=>Handle_request,{'vbeam','type'}=>'RunnerSettings'}~)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

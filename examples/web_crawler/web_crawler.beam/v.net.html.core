@@ -1,0 +1,517 @@
+module 'v.net.html' ['is_null'/1,
+                'Stack.is_empty'/1,
+                'Stack.peek'/1,
+                'Stack.pop'/1,
+                'Stack.push'/2,
+                'BTree.add_children'/2,
+                'BTree.get_children'/1,
+                'BTree.get_parent'/1,
+                'BTree.get_stored'/1,
+                'BTree.move_pointer'/2,
+                'DocumentObjectModel.print_debug'/2,
+                'is_close_tag'/1,
+                'DocumentObjectModel.where_is'/3,
+                'DocumentObjectModel.add_tag_attribute'/2,
+                'DocumentObjectModel.add_tag_by_type'/2,
+                'DocumentObjectModel.add_tag_by_attribute'/2,
+                'DocumentObjectModel.construct'/2,
+                'DocumentObjectModel.get_root'/1,
+                'DocumentObjectModel.get_tags'/2,
+                'DocumentObjectModel.get_tags_by_class_name'/2,
+                'DocumentObjectModel.get_tags_by_attribute'/2,
+                'DocumentObjectModel.get_tags_by_attribute_value'/3,
+                'parse'/1,
+                'parse_file'/1,
+                'Parser.add_code_tag'/2,
+                'Parser.builder_str'/1,
+                'Parser.print_debug'/2,
+                'Parser.verify_end_comment'/2,
+                'blank_string'/1,
+                'Parser.init'/1,
+                'Parser.generate_tag'/1,
+                'Parser.split_parse'/2,
+                'Parser.parse_html'/2,
+                'Parser.finalize'/1,
+                'Parser.get_dom'/1,
+                'Tag.add_parent'/3,
+                'Tag.add_child'/2,
+                'Tag.text'/1,
+                'Tag.str'/1,
+                'Tag.get_tag'/2,
+                'Tag.get_tags'/2,
+                'Tag.get_tag_by_attribute'/2,
+                'Tag.get_tags_by_attribute'/2,
+                'Tag.get_tag_by_attribute_value'/3,
+                'Tag.get_tags_by_attribute_value'/3,
+                'Tag.get_tag_by_class_name'/2,
+                'Tag.get_tags_by_class_name'/2,
+                'CloseTagType__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'is_null'/1 =
+            fun (Data) ->
+                call 'erlang':'=:='(Data, -1)
+        'Stack.is_empty'/1 =
+            fun (Stack) ->
+                call 'erlang':'=<'(call 'erlang':'map_get'('size', Stack), 0)
+        'Stack.peek'/1 =
+            fun (Stack) ->
+                case call 'erlang':'not'(apply 'Stack.is_empty'/1(Stack)) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'map_get'('size', Stack), 1), 1), call 'erlang':'map_get'('elements', Stack)) <'false'> when 'true' -> -1 end
+        'Stack.pop'/1 =
+            fun (Stack) ->
+                let <To_return> =
+                    -1
+                in  let <To_return_1> =
+                        case call 'erlang':'not'(apply 'Stack.is_empty'/1(Stack)) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'map_get'('size', Stack), 1), 1), call 'erlang':'map_get'('elements', Stack)) <'false'> when 'true' -> To_return end
+                    in  To_return_1
+        'Stack.push'/2 =
+            fun (Stack, Item) ->
+                do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('elements', Stack)), call 'erlang':'map_get'('size', Stack)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('elements', Stack), Item) end
+                    call 'erlang':'map_get'('size', Stack)
+        'BTree.add_children'/2 =
+            fun (Btree, Tag) ->
+                do  call 'erlang':'bsl'(call 'erlang':'map_get'('all_tags', Btree), Tag)
+                    do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('all_tags', Btree)), 1) of <'true'> when 'true' -> 
+                        do  call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('node_pointer', Btree), 1), call 'erlang':'map_get'('childrens', Btree)), call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('all_tags', Btree)), 1))
+                            'ok'
+                     <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('all_tags', Btree)), 1)
+        'BTree.get_children'/1 =
+            fun (Btree) ->
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('node_pointer', Btree), 1), call 'erlang':'map_get'('childrens', Btree))
+        'BTree.get_parent'/1 =
+            fun (Btree) ->
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('node_pointer', Btree), 1), call 'erlang':'map_get'('parents', Btree))
+        'BTree.get_stored'/1 =
+            fun (Btree) ->
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('node_pointer', Btree), 1), call 'erlang':'map_get'('all_tags', Btree))
+        'BTree.move_pointer'/2 =
+            fun (Btree, To) ->
+                case call 'erlang':'<'(To, call 'erlang':'length'(call 'erlang':'map_get'('all_tags', Btree))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+        'DocumentObjectModel.print_debug'/2 =
+            fun (Dom, Data) ->
+                case call 'erlang':'>'(call 'erlang':'length'(Data), 0) of <'true'> when 'true' -> try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [Err|[]]) <'false'> when 'true' -> 'ok' end
+        'is_close_tag'/1 =
+            fun (Tag) ->
+                call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('name', Tag), #{  }#), call 'erlang':'=:='(call 'lists':'nth'(1, call 'erlang':'map_get'('name', Tag)), 47))
+        'DocumentObjectModel.where_is'/3 =
+            fun (Dom, Item_name, Attribute_name) ->
+                do  case call 'erlang':'not'(call 'lists':'member'(Attribute_name, call 'erlang':'map_get'('attributes', Dom))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    let <String_array> =
+                        call 'erlang':'map_get'(Attribute_name, call 'erlang':'map_get'('attributes', Dom))
+                    in  let <Counter> =
+                            0
+                        in  do  let <_1> =
+                                fun (Value) ->
+                                    case call 'erlang':'=:='(Value, Item_name) of
+                                        <'true'> when 'true' -> Counter
+                                        <'false'> when 'true' -> 
+                                            Counter
+                                    end
+                            in  call 'lists':'foreach'(_1, String_array)
+                                do  call 'erlang':'bsl'(String_array, Item_name)
+                                    do  String_array
+                                        call 'erlang':'-'(call 'erlang':'length'(String_array), 1)
+        'DocumentObjectModel.add_tag_attribute'/2 =
+            fun (Dom, Tag) ->
+                'ok'
+        'DocumentObjectModel.add_tag_by_type'/2 =
+            fun (Dom, Tag) ->
+                let <Tag_name> =
+                    call 'erlang':'map_get'('name', Tag)
+                in  case call 'erlang':'not'(call 'lists':'member'(Tag_name, call 'erlang':'map_get'('tag_type', Dom))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                        let <Temp_array> =
+                            call 'erlang':'map_get'(Tag_name, call 'erlang':'map_get'('tag_type', Dom))
+                        in  do  call 'erlang':'bsl'(Temp_array, Tag)
+                                'ok'
+                     end
+        'DocumentObjectModel.add_tag_by_attribute'/2 =
+            fun (Dom, Tag) ->
+                'ok'
+        'DocumentObjectModel.construct'/2 =
+            fun (Dom, Tag_list) ->
+                do  'true'
+                    case call 'erlang':'=:='(call 'erlang':'length'(Tag_list), 0) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Temp_map> =
+                                ~{}~
+                            in  let <Temp_int> =
+                                    -1
+                                in  let <Temp_string> =
+                                        #{  }#
+                                    in  let <Stack> =
+                                            ~{{'vbeam','type'}=>'Stack'}~
+                                        in  do  ~{{'vbeam','type'}=>'BTree'}~
+                                                do  call 'lists':'nth'(1, Tag_list)
+                                                    do  [call 'lists':'nth'(1, Tag_list)|[]]
+                                                        do  apply 'BTree.add_children'/2(call 'erlang':'map_get'('btree', Dom), call 'lists':'nth'(1, Tag_list))
+                                                            do  apply 'Stack.push'/2(Stack, 0)
+                                                                let <Root_index> =
+                                                                    0
+                                                                in  'ok'
+                    end
+        'DocumentObjectModel.get_root'/1 =
+            fun (Dom) ->
+                call 'erlang':'map_get'('root', Dom)
+        'DocumentObjectModel.get_tags'/2 =
+            fun (Dom, Options) ->
+                case call 'erlang':'=/='(call 'erlang':'map_get'('name', Options), #{  }#) of
+                    <'true'> when 'true' -> case call 'lists':'member'(call 'erlang':'map_get'('name', Options), call 'erlang':'map_get'('tag_type', Dom)) of <'true'> when 'true' -> call 'erlang':'map_get'(call 'erlang':'map_get'('name', Options), call 'erlang':'map_get'('tag_type', Dom)) <'false'> when 'true' -> [] end
+                    <'false'> when 'true' -> 
+                        call 'erlang':'map_get'('all_tags', Dom)
+                end
+        'DocumentObjectModel.get_tags_by_class_name'/2 =
+            fun (Dom, Names) ->
+                apply 'Tag.get_tags_by_class_name'/2(call 'erlang':'map_get'('root', Dom), Names)
+        'DocumentObjectModel.get_tags_by_attribute'/2 =
+            fun (Dom, Name) ->
+                case call 'lists':'member'(Name, call 'erlang':'map_get'('all_attributes', Dom)) of <'true'> when 'true' -> call 'erlang':'map_get'(Name, call 'erlang':'map_get'('all_attributes', Dom)) <'false'> when 'true' -> [] end
+        'DocumentObjectModel.get_tags_by_attribute_value'/3 =
+            fun (Dom, Name, Value) ->
+                let <Location> =
+                    apply 'DocumentObjectModel.where_is'/3(Dom, Value, Name)
+                in  let <Attributes> =
+                        call 'erlang':'map_get'(Name, call 'erlang':'map_get'('tag_attributes', Dom))
+                    in  case call 'erlang':'>'(call 'erlang':'length'(Attributes), Location) of
+                            <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Location, 1), Attributes)
+                            <'false'> when 'true' -> 
+                                []
+                        end
+        'parse'/1 =
+            fun (Text) ->
+                let <Parser> =
+                    ~{{'vbeam','type'}=>'Parser'}~
+                in  do  apply 'Parser.parse_html'/2(Parser, Text)
+                        apply 'Parser.get_dom'/1(Parser)
+        'parse_file'/1 =
+            fun (Filename) ->
+                let <Content> =
+                    try call 'file':'read_file'(Filename) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> ~{'root'=>~{{'vbeam','type'}=>'Tag'}~,{'vbeam','type'}=>'DocumentObjectModel'}~
+                in  apply 'parse'/1(Content)
+        'Parser.add_code_tag'/2 =
+            fun (Parser, Name) ->
+                case call 'erlang':'=<'(call 'erlang':'length'(Name), 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        'ok'
+                end
+        'Parser.builder_str'/1 =
+            fun (Parser) ->
+                apply 'Builder.after'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+        'Parser.print_debug'/2 =
+            fun (Parser, Data) ->
+                case call 'erlang':'>'(call 'erlang':'length'(Data), 0) of <'true'> when 'true' -> try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err}) <'false'> when 'true' -> 'ok' end
+        'Parser.verify_end_comment'/2 =
+            fun (Parser, Remove) ->
+                let <Lexeme> =
+                    apply 'Parser.builder_str'/1(Parser)
+                in  let <Last> =
+                        call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Lexeme), 1), 1), Lexeme)
+                    in  let <Penultimate> =
+                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Lexeme), 2), 1), Lexeme)
+                        in  let <Is_end_comment> =
+                                call 'erlang':'and'(call 'erlang':'=:='(Last, 45), call 'erlang':'=:='(Penultimate, 45))
+                            in  do  case call 'erlang':'and'(Is_end_comment, Remove) of <'true'> when 'true' -> apply 'Builder.go_back'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 2) <'false'> when 'true' -> 'ok' end
+                                    Is_end_comment
+        'blank_string'/1 =
+            fun (Data) ->
+                let <Count> =
+                    0
+                in  do  let <_1> =
+                        fun (Chr) ->
+                            case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(Chr, 10), call 'erlang':'=:='(Chr, 9)), call 'erlang':'=:='(Chr, 32)) of <'true'> when 'true' -> Count <'false'> when 'true' -> 'ok' end
+                    in  call 'lists':'foreach'(_1, Data)
+                        call 'erlang':'=:='(Count, call 'erlang':'length'(Data))
+        'Parser.init'/1 =
+            fun (Parser) ->
+                case call 'erlang':'map_get'('initialized', Parser) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        do  ~{'debug_file'=>call 'erlang':'map_get'('debug_file', Parser),'root'=>~{{'vbeam','type'}=>'Tag'}~,{'vbeam','type'}=>'DocumentObjectModel'}~
+                            do  apply 'Parser.add_code_tag'/2(Parser, #{  }#)
+                                do  []
+                                    do  'true'
+                                        do  ~{{'vbeam','type'}=>'Tag'}~
+                                            do  'true'
+                                                'ok'
+                end
+        'Parser.generate_tag'/1 =
+            fun (Parser) ->
+                case call 'erlang':'map_get'('open_tag', call 'erlang':'map_get'('lexical_attributes', Parser)) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        do  case call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))), #{  }#), call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('content', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser)))), 0)) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('tags', Parser), call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))) <'false'> when 'true' -> 'ok' end
+                            'ok'
+                end
+        'Parser.split_parse'/2 =
+            fun (Parser, Data) ->
+                do  apply 'Parser.init'/1(Parser)
+                    do  let <_1> =
+                        fun (Chr) ->
+                            let <Is_quote> =
+                                call 'erlang':'or'(call 'erlang':'=:='(Chr, 34), call 'erlang':'=:='(Chr, 39))
+                            in  let <String_code> =
+                                    case Chr of <34> when 'true' -> 1 <39> when 'true' -> 2 <_> when 'true' -> 0 end
+                                in  case call 'erlang':'map_get'('open_code', call 'erlang':'map_get'('lexical_attributes', Parser)) of <'true'> when 'true' -> 
+                                        do  apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr)
+                                            case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('open_string', call 'erlang':'map_get'('lexical_attributes', Parser)), 0), call 'erlang':'=:='(call 'erlang':'map_get'('open_string', call 'erlang':'map_get'('lexical_attributes', Parser)), String_code)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Chr, 62) of <'true'> when 'true' -> 
+                                                let <Name_close_tag> =
+                                                    call 'erlang':'iolist_to_binary'([#{#<60>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('opened_code_type', call 'erlang':'map_get'('lexical_attributes', Parser))|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+                                                in  case case call 'binary':'longest_common_suffix'([call 'string':'lowercase'(apply 'Parser.builder_str'/1(Parser))|[Name_close_tag|[]]]) of <0> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> 
+                                                        do  'false'
+                                                            do  apply 'Builder.go_back'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), call 'erlang':'length'(Name_close_tag))
+                                                                do  'true'
+                                                                    'ok'
+                                                     <'false'> when 'true' -> 'ok' end
+                                             <'false'> when 'true' -> 'ok' end end
+                                     <'false'> when 'true' -> case call 'erlang':'map_get'('open_comment', call 'erlang':'map_get'('lexical_attributes', Parser)) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(Chr, 62), apply 'Parser.verify_end_comment'/2(Parser, 'false')) of <'true'> when 'true' -> 
+                                        do  apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+                                            do  'false'
+                                                'ok'
+                                     <'false'> when 'true' -> apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr) end <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('open_string', call 'erlang':'map_get'('lexical_attributes', Parser)), 0) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('open_string', call 'erlang':'map_get'('lexical_attributes', Parser)), String_code) of <'true'> when 'true' -> 
+                                        do  0
+                                            do  apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr)
+                                                let <Temp_lexeme> =
+                                                    apply 'Parser.builder_str'/1(Parser)
+                                                in  do  case call 'erlang':'=/='(call 'erlang':'map_get'('last_attribute', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))), #{  }#) of <'true'> when 'true' -> 
+                                                        let <Lattr> =
+                                                            call 'erlang':'map_get'('last_attribute', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser)))
+                                                        in  let <Nval> =
+                                                                apply 'string.substr'/3(Temp_lexeme, 1, call 'erlang':'-'(call 'erlang':'length'(Temp_lexeme), 1))
+                                                            in  do  Nval
+                                                                    do  case call 'erlang':'=:='(Lattr, #{#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                        'ok'
+                                                     <'false'> when 'true' -> 'ok' end
+                                                        apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+                                     <'false'> when 'true' -> apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr) end <'false'> when 'true' -> case call 'erlang':'map_get'('open_tag', call 'erlang':'map_get'('lexical_attributes', Parser)) of <'true'> when 'true' -> 
+                                        do  case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser))), 0), Is_quote) of <'true'> when 'true' -> 
+                                            do  String_code
+                                                apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr)
+                                         <'false'> when 'true' -> case call 'erlang':'=:='(Chr, 62) of <'true'> when 'true' -> 
+                                            let <Complete_lexeme> =
+                                                call 'string':'lowercase'(apply 'Parser.builder_str'/1(Parser))
+                                            in  do  call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Complete_lexeme), 0), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Complete_lexeme), 1), 1), Complete_lexeme), 47))
+                                                    do  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(Complete_lexeme), 0), call 'erlang':'=:='(call 'lists':'nth'(1, Complete_lexeme), 47)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                        do  case call 'erlang':'=:='(call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))), #{  }#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=/='(Complete_lexeme, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end
+                                                            do  'false'
+                                                                do  apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+                                                                    case call 'lists':'member'(call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))), call 'erlang':'map_get'('code_tags', call 'erlang':'map_get'('lexical_attributes', Parser))) of <'true'> when 'true' -> 
+                                                                        do  'true'
+                                                                            'ok'
+                                                                     <'false'> when 'true' -> 'ok' end
+                                         <'false'> when 'true' -> case call 'erlang':'not'(call 'lists':'member'(Chr, [9|[32|[61|[10|[]]]]])) of <'true'> when 'true' -> apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr) <'false'> when 'true' -> case call 'erlang':'=/='(Chr, 10) of <'true'> when 'true' -> 
+                                            let <Complete_lexeme_2> =
+                                                call 'string':'lowercase'(apply 'Parser.builder_str'/1(Parser))
+                                            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser))), #{  }#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                                                    do  #{  }#
+                                                        do  #{  }#
+                                                            case call 'erlang':'=:='(Chr, 61) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                 end
+                                                    apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+                                         <'false'> when 'true' -> 'ok' end end end end
+                                            case call 'erlang':'=:='(apply 'Parser.builder_str'/1(Parser), #{#<33>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                     <'false'> when 'true' -> case call 'erlang':'=:='(Chr, 60) of <'true'> when 'true' -> 
+                                        let <Temp_string> =
+                                            apply 'Parser.builder_str'/1(Parser)
+                                        in  do  case call 'erlang':'>='(call 'erlang':'length'(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser))), 1) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser)))), 1), call 'erlang':'=:='(call 'lists':'nth'(1, call 'erlang':'map_get'('name', call 'erlang':'map_get'('current_tag', call 'erlang':'map_get'('lexical_attributes', Parser)))), 47)), call 'erlang':'not'(apply 'blank_string'/1(Temp_string))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                                do  apply 'Builder.go_back_to'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), 0)
+                                                    do  apply 'Parser.generate_tag'/1(Parser)
+                                                        do  'true'
+                                                            do  'false'
+                                                                case call 'erlang':'=:='(call 'erlang':'map_get'('text_after_tag', call 'erlang':'map_get'('lexical_attributes', Parser)), 'true') of <'true'> when 'true' -> 
+                                                                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('tags', Parser), ~{'name'=>#{#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#,'content'=>Temp_string,{'vbeam','type'}=>'Tag'}~)
+                                                                        'ok'
+                                                                 <'false'> when 'true' -> 'ok' end
+                                     <'false'> when 'true' -> apply 'Builder.write_u8'/2(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)), Chr) end end end end end
+                    in  call 'lists':'foreach'(_1, Data)
+                        case call 'erlang':'map_get'('outside_tag', call 'erlang':'map_get'('lexical_attributes', Parser)) of <'true'> when 'true' -> 
+                            let <Temp_string_3> =
+                                apply 'Builder.str'/1(call 'erlang':'map_get'('lexeme_builder', call 'erlang':'map_get'('lexical_attributes', Parser)))
+                            in  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('tags', Parser)), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('tags', Parser), ~{'name'=>#{#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#,'content'=>Temp_string_3,{'vbeam','type'}=>'Tag'}~) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('tags', Parser)), 1) of <'true'> when 'true' -> 
+                                    let <Tag> =
+                                        call 'erlang':'hd'(call 'erlang':'map_get'('tags', Parser))
+                                    in  case call 'erlang':'=:='(call 'erlang':'map_get'('name', Tag), #{#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                 <'false'> when 'true' -> 'ok' end end
+                         <'false'> when 'true' -> 'ok' end
+        'Parser.parse_html'/2 =
+            fun (Parser, Data) ->
+                do  apply 'Parser.init'/1(Parser)
+                    let <Lines> =
+                        call 'binary':'split'(Data, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                    in  do  let <_1> =
+                            fun (Line, Index) ->
+                                do  call 'erlang':'map_get'('line_count', call 'erlang':'map_get'('lexical_attributes', Parser))
+                                    do  apply 'Parser.split_parse'/2(Parser, case call 'erlang':'<'(Index, call 'erlang':'-'(call 'erlang':'length'(Lines), 1)) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([Line|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> Line end)
+                                        call 'erlang':'+'(Index, 1)
+                        in  call 'lists':'foldl'(_1, 0, Lines)
+                            do  apply 'Parser.generate_tag'/1(Parser)
+                                do  call 'erlang':'map_get'('debug_file', Parser)
+                                    apply 'DocumentObjectModel.construct'/2(call 'erlang':'map_get'('dom', Parser), call 'erlang':'map_get'('tags', Parser))
+        'Parser.finalize'/1 =
+            fun (Parser) ->
+                apply 'Parser.generate_tag'/1(Parser)
+        'Parser.get_dom'/1 =
+            fun (Parser) ->
+                do  case call 'erlang':'not'(call 'erlang':'map_get'('constructed', call 'erlang':'map_get'('dom', Parser))) of <'true'> when 'true' -> 
+                    do  apply 'Parser.generate_tag'/1(Parser)
+                        apply 'DocumentObjectModel.construct'/2(call 'erlang':'map_get'('dom', Parser), call 'erlang':'map_get'('tags', Parser))
+                 <'false'> when 'true' -> 'ok' end
+                    call 'erlang':'map_get'('dom', Parser)
+        'Tag.add_parent'/3 =
+            fun (Tag, T, Position) ->
+                do  Position
+                    'ok'
+        'Tag.add_child'/2 =
+            fun (Tag, T) ->
+                do  call 'erlang':'bsl'(call 'erlang':'map_get'('children', Tag), T)
+                    call 'erlang':'length'(call 'erlang':'map_get'('children', Tag))
+        'Tag.text'/1 =
+            fun (Tag) ->
+                case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'length'(call 'erlang':'map_get'('name', Tag)), 2), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, 2), 1), call 'erlang':'map_get'('name', Tag)), #{#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)) of
+                    <'true'> when 'true' -> #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                    <'false'> when 'true' -> 
+                        let <Text_str> =
+                            call 'v.strings':'new_builder'(200)
+                        in  do  apply 'Builder.write_string'/2(Text_str, call 'erlang':'map_get'('content', Tag))
+                                do  let <_1> =
+                                    fun (Child) ->
+                                        apply 'Builder.write_string'/2(Text_str, apply 'Tag.text'/1(Child))
+                                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                                    apply 'Builder.str'/1(Text_str)
+                end
+        'Tag.str'/1 =
+            fun (Tag) ->
+                let <Html_str> =
+                    call 'v.strings':'new_builder'(200)
+                in  do  apply 'Builder.write_string'/2(Html_str, call 'erlang':'iolist_to_binary'([#{#<60>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Tag)|[]]]))
+                        do  let <_1> =
+                            fun (Value, Key) ->
+                                do  apply 'Builder.write_string'/2(Html_str, call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Key|[]]]))
+                                    do  case call 'erlang':'=/='(Value, #{  }#) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Html_str, call 'erlang':'iolist_to_binary'([#{#<61>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[Value|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                                        call 'erlang':'+'(Key, 1)
+                        in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('attributes', Tag))
+                            do  apply 'Builder.write_string'/2(Html_str, case call 'erlang':'and'(call 'erlang':'map_get'('closed', Tag), call 'erlang':'=:='(call 'erlang':'map_get'('close_type', Tag), 'in_name')) of <'true'> when 'true' -> #{#<47>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<62>(8,1,'integer',['unsigned'|['big']])}# end)
+                                do  apply 'Builder.write_string'/2(Html_str, call 'erlang':'map_get'('content', Tag))
+                                    do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('children', Tag)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        do  case call 'erlang':'or'(call 'erlang':'not'(call 'erlang':'map_get'('closed', Tag)), call 'erlang':'=:='(call 'erlang':'map_get'('close_type', Tag), 'new_tag')) of <'true'> when 'true' -> apply 'Builder.write_string'/2(Html_str, call 'erlang':'iolist_to_binary'([#{#<60>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Tag)|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end
+                                            apply 'Builder.str'/1(Html_str)
+        'Tag.get_tag'/2 =
+            fun (Tag, Name) ->
+                do  let <_1> =
+                    fun (Child) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('name', Child), Name) of
+                            <'true'> when 'true' -> Child
+                            <'false'> when 'true' -> 
+                                case try apply 'Tag.get_tag'/2(Child, Name) of <_cor2> when 'true' -> {'ok', _cor2} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', C}> when 'true' -> C <_> when 'true' -> 'ok' end
+                        end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                    'none'
+        'Tag.get_tags'/2 =
+            fun (Tag, Name) ->
+                let <Res> =
+                    []
+                in  do  let <_1> =
+                        fun (Child) ->
+                            do  case call 'erlang':'=:='(call 'erlang':'map_get'('name', Child), Name) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, Child) <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'bsl'(Res, apply 'Tag.get_tags'/2(Child, Name))
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                        Res
+        'Tag.get_tag_by_attribute'/2 =
+            fun (Tag, Name) ->
+                do  let <_1> =
+                    fun (Child) ->
+                        case call 'erlang':'=/='(call 'erlang':'map_get'(Name, call 'erlang':'map_get'('attributes', Child)), #{  }#) of
+                            <'true'> when 'true' -> Child
+                            <'false'> when 'true' -> 
+                                case try apply 'Tag.get_tag_by_attribute'/2(Child, Name) of <_cor2> when 'true' -> {'ok', _cor2} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', C}> when 'true' -> C <_> when 'true' -> 'ok' end
+                        end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                    'none'
+        'Tag.get_tags_by_attribute'/2 =
+            fun (Tag, Name) ->
+                let <Res> =
+                    []
+                in  do  let <_1> =
+                        fun (Child) ->
+                            do  case call 'erlang':'=/='(call 'erlang':'map_get'(Name, call 'erlang':'map_get'('attributes', Child)), #{  }#) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, Child) <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'bsl'(Res, apply 'Tag.get_tags_by_attribute'/2(Child, Name))
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                        Res
+        'Tag.get_tag_by_attribute_value'/3 =
+            fun (Tag, Name, Value) ->
+                do  let <_1> =
+                    fun (Child) ->
+                        case call 'erlang':'=:='(call 'erlang':'map_get'(Name, call 'erlang':'map_get'('attributes', Child)), Value) of
+                            <'true'> when 'true' -> Child
+                            <'false'> when 'true' -> 
+                                case try apply 'Tag.get_tag_by_attribute_value'/3(Child, Name, Value) of <_cor2> when 'true' -> {'ok', _cor2} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', C}> when 'true' -> C <_> when 'true' -> 'ok' end
+                        end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                    'none'
+        'Tag.get_tags_by_attribute_value'/3 =
+            fun (Tag, Name, Value) ->
+                let <Res> =
+                    []
+                in  do  let <_1> =
+                        fun (Child) ->
+                            do  case call 'erlang':'=:='(call 'erlang':'map_get'(Name, call 'erlang':'map_get'('attributes', Child)), Value) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, Child) <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'bsl'(Res, apply 'Tag.get_tags_by_attribute_value'/3(Child, Name, Value))
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                        Res
+        'Tag.get_tag_by_class_name'/2 =
+            fun (Tag, Names) ->
+                do  let <_1> =
+                    fun (Child) ->
+                        let <Matched> =
+                            'true'
+                        in  let <Matched_2> =
+                                let <_3> =
+                                    fun (Name, MatchedAcc) ->
+                                        let <MatchedOut_5> =
+                                            apply 'Set.exists'/2(call 'erlang':'map_get'('class_set', Child), Name)
+                                        in                                          do  case call 'erlang':'not'(MatchedOut_5) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+MatchedOut_5
+                                in  call 'lists':'foldl'(_3, Matched, Names)
+                            in  case Matched_2 of
+                                    <'true'> when 'true' -> Child
+                                    <'false'> when 'true' -> 
+                                        case try apply 'Tag.get_tag_by_class_name'/2(Child, Names) of <_cor6> when 'true' -> {'ok', _cor6} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', C}> when 'true' -> C <_> when 'true' -> 'ok' end
+                                end
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                    'none'
+        'Tag.get_tags_by_class_name'/2 =
+            fun (Tag, Names) ->
+                let <Res> =
+                    []
+                in  do  let <_1> =
+                        fun (Child) ->
+                            let <Matched> =
+                                'true'
+                            in  let <Matched_2> =
+                                    let <_3> =
+                                        fun (Name, MatchedAcc) ->
+                                            let <MatchedOut_5> =
+                                                apply 'Set.exists'/2(call 'erlang':'map_get'('class_set', Child), Name)
+                                            in                                              do  case call 'erlang':'not'(MatchedOut_5) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+MatchedOut_5
+                                    in  call 'lists':'foldl'(_3, Matched, Names)
+                                in  do  case Matched_2 of <'true'> when 'true' -> call 'erlang':'bsl'(Res, Child) <'false'> when 'true' -> 'ok' end
+                                        call 'erlang':'bsl'(Res, apply 'Tag.get_tags_by_class_name'/2(Child, Names))
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Tag))
+                        Res
+        'CloseTagType__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.net.html')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.net.html', _0)
+        end

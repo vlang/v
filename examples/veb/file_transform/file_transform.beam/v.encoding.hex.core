@@ -1,0 +1,47 @@
+module 'v.encoding.hex' ['decode'/1,
+                'encode'/1,
+                'char2nibble'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'decode'/1 =
+    fun (S) ->
+        do  case call 'erlang':'>='(call 'erlang':'length'(S), 2) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(call 'lists':'nth'(1, S), 48), call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(2, S), 120), call 'erlang':'=:='(call 'lists':'nth'(2, S), 88))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'=:='(call 'erlang':'length'(S), 0) of <'true'> when 'true' -> [] <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(S), 1) of <'true'> when 'true' -> [try apply 'char2nibble'/1(call 'lists':'nth'(1, S)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'|[]] <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(S), 2) of <'true'> when 'true' -> 
+                let <N1> =
+                    try apply 'char2nibble'/1(call 'lists':'nth'(1, S)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                in  let <N0> =
+                        try apply 'char2nibble'/1(call 'lists':'nth'(2, S)) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                    in  [call 'erlang':'bor'(call 'erlang':'bsl'(N1, 4), N0)|[]]
+             <'false'> when 'true' -> 'ok' end end end
+                let <Val> =
+                    try apply 'char2nibble'/1(call 'lists':'nth'(1, S)) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok'
+                in  let <Val_5> =
+                        case call 'erlang':'=:='(call 'erlang':'band'(call 'erlang':'length'(S), 1), 0) of <'true'> when 'true' -> call 'erlang':'bor'(call 'erlang':'bsl'(Val, 4), try apply 'char2nibble'/1(call 'lists':'nth'(2, S)) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 'ok') <'false'> when 'true' -> Val end
+                    in  let <Bytes> =
+                            []
+                        in  Bytes
+'encode'/1 =
+    fun (Bytes) ->
+        let <Sb> =
+            call 'v.strings':'new_builder'(call 'erlang':'*'(call 'erlang':'length'(Bytes), 2))
+        in  do  let <_1> =
+                fun (B) ->
+                    apply 'Builder.write_string'/2(Sb, apply 'u8.hex'/1(B))
+            in  call 'lists':'foreach'(_1, Bytes)
+                let <Res> =
+                    apply 'Builder.str'/1(Sb)
+                in  do  apply 'Builder.free'/1(Sb)
+                        Res
+'char2nibble'/1 =
+    fun (B) ->
+        case B of <call 'lists':'seq'(48, 57)> when 'true' -> call 'erlang':'-'(B, 48) <call 'lists':'seq'(65, 70)> when 'true' -> call 'erlang':'+'(call 'erlang':'-'(B, 65), 10) <call 'lists':'seq'(97, 102)> when 'true' -> call 'erlang':'+'(call 'erlang':'-'(B, 97), 10) <_> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'list_to_binary'([B|[]])|[]]])) end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.hex')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.hex', _0)
+end

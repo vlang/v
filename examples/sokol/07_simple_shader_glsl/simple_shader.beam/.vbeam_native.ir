@@ -1,0 +1,111 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"simple_shader_desc">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"run">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {vreg, 1}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 5,
+            body => [
+                {call, {sym, <<"create_desc">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {vreg, 2}, {vreg, 1}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"setup">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"make_shader">>}},
+                {mov, {vreg, 4}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"cleanup">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"shutdown">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 13,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"create_default_pass">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {vreg, 2}, {vreg, 1}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"begin_pass">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"apply_pipeline">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {vreg, 5}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 5}},
+                {call, {sym, <<"apply_bindings">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {vreg, 7}, 0},
+                {mov_imm, {vreg, 8}, 3},
+                {mov_imm, {vreg, 9}, 1},
+                {mov, {preg, x0}, {vreg, 7}},
+                {mov, {preg, x1}, {vreg, 8}},
+                {mov, {preg, x2}, {vreg, 9}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {call, {sym, <<"end_pass">>}},
+                {mov, {vreg, 11}, {preg, x0}},
+                {call, {sym, <<"commit">>}},
+                {mov, {vreg, 12}, {preg, x0}}
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

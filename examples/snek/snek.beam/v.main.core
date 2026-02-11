@@ -1,0 +1,105 @@
+module 'v.main' ['HighScore.save'/1,
+                'HighScore.load'/1,
+                'App.reset_game'/1,
+                'App.move_food'/1,
+                'on_frame'/1,
+                'on_keydown'/3,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'HighScore.save'/1 =
+        fun (H) ->
+            do  try call 'filelib':'ensure_dir'(call 'erlang':'binary_to_list'(call 'v.os':'dir'(call 'filename':'join'(call 'v.os':'cache_dir'(), #{#<118>(8,1,'integer',['unsigned'|['big']])}#)))) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                try call 'file':'write_file'(call 'filename':'join'(call 'v.os':'cache_dir'(), #{#<118>(8,1,'integer',['unsigned'|['big']])}#), apply 'HighScore.str'/1(H)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+    'HighScore.load'/1 =
+        fun (H) ->
+            let <H_1> =
+                call 'erlang':'binary_to_integer'(try call 'file':'read_file'(call 'filename':'join'(call 'v.os':'cache_dir'(), #{#<118>(8,1,'integer',['unsigned'|['big']])}#)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> #{  }#)
+            in  H_1
+    'App.reset_game'/1 =
+        fun (App) ->
+            do  0
+                do  [~{'x'=>3,'y'=>8,{'vbeam','type'}=>'Vec'}~|[~{'x'=>2,'y'=>8,{'vbeam','type'}=>'Vec'}~|[~{'x'=>1,'y'=>8,{'vbeam','type'}=>'Vec'}~|[~{'x'=>0,'y'=>8,{'vbeam','type'}=>'Vec'}~|[]]]]]
+                    do  ~{'x'=>1,'y'=>0,{'vbeam','type'}=>'Vec'}~
+                        do  []
+                            do  ~{'x'=>10,'y'=>8,{'vbeam','type'}=>'Vec'}~
+                                'ok'
+    'App.move_food'/1 =
+        fun (App) ->
+            'ok'
+    'on_frame'/1 =
+        fun (App) ->
+            do  case call 'lists':'member'(call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App)), call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(1, 0), 1), call 'erlang':'map_get'('snake', App))) of <'true'> when 'true' -> apply 'App.reset_game'/1(App) <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'map_get'('x', call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))), 0), call 'erlang':'>='(call 'erlang':'map_get'('x', call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))), 17)), call 'erlang':'<'(call 'erlang':'map_get'('y', call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))), 0)), call 'erlang':'>='(call 'erlang':'map_get'('y', call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))), 17)) of <'true'> when 'true' -> apply 'App.reset_game'/1(App) <'false'> when 'true' -> 'ok' end
+                    let <Progress> =
+                        apply 'f32_min'/2(1, call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'-'(call 'erlang':'monotonic_time'('millisecond'), call 'erlang':'map_get'('last_tick', App))), 100))
+                    in  do  'ok'
+                            do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'*'(41, call 'erlang':'map_get'('x', call 'erlang':'map_get'('food', App))), call 'erlang':'+'(call 'erlang':'*'(41, call 'erlang':'map_get'('y', call 'erlang':'map_get'('food', App))), 100), call 'erlang':'div'(700, 17), call 'erlang':'div'(700, 17), ~{'r'=>255,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                do  let <_1> =
+                                    fun (Pos) ->
+                                        apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'*'(41, call 'erlang':'map_get'('x', Pos)), call 'erlang':'+'(call 'erlang':'*'(41, call 'erlang':'map_get'('y', Pos)), 100), call 'erlang':'div'(700, 17), call 'erlang':'div'(700, 17), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                in  call 'lists':'foreach'(_1, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('snake', App)), 1)), 1), call 'erlang':'map_get'('snake', App)))
+                                    let <Head> =
+                                        call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))
+                                    in  do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'*'(41, call 'erlang':'+'(call 'erlang':'map_get'('x', Head), call 'erlang':'*'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('dir', App)), Progress))), call 'erlang':'+'(call 'erlang':'*'(41, call 'erlang':'+'(call 'erlang':'map_get'('y', Head), call 'erlang':'*'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('dir', App)), Progress))), 100), call 'erlang':'div'(700, 17), call 'erlang':'div'(700, 17), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                            let <Tail> =
+                                                call 'lists':'last'(call 'erlang':'map_get'('snake', App))
+                                            in  let <Tail_dir> =
+                                                    call 'erlang':'-'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('snake', App)), 2), 1), call 'erlang':'map_get'('snake', App)), Tail)
+                                                in  do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'*'(41, call 'erlang':'+'(call 'erlang':'map_get'('x', Tail), call 'erlang':'*'(call 'erlang':'map_get'('x', Tail_dir), Progress))), call 'erlang':'+'(call 'erlang':'*'(41, call 'erlang':'+'(call 'erlang':'map_get'('y', Tail), call 'erlang':'*'(call 'erlang':'map_get'('y', Tail_dir), Progress))), 100), call 'erlang':'div'(700, 17), call 'erlang':'div'(700, 17), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                                        do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), 0, 0, 700, 100, ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                                            do  'ok'
+                                                                do  'ok'
+                                                                    do  case call 'erlang':'=:='(Progress, 1) of <'true'> when 'true' -> 
+                                                                        let <Prev> =
+                                                                            call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App))
+                                                                        in  do  call 'erlang':'+'(call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App)), call 'erlang':'map_get'('dir', App))
+                                                                                let <Prev_2> =
+                                                                                    let <_3> =
+                                                                                        fun (I, PrevAcc) ->
+                                                                                            let <PrevOut_5> =
+                                                                                                call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('snake', App))
+                                                                                            in  PrevOut_5
+                                                                                    in  let <_4> =
+                                                                                        call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('snake', App)), 1))
+                                                                                    in  call 'lists':'foldl'(_3, Prev, _4)
+                                                                                in  do  case call 'erlang':'=:='(call 'lists':'nth'(1, call 'erlang':'map_get'('snake', App)), call 'erlang':'map_get'('food', App)) of <'true'> when 'true' -> 
+                                                                                        do  call 'erlang':'map_get'('score', App)
+                                                                                            do  case call 'erlang':'>'(call 'erlang':'map_get'('score', App), call 'erlang':'map_get'('best', App)) of <'true'> when 'true' -> 
+                                                                                                do  call 'erlang':'map_get'('score', App)
+                                                                                                    apply 'HighScore.save'/1(call 'erlang':'map_get'('best', App))
+                                                                                             <'false'> when 'true' -> 'ok' end
+                                                                                                do  call 'erlang':'bsl'(call 'erlang':'map_get'('snake', App), call 'erlang':'-'(call 'erlang':'+'(call 'lists':'last'(call 'erlang':'map_get'('snake', App)), call 'lists':'last'(call 'erlang':'map_get'('snake', App))), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('snake', App)), 2), 1), call 'erlang':'map_get'('snake', App))))
+                                                                                                    apply 'App.move_food'/1(App)
+                                                                                     <'false'> when 'true' -> 'ok' end
+                                                                                        do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('dir_queue', App)), 0) of <'true'> when 'true' -> 
+                                                                                            let <Dir> =
+                                                                                                call 'lists':'last'(call 'erlang':'map_get'('dir_queue', App))
+                                                                                            in  case call 'erlang':'or'(call 'erlang':'=/='(call 'erlang':'map_get'('x', Dir), call 'erlang':'-'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('dir', App)))), call 'erlang':'=/='(call 'erlang':'map_get'('y', Dir), call 'erlang':'-'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('dir', App))))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                                         <'false'> when 'true' -> 'ok' end
+                                                                                            'ok'
+                                                                     <'false'> when 'true' -> 'ok' end
+                                                                        apply 'Context.end'/2(call 'erlang':'map_get'('gg', App), ~{{'vbeam','type'}=>'EndOptions'}~)
+    'on_keydown'/3 =
+        fun (Key, _mod, App) ->
+            call 'erlang':'bsl'(call 'erlang':'map_get'('dir_queue', App), case call 'erlang':'=:='(Key, 'w') of <'true'> when 'true' -> ~{'x'=>0,'y'=>-1,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'up') of <'true'> when 'true' -> ~{'x'=>0,'y'=>-1,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 's') of <'true'> when 'true' -> ~{'x'=>0,'y'=>1,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'down') of <'true'> when 'true' -> ~{'x'=>0,'y'=>1,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'a') of <'true'> when 'true' -> ~{'x'=>-1,'y'=>0,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'left') of <'true'> when 'true' -> ~{'x'=>-1,'y'=>0,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'd') of <'true'> when 'true' -> ~{'x'=>1,'y'=>0,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'right') of <'true'> when 'true' -> ~{'x'=>1,'y'=>0,{'vbeam','type'}=>'Vec'}~ <'false'> when 'true' -> 'ok' end end end end end end end end)
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  apply 'App.reset_game'/1(App)
+                    do  apply 'HighScore.load'/1(call 'erlang':'map_get'('best', App))
+                        let <Font_copy> =
+                            'false'
+                        in  do  call 'v.gg':'new_context'(~{'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'frame_fn'=>fun (_fref0) -> call 'v.main':'on_frame'(_fref0),'keydown_fn'=>fun (_fref0, _fref1, _fref2) -> call 'v.main':'on_keydown'(_fref0, _fref1, _fref2),'user_data'=>App,'width'=>700,'height'=>800,'window_title'=>#{#<115>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}#,'font_bytes_normal'=>apply 'u8.vbytes'/2(apply 'EmbedFileData.data'/1(Font_copy), call 'erlang':'length'(Font_copy)),{'vbeam','type'}=>'Config'}~)
+                                'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

@@ -1,0 +1,50 @@
+module 'v.main' ['my_audio_stream_callback'/4,
+                'graphics_frame'/1,
+                'f'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'my_audio_stream_callback'/4 =
+    fun (Soundbuffer, Num_frames, Num_channels, Acontext) ->
+        'ok'
+'graphics_frame'/1 =
+    fun (State) ->
+        let <Ws> =
+            call 'v.gg':'window_size'()
+        in  let <Center_y> =
+                call 'erlang':'float'(call 'erlang':'div'(call 'erlang':'map_get'('height', Ws), 2))
+            in  do  'ok'
+                    do  let <_1> =
+                        fun (X) ->
+                            let <Vx> =
+                                call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'map_get'('width', Ws), X), 1024.0)
+                            in  let <Vy> =
+                                    call 'erlang':'*'(call 'erlang':'/'(call 'erlang':'*'(Center_y, 3.0), 4.0), call 'erlang':'+'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'*'(2, X), 1), call 'erlang':'map_get'('frames', State)), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(2, X), 1), 1), call 'erlang':'map_get'('frames', State))))
+                                in  let <Color> =
+                                        ~{'r'=>apply 'f'/2(State, X),'g'=>apply 'f'/2(State, call 'erlang':'+'(X, 300)),'b'=>apply 'f'/2(State, call 'erlang':'+'(X, 700)),'a'=>255,{'vbeam','type'}=>'Color'}~
+                                    in  'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(1024, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        apply 'Context.end'/2(call 'erlang':'map_get'('gg', State), ~{{'vbeam','type'}=>'EndOptions'}~)
+'f'/2 =
+    fun (State, Idx) ->
+        call 'erlang':'trunc'(call 'erlang':'+'(127, call 'erlang':'*'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'band'(call 'erlang':'+'(call 'erlang':'map_get'('frame', call 'erlang':'map_get'('gg', State)), Idx), 2047), 1), call 'erlang':'map_get'('frames', State)), 128)))
+'main'/0 =
+    fun () ->
+        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<66>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<63>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']])}#|[]])
+            let <State> =
+                ~{{'vbeam','type'}=>'AppState'}~
+            in  do  call 'v.sokol.audio':'setup'(~{'stream_userdata_cb'=>fun (_fref0, _fref1, _fref2, _fref3) -> call 'v.main':'my_audio_stream_callback'(_fref0, _fref1, _fref2, _fref3),'user_data'=>State,{'vbeam','type'}=>'AudioDesc'}~)
+                    do  call 'v.gg':'new_context'(~{'bg_color'=>~{'r'=>50,'g'=>50,'b'=>50,'a'=>255,{'vbeam','type'}=>'Color'}~,'width'=>800,'height'=>600,'window_title'=>#{#<66>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']])}#,'frame_fn'=>fun (_fref0) -> call 'v.main':'graphics_frame'(_fref0),'user_data'=>State,{'vbeam','type'}=>'Config'}~)
+                        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

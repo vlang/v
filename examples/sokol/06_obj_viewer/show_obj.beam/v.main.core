@@ -1,0 +1,164 @@
+module 'v.main' ['gouraud_shader_desc'/1,
+                'vec4'/4,
+                'calc_matrices'/6,
+                'draw_model'/2,
+                'frame'/1,
+                'draw_start_glsl'/1,
+                'draw_end_glsl'/1,
+                'my_init'/1,
+                'cleanup'/1,
+                'my_event_manager'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'gouraud_shader_desc'/1 =
+        fun () ->
+            'ok'
+    'vec4'/4 =
+        fun (X, Y, Z, W) ->
+            ~{'e'=>[X|[Y|[Z|[W|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'calc_matrices'/6 =
+        fun (W, H, Rx, Ry, In_scale, Pos) ->
+            let <Proj> =
+                call 'v.gg.m4':'perspective'(60, call 'erlang':'/'(W, H), 0.01, 100.0)
+            in  let <View> =
+                    call 'v.gg.m4':'look_at'(apply 'vec4'/4(0.0, 0, 6, 0), apply 'vec4'/4(0, 0, 0, 0), apply 'vec4'/4(0, 1, 0, 0))
+                in  let <View_proj> =
+                        call 'erlang':'*'(View, Proj)
+                    in  let <Rxm> =
+                            call 'v.gg.m4':'rotate'(call 'v.gg.m4':'rad'(Rx), apply 'vec4'/4(1, 0, 0, 0))
+                        in  let <Rym> =
+                                call 'v.gg.m4':'rotate'(call 'v.gg.m4':'rad'(Ry), apply 'vec4'/4(0, 1, 0, 0))
+                            in  let <Model_pos> =
+                                    apply 'Mat4.translate'/2(call 'v.gg.m4':'unit_m4'(), Pos)
+                                in  let <Model_m> =
+                                        call 'erlang':'*'(call 'erlang':'*'(Rym, Rxm), Model_pos)
+                                    in  let <Scale_m> =
+                                            call 'v.gg.m4':'scale'(apply 'vec4'/4(In_scale, In_scale, In_scale, 1))
+                                        in  let <Mv> =
+                                                call 'erlang':'*'(Scale_m, Model_m)
+                                            in  let <Nm> =
+                                                    apply 'Mat4.transpose'/1(apply 'Mat4.inverse'/1(Mv))
+                                                in  let <Mvp> =
+                                                        call 'erlang':'*'(Mv, View_proj)
+                                                    in  ~{'mv'=>Mv,'mvp'=>Mvp,'nm'=>Nm,{'vbeam','type'}=>'Mats'}~
+    'draw_model'/2 =
+        fun (App, Model_pos) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('init_flag', App), 'false') of
+                <'true'> when 'true' -> 0
+                <'false'> when 'true' -> 
+                    let <Ws> =
+                        call 'v.gg':'window_size_real_pixels'()
+                    in  let <Dw> =
+                            call 'erlang':'div'(call 'erlang':'map_get'('width', Ws), 2)
+                        in  let <Dh> =
+                                call 'erlang':'div'(call 'erlang':'map_get'('height', Ws), 2)
+                            in  let <Scale> =
+                                    1
+                                in  let <Scale_1> =
+                                        case call 'erlang':'>'(call 'erlang':'map_get'('radius', call 'erlang':'map_get'('obj_part', App)), 1) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('radius', call 'erlang':'map_get'('obj_part', App))) <'false'> when 'true' -> call 'erlang':'map_get'('radius', call 'erlang':'map_get'('obj_part', App)) end
+                                    in  let <Scale_2> =
+                                            3
+                                        in  let <Rot> =
+                                                [call 'erlang':'float'(call 'erlang':'map_get'('mouse_y', App))|[call 'erlang':'float'(call 'erlang':'map_get'('mouse_x', App))|[]]]
+                                            in  let <Zoom_scale> =
+                                                    call 'erlang':'+'(Scale_2, call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'map_get'('scroll_y', App)), call 'erlang':'*'(call 'erlang':'map_get'('radius', call 'erlang':'map_get'('obj_part', App)), 4)))
+                                                in  let <Mats> =
+                                                        apply 'calc_matrices'/6(Dw, Dh, call 'lists':'nth'(1, Rot), call 'lists':'nth'(2, Rot), Zoom_scale, Model_pos)
+                                                    in  let <Tmp_vs_param> =
+                                                            ~{'mv'=>call 'erlang':'map_get'('mv', Mats),'mvp'=>call 'erlang':'map_get'('mvp', Mats),'nm'=>call 'erlang':'map_get'('nm', Mats),{'vbeam','type'}=>'Tmp_vs_param'}~
+                                                        in  let <Time_ticks> =
+                                                                call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'-'(call 'erlang':'monotonic_time'('millisecond'), call 'erlang':'map_get'('ticks', App))), 1000)
+                                                            in  let <Radius_light> =
+                                                                    call 'erlang':'map_get'('radius', call 'erlang':'map_get'('obj_part', App))
+                                                                in  let <X_light> =
+                                                                        call 'erlang':'*'(call 'math':'cos'(Time_ticks), Radius_light)
+                                                                    in  let <Z_light> =
+                                                                            call 'erlang':'*'(call 'math':'sin'(Time_ticks), Radius_light)
+                                                                        in  let <Tmp_fs_params> =
+                                                                                ~{{'vbeam','type'}=>'Tmp_fs_param'}~
+                                                                            in  do  call 'v.gg.m4':'vec3'(X_light, Radius_light, Z_light)
+                                                                                    let <Sd> =
+                                                                                        ~{'vs_data'=>Tmp_vs_param,'vs_len'=>8,'fs_data'=>Tmp_fs_params,'fs_len'=>8,{'vbeam','type'}=>'Shader_data'}~
+                                                                                    in  apply 'ObjPart.bind_and_draw_all'/2(call 'erlang':'map_get'('obj_part', App), Sd)
+            end
+    'frame'/1 =
+        fun (App) ->
+            let <Color_action> =
+                ~{'load_action'=>'clear','clear_value'=>~{'r'=>0.0,'g'=>0.0,'b'=>0.0,'a'=>1.0,{'vbeam','type'}=>'Color'}~,{'vbeam','type'}=>'ColorAttachmentAction'}~
+            in  let <Pass_action> =
+                    ~{{'vbeam','type'}=>'PassAction'}~
+                in  do  Color_action
+                        let <Pass> =
+                            call 'v.sokol.sapp':'create_default_pass'(Pass_action)
+                        in  do  call 'v.sokol.gfx':'begin_pass'(Pass)
+                                do  apply 'draw_start_glsl'/1(App)
+                                    do  apply 'draw_model'/2(App, ~{{'vbeam','type'}=>'Vec4'}~)
+                                        do  apply 'draw_end_glsl'/1(App)
+                                            call 'erlang':'map_get'('frame_count', App)
+    'draw_start_glsl'/1 =
+        fun (App) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('init_flag', App), 'false') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Ws> =
+                        call 'v.gg':'window_size_real_pixels'()
+                    in  call 'v.sokol.gfx':'apply_viewport'(0, 0, call 'erlang':'map_get'('width', Ws), call 'erlang':'map_get'('height', Ws), 'true')
+            end
+    'draw_end_glsl'/1 =
+        fun (App) ->
+            do  call 'v.sokol.gfx':'end_pass'()
+                call 'v.sokol.gfx':'commit'()
+    'my_init'/1 =
+        fun (App) ->
+            let <Object> =
+                ~{{'vbeam','type'}=>'ObjPart'}~
+            in  let <Obj_file_lines> =
+                    call 'v.obj':'read_lines_from_file'(call 'erlang':'map_get'('file_name', App))
+                in  do  apply 'ObjPart.parse_obj_buffer'/3(Object, Obj_file_lines, call 'erlang':'map_get'('single_material_flag', App))
+                        do  apply 'ObjPart.summary'/1(Object)
+                            do  Object
+                                let <Desc> =
+                                    call 'v.sokol.sapp':'create_desc'()
+                                in  do  call 'v.sokol.gfx':'setup'(Desc)
+                                        let <Sgl_desc> =
+                                            ~{'max_vertices'=>8388608,{'vbeam','type'}=>'Desc'}~
+                                        in  do  call 'v.sokol.sgl':'setup'(Sgl_desc)
+                                                do  apply 'ObjPart.init_render_data'/3(call 'erlang':'map_get'('obj_part', App), call 'erlang':'map_get'('texture', App), call 'erlang':'map_get'('sampler', App))
+                                                    'ok'
+    'cleanup'/1 =
+        fun (App) ->
+            'ok'
+    'my_event_manager'/2 =
+        fun (Ev, App) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'mouse_move') of <'true'> when 'true' -> 
+                do  call 'erlang':'trunc'(call 'erlang':'map_get'('mouse_x', Ev))
+                    'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'=/='(call 'erlang':'map_get'('scroll_y', Ev), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'touches_began'), call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'touches_moved')) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', Ev), 0) of <'true'> when 'true' -> 
+                        let <Touch_point> =
+                            call 'lists':'nth'(1, call 'erlang':'map_get'('touches', Ev))
+                        in  do  call 'erlang':'trunc'(call 'erlang':'map_get'('pos_x', Touch_point))
+                                'ok'
+                     <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  #{#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']])}#
+                    do  'false'
+                        do  'ok'
+                            do  call 'v.gg':'new_context'(~{'width'=>600,'height'=>600,'create_window'=>'true','window_title'=>#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#,'user_data'=>App,'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'frame_fn'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'init_fn'=>fun (_fref0) -> call 'v.main':'my_init'(_fref0),'cleanup_fn'=>fun (_fref0) -> call 'v.main':'cleanup'(_fref0),'event_fn'=>fun (_fref0, _fref1) -> call 'v.main':'my_event_manager'(_fref0, _fref1),{'vbeam','type'}=>'Config'}~)
+                                do  call 'erlang':'monotonic_time'('millisecond')
+                                    'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

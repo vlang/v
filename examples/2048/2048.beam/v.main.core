@@ -1,0 +1,590 @@
+module 'v.main' ['avg'/2,
+                'Board.transpose'/1,
+                'Board.hmirror'/1,
+                'TileLine.to_left'/1,
+                'Board.to_left'/1,
+                'yx2i'/2,
+                'Board.move'/2,
+                'Board.is_game_over'/1,
+                'App.update_tickers'/1,
+                'App.new_game'/1,
+                'App.check_for_victory'/1,
+                'App.check_for_game_over'/1,
+                'Board.place_random_tile'/1,
+                'App.new_random_tile'/1,
+                'App.apply_new_board'/2,
+                'App.move'/2,
+                'Prediction.str'/1,
+                'App.ai_move'/1,
+                'App.label_format'/2,
+                'App.set_theme'/2,
+                'App.resize'/1,
+                'App.draw'/1,
+                'App.draw_tiles'/1,
+                'App.draw_one_tile'/4,
+                'App.handle_touches'/1,
+                'App.handle_tap'/1,
+                'App.handle_swipe'/1,
+                'App.next_theme'/1,
+                'App.next_tile_format'/1,
+                'App.undo'/1,
+                'App.on_key_down'/2,
+                'on_event'/2,
+                'frame'/1,
+                'init'/1,
+                'main'/0,
+                'TileFormat__static__from'/1,
+                'GameState__static__from'/1,
+                'LabelKind__static__from'/1,
+                'Direction__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'avg'/2 =
+        fun (A, B) ->
+            call 'erlang':'div'(call 'erlang':'+'(A, B), 2)
+    'Board.transpose'/1 =
+        fun (B) ->
+            do  let <_1> =
+                fun (Y) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                B
+    'Board.hmirror'/1 =
+        fun (B) ->
+            do  let <_1> =
+                fun (Y) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                B
+    'TileLine.to_left'/1 =
+        fun (T) ->
+            let <Right_border_idx> =
+                4
+            in  let <Zeros> =
+                    0
+                in  let <Nonzeros> =
+                        0
+                    in  do  let <_1> =
+                            fun (X) ->
+                                case call 'erlang':'=:='(X, 0) of <'true'> when 'true' -> Zeros <'false'> when 'true' -> Nonzeros end
+                        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('field', T))
+                            case call 'erlang':'=:='(Nonzeros, 0) of
+                                <'true'> when 'true' -> T
+                                <'false'> when 'true' -> 
+                                    do  case call 'erlang':'>'(Zeros, 0) of <'true'> when 'true' -> 
+                                        'ok'
+                                     <'false'> when 'true' -> 'ok' end
+                                        T
+                            end
+    'Board.to_left'/1 =
+        fun (B) ->
+            do  let <_1> =
+                fun (Y) ->
+                    let <Hline> =
+                        ~{'ypos'=>Y,{'vbeam','type'}=>'TileLine'}~
+                    in  do  let <_3> =
+                            fun (X) ->
+                                do  call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('field', B)))
+                                    'ok'
+                        in  let <_4> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                            in  call 'lists':'foreach'(_3, _4)
+                            let <Reshline> =
+                                apply 'TileLine.to_left'/1(Hline)
+                            in  do  call 'erlang':'map_get'('shifts', Reshline)
+                                    do  call 'erlang':'map_get'('points', Reshline)
+                                        'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                B
+    'yx2i'/2 =
+        fun (Y, X) ->
+            call 'erlang':'bor'(call 'erlang':'bsl'(Y, 16), X)
+    'Board.move'/2 =
+        fun (B, D) ->
+            do  let <_1> =
+                fun (Y) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                let <New> =
+                    case D of <'left'> when 'true' -> apply 'Board.to_left'/1(B) <'right'> when 'true' -> apply 'Board.hmirror'/1(apply 'Board.to_left'/1(apply 'Board.hmirror'/1(B))) <'up'> when 'true' -> apply 'Board.transpose'/1(apply 'Board.to_left'/1(apply 'Board.transpose'/1(B))) <'down'> when 'true' -> apply 'Board.transpose'/1(apply 'Board.hmirror'/1(apply 'Board.to_left'/1(apply 'Board.hmirror'/1(apply 'Board.transpose'/1(B))))) end
+                in  do  let <_3> =
+                        fun (Y) ->
+                            'ok'
+                    in  let <_4> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                        in  call 'lists':'foreach'(_3, _4)
+                        New
+    'Board.is_game_over'/1 =
+        fun (B) ->
+            do  let <_1> =
+                fun (Y) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                'true'
+    'App.update_tickers'/1 =
+        fun (App) ->
+            'ok'
+    'App.new_game'/1 =
+        fun (App) ->
+            do  ~{{'vbeam','type'}=>'Board'}~
+                do  let <_1> =
+                    fun (Y) ->
+                        'ok'
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    do  'play'
+                        do  []
+                            do  0
+                                do  apply 'App.new_random_tile'/1(App)
+                                    apply 'App.new_random_tile'/1(App)
+    'App.check_for_victory'/1 =
+        fun (App) ->
+            'ok'
+    'App.check_for_game_over'/1 =
+        fun (App) ->
+            case apply 'Board.is_game_over'/1(call 'erlang':'map_get'('board', App)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Board.place_random_tile'/1 =
+        fun (B) ->
+            let <Etiles> =
+                [16|[]]
+            in  let <Empty_tiles_max> =
+                    0
+                in  do  let <_1> =
+                        fun (Y) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        case call 'erlang':'>'(Empty_tiles_max, 0) of
+                            <'true'> when 'true' -> Empty_pos
+                            <'false'> when 'true' -> 
+                                ~{{'vbeam','type'}=>'Pos'}~
+                        end
+    'App.new_random_tile'/1 =
+        fun (App) ->
+            do  let <_1> =
+                fun (Y) ->
+                    'ok'
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                let <Empty_pos> =
+                    apply 'Board.place_random_tile'/1(call 'erlang':'map_get'('board', App))
+                in  let <Random_value> =
+                        apply 'Board.place_random_tile'/1(call 'erlang':'map_get'('board', App))
+                    in  do  case call 'erlang':'>'(Random_value, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'=/='(call 'erlang':'map_get'('state', App), 'freeplay') of <'true'> when 'true' -> apply 'App.check_for_victory'/1(App) <'false'> when 'true' -> 'ok' end
+                                apply 'App.check_for_game_over'/1(App)
+    'App.apply_new_board'/2 =
+        fun (App, New) ->
+            let <Old> =
+                call 'erlang':'map_get'('board', App)
+            in  do  call 'erlang':'map_get'('moves', App)
+                    do  let <_1> =
+                        fun (Y) ->
+                            'ok'
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        do  New
+                            do  call 'erlang':'bsl'(call 'erlang':'map_get'('undo', App), ~{'board'=>Old,'state'=>call 'erlang':'map_get'('state', App),{'vbeam','type'}=>'Undo'}~)
+                                apply 'App.new_random_tile'/1(App)
+    'App.move'/2 =
+        fun (App, D) ->
+            let <New> =
+                apply 'Board.move'/2(call 'erlang':'map_get'('board', App), D)
+            in  let <Is_valid> =
+                    apply 'Board.move'/2(call 'erlang':'map_get'('board', App), D)
+                in  case call 'erlang':'not'(Is_valid) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            apply 'App.apply_new_board'/2(App, New)
+                    end
+    'Prediction.str'/1 =
+        fun (P) ->
+            call 'erlang':'iolist_to_binary'([#{#<123>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('move', P)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('mpoints', P))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('mcmoves', P))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]])
+    'App.ai_move'/1 =
+        fun (App) ->
+            let <Predictions> =
+                [4|[]]
+            in  let <Is_valid> =
+                    'false'
+                in  let <Think_watch> =
+                        call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~)
+                    in  do  let <_1> =
+                            fun (Move) ->
+                                let <Move_idx> =
+                                    Move
+                                in  do  Move
+                                        let <Mpoints> =
+                                            0
+                                        in  let <Mcmoves> =
+                                                0
+                                            in  let <Is_valid_2> =
+                                                    let <_3> =
+                                                        fun (_, _8) ->
+                                                            let <Is_validAcc> =
+                                                                call 'erlang':'element'(1, _8)
+                                                            in                                                              let <MpointsAcc> =
+                                                                call 'erlang':'element'(2, _8)
+                                                            in                                                              let <McmovesAcc> =
+                                                                call 'erlang':'element'(3, _8)
+                                                            in  
+                                                            let <Cboard> =
+                                                                call 'erlang':'map_get'('board', App)
+                                                            in                                                              let <Cboard_9> =
+                                                                apply 'Board.move'/2(Cboard_9, Move)
+                                                            in                                                              let <Is_validOut_5> =
+                                                                apply 'Board.move'/2(Cboard_9, Move)
+                                                            in                                                              do  case call 'erlang':'or'(call 'erlang':'not'(Is_validOut_5), apply 'Board.is_game_over'/1(Cboard_9)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                let <MpointsOut_6> =
+                                                                    call 'erlang':'map_get'('points', Cboard_9)
+                                                                in                                                                  let <Cmoves> =
+                                                                    0
+                                                                in                                                                  do  'ok'
+                                                                    let <MpointsOut_6> =
+                                                                        call 'erlang':'map_get'('points', Cboard_9)
+                                                                    in                                                                      let <McmovesOut_7> =
+                                                                        Cmoves
+                                                                    in  {Is_validOut_5, MpointsOut_6, McmovesOut_7}
+                                                        in  let <_4> =
+                                                            call 'lists':'seq'(0, call 'erlang':'-'(300, 1))
+                                                        in  call 'lists':'foldl'(_3, {Is_valid, Mpoints, Mcmoves}, _4)
+                                                    in  do  call 'erlang':'/'(call 'erlang':'float'(Mpoints), 300)
+                                                            'ok'
+                            in  call 'lists':'foreach'(_1, ['up'|['right'|['down'|['left'|[]]]]])
+                                let <Bestprediction> =
+                                    ~{'mpoints'=>-1,{'vbeam','type'}=>'Prediction'}~
+                                in  let <Bestprediction_10> =
+                                        let <_11> =
+                                            fun (Move_idx, BestpredictionAcc) ->
+                                                let <BestpredictionOut_13> =
+                                                    case call 'erlang':'<'(call 'erlang':'map_get'('mpoints', BestpredictionAcc), call 'erlang':'map_get'('mpoints', call 'lists':'nth'(call 'erlang':'+'(Move_idx, 1), Predictions))) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Move_idx, 1), Predictions) <'false'> when 'true' -> BestpredictionAcc end
+                                                in  BestpredictionOut_13
+                                        in  let <_12> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(['up'|['right'|['down'|['left'|[]]]]]), 1))
+                                        in  call 'lists':'foldl'(_11, Bestprediction, _12)
+                                    in  do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<83>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(Think_watch)))|[#{#<194>(8,1,'integer',['unsigned'|['big']]),#<181>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<124>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Bestprediction_10|[]]]]])|[]])
+                                            apply 'App.move'/2(App, call 'erlang':'map_get'('move', Bestprediction_10))
+        'App.label_format'/2 =
+            fun (App, Kind) ->
+                case Kind of <'keys'> when 'true' -> ~{'color'=>~{'r'=>150,'g'=>150,'b'=>255,'a'=>200,{'vbeam','type'}=>'Color'}~,'align'=>'center','vertical_align'=>'bottom','size'=>call 'erlang':'div'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 4),{'vbeam','type'}=>'TextCfg'}~ <'points'> when 'true' -> ~{'color'=>case call 'lists':'member'(call 'erlang':'map_get'('state', App), ['over'|['victory'|[]]]) of <'true'> when 'true' -> ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> call 'erlang':'map_get'('text_color', call 'erlang':'map_get'('theme', App)) end,'align'=>'left','size'=>call 'erlang':'div'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 2),{'vbeam','type'}=>'TextCfg'}~ <'moves'> when 'true' -> ~{'color'=>case call 'lists':'member'(call 'erlang':'map_get'('state', App), ['over'|['victory'|[]]]) of <'true'> when 'true' -> ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> call 'erlang':'map_get'('text_color', call 'erlang':'map_get'('theme', App)) end,'align'=>'right','size'=>call 'erlang':'div'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 2),{'vbeam','type'}=>'TextCfg'}~ <'tile'> when 'true' -> ~{'color'=>call 'erlang':'map_get'('text_color', call 'erlang':'map_get'('theme', App)),'align'=>'center','vertical_align'=>'middle','size'=>call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)),{'vbeam','type'}=>'TextCfg'}~ <'victory'> when 'true' -> ~{'color'=>call 'erlang':'map_get'('victory_color', call 'erlang':'map_get'('theme', App)),'align'=>'center','vertical_align'=>'middle','size'=>call 'erlang':'*'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 2),{'vbeam','type'}=>'TextCfg'}~ <'game_over'> when 'true' -> ~{'color'=>call 'erlang':'map_get'('game_over_color', call 'erlang':'map_get'('theme', App)),'align'=>'center','vertical_align'=>'middle','size'=>call 'erlang':'*'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 2),{'vbeam','type'}=>'TextCfg'}~ <'score_end'> when 'true' -> ~{'color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'align'=>'center','vertical_align'=>'middle','size'=>call 'erlang':'div'(call 'erlang':'*'(call 'erlang':'map_get'('font_size', call 'erlang':'map_get'('ui', App)), 3), 4),{'vbeam','type'}=>'TextCfg'}~ end
+        'App.set_theme'/2 =
+            fun (App, Idx) ->
+                let <Theme> =
+                    call 'lists':'nth'(call 'erlang':'+'(Idx, 1), [~{'bg_color'=>call 'v.gg':'rgb'(250, 248, 239),'padding_color'=>call 'v.gg':'rgb'(143, 130, 119),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(205, 193, 180)|[call 'v.gg':'rgb'(238, 228, 218)|[call 'v.gg':'rgb'(237, 224, 200)|[call 'v.gg':'rgb'(242, 177, 121)|[call 'v.gg':'rgb'(245, 149, 99)|[call 'v.gg':'rgb'(246, 124, 95)|[call 'v.gg':'rgb'(246, 94, 59)|[call 'v.gg':'rgb'(237, 207, 114)|[call 'v.gg':'rgb'(237, 204, 97)|[call 'v.gg':'rgb'(237, 200, 80)|[call 'v.gg':'rgb'(237, 197, 63)|[call 'v.gg':'rgb'(237, 194, 46)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[~{'bg_color'=>call 'v.gg':'rgb'(55, 55, 55),'padding_color'=>call 'v.gg':'rgb'(68, 60, 59),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(123, 115, 108)|[call 'v.gg':'rgb'(142, 136, 130)|[call 'v.gg':'rgb'(142, 134, 120)|[call 'v.gg':'rgb'(145, 106, 72)|[call 'v.gg':'rgb'(147, 89, 59)|[call 'v.gg':'rgb'(147, 74, 57)|[call 'v.gg':'rgb'(147, 56, 35)|[call 'v.gg':'rgb'(142, 124, 68)|[call 'v.gg':'rgb'(142, 122, 58)|[call 'v.gg':'rgb'(142, 120, 48)|[call 'v.gg':'rgb'(142, 118, 37)|[call 'v.gg':'rgb'(142, 116, 27)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[~{'bg_color'=>call 'v.gg':'rgb'(38, 38, 66),'padding_color'=>call 'v.gg':'rgb'(58, 50, 74),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(92, 86, 140)|[call 'v.gg':'rgb'(106, 99, 169)|[call 'v.gg':'rgb'(106, 97, 156)|[call 'v.gg':'rgb'(108, 79, 93)|[call 'v.gg':'rgb'(110, 66, 76)|[call 'v.gg':'rgb'(110, 55, 74)|[call 'v.gg':'rgb'(110, 42, 45)|[call 'v.gg':'rgb'(106, 93, 88)|[call 'v.gg':'rgb'(106, 91, 75)|[call 'v.gg':'rgb'(106, 90, 62)|[call 'v.gg':'rgb'(106, 88, 48)|[call 'v.gg':'rgb'(106, 87, 35)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[]]]])
+                in  do  Idx
+                        do  Theme
+                            apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('bg_color', Theme))
+        'App.resize'/1 =
+            fun (App) ->
+                let <S> =
+                    call 'erlang':'map_get'('scale', call 'erlang':'map_get'('gg', App))
+                in  let <S_1> =
+                        case call 'erlang':'=:='(S, 0.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> S end
+                    in  let <Window_size> =
+                            apply 'Context.window_size'/1(call 'erlang':'map_get'('gg', App))
+                        in  let <W> =
+                                call 'erlang':'map_get'('width', Window_size)
+                            in  let <H> =
+                                    call 'erlang':'map_get'('height', Window_size)
+                                in  let <M> =
+                                        call 'erlang':'float'(call 'v.math':'min'(W, H))
+                                    in  do  S_1
+                                            do  W
+                                                do  H
+                                                    do  call 'erlang':'trunc'(call 'erlang':'/'(M, 38))
+                                                        do  call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App))
+                                                            do  call 'erlang':'*'(call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App)), 2)
+                                                                do  call 'erlang':'trunc'(call 'erlang':'/'(call 'erlang':'-'(call 'erlang':'-'(M, call 'erlang':'*'(call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App)), 5)), call 'erlang':'*'(call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)), 2)), 4))
+                                                                    do  call 'erlang':'trunc'(call 'erlang':'/'(M, 10))
+                                                                        case call 'erlang':'>'(W, H) of <'true'> when 'true' -> 
+                                                                            do  0
+                                                                                'ok'
+                                                                         <'false'> when 'true' -> 
+                                                                            do  call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))), call 'erlang':'map_get'('header_size', call 'erlang':'map_get'('ui', App))), 2)
+                                                                                'ok'
+                                                                         end
+        'App.draw'/1 =
+            fun (App) ->
+                let <Xpad> =
+                    call 'erlang':'map_get'('x_padding', call 'erlang':'map_get'('ui', App))
+                in  let <Ypad> =
+                        call 'erlang':'map_get'('y_padding', call 'erlang':'map_get'('ui', App))
+                    in  let <Ww> =
+                            call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))
+                        in  let <Wh> =
+                                call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App))
+                            in  let <M> =
+                                    call 'v.math':'min'(Ww, Wh)
+                                in  let <Labelx> =
+                                        call 'erlang':'+'(Xpad, call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)))
+                                    in  let <Labely> =
+                                            call 'erlang':'+'(Ypad, call 'erlang':'div'(call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)), 2))
+                                        in  do  apply 'App.draw_tiles'/1(App)
+                                                do  case call 'erlang':'=:='(call 'erlang':'map_get'('state', App), 'over') of <'true'> when 'true' -> 
+                                                    do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), 0, 0, Ww, Wh, call 'v.gg':'rgba'(10, 0, 0, 180))
+                                                        do  'ok'
+                                                            let <F> =
+                                                                apply 'App.label_format'/2(App, 'tile')
+                                                            in  let <Msg> =
+                                                                    'ok'
+                                                                in  'ok'
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    do  case call 'erlang':'=:='(call 'erlang':'map_get'('state', App), 'victory') of <'true'> when 'true' -> 
+                                                        do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), 0, 0, Ww, Wh, call 'v.gg':'rgba'(0, 10, 0, 180))
+                                                            do  'ok'
+                                                                let <Msg1> =
+                                                                    'ok'
+                                                                in  let <Msg2> =
+                                                                        'ok'
+                                                                    in  do  'ok'
+                                                                            'ok'
+                                                     <'false'> when 'true' -> 'ok' end
+                                                        do  'ok'
+                                                            do  'ok'
+                                                                'ok'
+        'App.draw_tiles'/1 =
+            fun (App) ->
+                let <Xstart> =
+                    call 'erlang':'+'(call 'erlang':'map_get'('x_padding', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)))
+                in  let <Ystart> =
+                        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('y_padding', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App))), call 'erlang':'map_get'('header_size', call 'erlang':'map_get'('ui', App)))
+                    in  let <Toffset> =
+                            call 'erlang':'+'(call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App)))
+                        in  let <Tiles_size> =
+                                call 'erlang':'-'(call 'v.math':'min'(call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App))), call 'erlang':'*'(call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)), 2))
+                            in  do  apply 'Context.draw_rounded_rect_filled'/7(call 'erlang':'map_get'('gg', App), Xstart, Ystart, Tiles_size, Tiles_size, call 'erlang':'div'(Tiles_size, 24), call 'erlang':'map_get'('padding_color', call 'erlang':'map_get'('theme', App)))
+                                    do  let <_1> =
+                                        fun (Y) ->
+                                            'ok'
+                                    in  let <_2> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                                        in  call 'lists':'foreach'(_1, _2)
+                                        do  let <_3> =
+                                            fun (Y) ->
+                                                'ok'
+                                        in  let <_4> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                                            in  call 'lists':'foreach'(_3, _4)
+                                            'ok'
+        'App.draw_one_tile'/4 =
+            fun (App, X, Y, Tidx) ->
+                let <Xstart> =
+                    call 'erlang':'+'(call 'erlang':'map_get'('x_padding', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App)))
+                in  let <Ystart> =
+                        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('y_padding', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('border_size', call 'erlang':'map_get'('ui', App))), call 'erlang':'map_get'('header_size', call 'erlang':'map_get'('ui', App)))
+                    in  let <Toffset> =
+                            call 'erlang':'+'(call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App)))
+                        in  let <Oidx> =
+                                call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('oidxs', call 'erlang':'map_get'('board', App))))
+                            in  let <Oy> =
+                                    call 'erlang':'bsr'(Oidx, 16)
+                                in  let <Ox> =
+                                        call 'erlang':'band'(Oidx, 16#FFFF)
+                                    in  let <Dx> =
+                                            0
+                                        in  let <Dy> =
+                                                0
+                                            in  do  case call 'erlang':'=/='(Oidx, 16#FFFFFFFF) of <'true'> when 'true' -> 
+                                                    let <Scaling> =
+                                                        call 'erlang':'*'(call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)), call 'v.math.easing':'in_out_quint'(call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('mtickers', App)))))
+                                                    in  let <Dx_1> =
+                                                            case call 'erlang':'=/='(Ox, X) of <'true'> when 'true' -> call 'v.math':'clip'(call 'erlang':'trunc'(call 'erlang':'*'(Scaling, call 'erlang':'-'(call 'erlang':'float'(Ox), call 'erlang':'float'(X)))), call 'erlang':'*'(-4, call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App))), call 'erlang':'*'(4, call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)))) <'false'> when 'true' -> Dx end
+                                                        in  case call 'erlang':'=/='(Oy, Y) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    let <Tile_color> =
+                                                        case call 'erlang':'<'(Tidx, call 'erlang':'length'(call 'erlang':'map_get'('tile_colors', call 'erlang':'map_get'('theme', App)))) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Tidx, 1), call 'erlang':'map_get'('tile_colors', call 'erlang':'map_get'('theme', App))) <'false'> when 'true' -> call 'lists':'last'(call 'erlang':'map_get'('tile_colors', call 'erlang':'map_get'('theme', App))) end
+                                                    in  let <Anim_size> =
+                                                            call 'erlang':'-'(1.0, call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('atickers', App))))
+                                                        in  let <Tw> =
+                                                                call 'erlang':'trunc'(call 'erlang':'*'(Anim_size, call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App))))
+                                                            in  let <Xoffset> =
+                                                                    call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(Dx_1, Xstart), call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App))), call 'erlang':'*'(X, Toffset)), call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)), Tw), 2))
+                                                                in  let <Yoffset> =
+                                                                        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(Dy, Ystart), call 'erlang':'map_get'('padding_size', call 'erlang':'map_get'('ui', App))), call 'erlang':'*'(Y, Toffset)), call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'map_get'('tile_size', call 'erlang':'map_get'('ui', App)), Tw), 2))
+                                                                    in  do  apply 'Context.draw_rounded_rect_filled'/7(call 'erlang':'map_get'('gg', App), Xoffset, Yoffset, Tw, Tw, call 'erlang':'div'(Tw, 8), Tile_color)
+                                                                            case call 'erlang':'=/='(Tidx, 0) of <'true'> when 'true' -> 
+                                                                                let <Xpos> =
+                                                                                    call 'erlang':'+'(Xoffset, call 'erlang':'div'(Tw, 2))
+                                                                                in  let <Ypos> =
+                                                                                        call 'erlang':'+'(Yoffset, call 'erlang':'div'(Tw, 2))
+                                                                                    in  let <Fmt> =
+                                                                                            apply 'App.label_format'/2(App, 'tile')
+                                                                                        in  let <Fmt_2> =
+                                                                                                ~{'size'=>call 'erlang':'trunc'(call 'erlang':'*'(Anim_size, call 'erlang':'-'(call 'erlang':'map_get'('size', Fmt), 1))),{'vbeam','type'}=>'TextCfg'}~
+                                                                                            in  case call 'erlang':'map_get'('tile_format', App) of <'normal'> when 'true' -> 'ok' <'log'> when 'true' -> 'ok' <'exponent'> when 'true' -> 'ok' <'shifts'> when 'true' -> 'ok' <'none'> when 'true' -> 'ok' <'end'> when 'true' -> 'ok' end
+                                                                             <'false'> when 'true' -> 'ok' end
+        'App.handle_touches'/1 =
+            fun (App) ->
+                let <S> =
+                    call 'erlang':'map_get'('start', call 'erlang':'map_get'('touch', App))
+                in  let <E> =
+                        call 'erlang':'map_get'('end', call 'erlang':'map_get'('touch', App))
+                    in  let <Adx> =
+                            call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', E)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', S))))
+                        in  let <Ady> =
+                                call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', E)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', S))))
+                            in  case call 'erlang':'<'(call 'v.math':'max'(Adx, Ady), 10) of <'true'> when 'true' -> apply 'App.handle_tap'/1(App) <'false'> when 'true' -> apply 'App.handle_swipe'/1(App) end
+        'App.handle_tap'/1 =
+            fun (App) ->
+                do  call 'erlang':'map_get'('x_padding', call 'erlang':'map_get'('ui', App))
+let <Ypad> =
+                    call 'erlang':'map_get'('y_padding', call 'erlang':'map_get'('ui', App))
+                in  let <W> =
+                        call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))
+                    in  let <H> =
+                            call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App))
+                        in  let <M> =
+                                call 'v.math':'min'(W, H)
+                            in  let <S> =
+                                    call 'erlang':'map_get'('start', call 'erlang':'map_get'('touch', App))
+                                in  let <E> =
+                                        call 'erlang':'map_get'('end', call 'erlang':'map_get'('touch', App))
+                                    in  let <Avgx> =
+                                            apply 'avg'/2(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', S)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', E)))
+                                        in  let <Avgy> =
+                                                apply 'avg'/2(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', S)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', E)))
+                                            in  do  case call 'erlang':'and'(call 'erlang':'<'(Avgx, 50), call 'erlang':'<'(call 'erlang':'-'(H, Avgy), 50)) of <'true'> when 'true' -> apply 'App.next_theme'/1(App) <'false'> when 'true' -> 'ok' end
+                                                    do  case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'-'(W, Avgx), 50), call 'erlang':'<'(call 'erlang':'-'(H, Avgy), 50)) of <'true'> when 'true' -> apply 'App.next_tile_format'/1(App) <'false'> when 'true' -> 'ok' end
+                                                        case call 'erlang':'=:='(call 'erlang':'map_get'('state', App), 'victory') of <'true'> when 'true' -> case call 'erlang':'>'(Avgy, call 'erlang':'+'(call 'erlang':'div'(M, 2), Ypad)) of <'true'> when 'true' -> case call 'erlang':'<'(Avgy, call 'erlang':'+'(call 'erlang':'div'(call 'erlang':'*'(M, 7), 10), Ypad)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'<'(Avgy, call 'erlang':'+'(call 'erlang':'div'(call 'erlang':'*'(M, 9), 10), Ypad)) of <'true'> when 'true' -> apply 'App.new_game'/1(App) <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('state', App), 'over') of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>'(Avgy, call 'erlang':'+'(call 'erlang':'div'(M, 2), Ypad)), call 'erlang':'<'(Avgy, call 'erlang':'+'(call 'erlang':'div'(call 'erlang':'*'(M, 7), 10), Ypad))) of <'true'> when 'true' -> apply 'App.new_game'/1(App) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end end
+        'App.handle_swipe'/1 =
+            fun (App) ->
+                case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('state', App), ['play'|['freeplay'|[]]])) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <S> =
+                            call 'erlang':'map_get'('start', call 'erlang':'map_get'('touch', App))
+                        in  let <E> =
+                                call 'erlang':'map_get'('end', call 'erlang':'map_get'('touch', App))
+                            in  let <W> =
+                                    call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))
+                                in  let <H> =
+                                        call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App))
+                                    in  let <Dx> =
+                                            call 'erlang':'-'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', E)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', S)))
+                                        in  let <Dy> =
+                                                call 'erlang':'-'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', E)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', S)))
+                                            in  let <Adx> =
+                                                    call 'erlang':'abs'(Dx)
+                                                in  let <Ady> =
+                                                        call 'erlang':'abs'(Dy)
+                                                    in  let <Dmin> =
+                                                            case call 'erlang':'>'(call 'v.math':'min'(Adx, Ady), 0) of <'true'> when 'true' -> call 'v.math':'min'(Adx, Ady) <'false'> when 'true' -> 1 end
+                                                        in  let <Dmax> =
+                                                                case call 'erlang':'>'(call 'v.math':'max'(Adx, Ady), 0) of <'true'> when 'true' -> call 'v.math':'max'(Adx, Ady) <'false'> when 'true' -> 1 end
+                                                            in  let <Tdiff> =
+                                                                    apply 'Duration.milliseconds'/1(call 'erlang':'-'(call 'erlang':'map_get'('time', E), call 'erlang':'map_get'('time', S)))
+                                                                in  let <Min_swipe_distance> =
+                                                                        call 'erlang':'+'(call 'erlang':'trunc'(call 'math':'sqrt'(call 'erlang':'div'(call 'erlang':'*'(call 'v.math':'min'(W, H), Tdiff), 100))), 20)
+                                                                    in  case call 'erlang':'<'(Dmax, Min_swipe_distance) of
+                                                                            <'true'> when 'true' -> 'ok'
+                                                                            <'false'> when 'true' -> 
+                                                                                case call 'erlang':'<'(call 'erlang':'div'(Dmax, Dmin), 2) of
+                                                                                    <'true'> when 'true' -> 'ok'
+                                                                                    <'false'> when 'true' -> 
+                                                                                        case call 'erlang':'>'(Adx, Ady) of <'true'> when 'true' -> case call 'erlang':'<'(Dx, 0) of <'true'> when 'true' -> apply 'App.move'/2(App, 'left') <'false'> when 'true' -> apply 'App.move'/2(App, 'right') end <'false'> when 'true' -> case call 'erlang':'<'(Dy, 0) of <'true'> when 'true' -> apply 'App.move'/2(App, 'up') <'false'> when 'true' -> apply 'App.move'/2(App, 'down') end end
+                                                                                end
+                                                                        end
+                end
+        'App.next_theme'/1 =
+            fun (App) ->
+                apply 'App.set_theme'/2(App, case call 'erlang':'=:='(call 'erlang':'map_get'('theme_idx', App), call 'erlang':'-'(call 'erlang':'length'([~{'bg_color'=>call 'v.gg':'rgb'(250, 248, 239),'padding_color'=>call 'v.gg':'rgb'(143, 130, 119),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(205, 193, 180)|[call 'v.gg':'rgb'(238, 228, 218)|[call 'v.gg':'rgb'(237, 224, 200)|[call 'v.gg':'rgb'(242, 177, 121)|[call 'v.gg':'rgb'(245, 149, 99)|[call 'v.gg':'rgb'(246, 124, 95)|[call 'v.gg':'rgb'(246, 94, 59)|[call 'v.gg':'rgb'(237, 207, 114)|[call 'v.gg':'rgb'(237, 204, 97)|[call 'v.gg':'rgb'(237, 200, 80)|[call 'v.gg':'rgb'(237, 197, 63)|[call 'v.gg':'rgb'(237, 194, 46)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[~{'bg_color'=>call 'v.gg':'rgb'(55, 55, 55),'padding_color'=>call 'v.gg':'rgb'(68, 60, 59),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(123, 115, 108)|[call 'v.gg':'rgb'(142, 136, 130)|[call 'v.gg':'rgb'(142, 134, 120)|[call 'v.gg':'rgb'(145, 106, 72)|[call 'v.gg':'rgb'(147, 89, 59)|[call 'v.gg':'rgb'(147, 74, 57)|[call 'v.gg':'rgb'(147, 56, 35)|[call 'v.gg':'rgb'(142, 124, 68)|[call 'v.gg':'rgb'(142, 122, 58)|[call 'v.gg':'rgb'(142, 120, 48)|[call 'v.gg':'rgb'(142, 118, 37)|[call 'v.gg':'rgb'(142, 116, 27)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[~{'bg_color'=>call 'v.gg':'rgb'(38, 38, 66),'padding_color'=>call 'v.gg':'rgb'(58, 50, 74),'victory_color'=>call 'v.gg':'rgb'(100, 160, 100),'game_over_color'=>call 'v.gg':'rgb'(190, 50, 50),'text_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'tile_colors'=>[call 'v.gg':'rgb'(92, 86, 140)|[call 'v.gg':'rgb'(106, 99, 169)|[call 'v.gg':'rgb'(106, 97, 156)|[call 'v.gg':'rgb'(108, 79, 93)|[call 'v.gg':'rgb'(110, 66, 76)|[call 'v.gg':'rgb'(110, 55, 74)|[call 'v.gg':'rgb'(110, 42, 45)|[call 'v.gg':'rgb'(106, 93, 88)|[call 'v.gg':'rgb'(106, 91, 75)|[call 'v.gg':'rgb'(106, 90, 62)|[call 'v.gg':'rgb'(106, 88, 48)|[call 'v.gg':'rgb'(106, 87, 35)|[]]]]]]]]]]]]],{'vbeam','type'}=>'Theme'}~|[]]]]), 1)) of <'true'> when 'true' -> 0 <'false'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('theme_idx', App), 1) end)
+        'App.next_tile_format'/1 =
+            fun (App) ->
+                do  call 'erlang':'+'(call 'erlang':'map_get'('tile_format', App), 1)
+                    case call 'erlang':'=:='(call 'erlang':'map_get'('tile_format', App), 'end') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+        'App.undo'/1 =
+            fun (App) ->
+                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('undo', App)), 0) of <'true'> when 'true' -> 
+                    let <Undo> =
+                        call 'lists':'last'(call 'erlang':'map_get'('undo', App))
+                    in  do  call 'erlang':'map_get'('board', Undo)
+                            do  call 'erlang':'map_get'('state', Undo)
+                                call 'erlang':'map_get'('moves', App)
+                 <'false'> when 'true' -> 'ok' end
+        'App.on_key_down'/2 =
+            fun (App, Key) ->
+                do  case call 'erlang':'=:='(Key, 'v') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'page_up') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'page_down') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'escape') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'n') of <'true'> when 'true' -> apply 'App.new_game'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'r') of <'true'> when 'true' -> apply 'App.new_game'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'backspace') of <'true'> when 'true' -> apply 'App.undo'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'enter') of <'true'> when 'true' -> apply 'App.next_tile_format'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'j') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 't') of <'true'> when 'true' -> apply 'App.next_theme'/1(App) <'false'> when 'true' -> 'ok' end end end end end end end end end end
+                    do  case call 'lists':'member'(call 'erlang':'map_get'('state', App), ['play'|['freeplay'|[]]]) of <'true'> when 'true' -> case call 'erlang':'not'(call 'erlang':'map_get'('is_ai_mode', App)) of <'true'> when 'true' -> case call 'erlang':'=:='(Key, 'w') of <'true'> when 'true' -> apply 'App.move'/2(App, 'up') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'up') of <'true'> when 'true' -> apply 'App.move'/2(App, 'up') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'a') of <'true'> when 'true' -> apply 'App.move'/2(App, 'left') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'left') of <'true'> when 'true' -> apply 'App.move'/2(App, 'left') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 's') of <'true'> when 'true' -> apply 'App.move'/2(App, 'down') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'down') of <'true'> when 'true' -> apply 'App.move'/2(App, 'down') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'd') of <'true'> when 'true' -> apply 'App.move'/2(App, 'right') <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'right') of <'true'> when 'true' -> apply 'App.move'/2(App, 'right') <'false'> when 'true' -> 'ok' end end end end end end end end <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('state', App), 'victory') of <'true'> when 'true' -> case call 'erlang':'=:='(Key, 'space') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+        'on_event'/2 =
+            fun (E, App) ->
+                case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'key_down') of <'true'> when 'true' -> apply 'App.on_key_down'/2(App, call 'erlang':'map_get'('key_code', E)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'resized') of <'true'> when 'true' -> apply 'App.resize'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'restored') of <'true'> when 'true' -> apply 'App.resize'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'resumed') of <'true'> when 'true' -> apply 'App.resize'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'touches_began') of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', E), 0) of <'true'> when 'true' -> 
+                    let <T> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('touches', E))
+                    in  'ok'
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'touches_ended') of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', E), 0) of <'true'> when 'true' -> 
+                    let <T_1> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('touches', E))
+                    in  do  ~{'pos'=>~{'x'=>call 'erlang':'trunc'(call 'erlang':'/'(call 'erlang':'map_get'('pos_x', T_1), call 'erlang':'map_get'('dpi_scale', call 'erlang':'map_get'('ui', App)))),'y'=>call 'erlang':'trunc'(call 'erlang':'/'(call 'erlang':'map_get'('pos_y', T_1), call 'erlang':'map_get'('dpi_scale', call 'erlang':'map_get'('ui', App)))),{'vbeam','type'}=>'Pos'}~,'time'=>call 'erlang':'localtime'(),{'vbeam','type'}=>'Touch'}~
+                            apply 'App.handle_touches'/1(App)
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_down') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_up') of <'true'> when 'true' -> apply 'App.handle_touches'/1(App) <'false'> when 'true' -> 'ok' end end end end end end end end
+        'frame'/1 =
+            fun (App) ->
+                let <Do_update> =
+                    'false'
+                in  let <Do_update_1> =
+                        case call 'erlang':'>'(apply 'Duration.milliseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('timer', call 'erlang':'map_get'('gg', App)))), 15) of <'true'> when 'true' -> do  apply 'StopWatch.restart'/1(call 'erlang':'map_get'('timer', call 'erlang':'map_get'('gg', App))) 'true' <'false'> when 'true' -> Do_update end
+                    in  do  'ok'
+                            do  case Do_update_1 of <'true'> when 'true' -> apply 'App.update_tickers'/1(App) <'false'> when 'true' -> 'ok' end
+                                do  apply 'App.draw'/1(App)
+                                    do  apply 'Context.end'/2(call 'erlang':'map_get'('gg', App), ~{{'vbeam','type'}=>'EndOptions'}~)
+                                        do  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(Do_update_1, call 'erlang':'map_get'('is_ai_mode', App)), call 'lists':'member'(call 'erlang':'map_get'('state', App), ['play'|['freeplay'|[]]])), call 'erlang':'=:='(call 'erlang':'rem'(call 'erlang':'map_get'('updates', App), call 'erlang':'map_get'('ai_fpm', App)), 0)) of <'true'> when 'true' -> apply 'App.ai_move'/1(App) <'false'> when 'true' -> 'ok' end
+                                            case call 'erlang':'=:='(call 'erlang':'rem'(call 'erlang':'map_get'('updates', App), 120), 0) of <'true'> when 'true' -> 
+                                                do  case apply 'gc_is_enabled'/0() of <'true'> when 'true' -> apply 'gc_disable'/0() <'false'> when 'true' -> 'ok' end
+                                                    do  apply 'gc_enable'/0()
+                                                        do  apply 'gc_collect'/0()
+                                                            apply 'gc_disable'/0()
+                                             <'false'> when 'true' -> 'ok' end
+        'init'/1 =
+            fun (App) ->
+                apply 'App.resize'/1(App)
+        'main'/0 =
+            fun () ->
+                let <App> =
+                    ~{{'vbeam','type'}=>'App'}~
+                in  do  apply 'App.new_game'/1(App)
+                        do  call 'v.gg':'new_context'(~{'bg_color'=>call 'erlang':'map_get'('bg_color', call 'erlang':'map_get'('theme', App)),'width'=>544,'height'=>560,'sample_count'=>2,'window_title'=>#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#,'frame_fn'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'event_fn'=>fun (_fref0, _fref1) -> call 'v.main':'on_event'(_fref0, _fref1),'init_fn'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'user_data'=>App,'font_path'=>call 'v.os.asset':'get_path'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#),{'vbeam','type'}=>'Config'}~)
+                            'ok'
+        'TileFormat__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'GameState__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'LabelKind__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'Direction__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

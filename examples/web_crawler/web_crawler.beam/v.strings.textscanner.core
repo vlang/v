@@ -1,0 +1,117 @@
+module 'v.strings.textscanner' ['new'/1,
+                'TextScanner.free'/1,
+                'TextScanner.remaining'/1,
+                'TextScanner.next'/1,
+                'TextScanner.skip'/1,
+                'TextScanner.skip_n'/2,
+                'TextScanner.peek'/1,
+                'TextScanner.peek_u8'/1,
+                'TextScanner.peek_n'/2,
+                'TextScanner.peek_n_u8'/2,
+                'TextScanner.back'/1,
+                'TextScanner.back_n'/2,
+                'TextScanner.peek_back'/1,
+                'TextScanner.peek_back_n'/2,
+                'TextScanner.current'/1,
+                'TextScanner.reset'/1,
+                'TextScanner.goto_end'/1,
+                'TextScanner.skip_whitespace'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new'/1 =
+        fun (Input) ->
+            ~{'input'=>Input,'ilen'=>call 'erlang':'length'(Input),{'vbeam','type'}=>'TextScanner'}~
+    'TextScanner.free'/1 =
+        fun (Ss) ->
+            apply 'string.free'/1(call 'erlang':'map_get'('input', Ss))
+    'TextScanner.remaining'/1 =
+        fun (Ss) ->
+            call 'erlang':'-'(call 'erlang':'map_get'('ilen', Ss), call 'erlang':'map_get'('pos', Ss))
+    'TextScanner.next'/1 =
+        fun (Ss) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Opos, 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    -1
+            end
+    'TextScanner.skip'/1 =
+        fun (Ss) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of <'true'> when 'true' -> call 'erlang':'map_get'('pos', Ss) <'false'> when 'true' -> 'ok' end
+    'TextScanner.skip_n'/2 =
+        fun (Ss, N) ->
+            do  N
+                case call 'erlang':'>'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'TextScanner.peek'/1 =
+        fun (Ss) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    -1
+            end
+    'TextScanner.peek_u8'/1 =
+        fun (Ss) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    0
+            end
+    'TextScanner.peek_n'/2 =
+        fun (Ss, N) ->
+            case call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), N), call 'erlang':'map_get'('ilen', Ss)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), N), 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    -1
+            end
+    'TextScanner.peek_n_u8'/2 =
+        fun (Ss, N) ->
+            case call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), N), call 'erlang':'map_get'('ilen', Ss)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Ss), N), 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    0
+            end
+    'TextScanner.back'/1 =
+        fun (Ss) ->
+            case call 'erlang':'>'(call 'erlang':'map_get'('pos', Ss), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('pos', Ss) <'false'> when 'true' -> 'ok' end
+    'TextScanner.back_n'/2 =
+        fun (Ss, N) ->
+            do  N
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('pos', Ss), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'>'(call 'erlang':'map_get'('pos', Ss), call 'erlang':'map_get'('ilen', Ss)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'TextScanner.peek_back'/1 =
+        fun (Ss) ->
+            apply 'TextScanner.peek_back_n'/2(Ss, 1)
+    'TextScanner.peek_back_n'/2 =
+        fun (Ss, N) ->
+            let <Offset> =
+                call 'erlang':'+'(N, 1)
+            in  case call 'erlang':'>='(call 'erlang':'map_get'('pos', Ss), Offset) of
+                    <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'map_get'('pos', Ss), Offset), 1), call 'erlang':'map_get'('input', Ss))
+                    <'false'> when 'true' -> 
+                        -1
+                end
+    'TextScanner.current'/1 =
+        fun (Ss) ->
+            case call 'erlang':'>'(call 'erlang':'map_get'('pos', Ss), 0) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'map_get'('pos', Ss), 1), 1), call 'erlang':'map_get'('input', Ss))
+                <'false'> when 'true' -> 
+                    -1
+            end
+    'TextScanner.reset'/1 =
+        fun (Ss) ->
+            'ok'
+    'TextScanner.goto_end'/1 =
+        fun (Ss) ->
+            'ok'
+    'TextScanner.skip_whitespace'/1 =
+        fun (Ss) ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.strings.textscanner')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.strings.textscanner', _0)
+    end

@@ -1,0 +1,92 @@
+module 'v.sokol.audio' ['FNStreamingCB.str'/1,
+                'FnStreamingCBWithUserData.str'/1,
+                'setup'/1,
+                'shutdown'/0,
+                'is_valid'/0,
+                'user_data'/0,
+                'query'/0,
+                'sample_rate'/0,
+                'buffer_frames'/0,
+                'channels'/0,
+                'suspended'/0,
+                'expect'/0,
+                'push'/2,
+                'fclamp'/3,
+                'min'/2,
+                'max'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'FNStreamingCB.str'/1 =
+    fun (X) ->
+        call 'erlang':'iolist_to_binary'([#{#<38>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'ptr_str'/1(X)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+'FnStreamingCBWithUserData.str'/1 =
+    fun (X) ->
+        call 'erlang':'iolist_to_binary'([#{#<38>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'ptr_str'/1(X)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+'setup'/1 =
+    fun (Desc) ->
+        'ok'
+'shutdown'/0 =
+    fun () ->
+        'ok'
+'is_valid'/0 =
+    fun () ->
+        'false'
+'user_data'/0 =
+    fun () ->
+        'nil'
+'query'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'AudioDesc'}~
+'sample_rate'/0 =
+    fun () ->
+        44100
+'buffer_frames'/0 =
+    fun () ->
+        2048
+'channels'/0 =
+    fun () ->
+        1
+'suspended'/0 =
+    fun () ->
+        'false'
+'expect'/0 =
+    fun () ->
+        0
+'push'/2 =
+    fun (Frames, Num_frames) ->
+        0
+'fclamp'/3 =
+    fun (X, Flo, Fhi) ->
+        case call 'erlang':'>'(X, Fhi) of
+            <'true'> when 'true' -> Fhi
+            <'false'> when 'true' -> 
+                case call 'erlang':'<'(X, Flo) of
+                    <'true'> when 'true' -> Flo
+                    <'false'> when 'true' -> 
+                        X
+                end
+        end
+'min'/2 =
+    fun (X, Y) ->
+        case call 'erlang':'<'(X, Y) of
+            <'true'> when 'true' -> X
+            <'false'> when 'true' -> 
+                Y
+        end
+'max'/2 =
+    fun (X, Y) ->
+        case call 'erlang':'<'(X, Y) of
+            <'true'> when 'true' -> Y
+            <'false'> when 'true' -> 
+                X
+        end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.audio')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.audio', _0)
+end

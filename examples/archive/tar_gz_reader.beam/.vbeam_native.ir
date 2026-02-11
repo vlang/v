@@ -1,0 +1,274 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"read_last_block">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 5,
+            body => [
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, le, <<"if_end_0">>},
+                {call, {sym, <<"get_block_number">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {cmp, {vreg, 0}, {vreg, 2}},
+                {jcc, ge, <<"if_end_0">>},
+                {mov_imm, {vreg, 3}, 1},
+                {mov, {preg, x0}, {vreg, 3}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov_imm, {vreg, 4}, 0},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret
+            ]
+        },
+        #{
+            name => <<"new_context">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 7,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_flag_parser">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"application">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"version">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"description">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {call, {sym, <<"skip_executable">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {vreg, 5}, {vreg, 0}},
+                {call, {sym, <<"finalize">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, le, <<"if_end_0">>},
+                {print_int, {vreg, 0}},
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret
+            ]
+        },
+        #{
+            name => <<"new_downloader">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {vreg, 1}, {vreg, 0}},
+                {label, <<"or_ok_2">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"download_file_with_progress">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {print_int, {vreg, 0}},
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"on_start">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+                ret
+            ]
+        },
+        #{
+            name => <<"on_chunk">>,
+            arity => 5,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}, {vreg, 4}],
+            locals => 6,
+            body => [
+                {cmp, {vreg, 4}, {imm, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                ret,
+                {label, <<"if_end_0">>},
+                {add, {vreg, 5}, {vreg, 0}, {vreg, 2}},
+                ret
+            ]
+        },
+        #{
+            name => <<"on_finish">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+                ret
+            ]
+        },
+        #{
+            name => <<"new_file_reader">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"other_block">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 4,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, le, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"colorize">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {print_int, {vreg, 3}},
+                {label, <<"if_end_1">>}
+            ]
+        },
+        #{
+            name => <<"dir_block">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 4,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {imm, 1}},
+                {jcc, le, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"colorize">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {print_int, {vreg, 3}},
+                {label, <<"if_end_1">>}
+            ]
+        },
+        #{
+            name => <<"file_block">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 5,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"get_path">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {cmp, {vreg, 0}, {imm, 2}},
+                {jcc, le, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"colorize">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {print_int, {vreg, 4}},
+                {label, <<"if_end_1">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_2">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_2">>},
+                {label, <<"if_end_2">>}
+            ]
+        },
+        #{
+            name => <<"data_block">>,
+            arity => 4,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}],
+            locals => 6,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"get_path">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {cmp, {vreg, 0}, {imm, 3}},
+                {jcc, le, <<"if_end_1">>},
+                {print_int, {vreg, 0}},
+                {label, <<"if_end_1">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_2">>},
+                {cmp, {vreg, 0}, {vreg, 4}},
+                {jcc, ne, <<"if_end_3">>},
+                {add, {vreg, 5}, {vreg, 0}, {vreg, 2}},
+                {cmp, {vreg, 3}, {imm, 0}},
+                {jcc, ne, <<"if_end_4">>},
+                {label, <<"if_end_4">>},
+                {label, <<"if_end_3">>},
+                {label, <<"if_end_2">>}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 12,
+            body => [
+                {call, {sym, <<"new_context">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_untar">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"new_decompressor">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_downloader">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"read_chunks">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"read_all">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {mov_imm, {vreg, 6}, 80},
+                {mov, {preg, x0}, {vreg, 6}},
+                {call, {sym, <<"repeat">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {print_int, {vreg, 7}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 8}, 80},
+                {mov, {preg, x0}, {vreg, 8}},
+                {call, {sym, <<"repeat">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                {print_int, {vreg, 9}},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 10}, 80},
+                {mov, {preg, x0}, {vreg, 10}},
+                {call, {sym, <<"repeat">>}},
+                {mov, {vreg, 11}, {preg, x0}},
+                {print_int, {vreg, 11}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

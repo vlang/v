@@ -1,0 +1,112 @@
+module 'v.main' ['main'/0,
+                'App.init'/1,
+                'App.cleanup'/1,
+                'App.run'/1,
+                'App.draw'/1,
+                'init'/1,
+                'cleanup'/1,
+                'frame'/1,
+                'event'/2,
+                'draw'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <App> =
+            ~{'width'=>800,'height'=>400,'pass_action'=>call 'v.sokol.gfx':'create_clear_pass_action'(0.1, 0.1, 0.1, 1.0),{'vbeam','type'}=>'App'}~
+        in  do  apply 'App.init'/1(App)
+                apply 'App.run'/1(App)
+'App.init'/1 =
+    fun (A) ->
+        do  0
+            do  call 'erlang':'monotonic_time'('millisecond')
+                do  ~{'width'=>call 'erlang':'map_get'('width', A),'height'=>call 'erlang':'map_get'('height', A),{'vbeam','type'}=>'System'}~
+                    apply 'System.init'/2(call 'erlang':'map_get'('ps', A), ~{'pool'=>20000,{'vbeam','type'}=>'SystemConfig'}~)
+'App.cleanup'/1 =
+    fun (A) ->
+        apply 'System.free'/1(call 'erlang':'map_get'('ps', A))
+'App.run'/1 =
+    fun (A) ->
+        let <Title> =
+            #{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+        in  let <Desc> =
+                ~{'width'=>call 'erlang':'map_get'('width', A),'height'=>call 'erlang':'map_get'('height', A),'user_data'=>A,'init_userdata_cb'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'event_userdata_cb'=>fun (_fref0, _fref1) -> call 'v.main':'event'(_fref0, _fref1),'window_title'=>call 'erlang':'map_get'('str', Title),'html5_canvas_name'=>call 'erlang':'map_get'('str', Title),'cleanup_userdata_cb'=>fun (_fref0) -> call 'v.main':'cleanup'(_fref0),{'vbeam','type'}=>'Desc'}~
+            in  call 'v.sokol.sapp':'run'(Desc)
+'App.draw'/1 =
+    fun (A) ->
+        do  call 'v.sokol.sgl':'load_pipeline'(call 'erlang':'map_get'('alpha_pip', A))
+            apply 'System.draw'/1(call 'erlang':'map_get'('ps', A))
+'init'/1 =
+    fun (App) ->
+        let <Desc> =
+            call 'v.sokol.sapp':'create_desc'()
+        in  do  call 'v.sokol.gfx':'setup'(Desc)
+                let <Sgl_desc> =
+                    ~{'max_vertices'=>3276800,{'vbeam','type'}=>'Desc'}~
+                in  do  call 'v.sokol.sgl':'setup'(Sgl_desc)
+                        let <Pipdesc> =
+                            ~{{'vbeam','type'}=>'PipelineDesc'}~
+                        in  do  apply 'vmemset'/3(Pipdesc, 0, 8)
+                                let <Color_state> =
+                                    ~{'blend'=>~{'enabled'=>'true','src_factor_rgb'=>'src_alpha','dst_factor_rgb'=>'one_minus_src_alpha',{'vbeam','type'}=>'BlendState'}~,{'vbeam','type'}=>'ColorTargetState'}~
+                                in  do  Color_state
+                                        'ok'
+'cleanup'/1 =
+    fun (App) ->
+        do  apply 'App.cleanup'/1(App)
+            call 'v.sokol.gfx':'shutdown'()
+'frame'/1 =
+    fun (App) ->
+        do  call 'v.sokol.sapp':'width'()
+            do  call 'v.sokol.sapp':'height'()
+                let <T> =
+                    call 'erlang':'monotonic_time'('millisecond')
+                in  let <Dt> =
+                        call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'-'(T, call 'erlang':'map_get'('last', App))), 1000.0)
+                    in  do  apply 'System.update'/2(call 'erlang':'map_get'('ps', App), Dt)
+                            do  apply 'draw'/1(App)
+                                let <Pass> =
+                                    call 'v.sokol.sapp':'create_default_pass'(call 'erlang':'map_get'('pass_action', App))
+                                in  do  call 'v.sokol.gfx':'begin_pass'(Pass)
+                                        do  call 'v.sokol.sgl':'default_pipeline'()
+                                            do  call 'v.sokol.sgl':'draw'()
+                                                do  call 'v.sokol.gfx':'end_pass'()
+                                                    do  call 'v.sokol.gfx':'commit'()
+                                                        do  call 'erlang':'map_get'('frame', App)
+                                                            'ok'
+'event'/2 =
+    fun (Ev, App) ->
+        do  case call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'mouse_move') of <'true'> when 'true' -> apply 'System.explode'/3(call 'erlang':'map_get'('ps', App), call 'erlang':'map_get'('mouse_x', Ev), call 'erlang':'map_get'('mouse_y', Ev)) <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'mouse_up'), call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'mouse_down')) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('mouse_button', Ev), 'left') of <'true'> when 'true' -> 
+                let <Is_pressed> =
+                    call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'mouse_down')
+                in  case Is_pressed of <'true'> when 'true' -> apply 'System.explode'/3(call 'erlang':'map_get'('ps', App), call 'erlang':'map_get'('mouse_x', Ev), call 'erlang':'map_get'('mouse_y', Ev)) <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'key_up'), call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'key_down')) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('key_code', Ev), 'r') of <'true'> when 'true' -> 
+                    let <Is_pressed_1> =
+                        call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'key_down')
+                    in  case Is_pressed_1 of <'true'> when 'true' -> apply 'System.reset'/1(call 'erlang':'map_get'('ps', App)) <'false'> when 'true' -> 'ok' end
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'touches_began'), call 'erlang':'=:='(call 'erlang':'map_get'('type', Ev), 'touches_moved')) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', Ev), 0) of <'true'> when 'true' -> 
+                        let <Touch_point> =
+                            call 'lists':'nth'(1, call 'erlang':'map_get'('touches', Ev))
+                        in  apply 'System.explode'/3(call 'erlang':'map_get'('ps', App), call 'erlang':'map_get'('pos_x', Touch_point), call 'erlang':'map_get'('pos_y', Touch_point))
+                     <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+'draw'/1 =
+    fun (A) ->
+        do  call 'v.sokol.sgl':'defaults'()
+            do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                do  call 'v.sokol.sgl':'ortho'(0, call 'erlang':'float'(call 'v.sokol.sapp':'width'()), call 'erlang':'float'(call 'v.sokol.sapp':'height'()), 0.0, -1.0, 1.0)
+                    do  call 'v.sokol.sgl':'push_matrix'()
+                        do  apply 'App.draw'/1(A)
+                            call 'v.sokol.sgl':'pop_matrix'()
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

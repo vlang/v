@@ -1,0 +1,286 @@
+module 'v.main' ['create_texture'/3,
+                'destroy_texture'/1,
+                'update_text_texture'/4,
+                'draw_triangle'/0,
+                'cube'/0,
+                'draw_cubes'/1,
+                'cube_t'/3,
+                'draw_texture_cubes'/1,
+                'cube_field'/1,
+                'frame'/1,
+                'my_init'/1,
+                'my_event_manager'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'create_texture'/3 =
+    fun (W, H, Buf) ->
+        let <Sz> =
+            call 'erlang':'*'(call 'erlang':'*'(W, H), 4)
+        in  let <Img_desc> =
+                ~{'width'=>W,'height'=>H,'num_mipmaps'=>0,'label'=>'nil','d3d11_texture'=>0,{'vbeam','type'}=>'ImageDesc'}~
+            in  do  ~{'ptr'=>Buf,'size'=>Sz,{'vbeam','type'}=>'Range'}~
+                    let <Sg_img> =
+                        call 'v.sokol.gfx':'make_image'(Img_desc)
+                    in  let <Smp_desc> =
+                            ~{'min_filter'=>'linear','mag_filter'=>'linear','wrap_u'=>'clamp_to_edge','wrap_v'=>'clamp_to_edge',{'vbeam','type'}=>'SamplerDesc'}~
+                        in  let <Sg_smp> =
+                                call 'v.sokol.gfx':'make_sampler'(Smp_desc)
+                            in  Sg_img
+'destroy_texture'/1 =
+    fun (Sg_img) ->
+        call 'v.sokol.gfx':'destroy_image'(Sg_img)
+'update_text_texture'/4 =
+    fun (Sg_img, W, H, Buf) ->
+        let <Sz> =
+            call 'erlang':'*'(call 'erlang':'*'(W, H), 4)
+        in  let <Tmp_sbc> =
+                ~{{'vbeam','type'}=>'ImageData'}~
+            in  do  ~{'ptr'=>Buf,'size'=>Sz,{'vbeam','type'}=>'Range'}~
+                    call 'v.sokol.gfx':'update_image'(Sg_img, Tmp_sbc)
+'draw_triangle'/0 =
+    fun () ->
+        do  call 'v.sokol.sgl':'defaults'()
+            do  call 'v.sokol.sgl':'begin_triangles'()
+                do  call 'v.sokol.sgl':'v2f_c3b'(0.0, 0.5, 255, 0, 0)
+                    do  call 'v.sokol.sgl':'v2f_c3b'(-0.5, -0.5, 0, 0, 255)
+                        do  call 'v.sokol.sgl':'v2f_c3b'(0.5, -0.5, 0, 255, 0)
+                            call 'v.sokol.sgl':'end'()
+'cube'/0 =
+    fun () ->
+        do  call 'v.sokol.sgl':'begin_quads'()
+            do  call 'v.sokol.sgl':'c3f'(1.0, 0.0, 0.0)
+                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, -1.0, 1.0)
+                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, 1.0, 1.0)
+                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, 1.0, -1.0)
+                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, -1.0, -1.0)
+                                do  call 'v.sokol.sgl':'c3f'(0.0, 1.0, 0.0)
+                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, -1.0, 1.0)
+                                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, 1.0, 1.0)
+                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, 1.0, -1.0)
+                                                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, -1.0, -1.0)
+                                                    do  call 'v.sokol.sgl':'c3f'(0.0, 0.0, 1.0)
+                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, -1.0, 1.0)
+                                                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, 1.0, 1.0)
+                                                                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, 1.0, -1.0)
+                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, -1.0, -1.0)
+                                                                        do  call 'v.sokol.sgl':'c3f'(1.0, 0.5, 0.0)
+                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, -1.0, 1.0)
+                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, 1.0, 1.0)
+                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, 1.0, -1.0)
+                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, -1.0, -1.0)
+                                                                                            do  call 'v.sokol.sgl':'c3f'(0.0, 0.5, 1.0)
+                                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, -1.0, 1.0)
+                                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, 1.0, 1.0)
+                                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, 1.0, -1.0)
+                                                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, -1.0, -1.0)
+                                                                                                                do  call 'v.sokol.sgl':'c3f'(1.0, 0.0, 0.5)
+                                                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, -1.0, 1.0)
+                                                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, 1.0, 1.0)
+                                                                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, 1.0, -1.0)
+                                                                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, -1.0, -1.0)
+                                                                                                                                    call 'v.sokol.sgl':'end'()
+'draw_cubes'/1 =
+    fun (App) ->
+        let <Rot> =
+            [call 'erlang':'*'(1.0, call 'erlang':'rem'(call 'erlang':'map_get'('frame_count', App), 360))|[call 'erlang':'*'(0.5, call 'erlang':'float'(call 'erlang':'rem'(call 'erlang':'map_get'('frame_count', App), 360)))|[]]]
+        in  do  call 'v.sokol.sgl':'defaults'()
+                do  call 'v.sokol.sgl':'load_pipeline'(call 'erlang':'map_get'('pip_3d', App))
+                    do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                        do  call 'v.sokol.sgl':'perspective'(call 'v.sokol.sgl':'rad'(45.0), 1.0, 0.1, 100.0)
+                            do  call 'v.sokol.sgl':'matrix_mode_modelview'()
+                                do  call 'v.sokol.sgl':'translate'(0.0, 0.0, -12.0)
+                                    do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(1, Rot)), 1.0, 0.0, 0.0)
+                                        do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(2, Rot)), 0.0, 1.0, 0.0)
+                                            do  apply 'cube'/0()
+                                                do  call 'v.sokol.sgl':'push_matrix'()
+                                                    do  call 'v.sokol.sgl':'translate'(0.0, 0.0, 3.0)
+                                                        do  call 'v.sokol.sgl':'scale'(0.5, 0.5, 0.5)
+                                                            do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-2.0, call 'v.sokol.sgl':'rad'(call 'lists':'nth'(1, Rot))), 1.0, 0.0, 0.0)
+                                                                do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-2.0, call 'v.sokol.sgl':'rad'(call 'lists':'nth'(2, Rot))), 0.0, 1.0, 0.0)
+                                                                    do  apply 'cube'/0()
+                                                                        do  call 'v.sokol.sgl':'push_matrix'()
+                                                                            do  call 'v.sokol.sgl':'translate'(0.0, 0.0, 3.0)
+                                                                                do  call 'v.sokol.sgl':'scale'(0.5, 0.5, 0.5)
+                                                                                    do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-3.0, call 'v.sokol.sgl':'rad'(call 'erlang':'*'(2, call 'lists':'nth'(1, Rot)))), 1.0, 0.0, 0.0)
+                                                                                        do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(3.0, call 'v.sokol.sgl':'rad'(call 'erlang':'*'(2, call 'lists':'nth'(2, Rot)))), 0.0, 0.0, 1.0)
+                                                                                            do  apply 'cube'/0()
+                                                                                                do  call 'v.sokol.sgl':'pop_matrix'()
+                                                                                                    call 'v.sokol.sgl':'pop_matrix'()
+'cube_t'/3 =
+    fun (R, G, B) ->
+        do  call 'v.sokol.sgl':'begin_quads'()
+            do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, 0.0, 0.25)
+                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, 0.25, 0.25)
+                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, 0.25, 0.0)
+                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, 0.0, 0.0)
+                                do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, 0.0, 0.25)
+                                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, 0.25, 0.25)
+                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, 0.25, 0.0)
+                                                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, 0.0, 0.0)
+                                                    do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, 0.0, 0.25)
+                                                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, 0.25, 0.25)
+                                                                do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, 0.25, 0.0)
+                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, 0.0, 0.0)
+                                                                        do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, 0.0, 0.25)
+                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, 0.25, 0.25)
+                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, 0.25, 0.0)
+                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, 0.0, 0.0)
+                                                                                            do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, -1.0, 0.0, 0.25)
+                                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(1.0, -1.0, 1.0, 0.25, 0.25)
+                                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, 1.0, 0.25, 0.0)
+                                                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, -1.0, -1.0, 0.0, 0.0)
+                                                                                                                do  call 'v.sokol.sgl':'c3f'(R, G, B)
+                                                                                                                    do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, -1.0, 0.0, 0.25)
+                                                                                                                        do  call 'v.sokol.sgl':'v3f_t2f'(-1.0, 1.0, 1.0, 0.25, 0.25)
+                                                                                                                            do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, 1.0, 0.25, 0.0)
+                                                                                                                                do  call 'v.sokol.sgl':'v3f_t2f'(1.0, 1.0, -1.0, 0.0, 0.0)
+                                                                                                                                    call 'v.sokol.sgl':'end'()
+'draw_texture_cubes'/1 =
+    fun (App) ->
+        let <Rot> =
+            [call 'erlang':'float'(call 'erlang':'map_get'('mouse_x', App))|[call 'erlang':'float'(call 'erlang':'map_get'('mouse_y', App))|[]]]
+        in  do  call 'v.sokol.sgl':'defaults'()
+                do  call 'v.sokol.sgl':'load_pipeline'(call 'erlang':'map_get'('pip_3d', App))
+                    do  call 'v.sokol.sgl':'enable_texture'()
+                        do  call 'v.sokol.sgl':'texture'(call 'erlang':'map_get'('texture', App), call 'erlang':'map_get'('sampler', App))
+                            do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                                do  call 'v.sokol.sgl':'perspective'(call 'v.sokol.sgl':'rad'(45.0), 1.0, 0.1, 100.0)
+                                    do  call 'v.sokol.sgl':'matrix_mode_modelview'()
+                                        do  call 'v.sokol.sgl':'translate'(0.0, 0.0, -12.0)
+                                            do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(1, Rot)), 1.0, 0.0, 0.0)
+                                                do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(2, Rot)), 0.0, 1.0, 0.0)
+                                                    do  apply 'cube_t'/3(1, 1, 1)
+                                                        do  call 'v.sokol.sgl':'push_matrix'()
+                                                            do  call 'v.sokol.sgl':'translate'(0.0, 0.0, 3.0)
+                                                                do  call 'v.sokol.sgl':'scale'(0.5, 0.5, 0.5)
+                                                                    do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-2.0, call 'v.sokol.sgl':'rad'(call 'lists':'nth'(1, Rot))), 1.0, 0.0, 0.0)
+                                                                        do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-2.0, call 'v.sokol.sgl':'rad'(call 'lists':'nth'(2, Rot))), 0.0, 1.0, 0.0)
+                                                                            do  apply 'cube_t'/3(1, 1, 1)
+                                                                                do  call 'v.sokol.sgl':'push_matrix'()
+                                                                                    do  call 'v.sokol.sgl':'translate'(0.0, 0.0, 3.0)
+                                                                                        do  call 'v.sokol.sgl':'scale'(0.5, 0.5, 0.5)
+                                                                                            do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(-3.0, call 'v.sokol.sgl':'rad'(call 'erlang':'*'(2, call 'lists':'nth'(1, Rot)))), 1.0, 0.0, 0.0)
+                                                                                                do  call 'v.sokol.sgl':'rotate'(call 'erlang':'*'(3.0, call 'v.sokol.sgl':'rad'(call 'erlang':'*'(2, call 'lists':'nth'(2, Rot)))), 0.0, 0.0, 1.0)
+                                                                                                    do  apply 'cube_t'/3(1, 1, 1)
+                                                                                                        do  call 'v.sokol.sgl':'pop_matrix'()
+                                                                                                            do  call 'v.sokol.sgl':'pop_matrix'()
+                                                                                                                call 'v.sokol.sgl':'disable_texture'()
+'cube_field'/1 =
+    fun (App) ->
+        let <Rot> =
+            [call 'erlang':'float'(call 'erlang':'map_get'('mouse_x', App))|[call 'erlang':'float'(call 'erlang':'map_get'('mouse_y', App))|[]]]
+        in  let <Xyz_sz> =
+                2.0
+            in  let <Field_size> =
+                    20
+                in  do  call 'v.sokol.sgl':'defaults'()
+                        do  call 'v.sokol.sgl':'load_pipeline'(call 'erlang':'map_get'('pip_3d', App))
+                            do  call 'v.sokol.sgl':'enable_texture'()
+                                do  call 'v.sokol.sgl':'texture'(call 'erlang':'map_get'('texture', App), call 'erlang':'map_get'('sampler', App))
+                                    do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                                        do  call 'v.sokol.sgl':'perspective'(call 'v.sokol.sgl':'rad'(45.0), 1.0, 0.1, 200.0)
+                                            do  call 'v.sokol.sgl':'matrix_mode_modelview'()
+                                                do  call 'v.sokol.sgl':'translate'(Field_size, 0.0, -120.0)
+                                                    do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(1, Rot)), 0.0, 1.0, 0.0)
+                                                        do  call 'v.sokol.sgl':'rotate'(call 'v.sokol.sgl':'rad'(call 'lists':'nth'(2, Rot)), 1.0, 0.0, 0.0)
+                                                            do  let <_1> =
+                                                                fun (Y) ->
+                                                                    'ok'
+                                                            in  let <_2> =
+                                                                    call 'lists':'seq'(0, call 'erlang':'-'(Field_size, 1))
+                                                                in  call 'lists':'foreach'(_1, _2)
+                                                                call 'v.sokol.sgl':'disable_texture'()
+'frame'/1 =
+    fun (App) ->
+        let <Ws> =
+            call 'v.gg':'window_size_real_pixels'()
+        in  let <Ratio> =
+                call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'map_get'('width', Ws)), call 'erlang':'map_get'('height', Ws))
+            in  let <Dw> =
+                    call 'erlang':'map_get'('width', Ws)
+                in  let <Dh> =
+                        call 'erlang':'map_get'('height', Ws)
+                    in  let <Ww> =
+                            call 'erlang':'div'(Dh, 3)
+                        in  let <Hh> =
+                                call 'erlang':'div'(Dh, 3)
+                            in  let <X0> =
+                                    call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(Dw), 0.05))
+                                in  let <Y0> =
+                                        0
+                                    in  let <Y1> =
+                                            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(Dh), 0.5))
+                                        in  do  'ok'
+                                                do  call 'v.sokol.sgl':'viewport'(X0, Y0, Ww, Hh, 'true')
+                                                    do  apply 'draw_triangle'/0()
+                                                        do  call 'v.sokol.sgl':'viewport'(X0, Y1, Ww, Hh, 'true')
+                                                            do  apply 'draw_cubes'/1(App)
+                                                                do  call 'v.sokol.sgl':'viewport'(0, call 'erlang':'div'(Dh, 5), Dw, call 'erlang':'trunc'(call 'erlang':'*'(Dh, Ratio)), 'true')
+                                                                    do  apply 'draw_texture_cubes'/1(App)
+                                                                        do  call 'v.sokol.sgl':'viewport'(0, call 'erlang':'div'(Dh, 5), Dw, call 'erlang':'trunc'(call 'erlang':'*'(Dh, Ratio)), 'true')
+                                                                            do  apply 'cube_field'/1(App)
+                                                                                do  call 'erlang':'map_get'('frame_count', App)
+                                                                                    apply 'Context.end'/2(call 'erlang':'map_get'('gg', App), ~{{'vbeam','type'}=>'EndOptions'}~)
+'my_init'/1 =
+    fun (App) ->
+        do  'true'
+            let <Desc> =
+                call 'v.sokol.sapp':'create_desc'()
+            in  do  call 'v.sokol.gfx':'setup'(Desc)
+                    let <Sgl_desc> =
+                        ~{'max_vertices'=>3276800,{'vbeam','type'}=>'Desc'}~
+                    in  do  call 'v.sokol.sgl':'setup'(Sgl_desc)
+                            let <Pipdesc> =
+                                ~{{'vbeam','type'}=>'PipelineDesc'}~
+                            in  do  apply 'vmemset'/3(Pipdesc, 0, 8)
+                                    let <Color_state> =
+                                        ~{'blend'=>~{'enabled'=>'true','src_factor_rgb'=>'src_alpha','dst_factor_rgb'=>'one_minus_src_alpha',{'vbeam','type'}=>'BlendState'}~,{'vbeam','type'}=>'ColorTargetState'}~
+                                    in  do  Color_state
+                                            do  ~{'write_enabled'=>'true','compare'=>'less_equal',{'vbeam','type'}=>'DepthState'}~
+                                                do  'back'
+                                                    do  call 'v.sokol.sgl':'make_pipeline'(Pipdesc)
+                                                        let <W> =
+                                                            256
+                                                        in  let <H> =
+                                                                256
+                                                            in  let <Sz> =
+                                                                    call 'erlang':'*'(call 'erlang':'*'(W, H), 4)
+                                                                in  let <Tmp_txt> =
+                                                                        apply 'malloc'/1(Sz)
+                                                                    in  let <I> =
+                                                                            0
+                                                                        in  'ok'
+'my_event_manager'/2 =
+    fun (Ev, App) ->
+        do  case call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'mouse_move') of <'true'> when 'true' -> 
+            do  call 'erlang':'trunc'(call 'erlang':'map_get'('mouse_x', Ev))
+                'ok'
+         <'false'> when 'true' -> 'ok' end
+            case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'touches_began'), call 'erlang':'=:='(call 'erlang':'map_get'('typ', Ev), 'touches_moved')) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', Ev), 0) of <'true'> when 'true' -> 
+                let <Touch_point> =
+                    call 'lists':'nth'(1, call 'erlang':'map_get'('touches', Ev))
+                in  do  call 'erlang':'trunc'(call 'erlang':'map_get'('pos_x', Touch_point))
+                        'ok'
+             <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+'main'/0 =
+    fun () ->
+        let <App> =
+            ~{{'vbeam','type'}=>'App'}~
+        in  do  call 'v.gg':'new_context'(~{'width'=>800,'height'=>800,'create_window'=>'true','window_title'=>#{#<51>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#,'user_data'=>App,'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'frame_fn'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'init_fn'=>fun (_fref0) -> call 'v.main':'my_init'(_fref0),'event_fn'=>fun (_fref0, _fref1) -> call 'v.main':'my_event_manager'(_fref0, _fref1),{'vbeam','type'}=>'Config'}~)
+                'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

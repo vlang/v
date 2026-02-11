@@ -1,0 +1,217 @@
+module 'v.main' ['Game.parse_level'/2,
+                'Game.is_valid_pos'/2,
+                'Game.move_player'/2,
+                'Game.get_cell_iid'/2,
+                'Game.next_level'/1,
+                'Game.key_down'/4,
+                'Game.ctext'/6,
+                'Game.draw_frame'/2,
+                'Game.iid'/2,
+                'main'/0,
+                'Direction__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Game.parse_level'/2 =
+        fun (G, Lnumber) ->
+            let <Level> =
+                call 'lists':'nth'(call 'erlang':'+'(Lnumber, 1), call 'erlang':'map_get'('levels', G))
+            in  case call 'erlang':'=:='(Level, #{  }#) of
+                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Lnumber)|[]]]))
+                    <'false'> when 'true' -> 
+                        let <Lines> =
+                            call 'lists':'filter'(call 'erlang':'and'(call 'erlang':'=/='(It, #{  }#), call 'erlang':'not'(case call 'string':'prefix'(It, #{#<47>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end)), call 'lists':'map'(apply 'string.trim_space_right'/1(It), call 'binary':'split'(Level, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])))
+                        in  let <Warehouse> =
+                                []
+                            in  let <Warehouse_w> =
+                                    0
+                                in  let <Player> =
+                                        ~{'x'=>-1,'y'=>-1,{'vbeam','type'}=>'Pos'}~
+                                    in  let <Boxes> =
+                                            []
+                                        in  let <_1> =
+                                                let <_3> =
+                                                    fun (Line, _7) ->
+                                                        let <Warehouse_wAcc> =
+                                                            call 'erlang':'element'(1, _7)
+                                                        in                                                          let <YAcc> =
+                                                            call 'erlang':'element'(2, _7)
+                                                        in  
+                                                        let <Row> =
+                                                            []
+                                                        in                                                          do  'ok'
+                                                            do  call 'erlang':'bsl'(Warehouse, Row)
+                                                                let <Warehouse_wOut_5> =
+                                                                    apply 'int_max'/2(call 'erlang':'length'(Row), Warehouse_wAcc)
+                                                                in  {Warehouse_wOut_5, call 'erlang':'+'(YAcc, 1)}
+                                                    in  call 'lists':'foldl'(_3, {Warehouse_w, 0}, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(1, 0), 1), Lines))
+                                                in  let <Warehouse_w_2> =
+                                                        call 'erlang':'element'(1, _1)
+                                                    in  do  Warehouse
+                                                            do  call 'erlang':'*'(Warehouse_w_2, 32)
+                                                                do  call 'erlang':'*'(call 'erlang':'length'(Warehouse), 32)
+                                                                    do  call 'lists':'filter'(call 'erlang':'=/='(It, #{  }#), call 'binary':'split'(call 'lists':'nth'(1, Lines), #{#<64>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                                                        do  Player
+                                                                            do  Boxes
+                                                                                do  0
+                                                                                    do  0
+                                                                                        do  'false'
+                                                                                            'ok'
+                    end
+        'Game.is_valid_pos'/2 =
+            fun (G, Pos) ->
+                call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('y', Pos), 0), call 'erlang':'<'(call 'erlang':'map_get'('y', Pos), call 'erlang':'length'(call 'erlang':'map_get'('warehouse', G)))), call 'erlang':'>='(call 'erlang':'map_get'('x', Pos), 0)), call 'erlang':'<'(call 'erlang':'map_get'('x', Pos), call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('y', Pos), 1), call 'erlang':'map_get'('warehouse', G))))), call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('x', Pos), 1), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('y', Pos), 1), call 'erlang':'map_get'('warehouse', G))), 35))
+        'Game.move_player'/2 =
+            fun (G, Dir) ->
+                let <Dx> =
+                    case Dir of <'up'> when 'true' -> {0, -1} <'down'> when 'true' -> {0, 1} <'left'> when 'true' -> {-1, 0} <'right'> when 'true' -> {1, 0} end
+                in  let <Dy> =
+                        case Dir of <'up'> when 'true' -> {0, -1} <'down'> when 'true' -> {0, 1} <'left'> when 'true' -> {-1, 0} <'right'> when 'true' -> {1, 0} end
+                    in  let <Target> =
+                            ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('player', G)), Dx),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('player', G)), Dy),{'vbeam','type'}=>'Pos'}~
+                        in  case call 'erlang':'not'(apply 'Game.is_valid_pos'/2(G, Target)) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    let <Target_box_index> =
+                                        -1
+                                    in  let <_1> =
+                                            let <_3> =
+                                                fun (Box, _7) ->
+                                                    let <Target_box_indexAcc> =
+                                                        call 'erlang':'element'(1, _7)
+                                                    in                                                      let <IAcc> =
+                                                        call 'erlang':'element'(2, _7)
+                                                    in  
+                                                    let <Target_box_indexOut_5> =
+                                                        case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', Box), call 'erlang':'map_get'('x', Target)), call 'erlang':'=:='(call 'erlang':'map_get'('y', Box), call 'erlang':'map_get'('y', Target))) of <'true'> when 'true' -> IAcc <'false'> when 'true' -> Target_box_indexAcc end
+                                                    in  {Target_box_indexOut_5, call 'erlang':'+'(IAcc, 1)}
+                                            in  call 'lists':'foldl'(_3, {Target_box_index, 0}, call 'erlang':'map_get'('boxes', G))
+                                        in  let <Target_box_index_2> =
+                                                call 'erlang':'element'(1, _1)
+                                            in  do  case call 'erlang':'>='(Target_box_index_2, 0) of <'true'> when 'true' -> 
+                                                    let <Target_after> =
+                                                        ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('player', G)), call 'erlang':'*'(2, Dx)),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('player', G)), call 'erlang':'*'(2, Dy)),{'vbeam','type'}=>'Pos'}~
+                                                    in  case call 'erlang':'not'(apply 'Game.is_valid_pos'/2(G, Target_after)) of
+                                                            <'true'> when 'true' -> 'ok'
+                                                            <'false'> when 'true' -> 
+                                                                do  let <_8> =
+                                                                    fun (Box) ->
+                                                                        case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', Box), call 'erlang':'map_get'('x', Target_after)), call 'erlang':'=:='(call 'erlang':'map_get'('y', Box), call 'erlang':'map_get'('y', Target_after))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                in  call 'lists':'foreach'(_8, call 'erlang':'map_get'('boxes', G))
+                                                                    do  Target_after
+                                                                        call 'erlang':'map_get'('pushes', G)
+                                                        end
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    do  Target
+                                                        call 'erlang':'map_get'('moves', G)
+                            end
+        'Game.get_cell_iid'/2 =
+            fun (G, Pos) ->
+                let <C> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('x', Pos), 1), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('y', Pos), 1), call 'erlang':'map_get'('warehouse', G)))
+                in  case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', Pos), call 'erlang':'map_get'('x', call 'erlang':'map_get'('player', G))), call 'erlang':'=:='(call 'erlang':'map_get'('y', Pos), call 'erlang':'map_get'('y', call 'erlang':'map_get'('player', G)))) of
+                        <'true'> when 'true' -> call 'erlang':'map_get'('id_player', G)
+                        <'false'> when 'true' -> 
+                            do  let <_1> =
+                                fun (Box) ->
+                                    case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', Box), call 'erlang':'map_get'('x', Pos)), call 'erlang':'=:='(call 'erlang':'map_get'('y', Box), call 'erlang':'map_get'('y', Pos))) of <'true'> when 'true' -> 
+                                        case call 'erlang':'=:='(C, 64) of
+                                            <'true'> when 'true' -> call 'erlang':'map_get'('id_box_on_storage', G)
+                                            <'false'> when 'true' -> 
+                                                call 'erlang':'map_get'('id_box', G)
+                                        end
+                                     <'false'> when 'true' -> 'ok' end
+                            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('boxes', G))
+                                case C of <32> when 'true' -> call 'erlang':'map_get'('id_floor', G) <35> when 'true' -> call 'erlang':'map_get'('id_wall', G) <64> when 'true' -> call 'erlang':'map_get'('id_storage', G) <_> when 'true' -> call 'erlang':'map_get'('id_other', G) end
+                    end
+        'Game.next_level'/1 =
+            fun (G) ->
+                let <Nlevel> =
+                    call 'erlang':'rem'(call 'erlang':'+'(call 'erlang':'map_get'('level', G), 1), call 'erlang':'length'(call 'erlang':'map_get'('levels', G)))
+                in  do  try apply 'Game.parse_level'/2(G, Nlevel) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]])|[]])
+                        'ok'
+        'Game.key_down'/4 =
+            fun (G, Key, _, _) ->
+                do  case Key of <'escape'> when 'true' -> 'ok' <'space'> when 'true' -> case call 'erlang':'map_get'('win', G) of <'true'> when 'true' -> 
+                    do  apply 'Game.next_level'/1(G)
+                        'ok'
+                 <'false'> when 'true' -> 'ok' end <'r'> when 'true' -> 'ok' <'n'> when 'true' -> apply 'Game.next_level'/1(G) <_> when 'true' -> 'ok' end
+                    case call 'erlang':'map_get'('win', G) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Dir> =
+                                case call 'erlang':'=:='(Key, 'w') of <'true'> when 'true' -> 'up' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'up') of <'true'> when 'true' -> 'up' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 's') of <'true'> when 'true' -> 'down' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'down') of <'true'> when 'true' -> 'down' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'a') of <'true'> when 'true' -> 'left' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'left') of <'true'> when 'true' -> 'left' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'd') of <'true'> when 'true' -> 'right' <'false'> when 'true' -> case call 'erlang':'=:='(Key, 'right') of <'true'> when 'true' -> 'right' <'false'> when 'true' -> 'ok' end end end end end end end end
+                            in  do  apply 'Game.move_player'/2(G, Dir)
+                                    'ok'
+                    end
+        'Game.ctext'/6 =
+            fun (G, Ws, Oy, Message, Size, Color) ->
+                'ok'
+        'Game.draw_frame'/2 =
+            fun (G, _) ->
+                do  'ok'
+                    let <Ws> =
+                        call 'v.gg':'window_size'()
+                    in  let <Ox> =
+                            call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'map_get'('width', Ws), call 'erlang':'map_get'('ww', G)), 2)
+                        in  let <Oy> =
+                                call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('height', Ws), 40), call 'erlang':'map_get'('wh', G)), 2)
+                            in  do  let <_1> =
+                                    fun (Y) ->
+                                        'ok'
+                                in  let <_2> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('warehouse', G)), 1))
+                                    in  call 'lists':'foreach'(_1, _2)
+                                    do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('ctx', G), 0, call 'erlang':'-'(call 'erlang':'map_get'('height', Ws), 70), call 'erlang':'map_get'('width', Ws), 70, ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                        do  case call 'erlang':'map_get'('win', G) of <'true'> when 'true' -> 
+                                            do  apply 'Game.ctext'/6(G, Ws, -50, #{#<89>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#, 60, ~{'r'=>255,'g'=>255,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                                apply 'Game.ctext'/6(G, Ws, -15, #{#<80>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, 20, ~{'r'=>128,'g'=>128,'b'=>128,{'vbeam','type'}=>'Color'}~)
+                                         <'false'> when 'true' -> 
+                                            do  let <_3> =
+                                                fun (Title, Idx) ->
+                                                    do  apply 'Game.ctext'/6(G, Ws, call 'erlang':'+'(-65, call 'erlang':'*'(Idx, 20)), Title, 22, ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                                        call 'erlang':'+'(Idx, 1)
+                                            in  call 'lists':'foldl'(_3, 0, call 'erlang':'map_get'('titles', G))
+                                                apply 'Game.ctext'/6(G, Ws, call 'erlang':'+'(-65, call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('titles', G)), 20)), call 'erlang':'iolist_to_binary'([#{#<66>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('boxes', G)))|[]]]), 16, ~{'r'=>128,'g'=>128,'b'=>128,{'vbeam','type'}=>'Color'}~)
+                                         end
+                                            do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('ctx', G), 0, 0, call 'erlang':'map_get'('width', Ws), 40, ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                                do  'ok'
+                                                    do  'ok'
+                                                        do  'ok'
+                                                            apply 'Context.end'/2(call 'erlang':'map_get'('ctx', G), ~{{'vbeam','type'}=>'EndOptions'}~)
+        'Game.iid'/2 =
+            fun (G, Name) ->
+                call 'erlang':'map_get'('id', try apply 'Context.create_image'/2(call 'erlang':'map_get'('ctx', G), call 'v.os.asset':'get_path'(#{#<47>(8,1,'integer',['unsigned'|['big']])}#, Name)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok')
+        'main'/0 =
+            fun () ->
+                let <G> =
+                    ~{{'vbeam','type'}=>'Game'}~
+                in  do  case call 'erlang':'>'(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                        let <All_level_names> =
+                            call 'binary':'split'(try call 'v.os.asset':'read_text'(#{#<47>(8,1,'integer',['unsigned'|['big']])}#, #{#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok', #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                        in  'ok'
+                     end
+                        do  try apply 'Game.parse_level'/2(G, 0) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                            do  call 'v.gg':'new_context'(~{'width'=>800,'height'=>640,'window_title'=>#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'user_data'=>G,'frame_fn'=>call 'erlang':'map_get'('draw_frame', G),'keydown_fn'=>call 'erlang':'map_get'('key_down', G),{'vbeam','type'}=>'Config'}~)
+                                do  try apply 'Game.iid'/2(G, #{#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                    do  try apply 'Game.iid'/2(G, #{#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok'
+                                        do  try apply 'Game.iid'/2(G, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor5> when 'true' -> _cor5 catch <_cor_c5,_cor_r5,_cor_s5> when 'true' -> 'ok'
+                                            do  try apply 'Game.iid'/2(G, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 'ok'
+                                                do  try apply 'Game.iid'/2(G, #{#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor7> when 'true' -> _cor7 catch <_cor_c7,_cor_r7,_cor_s7> when 'true' -> 'ok'
+                                                    do  try apply 'Game.iid'/2(G, #{#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor8> when 'true' -> _cor8 catch <_cor_c8,_cor_r8,_cor_s8> when 'true' -> 'ok'
+                                                        do  try apply 'Game.iid'/2(G, #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#) of <_cor9> when 'true' -> _cor9 catch <_cor_c9,_cor_r9,_cor_s9> when 'true' -> 'ok'
+                                                            'ok'
+        'Direction__static__from'/1 =
+            fun (Input) ->
+                do  'ok'
+                    do  'ok'
+                        call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

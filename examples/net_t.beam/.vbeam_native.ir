@@ -1,0 +1,65 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"send_request">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 10,
+            body => [
+                {call, {sym, <<"ticks">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {string_lit, {vreg, 2}, {data_ref, <<"str_0">>}, 18},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"get">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {call, {sym, <<"ticks">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {string_lit, {vreg, 5}, {data_ref, <<"str_1">>}, 20},
+                {print_str, {vreg, 5}},
+                {sub, {vreg, 6}, {vreg, 4}, {vreg, 1}},
+                {print_int, {vreg, 6}},
+                {string_lit, {vreg, 7}, {data_ref, <<"str_2">>}, 4},
+                {print_str, {vreg, 7}},
+                {method_call, {vreg, 8}, <<"sync.WaitGroup">>, <<"done">>, [{vreg, 0}]},
+                {field_get, {vreg, 9}, {vreg, 3}, {imm, 0}},
+                {mov, {preg, x0}, {vreg, 9}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 5,
+            body => [
+                {call, {sym, <<"new_waitgroup">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov_imm, {vreg, 1}, 0},
+                {label, <<"for_0">>},
+                {cmp, {vreg, 1}, {imm, 50}},
+                {jcc, ge, <<"for_end_2">>},
+                {mov_imm, {vreg, 2}, 1},
+                {method_call, {vreg, 3}, <<"sync.WaitGroup">>, <<"add">>, [{vreg, 0}, {vreg, 2}]},
+                {label, <<"for_inc_1">>},
+                {add, {vreg, 1}, {vreg, 1}, {imm, 1}},
+                {jmp, <<"for_0">>},
+                {label, <<"for_end_2">>},
+                {method_call, {vreg, 4}, <<"sync.WaitGroup">>, <<"wait">>, [{vreg, 0}]},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"https://google.com">>},
+        {<<"str_1">>, 1, <<"Finish getting time ">>},
+        {<<"str_2">>, 1, <<" ms\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

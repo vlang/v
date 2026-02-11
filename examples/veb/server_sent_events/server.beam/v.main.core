@@ -1,0 +1,33 @@
+module 'v.main' ['main'/0,
+                'App.index'/2,
+                'App.sse'/2,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'main'/0 =
+            fun () ->
+                let <App> =
+                    ~{{'vbeam','type'}=>'App'}~
+                in  do  try apply 'App.serve_static'/3(App, #{#<47>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        do  try apply 'App.mount_static_folder_at'/3(App, #{#<46>(8,1,'integer',['unsigned'|['big']])}#, #{#<47>(8,1,'integer',['unsigned'|['big']])}#) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                            call 'v.veb':'run'(App, 8081)
+        'App.index'/2 =
+            fun (App, Ctx) ->
+                let <Title> =
+                    #{#<83>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+                in  'false'
+        'App.sse'/2 =
+            fun (App, Ctx) ->
+                let <Session> =
+                    call 'v.veb.sse':'start_connection'(call 'erlang':'map_get'('Context', Ctx))
+                in  do  try apply 'SSEConnection.send_message'/2(Session, ~{'data'=>#{#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'SSEMessage'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> apply 'Context.server_error_with_status'/2(Ctx, 'not_implemented')
+                        apply 'Context.server_error_with_status'/2(Ctx, 'not_implemented')
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

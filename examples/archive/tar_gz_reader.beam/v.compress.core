@@ -1,0 +1,28 @@
+module 'v.compress' ['compress'/2,
+                'decompress'/2,
+                'decompress_with_callback'/4,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'compress'/2 =
+    fun (Data, Flags) ->
+        case call 'erlang':'>'(call 'erlang':'length'(Data), call 'erlang':'bsl'(1, 31)) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(Data))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'bsl'(1, 31))|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]))
+            <'false'> when 'true' -> 
+                []
+        end
+'decompress'/2 =
+    fun (Data, Flags) ->
+        []
+'decompress_with_callback'/4 =
+    fun (Data, Cb, Userdata, Flags) ->
+        0
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.compress')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.compress', _0)
+end

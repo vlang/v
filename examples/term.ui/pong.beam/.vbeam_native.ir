@@ -1,0 +1,472 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {call, {sym, <<"erase_del_clear">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_cursor_position">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"start_game">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"init">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 6,
+            body => [
+                {call, {sym, <<"ticks">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {call, {sym, <<"update">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"clear">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {call, {sym, <<"render">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"flush">>}},
+                {mov, {vreg, 5}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"quit">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 5,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {call, {sym, <<"quit">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_cursor_position">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {vreg, 3}, 0},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"exit">>}},
+                {mov, {vreg, 4}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"event">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+            ]
+        },
+        #{
+            name => <<"free">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"render">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"draw_menu">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 23,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_color">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"bold">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {sub, {vreg, 3}, {vreg, 0}, {imm, 2}},
+                {mov, {preg, x0}, {vreg, 3}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {sub, {vreg, 6}, {vreg, 0}, {imm, 13}},
+                {add, {vreg, 7}, {vreg, 0}, {imm, 1}},
+                {mov, {preg, x0}, {vreg, 6}},
+                {mov, {preg, x1}, {vreg, 7}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_color">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                {call, {sym, <<"bold">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {sub, {vreg, 11}, {vreg, 0}, {imm, 3}},
+                {add, {vreg, 12}, {vreg, 0}, {imm, 1}},
+                {mov, {preg, x0}, {vreg, 11}},
+                {mov, {preg, x1}, {vreg, 12}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 13}, {preg, x0}},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 14}, {preg, x0}},
+                {sub, {vreg, 15}, {vreg, 0}, {imm, 9}},
+                {add, {vreg, 16}, {vreg, 0}, {imm, 1}},
+                {mov, {preg, x0}, {vreg, 15}},
+                {mov, {preg, x1}, {vreg, 16}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 17}, {preg, x0}},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 18}, {preg, x0}},
+                {sub, {vreg, 19}, {vreg, 0}, {imm, 5}},
+                {add, {vreg, 20}, {vreg, 0}, {imm, 3}},
+                {mov, {preg, x0}, {vreg, 19}},
+                {mov, {preg, x1}, {vreg, 20}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 21}, {preg, x0}},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 22}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"draw_game">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"move">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+            ]
+        },
+        #{
+            name => <<"update">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                ret,
+                {label, <<"if_end_1">>}
+            ]
+        },
+        #{
+            name => <<"set">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+            ]
+        },
+        #{
+            name => <<"update">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+            ]
+        },
+        #{
+            name => <<"move_player">>,
+            arity => 4,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}],
+            locals => 5,
+            body => [
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 3}},
+                {call, {sym, <<"move">>}},
+                {mov, {vreg, 4}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"reset">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov_imm, {vreg, 1}, 0},
+                {call, {sym, <<"new_round">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"new_round">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 9,
+            body => [
+                {mov_imm, {vreg, 1}, 0},
+                {mul, {vreg, 2}, {vreg, 0}, {vreg, 0}},
+                {mul, {vreg, 3}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 3}},
+                {call, {sym, <<"set">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, -8},
+                {mov_imm, {vreg, 6}, -15},
+                {mov, {preg, x0}, {vreg, 5}},
+                {mov, {preg, x1}, {vreg, 6}},
+                {call, {sym, <<"set">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"set">>}},
+                {mov, {vreg, 8}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"update">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {cmp, {vreg, 0}, {imm, 1}},
+                {jcc, le, <<"or_ok_1">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, lt, <<"if_end_0">>},
+                {label, <<"or_ok_1">>},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {imm, 2}},
+                {jcc, le, <<"or_ok_3">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, lt, <<"if_end_2">>},
+                {label, <<"or_ok_3">>},
+                {label, <<"if_end_2">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"update">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"quit">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                ret,
+                {label, <<"if_end_0">>}
+            ]
+        },
+        #{
+            name => <<"draw_big_digit">>,
+            arity => 4,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}],
+            locals => 4,
+            body => [
+            ]
+        },
+        #{
+            name => <<"draw">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 12,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_bg_color">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {vreg, 2}, 1},
+                {mov_imm, {vreg, 3}, 1},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 3}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"draw_empty_rect">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 5}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"draw_dashed_line">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {vreg, 7}, 1},
+                {mov_imm, {vreg, 8}, 0},
+                {mov_imm, {vreg, 9}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"draw_point">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {call, {sym, <<"reset_bg_color">>}},
+                {mov, {vreg, 11}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"free">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"clear">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"init">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"frame">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"cleanup">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"fail">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"event">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"event">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"Mode__static__from">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_1">>},
+                {call, {sym, <<"str">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {label, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"error">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

@@ -1,0 +1,207 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"update">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, ge, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {imm, 1340}},
+                {jcc, le, <<"if_end_1">>},
+                {label, <<"if_end_1">>},
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, ge, <<"if_end_2">>},
+                {label, <<"if_end_2">>},
+                {cmp, {vreg, 0}, {imm, 640}},
+                {jcc, le, <<"if_end_3">>},
+                {label, <<"if_end_3">>}
+            ]
+        },
+        #{
+            name => <<"start">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 5,
+            body => [
+                {add, {vreg, 1}, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"insert_particles">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"get_nodes">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {add, {vreg, 4}, {vreg, 0}, {vreg, 3}}
+            ]
+        },
+        #{
+            name => <<"update">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 5,
+            body => [
+                {call, {sym, <<"clear">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"find_particles">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"get_nodes">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {add, {vreg, 4}, {vreg, 0}, {vreg, 3}}
+            ]
+        },
+        #{
+            name => <<"insert_particles">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {sdiv, {vreg, 1}, {vreg, 0}, {vreg, 0}},
+                {sdiv, {vreg, 2}, {vreg, 0}, {vreg, 0}},
+                {mov_imm, {vreg, 3}, 100}
+            ]
+        },
+        #{
+            name => <<"find_particles">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"retrieve">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {add, {vreg, 2}, {vreg, 0}, {vreg, 1}}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 3,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"start">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"on_mouse_move">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+            ]
+        },
+        #{
+            name => <<"on_event">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+            ]
+        },
+        #{
+            name => <<"run">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {label, <<"loop_0">>},
+                {call, {sym, <<"update">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>}
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {call, {sym, <<"begin">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"end">>}},
+                {mov, {vreg, 3}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"display">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 7,
+            body => [
+                {mov_imm, {vreg, 1}, 1200},
+                {mov_imm, {vreg, 2}, 25},
+                {mov, {preg, x0}, {vreg, 1}},
+                {mov, {preg, x1}, {vreg, 2}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov_imm, {vreg, 4}, 1200},
+                {mov_imm, {vreg, 5}, 50},
+                {mov, {preg, x0}, {vreg, 4}},
+                {mov, {preg, x1}, {vreg, 5}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"draw_text">>}},
+                {mov, {vreg, 6}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"draw">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {call, {sym, <<"display">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"rand_minmax">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 6,
+            body => [
+                {call, {sym, <<"f64">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {sub, {vreg, 3}, {vreg, 1}, {vreg, 0}},
+                {mul, {vreg, 4}, {vreg, 2}, {vreg, 3}},
+                {add, {vreg, 5}, {vreg, 0}, {vreg, 4}},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

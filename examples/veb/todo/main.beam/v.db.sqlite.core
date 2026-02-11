@@ -1,0 +1,338 @@
+module 'v.db.sqlite' ['DB.select'/4,
+                'DB.insert'/3,
+                'DB.update'/4,
+                'DB.delete'/3,
+                'DB.last_id'/1,
+                'DB.create'/3,
+                'DB.drop'/2,
+                'sqlite_stmt_worker'/4,
+                'sqlite_stmt_binder'/4,
+                'bind'/3,
+                'Stmt.sqlite_select_column'/3,
+                'sqlite_type_from_v'/1,
+                'new_connection_pool'/2,
+                'ConnectionPool.acquire'/1,
+                'ConnectionPool.release'/2,
+                'ConnectionPool.close'/1,
+                'Result.is_error'/1,
+                'is_error'/1,
+                'DB.str'/1,
+                'connect'/1,
+                'DB.close'/1,
+                'get_int_from_stmt'/1,
+                'DB.last_insert_rowid'/1,
+                'DB.get_affected_rows_count'/1,
+                'DB.q_int'/2,
+                'DB.q_string'/2,
+                'DB.exec_map'/2,
+                'DB.exec'/2,
+                'DB.exec_one'/2,
+                'DB.error_message'/3,
+                'DB.exec_none'/2,
+                'DB.exec_param_many'/3,
+                'DB.exec_param'/3,
+                'DB.create_table'/3,
+                'DB.busy_timeout'/2,
+                'DB.synchronization_mode'/2,
+                'DB.journal_mode'/2,
+                'DB.begin'/2,
+                'DB.savepoint'/2,
+                'DB.commit'/1,
+                'DB.rollback'/1,
+                'DB.rollback_to'/2,
+                'DB.reset'/1,
+                'DB.validate'/1,
+                'DB.init_stmt'/2,
+                'DB.new_init_stmt'/2,
+                'Stmt.bind_null'/2,
+                'Stmt.bind_int'/3,
+                'Stmt.bind_i64'/3,
+                'Stmt.bind_f64'/3,
+                'Stmt.bind_text'/3,
+                'Stmt.get_int'/2,
+                'Stmt.get_i64'/2,
+                'Stmt.get_f64'/2,
+                'Stmt.get_text'/2,
+                'Stmt.get_count'/1,
+                'Stmt.step'/1,
+                'Stmt.orm_step'/2,
+                'Stmt.finalize'/1,
+                'Result__static__from'/1,
+                'SyncMode__static__from'/1,
+                'Sqlite3TransactionLevel__static__from'/1,
+                'JournalMode__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'DB.select'/4 =
+        fun (Db, Config, Data, Where) ->
+            let <Query> =
+                call 'v.orm':'orm_select_gen'(Config, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, Where)
+            in  let <Stmt> =
+                    try apply 'DB.new_init_stmt'/2(Db, Query) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  let <C> =
+                        1
+                    in  do  try apply 'sqlite_stmt_binder'/4(Stmt, Where, Query, C) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                            do  try apply 'sqlite_stmt_binder'/4(Stmt, Data, Query, C) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                let <Ret> =
+                                    []
+                                in  case call 'erlang':'map_get'('is_count', Config) of
+                                        <'true'> when 'true' -> Ret
+                                        <'false'> when 'true' -> 
+                                            Ret
+                                    end
+    'DB.insert'/3 =
+        fun (Db, Table, Data) ->
+            let <Query> =
+                call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'insert', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, Data, ~{{'vbeam','type'}=>'QueryData'}~)
+            in  let <Converted_data> =
+                    call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'insert', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, Data, ~{{'vbeam','type'}=>'QueryData'}~)
+                in  do  try apply 'sqlite_stmt_worker'/4(Db, Query, Converted_data, ~{{'vbeam','type'}=>'QueryData'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        'ok'
+    'DB.update'/4 =
+        fun (Db, Table, Data, Where) ->
+            let <Query> =
+                call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'update', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, Data, Where)
+            in  do  call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'update', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, Data, Where)
+                    do  try apply 'sqlite_stmt_worker'/4(Db, Query, Data, Where) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        'ok'
+    'DB.delete'/3 =
+        fun (Db, Table, Where) ->
+            let <Query> =
+                call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'delete', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, ~{{'vbeam','type'}=>'QueryData'}~, Where)
+            in  do  call 'v.orm':'orm_stmt_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'delete', 'true', #{#<63>(8,1,'integer',['unsigned'|['big']])}#, 1, ~{{'vbeam','type'}=>'QueryData'}~, Where)
+                    do  try apply 'sqlite_stmt_worker'/4(Db, Query, ~{{'vbeam','type'}=>'QueryData'}~, Where) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        'ok'
+    'DB.last_id'/1 =
+        fun (Db) ->
+            let <Query> =
+                #{#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#
+            in  try apply 'DB.q_int'/2(Db, Query) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 0
+    'DB.create'/3 =
+        fun (Db, Table, Fields) ->
+            let <Query> =
+                try call 'v.orm':'orm_table_gen'('sqlite', Table, #{#<96>(8,1,'integer',['unsigned'|['big']])}#, 'true', 0, Fields, fun (_fref0) -> call 'v.db.sqlite':'sqlite_type_from_v'(_fref0), 'false') of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> Err
+            in  do  try apply 'sqlite_stmt_worker'/4(Db, Query, ~{{'vbeam','type'}=>'QueryData'}~, ~{{'vbeam','type'}=>'QueryData'}~) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                    'ok'
+    'DB.drop'/2 =
+        fun (Db, Table) ->
+            let <Query> =
+                call 'erlang':'iolist_to_binary'([#{#<68>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Table)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+            in  do  try apply 'sqlite_stmt_worker'/4(Db, Query, ~{{'vbeam','type'}=>'QueryData'}~, ~{{'vbeam','type'}=>'QueryData'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    'ok'
+    'sqlite_stmt_worker'/4 =
+        fun (Db, Query, Data, Where) ->
+            let <Stmt> =
+                try apply 'DB.new_init_stmt'/2(Db, Query) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  let <C> =
+                    1
+                in  do  try apply 'sqlite_stmt_binder'/4(Stmt, Data, Query, C) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                        do  try apply 'sqlite_stmt_binder'/4(Stmt, Where, Query, C) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                            do  try apply 'Stmt.orm_step'/2(Stmt, Query) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok'
+                                'ok'
+    'sqlite_stmt_binder'/4 =
+        fun (Stmt, D, Query, C) ->
+            do  let <_1> =
+                fun (Data) ->
+                    let <Err> =
+                        apply 'bind'/3(Stmt, C, Data)
+                    in  case call 'erlang':'=/='(Err, 0) of
+                            <'true'> when 'true' -> apply 'DB.error_message'/3(call 'erlang':'map_get'('db', Stmt), Err, Query)
+                            <'false'> when 'true' -> 
+                                C
+                        end
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('data', D))
+                'ok'
+    'bind'/3 =
+        fun (Stmt, C, Data) ->
+            let <Err> =
+                0
+            in  do  case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Data, 'false') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end end end end end end end end end end end end end end end
+                    Err
+    'Stmt.sqlite_select_column'/3 =
+        fun (Stmt, Idx, Typ) ->
+            case call 'erlang':'or'(call 'lists':'member'(Typ, [call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#)|[]]]]]]]]), call 'erlang':'=:='(Typ, -1)) of <'true'> when 'true' -> try apply 'Stmt.get_int'/2(Stmt, Idx) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'false'> when 'true' -> case call 'lists':'member'(Typ, [call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) of <'true'> when 'true' -> try apply 'Stmt.get_i64'/2(Stmt, Idx) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Typ, call 'erlang':'map_get'('idx', #{#<102>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> try apply 'Stmt.get_f64'/2(Stmt, Idx) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Typ, call 'erlang':'map_get'('idx', #{#<102>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> try apply 'Stmt.get_f64'/2(Stmt, Idx) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Typ, call 'erlang':'map_get'('idx', #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> case try apply 'Stmt.get_text'/2(Stmt, Idx) of <_cor5> when 'true' -> {'ok', _cor5} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', V}> when 'true' -> apply 'string.clone'/1(V) <_> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ end <'false'> when 'true' -> case call 'erlang':'=:='(Typ, -3) of <'true'> when 'true' -> try apply 'Stmt.get_i64'/2(Stmt, Idx) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ <'false'> when 'true' -> case call 'erlang':'=:='(Typ, -2) of <'true'> when 'true' -> case try apply 'Stmt.get_int'/2(Stmt, Idx) of <_cor8> when 'true' -> {'ok', _cor8} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', V_7}> when 'true' -> ~{{'vbeam','type'}=>'Time'}~ <_> when 'true' -> ~{{'vbeam','type'}=>'Null'}~ end <'false'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Typ)|[]]])) end end end end end end end
+    'sqlite_type_from_v'/1 =
+        fun (Typ) ->
+            case call 'erlang':'or'(call 'erlang':'or'(call 'lists':'member'(Typ, [call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#)|[]]]]]]]]), call 'lists':'member'(Typ, [call 'erlang':'map_get'('idx', #{#<105>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<117>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)|[]]])), call 'lists':'member'(Typ, [-1|[-2|[-3|[]]]])) of <'true'> when 'true' -> #{#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case call 'lists':'member'(Typ, [call 'erlang':'map_get'('idx', #{#<102>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)|[call 'erlang':'map_get'('idx', #{#<102>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)|[]]]) of <'true'> when 'true' -> #{#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case call 'erlang':'=:='(Typ, call 'erlang':'map_get'('idx', #{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)) of <'true'> when 'true' -> #{#<84>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<88>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Typ)|[]]])) end end end
+    'new_connection_pool'/2 =
+        fun (Config, Size) ->
+            let <Connections> =
+                'false'
+            in  do  let <_1> =
+                    fun (_) ->
+                        let <Conn> =
+                            try apply 'connect'/1(Config) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                        in  call 'erlang':'<-'(Connections, Conn)
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(Size, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    ~{'connections'=>Connections,'config'=>Config,{'vbeam','type'}=>'ConnectionPool'}~
+    'ConnectionPool.acquire'/1 =
+        fun (Pool) ->
+            call 'erlang':'map_get'('connections', Pool)
+    'ConnectionPool.release'/2 =
+        fun (Pool, Conn) ->
+            call 'erlang':'<-'(call 'erlang':'map_get'('connections', Pool), Conn)
+    'ConnectionPool.close'/1 =
+        fun (Pool) ->
+            'ok'
+    'Result.is_error'/1 =
+        fun (R) ->
+            call 'erlang':'not'(call 'lists':'member'(R, ['ok'|['row'|['done'|[]]]]))
+    'is_error'/1 =
+        fun (Code) ->
+            apply 'Result.is_error'/1(Code)
+    'DB.str'/1 =
+        fun (Db) ->
+            #{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}#
+    'connect'/1 =
+        fun (Path) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.close'/1 =
+        fun (Db) ->
+            do  'false'
+                'ok'
+    'get_int_from_stmt'/1 =
+        fun (Stmt) ->
+            0
+    'DB.last_insert_rowid'/1 =
+        fun (Db) ->
+            0
+    'DB.get_affected_rows_count'/1 =
+        fun (Db) ->
+            0
+    'DB.q_int'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.q_string'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.exec_map'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.exec'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.exec_one'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.error_message'/3 =
+        fun (Db, Code, Query) ->
+            ~{'msg'=>call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Code)|[#{#<41>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[Query|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]),'code'=>Code,{'vbeam','type'}=>'SQLError'}~
+    'DB.exec_none'/2 =
+        fun (Db, Query) ->
+            -1
+    'DB.exec_param_many'/3 =
+        fun (Db, Query, Params) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.exec_param'/3 =
+        fun (Db, Query, Param) ->
+            apply 'DB.exec_param_many'/3(Db, Query, [Param|[]])
+    'DB.create_table'/3 =
+        fun (Db, Table_name, Columns) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.busy_timeout'/2 =
+        fun (Db, Ms) ->
+            -1
+    'DB.synchronization_mode'/2 =
+        fun (Db, Sync_mode) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.journal_mode'/2 =
+        fun (Db, Journal_mode) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.begin'/2 =
+        fun (Db, Param) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.savepoint'/2 =
+        fun (Db, Savepoint) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.commit'/1 =
+        fun (Db) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.rollback'/1 =
+        fun (Db) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.rollback_to'/2 =
+        fun (Db, Savepoint) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'DB.reset'/1 =
+        fun (Db) ->
+            'ok'
+    'DB.validate'/1 =
+        fun (Db) ->
+            'false'
+    'DB.init_stmt'/2 =
+        fun (Db, Query) ->
+            'nil'
+    'DB.new_init_stmt'/2 =
+        fun (Db, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'Stmt.bind_null'/2 =
+        fun (Stmt, Idx) ->
+            -1
+    'Stmt.bind_int'/3 =
+        fun (Stmt, Idx, V) ->
+            -1
+    'Stmt.bind_i64'/3 =
+        fun (Stmt, Idx, V) ->
+            -1
+    'Stmt.bind_f64'/3 =
+        fun (Stmt, Idx, V) ->
+            -1
+    'Stmt.bind_text'/3 =
+        fun (Stmt, Idx, S) ->
+            -1
+    'Stmt.get_int'/2 =
+        fun (Stmt, Idx) ->
+            'none'
+    'Stmt.get_i64'/2 =
+        fun (Stmt, Idx) ->
+            'none'
+    'Stmt.get_f64'/2 =
+        fun (Stmt, Idx) ->
+            'none'
+    'Stmt.get_text'/2 =
+        fun (Stmt, Idx) ->
+            'none'
+    'Stmt.get_count'/1 =
+        fun (Stmt) ->
+            0
+    'Stmt.step'/1 =
+        fun (Stmt) ->
+            101
+    'Stmt.orm_step'/2 =
+        fun (Stmt, Query) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'Stmt.finalize'/1 =
+        fun (Stmt) ->
+            'ok'
+    'Result__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'SyncMode__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Sqlite3TransactionLevel__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'JournalMode__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.db.sqlite')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.db.sqlite', _0)
+    end

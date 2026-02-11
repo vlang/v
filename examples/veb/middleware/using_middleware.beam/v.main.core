@@ -1,0 +1,93 @@
+module 'v.main' ['main'/0,
+                'new_app'/0,
+                'App.index'/1,
+                'App.secrets'/1,
+                'App.dynamic'/2,
+                'App.early'/1,
+                'App.before_request'/1,
+                'App.check_auth'/1,
+                'other_func1'/1,
+                'other_func2'/1,
+                'middleware_early'/1,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'main'/0 =
+            fun () ->
+                let <App> =
+                    apply 'new_app'/0()
+                in  call 'v.vweb':'run'(App, 8080)
+        'new_app'/0 =
+            fun () ->
+                let <App> =
+                    ~{'middlewares'=>~{#{#<47>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#=>[fun (_fref0) -> call 'v.main':'other_func1'(_fref0)|[fun (_fref0) -> call 'v.main':'other_func2'(_fref0)|[]]],#{#<47>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#=>[fun (_fref0) -> call 'v.main':'middleware_early'(_fref0)|[]]}~,{'vbeam','type'}=>'App'}~
+                in  App
+        'App.index'/1 =
+            fun (App) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    let <Title> =
+                        #{#<72>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+                    in  let <Content> =
+                            'false'
+                        in  let <Base> =
+                                'false'
+                            in  apply 'App.html'/2(App, Base)
+        'App.secrets'/1 =
+            fun (App) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    let <Title> =
+                        #{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+                    in  let <Content> =
+                            'false'
+                        in  let <Base> =
+                                'false'
+                            in  apply 'App.html'/2(App, Base)
+        'App.dynamic'/2 =
+            fun (App, Sub) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<68>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    let <Title> =
+                        #{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']])}#
+                    in  let <Base> =
+                            'false'
+                        in  apply 'App.html'/2(App, Base)
+        'App.early'/1 =
+            fun (App) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<69>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    let <Title> =
+                        #{#<69>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#
+                    in  let <Content> =
+                            'false'
+                        in  let <Base> =
+                                'false'
+                            in  apply 'App.html'/2(App, Base)
+        'App.before_request'/1 =
+            fun (App) ->
+                do  'false'
+                    call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<48>(8,1,'integer',['unsigned'|['big']])}#|[]])
+        'App.check_auth'/1 =
+            fun (App) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<51>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    do  case call 'erlang':'=:='(call 'erlang':'map_get'('is_authenticated', App), 'false') of <'true'> when 'true' -> apply 'App.redirect'/3(App, #{#<47>(8,1,'integer',['unsigned'|['big']])}#, ~{{'vbeam','type'}=>'RedirectParams'}~) <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'map_get'('is_authenticated', App)
+        'other_func1'/1 =
+            fun (_ctx) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<49>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    'true'
+        'other_func2'/1 =
+            fun (_ctx) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<50>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    'true'
+        'middleware_early'/1 =
+            fun (Ctx) ->
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<52>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                    do  apply 'Context.text'/2(Ctx, #{#<58>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#)
+                        'false'
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

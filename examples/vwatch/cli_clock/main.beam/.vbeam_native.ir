@@ -1,0 +1,61 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 3,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 51},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_1">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 36},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_2">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 35},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_3">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 34},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_4">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 1},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {label, <<"loop_0">>},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 0}, 1000},
+                {mul, {vreg, 1}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"Run with: `v watch run examples/vwatch/cli_clock`,\n">>},
+        {<<"str_1">>, 1, <<"then modify timer.v in your editor.\n">>},
+        {<<"str_2">>, 1, <<"The application will be restarted,\n">>},
+        {<<"str_3">>, 1, <<"as soon as you save your changes.\n">>},
+        {<<"str_4">>, 1, <<"\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

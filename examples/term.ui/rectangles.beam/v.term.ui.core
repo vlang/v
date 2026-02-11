@@ -1,0 +1,388 @@
+module 'v.term.ui' ['init_color_table'/0,
+                'clamp'/3,
+                'approximate_rgb'/3,
+                'lookup_rgb'/3,
+                'rgb2ansi'/3,
+                'Context.init'/1,
+                'Context.frame'/1,
+                'Context.cleanup'/1,
+                'Context.fail'/2,
+                'Context.event'/2,
+                'Color.hex'/1,
+                'init'/1,
+                'Context.run'/1,
+                'Context.flush'/1,
+                'flush_stdout'/0,
+                'Context.write'/2,
+                'Context.bold'/1,
+                'Context.set_cursor_position'/3,
+                'Context.show_cursor'/1,
+                'Context.hide_cursor'/1,
+                'Context.set_color'/2,
+                'Context.set_bg_color'/2,
+                'Context.reset_color'/1,
+                'Context.reset_bg_color'/1,
+                'Context.reset'/1,
+                'Context.clear'/1,
+                'Context.set_window_title'/2,
+                'Context.draw_point'/3,
+                'Context.draw_text'/4,
+                'Context.draw_line'/5,
+                'Context.draw_dashed_line'/5,
+                'Context.draw_rect'/5,
+                'Context.draw_empty_dashed_rect'/5,
+                'Context.draw_empty_rect'/5,
+                'Context.horizontal_separator'/2,
+                'KeyCode__static__from'/1,
+                'Direction__static__from'/1,
+                'MouseButton__static__from'/1,
+                'EventType__static__from'/1,
+                'Modifiers.is_empty'/1,
+                'Modifiers.has'/2,
+                'Modifiers.all'/2,
+                'Modifiers.set'/2,
+                'Modifiers.set_all'/1,
+                'Modifiers.clear'/2,
+                'Modifiers.clear_all'/1,
+                'Modifiers.toggle'/2,
+                'Modifiers__static__zero'/0,
+                'Modifiers__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'init_color_table'/0 =
+        fun () ->
+            let <Color_table_> =
+                []
+            in  do  16#000000
+                    do  16#800000
+                        do  16#008000
+                            do  16#808000
+                                do  16#000080
+                                    do  16#800080
+                                        do  16#008080
+                                            do  16#c0c0c0
+                                                do  16#808080
+                                                    do  16#ff0000
+                                                        do  16#00ff00
+                                                            do  16#ffff00
+                                                                do  16#0000ff
+                                                                    do  16#ff00ff
+                                                                        do  16#00ffff
+                                                                            do  16#ffffff
+                                                                                do  let <_1> =
+                                                                                    fun (I) ->
+                                                                                        let <R> =
+                                                                                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'(call 'erlang':'div'(I, 36), 6), 1), [16#00|[16#5f|[16#87|[16#af|[16#d7|[16#ff|[]]]]]]])
+                                                                                        in  let <G> =
+                                                                                                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'(call 'erlang':'div'(I, 6), 6), 1), [16#00|[16#5f|[16#87|[16#af|[16#d7|[16#ff|[]]]]]]])
+                                                                                            in  let <B> =
+                                                                                                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'rem'(I, 6), 1), [16#00|[16#5f|[16#87|[16#af|[16#d7|[16#ff|[]]]]]]])
+                                                                                                in  'ok'
+                                                                                in  let <_2> =
+                                                                                        call 'lists':'seq'(0, call 'erlang':'-'(216, 1))
+                                                                                    in  call 'lists':'foreach'(_1, _2)
+                                                                                    let <R_3> =
+                                                                                        let <_4> =
+                                                                                            fun (I, RAcc) ->
+                                                                                                let <ROut_6> =
+                                                                                                    call 'erlang':'+'(8, call 'erlang':'*'(I, 10))
+                                                                                                in  ROut_6
+                                                                                        in  let <_5> =
+                                                                                            call 'lists':'seq'(0, call 'erlang':'-'(24, 1))
+                                                                                        in  call 'lists':'foldl'(_4, R, _5)
+                                                                                    in  Color_table_
+    'clamp'/3 =
+        fun (X, Y, Z) ->
+            case call 'erlang':'<'(X, Y) of
+                <'true'> when 'true' -> Y
+                <'false'> when 'true' -> 
+                    case call 'erlang':'>'(X, Z) of
+                        <'true'> when 'true' -> Z
+                        <'false'> when 'true' -> 
+                            X
+                    end
+            end
+    'approximate_rgb'/3 =
+        fun (R, G, B) ->
+            let <Grey> =
+                call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>'(R, 0), call 'erlang':'<'(R, 255)), call 'erlang':'=:='(R, G)), call 'erlang':'=:='(R, B))
+            in  case Grey of
+                    <'true'> when 'true' -> call 'erlang':'+'(232, call 'erlang':'trunc'(call 'erlang':'/'(call 'erlang':'float'(R), call 'erlang':'/'(255, 24.1))))
+                    <'false'> when 'true' -> 
+                        let <K> =
+                            call 'erlang':'/'(256.0, 6)
+                        in  let <R2> =
+                                apply 'clamp'/3(call 'erlang':'div'(R, K), 0, 5)
+                            in  let <G2> =
+                                    apply 'clamp'/3(call 'erlang':'div'(G, K), 0, 5)
+                                in  let <B2> =
+                                        apply 'clamp'/3(call 'erlang':'div'(B, K), 0, 5)
+                                    in  call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(16, call 'erlang':'*'(R2, 36)), call 'erlang':'*'(G2, 6)), B2)
+                end
+    'lookup_rgb'/3 =
+        fun (R, G, B) ->
+            let <Color> =
+                call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'bsl'(R, 16), call 'erlang':'bsl'(G, 8)), B)
+            in  do  let <_1> =
+                    fun (I) ->
+                        case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(I, 1), apply 'init_color_table'/0()), Color) of <'true'> when 'true' -> I <'false'> when 'true' -> 'ok' end
+                in  let <_2> =
+                        call 'lists':'seq'(16, call 'erlang':'-'(256, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    -1
+    'rgb2ansi'/3 =
+        fun (R, G, B) ->
+            let <C> =
+                apply 'lookup_rgb'/3(R, G, B)
+            in  case call 'erlang':'=:='(C, -1) of
+                    <'true'> when 'true' -> apply 'approximate_rgb'/3(R, G, B)
+                    <'false'> when 'true' -> 
+                        C
+                end
+    'Context.init'/1 =
+        fun (Ctx) ->
+            let <F> =
+                call 'erlang':'map_get'('init_fn', call 'erlang':'map_get'('cfg', Ctx))
+            in  apply F(call 'erlang':'map_get'('user_data', call 'erlang':'map_get'('cfg', Ctx)))
+    'Context.frame'/1 =
+        fun (Ctx) ->
+            let <F> =
+                call 'erlang':'map_get'('frame_fn', call 'erlang':'map_get'('cfg', Ctx))
+            in  apply F(call 'erlang':'map_get'('user_data', call 'erlang':'map_get'('cfg', Ctx)))
+    'Context.cleanup'/1 =
+        fun (Ctx) ->
+            let <F> =
+                call 'erlang':'map_get'('cleanup_fn', call 'erlang':'map_get'('cfg', Ctx))
+            in  apply F(call 'erlang':'map_get'('user_data', call 'erlang':'map_get'('cfg', Ctx)))
+    'Context.fail'/2 =
+        fun (Ctx, Error) ->
+            let <F> =
+                call 'erlang':'map_get'('fail_fn', call 'erlang':'map_get'('cfg', Ctx))
+            in  apply F(Error)
+    'Context.event'/2 =
+        fun (Ctx, Event) ->
+            let <F> =
+                call 'erlang':'map_get'('event_fn', call 'erlang':'map_get'('cfg', Ctx))
+            in  apply F(Event, call 'erlang':'map_get'('user_data', call 'erlang':'map_get'('cfg', Ctx)))
+    'Color.hex'/1 =
+        fun (C) ->
+            call 'erlang':'iolist_to_binary'([#{#<35>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u8.hex'/1(call 'erlang':'map_get'('r', C))|[apply 'u8.hex'/1(call 'erlang':'map_get'('g', C))|[apply 'u8.hex'/1(call 'erlang':'map_get'('b', C))|[]]]]])
+    'init'/1 =
+        fun (Cfg) ->
+            let <Ctx> =
+                ~{'cfg'=>Cfg,{'vbeam','type'}=>'Context'}~
+            in  do  []
+                    Ctx
+    'Context.run'/1 =
+        fun (Ctx) ->
+            case call 'erlang':'map_get'('use_x11', call 'erlang':'map_get'('cfg', Ctx)) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<120>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    do  apply 'Context.fail'/2(Ctx, #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                        call 'erlang':'error'(#{#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+            end
+    'Context.flush'/1 =
+        fun (Ctx) ->
+            case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('print_buf', Ctx)), 0) of <'true'> when 'true' -> 
+                let <S> =
+                    apply 'tos'/2(call 'erlang':'map_get'('data', call 'erlang':'map_get'('print_buf', Ctx)), call 'erlang':'length'(call 'erlang':'map_get'('print_buf', Ctx)))
+                in  do  call 'io':'format'([126|[115|[]]], [S|[]])
+                        do  apply 'flush_stdout'/0()
+                            apply 'array.clear'/1(call 'erlang':'map_get'('print_buf', Ctx))
+             <'false'> when 'true' -> 'ok' end
+    'flush_stdout'/0 =
+        fun () ->
+            'ok'
+    'Context.write'/2 =
+        fun (Ctx, S) ->
+            case call 'erlang':'=:='(S, #{  }#) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'array.push_many'/3(call 'erlang':'map_get'('print_buf', Ctx), call 'erlang':'map_get'('str', S), call 'erlang':'length'(S))
+            end
+    'Context.bold'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.set_cursor_position'/3 =
+        fun (Ctx, X, Y) ->
+            apply 'Context.write'/2(Ctx, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Y)|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(X)|[#{#<72>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]))
+    'Context.show_cursor'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<63>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.hide_cursor'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<63>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.set_color'/2 =
+        fun (Ctx, C) ->
+            case call 'erlang':'map_get'('enable_rgb', Ctx) of <'true'> when 'true' -> apply 'Context.write'/2(Ctx, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('r', C))|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('g', C))|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('b', C))|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]])) <'false'> when 'true' -> apply 'Context.write'/2(Ctx, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'rgb2ansi'/3(call 'erlang':'map_get'('r', C), call 'erlang':'map_get'('g', C), call 'erlang':'map_get'('b', C)))|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) end
+    'Context.set_bg_color'/2 =
+        fun (Ctx, C) ->
+            case call 'erlang':'map_get'('enable_rgb', Ctx) of <'true'> when 'true' -> apply 'Context.write'/2(Ctx, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('r', C))|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('g', C))|[#{#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('b', C))|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]])) <'false'> when 'true' -> apply 'Context.write'/2(Ctx, call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'rgb2ansi'/3(call 'erlang':'map_get'('r', C), call 'erlang':'map_get'('g', C), call 'erlang':'map_get'('b', C)))|[#{#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) end
+    'Context.reset_color'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.reset_bg_color'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.reset'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.clear'/1 =
+        fun (Ctx) ->
+            apply 'Context.write'/2(Ctx, #{#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']]),#<27>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<74>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.set_window_title'/2 =
+        fun (Ctx, S) ->
+            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([#{#<27>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<7>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                apply 'flush_stdout'/0()
+    'Context.draw_point'/3 =
+        fun (Ctx, X, Y) ->
+            do  apply 'Context.set_cursor_position'/3(Ctx, X, Y)
+                apply 'Context.write'/2(Ctx, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)
+    'Context.draw_text'/4 =
+        fun (Ctx, X, Y, S) ->
+            do  apply 'Context.set_cursor_position'/3(Ctx, X, Y)
+                apply 'Context.write'/2(Ctx, S)
+    'Context.draw_line'/5 =
+        fun (Ctx, X, Y, X2, Y2) ->
+            let <Min_x> =
+                case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> X <'false'> when 'true' -> X2 end
+            in  let <Min_y> =
+                    case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> Y <'false'> when 'true' -> Y2 end
+                in  let <Max_x> =
+                        case call 'erlang':'>'(X, X2) of <'true'> when 'true' -> X <'false'> when 'true' -> X2 end
+                    in  do  case call 'erlang':'>'(Y, Y2) of <'true'> when 'true' -> Y <'false'> when 'true' -> Y2 end
+                            case call 'erlang':'=:='(Y, Y2) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    let <Sx> =
+                                        case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                                    in  let <Sy> =
+                                            case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                                        in  let <Dx> =
+                                                case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> call 'erlang':'-'(X2, X) <'false'> when 'true' -> call 'erlang':'-'(X, X2) end
+                                            in  let <Dy> =
+                                                    case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> call 'erlang':'-'(Y, Y2) <'false'> when 'true' -> call 'erlang':'-'(Y2, Y) end
+                                                in  let <Err> =
+                                                        call 'erlang':'+'(Dx, Dy)
+                                                    in  'ok'
+                            end
+    'Context.draw_dashed_line'/5 =
+        fun (Ctx, X, Y, X2, Y2) ->
+            let <Sx> =
+                case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+            in  let <Sy> =
+                    case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                in  let <Dx> =
+                        case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> call 'erlang':'-'(X2, X) <'false'> when 'true' -> call 'erlang':'-'(X, X2) end
+                    in  let <Dy> =
+                            case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> call 'erlang':'-'(Y, Y2) <'false'> when 'true' -> call 'erlang':'-'(Y2, Y) end
+                        in  let <Err> =
+                                call 'erlang':'+'(Dx, Dy)
+                            in  let <I> =
+                                    0
+                                in  'ok'
+    'Context.draw_rect'/5 =
+        fun (Ctx, X, Y, X2, Y2) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(Y, Y2), call 'erlang':'=:='(X, X2)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Min_y> =
+                        case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> {Y, Y2} <'false'> when 'true' -> {Y2, Y} end
+                    in  let <Max_y> =
+                            case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> {Y, Y2} <'false'> when 'true' -> {Y2, Y} end
+                        in  'ok'
+            end
+    'Context.draw_empty_dashed_rect'/5 =
+        fun (Ctx, X, Y, X2, Y2) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(Y, Y2), call 'erlang':'=:='(X, X2)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Min_x> =
+                        case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> {X, X2} <'false'> when 'true' -> {X2, X} end
+                    in  let <Max_x> =
+                            case call 'erlang':'<'(X, X2) of <'true'> when 'true' -> {X, X2} <'false'> when 'true' -> {X2, X} end
+                        in  let <Min_y> =
+                                case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> {Y, Y2} <'false'> when 'true' -> {Y2, Y} end
+                            in  let <Max_y> =
+                                    case call 'erlang':'<'(Y, Y2) of <'true'> when 'true' -> {Y, Y2} <'false'> when 'true' -> {Y2, Y} end
+                                in  do  apply 'Context.draw_dashed_line'/5(Ctx, Min_x, Min_y, Max_x, Min_y)
+                                        do  apply 'Context.draw_dashed_line'/5(Ctx, Min_x, Min_y, Min_x, Max_y)
+                                            do  case call 'erlang':'=:='(call 'erlang':'band'(call 'erlang':'-'(Max_y, Min_y), 1), 0) of <'true'> when 'true' -> apply 'Context.draw_dashed_line'/5(Ctx, Min_x, Max_y, Max_x, Max_y) <'false'> when 'true' -> apply 'Context.draw_dashed_line'/5(Ctx, call 'erlang':'+'(Min_x, 1), Max_y, Max_x, Max_y) end
+                                                case call 'erlang':'=:='(call 'erlang':'band'(call 'erlang':'-'(Max_x, Min_x), 1), 0) of <'true'> when 'true' -> apply 'Context.draw_dashed_line'/5(Ctx, Max_x, Min_y, Max_x, Max_y) <'false'> when 'true' -> apply 'Context.draw_dashed_line'/5(Ctx, Max_x, call 'erlang':'+'(Min_y, 1), Max_x, Max_y) end
+            end
+    'Context.draw_empty_rect'/5 =
+        fun (Ctx, X, Y, X2, Y2) ->
+            case call 'erlang':'or'(call 'erlang':'=:='(Y, Y2), call 'erlang':'=:='(X, X2)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            do  'ok'
+                                'ok'
+            end
+    'Context.horizontal_separator'/2 =
+        fun (Ctx, Y) ->
+            do  apply 'Context.set_cursor_position'/3(Ctx, 0, Y)
+                apply 'Context.write'/2(Ctx, call 'v.strings':'repeat'(45, call 'erlang':'map_get'('window_width', Ctx)))
+    'KeyCode__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Direction__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'MouseButton__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'EventType__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Modifiers.is_empty'/1 =
+        fun (E) ->
+            call 'erlang':'=:='(E, 0)
+    'Modifiers.has'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=/='(call 'erlang':'band'(E, Flag_), 0)
+    'Modifiers.all'/2 =
+        fun (E, Flag_) ->
+            call 'erlang':'=:='(call 'erlang':'band'(E, Flag_), Flag_)
+    'Modifiers.set'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'Modifiers.set_all'/1 =
+        fun (E) ->
+            'ok'
+    'Modifiers.clear'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'Modifiers.clear_all'/1 =
+        fun (E) ->
+            'ok'
+    'Modifiers.toggle'/2 =
+        fun (E, Flag_) ->
+            'ok'
+    'Modifiers__static__zero'/0 =
+        fun () ->
+            0
+    'Modifiers__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.term.ui')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.term.ui', _0)
+    end

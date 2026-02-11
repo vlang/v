@@ -1,0 +1,82 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"slog">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"colorize">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {call, {sym, <<"start_server">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"start_server">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 10,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"slog">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov_imm, {vreg, 1}, 30000},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 1}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"new_server">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {vreg, 3}, 100},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"set_ping_interval">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_connect">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 2}},
+                {call, {sym, <<"on_message_ref">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_close">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {call, {sym, <<"listen">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"slog">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

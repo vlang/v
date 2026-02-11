@@ -1,0 +1,46 @@
+module 'v.sim.anim' ['new_app'/1,
+                'init'/1,
+                'frame'/1,
+                'App.draw'/1,
+                'pixels_worker'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_app'/1 =
+        fun (Args) ->
+            let <Total_pixels> =
+                call 'erlang':'*'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('grid', Args)), call 'erlang':'map_get'('width', call 'erlang':'map_get'('grid', Args)))
+            in  let <App> =
+                    ~{'args'=>Args,'pixels'=>[],'request_chan'=>'false',{'vbeam','type'}=>'App'}~
+                in  do  call 'v.gg':'new_context'(~{'width'=>call 'erlang':'map_get'('width', call 'erlang':'map_get'('grid', Args)),'height'=>call 'erlang':'map_get'('height', call 'erlang':'map_get'('grid', Args)),'create_window'=>'true','window_title'=>#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#,'user_data'=>App,'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'frame_fn'=>fun (_fref0) -> call 'v.sim.anim':'frame'(_fref0),'init_fn'=>fun (_fref0) -> call 'v.sim.anim':'init'(_fref0),{'vbeam','type'}=>'Config'}~)
+                        App
+    'init'/1 =
+        fun (App) ->
+            do  apply 'Context.new_streaming_image'/5(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('width', call 'erlang':'map_get'('grid', call 'erlang':'map_get'('args', App))), call 'erlang':'map_get'('height', call 'erlang':'map_get'('grid', call 'erlang':'map_get'('args', App))), 4, ~{'pixel_format'=>'rgba8',{'vbeam','type'}=>'StreamingImageConfig'}~)
+                call 'vbeam_task':'async'(fun () -> apply 'pixels_worker'/1(App))
+    'frame'/1 =
+        fun (App) ->
+            do  'ok'
+                do  apply 'App.draw'/1(App)
+                    apply 'Context.end'/2(call 'erlang':'map_get'('gg', App), ~{{'vbeam','type'}=>'EndOptions'}~)
+    'App.draw'/1 =
+        fun (App) ->
+            let <Istream_image> =
+                apply 'Context.get_cached_image_by_idx'/2(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('iidx', App))
+            in  do  apply 'Image.update_pixel_data'/2(Istream_image, call 'lists':'nth'(1, call 'erlang':'map_get'('pixels', App)))
+                    'ok'
+    'pixels_worker'/1 =
+        fun (App) ->
+            let <Bmark> =
+                call 'v.benchmark':'new_benchmark'()
+            in  do  apply 'Benchmark.stop'/1(Bmark)
+                    call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Benchmark.total_message'/2(Bmark, #{#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)|[]])
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sim.anim')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sim.anim', _0)
+    end

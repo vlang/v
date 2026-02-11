@@ -1,0 +1,239 @@
+module 'v.picoev' ['elog'/1,
+                'trace_fd'/1,
+                'create_select_loop'/1,
+                'create_kqueue_loop'/1,
+                'create_epoll_loop'/1,
+                'Picoev.update_events'/3,
+                'Picoev.poll_once'/2,
+                'get_time'/0,
+                'accept'/1,
+                'close_socket'/1,
+                'setup_sock'/1,
+                'req_read'/4,
+                'fatal_socket_error'/1,
+                'listen'/1,
+                'Picoev.init'/1,
+                'Picoev.add'/5,
+                'Picoev.delete'/2,
+                'Picoev.loop_once'/2,
+                'Picoev.set_timeout'/3,
+                'Picoev.handle_timeout'/1,
+                'accept_callback'/3,
+                'Picoev.close_conn'/2,
+                'raw_callback'/3,
+                'default_error_callback'/4,
+                'new'/1,
+                'Picoev.serve'/1,
+                'update_date_string'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'elog'/1 =
+        fun (Msg) ->
+            call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [Msg|[]])
+    'trace_fd'/1 =
+        fun (Msg) ->
+            call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [Msg|[]])
+    'create_select_loop'/1 =
+        fun (Id) ->
+            ~{'id'=>Id,{'vbeam','type'}=>'SelectLoop'}~
+    'create_kqueue_loop'/1 =
+        fun (Id) ->
+            ~{'id'=>Id,{'vbeam','type'}=>'KqueueLoop'}~
+    'create_epoll_loop'/1 =
+        fun (Id) ->
+            ~{'id'=>Id,{'vbeam','type'}=>'EpollLoop'}~
+    'Picoev.update_events'/3 =
+        fun (Pv, Fd, Events) ->
+            do  call 'erlang':'band'(Events, 3)
+                0
+    'Picoev.poll_once'/2 =
+        fun (Pv, Max_wait_in_sec) ->
+            0
+    'get_time'/0 =
+        fun () ->
+            0
+    'accept'/1 =
+        fun (Fd) ->
+            -1
+    'close_socket'/1 =
+        fun (Fd) ->
+            'ok'
+    'setup_sock'/1 =
+        fun (Fd) ->
+            call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'req_read'/4 =
+        fun (Fd, Buffer, Max_len, Offset) ->
+            -1
+    'fatal_socket_error'/1 =
+        fun (Fd) ->
+            'true'
+    'listen'/1 =
+        fun (Config) ->
+            call 'erlang':'error'(#{#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#)
+    'Picoev.init'/1 =
+        fun (Pv) ->
+            do  0
+                'ok'
+    'Picoev.add'/5 =
+        fun (Pv, Fd, Events, Timeout, Callback) ->
+            case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=:='(Pv, 'nil'), call 'erlang':'<'(Fd, 0)), call 'erlang':'>='(Fd, 1024)) of
+                <'true'> when 'true' -> -1
+                <'false'> when 'true' -> 
+                    let <Target> =
+                        call 'lists':'nth'(call 'erlang':'+'(Fd, 1), call 'erlang':'map_get'('file_descriptors', Pv))
+                    in  do  Fd
+                            do  Callback
+                                do  call 'erlang':'map_get'('id', call 'erlang':'map_get'('loop', Pv))
+                                    do  0
+                                        case call 'erlang':'=/='(apply 'Picoev.update_events'/3(Pv, Fd, call 'erlang':'bor'(Events, 16#40000000)), 0) of
+                                            <'true'> when 'true' -> -1
+                                            <'false'> when 'true' -> 
+                                                do  apply 'Picoev.set_timeout'/3(Pv, Fd, Timeout)
+                                                    0
+                                        end
+            end
+    'Picoev.delete'/2 =
+        fun (Pv, Fd) ->
+            case call 'erlang':'or'(call 'erlang':'<'(Fd, 0), call 'erlang':'>='(Fd, 1024)) of
+                <'true'> when 'true' -> -1
+                <'false'> when 'true' -> 
+                    let <Target> =
+                        call 'lists':'nth'(call 'erlang':'+'(Fd, 1), call 'erlang':'map_get'('file_descriptors', Pv))
+                    in  do  apply 'trace_fd'/1(call 'erlang':'iolist_to_binary'([#{#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Fd)|[]]]))
+                            case call 'erlang':'=/='(apply 'Picoev.update_events'/3(Pv, Fd, 16#20000000), 0) of
+                                <'true'> when 'true' -> -1
+                                <'false'> when 'true' -> 
+                                    do  apply 'Picoev.set_timeout'/3(Pv, Fd, 0)
+                                        do  -1
+                                            do  0
+                                                do  'nil'
+                                                    0
+                            end
+            end
+    'Picoev.loop_once'/2 =
+        fun (Pv, Max_wait_in_sec) ->
+            do  apply 'get_time'/0()
+                case call 'erlang':'=/='(apply 'Picoev.poll_once'/2(Pv, Max_wait_in_sec), 0) of
+                    <'true'> when 'true' -> -1
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'=:='(Max_wait_in_sec, 0) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                do  apply 'get_time'/0()
+                                    do  apply 'Picoev.handle_timeout'/1(Pv)
+                                        0
+                        end
+                end
+    'Picoev.set_timeout'/3 =
+        fun (Pv, Fd, Secs) ->
+            case call 'erlang':'=:='(Secs, 0) of <'true'> when 'true' -> call 'maps':'remove'(Fd, call 'erlang':'map_get'('timeouts', Pv)) <'false'> when 'true' -> 'ok' end
+    'Picoev.handle_timeout'/1 =
+        fun (Pv) ->
+            let <To_remove> =
+                []
+            in  do  let <_1> =
+                    fun (Timeout, Fd) ->
+                        do  case call 'erlang':'=<'(Timeout, call 'erlang':'map_get'('now', call 'erlang':'map_get'('loop', Pv))) of <'true'> when 'true' -> call 'erlang':'bsl'(To_remove, Fd) <'false'> when 'true' -> 'ok' end
+                            call 'erlang':'+'(Fd, 1)
+                in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('timeouts', Pv))
+                    'ok'
+    'accept_callback'/3 =
+        fun (Listen_fd, _events, Cb_arg) ->
+            let <Pv> =
+                Cb_arg
+            in  let <Accepted_fd> =
+                    apply 'accept'/1(Listen_fd)
+                in  case call 'erlang':'=:='(Accepted_fd, -1) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'>='(Accepted_fd, 1024) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    do  apply 'trace_fd'/1(call 'erlang':'iolist_to_binary'([#{#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Accepted_fd)|[]]]))
+                                        do  try apply 'setup_sock'/1(Accepted_fd) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' ->                                         do  apply 'elog'/1(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Accepted_fd)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Listen_fd)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'IError.code'/1(Err))|[]]]]]]]))
+                                            do  apply 'Picoev.error_callback'/5(Pv, call 'erlang':'map_get'('user_data', Pv), ~{{'vbeam','type'}=>'Request'}~, ~{{'vbeam','type'}=>'Response'}~, Err)
+                                                do  apply 'close_socket'/1(Accepted_fd)
+                                                    'ok'
+
+                                            apply 'Picoev.add'/5(Pv, Accepted_fd, 1, call 'erlang':'map_get'('timeout_secs', Pv), fun (_fref0, _fref1, _fref2) -> call 'v.picoev':'raw_callback'(_fref0, _fref1, _fref2))
+                            end
+                    end
+    'Picoev.close_conn'/2 =
+        fun (Pv, Fd) ->
+            do  case call 'erlang':'=/='(apply 'Picoev.delete'/2(Pv, Fd), 0) of <'true'> when 'true' -> apply 'elog'/1(#{#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end
+                apply 'close_socket'/1(Fd)
+    'raw_callback'/3 =
+        fun (Fd, Events, Context) ->
+            let <Pv> =
+                Context
+            in  case call 'erlang':'=/='(call 'erlang':'band'(Events, 4), 0) of <'true'> when 'true' -> 
+                    do  apply 'trace_fd'/1(call 'erlang':'iolist_to_binary'([#{#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Fd)|[]]]))
+                        case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('raw_callback', Pv))) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                do  apply 'Picoev.close_conn'/2(Pv, Fd)
+                                    'ok'
+                        end
+                 <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'band'(Events, 1), 0) of <'true'> when 'true' -> 
+                    do  apply 'Picoev.set_timeout'/3(Pv, Fd, call 'erlang':'map_get'('timeout_secs', Pv))
+                        case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('raw_callback', Pv))) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                let <Request_buffer> =
+                                    call 'erlang':'map_get'('buf', Pv)
+                                in  let <Req> =
+                                        ~{{'vbeam','type'}=>'Request'}~
+                                    in  let <Response_buffer> =
+                                            call 'erlang':'map_get'('out', Pv)
+                                        in  let <Res> =
+                                                ~{'fd'=>Fd,'buf_start'=>Response_buffer,'buf'=>Response_buffer,'date'=>call 'erlang':'map_get'('str', call 'erlang':'map_get'('date', Pv)),{'vbeam','type'}=>'Response'}~
+                                            in  apply 'Picoev.cb'/4(Pv, call 'erlang':'map_get'('user_data', Pv), Req, Res)
+                        end
+                 <'false'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'band'(Events, 2), 0) of <'true'> when 'true' -> 
+                    do  apply 'Picoev.set_timeout'/3(Pv, Fd, call 'erlang':'map_get'('timeout_secs', Pv))
+                        case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('raw_callback', Pv))) of <'true'> when 'true' -> 
+                            do  apply 'Picoev.raw_callback'/4(Pv, Pv, Fd, Events)
+                                'ok'
+                         <'false'> when 'true' -> 'ok' end
+                 <'false'> when 'true' -> 'ok' end end end
+    'default_error_callback'/4 =
+        fun (_data, _req, Res, Error) ->
+            do  apply 'elog'/1(call 'erlang':'iolist_to_binary'([#{#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Error|[]]]))
+                apply 'Response.end'/1(Res)
+    'new'/1 =
+        fun (Config) ->
+            let <Listening_socket_fd> =
+                try apply 'listen'/1(Config) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' ->                 do  apply 'elog'/1(call 'erlang':'iolist_to_binary'([#{#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]]))
+                    Err
+
+            in  let <Pv> =
+                    ~{'num_loops'=>1,'cb'=>call 'erlang':'map_get'('cb', Config),'error_callback'=>call 'erlang':'map_get'('err_cb', Config),'raw_callback'=>call 'erlang':'map_get'('raw_cb', Config),'user_data'=>call 'erlang':'map_get'('user_data', Config),'timeout_secs'=>call 'erlang':'map_get'('timeout_secs', Config),'max_headers'=>call 'erlang':'map_get'('max_headers', Config),'max_read'=>call 'erlang':'map_get'('max_read', Config),'max_write'=>call 'erlang':'map_get'('max_write', Config),{'vbeam','type'}=>'Picoev'}~
+                in  do  case apply 'isnil'/1(call 'erlang':'map_get'('raw_callback', Pv)) of <'true'> when 'true' -> 
+                        do  apply 'malloc_noscan'/1(call 'erlang':'+'(call 'erlang':'*'(1024, call 'erlang':'map_get'('max_read', Config)), 1))
+                            'ok'
+                     <'false'> when 'true' -> 'ok' end
+                        do  'ok'
+                            case call 'erlang':'=:='(call 'erlang':'map_get'('loop', Pv), 'nil') of
+                                <'true'> when 'true' -> 'nil'
+                                <'false'> when 'true' -> 
+                                    do  apply 'Picoev.init'/1(Pv)
+                                        do  apply 'Picoev.add'/5(Pv, Listening_socket_fd, 1, 0, fun (_fref0, _fref1, _fref2) -> call 'v.picoev':'accept_callback'(_fref0, _fref1, _fref2))
+                                            Pv
+                            end
+    'Picoev.serve'/1 =
+        fun (Pv) ->
+            do  call 'vbeam_task':'async'(fun () -> apply 'update_date_string'/1(Pv))
+                'ok'
+    'update_date_string'/1 =
+        fun (Pv) ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.picoev')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.picoev', _0)
+    end

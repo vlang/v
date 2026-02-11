@@ -1,0 +1,33 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Fp> =
+                ~{{'vbeam','type'}=>'FlagParser'}~
+            in  do  'ok'
+                    do  'ok'
+                        do  'ok'
+                            do  'ok'
+                                let <Input_file> =
+                                    <<"">>
+                                in  do  try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                                        let <Sample_count> =
+                                            apply 'string.u64'/1(call 'lists':'nth'(1, []))
+                                        in  let <Content> =
+                                                try call 'file':'read_file'(Input_file) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                            in  let <Reader> =
+                                                    call 'v.encoding.csv':'new_reader'(Content, ~{'delimiter'=>44,{'vbeam','type'}=>'ReaderConfig'}~)
+                                                in  let <Means> =
+                                                        []
+                                                    in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

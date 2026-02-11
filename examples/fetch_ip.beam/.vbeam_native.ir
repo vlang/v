@@ -1,0 +1,38 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 6,
+            body => [
+                {string_lit, {vreg, 0}, {data_ref, <<"str_0">>}, 23},
+                {struct_new, {vreg, 1}, {imm, 184}},
+                {field_set, {vreg, 1}, {imm, 0}, {vreg, 0}},
+                {string_lit, {vreg, 2}, {data_ref, <<"str_1">>}, 78},
+                {field_set, {vreg, 1}, {imm, 48}, {vreg, 2}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"fetch">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {field_get, {vreg, 4}, {vreg, 3}, {imm, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 4}},
+                {call, {sym, <<"decode">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {print_int, {vreg, 5}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"http://ifconfig.co/json">>},
+        {<<"str_1">>, 1, <<"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0">>}
+    ],
+    bss => [],
+    imports => []
+}.

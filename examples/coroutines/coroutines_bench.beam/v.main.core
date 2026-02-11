@@ -1,0 +1,31 @@
+module 'v.main' ['request'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'request'/2 =
+            fun (Mu, Count) ->
+                'ok'
+        'main'/0 =
+            fun () ->
+                let <Mu> =
+                    ~{{'vbeam','type'}=>'Mutex'}~
+                in  let <Count> =
+                        0
+                    in  do  let <_1> =
+                            fun (_) ->
+                                call 'vbeam_task':'async'(fun () -> apply 'request'/2(Mu, Count))
+                        in  let <_2> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(8, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            do  'ok'
+                                call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(Count)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

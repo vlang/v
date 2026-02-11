@@ -1,0 +1,73 @@
+module 'v.main' ['simple_shader_desc'/1,
+                'main'/0,
+                'App.run'/1,
+                'init'/1,
+                'cleanup'/1,
+                'frame'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'simple_shader_desc'/1 =
+    fun () ->
+        'ok'
+'main'/0 =
+    fun () ->
+        let <App> =
+            ~{'width'=>800,'height'=>400,'pass_action'=>call 'v.sokol.gfx':'create_clear_pass_action'(0.0, 0.0, 0.0, 1.0),{'vbeam','type'}=>'App'}~
+        in  apply 'App.run'/1(App)
+'App.run'/1 =
+    fun (A) ->
+        let <Title> =
+            #{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+        in  let <Desc> =
+                ~{'width'=>call 'erlang':'map_get'('width', A),'height'=>call 'erlang':'map_get'('height', A),'user_data'=>A,'init_userdata_cb'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'window_title'=>call 'erlang':'map_get'('str', Title),'html5_canvas_name'=>call 'erlang':'map_get'('str', Title),'cleanup_userdata_cb'=>fun (_fref0) -> call 'v.main':'cleanup'(_fref0),'sample_count'=>4,{'vbeam','type'}=>'Desc'}~
+            in  call 'v.sokol.sapp':'run'(Desc)
+'init'/1 =
+    fun (User_data) ->
+        let <App> =
+            User_data
+        in  let <Desc> =
+                call 'v.sokol.sapp':'create_desc'()
+            in  do  call 'v.sokol.gfx':'setup'(Desc)
+                    let <Vertices> =
+                        [~{'x'=>0.0,'y'=>0.5,'z'=>0.5,'r'=>1.0,'g'=>0.0,'b'=>0.0,'a'=>1.0,{'vbeam','type'}=>'Vertex_t'}~|[~{'x'=>0.5,'y'=>-0.5,'z'=>0.5,'r'=>0.0,'g'=>1.0,'b'=>0.0,'a'=>1.0,{'vbeam','type'}=>'Vertex_t'}~|[~{'x'=>-0.5,'y'=>-0.5,'z'=>0.5,'r'=>0.0,'g'=>0.0,'b'=>1.0,'a'=>1.0,{'vbeam','type'}=>'Vertex_t'}~|[]]]]
+                    in  let <Vertex_buffer_desc> =
+                            ~{'label'=>#{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'BufferDesc'}~
+                        in  do  apply 'vmemset'/3(Vertex_buffer_desc, 0, 8)
+                                do  call 'erlang':'*'(call 'erlang':'length'(Vertices), 8)
+                                    do  ~{'ptr'=>call 'erlang':'map_get'('data', Vertices),'size'=>call 'erlang':'map_get'('size', Vertex_buffer_desc),{'vbeam','type'}=>'Range'}~
+                                        do  call 'v.sokol.gfx':'make_buffer'(Vertex_buffer_desc)
+                                            let <Shader> =
+                                                call 'v.sokol.gfx':'make_shader'(call 'v.C':'simple_shader_desc'(call 'v.sokol.gfx':'query_backend'()))
+                                            in  let <Pipeline_desc> =
+                                                    ~{{'vbeam','type'}=>'PipelineDesc'}~
+                                                in  do  apply 'vmemset'/3(Pipeline_desc, 0, 8)
+                                                        do  Shader
+                                                            do  'float3'
+                                                                do  'float4'
+                                                                    do  #{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+                                                                        'ok'
+'cleanup'/1 =
+    fun (User_data) ->
+        call 'v.sokol.gfx':'shutdown'()
+'frame'/1 =
+    fun (User_data) ->
+        let <App> =
+            User_data
+        in  let <Pass> =
+                call 'v.sokol.sapp':'create_default_pass'(call 'erlang':'map_get'('pass_action', App))
+            in  do  call 'v.sokol.gfx':'begin_pass'(Pass)
+                    do  call 'v.sokol.gfx':'apply_pipeline'(call 'erlang':'map_get'('shader_pipeline', App))
+                        do  call 'v.sokol.gfx':'apply_bindings'(call 'erlang':'map_get'('bind', App))
+                            do  call 'v.sokol.gfx':'draw'(0, 3, 1)
+                                do  call 'v.sokol.gfx':'end_pass'()
+                                    call 'v.sokol.gfx':'commit'()
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

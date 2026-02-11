@@ -1,0 +1,60 @@
+module 'v.main' ['generate_ciovec'/2,
+                'generate_code'/2,
+                'usage'/0,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'generate_ciovec'/2 =
+        fun (Start, Sp) ->
+            do  apply 'Function.i32_const'/2(Start, call 'erlang':'*'(1024, 64))
+                do  apply 'Function.local_get'/2(Start, Sp)
+                    do  apply 'Function.store'/4(Start, 'i32_t', 2, 0)
+                        do  apply 'Function.i32_const'/2(Start, call 'erlang':'*'(1024, 64))
+                            do  apply 'Function.i32_const'/2(Start, 1)
+                                apply 'Function.store'/4(Start, 'i32_t', 2, 4)
+    'generate_code'/2 =
+        fun (Start, Bf_expr) ->
+            let <Sp> =
+                apply 'Function.new_local_named'/3(Start, 'i32_t', #{#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#)
+            in  let <Loop_labels> =
+                    []
+                in  let <Block_labels> =
+                        []
+                    in  'ok'
+    'usage'/0 =
+        fun () ->
+            do  call 'io':'format'('standard_error', [85|[115|[97|[103|[101|[58|[32|[98|[102|[32|[60|[101|[120|[112|[114|[62|[32|[60|[111|[117|[116|[102|[105|[108|[101|[46|[119|[97|[115|[109|[62|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                do  call 'io':'format'('standard_error', [32|[32|[32|[111|[114|[58|[32|[98|[102|[32|[60|[112|[97|[116|[104|[47|[105|[110|[112|[117|[116|[46|[98|[62|[32|[60|[111|[117|[116|[102|[105|[108|[101|[46|[119|[97|[115|[109|[62|[32|[40|[110|[111|[116|[101|[32|[116|[104|[101|[32|[96|[46|[98|[96|[32|[101|[120|[116|[101|[110|[115|[105|[111|[110|[41|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                    call 'erlang':'halt'(1)
+    'main'/0 =
+        fun () ->
+            let <Bf_expr> =
+                call 'lists':'nth'(2, call 'init':'get_plain_arguments'())
+            in  let <Bf_expr_1> =
+                    case case call 'binary':'longest_common_suffix'([Bf_expr|[#{#<46>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']])}#|[]]]) of <0> when 'true' -> 'false' <_> when 'true' -> 'true' end of <'true'> when 'true' -> try call 'file':'read_file'(Bf_expr) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' ->                     do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Bf_expr|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]]]])|[]])
+                        apply 'usage'/0()
+ <'false'> when 'true' -> Bf_expr end
+                in  let <Outfile> =
+                        call 'lists':'nth'(3, call 'init':'get_plain_arguments'())
+                    in  let <M> =
+                            ~{{'vbeam','type'}=>'Module'}~
+                        in  do  apply 'Module.enable_debug'/2(M, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#)
+                                do  apply 'Module.new_function_import'/5(M, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, ['i32_t'|['i32_t'|['i32_t'|['i32_t'|[]]]]], ['i32_t'|[]])
+                                    do  apply 'Module.new_function_import'/5(M, #{#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, ['i32_t'|['i32_t'|['i32_t'|['i32_t'|[]]]]], ['i32_t'|[]])
+                                        do  apply 'Module.assign_memory'/5(M, #{#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#, 'true', 2, 'none')
+                                            let <Start> =
+                                                apply 'Module.new_function'/4(M, #{#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, [], [])
+                                            in  do  apply 'Module.commit'/3(M, Start, 'true')
+                                                    let <Bytes> =
+                                                        apply 'Module.compile'/1(M)
+                                                    in  try call 'v.os':'write_file_array'(Outfile, Bytes) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

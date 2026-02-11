@@ -1,0 +1,34 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Db> =
+            try call 'v.db.sqlite':'connect'(#{#<58>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  let <User1> =
+                ~{'id'=>#{#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#,'name'=>#{#<74>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#,'created_at'=>call 'erlang':'localtime'(),'updated_at'=>call 'erlang':'localtime'(),{'vbeam','type'}=>'User'}~
+            in  let <User2> =
+                    ~{'id'=>#{#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#,'name'=>#{#<68>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']])}#,'created_at'=>call 'erlang':'localtime'(),'updated_at'=>call 'erlang':'localtime'(),{'vbeam','type'}=>'User'}~
+                in  let <All_users> =
+                        'false'
+                    in  do  All_users
+                            let <Selected_users> =
+                                'false'
+                            in  do  Selected_users
+                                    let <Updated_user> =
+                                        'false'
+                                    in  do  Updated_user
+                                            let <Remain_users> =
+                                                'false'
+                                            in  do  Remain_users
+                                                    'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

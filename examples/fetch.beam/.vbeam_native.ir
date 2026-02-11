@@ -1,0 +1,37 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 8,
+            body => [
+                {string_lit, {vreg, 0}, {data_ref, <<"str_0">>}, 24},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"get">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {field_get, {vreg, 2}, {vreg, 1}, {imm, 0}},
+                {method_call, {vreg, 3}, <<"string">>, <<"int">>, [{vreg, 2}]},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"unix">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {method_call, {vreg, 5}, <<"time.Time">>, <<"format">>, [{vreg, 4}]},
+                {string_lit, {vreg, 6}, {data_ref, <<"str_1">>}, 1},
+                {string_concat, {vreg, 7}, {vreg, 5}, {vreg, 6}},
+                {print_str, {vreg, 7}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"https://vlang.io/utc_now">>},
+        {<<"str_1">>, 1, <<"\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

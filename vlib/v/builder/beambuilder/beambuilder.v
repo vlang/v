@@ -30,10 +30,6 @@ pub fn compile_beam(mut b builder.Builder) {
 
 pub fn build_beam(mut b builder.Builder, v_files []string, out_file string) {
 	b.front_and_middle_stages(v_files) or { return }
-	util.timing_start('BEAM GEN')
-	beam.gen(b.parsed_files, mut b.table, out_file, b.pref)
-	util.timing_measure('BEAM GEN')
-	// Also generate Core Erlang (.core) output for testing
 	util.timing_start('CORE ERLANG GEN')
 	beam.core_gen(b.parsed_files, mut b.table, out_file, b.pref)
 	util.timing_measure('CORE ERLANG GEN')

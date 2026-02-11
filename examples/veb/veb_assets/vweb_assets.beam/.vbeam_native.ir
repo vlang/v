@@ -1,0 +1,86 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 9,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"serve_static">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"executable">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"dir">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"chdir">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 1},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 5}},
+                {call, {sym, <<"handle_static">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {vreg, 7}, 8080},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 7}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"index">>,
+            arity => 2,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"text">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"text">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        },
+        #{
+            name => <<"time">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 4,
+            body => [
+                {call, {sym, <<"format">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"text">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 3}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

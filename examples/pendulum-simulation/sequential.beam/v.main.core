@@ -1,0 +1,30 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Args> =
+                try call 'v.sim.args':'parse_args'(~{'sequential'=>'true',{'vbeam','type'}=>'ParserSettings'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  let <Bmark> =
+                    call 'v.benchmark':'start'()
+                in  let <Writer> =
+                        try call 'v.sim.img':'ppm_writer_for_fname'(call 'erlang':'map_get'('filename', Args), call 'v.sim.img':'image_settings_from_grid'(call 'erlang':'map_get'('grid', Args))) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                    in  let <Handle_request> =
+                            fun (Request) ->                             let <Result> =
+                                call 'v.sim':'compute_result'(Request)
+                            in  let <Pixel> =
+                                    call 'v.sim.img':'compute_pixel'(Result)
+                                in  apply 'PPMWriter.handle_pixel'/2(Writer, Pixel)
+
+                        in  do  call 'v.sim':'run'(call 'erlang':'map_get'('params', Args), ~{'grid'=>call 'erlang':'map_get'('grid', Args),'on_request'=>Handle_request,{'vbeam','type'}=>'RunnerSettings'}~)
+                                try apply 'PPMWriter.write'/1(Writer) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

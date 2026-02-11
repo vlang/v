@@ -1,0 +1,41 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 9,
+            body => [
+                {string_lit, {vreg, 0}, {data_ref, <<"str_0">>}, 28},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"get_text">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {vreg, 2}, 0},
+                {label, <<"loop_0">>},
+                {string_lit, {vreg, 4}, {data_ref, <<"str_1">>}, 8},
+                {add, {vreg, 5}, {vreg, 2}, {imm, 1}},
+                {method_call, {vreg, 3}, <<"string">>, <<"index_after">>, [{vreg, 1}, {vreg, 4}, {vreg, 5}]},
+                {mov, {vreg, 2}, {vreg, 3}},
+                {string_lit, {vreg, 7}, {data_ref, <<"str_2">>}, 1},
+                {method_call, {vreg, 6}, <<"string">>, <<"index_after">>, [{vreg, 1}, {vreg, 7}, {vreg, 2}]},
+                {array_get, {vreg, 8}, {vreg, 1}, {vreg, 0}, {imm, 8}},
+                {print_int, {vreg, 8}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"https://news.ycombinator.com">>},
+        {<<"str_1">>, 1, <<"https://">>},
+        {<<"str_2">>, 1, <<"\"">>}
+    ],
+    bss => [],
+    imports => []
+}.

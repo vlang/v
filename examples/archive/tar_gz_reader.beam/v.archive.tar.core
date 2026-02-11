@@ -1,0 +1,289 @@
+module 'v.archive.tar' ['read_tar_gz_file'/2,
+                'Read.set_short_path'/3,
+                'Read.set_long_path'/2,
+                'Read.get_path'/1,
+                'Read.get_block_number'/1,
+                'Read.get_special'/1,
+                'Read.str'/1,
+                'new_debug_reader'/0,
+                'DebugReader.dir_block'/3,
+                'DebugReader.file_block'/3,
+                'DebugReader.data_block'/4,
+                'DebugReader.other_block'/3,
+                'new_decompressor'/1,
+                'Decompressor.read_all'/2,
+                'Decompressor.read_chunks'/2,
+                'ChunksReader.read_blocks'/2,
+                'new_untar'/1,
+                'Untar.str'/1,
+                'Untar.read_all_blocks'/2,
+                'Untar.read_single_block'/2,
+                'Untar.read_header'/1,
+                'Untar.read_data'/1,
+                'Untar.read_long_path'/1,
+                'Untar.extract_path'/1,
+                'Untar.checksum_ok'/1,
+                'Untar.extract_octal'/3,
+                'new_long_path'/1,
+                'LongPath.append'/2,
+                'LongPath.get_path'/1,
+                'ReadResult__static__from'/1,
+                'BlockHeader__static__from'/1,
+                'BlockSpecial__static__from'/1,
+                'State__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'read_tar_gz_file'/2 =
+        fun (Path, Reader) ->
+            let <Tar_gz> =
+                try call 'file':'read_file'(Path) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  let <All_blocks> =
+                    try call 'v.compress.gzip':'decompress'(Tar_gz, ~{{'vbeam','type'}=>'DecompressParams'}~) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                in  let <Untar> =
+                        ~{'reader'=>Reader,{'vbeam','type'}=>'Untar'}~
+                    in  do  try apply 'Untar.read_all_blocks'/2(Untar, All_blocks) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                            'ok'
+    'Read.set_short_path'/3 =
+        fun (B, Buffer, Separator_after_prefix) ->
+            do  0
+                do  Separator_after_prefix
+                    do  0
+                        'ok'
+    'Read.set_long_path'/2 =
+        fun (B, Long_path) ->
+            'ok'
+    'Read.get_path'/1 =
+        fun (B) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('long_path', B), 'nil') of
+                <'true'> when 'true' -> apply 'LongPath.get_path'/1(call 'erlang':'map_get'('long_path', B))
+                <'false'> when 'true' -> 
+                    let <Str> =
+                        []
+                    in  do  case call 'erlang':'>'(call 'erlang':'map_get'('prefix_len', B), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Str, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, call 'erlang':'map_get'('prefix_len', B)), 1), call 'erlang':'map_get'('prefix_buf', B))) <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('prefix_len', B), 0), call 'erlang':'map_get'('separator', B)) of <'true'> when 'true' -> call 'erlang':'bsl'(Str, 47) <'false'> when 'true' -> 'ok' end
+                                do  case call 'erlang':'>'(call 'erlang':'map_get'('path_len', B), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(Str, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, call 'erlang':'map_get'('path_len', B)), 1), call 'erlang':'map_get'('path_buf', B))) <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'list_to_binary'(Str)
+            end
+    'Read.get_block_number'/1 =
+        fun (B) ->
+            call 'erlang':'map_get'('block_number', B)
+    'Read.get_special'/1 =
+        fun (B) ->
+            call 'erlang':'map_get'('special', B)
+    'Read.str'/1 =
+        fun (R) ->
+            call 'erlang':'iolist_to_binary'([#{#<40>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('block_number', R))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Read.get_path'/1(R)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('special', R)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'atom_to_binary'(call 'erlang':'map_get'('stop_early', R))|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])
+    'new_debug_reader'/0 =
+        fun () ->
+            ~{{'vbeam','type'}=>'DebugReader'}~
+    'DebugReader.dir_block'/3 =
+        fun (T, Read, _size) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<68>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Read.get_block_number'/1(Read))|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Read.get_path'/1(Read)|[]]]]])|[]])
+    'DebugReader.file_block'/3 =
+        fun (T, Read, Size) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<70>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Read.get_block_number'/1(Read))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Read.get_path'/1(Read)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Size)|[]]]]]]])|[]])
+    'DebugReader.data_block'/4 =
+        fun (T, Read, Data, Pending) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<68>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Read.get_block_number'/1(Read))|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'Read.get_path'/1(Read)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(Data))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Pending)|[]]]]]]]]])|[]])
+    'DebugReader.other_block'/3 =
+        fun (T, Read, Details) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<79>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Read.get_block_number'/1(Read))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('special', Read)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[Details|[]]]]]]])|[]])
+    'new_decompressor'/1 =
+        fun (Untar) ->
+            ~{'untar'=>Untar,{'vbeam','type'}=>'Decompressor'}~
+    'Decompressor.read_all'/2 =
+        fun (D, Tar_gz) ->
+            let <All_blocks> =
+                try call 'v.compress.gzip':'decompress'(Tar_gz, ~{{'vbeam','type'}=>'DecompressParams'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  try apply 'Untar.read_all_blocks'/2(call 'erlang':'map_get'('untar', D), All_blocks) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+    'Decompressor.read_chunks'/2 =
+        fun (D, Tar_gz) ->
+            let <Reader> =
+                ~{'read_block_fn'=>call 'erlang':'map_get'('read_single_block', call 'erlang':'map_get'('untar', D)),{'vbeam','type'}=>'ChunksReader'}~
+            in  let <Callback> =
+                    fun (Chunk, Reader_1) ->                     let <Result> =
+                        apply 'ChunksReader.read_blocks'/2(Reader_1, Chunk)
+                    in  case call 'erlang':'=:='(Result, 'continue') of
+                            <'true'> when 'true' -> call 'erlang':'length'(Chunk)
+                            <'false'> when 'true' -> 
+                                0
+                        end
+
+                in  do  try call 'v.compress.gzip':'decompress_with_callback'(Tar_gz, Callback, Reader_1, ~{{'vbeam','type'}=>'DecompressParams'}~) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' ->                     case call 'erlang':'=:='(call 'erlang':'map_get'('result', Reader_1), 'continue') of
+                        <'true'> when 'true' -> Err
+                        <'false'> when 'true' -> 
+                            call 'erlang':'map_get'('result', Reader_1)
+                    end
+
+                        call 'erlang':'map_get'('result', Reader_1)
+    'ChunksReader.read_blocks'/2 =
+        fun (D, Chunk) ->
+            do  call 'erlang':'map_get'('chunks_counter', D)
+                let <Total> =
+                    call 'erlang':'+'(call 'erlang':'map_get'('pending', D), call 'erlang':'length'(Chunk))
+                in  case call 'erlang':'>'(Total, call 'erlang':'length'(call 'erlang':'map_get'('buffer', D))) of
+                        <'true'> when 'true' -> 'overflow'
+                        <'false'> when 'true' -> 
+                            do  let <_1> =
+                                fun (Ch, I) ->
+                                    do  Ch
+                                        call 'erlang':'+'(I, 1)
+                            in  call 'lists':'foldl'(_1, 0, Chunk)
+                                do  call 'erlang':'length'(Chunk)
+                                    let <Cut> =
+                                        0
+                                    in  call 'erlang':'map_get'('result', D)
+                    end
+    'new_untar'/1 =
+        fun (Reader) ->
+            ~{'reader'=>Reader,{'vbeam','type'}=>'Untar'}~
+    'Untar.str'/1 =
+        fun (U) ->
+            call 'erlang':'iolist_to_binary'([#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('max_blocks', U))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('read', U)|[]]]]])
+    'Untar.read_all_blocks'/2 =
+        fun (U, Blocks) ->
+            case call 'erlang':'=/='(call 'erlang':'rem'(call 'erlang':'length'(Blocks), 512), 0) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    do  call 'erlang':'div'(call 'erlang':'length'(Blocks), 512)
+                        'end_of_file'
+            end
+    'Untar.read_single_block'/2 =
+        fun (U, Block) ->
+            case call 'erlang':'=/='(call 'erlang':'length'(Block), 512) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    do  call 'erlang':'map_get'('block_number', call 'erlang':'map_get'('read', U))
+                        let <Is_blank_block> =
+                            'true'
+                        in  let <Is_blank_block_1> =
+                                let <_2> =
+                                    fun (I, Is_blank_blockAcc) ->
+                                        let <Is_blank_blockOut_4> =
+                                            case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(I, 1), Block), 0) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> Is_blank_blockAcc end
+                                        in  Is_blank_blockOut_4
+                                in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(512, 1))
+                                in  call 'lists':'foldl'(_2, Is_blank_block, _3)
+                            in  do  case call 'erlang':'map_get'('state', U) of <'header'> when 'true' -> try apply 'Untar.read_header'/1(U) of <_cor5> when 'true' -> _cor5 catch <_cor_c5,_cor_r5,_cor_s5> when 'true' -> 'ok' <'data'> when 'true' -> apply 'Untar.read_data'/1(U) <'long_path'> when 'true' -> apply 'Untar.read_long_path'/1(U) end
+                                    case call 'erlang':'map_get'('stop_early', call 'erlang':'map_get'('read', U)) of <'true'> when 'true' -> 'stop_early' <'false'> when 'true' -> 'continue' end
+            end
+    'Untar.read_header'/1 =
+        fun (U) ->
+            do  apply 'Untar.extract_octal'/3(U, 124, 12)
+                let <Header> =
+                    call 'lists':'nth'(157, call 'erlang':'map_get'('buffer', U))
+                in  let <Block_header> =
+                        try apply 'BlockHeader__static__from'/1(Header) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' ->                         do  'unknown'
+                            do  0
+                                do  apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('size', U))|[]]]))
+                                    'ok'
+
+                    in  do  case call 'erlang':'=:='(Block_header, 'dir') of <'true'> when 'true' -> apply 'Reader.dir_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), call 'erlang':'map_get'('size', U)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'file') of <'true'> when 'true' -> apply 'Reader.file_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), call 'erlang':'map_get'('size', U)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'long_name') of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 
+                            do  'long_path'
+                                'ok'
+                         <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'hard_link') of <'true'> when 'true' -> apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), apply 'BlockHeader.str'/1(Block_header)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'sym_link') of <'true'> when 'true' -> apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), apply 'BlockHeader.str'/1(Block_header)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'char_dev') of <'true'> when 'true' -> apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), apply 'BlockHeader.str'/1(Block_header)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'block_dev') of <'true'> when 'true' -> apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), apply 'BlockHeader.str'/1(Block_header)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'fifo') of <'true'> when 'true' -> apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), apply 'BlockHeader.str'/1(Block_header)) <'false'> when 'true' -> case call 'erlang':'=:='(Block_header, 'global') of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end end end end end end end end end
+                            'ok'
+    'Untar.read_data'/1 =
+        fun (U) ->
+            do  case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 
+                let <Part> =
+                    case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 512) of <'true'> when 'true' -> 512 <'false'> when 'true' -> call 'erlang':'map_get'('size', U) end
+                in  do  512
+                        let <Pending> =
+                            case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('size', U) <'false'> when 'true' -> 0 end
+                        in  let <Data_part> =
+                                call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, Part), 1), call 'erlang':'map_get'('buffer', U))
+                            in  apply 'Reader.data_block'/4(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), Data_part, Pending)
+             <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'=<'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 
+                    do  'nil'
+                        do  'nil'
+                            'ok'
+                 <'false'> when 'true' -> 'ok' end
+    'Untar.read_long_path'/1 =
+        fun (U) ->
+            do  case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 
+                let <Part> =
+                    case call 'erlang':'>'(call 'erlang':'map_get'('size', U), 512) of <'true'> when 'true' -> 512 <'false'> when 'true' -> call 'erlang':'map_get'('size', U) end
+                in  do  512
+                        let <Data_part> =
+                            call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, Part), 1), call 'erlang':'map_get'('buffer', U))
+                        in  case call 'erlang':'=/='(call 'erlang':'map_get'('long_path', U), 'nil') of <'true'> when 'true' -> 
+                                do  apply 'LongPath.append'/2(call 'erlang':'map_get'('long_path', U), Data_part)
+                                    apply 'Reader.other_block'/3(call 'erlang':'map_get'('reader', U), call 'erlang':'map_get'('read', U), call 'erlang':'iolist_to_binary'([#{#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(Data_part))|[]]]))
+                             <'false'> when 'true' -> 'ok' end
+             <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'=<'(call 'erlang':'map_get'('size', U), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Untar.extract_path'/1 =
+        fun (U) ->
+            let <Name> =
+                []
+            in  let <I> =
+                    0
+                in  call 'erlang':'list_to_binary'(Name)
+    'Untar.checksum_ok'/1 =
+        fun (U) ->
+            let <V> =
+                0
+            in  let <Parse> =
+                    apply 'Untar.extract_octal'/3(U, 148, 8)
+                in  call 'erlang':'=:='(V, Parse)
+    'Untar.extract_octal'/3 =
+        fun (U, Pos, Digits) ->
+            let <I> =
+                0
+            in  I
+    'new_long_path'/1 =
+        fun (Size) ->
+            ~{'name'=>[],{'vbeam','type'}=>'LongPath'}~
+    'LongPath.append'/2 =
+        fun (L, Data) ->
+            case call 'erlang':'>='(call 'erlang':'length'(call 'erlang':'map_get'('name', L)), call 'erlang':'+'(call 'erlang':'map_get'('last_pos', L), call 'erlang':'length'(Data))) of <'true'> when 'true' -> 
+                do  let <_1> =
+                    fun (D, I) ->
+                        do  D
+                            call 'erlang':'+'(I, 1)
+                in  call 'lists':'foldl'(_1, 0, Data)
+                    'ok'
+             <'false'> when 'true' -> 'ok' end
+    'LongPath.get_path'/1 =
+        fun (L) ->
+            let <S> =
+                []
+            in  do  let <_1> =
+                    fun (N) ->
+                        do  case call 'erlang':'=:='(N, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            call 'erlang':'bsl'(S, N)
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('name', L))
+                    call 'erlang':'list_to_binary'(S)
+    'ReadResult__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'BlockHeader__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'BlockSpecial__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'State__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.archive.tar')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.archive.tar', _0)
+    end

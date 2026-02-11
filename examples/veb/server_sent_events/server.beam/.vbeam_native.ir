@@ -1,0 +1,82 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 6,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"serve_static">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"resource_abs_path">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"mount_static_folder_at">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov_imm, {vreg, 4}, 8081},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 4}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"index">>,
+            arity => 2,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"sse">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 9,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"start_connection">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"send_message">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {label, <<"loop_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"send_message">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 5}, 1},
+                {mul, {vreg, 6}, {vreg, 5}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 6}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"server_error_with_status">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 8}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

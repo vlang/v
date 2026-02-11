@@ -1,0 +1,55 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 13,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"image_settings_from_grid">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mul, {vreg, 1}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"ppm_writer_for_fname">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"new_image_writer">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {call, {sym, <<"start">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 0},
+                {mov_imm, {vreg, 6}, 0},
+                {mov_imm, {vreg, 7}, 0},
+                {label, <<"loop_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"vector">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"vector">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_state">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"satisfy_rope_constraint">>}},
+                {mov, {vreg, 11}, {preg, x0}},
+                {mov, {vreg, 12}, {vreg, 0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

@@ -1,0 +1,316 @@
+module 'v.pool' ['new_connection_pool'/2,
+                'ConnectionPool.create_conn_with_retry'/1,
+                'ConnectionPool.try_wakeup_waiters'/1,
+                'ConnectionPool.can_create'/1,
+                'ConnectionPool.get'/1,
+                'ConnectionPool.try_get'/1,
+                'ConnectionPool.put'/2,
+                'ConnectionPool.close'/1,
+                'ConnectionPool.background_maintenance'/1,
+                'ConnectionPool.prune_connections'/1,
+                'check_config'/1,
+                'ConnectionPool.update_config'/2,
+                'ConnectionPool.signal_recovery_event'/1,
+                'ConnectionPool.send_eviction'/2,
+                'ConnectionPool.stats'/1,
+                'EvictionPriority__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'new_connection_pool'/2 =
+    fun (Conn_factory, Config) ->
+        do  try apply 'check_config'/1(Config) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            let <P> =
+                ~{'conn_factory'=>Conn_factory,'config'=>Config,'config_mutex'=>~{{'vbeam','type'}=>'RwMutex'}~,'create_mutex'=>~{{'vbeam','type'}=>'Mutex'}~,'idle_pool_mutex'=>~{{'vbeam','type'}=>'RwMutex'}~,'all_conns_mutex'=>~{{'vbeam','type'}=>'RwMutex'}~,'wait_queue_mutex'=>~{{'vbeam','type'}=>'RwMutex'}~,'is_closed'=>call 'v.sync.stdatomic':'new_atomic'('false'),'stop_ch'=>'false','eviction_ch'=>'false','active_count'=>call 'v.sync.stdatomic':'new_atomic'(0),'creation_errors'=>call 'v.sync.stdatomic':'new_atomic'(0),'evicted_count'=>call 'v.sync.stdatomic':'new_atomic'(0),'creating_count'=>call 'v.sync.stdatomic':'new_atomic'(0),'all_conns'=>~{}~,{'vbeam','type'}=>'ConnectionPool'}~
+            in  let <Now> =
+                    call 'v.time':'utc'()
+                in  do  Now
+                        do  let <_2> =
+                            fun (_) ->
+                                let <Conn> =
+                                    try apply 'ConnectionPool.create_conn_with_retry'/1(P) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' ->                                     do  'ok'
+                                        do  let <_5> =
+                                            fun (Wrapper) ->
+                                                try apply 'ConnectionPoolable.close'/1(call 'erlang':'map_get'('conn', Wrapper)) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 'ok'
+                                        in  call 'lists':'foreach'(_5, call 'erlang':'map_get'('all_conns', P))
+                                            do  apply 'map.clear'/1(call 'erlang':'map_get'('all_conns', P))
+                                                do  'ok'
+                                                    Err
+
+                                in  let <Wrapper_7> =
+                                        ~{'conn'=>Conn,'created_at'=>Now,'last_used_at'=>Now,'last_valid_at'=>Now,{'vbeam','type'}=>'ConnectionWrapper'}~
+                                    in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('idle_pool', P), Wrapper_7)
+                                            do  'ok'
+                                                do  Wrapper_7
+                                                    'ok'
+                        in  let <_3> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('min_idle_conns', Config), 1))
+                            in  call 'lists':'foreach'(_2, _3)
+                            do  call 'vbeam_task':'async'(fun () -> apply 'ConnectionPool.background_maintenance'/1(P))
+                                do  apply 'ConnectionPool.prune_connections'/1(P)
+                                    P
+'ConnectionPool.create_conn_with_retry'/1 =
+    fun (P) ->
+        do  'ok'
+            let <Max_attempts> =
+                call 'erlang':'map_get'('max_retry_attempts', call 'erlang':'map_get'('config', P))
+            in  let <Base_delay> =
+                    call 'erlang':'map_get'('retry_base_delay', call 'erlang':'map_get'('config', P))
+                in  let <Max_delay> =
+                        call 'erlang':'map_get'('max_retry_delay', call 'erlang':'map_get'('config', P))
+                    in  do  'ok'
+                            do  'ok'
+                                let <Attempt> =
+                                    0
+                                in  do  apply 'AtomicVal.add'/2(call 'erlang':'map_get'('creating_count', P), 1)
+                                        call 'erlang':'error'(#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ConnectionPool.try_wakeup_waiters'/1 =
+    fun (P) ->
+        let <Can_create> =
+            apply 'ConnectionPool.can_create'/1(P)
+        in  do  'ok'
+                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('wait_queue', P)), 0) of <'true'> when 'true' -> case call 'erlang':'or'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P)), 0), Can_create) of <'true'> when 'true' -> 
+                    let <To_wake> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('wait_queue', P))
+                    in  do  call 'lists':'delete'(0, call 'erlang':'map_get'('wait_queue', P))
+                            call 'erlang':'<-'(To_wake, 'true')
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+'ConnectionPool.can_create'/1 =
+    fun (P) ->
+        do  'ok'
+            let <Max_conns> =
+                call 'erlang':'map_get'('max_conns', call 'erlang':'map_get'('config', P))
+            in  do  'ok'
+                    call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(apply 'AtomicVal.load'/1(call 'erlang':'map_get'('active_count', P)), apply 'AtomicVal.load'/1(call 'erlang':'map_get'('creating_count', P))), Max_conns), call 'erlang':'not'(apply 'AtomicVal.load'/1(call 'erlang':'map_get'('is_closed', P)))), call 'erlang':'<'(call 'maps':'size'(call 'erlang':'map_get'('all_conns', P)), Max_conns))
+'ConnectionPool.get'/1 =
+    fun (P) ->
+        let <Start_time> =
+            call 'v.time':'utc'()
+        in  call 'erlang':'error'(#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ConnectionPool.try_get'/1 =
+    fun (P) ->
+        do  'ok'
+            let <Min_idle> =
+                call 'erlang':'map_get'('min_idle_conns', call 'erlang':'map_get'('config', P))
+            in  let <Max_lifetime> =
+                    call 'erlang':'map_get'('max_lifetime', call 'erlang':'map_get'('config', P))
+                in  do  'ok'
+                        do  'ok'
+                            let <Priority> =
+                                case call 'erlang':'=<'(call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P)), Min_idle) of <'true'> when 'true' -> 'urgent' <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P)), call 'erlang':'*'(Min_idle, 2)) of <'true'> when 'true' -> 'low' <'false'> when 'true' -> 'medium' end end
+                            in  do  call 'erlang':'<-'(call 'erlang':'map_get'('eviction_ch', P), Priority)
+                                    'none'
+'ConnectionPool.put'/2 =
+    fun (P, Conn) ->
+        do  case call 'erlang':'>'(apply 'AtomicVal.load'/1(call 'erlang':'map_get'('active_count', P)), 0) of <'true'> when 'true' -> apply 'AtomicVal.sub'/2(call 'erlang':'map_get'('active_count', P), 1) <'false'> when 'true' -> 'ok' end
+            let <Conn_ptr> =
+                Conn
+            in  case apply 'AtomicVal.load'/1(call 'erlang':'map_get'('is_closed', P)) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        do  try apply 'ConnectionPoolable.reset'/1(Conn_ptr) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' ->                         do  try apply 'ConnectionPoolable.close'/1(Conn_ptr) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                            do  'ok'
+                                do  call 'maps':'remove'(Conn, call 'erlang':'map_get'('all_conns', P))
+                                    do  'ok'
+                                        Err
+
+                            do  'ok'
+                                do  'ok'
+                                    do  case call 'maps':'find'(Conn, call 'erlang':'map_get'('all_conns', P)) of <{'ok', Wrapper}> when 'true' -> 
+                                        do  call 'v.time':'utc'()
+                                            do  call 'erlang':'bsl'(call 'erlang':'map_get'('idle_pool', P), Wrapper)
+                                                do  'ok'
+                                                    let <Low_eviction> =
+                                                        call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P)), call 'erlang':'map_get'('min_idle_conns', call 'erlang':'map_get'('config', P)))
+                                                    in  do  'ok'
+                                                            do  apply 'ConnectionPool.try_wakeup_waiters'/1(P)
+                                                                let <Priority> =
+                                                                    case Low_eviction of <'true'> when 'true' -> 'low' <'false'> when 'true' -> 'urgent' end
+                                                                in  call 'erlang':'<-'(call 'erlang':'map_get'('eviction_ch', P), Priority)
+                                     <_> when 'true' -> 
+                                        do  try apply 'ConnectionPoolable.close'/1(Conn_ptr) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                                            call 'erlang':'error'(#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                                     end
+                                        'ok'
+                end
+'ConnectionPool.close'/1 =
+    fun (P) ->
+        case apply 'AtomicVal.load'/1(call 'erlang':'map_get'('is_closed', P)) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                do  apply 'AtomicVal.store'/2(call 'erlang':'map_get'('is_closed', P), 'true')
+                    do  call 'erlang':'<-'(call 'erlang':'map_get'('stop_ch', P), 'true')
+                        do  call 'vbeam_task':'await'(call 'erlang':'map_get'('cleanup_thread', P))
+                            do  call 'vbeam_concurrency':'channel_close'(call 'erlang':'map_get'('stop_ch', P))
+                                do  'ok'
+                                    do  'ok'
+                                        do  let <_1> =
+                                            fun (Wrapper) ->
+                                                try apply 'ConnectionPoolable.close'/1(call 'erlang':'map_get'('conn', Wrapper)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('all_conns', P))
+                                            do  apply 'map.clear'/1(call 'erlang':'map_get'('all_conns', P))
+                                                do  apply 'array.clear'/1(call 'erlang':'map_get'('idle_pool', P))
+                                                    do  'ok'
+                                                        do  'ok'
+                                                            do  'ok'
+                                                                let <Waiters> =
+                                                                    call 'erlang':'map_get'('wait_queue', P)
+                                                                in  do  apply 'array.clear'/1(call 'erlang':'map_get'('wait_queue', P))
+                                                                        do  'ok'
+                                                                            do  let <_3> =
+                                                                                fun (Ch) ->
+                                                                                    call 'erlang':'<-'(Ch, 'true')
+                                                                            in  call 'lists':'foreach'(_3, Waiters)
+                                                                                do  call 'vbeam_concurrency':'channel_close'(call 'erlang':'map_get'('eviction_ch', P))
+                                                                                    do  apply 'AtomicVal.store'/2(call 'erlang':'map_get'('active_count', P), 0)
+                                                                                        do  apply 'AtomicVal.store'/2(call 'erlang':'map_get'('creation_errors', P), 0)
+                                                                                            do  apply 'AtomicVal.store'/2(call 'erlang':'map_get'('evicted_count', P), 0)
+                                                                                                apply 'AtomicVal.store'/2(call 'erlang':'map_get'('creating_count', P), 0)
+        end
+'ConnectionPool.background_maintenance'/1 =
+    fun (P) ->
+        let <First_trigger_time> =
+            0
+        in  let <Event_count> =
+                0
+            in  let <Min_interval> =
+                    9223372036854775807
+                in  'ok'
+'ConnectionPool.prune_connections'/1 =
+    fun (P) ->
+        do  'ok'
+            let <Max_lifetime> =
+                call 'erlang':'map_get'('max_lifetime', call 'erlang':'map_get'('config', P))
+            in  let <Idle_timeout> =
+                    call 'erlang':'map_get'('idle_timeout', call 'erlang':'map_get'('config', P))
+                in  let <Min_idle> =
+                        call 'erlang':'map_get'('min_idle_conns', call 'erlang':'map_get'('config', P))
+                    in  do  'ok'
+                            do  'ok'
+                                let <Current_idle> =
+                                    call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P))
+                                in  do  'ok'
+                                        let <To_create> =
+                                            case call 'erlang':'>'(Min_idle, Current_idle) of <'true'> when 'true' -> call 'erlang':'-'(Min_idle, Current_idle) <'false'> when 'true' -> 0 end
+                                        in  let <New_conns> =
+                                                []
+                                            in  do  case call 'erlang':'>'(To_create, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                    case apply 'AtomicVal.load'/1(call 'erlang':'map_get'('is_closed', P)) of
+                                                        <'true'> when 'true' -> 'ok'
+                                                        <'false'> when 'true' -> 
+                                                            do  'ok'
+                                                                let <Current_min_idle> =
+                                                                    call 'erlang':'map_get'('min_idle_conns', call 'erlang':'map_get'('config', P))
+                                                                in  let <Max_conns> =
+                                                                        call 'erlang':'map_get'('max_conns', call 'erlang':'map_get'('config', P))
+                                                                    in  do  'ok'
+                                                                            do  'ok'
+                                                                                do  'ok'
+                                                                                    let <Actual_needed> =
+                                                                                        case call 'erlang':'>'(Current_min_idle, call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P))) of <'true'> when 'true' -> call 'erlang':'-'(Current_min_idle, call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P))) <'false'> when 'true' -> 0 end
+                                                                                    in  let <Available_slots> =
+                                                                                            call 'erlang':'-'(Max_conns, call 'maps':'size'(call 'erlang':'map_get'('all_conns', P)))
+                                                                                        in  let <Actual_to_add> =
+                                                                                                case call 'erlang':'>'(Actual_needed, call 'erlang':'length'(New_conns)) of <'true'> when 'true' -> call 'erlang':'length'(New_conns) <'false'> when 'true' -> Actual_needed end
+                                                                                            in  let <Actual_to_add_1> =
+                                                                                                    case call 'erlang':'>'(Actual_to_add, Available_slots) of <'true'> when 'true' -> Available_slots <'false'> when 'true' -> Actual_to_add end
+                                                                                                in  do  let <_2> =
+                                                                                                        fun (I) ->
+                                                                                                            let <Now> =
+                                                                                                                call 'v.time':'utc'()
+                                                                                                            in  let <Wrapper> =
+                                                                                                                    ~{'conn'=>call 'lists':'nth'(call 'erlang':'+'(I, 1), New_conns),'created_at'=>Now,'last_used_at'=>Now,'last_valid_at'=>Now,{'vbeam','type'}=>'ConnectionWrapper'}~
+                                                                                                                in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('idle_pool', P), Wrapper)
+                                                                                                                        'ok'
+                                                                                                    in  let <_3> =
+                                                                                                            call 'lists':'seq'(0, call 'erlang':'-'(Actual_to_add_1, 1))
+                                                                                                        in  call 'lists':'foreach'(_2, _3)
+                                                                                                        do  let <_4> =
+                                                                                                            fun (I) ->
+                                                                                                                try apply 'ConnectionPoolable.close'/1(call 'lists':'nth'(call 'erlang':'+'(I, 1), New_conns)) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 'ok'
+                                                                                                        in  let <_5> =
+                                                                                                                call 'lists':'seq'(Actual_to_add_1, call 'erlang':'-'(call 'erlang':'length'(New_conns), 1))
+                                                                                                            in  call 'lists':'foreach'(_4, _5)
+                                                                                                            case call 'erlang':'>'(Actual_to_add_1, 0) of <'true'> when 'true' -> apply 'ConnectionPool.try_wakeup_waiters'/1(P) <'false'> when 'true' -> 'ok' end
+                                                    end
+'check_config'/1 =
+    fun (Config) ->
+        case call 'erlang':'=<'(call 'erlang':'map_get'('max_conns', Config), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'<'(call 'erlang':'map_get'('min_idle_conns', Config), 0) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'>'(call 'erlang':'map_get'('min_idle_conns', Config), call 'erlang':'map_get'('max_conns', Config)) of
+                            <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'<'(call 'erlang':'map_get'('max_lifetime', Config), 0) of
+                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'<'(call 'erlang':'map_get'('idle_timeout', Config), 0) of
+                                            <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                            <'false'> when 'true' -> 
+                                                case call 'erlang':'>'(call 'erlang':'map_get'('idle_timeout', Config), call 'erlang':'map_get'('max_lifetime', Config)) of
+                                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                    <'false'> when 'true' -> 
+                                                        case call 'erlang':'<'(call 'erlang':'map_get'('get_timeout', Config), 0) of
+                                                            <'true'> when 'true' -> call 'erlang':'error'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                            <'false'> when 'true' -> 
+                                                                case call 'erlang':'<'(call 'erlang':'map_get'('retry_base_delay', Config), 0) of
+                                                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                    <'false'> when 'true' -> 
+                                                                        case call 'erlang':'<'(call 'erlang':'map_get'('max_retry_delay', Config), 0) of
+                                                                            <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                            <'false'> when 'true' -> 
+                                                                                case call 'erlang':'<'(call 'erlang':'map_get'('max_retry_attempts', Config), 0) of
+                                                                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                                                                    <'false'> when 'true' -> 
+                                                                                        'ok'
+                                                                                end
+                                                                        end
+                                                                end
+                                                        end
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end
+'ConnectionPool.update_config'/2 =
+    fun (P, Config) ->
+        do  try apply 'check_config'/1(Config) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            case apply 'AtomicVal.load'/1(call 'erlang':'map_get'('is_closed', P)) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  Config
+                            do  'ok'
+                                do  call 'erlang':'<-'(call 'erlang':'map_get'('eviction_ch', P), 'high')
+                                    'ok'
+            end
+'ConnectionPool.signal_recovery_event'/1 =
+    fun (P) ->
+        call 'erlang':'<-'(call 'erlang':'map_get'('eviction_ch', P), 'urgent')
+'ConnectionPool.send_eviction'/2 =
+    fun (P, Priority) ->
+        call 'erlang':'<-'(call 'erlang':'map_get'('eviction_ch', P), Priority)
+'ConnectionPool.stats'/1 =
+    fun (P) ->
+        do  'ok'
+            do  'ok'
+                do  'ok'
+                    ~{'total_conns'=>call 'maps':'size'(call 'erlang':'map_get'('all_conns', P)),'active_conns'=>apply 'AtomicVal.load'/1(call 'erlang':'map_get'('active_count', P)),'idle_conns'=>call 'erlang':'length'(call 'erlang':'map_get'('idle_pool', P)),'waiting_clients'=>call 'erlang':'length'(call 'erlang':'map_get'('wait_queue', P)),'evicted_count'=>apply 'AtomicVal.load'/1(call 'erlang':'map_get'('evicted_count', P)),'creation_errors'=>apply 'AtomicVal.load'/1(call 'erlang':'map_get'('creation_errors', P)),'created_at'=>call 'erlang':'map_get'('created_at', P),'creating_count'=>apply 'AtomicVal.load'/1(call 'erlang':'map_get'('creating_count', P)),{'vbeam','type'}=>'ConnectionPoolStats'}~
+'EvictionPriority__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.pool')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.pool', _0)
+end

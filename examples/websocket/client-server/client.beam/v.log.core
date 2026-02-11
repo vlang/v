@@ -1,0 +1,354 @@
+module 'v.log' ['tag_to_console'/2,
+                'tag_to_file'/2,
+                'level_from_tag'/1,
+                'target_from_label'/1,
+                'init'/0,
+                'free_logger'/1,
+                'set_logger'/1,
+                'get_logger'/0,
+                'get_level'/0,
+                'set_level'/1,
+                'fatal'/1,
+                'error'/1,
+                'warn'/1,
+                'info'/1,
+                'debug'/1,
+                'set_always_flush'/1,
+                'Log.get_level'/1,
+                'Log.set_level'/2,
+                'Log.set_full_logpath'/2,
+                'Log.set_output_label'/2,
+                'Log.set_output_path'/2,
+                'Log.set_output_stream'/2,
+                'Log.log_to_console_too'/1,
+                'Log.flush'/1,
+                'Log.close'/1,
+                'Log.reopen'/1,
+                'Log.log_file'/3,
+                'Log.log_stream'/3,
+                'Log.send_output'/3,
+                'Log.fatal'/2,
+                'Log.error'/2,
+                'Log.warn'/2,
+                'Log.info'/2,
+                'Log.debug'/2,
+                'Log.free'/1,
+                'Log.time_format'/2,
+                'Log.set_time_format'/2,
+                'Log.set_always_flush'/2,
+                'Log.get_time_format'/1,
+                'Log.set_custom_time_format'/2,
+                'Log.get_custom_time_format'/1,
+                'Log.set_short_tag'/2,
+                'Log.get_short_tag'/1,
+                'Log.set_local_time'/2,
+                'Log.get_local_time'/1,
+                'use_stdout'/0,
+                'new_thread_safe_log'/0,
+                'ThreadSafeLog.free'/1,
+                'ThreadSafeLog.set_level'/2,
+                'ThreadSafeLog.set_always_flush'/2,
+                'ThreadSafeLog.debug'/2,
+                'ThreadSafeLog.info'/2,
+                'ThreadSafeLog.warn'/2,
+                'ThreadSafeLog.error'/2,
+                'ThreadSafeLog.fatal'/2,
+                'Level__static__from'/1,
+                'LogTarget__static__from'/1,
+                'TimeFormat__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'tag_to_console'/2 =
+        fun (L, Short_tag) ->
+            case Short_tag of <'true'> when 'true' -> case L of <'disabled'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']])}# <'fatal'> when 'true' -> #{#<70>(8,1,'integer',['unsigned'|['big']])}# <'error'> when 'true' -> #{#<69>(8,1,'integer',['unsigned'|['big']])}# <'warn'> when 'true' -> #{#<87>(8,1,'integer',['unsigned'|['big']])}# <'info'> when 'true' -> #{#<73>(8,1,'integer',['unsigned'|['big']])}# <'debug'> when 'true' -> call 'v.term':'magenta'(#{#<68>(8,1,'integer',['unsigned'|['big']])}#) end <'false'> when 'true' -> case L of <'disabled'> when 'true' -> #{  }# <'fatal'> when 'true' -> #{#<70>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}# <'error'> when 'true' -> #{#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}# <'warn'> when 'true' -> #{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}# <'info'> when 'true' -> #{#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}# <'debug'> when 'true' -> call 'v.term':'magenta'(#{#<68>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']])}#) end end
+    'tag_to_file'/2 =
+        fun (L, Short_tag) ->
+            case Short_tag of <'true'> when 'true' -> case L of <'disabled'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']])}# <'fatal'> when 'true' -> #{#<70>(8,1,'integer',['unsigned'|['big']])}# <'error'> when 'true' -> #{#<69>(8,1,'integer',['unsigned'|['big']])}# <'warn'> when 'true' -> #{#<87>(8,1,'integer',['unsigned'|['big']])}# <'info'> when 'true' -> #{#<73>(8,1,'integer',['unsigned'|['big']])}# <'debug'> when 'true' -> #{#<68>(8,1,'integer',['unsigned'|['big']])}# end <'false'> when 'true' -> case L of <'disabled'> when 'true' -> #{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}# <'fatal'> when 'true' -> #{#<70>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}# <'error'> when 'true' -> #{#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}# <'warn'> when 'true' -> #{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}# <'info'> when 'true' -> #{#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}# <'debug'> when 'true' -> #{#<68>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']])}# end end
+    'level_from_tag'/1 =
+        fun (Tag) ->
+            case call 'erlang':'=:='(Tag, #{#<68>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'disabled' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<32>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'disabled' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<70>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'fatal' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<70>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'fatal' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'error' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<69>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'error' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'warn' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<87>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'warn' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<73>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'info' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<73>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'info' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<68>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'debug' <'false'> when 'true' -> case call 'erlang':'=:='(Tag, #{#<68>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 'debug' <'false'> when 'true' -> 'none' end end end end end end end end end end end end
+    'target_from_label'/1 =
+        fun (Label) ->
+            case Label of <#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> 'console' <#{#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> 'file' <#{#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#> when 'true' -> 'both' <_> when 'true' -> 'none' end
+    'init'/0 =
+        fun () ->
+            let <Default_logger> =
+                apply 'new_thread_safe_log'/0()
+            in  Default_logger
+    'free_logger'/1 =
+        fun (Logger) ->
+            case call 'erlang':'=:='(Logger, 'nil') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Logger.free'/1(Logger)
+            end
+    'set_logger'/1 =
+        fun (Logger) ->
+            let <Old_logger> =
+                Default_logger
+            in  let <Default_logger_1> =
+                    Logger
+                in  apply 'free_logger'/1(Old_logger)
+    'get_logger'/0 =
+        fun () ->
+            Default_logger
+    'get_level'/0 =
+        fun () ->
+            apply 'Logger.get_level'/1(Default_logger)
+    'set_level'/1 =
+        fun (Level) ->
+            'ok'
+    'fatal'/1 =
+        fun (S) ->
+            do  call 'erlang':'error'(S)
+                call 'erlang':'halt'(1)
+    'error'/1 =
+        fun (S) ->
+            'ok'
+    'warn'/1 =
+        fun (S) ->
+            'ok'
+    'info'/1 =
+        fun (S) ->
+            'ok'
+    'debug'/1 =
+        fun (S) ->
+            'ok'
+    'set_always_flush'/1 =
+        fun (Should_flush_on_every_message) ->
+            apply 'Logger.set_always_flush'/2(Default_logger, Should_flush_on_every_message)
+    'Log.get_level'/1 =
+        fun (L) ->
+            call 'erlang':'map_get'('level', L)
+    'Log.set_level'/2 =
+        fun (L, Level) ->
+            'ok'
+    'Log.set_full_logpath'/2 =
+        fun (L, Full_log_path) ->
+            let <Rlog_file> =
+                call 'v.os':'real_path'(Full_log_path)
+            in  do  'ok'
+                    'ok'
+    'Log.set_output_label'/2 =
+        fun (L, Label) ->
+            'ok'
+    'Log.set_output_path'/2 =
+        fun (L, Output_file_path) ->
+            do  case call 'erlang':'map_get'('is_opened', call 'erlang':'map_get'('ofile', L)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  'file'
+                    do  call 'filename':'join'(call 'v.os':'real_path'(Output_file_path), call 'erlang':'map_get'('output_label', L))
+                        let <Ofile> =
+                            try call 'v.os':'open_append'(call 'erlang':'map_get'('output_file_name', L)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('output_file_name', L)|[]]])|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#|[]]])})
+                        in  'ok'
+    'Log.set_output_stream'/2 =
+        fun (L, Stream) ->
+            'ok'
+    'Log.log_to_console_too'/1 =
+        fun (L) ->
+            do  case call 'erlang':'=/='(call 'erlang':'map_get'('output_target', L), 'file') of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                'ok'
+    'Log.flush'/1 =
+        fun (L) ->
+            'ok'
+    'Log.close'/1 =
+        fun (L) ->
+            'ok'
+    'Log.reopen'/1 =
+        fun (L) ->
+            do  apply 'Log.flush'/1(L)
+                do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'file'), call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'both')) of <'true'> when 'true' -> try apply 'File.reopen'/3(call 'erlang':'map_get'('ofile', L), call 'erlang':'map_get'('output_file_name', L), #{#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']])}#) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> apply 'error_with_code'/2(call 'erlang':'iolist_to_binary'([#{#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('output_file_name', L)|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]]), 1) <'false'> when 'true' -> 'ok' end
+                    'ok'
+    'Log.log_file'/3 =
+        fun (L, S, Level) ->
+            let <Timestamp> =
+                apply 'Log.time_format'/2(L, case call 'erlang':'map_get'('local_time', L) of <'true'> when 'true' -> call 'erlang':'localtime'() <'false'> when 'true' -> call 'v.time':'utc'() end)
+            in  let <E> =
+                    apply 'tag_to_file'/2(Level, call 'erlang':'map_get'('short_tag', L))
+                in  case call 'erlang':'map_get'('always_flush', L) of <'true'> when 'true' -> apply 'Log.flush'/1(L) <'false'> when 'true' -> 'ok' end
+    'Log.log_stream'/3 =
+        fun (L, S, Level) ->
+            let <Timestamp> =
+                apply 'Log.time_format'/2(L, case call 'erlang':'map_get'('local_time', L) of <'true'> when 'true' -> call 'erlang':'localtime'() <'false'> when 'true' -> call 'v.time':'utc'() end)
+            in  let <Tag> =
+                    apply 'tag_to_console'/2(Level, call 'erlang':'map_get'('short_tag', L))
+                in  let <Msg> =
+                        call 'erlang':'iolist_to_binary'([Timestamp|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Tag|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]])
+                    in  let <Arr> =
+                            call 'erlang':'binary_to_list'(Msg)
+                        in  do  try apply 'Writer.write'/2(call 'erlang':'map_get'('output_stream', L), Arr) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                                case call 'erlang':'map_get'('always_flush', L) of <'true'> when 'true' -> case call 'erlang':'is'(call 'erlang':'map_get'('output_stream', L), 'false') of <'true'> when 'true' -> case call 'erlang':'map_get'('fd', call 'erlang':'map_get'('output_stream', L)) of <1> when 'true' -> apply 'flush_stdout'/0() <2> when 'true' -> apply 'flush_stderr'/0() <_> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+    'Log.send_output'/3 =
+        fun (L, S, Level) ->
+            do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'file'), call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'both')) of <'true'> when 'true' -> apply 'Log.log_file'/3(L, S, Level) <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'console'), call 'erlang':'=:='(call 'erlang':'map_get'('output_target', L), 'both')) of <'true'> when 'true' -> apply 'Log.log_stream'/3(L, S, Level) <'false'> when 'true' -> 'ok' end
+    'Log.fatal'/2 =
+        fun (L, S) ->
+            do  case call 'erlang':'>='(call 'erlang':'map_get'('level', L), 'fatal') of <'true'> when 'true' -> 
+                do  apply 'Log.send_output'/3(L, S, 'fatal')
+                    'ok'
+             <'false'> when 'true' -> 'ok' end
+                call 'erlang':'error'({'panic', call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'map_get'('output_label', L)|[#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[S|[]]])})
+    'Log.error'/2 =
+        fun (L, S) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('level', L), 'error') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Log.send_output'/3(L, S, 'error')
+            end
+    'Log.warn'/2 =
+        fun (L, S) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('level', L), 'warn') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Log.send_output'/3(L, S, 'warn')
+            end
+    'Log.info'/2 =
+        fun (L, S) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('level', L), 'info') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Log.send_output'/3(L, S, 'info')
+            end
+    'Log.debug'/2 =
+        fun (L, S) ->
+            case call 'erlang':'<'(call 'erlang':'map_get'('level', L), 'debug') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    apply 'Log.send_output'/3(L, S, 'debug')
+            end
+    'Log.free'/1 =
+        fun (F) ->
+            'ok'
+    'Log.time_format'/2 =
+        fun (L, T) ->
+            case call 'erlang':'map_get'('time_format', L) of <'tf_rfc3339_micro'> when 'true' -> apply 'Time.format_rfc3339_micro'/1(T) <'tf_ss_micro'> when 'true' -> apply 'Time.format_ss_micro'/1(T) <'tf_default'> when 'true' -> <<"1970-01-01 00:00:00">> <'tf_ss'> when 'true' -> apply 'Time.format_ss'/1(T) <'tf_ss_milli'> when 'true' -> apply 'Time.format_ss_milli'/1(T) <'tf_ss_nano'> when 'true' -> apply 'Time.format_ss_nano'/1(T) <'tf_rfc3339'> when 'true' -> apply 'Time.format_rfc3339'/1(T) <'tf_rfc3339_nano'> when 'true' -> apply 'Time.format_rfc3339_nano'/1(T) <'tf_hhmm'> when 'true' -> apply 'Time.hhmm'/1(T) <'tf_hhmmss'> when 'true' -> apply 'Time.hhmmss'/1(T) <'tf_hhmm12'> when 'true' -> apply 'Time.hhmm12'/1(T) <'tf_ymmdd'> when 'true' -> apply 'Time.ymmdd'/1(T) <'tf_ddmmy'> when 'true' -> apply 'Time.ddmmy'/1(T) <'tf_md'> when 'true' -> apply 'Time.md'/1(T) <'tf_custom_format'> when 'true' -> apply 'Time.custom_format'/2(T, call 'erlang':'map_get'('custom_time_format', L)) end
+    'Log.set_time_format'/2 =
+        fun (L, F) ->
+            'ok'
+    'Log.set_always_flush'/2 =
+        fun (L, Should_flush_every_time) ->
+            'ok'
+    'Log.get_time_format'/1 =
+        fun (L) ->
+            call 'erlang':'map_get'('time_format', L)
+    'Log.set_custom_time_format'/2 =
+        fun (L, F) ->
+            do  'tf_custom_format'
+                'ok'
+    'Log.get_custom_time_format'/1 =
+        fun (L) ->
+            call 'erlang':'map_get'('custom_time_format', L)
+    'Log.set_short_tag'/2 =
+        fun (L, Enabled) ->
+            'ok'
+    'Log.get_short_tag'/1 =
+        fun (L) ->
+            call 'erlang':'map_get'('short_tag', L)
+    'Log.set_local_time'/2 =
+        fun (L, Enabled) ->
+            'ok'
+    'Log.get_local_time'/1 =
+        fun (L) ->
+            call 'erlang':'map_get'('local_time', L)
+    'use_stdout'/0 =
+        fun () ->
+            let <L> =
+                ~{{'vbeam','type'}=>'ThreadSafeLog'}~
+            in  do  apply 'ThreadSafeLog.set_output_stream'/2(L, call 'v.os':'stdout'())
+                    apply 'set_logger'/1(L)
+    'new_thread_safe_log'/0 =
+        fun () ->
+            let <Slevel> =
+                'false'
+            in  let <Level> =
+                    try 'info' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Slevel|[]]])})
+                in  let <X> =
+                        ~{'level'=>Level,{'vbeam','type'}=>'ThreadSafeLog'}~
+                    in  X
+    'ThreadSafeLog.free'/1 =
+        fun (X) ->
+            'ok'
+    'ThreadSafeLog.set_level'/2 =
+        fun (X, Level) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            'ok'
+            end
+    'ThreadSafeLog.set_always_flush'/2 =
+        fun (X, Should_flush) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  apply 'Log.set_always_flush'/2(call 'erlang':'map_get'('Log', X), Should_flush)
+                            'ok'
+            end
+    'ThreadSafeLog.debug'/2 =
+        fun (X, S) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            'ok'
+            end
+    'ThreadSafeLog.info'/2 =
+        fun (X, S) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            'ok'
+            end
+    'ThreadSafeLog.warn'/2 =
+        fun (X, S) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            'ok'
+            end
+    'ThreadSafeLog.error'/2 =
+        fun (X, S) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  'ok'
+                            'ok'
+            end
+    'ThreadSafeLog.fatal'/2 =
+        fun (X, S) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('mu', X), 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', S}) <'false'> when 'true' -> 'ok' end
+                do  'ok'
+                    call 'erlang':'error'(S)
+    'Level__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'LogTarget__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'TimeFormat__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.log')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.log', _0)
+    end

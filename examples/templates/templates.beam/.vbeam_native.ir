@@ -1,0 +1,111 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"data_get">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 0,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"data_dump">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"encode_pretty">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"resource_abs_path">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 1}},
+                {call, {sym, <<"write_file">>}},
+                {mov, {vreg, 3}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"data_load">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"resource_abs_path">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"read_file">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 1}},
+                {call, {sym, <<"decode">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        },
+        #{
+            name => <<"filled_in_template">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 1,
+            body => [
+                {call, {sym, <<"data_load">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 1,
+            body => [
+                {call, {sym, <<"filled_in_template">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {print_int, {vreg, 0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"SiteCat__static__from">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_1">>},
+                {call, {sym, <<"str">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {label, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"error">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

@@ -1,0 +1,135 @@
+module 'v.particle' ['new'/1,
+                'remap'/5,
+                'Particle.update'/2,
+                'Particle.is_dead'/1,
+                'Particle.draw'/1,
+                'Particle.reset'/1,
+                'System.init'/2,
+                'System.update'/2,
+                'System.draw'/1,
+                'System.reset'/1,
+                'System.explode'/3,
+                'System.free'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'new'/1 =
+    fun (Location) ->
+        let <P> =
+            ~{'location'=>Location,'velocity'=>~{'x'=>0,'y'=>0,{'vbeam','type'}=>'Vec2'}~,'acceleration'=>~{'x'=>0,'y'=>0,{'vbeam','type'}=>'Vec2'}~,'color'=>~{'r'=>93,'g'=>136,'b'=>193,'a'=>255,{'vbeam','type'}=>'Color'}~,'life_time'=>1000,'life_time_init'=>1000,{'vbeam','type'}=>'Particle'}~
+        in  P
+'remap'/5 =
+    fun (V, Min, Max, New_min, New_max) ->
+        call 'erlang':'+'(call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'-'(V, Min), call 'erlang':'-'(New_max, New_min)), call 'erlang':'-'(Max, Min)), New_min)
+'Particle.update'/2 =
+    fun (P, Dt) ->
+        let <Acc> =
+            call 'erlang':'map_get'('acceleration', P)
+        in  do  apply 'Vec2.multiply_scalar'/2(Acc, Dt)
+                do  call 'erlang':'map_get'('velocity', P)
+                    do  call 'erlang':'map_get'('location', P)
+                        let <Lt> =
+                            call 'erlang':'-'(call 'erlang':'map_get'('life_time', P), call 'erlang':'*'(1000, Dt))
+                        in  case call 'erlang':'>'(Lt, 0) of <'true'> when 'true' -> 
+                                do  Lt
+                                    do  call 'erlang':'-'(call 'erlang':'map_get'('r', call 'erlang':'map_get'('color', P)), 1)
+                                        do  call 'erlang':'-'(call 'erlang':'map_get'('g', call 'erlang':'map_get'('color', P)), 1)
+                                            do  call 'erlang':'-'(call 'erlang':'map_get'('b', call 'erlang':'map_get'('color', P)), 1)
+                                                'ok'
+                             <'false'> when 'true' -> 'ok' end
+'Particle.is_dead'/1 =
+    fun (P) ->
+        call 'erlang':'=<'(call 'erlang':'map_get'('life_time', P), 0.0)
+'Particle.draw'/1 =
+    fun (P) ->
+        let <L> =
+            call 'erlang':'map_get'('location', P)
+        in  do  call 'v.sokol.sgl':'c4b'(call 'erlang':'map_get'('r', call 'erlang':'map_get'('color', P)), call 'erlang':'map_get'('g', call 'erlang':'map_get'('color', P)), call 'erlang':'map_get'('b', call 'erlang':'map_get'('color', P)), call 'erlang':'map_get'('a', call 'erlang':'map_get'('color', P)))
+                let <Lx> =
+                    call 'erlang':'map_get'('x', L)
+                in  let <Ly> =
+                        call 'erlang':'map_get'('y', L)
+                    in  do  call 'v.sokol.sgl':'v2f'(Lx, Ly)
+                            do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(Lx, 2), Ly)
+                                do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(Lx, 2), call 'erlang':'+'(Ly, 2))
+                                    call 'v.sokol.sgl':'v2f'(Lx, call 'erlang':'+'(Ly, 2))
+'Particle.reset'/1 =
+    fun (P) ->
+        do  apply 'Vec2.zero'/1(call 'erlang':'map_get'('location', P))
+            do  apply 'Vec2.zero'/1(call 'erlang':'map_get'('acceleration', P))
+                do  apply 'Vec2.zero'/1(call 'erlang':'map_get'('velocity', P))
+                    do  ~{'r'=>93,'g'=>136,'b'=>193,'a'=>255,{'vbeam','type'}=>'Color'}~
+                        do  1000
+                            'ok'
+'System.init'/2 =
+    fun (S, Sc) ->
+        do  apply 'ArrayFlags.set'/2(call 'erlang':'map_get'('flags', call 'erlang':'map_get'('pool', S)), call 'erlang':'bor'('noslices', 'noshrink'))
+            do  apply 'ArrayFlags.set'/2(call 'erlang':'map_get'('flags', call 'erlang':'map_get'('bin', S)), call 'erlang':'bor'('noslices', 'noshrink'))
+                'ok'
+'System.update'/2 =
+    fun (S, Dt) ->
+        let <P> =
+            'nil'
+        in  let <Moved> =
+                0
+            in  case call 'erlang':'=/='(Moved, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'System.draw'/1 =
+    fun (S) ->
+        do  call 'v.sokol.sgl':'begin_quads'()
+            do  let <_1> =
+                fun (P) ->
+                    apply 'Particle.draw'/1(P)
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('pool', S))
+                call 'v.sokol.sgl':'end'()
+'System.reset'/1 =
+    fun (S) ->
+        do  let <_1> =
+            fun (I) ->
+                let <P> =
+                    call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('pool', S))
+                in  do  apply 'Particle.reset'/1(P)
+                        'ok'
+        in  let <_2> =
+                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('pool', S)), 1))
+            in  call 'lists':'foreach'(_1, _2)
+            'ok'
+'System.explode'/3 =
+    fun (S, X, Y) ->
+        let <Reserve> =
+            500
+        in  let <Center> =
+                ~{'x'=>X,'y'=>Y,{'vbeam','type'}=>'Vec2'}~
+            in  let <P> =
+                    'nil'
+                in  let <Moved> =
+                        0
+                    in  case call 'erlang':'=/='(Moved, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'System.free'/1 =
+    fun (S) ->
+        do  let <_1> =
+            fun (P) ->
+                do  case call 'erlang':'=:='(P, 0) of <'true'> when 'true' -> 
+                    do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([apply 'ptr_str'/1(P)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                        'ok'
+                 <'false'> when 'true' -> 'ok' end
+                    apply 'free'/1(P)
+        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('pool', S))
+            do  apply 'array.clear'/1(call 'erlang':'map_get'('pool', S))
+                do  let <_2> =
+                    fun (P) ->
+                        do  case call 'erlang':'=:='(P, 0) of <'true'> when 'true' -> 
+                            do  call 'io':'format'([126|[115|[]]], [call 'erlang':'iolist_to_binary'([apply 'ptr_str'/1(P)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                                'ok'
+                         <'false'> when 'true' -> 'ok' end
+                            apply 'free'/1(P)
+                in  call 'lists':'foreach'(_2, call 'erlang':'map_get'('bin', S))
+                    apply 'array.clear'/1(call 'erlang':'map_get'('bin', S))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.particle')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.particle', _0)
+end

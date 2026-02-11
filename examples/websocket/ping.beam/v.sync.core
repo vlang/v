@@ -1,0 +1,480 @@
+module 'v.sync' ['new_channel'/1,
+                'new_channel_st'/2,
+                'new_channel_st_noscan'/2,
+                'Channel.close'/1,
+                'Channel.try_push'/2,
+                'Channel.try_pop'/2,
+                'Channel.push'/2,
+                'Channel.pop'/2,
+                'Channel.len'/1,
+                'Channel.is_closed'/1,
+                'channel_select'/4,
+                'Mutex.str'/1,
+                'RwMutex.str'/1,
+                'new_cond'/1,
+                'Cond.wait'/1,
+                'Cond.signal'/1,
+                'Cond.broadcast'/1,
+                'Cond.timed_wait'/2,
+                'new_many_times'/1,
+                'ManyTimes.do'/2,
+                'ManyTimes.do_slow'/2,
+                'new_once'/0,
+                'Once.do'/2,
+                'Once.do_slow'/2,
+                'Once.do_with_param'/3,
+                'Once.do_slow_with_param'/3,
+                'new_spin_lock'/0,
+                'SpinLock.lock'/1,
+                'SpinLock.try_lock'/1,
+                'SpinLock.unlock'/1,
+                'SpinLock.destroy'/1,
+                'new_mutex'/0,
+                'Mutex.init'/1,
+                'Mutex.lock'/1,
+                'Mutex.try_lock'/1,
+                'Mutex.unlock'/1,
+                'Mutex.destroy'/1,
+                'new_rwmutex'/0,
+                'RwMutex.init'/1,
+                'RwMutex.rlock'/1,
+                'RwMutex.lock'/1,
+                'RwMutex.try_rlock'/1,
+                'RwMutex.try_wlock'/1,
+                'RwMutex.runlock'/1,
+                'RwMutex.unlock'/1,
+                'RwMutex.destroy'/1,
+                'new_semaphore'/0,
+                'new_semaphore_init'/1,
+                'Semaphore.init'/2,
+                'Semaphore.post'/1,
+                'Semaphore.wait'/1,
+                'Semaphore.try_wait'/1,
+                'Semaphore.timed_wait'/2,
+                'Semaphore.destroy'/1,
+                'new_waitgroup'/0,
+                'WaitGroup.init'/1,
+                'WaitGroup.add'/2,
+                'WaitGroup.done'/1,
+                'WaitGroup.wait'/1,
+                'WaitGroup.go'/2,
+                'int_min'/2,
+                'convert_t_to_voidptr'/1,
+                'convert_voidptr_to_t'/1,
+                'BufferElemStat__static__from'/1,
+                'Direction__static__from'/1,
+                'ChanState__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_channel'/1 =
+        fun (N) ->
+            let <St> =
+                case call 'erlang':'>'(8, 0) of <'true'> when 'true' -> 8 <'false'> when 'true' -> 1 end
+            in  apply 'new_channel_st'/2(N, St)
+    'new_channel_st'/2 =
+        fun (N, St) ->
+            let <Wsem> =
+                case call 'erlang':'>'(N, 0) of <'true'> when 'true' -> N <'false'> when 'true' -> 1 end
+            in  let <Rsem> =
+                    case call 'erlang':'>'(N, 0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> 1 end
+                in  let <Rbuf> =
+                        case call 'erlang':'>'(N, 0) of <'true'> when 'true' -> apply 'malloc'/1(call 'erlang':'*'(N, St)) <'false'> when 'true' -> 'nil' end
+                    in  let <Sbuf> =
+                            case call 'erlang':'>'(N, 0) of <'true'> when 'true' -> apply 'vcalloc'/1(call 'erlang':'*'(N, 2)) <'false'> when 'true' -> 'nil' end
+                        in  let <Ch> =
+                                ~{'objsize'=>St,'cap'=>N,'write_free'=>N,'read_avail'=>0,'ringbuf'=>Rbuf,'statusbuf'=>Sbuf,'write_sub_mtx'=>apply 'new_spin_lock'/0(),'read_sub_mtx'=>apply 'new_spin_lock'/0(),{'vbeam','type'}=>'Channel'}~
+                            in  do  apply 'Semaphore.init'/2(call 'erlang':'map_get'('writesem', Ch), Wsem)
+                                    do  apply 'Semaphore.init'/2(call 'erlang':'map_get'('readsem', Ch), Rsem)
+                                        do  apply 'Semaphore.init'/2(call 'erlang':'map_get'('writesem_im', Ch), 0)
+                                            do  apply 'Semaphore.init'/2(call 'erlang':'map_get'('readsem_im', Ch), 0)
+                                                Ch
+    'new_channel_st_noscan'/2 =
+        fun (N, St) ->
+            apply 'new_channel_st'/2(N, St)
+    'Channel.close'/1 =
+        fun (Ch) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  1
+                        do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('readsem_im', Ch))
+                            do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('readsem', Ch))
+                                do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('writesem', Ch))
+                                    apply 'Semaphore.post'/1(call 'erlang':'map_get'('writesem_im', Ch))
+            end
+    'Channel.try_push'/2 =
+        fun (Ch, Src) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0) of
+                <'true'> when 'true' -> 'closed'
+                <'false'> when 'true' -> 
+                    case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'map_get'('cap', Ch), 0), call 'erlang':'=:='(call 'erlang':'map_get'('write_free', Ch), 0)) of
+                        <'true'> when 'true' -> 'not_ready'
+                        <'false'> when 'true' -> 
+                            do  case call 'erlang':'>'(call 'erlang':'map_get'('cap', Ch), 0) of <'true'> when 'true' -> 
+                                do  call 'erlang':'map_get'('write_free', Ch)
+                                    call 'erlang':'map_get'('read_avail', Ch)
+                             <'false'> when 'true' -> 'ok' end
+                                do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('readsem', Ch))
+                                    'success'
+                    end
+            end
+    'Channel.try_pop'/2 =
+        fun (Ch, Dest) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('read_avail', Ch), 0) of
+                <'true'> when 'true' -> 'not_ready'
+                <'false'> when 'true' -> 
+                    do  case call 'erlang':'>'(call 'erlang':'map_get'('cap', Ch), 0) of <'true'> when 'true' -> 
+                        do  call 'erlang':'map_get'('read_avail', Ch)
+                            call 'erlang':'map_get'('write_free', Ch)
+                     <'false'> when 'true' -> 'ok' end
+                        do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('writesem', Ch))
+                            'success'
+            end
+    'Channel.push'/2 =
+        fun (Ch, Src) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  apply 'Semaphore.wait'/1(call 'erlang':'map_get'('writesem', Ch))
+                        case call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                do  case call 'erlang':'>'(call 'erlang':'map_get'('cap', Ch), 0) of <'true'> when 'true' -> 
+                                    do  call 'erlang':'map_get'('write_free', Ch)
+                                        call 'erlang':'map_get'('read_avail', Ch)
+                                 <'false'> when 'true' -> 'ok' end
+                                    apply 'Semaphore.post'/1(call 'erlang':'map_get'('readsem', Ch))
+                        end
+            end
+    'Channel.pop'/2 =
+        fun (Ch, Dest) ->
+            do  apply 'Semaphore.wait'/1(call 'erlang':'map_get'('readsem', Ch))
+                case call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0), call 'erlang':'=:='(call 'erlang':'map_get'('read_avail', Ch), 0)) of
+                    <'true'> when 'true' -> 'false'
+                    <'false'> when 'true' -> 
+                        do  case call 'erlang':'>'(call 'erlang':'map_get'('cap', Ch), 0) of <'true'> when 'true' -> 
+                            do  call 'erlang':'map_get'('read_avail', Ch)
+                                call 'erlang':'map_get'('write_free', Ch)
+                         <'false'> when 'true' -> 'ok' end
+                            do  apply 'Semaphore.post'/1(call 'erlang':'map_get'('writesem', Ch))
+                                'true'
+                end
+    'Channel.len'/1 =
+        fun (Ch) ->
+            call 'erlang':'map_get'('read_avail', Ch)
+    'Channel.is_closed'/1 =
+        fun (Ch) ->
+            call 'erlang':'=/='(call 'erlang':'map_get'('closed', Ch), 0)
+    'channel_select'/4 =
+        fun (Channels, Dir, Dest, Timeout) ->
+            do  let <_1> =
+                fun (Ch, I) ->
+                    do  case Dir of <'pop'> when 'true' -> case call 'erlang':'=:='(call 'vbeam_concurrency':'channel_try_receive'(Ch), 'success') of <'true'> when 'true' -> I <'false'> when 'true' -> 'ok' end <'push'> when 'true' -> case call 'erlang':'=:='(call 'vbeam_concurrency':'channel_send'(Ch, Dest), 'success') of <'true'> when 'true' -> I <'false'> when 'true' -> 'ok' end end
+                        call 'erlang':'+'(I, 1)
+            in  call 'lists':'foldl'(_1, 0, Channels)
+                -1
+    'Mutex.str'/1 =
+        fun (M) ->
+            call 'erlang':'iolist_to_binary'([#{#<77>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[M|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+    'RwMutex.str'/1 =
+        fun (M) ->
+            call 'erlang':'iolist_to_binary'([#{#<82>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[M|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]])
+    'new_cond'/1 =
+        fun (M) ->
+            let <C> =
+                ~{'mutex'=>M,'inner_mutex'=>~{{'vbeam','type'}=>'Mutex'}~,'waiters'=>[],{'vbeam','type'}=>'Cond'}~
+            in  do  apply 'Mutex.init'/1(call 'erlang':'map_get'('inner_mutex', C))
+                    C
+    'Cond.wait'/1 =
+        fun (C) ->
+            let <Sem> =
+                apply 'new_semaphore'/0()
+            in  do  'ok'
+                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('waiters', C), Sem)
+                        do  'ok'
+                            do  'ok'
+                                do  apply 'Semaphore.wait'/1(Sem)
+                                    do  'ok'
+                                        do  'ok'
+                                            'ok'
+    'Cond.signal'/1 =
+        fun (C) ->
+            do  'ok'
+                case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('waiters', C)), 0) of <'true'> when 'true' -> 
+                    let <Waiter> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('waiters', C))
+                    in  do  call 'lists':'delete'(0, call 'erlang':'map_get'('waiters', C))
+                            apply 'Semaphore.post'/1(Waiter)
+                 <'false'> when 'true' -> 'ok' end
+    'Cond.broadcast'/1 =
+        fun (C) ->
+            do  'ok'
+                do  let <_1> =
+                    fun (I) ->
+                        let <Waiter> =
+                            call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('waiters', C))
+                        in  apply 'Semaphore.post'/1(Waiter)
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('waiters', C)), 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    apply 'array.clear'/1(call 'erlang':'map_get'('waiters', C))
+    'Cond.timed_wait'/2 =
+        fun (C, Timeout) ->
+            let <Sem> =
+                apply 'new_semaphore'/0()
+            in  do  'ok'
+                    do  call 'erlang':'bsl'(call 'erlang':'map_get'('waiters', C), Sem)
+                        do  'ok'
+                            do  'ok'
+                                let <Result> =
+                                    apply 'Semaphore.timed_wait'/2(Sem, Timeout)
+                                in  do  'ok'
+                                        do  'ok'
+                                            do  'ok'
+                                                Result
+    'new_many_times'/1 =
+        fun (Times) ->
+            let <Many_times> =
+                ~{'times'=>Times,{'vbeam','type'}=>'ManyTimes'}~
+            in  do  apply 'RwMutex.init'/1(call 'erlang':'map_get'('m', Many_times))
+                    Many_times
+    'ManyTimes.do'/2 =
+        fun (M, F) ->
+            case call 'erlang':'<'(call 'v.sync.stdatomic':'load_u64'(call 'erlang':'map_get'('count', M)), call 'erlang':'map_get'('times', M)) of <'true'> when 'true' -> apply 'ManyTimes.do_slow'/2(M, F) <'false'> when 'true' -> 'ok' end
+    'ManyTimes.do_slow'/2 =
+        fun (M, F) ->
+            do  'ok'
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('count', M), call 'erlang':'map_get'('times', M)) of <'true'> when 'true' -> 
+                    do  call 'v.sync.stdatomic':'store_u64'(call 'erlang':'map_get'('count', M), call 'erlang':'+'(call 'erlang':'map_get'('count', M), 1))
+                        apply F()
+                 <'false'> when 'true' -> 'ok' end
+                    'ok'
+    'new_once'/0 =
+        fun () ->
+            let <Once> =
+                ~{{'vbeam','type'}=>'Once'}~
+            in  do  apply 'RwMutex.init'/1(call 'erlang':'map_get'('m', Once))
+                    Once
+    'Once.do'/2 =
+        fun (O, F) ->
+            case call 'erlang':'<'(call 'v.sync.stdatomic':'load_u64'(call 'erlang':'map_get'('count', O)), 1) of <'true'> when 'true' -> apply 'Once.do_slow'/2(O, F) <'false'> when 'true' -> 'ok' end
+    'Once.do_slow'/2 =
+        fun (O, F) ->
+            do  'ok'
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('count', O), 1) of <'true'> when 'true' -> 
+                    do  call 'v.sync.stdatomic':'store_u64'(call 'erlang':'map_get'('count', O), 1)
+                        apply F()
+                 <'false'> when 'true' -> 'ok' end
+                    'ok'
+    'Once.do_with_param'/3 =
+        fun (O, F, Param) ->
+            case call 'erlang':'<'(call 'v.sync.stdatomic':'load_u64'(call 'erlang':'map_get'('count', O)), 1) of <'true'> when 'true' -> apply 'Once.do_slow_with_param'/3(O, F, Param) <'false'> when 'true' -> 'ok' end
+    'Once.do_slow_with_param'/3 =
+        fun (O, F, Param) ->
+            do  'ok'
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('count', O), 1) of <'true'> when 'true' -> 
+                    do  call 'v.sync.stdatomic':'store_u64'(call 'erlang':'map_get'('count', O), 1)
+                        apply F(Param)
+                 <'false'> when 'true' -> 'ok' end
+                    'ok'
+    'new_spin_lock'/0 =
+        fun () ->
+            ~{'locked'=>0,{'vbeam','type'}=>'SpinLock'}~
+    'SpinLock.lock'/1 =
+        fun (S) ->
+            let <Spin_count> =
+                0
+            in  let <Max_spins> =
+                    100
+                in  let <Base_delay> =
+                        100
+                    in  'ok'
+    'SpinLock.try_lock'/1 =
+        fun (S) ->
+            'false'
+    'SpinLock.unlock'/1 =
+        fun (S) ->
+            'ok'
+    'SpinLock.destroy'/1 =
+        fun (S) ->
+            'ok'
+    'new_mutex'/0 =
+        fun () ->
+            let <M> =
+                ~{{'vbeam','type'}=>'Mutex'}~
+            in  do  apply 'Mutex.init'/1(M)
+                    M
+    'Mutex.init'/1 =
+        fun (M) ->
+            'ok'
+    'Mutex.lock'/1 =
+        fun (M) ->
+            'ok'
+    'Mutex.try_lock'/1 =
+        fun (M) ->
+            case call 'erlang':'not'(call 'erlang':'map_get'('locked', M)) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'Mutex.unlock'/1 =
+        fun (M) ->
+            'ok'
+    'Mutex.destroy'/1 =
+        fun (M) ->
+            'ok'
+    'new_rwmutex'/0 =
+        fun () ->
+            let <M> =
+                ~{{'vbeam','type'}=>'RwMutex'}~
+            in  do  apply 'RwMutex.init'/1(M)
+                    M
+    'RwMutex.init'/1 =
+        fun (M) ->
+            do  0
+                'ok'
+    'RwMutex.rlock'/1 =
+        fun (M) ->
+            call 'erlang':'map_get'('readers', M)
+    'RwMutex.lock'/1 =
+        fun (M) ->
+            'ok'
+    'RwMutex.try_rlock'/1 =
+        fun (M) ->
+            case call 'erlang':'not'(call 'erlang':'map_get'('writer', M)) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'RwMutex.try_wlock'/1 =
+        fun (M) ->
+            case call 'erlang':'and'(call 'erlang':'not'(call 'erlang':'map_get'('writer', M)), call 'erlang':'=:='(call 'erlang':'map_get'('readers', M), 0)) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'RwMutex.runlock'/1 =
+        fun (M) ->
+            case call 'erlang':'>'(call 'erlang':'map_get'('readers', M), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('readers', M) <'false'> when 'true' -> 'ok' end
+    'RwMutex.unlock'/1 =
+        fun (M) ->
+            case call 'erlang':'map_get'('writer', M) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('readers', M), 0) of <'true'> when 'true' -> call 'erlang':'map_get'('readers', M) <'false'> when 'true' -> 'ok' end end
+    'RwMutex.destroy'/1 =
+        fun (M) ->
+            'ok'
+    'new_semaphore'/0 =
+        fun () ->
+            apply 'new_semaphore_init'/1(0)
+    'new_semaphore_init'/1 =
+        fun (N) ->
+            let <Sem> =
+                ~{{'vbeam','type'}=>'Semaphore'}~
+            in  do  apply 'Semaphore.init'/2(Sem, N)
+                    Sem
+    'Semaphore.init'/2 =
+        fun (Sem, N) ->
+            'ok'
+    'Semaphore.post'/1 =
+        fun (Sem) ->
+            call 'erlang':'map_get'('count', Sem)
+    'Semaphore.wait'/1 =
+        fun (Sem) ->
+            call 'erlang':'map_get'('count', Sem)
+    'Semaphore.try_wait'/1 =
+        fun (Sem) ->
+            case call 'erlang':'>'(call 'erlang':'map_get'('count', Sem), 0) of
+                <'true'> when 'true' -> 'true'
+                <'false'> when 'true' -> 
+                    'false'
+            end
+    'Semaphore.timed_wait'/2 =
+        fun (Sem, Timeout) ->
+            let <Start> =
+                call 'erlang':'localtime'()
+            in  do  call 'erlang':'map_get'('count', Sem)
+                    'true'
+    'Semaphore.destroy'/1 =
+        fun (Sem) ->
+            'ok'
+    'new_waitgroup'/0 =
+        fun () ->
+            let <Wg> =
+                ~{{'vbeam','type'}=>'WaitGroup'}~
+            in  do  apply 'WaitGroup.init'/1(Wg)
+                    Wg
+    'WaitGroup.init'/1 =
+        fun (Wg) ->
+            apply 'Semaphore.init'/2(call 'erlang':'map_get'('sem', Wg), 0)
+    'WaitGroup.add'/2 =
+        fun (Wg, Delta) ->
+            let <Old_nrjobs> =
+                call 'erlang':'map_get'('task_count', Wg)
+            in  do  case call 'erlang':'>='(Delta, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'map_get'('task_count', Wg), call 'erlang':'-'(Delta)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> call 'erlang':'error'({'panic', #{#<78>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#}) end end
+                    let <New_nrjobs> =
+                        call 'erlang':'+'(Old_nrjobs, Delta)
+                    in  do  case call 'erlang':'<'(New_nrjobs, 0) of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<78>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                            case call 'erlang':'and'(call 'erlang':'=:='(New_nrjobs, 0), call 'erlang':'>'(call 'erlang':'map_get'('wait_count', Wg), 0)) of <'true'> when 'true' -> 
+                                let <Num_waiters> =
+                                    call 'erlang':'map_get'('wait_count', Wg)
+                                in  do  0
+                                        'ok'
+                             <'false'> when 'true' -> 'ok' end
+    'WaitGroup.done'/1 =
+        fun (Wg) ->
+            'ok'
+    'WaitGroup.wait'/1 =
+        fun (Wg) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('task_count', Wg), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  call 'erlang':'map_get'('wait_count', Wg)
+                        apply 'Semaphore.wait'/1(call 'erlang':'map_get'('sem', Wg))
+            end
+    'WaitGroup.go'/2 =
+        fun (Wg, F) ->
+            do  'ok'
+                call 'vbeam_task':'async'(fun () -> apply ''/2(Wg, F))
+    'int_min'/2 =
+        fun (A, B) ->
+            case call 'erlang':'<'(A, B) of
+                <'true'> when 'true' -> A
+                <'false'> when 'true' -> 
+                    B
+            end
+    'convert_t_to_voidptr'/1 =
+        fun (Value) ->
+            let <F> =
+                ~{{'vbeam','type'}=>'DataConversion'}~
+            in  do  'ok'
+                    call 'erlang':'map_get'('f_voidptr', F)
+    'convert_voidptr_to_t'/1 =
+        fun (Value) ->
+            let <F> =
+                ~{'f_voidptr'=>Value,{'vbeam','type'}=>'DataConversion'}~
+            in  do  'ok'
+                    call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[#{#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+    'BufferElemStat__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Direction__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'ChanState__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sync')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sync', _0)
+    end

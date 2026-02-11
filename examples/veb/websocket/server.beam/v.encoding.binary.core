@@ -1,0 +1,417 @@
+module 'v.encoding.binary' ['big_endian_u16'/1,
+                'big_endian_u16_at'/2,
+                'big_endian_u16_end'/1,
+                'big_endian_put_u16'/2,
+                'big_endian_put_u16_at'/3,
+                'big_endian_put_u16_end'/2,
+                'big_endian_get_u16'/1,
+                'big_endian_u32'/1,
+                'big_endian_u32_at'/2,
+                'big_endian_u32_end'/1,
+                'big_endian_put_u32'/2,
+                'big_endian_put_u32_at'/3,
+                'big_endian_put_u32_end'/2,
+                'big_endian_get_u32'/1,
+                'big_endian_u64'/1,
+                'big_endian_u64_at'/2,
+                'big_endian_u64_end'/1,
+                'big_endian_put_u64'/2,
+                'big_endian_put_u64_at'/3,
+                'big_endian_put_u64_end'/2,
+                'big_endian_get_u64'/1,
+                'big_endian_u16_fixed'/1,
+                'big_endian_put_u16_fixed'/2,
+                'big_endian_u32_fixed'/1,
+                'big_endian_put_u32_fixed'/2,
+                'big_endian_u64_fixed'/1,
+                'big_endian_put_u64_fixed'/2,
+                'little_endian_u16'/1,
+                'little_endian_u16_at'/2,
+                'little_endian_u16_end'/1,
+                'little_endian_put_u16'/2,
+                'little_endian_put_u16_at'/3,
+                'little_endian_put_u16_end'/2,
+                'little_endian_get_u16'/1,
+                'little_endian_u32'/1,
+                'little_endian_u32_at'/2,
+                'little_endian_u32_end'/1,
+                'little_endian_put_u32'/2,
+                'little_endian_put_u32_at'/3,
+                'little_endian_put_u32_end'/2,
+                'little_endian_get_u32'/1,
+                'little_endian_u64'/1,
+                'little_endian_u64_at'/2,
+                'little_endian_u64_end'/1,
+                'little_endian_put_u64'/2,
+                'little_endian_put_u64_at'/3,
+                'little_endian_put_u64_end'/2,
+                'little_endian_f32_at'/2,
+                'little_endian_get_u64'/1,
+                'little_endian_u16_fixed'/1,
+                'little_endian_put_u16_fixed'/2,
+                'little_endian_u32_fixed'/1,
+                'little_endian_put_u32_fixed'/2,
+                'little_endian_u64_fixed'/1,
+                'little_endian_put_u64_fixed'/2,
+                'encode_binary'/2,
+                'encode_struct'/2,
+                'encode_primitive'/2,
+                'encode_array'/2,
+                'encode_string'/2,
+                'encode_map'/2,
+                'decode_binary'/2,
+                'decode_struct'/2,
+                'decode_primitive'/2,
+                'decode_array'/2,
+                'decode_string'/1,
+                'decode_map'/2,
+                'DecodeState.get_u64'/1,
+                'DecodeState.get_u32'/1,
+                'DecodeState.get_u16'/1,
+                'DecodeState.get_u8'/1,
+                'EncodeState.put_u64'/2,
+                'EncodeState.put_u32'/2,
+                'EncodeState.put_u16'/2,
+                'EncodeState.put_u8'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'big_endian_u16'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(2, B)
+            'ok'
+'big_endian_u16_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 1), 1), B)
+                'ok'
+'big_endian_u16_end'/1 =
+    fun (B) ->
+        apply 'big_endian_u16_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 2))
+'big_endian_put_u16'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(2, B)
+            'ok'
+'big_endian_put_u16_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 1), 1), B)
+                'ok'
+'big_endian_put_u16_end'/2 =
+    fun (B, V) ->
+        apply 'big_endian_put_u16_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 2))
+'big_endian_get_u16'/1 =
+    fun (V) ->
+        'ok'
+'big_endian_u32'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(4, B)
+            'ok'
+'big_endian_u32_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 3), 1), B)
+                'ok'
+'big_endian_u32_end'/1 =
+    fun (B) ->
+        apply 'big_endian_u32_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 4))
+'big_endian_put_u32'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(4, B)
+            'ok'
+'big_endian_put_u32_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 3), 1), B)
+                'ok'
+'big_endian_put_u32_end'/2 =
+    fun (B, V) ->
+        apply 'big_endian_put_u32_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 4))
+'big_endian_get_u32'/1 =
+    fun (V) ->
+        'ok'
+'big_endian_u64'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(8, B)
+            'ok'
+'big_endian_u64_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 7), 1), B)
+                'ok'
+'big_endian_u64_end'/1 =
+    fun (B) ->
+        apply 'big_endian_u64_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 8))
+'big_endian_put_u64'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(8, B)
+            'ok'
+'big_endian_put_u64_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 7), 1), B)
+                'ok'
+'big_endian_put_u64_end'/2 =
+    fun (B, V) ->
+        apply 'big_endian_put_u64_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 8))
+'big_endian_get_u64'/1 =
+    fun (V) ->
+        'ok'
+'big_endian_u16_fixed'/1 =
+    fun (B) ->
+        'ok'
+'big_endian_put_u16_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'big_endian_u32_fixed'/1 =
+    fun (B) ->
+        'ok'
+'big_endian_put_u32_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'big_endian_u64_fixed'/1 =
+    fun (B) ->
+        'ok'
+'big_endian_put_u64_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'little_endian_u16'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(2, B)
+            'ok'
+'little_endian_u16_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 1), 1), B)
+                'ok'
+'little_endian_u16_end'/1 =
+    fun (B) ->
+        apply 'little_endian_u16_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 2))
+'little_endian_put_u16'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(2, B)
+            'ok'
+'little_endian_put_u16_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 1), 1), B)
+                'ok'
+'little_endian_put_u16_end'/2 =
+    fun (B, V) ->
+        apply 'little_endian_put_u16_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 2))
+'little_endian_get_u16'/1 =
+    fun (V) ->
+        'ok'
+'little_endian_u32'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(4, B)
+            'ok'
+'little_endian_u32_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 3), 1), B)
+                'ok'
+'little_endian_u32_end'/1 =
+    fun (B) ->
+        apply 'little_endian_u32_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 4))
+'little_endian_put_u32'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(4, B)
+            'ok'
+'little_endian_put_u32_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 3), 1), B)
+                'ok'
+'little_endian_put_u32_end'/2 =
+    fun (B, V) ->
+        apply 'little_endian_put_u32_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 4))
+'little_endian_get_u32'/1 =
+    fun (V) ->
+        'ok'
+'little_endian_u64'/1 =
+    fun (B) ->
+        do  call 'lists':'nth'(8, B)
+            'ok'
+'little_endian_u64_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 7), 1), B)
+                'ok'
+'little_endian_u64_end'/1 =
+    fun (B) ->
+        apply 'little_endian_u64_at'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), 8))
+'little_endian_put_u64'/2 =
+    fun (B, V) ->
+        do  call 'lists':'nth'(8, B)
+            'ok'
+'little_endian_put_u64_at'/3 =
+    fun (B, V, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 7), 1), B)
+                'ok'
+'little_endian_put_u64_end'/2 =
+    fun (B, V) ->
+        apply 'little_endian_put_u64_at'/3(B, V, call 'erlang':'-'(call 'erlang':'length'(B), 8))
+'little_endian_f32_at'/2 =
+    fun (B, O) ->
+        do  call 'lists':'nth'(call 'erlang':'+'(O, 1), B)
+            do  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(O, 3), 1), B)
+                'ok'
+'little_endian_get_u64'/1 =
+    fun (V) ->
+        'ok'
+'little_endian_u16_fixed'/1 =
+    fun (B) ->
+        'ok'
+'little_endian_put_u16_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'little_endian_u32_fixed'/1 =
+    fun (B) ->
+        'ok'
+'little_endian_put_u32_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'little_endian_u64_fixed'/1 =
+    fun (B) ->
+        'ok'
+'little_endian_put_u64_fixed'/2 =
+    fun (B, V) ->
+        'ok'
+'encode_binary'/2 =
+    fun (Obj, Config) ->
+        let <S> =
+            ~{'b'=>[],'big_endian'=>call 'erlang':'map_get'('big_endian', Config),{'vbeam','type'}=>'EncodeState'}~
+        in  do  'ok'
+                call 'erlang':'map_get'('b', S)
+'encode_struct'/2 =
+    fun (S, Obj) ->
+        'ok'
+'encode_primitive'/2 =
+    fun (S, Value) ->
+        'ok'
+'encode_array'/2 =
+    fun (S, Arr) ->
+        do  apply 'unknown.put_u64'/2(S, call 'erlang':'length'(Arr))
+            'ok'
+'encode_string'/2 =
+    fun (S, Str) ->
+        do  apply 'EncodeState.put_u64'/2(S, call 'erlang':'length'(Str))
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('b', S), call 'erlang':'binary_to_list'(Str))
+                'ok'
+'encode_map'/2 =
+    fun (S, M) ->
+        do  apply 'unknown.put_u64'/2(S, call 'erlang':'length'(M))
+            'ok'
+'decode_binary'/2 =
+    fun (B, Config) ->
+        let <S> =
+            ~{'b'=>B,'big_endian'=>call 'erlang':'map_get'('big_endian', Config),{'vbeam','type'}=>'DecodeState'}~
+        in  'ok'
+'decode_struct'/2 =
+    fun (S, _) ->
+        let <Obj> =
+            ~{{'vbeam','type'}=>'T'}~
+        in  Obj
+'decode_primitive'/2 =
+    fun (S, Value) ->
+        do  'ok'
+            call 'erlang':'error'(#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)
+'decode_array'/2 =
+    fun (S, _) ->
+        let <Len> =
+            try apply 'unknown.get_u64'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  case call 'erlang':'or'(call 'erlang':'=<'(Len, 0), call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), Len), call 'erlang':'length'(call 'erlang':'map_get'('b', S)))) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <Arr> =
+                        []
+                    in  do  'ok'
+                            Arr
+            end
+'decode_string'/1 =
+    fun (S) ->
+        let <Len> =
+            try apply 'DecodeState.get_u64'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  case call 'erlang':'or'(call 'erlang':'=<'(Len, 0), call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), Len), call 'erlang':'length'(call 'erlang':'map_get'('b', S)))) of
+                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#|[#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+                <'false'> when 'true' -> 
+                    let <Str> =
+                        call 'erlang':'list_to_binary'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(call 'erlang':'map_get'('offset', S), call 'erlang':'+'(call 'erlang':'map_get'('offset', S), Len)), 1), call 'erlang':'map_get'('b', S)))
+                    in  do  Len
+                            Str
+            end
+'decode_map'/2 =
+    fun (S, _) ->
+        let <Len> =
+            try apply 'unknown.get_u64'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  case call 'erlang':'or'(call 'erlang':'=<'(Len, 0), call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), Len), call 'erlang':'length'(call 'erlang':'map_get'('b', S)))) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <M> =
+                        ~{}~
+                    in  do  let <_2> =
+                            fun (_) ->
+                                let <K> =
+                                    0
+                                in  let <K_4> =
+                                        case call 'erlang':'is'('false', 'false') of <'true'> when 'true' -> try apply 'decode_string'/1(S) of <_cor5> when 'true' -> _cor5 catch <_cor_c5,_cor_r5,_cor_s5> when 'true' -> 'ok' <'false'> when 'true' -> try apply 'decode_primitive'/2(S, 0) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 'ok' end
+                                    in  'ok'
+                        in  let <_3> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(Len, 1))
+                            in  call 'lists':'foreach'(_2, _3)
+                            M
+            end
+'DecodeState.get_u64'/1 =
+    fun (S) ->
+        case call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), 8), call 'erlang':'length'(call 'erlang':'map_get'('b', S))) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#|[#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+            <'false'> when 'true' -> 
+                case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_u64_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) <'false'> when 'true' -> apply 'little_endian_u64_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) end
+        end
+'DecodeState.get_u32'/1 =
+    fun (S) ->
+        case call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), 4), call 'erlang':'length'(call 'erlang':'map_get'('b', S))) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#|[#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+            <'false'> when 'true' -> 
+                case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_u32_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) <'false'> when 'true' -> apply 'little_endian_u32_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) end
+        end
+'DecodeState.get_u16'/1 =
+    fun (S) ->
+        case call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), 2), call 'erlang':'length'(call 'erlang':'map_get'('b', S))) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#|[#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+            <'false'> when 'true' -> 
+                case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_u16_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) <'false'> when 'true' -> apply 'little_endian_u16_at'/2(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('offset', S)) end
+        end
+'DecodeState.get_u8'/1 =
+    fun (S) ->
+        case call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), 1), call 'erlang':'length'(call 'erlang':'map_get'('b', S))) of
+            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#|[#{#<40>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#|[]]]))
+            <'false'> when 'true' -> 
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('offset', S), 1), call 'erlang':'map_get'('b', S))
+        end
+'EncodeState.put_u64'/2 =
+    fun (S, Value) ->
+        do  case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_put_u64'/2(call 'erlang':'map_get'('b8', S), Value) <'false'> when 'true' -> apply 'little_endian_put_u64'/2(call 'erlang':'map_get'('b8', S), Value) end
+            call 'erlang':'bsl'(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('b8', S))
+'EncodeState.put_u32'/2 =
+    fun (S, Value) ->
+        do  case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_put_u32'/2(call 'erlang':'map_get'('b4', S), Value) <'false'> when 'true' -> apply 'little_endian_put_u32'/2(call 'erlang':'map_get'('b4', S), Value) end
+            call 'erlang':'bsl'(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('b4', S))
+'EncodeState.put_u16'/2 =
+    fun (S, Value) ->
+        do  case call 'erlang':'map_get'('big_endian', S) of <'true'> when 'true' -> apply 'big_endian_put_u16'/2(call 'erlang':'map_get'('b2', S), Value) <'false'> when 'true' -> apply 'little_endian_put_u16'/2(call 'erlang':'map_get'('b2', S), Value) end
+            call 'erlang':'bsl'(call 'erlang':'map_get'('b', S), call 'erlang':'map_get'('b2', S))
+'EncodeState.put_u8'/2 =
+    fun (S, Value) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('b', S), Value)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.binary')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.binary', _0)
+end

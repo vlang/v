@@ -1,0 +1,138 @@
+module 'v.math.easing' ['linear'/1,
+                'in_sine'/1,
+                'out_sine'/1,
+                'in_out_sine'/1,
+                'in_quad'/1,
+                'out_quad'/1,
+                'in_out_quad'/1,
+                'in_cubic'/1,
+                'out_cubic'/1,
+                'in_out_cubic'/1,
+                'in_quart'/1,
+                'out_quart'/1,
+                'in_out_quart'/1,
+                'in_quint'/1,
+                'out_quint'/1,
+                'in_out_quint'/1,
+                'in_expo'/1,
+                'out_expo'/1,
+                'in_out_expo'/1,
+                'in_circ'/1,
+                'out_circ'/1,
+                'in_out_circ'/1,
+                'in_back'/1,
+                'out_back'/1,
+                'in_out_back'/1,
+                'in_elastic'/1,
+                'out_elastic'/1,
+                'in_out_elastic'/1,
+                'in_bounce'/1,
+                'out_bounce'/1,
+                'in_out_bounce'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'linear'/1 =
+        fun (X) ->
+            X
+    'in_sine'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'math':'cos'(call 'erlang':'*'(X, call 'erlang':'/'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0))))
+    'out_sine'/1 =
+        fun (X) ->
+            call 'math':'sin'(call 'erlang':'*'(X, call 'erlang':'/'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0)))
+    'in_out_sine'/1 =
+        fun (X) ->
+            call 'erlang':'/'(call 'erlang':'-'(call 'erlang':'-'(call 'math':'cos'(call 'erlang':'*'(3.14159265358979323846264338327950288419716939937510582097494459, X)), 1.0)), 2.0)
+    'in_quad'/1 =
+        fun (X) ->
+            call 'erlang':'*'(X, X)
+    'out_quad'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'erlang':'*'(call 'erlang':'-'(1.0, X), call 'erlang':'-'(1.0, X)))
+    'in_out_quad'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(2.0, X), X) <'false'> when 'true' -> call 'erlang':'-'(1.0, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X)), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), 2.0)) end
+    'in_cubic'/1 =
+        fun (X) ->
+            call 'erlang':'*'(call 'erlang':'*'(X, X), X)
+    'out_cubic'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(1.0, X), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)))
+    'in_out_cubic'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(4.0, X), X), X) <'false'> when 'true' -> call 'erlang':'-'(1.0, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X)), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), 2.0)) end
+    'in_quart'/1 =
+        fun (X) ->
+            call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(X, X), X), X)
+    'out_quart'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(1.0, X), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)))
+    'in_out_quart'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(8.0, X), X), X), X) <'false'> when 'true' -> call 'erlang':'-'(1.0, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X)), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), 2.0)) end
+    'in_quint'/1 =
+        fun (X) ->
+            call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(X, X), X), X), X)
+    'out_quint'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(1.0, X), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)), call 'erlang':'-'(1.0, X)))
+    'in_out_quint'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(16.0, X), X), X), X), X) <'false'> when 'true' -> call 'erlang':'-'(1.0, call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X)), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), call 'erlang':'-'(2.0, call 'erlang':'*'(2.0, X))), 2.0)) end
+    'in_expo'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 0.0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> call 'math':'pow'(2.0, call 'erlang':'-'(call 'erlang':'*'(10.0, X), 10.0)) end
+    'out_expo'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> call 'erlang':'-'(1.0, call 'math':'pow'(2, call 'erlang':'*'(-10.0, X))) end
+    'in_out_expo'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 0.0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> case call 'v.math':'close'(X, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'/'(call 'math':'pow'(2.0, call 'erlang':'-'(call 'erlang':'*'(20.0, X), 10.0)), 2.0) <'false'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(2.0, call 'math':'pow'(2.0, call 'erlang':'-'(10.0, call 'erlang':'*'(20.0, X)))), 2.0) end end end
+    'in_circ'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, call 'math':'sqrt'(call 'erlang':'-'(1.0, call 'erlang':'*'(X, X))))
+    'out_circ'/1 =
+        fun (X) ->
+            call 'math':'sqrt'(call 'erlang':'-'(1.0, call 'math':'pow'(call 'erlang':'-'(X, 1.0), 2.0)))
+    'in_out_circ'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(1.0, call 'math':'sqrt'(call 'erlang':'-'(1.0, call 'math':'pow'(call 'erlang':'*'(2.0, X), 2.0)))), 2.0) <'false'> when 'true' -> call 'erlang':'/'(call 'erlang':'+'(call 'math':'sqrt'(call 'erlang':'-'(1.0, call 'math':'pow'(call 'erlang':'+'(call 'erlang':'*'(-2.0, X), 2.0), 2.0))), 1.0), 2.0) end
+    'in_back'/1 =
+        fun (X) ->
+            call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'+'(1.70158, 1.0), X), X), X), call 'erlang':'*'(call 'erlang':'*'(1.70158, X), X))
+    'out_back'/1 =
+        fun (X) ->
+            call 'erlang':'+'(call 'erlang':'+'(1.0, call 'erlang':'*'(call 'erlang':'+'(1.70158, 1.0), call 'math':'pow'(call 'erlang':'-'(X, 1.0), 3.0))), call 'erlang':'*'(1.70158, call 'math':'pow'(call 'erlang':'-'(X, 1.0), 2.0)))
+    'in_out_back'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'*'(call 'math':'pow'(call 'erlang':'*'(2.0, X), 2.0), call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'+'(2.5949095, 1), 2.0), X), call 'erlang':'*'(1.70158, 1.525))), 2.0) <'false'> when 'true' -> call 'erlang':'/'(call 'erlang':'+'(call 'erlang':'*'(call 'math':'pow'(call 'erlang':'-'(call 'erlang':'*'(2.0, X), 2.0), 2.0), call 'erlang':'+'(call 'erlang':'*'(3.5949095, call 'erlang':'-'(call 'erlang':'*'(X, 2.0), 2.0)), call 'erlang':'*'(1.70158, 1.525))), 2.0), 2.0) end
+    'in_elastic'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 0.0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> case call 'v.math':'close'(X, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> call 'erlang':'*'(call 'erlang':'-'(call 'math':'pow'(2.0, call 'erlang':'-'(call 'erlang':'*'(10.0, X), 10.0))), call 'math':'sin'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'*'(X, 10.0), 10.75), call 'erlang':'/'(call 'erlang':'*'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0), 3.0)))) end end
+    'out_elastic'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 0.0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> case call 'v.math':'close'(X, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> call 'erlang':'+'(call 'erlang':'*'(call 'math':'pow'(2.0, call 'erlang':'*'(-10.0, X)), call 'math':'sin'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'*'(X, 10.0), 0.75), call 'erlang':'/'(call 'erlang':'*'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0), 3.0)))), 1.0) end end
+    'in_out_elastic'/1 =
+        fun (X) ->
+            case call 'v.math':'close'(X, 0.0) of <'true'> when 'true' -> 0.0 <'false'> when 'true' -> case call 'v.math':'close'(X, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(call 'erlang':'*'(call 'math':'pow'(2.0, call 'erlang':'-'(call 'erlang':'*'(20.0, X), 10.0)), call 'math':'sin'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'*'(20.0, X), 11.125), call 'erlang':'/'(call 'erlang':'*'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0), 4.5))))), 2.0) <'false'> when 'true' -> call 'erlang':'+'(call 'erlang':'/'(call 'erlang':'*'(call 'math':'pow'(2.0, call 'erlang':'+'(call 'erlang':'*'(-20.0, X), 10.0)), call 'math':'sin'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'*'(20.0, X), 11.125), call 'erlang':'/'(call 'erlang':'*'(3.14159265358979323846264338327950288419716939937510582097494459, 2.0), 4.5)))), 2.0), 1.0) end end end
+    'in_bounce'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1.0, apply 'out_bounce'/1(call 'erlang':'-'(1.0, X)))
+    'out_bounce'/1 =
+        fun (X) ->
+            let <Xd1> =
+                call 'erlang':'*'(X, 2.75)
+            in  case call 'erlang':'<'(Xd1, 1.0) of <'true'> when 'true' -> call 'erlang':'*'(call 'erlang':'*'(7.5625, X), X) <'false'> when 'true' -> case call 'erlang':'<'(Xd1, 2.0) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'*'(7.5625, call 'math':'pow'(call 'erlang':'-'(X, 0.5454545454545454), 2.0)), 0.75) <'false'> when 'true' -> case call 'erlang':'<'(Xd1, 2.5) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'*'(7.5625, call 'math':'pow'(call 'erlang':'-'(X, 0.8181818181818182), 2.0)), 0.9375) <'false'> when 'true' -> call 'erlang':'+'(call 'erlang':'*'(7.5625, call 'math':'pow'(call 'erlang':'-'(X, 0.9545454545454546), 2.0)), 0.984375) end end end
+    'in_out_bounce'/1 =
+        fun (X) ->
+            case call 'erlang':'<'(X, 0.5) of <'true'> when 'true' -> call 'erlang':'/'(call 'erlang':'-'(1.0, apply 'out_bounce'/1(call 'erlang':'-'(1.0, call 'erlang':'*'(2.0, X)))), 2.0) <'false'> when 'true' -> call 'erlang':'/'(call 'erlang':'+'(1.0, apply 'out_bounce'/1(call 'erlang':'-'(call 'erlang':'*'(2.0, X), 1.0))), 2.0) end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.math.easing')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.math.easing', _0)
+    end

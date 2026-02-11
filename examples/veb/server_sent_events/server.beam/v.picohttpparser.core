@@ -1,0 +1,366 @@
+module 'v.picohttpparser' ['u64toa'/2,
+                'Response.write_string'/2,
+                'Response.http_ok'/1,
+                'Response.header'/3,
+                'Response.header_date'/1,
+                'Response.header_server'/1,
+                'Response.content_type'/2,
+                'Response.html'/1,
+                'Response.plain'/1,
+                'Response.json'/1,
+                'Response.body'/2,
+                'Response.http_404'/1,
+                'Response.http_405'/1,
+                'Response.http_500'/1,
+                'Response.raw'/2,
+                'Response.end'/1,
+                'Request.phr_parse_request_path'/4,
+                'Request.phr_parse_request_path_pipeline'/4,
+                'Request.phr_parse_request'/4,
+                'Request.parse_headers'/4,
+                'is_complete'/4,
+                'parse_http_version'/3,
+                'get_token_length_to_eol'/3,
+                'advance_token'/3,
+                'advance_token2'/3,
+                'is_printable_ascii'/1,
+                'Request.parse_request'/2,
+                'Request.parse_request_path'/2,
+                'Request.parse_request_path_pipeline'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'u64toa'/2 =
+    fun (Buf_start, Value) ->
+        let <Buf> =
+            Buf_start
+        in  case call 'erlang':'>='(Value, 100000000) of
+                <'true'> when 'true' -> call 'erlang':'error'(#{#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#)
+                <'false'> when 'true' -> 
+                    let <V> =
+                        Value
+                    in  do  case call 'erlang':'<'(V, 10000) of <'true'> when 'true' -> 
+                            let <D1> =
+                                call 'erlang':'bsl'(call 'erlang':'div'(V, 100), 1)
+                            in  let <D2> =
+                                    call 'erlang':'bsl'(call 'erlang':'rem'(V, 100), 1)
+                                in  'ok'
+                         <'false'> when 'true' -> 
+                            let <B> =
+                                call 'erlang':'div'(V, 10000)
+                            in  let <C> =
+                                    call 'erlang':'rem'(V, 10000)
+                                in  let <D1_1> =
+                                        call 'erlang':'bsl'(call 'erlang':'div'(B, 100), 1)
+                                    in  let <D2_2> =
+                                            call 'erlang':'bsl'(call 'erlang':'rem'(B, 100), 1)
+                                        in  let <D3> =
+                                                call 'erlang':'bsl'(call 'erlang':'div'(C, 100), 1)
+                                            in  let <D4> =
+                                                    call 'erlang':'bsl'(call 'erlang':'rem'(C, 100), 1)
+                                                in  'ok'
+                         end
+                            call 'erlang':'-'(Buf, Buf_start)
+            end
+'Response.write_string'/2 =
+    fun (R, S) ->
+        'ok'
+'Response.http_ok'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            R
+'Response.header'/3 =
+    fun (R, K, V) ->
+        do  apply 'Response.write_string'/2(R, K)
+            do  apply 'Response.write_string'/2(R, #{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+                do  apply 'Response.write_string'/2(R, V)
+                    do  apply 'Response.write_string'/2(R, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                        R
+'Response.header_date'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<68>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'Response.write_string'/2(R, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                R
+'Response.header_server'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            R
+'Response.content_type'/2 =
+    fun (R, S) ->
+        do  apply 'Response.write_string'/2(R, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'Response.write_string'/2(R, S)
+                do  apply 'Response.write_string'/2(R, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                    R
+'Response.html'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            R
+'Response.plain'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            R
+'Response.json'/1 =
+    fun (R) ->
+        do  apply 'Response.write_string'/2(R, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            R
+'Response.body'/2 =
+    fun (R, Body) ->
+        do  apply 'Response.write_string'/2(R, #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'Response.write_string'/2(R, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+                apply 'Response.write_string'/2(R, Body)
+'Response.http_404'/1 =
+    fun (R) ->
+        apply 'Response.write_string'/2(R, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+'Response.http_405'/1 =
+    fun (R) ->
+        apply 'Response.write_string'/2(R, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+'Response.http_500'/1 =
+    fun (R) ->
+        apply 'Response.write_string'/2(R, #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+'Response.raw'/2 =
+    fun (R, Response) ->
+        apply 'Response.write_string'/2(R, Response)
+'Response.end'/1 =
+    fun (R) ->
+        let <N> =
+            call 'erlang':'-'(call 'erlang':'map_get'('buf', R), call 'erlang':'map_get'('buf_start', R))
+        in  N
+'Request.phr_parse_request_path'/4 =
+    fun (R, Buf_start, Buf_end, Pret) ->
+        let <Buf> =
+            call 'erlang':'+'(Buf_start, 0)
+        in  let <Method> =
+                apply 'advance_token'/3(Buf, Buf_end, Pret)
+            in  case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <Path> =
+                            apply 'advance_token'/3(Buf, Buf_end, Pret)
+                        in  case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'or'(call 'erlang':'=:='(Method, #{  }#), call 'erlang':'=:='(Path, #{  }#)) of
+                                        <'true'> when 'true' -> 'ok'
+                                        <'false'> when 'true' -> 
+                                            do  Method
+                                                do  Path
+                                                    'ok'
+                                    end
+                            end
+                end
+'Request.phr_parse_request_path_pipeline'/4 =
+    fun (R, Buf_start, Buf_end, Pret) ->
+        let <Buf> =
+            Buf_start
+        in  let <Method> =
+                apply 'advance_token2'/3(Buf, Buf_end, Pret)
+            in  case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <Path> =
+                            apply 'advance_token2'/3(Buf, Buf_end, Pret)
+                        in  case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'or'(call 'erlang':'=:='(Method, #{  }#), call 'erlang':'=:='(Path, #{  }#)) of
+                                        <'true'> when 'true' -> 'ok'
+                                        <'false'> when 'true' -> 
+                                            do  Method
+                                                do  Path
+                                                    do  -1
+                                                        'ok'
+                                    end
+                            end
+                end
+'Request.phr_parse_request'/4 =
+    fun (R, Buf_start, Buf_end, Pret) ->
+        let <Buf> =
+            Buf_start
+        in  case call 'erlang':'=:='(Buf, Buf_end) of
+                <'true'> when 'true' -> 'nil'
+                <'false'> when 'true' -> 
+                    do  case call 'erlang':'=:='(Buf, 13) of <'true'> when 'true' -> 
+                        do  Buf
+                            case call 'erlang':'=:='(Buf, Buf_end) of
+                                <'true'> when 'true' -> 'nil'
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'=/='(Buf, 10) of <'true'> when 'true' -> 
+                                        do  -1
+                                            do  #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#
+                                                'nil'
+                                     <'false'> when 'true' -> 'ok' end
+                            end
+                     <'false'> when 'true' -> 'ok' end
+                        do  apply 'Request.phr_parse_request_path'/4(R, Buf, Buf_end, Pret)
+                            case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                                <'true'> when 'true' -> 'nil'
+                                <'false'> when 'true' -> 
+                                    let <Minor_version> =
+                                        apply 'parse_http_version'/3(Buf, Buf_end, Pret)
+                                    in  case call 'erlang':'<'(call 'erlang':'map_get'('ret', Pret), 0) of
+                                            <'true'> when 'true' -> 'nil'
+                                            <'false'> when 'true' -> 
+                                                case call 'erlang':'=:='(Buf, Buf_end) of
+                                                    <'true'> when 'true' -> 'nil'
+                                                    <'false'> when 'true' -> 
+                                                        do  case call 'erlang':'=:='(Buf, 13) of <'true'> when 'true' -> 
+                                                            do  Buf
+                                                                case call 'erlang':'=:='(Buf, Buf_end) of
+                                                                    <'true'> when 'true' -> 'nil'
+                                                                    <'false'> when 'true' -> 
+                                                                        case call 'erlang':'=/='(Buf, 10) of
+                                                                            <'true'> when 'true' -> 'nil'
+                                                                            <'false'> when 'true' -> 
+                                                                                Buf
+                                                                        end
+                                                                end
+                                                         <'false'> when 'true' -> case call 'erlang':'=:='(Buf, 10) of <'true'> when 'true' -> Buf <'false'> when 'true' -> 
+                                                            do  -1
+                                                                do  #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+                                                                    'nil'
+                                                         end end
+                                                            apply 'Request.parse_headers'/4(R, Buf, Buf_end, Pret)
+                                                end
+                                        end
+                            end
+            end
+'Request.parse_headers'/4 =
+    fun (R, Buf_start, Buf_end, Pret) ->
+        let <Buf> =
+            Buf_start
+        in  let <I> =
+                0
+            in  case call 'erlang':'=:='(I, 100) of
+                    <'true'> when 'true' -> 'nil'
+                    <'false'> when 'true' -> 
+                        do  call 'erlang':'-'(Buf, Buf_start)
+                            Buf
+                end
+'is_complete'/4 =
+    fun (Buf_start, Buf_end, Last_len, Pret) ->
+        let <Ret_cnt> =
+            0
+        in  let <Buf> =
+                case call 'erlang':'<'(Last_len, 3) of <'true'> when 'true' -> Buf_start <'false'> when 'true' -> call 'erlang':'-'(call 'erlang':'+'(Buf_start, Last_len), 3) end
+            in  do  -2
+                    'nil'
+'parse_http_version'/3 =
+    fun (Buf_start, Buf_end, Pret) ->
+        case call 'erlang':'<'(call 'erlang':'-'(Buf_end, Buf_start), 9) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                case call 'erlang':'=/='(apply 'tos'/2(Buf_start, 7), #{#<72>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#) of
+                    <'true'> when 'true' -> 0
+                    <'false'> when 'true' -> 
+                        let <C> =
+                            call 'erlang':'+'(Buf_start, 7)
+                        in  case call 'erlang':'or'(call 'erlang':'<'(C, 48), call 'erlang':'>'(C, 57)) of
+                                <'true'> when 'true' -> 0
+                                <'false'> when 'true' -> 
+                                    do  8
+                                        call 'erlang':'-'(C, 48)
+                            end
+                end
+        end
+'get_token_length_to_eol'/3 =
+    fun (Buf_start, Buf_end, Pret) ->
+        let <Buf> =
+            Buf_start
+        in  let <Token_len> =
+                0
+            in  let <Token_len_1> =
+                    case call 'erlang':'=:='(Buf, 13) of <'true'> when 'true' -> do  Buf do  case call 'erlang':'=:='(Buf, Buf_end) of <'true'> when 'true' -> 
+                        do  -2
+                            0
+                     <'false'> when 'true' -> 'ok' end do  case call 'erlang':'=/='(Buf, 10) of <'true'> when 'true' -> 
+                        do  -1
+                            do  #{#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#
+                                0
+                     <'false'> when 'true' -> 'ok' end do  Buf call 'erlang':'-'(call 'erlang':'-'(Buf, 2), Buf_start) <'false'> when 'true' -> case call 'erlang':'=:='(Buf, 10) of <'true'> when 'true' -> call 'erlang':'-'(Buf, Buf_start) <'false'> when 'true' -> Token_len end end
+                in  case call 'erlang':'=:='(Token_len_1, 0) of
+                        <'true'> when 'true' -> 0
+                        <'false'> when 'true' -> 
+                            do  call 'erlang':'-'(Buf, Buf_start)
+                                Token_len_1
+                    end
+'advance_token'/3 =
+    fun (Tok_start, Tok_end, Pret) ->
+        let <Buf> =
+            Tok_start
+        in  do  call 'erlang':'-'(Buf, Tok_start)
+                apply 'tos'/2(Tok_start, call 'erlang':'map_get'('ret', Pret))
+'advance_token2'/3 =
+    fun (Tok_start, _tok_end, Pret) ->
+        let <Len> =
+            0
+        in  let <I> =
+                0
+            in  do  I
+                    apply 'tos'/2(Tok_start, Len)
+'is_printable_ascii'/1 =
+    fun (C) ->
+        call 'erlang':'<'(call 'erlang':'-'(C, 32), 95)
+'Request.parse_request'/2 =
+    fun (R, S) ->
+        let <Buf> =
+            call 'erlang':'map_get'('str', S)
+        in  let <Buf_end> =
+                call 'erlang':'+'(call 'erlang':'map_get'('str', S), call 'erlang':'length'(S))
+            in  let <Pret> =
+                    ~{{'vbeam','type'}=>'Pret'}~
+                in  case call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('prev_len', R), 0), call 'erlang':'=:='(apply 'is_complete'/4(Buf, Buf_end, call 'erlang':'map_get'('prev_len', R), Pret), 'nil')) of
+                        <'true'> when 'true' -> call 'erlang':'map_get'('ret', Pret)
+                        <'false'> when 'true' -> 
+                            let <Buf_1> =
+                                apply 'Request.phr_parse_request'/4(R, Buf, Buf_end, Pret)
+                            in  case call 'erlang':'=:='(call 'erlang':'map_get'('ret', Pret), -1) of
+                                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'map_get'('err', Pret))
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'=:='(Buf_1, 'nil') of
+                                            <'true'> when 'true' -> call 'erlang':'map_get'('ret', Pret)
+                                            <'false'> when 'true' -> 
+                                                do  call 'erlang':'-'(Buf_1, call 'erlang':'map_get'('str', S))
+                                                    do  apply 'u8.vstring_literal_with_len'/2(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('ret', Pret), 1), call 'erlang':'map_get'('str', S)), call 'erlang':'-'(call 'erlang':'length'(S), call 'erlang':'map_get'('ret', Pret)))
+                                                        do  call 'erlang':'length'(S)
+                                                            call 'erlang':'map_get'('ret', Pret)
+                                        end
+                                end
+                    end
+'Request.parse_request_path'/2 =
+    fun (R, S) ->
+        let <Buf> =
+            call 'erlang':'map_get'('str', S)
+        in  let <Buf_end> =
+                call 'erlang':'+'(call 'erlang':'map_get'('str', S), call 'erlang':'length'(S))
+            in  let <Pret> =
+                    ~{{'vbeam','type'}=>'Pret'}~
+                in  do  apply 'Request.phr_parse_request_path'/4(R, Buf, Buf_end, Pret)
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('ret', Pret), -1) of
+                            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'map_get'('err', Pret))
+                            <'false'> when 'true' -> 
+                                call 'erlang':'map_get'('ret', Pret)
+                        end
+'Request.parse_request_path_pipeline'/2 =
+    fun (R, S) ->
+        let <Buf> =
+            call 'erlang':'+'(call 'erlang':'map_get'('str', S), call 'erlang':'map_get'('prev_len', R))
+        in  let <Buf_end> =
+                call 'erlang':'+'(call 'erlang':'map_get'('str', S), call 'erlang':'length'(S))
+            in  let <Pret> =
+                    ~{{'vbeam','type'}=>'Pret'}~
+                in  do  apply 'Request.phr_parse_request_path_pipeline'/4(R, Buf, Buf_end, Pret)
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('ret', Pret), -1) of
+                            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'map_get'('err', Pret))
+                            <'false'> when 'true' -> 
+                                do  case call 'erlang':'>'(call 'erlang':'map_get'('ret', Pret), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'map_get'('ret', Pret)
+                        end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.picohttpparser')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.picohttpparser', _0)
+end

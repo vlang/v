@@ -1,0 +1,72 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"random_color">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 0,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"event">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 6,
+            body => [
+                ret,
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"clear">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_bg_color">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"draw_empty_rect">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {label, <<"if_end_1">>},
+                {call, {sym, <<"reset_bg_color">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"flush">>}},
+                {mov, {vreg, 5}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

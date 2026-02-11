@@ -1,0 +1,80 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 6,
+            body => [
+                {call, {sym, <<"start_client">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"green">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {print_int, {vreg, 1}},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 35},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {label, <<"loop_0">>},
+                {call, {sym, <<"get_line">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {cmp, {vreg, 2}, {vreg, 0}},
+                {jcc, ne, <<"if_end_2">>},
+                {jmp, <<"loop_end_1">>},
+                {label, <<"if_end_2">>},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"write_string">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov_imm, {vreg, 4}, 1000},
+                {mov, {preg, x0}, {vreg, 4}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"close">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"start_client">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 6,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"new_client">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_open">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_error">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_close">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"on_message">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"Write message and enter to send...\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

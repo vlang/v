@@ -1,0 +1,50 @@
+module 'v.main' ['random_color'/0,
+                'event'/2,
+                'frame'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'random_color'/0 =
+        fun () ->
+            ~{'r'=>call 'v.rand':'u8'(),'g'=>call 'v.rand':'u8'(),'b'=>call 'v.rand':'u8'(),{'vbeam','type'}=>'Color'}~
+    'event'/2 =
+        fun (E, App) ->
+            do  case call 'erlang':'map_get'('typ', E) of <'mouse_down'> when 'true' -> 'ok' <'mouse_drag'> when 'true' -> 'ok' <'mouse_up'> when 'true' -> 'ok' <'key_down'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'c') of <'true'> when 'true' -> apply 'array.clear'/1(call 'erlang':'map_get'('rects', App)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'escape') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> 'ok' end end <_> when 'true' -> 'ok' end
+                'ok'
+    'frame'/1 =
+        fun (App) ->
+            case call 'erlang':'not'(call 'erlang':'map_get'('redraw', App)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        do  let <_1> =
+                            fun (Rect) ->
+                                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('tui', App), call 'erlang':'map_get'('c', Rect))
+                                    'ok'
+                        in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('rects', App))
+                            do  case call 'erlang':'map_get'('is_drag', App) of <'true'> when 'true' -> 
+                                let <R> =
+                                    call 'erlang':'map_get'('cur_rect', App)
+                                in  do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('tui', App), call 'erlang':'map_get'('c', R))
+                                        apply 'Context.draw_empty_rect'/5(call 'erlang':'map_get'('tui', App), call 'erlang':'map_get'('x', R), call 'erlang':'map_get'('y', R), call 'erlang':'map_get'('x2', R), call 'erlang':'map_get'('y2', R))
+                             <'false'> when 'true' -> 'ok' end
+                                do  apply 'Context.reset_bg_color'/1(call 'erlang':'map_get'('tui', App))
+                                    do  'ok'
+                                        'ok'
+            end
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  'ok'
+                    try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

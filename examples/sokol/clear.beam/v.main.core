@@ -1,0 +1,29 @@
+module 'v.main' ['frame'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'frame'/1 =
+    fun (Action) ->
+        let <G> =
+            call 'erlang':'+'(call 'erlang':'map_get'('g', call 'erlang':'map_get'('clear_value', call 'lists':'nth'(1, call 'erlang':'map_get'('colors', Action)))), 0.01)
+        in  do  case call 'erlang':'>'(G, 1.0) of <'true'> when 'true' -> 0 <'false'> when 'true' -> G end
+                do  call 'v.sokol.gfx':'begin_pass'(call 'v.sokol.sapp':'create_default_pass'(Action))
+                    do  call 'v.sokol.gfx':'end_pass'()
+                        call 'v.sokol.gfx':'commit'()
+'main'/0 =
+    fun () ->
+        let <Action> =
+            call 'v.sokol.gfx':'create_clear_pass_action'(1.0, 0, 0, 1.0)
+        in  call 'v.sokol.sapp':'run'(~{'window_title'=>#{#<67>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#,'width'=>400,'height'=>300,'init_cb'=>fun () ->             call 'v.sokol.gfx':'setup'(call 'v.sokol.sapp':'create_desc'())
+,'cleanup_cb'=>fun () ->             call 'v.sokol.gfx':'shutdown'()
+,'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'user_data'=>Action,{'vbeam','type'}=>'Desc'}~)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

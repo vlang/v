@@ -1,0 +1,71 @@
+module 'v.main' ['main'/0,
+                'find_loop_position'/2,
+                'find_matching_position'/4,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <Args> =
+            call 'init':'get_plain_arguments'()
+        in  let <Freq> =
+                call 'erlang':'binary_to_integer'(call 'lists':'nth'(2, Args))
+            in  let <Amplitude> =
+                    apply 'string.f32'/1(call 'lists':'nth'(3, Args))
+                in  do  Freq
+                        do  Amplitude
+                            do  call 'v.sokol.audio':'setup'(~{'num_channels'=>1,{'vbeam','type'}=>'AudioDesc'}~)
+                                let <Sample_rate> =
+                                    call 'v.sokol.audio':'sample_rate'()
+                                in  do  call 'v.sokol.audio':'buffer_frames'()
+                                        do  call 'v.sokol.audio':'expect'()
+                                            let <Frames> =
+                                                []
+                                            in  do  let <_1> =
+                                                    fun (I) ->
+                                                        let <T> =
+                                                            call 'erlang':'/'(I, call 'erlang':'float'(Sample_rate))
+                                                        in  'ok'
+                                                in  let <_2> =
+                                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(Frames), 1))
+                                                    in  call 'lists':'foreach'(_1, _2)
+                                                    let <Fpos> =
+                                                        0
+                                                    in  call 'v.sokol.audio':'shutdown'()
+'find_loop_position'/2 =
+    fun (Fpos, Frames) ->
+        try apply 'find_matching_position'/4(Frames, Fpos, 0.01, 2) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> try apply 'find_matching_position'/4(Frames, Fpos, 0.05, 2) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> try apply 'find_matching_position'/4(Frames, Fpos, 0.1, 2) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 0
+'find_matching_position'/4 =
+    fun (Frames, Fpos, Tol, D) ->
+        case call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'-'(Fpos, D), 0), call 'erlang':'>='(call 'erlang':'+'(Fpos, D), call 'erlang':'length'(Frames))) of
+            <'true'> when 'true' -> 'none'
+            <'false'> when 'true' -> 
+                let <P1> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(Fpos, D), 1), Frames)
+                in  let <P2> =
+                        call 'lists':'nth'(call 'erlang':'+'(Fpos, 1), Frames)
+                    in  let <P3> =
+                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(Fpos, D), 1), Frames)
+                        in  do  let <_1> =
+                                fun (I) ->
+                                    let <Np1> =
+                                        call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(I, D), 1), Frames)
+                                    in  let <Np2> =
+                                            call 'lists':'nth'(call 'erlang':'+'(I, 1), Frames)
+                                        in  let <Np3> =
+                                                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(I, D), 1), Frames)
+                                            in  case call 'erlang':'and'(call 'erlang':'and'(call 'v.math':'tolerance'(Np1, P1, Tol), call 'v.math':'tolerance'(Np2, P2, Tol)), call 'v.math':'tolerance'(Np3, P3, Tol)) of <'true'> when 'true' -> I <'false'> when 'true' -> 'ok' end
+                            in  let <_2> =
+                                    call 'lists':'seq'(2, call 'erlang':'-'(call 'erlang':'div'(Fpos, 2), 1))
+                                in  call 'lists':'foreach'(_1, _2)
+                                'none'
+        end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

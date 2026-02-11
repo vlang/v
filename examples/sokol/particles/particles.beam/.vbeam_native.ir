@@ -1,0 +1,225 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 3,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"init">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"init">>}},
+                {mov, {vreg, 1}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"cleanup">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"run">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {vreg, 1}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"draw">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"load_pipeline">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 6,
+            body => [
+                {call, {sym, <<"create_desc">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {vreg, 2}, {vreg, 1}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"setup">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {vreg, 4}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 4}},
+                {call, {sym, <<"setup">>}},
+                {mov, {vreg, 5}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"cleanup">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {call, {sym, <<"cleanup">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"shutdown">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"frame">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 12,
+            body => [
+                {call, {sym, <<"ticks">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {sdiv, {vreg, 2}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"update">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"create_default_pass">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {vreg, 6}, {vreg, 5}},
+                {mov, {preg, x0}, {vreg, 6}},
+                {call, {sym, <<"begin_pass">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {call, {sym, <<"default_pipeline">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                {call, {sym, <<"end_pass">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {call, {sym, <<"commit">>}},
+                {mov, {vreg, 11}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"event">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 8,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"explode">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"or_ok_2">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_1">>},
+                {label, <<"or_ok_2">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_3">>},
+                {add, {vreg, 3}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"explode">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {label, <<"if_end_4">>},
+                {label, <<"if_end_3">>},
+                {label, <<"if_end_1">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"or_ok_6">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_5">>},
+                {label, <<"or_ok_6">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_7">>},
+                {add, {vreg, 5}, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"reset">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {label, <<"if_end_8">>},
+                {label, <<"if_end_7">>},
+                {label, <<"if_end_5">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"or_ok_10">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_9">>},
+                {label, <<"or_ok_10">>},
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, le, <<"if_end_11">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"explode">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {label, <<"if_end_11">>},
+                {label, <<"if_end_9">>}
+            ]
+        },
+        #{
+            name => <<"draw">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 8,
+            body => [
+                {call, {sym, <<"defaults">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"matrix_mode_projection">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {vreg, 3}, 0},
+                {mov, {preg, x0}, {vreg, 3}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {mov, {preg, x4}, {vreg, 0}},
+                {mov, {preg, x5}, {vreg, 0}},
+                {call, {sym, <<"ortho">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"push_matrix">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {call, {sym, <<"draw">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {call, {sym, <<"pop_matrix">>}},
+                {mov, {vreg, 7}, {preg, x0}}
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

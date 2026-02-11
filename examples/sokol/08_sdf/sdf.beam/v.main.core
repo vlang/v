@@ -1,0 +1,49 @@
+module 'v.main' ['sdf_shader_desc'/1,
+                'init'/1,
+                'frame'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'sdf_shader_desc'/1 =
+    fun () ->
+        'ok'
+'init'/1 =
+    fun (State) ->
+        do  call 'v.sokol.gfx':'setup'(call 'v.sokol.sapp':'create_desc'())
+            let <Fsq_verts> =
+                [-1.0|[-3.0|[3.0|[1.0|[-1.0|[1.0|[]]]]]]]
+            in  do  call 'v.sokol.gfx':'make_buffer'(~{'label'=>#{#<102>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#,'data'=>~{'ptr'=>call 'lists':'nth'(1, Fsq_verts),'size'=>8,{'vbeam','type'}=>'Range'}~,{'vbeam','type'}=>'BufferDesc'}~)
+                    let <Pipeline> =
+                        ~{{'vbeam','type'}=>'PipelineDesc'}~
+                    in  do  'float2'
+                            do  call 'v.sokol.gfx':'make_shader'(call 'v.C':'sdf_shader_desc'(call 'v.sokol.gfx':'query_backend'()))
+                                do  call 'v.sokol.gfx':'make_pipeline'(Pipeline)
+                                    'ok'
+'frame'/1 =
+    fun (State) ->
+        let <W> =
+            call 'v.sokol.sapp':'width'()
+        in  let <H> =
+                call 'v.sokol.sapp':'height'()
+            in  do  call 'v.sokol.sapp':'frame_duration'()
+                    do  call 'erlang':'/'(call 'erlang':'float'(W), call 'erlang':'float'(H))
+                        do  call 'v.sokol.gfx':'begin_pass'(call 'v.sokol.sapp':'create_default_pass'(call 'erlang':'map_get'('paction', State)))
+                            do  call 'v.sokol.gfx':'apply_pipeline'(call 'erlang':'map_get'('pip', State))
+                                do  call 'v.sokol.gfx':'apply_bindings'(call 'erlang':'map_get'('bind', State))
+                                    do  call 'v.sokol.gfx':'apply_uniforms'('vs', fun (_fref0) -> call 'v.C':'SLOT_vs_params'(_fref0), ~{'ptr'=>call 'erlang':'map_get'('params', State),'size'=>8,{'vbeam','type'}=>'Range'}~)
+                                        do  call 'v.sokol.gfx':'draw'(0, 3, 1)
+                                            do  call 'v.sokol.gfx':'end_pass'()
+                                                call 'v.sokol.gfx':'commit'()
+'main'/0 =
+    fun () ->
+        call 'v.sokol.sapp':'run'(~{'window_title'=>#{#<83>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#,'width'=>512,'height'=>512,'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'init_userdata_cb'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'cleanup_cb'=>fun (_fref0) -> call 'v.sokol.gfx':'shutdown'(_fref0),'icon'=>~{'sokol_default'=>'true',{'vbeam','type'}=>'IconDesc'}~,'user_data'=>~{{'vbeam','type'}=>'State'}~,{'vbeam','type'}=>'Desc'}~)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

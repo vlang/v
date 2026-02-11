@@ -1,0 +1,34 @@
+module 'v.os.asset' ['get_path'/2,
+                'read_bytes'/2,
+                'read_text'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'get_path'/2 =
+        fun (Base_folder, Relative_path) ->
+            'ok'
+    'read_bytes'/2 =
+        fun (Base_folder, Relative_path) ->
+            let <Fpath> =
+                apply 'get_path'/2(Base_folder, Relative_path)
+            in  let <F_read> =
+                    fun (_fref0, _fref1) -> call 'v.os':'read_bytes'(_fref0, _fref1)
+                in  let <Res> =
+                        try apply F_read(Fpath) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    in  Res
+    'read_text'/2 =
+        fun (Base_folder, Relative_path) ->
+            let <Bytes> =
+                try call 'file':'read_file'(Base_folder) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  let <Res> =
+                    call 'erlang':'list_to_binary'(Bytes)
+                in  Res
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.os.asset')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.os.asset', _0)
+    end

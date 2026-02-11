@@ -1,0 +1,20 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'main'/0 =
+            fun () ->
+                do  try call 'v.os':'chdir'(call 'v.os':'dir'(call 'v.os':'executable'())) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    let <App> =
+                        ~{{'vbeam','type'}=>'App'}~
+                    in  do  try apply 'App.handle_static'/3(App, #{#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, 'true') of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                            call 'v.veb':'run'(App, 8080)
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

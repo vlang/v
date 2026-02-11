@@ -1,0 +1,47 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 8,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"q_int">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {print_int, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"q_string">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

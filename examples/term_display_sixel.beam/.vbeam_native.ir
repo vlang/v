@@ -1,0 +1,58 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 8,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 53},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_1">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 66},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {lea, {preg, x1}, {data_ref, <<"str_2">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 90},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {string_lit, {vreg, 0}, {data_ref, <<"str_3">>}, 12},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"resource_abs_path">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"read_bytes">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {method_call, {vreg, 3}, <<"[]u8">>, <<"bytestr">>, [{vreg, 2}]},
+                {string_lit, {vreg, 4}, {data_ref, <<"str_4">>}, 1},
+                {string_concat, {vreg, 5}, {vreg, 3}, {vreg, 4}},
+                {print_str, {vreg, 5}},
+                {call, {sym, <<"supports_sixel">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {call, {sym, <<"graphics_num_colors">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"If your terminal supports the sixel graphics format,\n">>},
+        {<<"str_1">>, 1, <<"you should see a small green \"HI\" and a V logo below this text.\\n\n">>},
+        {<<"str_2">>, 1, <<"\\ePq\n#0;2;0;0;0#1;2;100;100;0#2;2;0;100;0\n#1~~@@vv@@~~@@~~$\n#2??}}GG}}??}}??-\n#1!14@\n\\e\\\\\n">>},
+        {<<"str_3">>, 1, <<"assets/v.six">>},
+        {<<"str_4">>, 1, <<"\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

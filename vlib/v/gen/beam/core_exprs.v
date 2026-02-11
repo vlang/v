@@ -7,11 +7,21 @@ import strings
 // All output is inline (no newlines) - the caller handles line breaks.
 fn (mut g CoreGen) core_expr(node ast.Expr) {
 	match node {
-		ast.IntegerLiteral { g.core_integer_literal(node) }
-		ast.FloatLiteral { g.core_float_literal(node) }
-		ast.StringLiteral { g.core_string_literal(node) }
-		ast.BoolLiteral { g.emit_atom(if node.val { 'true' } else { 'false' }) }
-		ast.Ident { g.core_ident(node) }
+		ast.IntegerLiteral {
+			g.core_integer_literal(node)
+		}
+		ast.FloatLiteral {
+			g.core_float_literal(node)
+		}
+		ast.StringLiteral {
+			g.core_string_literal(node)
+		}
+		ast.BoolLiteral {
+			g.emit_atom(if node.val { 'true' } else { 'false' })
+		}
+		ast.Ident {
+			g.core_ident(node)
+		}
 		ast.CallExpr {
 			if node.or_block.kind != .absent {
 				g.core_expr_with_or(node, node.or_block)
@@ -19,37 +29,99 @@ fn (mut g CoreGen) core_expr(node ast.Expr) {
 				g.core_call_expr(node)
 			}
 		}
-		ast.InfixExpr { g.core_infix_expr(node) }
-		ast.StringInterLiteral { g.core_string_inter(node) }
-		ast.SelectorExpr { g.core_selector_expr(node) }
-		ast.ArrayInit { g.core_array_init(node) }
-		ast.StructInit { g.core_struct_init(node) }
-		ast.MapInit { g.core_map_init(node) }
-		ast.IndexExpr { g.core_index_expr(node) }
-		ast.ParExpr { g.core_expr(node.expr) }
-		ast.PrefixExpr { g.core_prefix_expr(node) }
-		ast.IfExpr { g.core_if_expr(node) }
-		ast.MatchExpr { g.core_match_expr(node) }
-		ast.EnumVal { g.core_enum_val(node) }
-		ast.CharLiteral { g.core_char_literal(node) }
-		ast.CastExpr { g.core_cast_expr(node) }
-		ast.UnsafeExpr { g.core_expr(node.expr) }
-		ast.ConcatExpr { g.core_concat_expr(node) }
-		ast.None { g.emit_atom('none') }
-		ast.PostfixExpr { g.core_expr(node.expr) }
-		ast.Likely { g.core_expr(node.expr) } // branch hint - pass through
-		ast.AsCast { g.core_expr(node.expr) } // type assertion - BEAM is dynamic
-		ast.Nil { g.emit_atom('nil') }
-		ast.DumpExpr { g.core_expr(node.expr) } // dump() evaluates + prints; just eval
-		ast.ArrayDecompose { g.core_expr(node.expr) } // spread: ...arr
-		ast.IsRefType { g.emit_atom('true') } // all BEAM terms are references
-		ast.SizeOf { g.emit_int('8') } // no meaningful sizeof in BEAM
-		ast.AtExpr { g.core_at_expr(node) }
-		ast.TypeOf { g.core_typeof(node) }
-		ast.RangeExpr { g.core_range_expr(node) }
-		ast.SpawnExpr { g.core_spawn_call(node.call_expr) }
-		ast.GoExpr { g.core_spawn_call(node.call_expr) }
-		ast.AnonFn { g.core_anon_fn(node) }
+		ast.InfixExpr {
+			g.core_infix_expr(node)
+		}
+		ast.StringInterLiteral {
+			g.core_string_inter(node)
+		}
+		ast.SelectorExpr {
+			g.core_selector_expr(node)
+		}
+		ast.ArrayInit {
+			g.core_array_init(node)
+		}
+		ast.StructInit {
+			g.core_struct_init(node)
+		}
+		ast.MapInit {
+			g.core_map_init(node)
+		}
+		ast.IndexExpr {
+			g.core_index_expr(node)
+		}
+		ast.ParExpr {
+			g.core_expr(node.expr)
+		}
+		ast.PrefixExpr {
+			g.core_prefix_expr(node)
+		}
+		ast.IfExpr {
+			g.core_if_expr(node)
+		}
+		ast.MatchExpr {
+			g.core_match_expr(node)
+		}
+		ast.EnumVal {
+			g.core_enum_val(node)
+		}
+		ast.CharLiteral {
+			g.core_char_literal(node)
+		}
+		ast.CastExpr {
+			g.core_cast_expr(node)
+		}
+		ast.UnsafeExpr {
+			g.core_expr(node.expr)
+		}
+		ast.ConcatExpr {
+			g.core_concat_expr(node)
+		}
+		ast.None {
+			g.emit_atom('none')
+		}
+		ast.PostfixExpr {
+			g.core_expr(node.expr)
+		}
+		ast.Likely {
+			g.core_expr(node.expr)
+		} // branch hint - pass through
+		ast.AsCast {
+			g.core_expr(node.expr)
+		} // type assertion - BEAM is dynamic
+		ast.Nil {
+			g.emit_atom('nil')
+		}
+		ast.DumpExpr {
+			g.core_expr(node.expr)
+		} // dump() evaluates + prints; just eval
+		ast.ArrayDecompose {
+			g.core_expr(node.expr)
+		} // spread: ...arr
+		ast.IsRefType {
+			g.emit_atom('true')
+		} // all BEAM terms are references
+		ast.SizeOf {
+			g.emit_int('8')
+		} // no meaningful sizeof in BEAM
+		ast.AtExpr {
+			g.core_at_expr(node)
+		}
+		ast.TypeOf {
+			g.core_typeof(node)
+		}
+		ast.RangeExpr {
+			g.core_range_expr(node)
+		}
+		ast.SpawnExpr {
+			g.core_spawn_call(node.call_expr)
+		}
+		ast.GoExpr {
+			g.core_spawn_call(node.call_expr)
+		}
+		ast.AnonFn {
+			g.core_anon_fn(node)
+		}
 		ast.LambdaExpr {
 			if node.func != unsafe { nil } {
 				g.core_anon_fn(*node.func)
@@ -57,12 +129,22 @@ fn (mut g CoreGen) core_expr(node ast.Expr) {
 				g.emit_atom('false')
 			}
 		}
-		ast.Assoc { g.core_assoc(node) }
-		ast.SelectExpr { g.core_select_expr(node) }
-		ast.IfGuardExpr { g.emit_atom('false') } // handled in if_branches
-		ast.EmptyExpr { g.emit_atom('ok') }
+		ast.Assoc {
+			g.core_assoc(node)
+		}
+		ast.SelectExpr {
+			g.core_select_expr(node)
+		}
+		ast.IfGuardExpr {
+			g.emit_atom('false')
+		} // handled in if_branches
+		ast.EmptyExpr {
+			g.emit_atom('ok')
+		}
 		ast.Comment {} // skip
-		else { g.emit_atom('false') }
+		else {
+			g.emit_atom('false')
+		}
 	}
 }
 
@@ -86,7 +168,8 @@ fn (mut g CoreGen) core_float_literal(node ast.FloatLiteral) {
 	if val.contains('e') || val.contains('E') {
 		if !val.contains('.') {
 			// Insert .0 before the exponent
-			e_pos := if val.contains('e') { val.index('e') or { -1 } } else { val.index('E') or { -1 } }
+			e_pos := if val.contains('e') { val.index('e') or { -1 } } else { val.index('E') or {
+					-1} }
 			if e_pos > 0 {
 				g.emit_float('${val[..e_pos]}.0${val[e_pos..]}')
 				return
@@ -123,18 +206,18 @@ fn (mut g CoreGen) core_char_literal(node ast.CharLiteral) {
 	// Handle escape sequences
 	if val.len >= 2 && val[0] == `\\` {
 		match val[1] {
-			`n` { g.emit_int('10') }    // \n = newline
-			`r` { g.emit_int('13') }    // \r = carriage return
-			`t` { g.emit_int('9') }     // \t = tab
-			`\\` { g.emit_int('92') }   // \\ = backslash
-			`'` { g.emit_int('39') }    // \' = single quote
-			`"` { g.emit_int('34') }    // \" = double quote
-			`0` { g.emit_int('0') }     // \0 = null
-			`a` { g.emit_int('7') }     // \a = bell
-			`b` { g.emit_int('8') }     // \b = backspace
-			`e` { g.emit_int('27') }    // \e = escape
-			`f` { g.emit_int('12') }    // \f = form feed
-			`v` { g.emit_int('11') }    // \v = vertical tab
+			`n` { g.emit_int('10') } // \n = newline
+			`r` { g.emit_int('13') } // \r = carriage return
+			`t` { g.emit_int('9') } // \t = tab
+			`\\` { g.emit_int('92') } // \\ = backslash
+			`'` { g.emit_int('39') } // \' = single quote
+			`"` { g.emit_int('34') } // \" = double quote
+			`0` { g.emit_int('0') } // \0 = null
+			`a` { g.emit_int('7') } // \a = bell
+			`b` { g.emit_int('8') } // \b = backspace
+			`e` { g.emit_int('27') } // \e = escape
+			`f` { g.emit_int('12') } // \f = form feed
+			`v` { g.emit_int('11') } // \v = vertical tab
 			else { g.emit_int('${int(val[1])}') }
 		}
 		return
@@ -161,9 +244,9 @@ fn (mut g CoreGen) core_cast_expr(node ast.CastExpr) {
 	source_name := source_sym.name
 
 	// int → float
-	if (source_name == 'int' || source_name == 'i64' || source_name == 'i32'
-		|| source_name == 'i16' || source_name == 'i8' || source_name == 'u8'
-		|| source_name == 'u16' || source_name == 'u32' || source_name == 'u64')
+	if (source_name == 'int' || source_name == 'i64' || source_name == 'i32' || source_name == 'i16'
+		|| source_name == 'i8' || source_name == 'u8' || source_name == 'u16'
+		|| source_name == 'u32' || source_name == 'u64')
 		&& (target_name == 'f64' || target_name == 'f32') {
 		g.begin_call('erlang', 'float')
 		g.core_expr(node.expr)
@@ -171,11 +254,13 @@ fn (mut g CoreGen) core_cast_expr(node ast.CastExpr) {
 		return
 	}
 
-	// float → int (truncate)
-	if (source_name == 'f64' || source_name == 'f32')
-		&& (target_name == 'int' || target_name == 'i64' || target_name == 'i32'
-		|| target_name == 'i16' || target_name == 'i8' || target_name == 'u8'
-		|| target_name == 'u16' || target_name == 'u32' || target_name == 'u64') {
+	// float → int (truncate) — but NOT narrow types (handled below with band)
+	is_float_source := source_name == 'f64' || source_name == 'f32'
+		|| source_name == 'float_literal'
+	is_narrow_target := target_name == 'u8' || target_name == 'u16' || target_name == 'u32'
+		|| target_name == 'i8' || target_name == 'i16'
+	if is_float_source && (target_name == 'int' || target_name == 'i64'
+		|| target_name == 'i32' || target_name == 'u64') {
 		g.begin_call('erlang', 'trunc')
 		g.core_expr(node.expr)
 		g.end_call()
@@ -194,6 +279,148 @@ fn (mut g CoreGen) core_cast_expr(node ast.CastExpr) {
 	if (source_name == 'int' || source_name == 'i64') && target_name == 'string' {
 		g.begin_call('erlang', 'integer_to_binary')
 		g.core_expr(node.expr)
+		g.end_call()
+		return
+	}
+
+	// Narrowing integer casts — apply band mask to wrap to target width
+	// For float sources, wrap expr in trunc() first
+	if target_name == 'u8' {
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('255')
+		g.end_call()
+		return
+	}
+	if target_name == 'u16' {
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('65535')
+		g.end_call()
+		return
+	}
+	if target_name == 'u32' {
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('4294967295')
+		g.end_call()
+		return
+	}
+	if target_name == 'i8' {
+		// Signed narrowing: band 0xFF, then adjust if >= 128
+		// (X band 255 + 128) rem 256 - 128
+		g.begin_call('erlang', '-')
+		g.begin_call('erlang', 'rem')
+		g.begin_call('erlang', '+')
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('255')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('128')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('256')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('128')
+		g.end_call()
+		return
+	}
+	if target_name == 'i16' {
+		g.begin_call('erlang', '-')
+		g.begin_call('erlang', 'rem')
+		g.begin_call('erlang', '+')
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('65535')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('32768')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('65536')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('32768')
+		g.end_call()
+		return
+	}
+
+	// i32 narrowing: ((X band 0xFFFFFFFF) + 0x80000000) rem 0x100000000 - 0x80000000
+	if target_name == 'i32' {
+		g.begin_call('erlang', '-')
+		g.begin_call('erlang', 'rem')
+		g.begin_call('erlang', '+')
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('4294967295')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('2147483648')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('4294967296')
+		g.end_call()
+		g.emit_sep()
+		g.emit_int('2147483648')
+		g.end_call()
+		return
+	}
+	// u64 narrowing: X band 0xFFFFFFFFFFFFFFFF
+	if target_name == 'u64' {
+		g.begin_call('erlang', 'band')
+		if is_float_source {
+			g.begin_call('erlang', 'trunc')
+		}
+		g.core_expr(node.expr)
+		if is_float_source {
+			g.end_call()
+		}
+		g.emit_sep()
+		g.emit_int('18446744073709551615')
 		g.end_call()
 		return
 	}
@@ -352,6 +579,13 @@ fn (mut g CoreGen) core_anon_fn(node ast.AnonFn) {
 	// Anonymous function → Core Erlang fun
 	decl := node.decl
 	params := decl.params
+	// Save outer scope var_map entries for param names to prevent leaking
+	mut saved_vars := map[string]string{}
+	for p in params {
+		if p.name in g.var_map {
+			saved_vars[p.name] = g.var_map[p.name]
+		}
+	}
 	mut param_names := []string{}
 	for p in params {
 		param_names << g.next_core_var(p.name)
@@ -372,6 +606,14 @@ fn (mut g CoreGen) core_anon_fn(node ast.AnonFn) {
 			g.write_core("'ok'")
 		}
 		g.write_core('')
+	}
+	// Restore outer scope var_map entries
+	for p in params {
+		if p.name in saved_vars {
+			g.var_map[p.name] = saved_vars[p.name]
+		} else {
+			g.var_map.delete(p.name)
+		}
 	}
 }
 
@@ -489,7 +731,8 @@ fn (mut g CoreGen) core_ident(node ast.Ident) {
 				g.write_core("fun (${params.join(', ')}) -> call '${erl_mod}':'${fn_name}'(${params.join(', ')})")
 			} else {
 				// Same-module function or method reference
-				g.write_core('fun (${params.join(', ')}) -> apply ' + "'${fn_name}'/${arity}(${params.join(', ')})")
+				g.write_core('fun (${params.join(', ')}) -> apply ' +
+					"'${fn_name}'/${arity}(${params.join(', ')})")
 			}
 		}
 		return
@@ -630,19 +873,16 @@ fn (mut g CoreGen) core_call_expr(node ast.CallExpr) {
 // core_is_erlang_bif returns true for Erlang BIF names that need
 // call 'erlang':'fn'(args) in Core Erlang instead of apply 'fn'/arity(args)
 fn (g CoreGen) core_is_erlang_bif(name string) bool {
-	return name in ['exit', 'error', 'throw', 'abs', 'self', 'spawn', 'spawn_link',
-		'spawn_monitor', 'send', 'is_integer', 'is_float', 'is_atom', 'is_list',
-		'is_binary', 'is_tuple', 'is_map', 'is_boolean', 'is_number', 'is_pid',
-		'is_port', 'is_reference', 'is_function', 'hd', 'tl', 'length',
-		'tuple_size', 'byte_size', 'bit_size', 'map_size', 'element', 'setelement',
-		'make_ref', 'node', 'nodes', 'register', 'whereis', 'monitor', 'demonitor',
-		'link', 'unlink', 'process_flag', 'put', 'get', 'erase',
-		'binary_to_list', 'list_to_binary', 'atom_to_list', 'list_to_atom',
-		'integer_to_list', 'list_to_integer', 'float_to_list', 'list_to_float',
+	return name in ['exit', 'error', 'throw', 'abs', 'self', 'spawn', 'spawn_link', 'spawn_monitor',
+		'send', 'is_integer', 'is_float', 'is_atom', 'is_list', 'is_binary', 'is_tuple', 'is_map',
+		'is_boolean', 'is_number', 'is_pid', 'is_port', 'is_reference', 'is_function', 'hd', 'tl',
+		'length', 'tuple_size', 'byte_size', 'bit_size', 'map_size', 'element', 'setelement',
+		'make_ref', 'node', 'nodes', 'register', 'whereis', 'monitor', 'demonitor', 'link', 'unlink',
+		'process_flag', 'put', 'get', 'erase', 'binary_to_list', 'list_to_binary', 'atom_to_list',
+		'list_to_atom', 'integer_to_list', 'list_to_integer', 'float_to_list', 'list_to_float',
 		'integer_to_binary', 'binary_to_integer', 'float_to_binary', 'binary_to_float',
-		'atom_to_binary', 'binary_to_atom', 'iolist_to_binary',
-		'tuple_to_list', 'list_to_tuple', 'term_to_binary', 'binary_to_term',
-		'apply', 'halt', 'round', 'trunc', 'max', 'min']
+		'atom_to_binary', 'binary_to_atom', 'iolist_to_binary', 'tuple_to_list', 'list_to_tuple',
+		'term_to_binary', 'binary_to_term', 'apply', 'halt', 'round', 'trunc', 'max', 'min']
 }
 
 // core_builtin_call handles V builtin function calls that map to Erlang stdlib
@@ -2179,13 +2419,13 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	// Handle .str() on primitive types
 	if node.name == 'str' && node.args.len == 0 {
 		type_name := type_sym.name
-		is_int := type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16 ||
-			type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8 ||
-			type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64 ||
-			type_sym.kind == .int_literal || type_name == 'int' || type_name == 'i32' ||
-			type_name == 'i64' || type_name == 'u32' || type_name == 'u64'
-		is_float := type_sym.kind == .f32 || type_sym.kind == .f64 ||
-			type_sym.kind == .float_literal || type_name == 'f32' || type_name == 'f64'
+		is_int := type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16
+			|| type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8
+			|| type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64
+			|| type_sym.kind == .int_literal || type_name == 'int' || type_name == 'i32'
+			|| type_name == 'i64' || type_name == 'u32' || type_name == 'u64'
+		is_float := type_sym.kind == .f32 || type_sym.kind == .f64
+			|| type_sym.kind == .float_literal || type_name == 'f32' || type_name == 'f64'
 		is_bool := type_sym.kind == .bool || type_name == 'bool'
 
 		if is_int {
@@ -2196,6 +2436,8 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 		} else if is_float {
 			g.begin_call('erlang', 'float_to_binary')
 			g.core_expr(node.left)
+			g.write_core(', ')
+			g.core_float_format_opts()
 			g.end_call()
 			return
 		} else if is_bool {
@@ -2365,8 +2607,8 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 		}
 	}
 
-	if type_sym.kind == .u32 || type_sym.kind == .u64 || type_sym.kind == .int ||
-		type_sym.kind == .i32 || type_sym.kind == .i64 {
+	if type_sym.kind == .u32 || type_sym.kind == .u64 || type_sym.kind == .int
+		|| type_sym.kind == .i32 || type_sym.kind == .i64 {
 		match node.name {
 			'hex' {
 				// u32.hex() -> integer_to_binary(N, 16)
@@ -2493,9 +2735,18 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	}
 	if short_name == 'WaitGroup' {
 		match node.name {
-			'wait' { g.emit_atom('ok') return }
-			'done' { g.emit_atom('ok') return }
-			'add' { g.emit_atom('ok') return }
+			'wait' {
+				g.emit_atom('ok')
+				return
+			}
+			'done' {
+				g.emit_atom('ok')
+				return
+			}
+			'add' {
+				g.emit_atom('ok')
+				return
+			}
 			else {}
 		}
 	}
@@ -2513,8 +2764,8 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 				g.end_call()
 				return
 			}
-			'set_level', 'info', 'warn', 'debug', 'error', 'log_to_console_too',
-			'set_output_path', 'set_output_label', 'set_full_logpath' {
+			'set_level', 'info', 'warn', 'debug', 'error', 'log_to_console_too', 'set_output_path',
+			'set_output_label', 'set_full_logpath' {
 				g.emit_atom('ok')
 				return
 			}
@@ -2548,9 +2799,18 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	// Handle Command methods
 	if short_name == 'Command' {
 		match node.name {
-			'start' { g.emit_atom('ok') return }
-			'read_line' { g.emit_binary('') return }
-			'wait' { g.emit_atom('ok') return }
+			'start' {
+				g.emit_atom('ok')
+				return
+			}
+			'read_line' {
+				g.emit_binary('')
+				return
+			}
+			'wait' {
+				g.emit_atom('ok')
+				return
+			}
 			else {}
 		}
 	}
@@ -2598,8 +2858,7 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	}
 
 	// Handle Vec/Vec2/Vec3 methods (math.vec)
-	if short_name == 'Vec' || short_name == 'Vec2' || short_name == 'Vec3' ||
-		short_name == 'Vec4' {
+	if short_name == 'Vec' || short_name == 'Vec2' || short_name == 'Vec3' || short_name == 'Vec4' {
 		match node.name {
 			'cross' {
 				// Simplified: return zero vector
@@ -2703,8 +2962,7 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	if short_name == 'FlagParser' || short_name == 'Flag' {
 		match node.name {
 			'application', 'description', 'footer', 'version', 'limit_free_args',
-			'limit_free_args_all', 'limit_free_args_to_exactly', 'skip_executable',
-			'usage' {
+			'limit_free_args_all', 'limit_free_args_to_exactly', 'skip_executable', 'usage' {
 				g.emit_atom('ok')
 				return
 			}
@@ -2739,8 +2997,7 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	// Handle CLI Command methods (V cli module)
 	if short_name == 'Command' {
 		match node.name {
-			'add_command', 'set_help_command', 'add_flag', 'set_defaults', 'setup',
-			'execute' {
+			'add_command', 'set_help_command', 'add_flag', 'set_defaults', 'setup', 'execute' {
 				g.emit_atom('ok')
 				return
 			}
@@ -2791,9 +3048,8 @@ fn (mut g CoreGen) core_method_call(node ast.CallExpr) {
 	// Handle Context methods (gg/graphics)
 	if short_name == 'Context' || short_name == 'GgContext' {
 		match node.name {
-			'clear', 'draw', 'draw_text', 'draw_rect', 'draw_line', 'draw_circle',
-			'draw_image', 'draw_rounded_rect', 'draw_pixel', 'flush', 'begin', 'reset',
-			'run', 'quit' {
+			'clear', 'draw', 'draw_text', 'draw_rect', 'draw_line', 'draw_circle', 'draw_image',
+			'draw_rounded_rect', 'draw_pixel', 'flush', 'begin', 'reset', 'run', 'quit' {
 				g.emit_atom('ok')
 				return
 			}
@@ -3077,7 +3333,7 @@ fn (mut g CoreGen) core_string_method(node ast.CallExpr) bool {
 			} else {
 				g.write_core("call 'binary':'split'(")
 				g.core_expr(node.left)
-				g.write_core(', ${core_bitstring("\n")}, [' + "'global'|[]])")
+				g.write_core(', ${core_bitstring('\n')}, [' + "'global'|[]])")
 			}
 			return true
 		}
@@ -3714,12 +3970,10 @@ fn (mut g CoreGen) core_eprint_call(node ast.CallExpr) {
 }
 
 fn (mut g CoreGen) core_is_numeric_type(sym ast.TypeSymbol) bool {
-	return sym.kind == .int || sym.kind == .i8 || sym.kind == .i16 ||
-		sym.kind == .i32 || sym.kind == .i64 || sym.kind == .u8 ||
-		sym.kind == .u16 || sym.kind == .u32 || sym.kind == .u64 ||
-		sym.kind == .int_literal || sym.kind == .f32 || sym.kind == .f64 ||
-		sym.kind == .float_literal || sym.name == 'int' || sym.name == 'i32' ||
-		sym.name == 'f64'
+	return sym.kind == .int || sym.kind == .i8 || sym.kind == .i16 || sym.kind == .i32
+		|| sym.kind == .i64 || sym.kind == .u8 || sym.kind == .u16 || sym.kind == .u32
+		|| sym.kind == .u64 || sym.kind == .int_literal || sym.kind == .f32 || sym.kind == .f64
+		|| sym.kind == .float_literal || sym.name == 'int' || sym.name == 'i32' || sym.name == 'f64'
 }
 
 fn (mut g CoreGen) core_to_binary_expr(expr ast.Expr, typ ast.Type) {
@@ -3730,12 +3984,12 @@ fn (mut g CoreGen) core_to_binary_expr(expr ast.Expr, typ ast.Type) {
 	type_sym := g.table.sym(typ)
 	type_name := type_sym.name
 
-	is_int := type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16 ||
-		type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8 ||
-		type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64 ||
-		type_sym.kind == .int_literal || type_name == 'int' || type_name == 'i32'
-	is_float := type_sym.kind == .f32 || type_sym.kind == .f64 ||
-		type_sym.kind == .float_literal || type_name == 'f32' || type_name == 'f64'
+	is_int := type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16
+		|| type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8
+		|| type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64
+		|| type_sym.kind == .int_literal || type_name == 'int' || type_name == 'i32'
+	is_float := type_sym.kind == .f32 || type_sym.kind == .f64 || type_sym.kind == .float_literal
+		|| type_name == 'f32' || type_name == 'f64'
 
 	if is_int {
 		g.begin_call('erlang', 'integer_to_binary')
@@ -3744,6 +3998,8 @@ fn (mut g CoreGen) core_to_binary_expr(expr ast.Expr, typ ast.Type) {
 	} else if is_float {
 		g.begin_call('erlang', 'float_to_binary')
 		g.core_expr(expr)
+		g.write_core(', ')
+		g.core_float_format_opts()
 		g.end_call()
 	} else if type_sym.kind == .bool || type_name == 'bool' {
 		g.begin_call('erlang', 'atom_to_binary')
@@ -3797,33 +4053,103 @@ fn (mut g CoreGen) core_infix_expr(node ast.InfixExpr) {
 		}
 	}
 
-	// 'in' operator: lists:member
+	// 'in' operator:
+	// - map RHS -> maps:is_key(Key, Map)
+	// - array RHS -> lists:member(Elem, List)
 	if node.op == .key_in {
-		g.begin_call('lists', 'member')
+		left_tmp := '_in_left_${g.temp_counter}'
+		g.temp_counter++
+		right_tmp := '_in_right_${g.temp_counter}'
+		g.temp_counter++
+		g.begin_let(left_tmp)
 		g.core_expr(node.left)
-		g.emit_sep()
+		g.mid_let()
+		g.begin_let(right_tmp)
 		g.core_expr(node.right)
+		g.mid_let()
+		g.begin_case()
+		g.begin_call('erlang', 'is_map')
+		g.emit_var(right_tmp)
 		g.end_call()
+		g.mid_case_clauses()
+		// map RHS: key lookup
+		g.begin_clause()
+		g.emit_atom('true')
+		g.mid_clause_guard()
+		g.emit_true_guard()
+		g.mid_clause_body()
+		g.begin_call('maps', 'is_key')
+		g.emit_var(left_tmp)
+		g.emit_sep()
+		g.emit_var(right_tmp)
+		g.end_call()
+		g.end_clause()
+		g.clause_sep()
+		// list RHS: membership test
+		g.begin_clause()
+		g.emit_atom('false')
+		g.mid_clause_guard()
+		g.emit_true_guard()
+		g.mid_clause_body()
+		g.begin_call('lists', 'member')
+		g.emit_var(left_tmp)
+		g.emit_sep()
+		g.emit_var(right_tmp)
+		g.end_call()
+		g.end_clause()
+		g.end_case()
+		g.end_let()
+		g.end_let()
 		return
 	}
 
 	// 'not in' operator
 	if node.op == .not_in {
-		if g.etf_mode {
-			g.begin_call('erlang', 'not')
-			g.begin_call('lists', 'member')
-			g.core_expr(node.left)
-			g.emit_sep()
-			g.core_expr(node.right)
-			g.end_call()
-			g.end_call()
-		} else {
-			g.write_core("call 'erlang':'not'(call 'lists':'member'(")
-			g.core_expr(node.left)
-			g.write_core(', ')
-			g.core_expr(node.right)
-			g.write_core('))')
-		}
+		left_tmp := '_in_left_${g.temp_counter}'
+		g.temp_counter++
+		right_tmp := '_in_right_${g.temp_counter}'
+		g.temp_counter++
+		g.begin_let(left_tmp)
+		g.core_expr(node.left)
+		g.mid_let()
+		g.begin_let(right_tmp)
+		g.core_expr(node.right)
+		g.mid_let()
+		g.begin_call('erlang', 'not')
+		g.begin_case()
+		g.begin_call('erlang', 'is_map')
+		g.emit_var(right_tmp)
+		g.end_call()
+		g.mid_case_clauses()
+		// map RHS: key lookup
+		g.begin_clause()
+		g.emit_atom('true')
+		g.mid_clause_guard()
+		g.emit_true_guard()
+		g.mid_clause_body()
+		g.begin_call('maps', 'is_key')
+		g.emit_var(left_tmp)
+		g.emit_sep()
+		g.emit_var(right_tmp)
+		g.end_call()
+		g.end_clause()
+		g.clause_sep()
+		// list RHS: membership test
+		g.begin_clause()
+		g.emit_atom('false')
+		g.mid_clause_guard()
+		g.emit_true_guard()
+		g.mid_clause_body()
+		g.begin_call('lists', 'member')
+		g.emit_var(left_tmp)
+		g.emit_sep()
+		g.emit_var(right_tmp)
+		g.end_call()
+		g.end_clause()
+		g.end_case()
+		g.end_call()
+		g.end_let()
+		g.end_let()
 		return
 	}
 
@@ -3843,6 +4169,76 @@ fn (mut g CoreGen) core_infix_expr(node ast.InfixExpr) {
 			g.end_call()
 			return
 		}
+	}
+
+	// Short-circuit && operator: case LEFT of <'true'> -> RIGHT <'false'> -> 'false' end
+	if node.op == .and {
+		if g.etf_mode {
+			g.begin_case()
+			g.core_expr(node.left)
+			g.mid_case_clauses()
+			// true clause -> evaluate right
+			g.begin_clause()
+			g.emit_atom('true')
+			g.mid_clause_guard()
+			g.emit_true_guard()
+			g.mid_clause_body()
+			g.core_expr(node.right)
+			g.end_clause()
+			g.clause_sep()
+			// false clause -> return false
+			g.begin_clause()
+			g.emit_atom('false')
+			g.mid_clause_guard()
+			g.emit_true_guard()
+			g.mid_clause_body()
+			g.emit_atom('false')
+			g.end_clause()
+			g.end_case()
+		} else {
+			// Text mode: case LEFT of <'true'> when 'true' -> RIGHT <'false'> when 'true' -> 'false' end
+			g.write_core('case ')
+			g.core_expr(node.left)
+			g.write_core(" of <'true'> when 'true' -> ")
+			g.core_expr(node.right)
+			g.write_core(" <'false'> when 'true' -> 'false' end")
+		}
+		return
+	}
+
+	// Short-circuit || operator: case LEFT of <'true'> -> 'true' <'false'> -> RIGHT end
+	if node.op == .logical_or {
+		if g.etf_mode {
+			g.begin_case()
+			g.core_expr(node.left)
+			g.mid_case_clauses()
+			// true clause -> return true
+			g.begin_clause()
+			g.emit_atom('true')
+			g.mid_clause_guard()
+			g.emit_true_guard()
+			g.mid_clause_body()
+			g.emit_atom('true')
+			g.end_clause()
+			g.clause_sep()
+			// false clause -> evaluate right
+			g.begin_clause()
+			g.emit_atom('false')
+			g.mid_clause_guard()
+			g.emit_true_guard()
+			g.mid_clause_body()
+			g.core_expr(node.right)
+			g.end_clause()
+			g.end_case()
+		} else {
+			// Text mode: case LEFT of <'true'> when 'true' -> 'true' <'false'> when 'true' -> RIGHT end
+			g.write_core('case ')
+			g.core_expr(node.left)
+			g.write_core(" of <'true'> when 'true' -> 'true' <'false'> when 'true' -> ")
+			g.core_expr(node.right)
+			g.write_core(' end')
+		}
+		return
 	}
 
 	// All other operators -> call 'erlang':'OP'(Left, Right)
@@ -3874,10 +4270,10 @@ fn (g CoreGen) core_is_int_expr(expr ast.Expr, typ ast.Type) bool {
 	}
 	if int(typ) != 0 {
 		type_sym := g.table.sym(typ)
-		return type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16 ||
-			type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8 ||
-			type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64 ||
-			type_sym.kind == .int_literal
+		return type_sym.kind == .int || type_sym.kind == .i8 || type_sym.kind == .i16
+			|| type_sym.kind == .i32 || type_sym.kind == .i64 || type_sym.kind == .u8
+			|| type_sym.kind == .u16 || type_sym.kind == .u32 || type_sym.kind == .u64
+			|| type_sym.kind == .int_literal
 	}
 	return false
 }
@@ -4290,8 +4686,7 @@ fn (mut g CoreGen) core_if_guard_branch(guard ast.IfGuardExpr, branch ast.IfBran
 
 	// Determine if this is a map lookup (IndexExpr on map type)
 	is_map_lookup := if guard.expr is ast.IndexExpr {
-		guard.expr.left_type.idx() != 0
-			&& g.table.sym(guard.expr.left_type).kind == .map
+		guard.expr.left_type.idx() != 0 && g.table.sym(guard.expr.left_type).kind == .map
 	} else {
 		false
 	}
@@ -4386,7 +4781,7 @@ fn (mut g CoreGen) core_if_guard_branch(guard ast.IfGuardExpr, branch ast.IfBran
 			g.write_core('case try ')
 			g.core_expr(guard.expr)
 			g.write_core(' of <${tmp}> when \'true\' -> {\'ok\', ${tmp}}')
-			g.write_core(' catch <_cor_c,_cor_r,_cor_s> when \'true\' -> \'error\'')
+			g.write_core(" catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error'")
 		}
 
 		// Pattern match: {ok, Var} -> then, _ -> else
@@ -4394,7 +4789,7 @@ fn (mut g CoreGen) core_if_guard_branch(guard ast.IfGuardExpr, branch ast.IfBran
 			g.write_core(" of <{'ok', ${var_names[0]}}> when 'true' -> ")
 		} else if var_names.len > 1 {
 			// Multiple guard vars: {ok, {V1, V2, ...}}
-			g.write_core(" of <{'ok', {${var_names.join(', ')}}> when 'true' -> ")
+			g.write_core(" of <{'ok', {${var_names.join(', ')}}}> when 'true' -> ")
 		} else {
 			// No vars: just check success
 			g.write_core(" of <{'ok', _}> when 'true' -> ")
@@ -4522,7 +4917,16 @@ fn (mut g CoreGen) core_match_expr(node ast.MatchExpr) {
 // comparison-based case expressions. Used when any branch has multiple
 // patterns (e.g., match x { 'a', 'b' => ... }).
 fn (mut g CoreGen) core_match_comparison(node ast.MatchExpr) {
+	// Let-bind the condition to prevent re-evaluation with side effects
+	g.temp_counter++
+	cond_var := '_match_cond_${g.temp_counter}'
+	g.begin_let(cond_var)
+	g.core_expr(node.cond)
+	g.mid_let()
+	g.match_cond_var = cond_var
 	g.core_match_cmp_branch(node, 0)
+	g.match_cond_var = ''
+	g.end_let()
 }
 
 fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
@@ -4542,7 +4946,7 @@ fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
 		if branch.exprs.len == 1 {
 			g.begin_case()
 			g.begin_call('erlang', '=:=')
-			g.core_expr(node.cond)
+			g.emit_var(g.match_cond_var)
 			g.emit_sep()
 			g.core_expr(branch.exprs[0])
 			g.end_call()
@@ -4568,7 +4972,7 @@ fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
 			for j, expr in branch.exprs {
 				g.begin_case()
 				g.begin_call('erlang', '=:=')
-				g.core_expr(node.cond)
+				g.emit_var(g.match_cond_var)
 				g.emit_sep()
 				g.core_expr(expr)
 				g.end_call()
@@ -4602,10 +5006,10 @@ fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
 		// Note: orelse is NOT a callable BIF in Erlang, must use case instead
 		if branch.exprs.len == 1 {
 			g.write_core("case call 'erlang':'=:='(")
-			g.core_expr(node.cond)
+			g.write_core(g.match_cond_var)
 			g.write_core(', ')
 			g.core_expr(branch.exprs[0])
-			g.write_core(")")
+			g.write_core(')')
 			g.write_core(" of <'true'> when 'true' -> ")
 			g.core_match_branch_val(branch.stmts)
 			g.write_core(" <'false'> when 'true' -> ")
@@ -4615,10 +5019,10 @@ fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
 			// Multiple alternatives: nested case for each pattern
 			for j, expr in branch.exprs {
 				g.write_core("case call 'erlang':'=:='(")
-				g.core_expr(node.cond)
+				g.write_core(g.match_cond_var)
 				g.write_core(', ')
 				g.core_expr(expr)
-				g.write_core(")")
+				g.write_core(')')
 				g.write_core(" of <'true'> when 'true' -> ")
 				g.core_match_branch_val(branch.stmts)
 				g.write_core(" <'false'> when 'true' -> ")
@@ -4638,50 +5042,58 @@ fn (mut g CoreGen) core_match_cmp_branch(node ast.MatchExpr, idx int) {
 fn (mut g CoreGen) core_match_true_as_case(node ast.MatchExpr) {
 	if g.etf_mode {
 		// ETF: nested case expressions for match true
+		mut case_count := 0
 		for i, branch in node.branches {
 			if branch.is_else {
 				g.core_match_branch_val(branch.stmts)
 			} else if branch.exprs.len > 0 {
-				g.begin_case()
-				g.core_expr(branch.exprs[0])
-				g.mid_case_clauses()
-				g.begin_clause()
-				g.emit_atom('true')
-				g.mid_clause_guard()
-				g.emit_true_guard()
-				g.mid_clause_body()
-				g.core_match_branch_val(branch.stmts)
-				g.end_clause()
-				g.clause_sep()
-				g.begin_clause()
-				g.emit_atom('false')
-				g.mid_clause_guard()
-				g.emit_true_guard()
-				g.mid_clause_body()
+				// For multi-condition branches (a, b { body }), expand to nested OR cases
+				for expr in branch.exprs {
+					g.begin_case()
+					g.core_expr(expr)
+					g.mid_case_clauses()
+					g.begin_clause()
+					g.emit_atom('true')
+					g.mid_clause_guard()
+					g.emit_true_guard()
+					g.mid_clause_body()
+					g.core_match_branch_val(branch.stmts)
+					g.end_clause()
+					g.clause_sep()
+					g.begin_clause()
+					g.emit_atom('false')
+					g.mid_clause_guard()
+					g.emit_true_guard()
+					g.mid_clause_body()
+					case_count++
+				}
 				if i + 1 >= node.branches.len {
 					g.emit_atom('ok')
 				}
 			}
 		}
 		// Close all nested case expressions
-		for _, branch in node.branches {
-			if !branch.is_else && branch.exprs.len > 0 {
-				g.end_clause()
-				g.end_case()
-			}
+		for _ in 0 .. case_count {
+			g.end_clause()
+			g.end_case()
 		}
 	} else {
 		// Generate nested case on 'true' for each branch
 		// case COND1 of <'true'> -> BODY1 <'false'> -> (case COND2 of ...)
+		mut end_count := 0
 		for i, branch in node.branches {
 			if branch.is_else {
 				g.core_match_branch_val(branch.stmts)
 			} else if branch.exprs.len > 0 {
-				g.write_core('case ')
-				g.core_expr(branch.exprs[0])
-				g.write_core(" of <'true'> when 'true' -> ")
-				g.core_match_branch_val(branch.stmts)
-				g.write_core(" <'false'> when 'true' -> ")
+				// For multi-condition branches, expand each condition
+				for expr in branch.exprs {
+					g.write_core('case ')
+					g.core_expr(expr)
+					g.write_core(" of <'true'> when 'true' -> ")
+					g.core_match_branch_val(branch.stmts)
+					g.write_core(" <'false'> when 'true' -> ")
+					end_count++
+				}
 				if i + 1 >= node.branches.len {
 					g.write_core("'ok'")
 				}
@@ -4689,11 +5101,8 @@ fn (mut g CoreGen) core_match_true_as_case(node ast.MatchExpr) {
 			}
 		}
 		// Close all the case expressions
-		for i, branch in node.branches {
-			_ = i
-			if !branch.is_else && branch.exprs.len > 0 {
-				g.write_core(' end')
-			}
+		for _ in 0 .. end_count {
+			g.write_core(' end')
 		}
 	}
 }
@@ -4739,22 +5148,29 @@ fn (mut g CoreGen) core_match_branch_val(stmts []ast.Stmt) {
 		g.emit_atom('ok')
 		return
 	}
-	last := stmts[stmts.len - 1]
-	match last {
-		ast.Return {
-			if last.exprs.len > 0 {
-				g.core_expr(last.exprs[0])
-			} else {
+	if stmts.len == 1 {
+		// Single statement — handle directly as return value
+		last := stmts[0]
+		match last {
+			ast.Return {
+				if last.exprs.len > 0 {
+					g.core_expr(last.exprs[0])
+				} else {
+					g.emit_atom('ok')
+				}
+			}
+			ast.ExprStmt {
+				g.core_expr(last.expr)
+			}
+			else {
 				g.emit_atom('ok')
 			}
 		}
-		ast.ExprStmt {
-			g.core_expr(last.expr)
-		}
-		else {
-			g.emit_atom('ok')
-		}
+		return
 	}
+	// Multiple statements — use core_body_chain which handles
+	// let-bindings, sequencing, and tail position correctly
+	g.core_body_chain(stmts, 0, false)
 }
 
 fn (mut g CoreGen) core_enum_val(node ast.EnumVal) {

@@ -1,0 +1,217 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {call, {sym, <<"new_app">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"new_app">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 1,
+            body => [
+                {mov, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"index">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 11},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"html">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"secrets">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_1">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 13},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"html">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"dynamic">>,
+            arity => 2,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 3,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_2">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 13},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"html">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        },
+        #{
+            name => <<"early">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_3">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 11},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"html">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"before_request">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_4">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 2},
+                {mov_imm, {preg, x16}, 4},
+                syscall
+            ]
+        },
+        #{
+            name => <<"check_auth">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_5">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 2},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov_imm, {vreg, 1}, 0},
+                {cmp, {vreg, 0}, {vreg, 1}},
+                {jcc, ne, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"redirect">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"other_func1">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_6">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 2},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov_imm, {vreg, 1}, 1},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"other_func2">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_7">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 2},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov_imm, {vreg, 1}, 1},
+                {mov, {preg, x0}, {vreg, 1}},
+                ret
+            ]
+        },
+        #{
+            name => <<"middleware_early">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_8">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 2},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"text">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {vreg, 2}, 0},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"Index page\n">>},
+        {<<"str_1">>, 1, <<"Secrets page\n">>},
+        {<<"str_2">>, 1, <<"Dynamic page\n">>},
+        {<<"str_3">>, 1, <<"Early page\n">>},
+        {<<"str_4">>, 1, <<"0\n">>},
+        {<<"str_5">>, 1, <<"3\n">>},
+        {<<"str_6">>, 1, <<"1\n">>},
+        {<<"str_7">>, 1, <<"2\n">>},
+        {<<"str_8">>, 1, <<"4\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

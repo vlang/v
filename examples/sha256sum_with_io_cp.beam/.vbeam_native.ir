@@ -1,0 +1,72 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"hash_file">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 10,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"open">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"new">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {struct_new, {vreg, 3}, {imm, 8}},
+                {mov_imm, {vreg, 4}, 262144},
+                {field_set, {vreg, 3}, {imm, 0}, {vreg, 4}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {mov, {preg, x1}, {vreg, 2}},
+                {mov, {preg, x2}, {vreg, 3}},
+                {call, {sym, <<"cp">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {method_call, {vreg, 6}, <<"os.File">>, <<"close">>, [{vreg, 1}]},
+                {array_new, {vreg, 7}, {imm, 8}, {imm, 4}},
+                {method_call, {vreg, 8}, <<"crypto.sha256.Digest">>, <<"sum">>, [{vreg, 2}, {vreg, 7}]},
+                {method_call, {vreg, 9}, <<"[]u8">>, <<"hex">>, [{vreg, 8}]},
+                {mov, {preg, x0}, {vreg, 9}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 7,
+            body => [
+                {array_get, {vreg, 0}, {vreg, 0}, {vreg, 0}, {imm, 8}},
+                {array_len, {vreg, 1}, {vreg, 0}},
+                {mov_imm, {vreg, 2}, 0},
+                {label, <<"forin_arr_0">>},
+                {cmp, {vreg, 2}, {vreg, 1}},
+                {jcc, ge, <<"forin_arr_end_2">>},
+                {array_get, {vreg, 3}, {vreg, 0}, {vreg, 2}, {imm, 8}},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"hash_file">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {print_str, {vreg, 4}},
+                {string_lit, {vreg, 5}, {data_ref, <<"str_0">>}, 2},
+                {print_str, {vreg, 5}},
+                {print_str, {vreg, 3}},
+                {string_lit, {vreg, 6}, {data_ref, <<"str_1">>}, 1},
+                {print_str, {vreg, 6}},
+                {label, <<"forin_arr_inc_1">>},
+                {add, {vreg, 2}, {vreg, 2}, {imm, 1}},
+                {jmp, <<"forin_arr_0">>},
+                {label, <<"forin_arr_end_2">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"  ">>},
+        {<<"str_1">>, 1, <<"\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

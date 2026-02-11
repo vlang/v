@@ -1,0 +1,52 @@
+module 'v.main' ['frame'/1,
+                'event'/2,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'frame'/1 =
+        fun (App) ->
+            do  'ok'
+                do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('points', App)), 0) of <'true'> when 'true' -> 
+                    do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('tui', App), call 'erlang':'map_get'('color', App))
+                        let <Last> =
+                            call 'lists':'nth'(1, call 'erlang':'map_get'('points', App))
+                        in  let <Last_1> =
+                                let <_2> =
+                                    fun (Point, LastAcc) ->
+                                        do  'ok'
+                                            let <LastOut_4> =
+                                                Point
+                                            in  LastOut_4
+                                in  call 'lists':'foldl'(_2, Last, call 'erlang':'map_get'('points', App))
+                            in  do  'ok'
+                                    let <L> =
+                                        call 'erlang':'+'(call 'erlang':'trunc'(call 'erlang':'/'(call 'erlang':'length'(call 'erlang':'map_get'('points', App)), call 'erlang':'map_get'('cut_rate', App))), 1)
+                                    in  'ok'
+                 <'false'> when 'true' -> 'ok' end
+                    let <Ww> =
+                        call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('tui', App))
+                    in  do  apply 'Context.bold'/1(call 'erlang':'map_get'('tui', App))
+                            do  'ok'
+                                do  'ok'
+                                    do  apply 'Context.horizontal_separator'/2(call 'erlang':'map_get'('tui', App), 3)
+                                        do  'ok'
+                                            'ok'
+    'event'/2 =
+        fun (E, App) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'key_down') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'escape') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'space') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'enter') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_move') of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('points', App), ~{'x'=>call 'erlang':'map_get'('x', E),'y'=>call 'erlang':'map_get'('y', E),{'vbeam','type'}=>'Point'}~) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_drag') of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('points', App), ~{'x'=>call 'erlang':'map_get'('x', E),'y'=>call 'erlang':'map_get'('y', E),{'vbeam','type'}=>'Point'}~) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_down') of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('points', App), ~{'x'=>call 'erlang':'map_get'('x', E),'y'=>call 'erlang':'map_get'('y', E),{'vbeam','type'}=>'Point'}~) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_scroll') of <'true'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('cut_rate', App), 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end end end end end
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  'ok'
+                    try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

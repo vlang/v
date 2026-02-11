@@ -1,0 +1,214 @@
+module 'v.fontstash' ['create_internal'/1,
+                'delete_internal'/1,
+                'Context.set_error_callback'/3,
+                'Context.get_atlas_size'/1,
+                'Context.expand_atlas'/3,
+                'Context.reset_atlas'/3,
+                'Context.get_font_by_name'/2,
+                'Context.add_fallback_font'/3,
+                'Context.add_font_mem'/4,
+                'Context.push_state'/1,
+                'Context.pop_state'/1,
+                'Context.clear_state'/1,
+                'Context.set_size'/2,
+                'Context.set_color'/2,
+                'Context.set_spacing'/2,
+                'Context.set_blur'/2,
+                'Context.set_align'/2,
+                'Context.set_alignment'/2,
+                'Context.set_font'/2,
+                'Context.draw_text'/4,
+                'Context.text_bounds'/5,
+                'Context.line_bounds'/4,
+                'Context.vert_metrics'/4,
+                'Context.text_iter_init'/6,
+                'Context.text_iter_next'/3,
+                'Context.get_texture_data'/3,
+                'Context.validate_texture'/2,
+                'Context.draw_debug'/3,
+                'Flags.is_empty'/1,
+                'Flags.has'/2,
+                'Flags.all'/2,
+                'Flags.set'/2,
+                'Flags.set_all'/1,
+                'Flags.clear'/2,
+                'Flags.clear_all'/1,
+                'Flags.toggle'/2,
+                'Flags__static__zero'/0,
+                'Flags__static__from'/1,
+                'Align.is_empty'/1,
+                'Align.has'/2,
+                'Align.all'/2,
+                'Align.set'/2,
+                'Align.set_all'/1,
+                'Align.clear'/2,
+                'Align.clear_all'/1,
+                'Align.toggle'/2,
+                'Align__static__zero'/0,
+                'Align__static__from'/1,
+                'ErrorCode__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'create_internal'/1 =
+    fun (Params) ->
+        ~{{'vbeam','type'}=>'Context'}~
+'delete_internal'/1 =
+    fun (S) ->
+        'ok'
+'Context.set_error_callback'/3 =
+    fun (S, Callback, Uptr) ->
+        'ok'
+'Context.get_atlas_size'/1 =
+    fun (S) ->
+        0
+'Context.expand_atlas'/3 =
+    fun (S, Width, Height) ->
+        0
+'Context.reset_atlas'/3 =
+    fun (S, Width, Height) ->
+        0
+'Context.get_font_by_name'/2 =
+    fun (S, Name) ->
+        -1
+'Context.add_fallback_font'/3 =
+    fun (S, Base, Fallback) ->
+        0
+'Context.add_font_mem'/4 =
+    fun (S, Name, Data, Free_data) ->
+        -1
+'Context.push_state'/1 =
+    fun (S) ->
+        'ok'
+'Context.pop_state'/1 =
+    fun (S) ->
+        'ok'
+'Context.clear_state'/1 =
+    fun (S) ->
+        'ok'
+'Context.set_size'/2 =
+    fun (S, Size) ->
+        'ok'
+'Context.set_color'/2 =
+    fun (S, Color) ->
+        'ok'
+'Context.set_spacing'/2 =
+    fun (S, Spacing) ->
+        'ok'
+'Context.set_blur'/2 =
+    fun (S, Blur) ->
+        'ok'
+'Context.set_align'/2 =
+    fun (S, Align) ->
+        'ok'
+'Context.set_alignment'/2 =
+    fun (S, Align) ->
+        'ok'
+'Context.set_font'/2 =
+    fun (S, Font_id) ->
+        'ok'
+'Context.draw_text'/4 =
+    fun (S, X, Y, Text) ->
+        0.0
+'Context.text_bounds'/5 =
+    fun (S, X, Y, Text, Bounds) ->
+        0.0
+'Context.line_bounds'/4 =
+    fun (S, Y, Miny, Maxy) ->
+        'ok'
+'Context.vert_metrics'/4 =
+    fun (S, Ascender, Descender, Lineh) ->
+        'ok'
+'Context.text_iter_init'/6 =
+    fun (S, Iter, X, Y, Str, End) ->
+        0
+'Context.text_iter_next'/3 =
+    fun (S, Iter, Quad) ->
+        0
+'Context.get_texture_data'/3 =
+    fun (S, Width, Height) ->
+        'nil'
+'Context.validate_texture'/2 =
+    fun (S, Dirty) ->
+        0
+'Context.draw_debug'/3 =
+    fun (S, X, Y) ->
+        'ok'
+'Flags.is_empty'/1 =
+    fun (E) ->
+        call 'erlang':'=:='(E, 0)
+'Flags.has'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=/='(call 'erlang':'band'(E, Flag_), 0)
+'Flags.all'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=:='(call 'erlang':'band'(E, Flag_), Flag_)
+'Flags.set'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Flags.set_all'/1 =
+    fun (E) ->
+        'ok'
+'Flags.clear'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Flags.clear_all'/1 =
+    fun (E) ->
+        'ok'
+'Flags.toggle'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Flags__static__zero'/0 =
+    fun () ->
+        0
+'Flags__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Align.is_empty'/1 =
+    fun (E) ->
+        call 'erlang':'=:='(E, 0)
+'Align.has'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=/='(call 'erlang':'band'(E, Flag_), 0)
+'Align.all'/2 =
+    fun (E, Flag_) ->
+        call 'erlang':'=:='(call 'erlang':'band'(E, Flag_), Flag_)
+'Align.set'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Align.set_all'/1 =
+    fun (E) ->
+        'ok'
+'Align.clear'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Align.clear_all'/1 =
+    fun (E) ->
+        'ok'
+'Align.toggle'/2 =
+    fun (E, Flag_) ->
+        'ok'
+'Align__static__zero'/0 =
+    fun () ->
+        0
+'Align__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ErrorCode__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.fontstash')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.fontstash', _0)
+end

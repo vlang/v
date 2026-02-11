@@ -10,12 +10,14 @@ fn core_charlist(s string) string {
 		return '[]'
 	}
 	mut result := strings.new_builder(s.len * 4)
+	mut rune_count := 0
 	for i, c in s {
 		_ = i
 		result.write_string('[${int(c)}|')
+		rune_count++
 	}
 	result.write_string('[]')
-	for _ in 0 .. s.len {
+	for _ in 0 .. rune_count {
 		result.write_u8(`]`)
 	}
 	return result.str()

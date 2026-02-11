@@ -1,0 +1,212 @@
+module 'v.json' ['decode'/1,
+                'decode_with_type'/2,
+                'encode'/1,
+                'encode_pretty'/1,
+                'raw_decode'/1,
+                'fast_raw_decode'/1,
+                'decode_int'/1,
+                'decode_i8'/1,
+                'decode_i16'/1,
+                'decode_i64'/1,
+                'decode_u8'/1,
+                'decode_u16'/1,
+                'decode_u32'/1,
+                'decode_u64'/1,
+                'decode_f32'/1,
+                'decode_f64'/1,
+                'decode_string'/1,
+                'decode_bool'/1,
+                'Any.str'/1,
+                'Any.int'/1,
+                'Any.i64'/1,
+                'Any.f64'/1,
+                'Any.bool'/1,
+                'Any.as_array'/1,
+                'Any.as_map'/1,
+                'Null.str'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'decode'/1 =
+    fun (S) ->
+        call 'erlang':'error'(#{#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#)
+'decode_with_type'/2 =
+    fun (Typ, S) ->
+        call 'erlang':'error'(#{#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#)
+'encode'/1 =
+    fun (Val) ->
+        #{  }#
+'encode_pretty'/1 =
+    fun (Val) ->
+        #{  }#
+'raw_decode'/1 =
+    fun (S) ->
+        call 'erlang':'error'(#{#<106>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'fast_raw_decode'/1 =
+    fun (S) ->
+        apply 'raw_decode'/1(S)
+'decode_int'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> Root
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'is'(Root, 'false') of
+                            <'true'> when 'true' -> call 'erlang':'trunc'(Root)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'is'(Root, 'false') of
+                                    <'true'> when 'true' -> call 'erlang':'binary_to_integer'(Root)
+                                    <'false'> when 'true' -> 
+                                        0
+                                end
+                        end
+                end
+        end
+'decode_i8'/1 =
+    fun (Root) ->
+        apply 'decode_int'/1(Root)
+'decode_i16'/1 =
+    fun (Root) ->
+        apply 'decode_int'/1(Root)
+'decode_i64'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> Root
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'is'(Root, 'false') of
+                            <'true'> when 'true' -> call 'erlang':'trunc'(Root)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'is'(Root, 'false') of
+                                    <'true'> when 'true' -> apply 'string.i64'/1(Root)
+                                    <'false'> when 'true' -> 
+                                        0
+                                end
+                        end
+                end
+        end
+'decode_u8'/1 =
+    fun (Root) ->
+        apply 'decode_int'/1(Root)
+'decode_u16'/1 =
+    fun (Root) ->
+        apply 'decode_int'/1(Root)
+'decode_u32'/1 =
+    fun (Root) ->
+        apply 'decode_int'/1(Root)
+'decode_u64'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> Root
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'is'(Root, 'false') of
+                            <'true'> when 'true' -> call 'erlang':'trunc'(Root)
+                            <'false'> when 'true' -> 
+                                0
+                        end
+                end
+        end
+'decode_f32'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> call 'erlang':'float'(Root)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'is'(Root, 'false') of
+                            <'true'> when 'true' -> call 'erlang':'float'(Root)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'is'(Root, 'false') of
+                                    <'true'> when 'true' -> apply 'string.f32'/1(Root)
+                                    <'false'> when 'true' -> 
+                                        0.0
+                                end
+                        end
+                end
+        end
+'decode_f64'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> call 'erlang':'float'(Root)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'is'(Root, 'false') of
+                            <'true'> when 'true' -> call 'erlang':'float'(Root)
+                            <'false'> when 'true' -> 
+                                case call 'erlang':'is'(Root, 'false') of
+                                    <'true'> when 'true' -> call 'erlang':'binary_to_float'(Root)
+                                    <'false'> when 'true' -> 
+                                        0.0
+                                end
+                        end
+                end
+        end
+'decode_string'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                #{  }#
+        end
+'decode_bool'/1 =
+    fun (Root) ->
+        case call 'erlang':'is'(Root, 'false') of
+            <'true'> when 'true' -> Root
+            <'false'> when 'true' -> 
+                case call 'erlang':'is'(Root, 'false') of
+                    <'true'> when 'true' -> call 'erlang':'=:='(Root, #{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        'false'
+                end
+        end
+'Any.str'/1 =
+    fun (A) ->
+        case A of <'false'> when 'true' -> #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> case A of <'true'> when 'true' -> #{#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}# end <'false'> when 'true' -> case Neg of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]]) <'false'> when 'true' -> S end <'false'> when 'true' -> case Neg of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]]) <'false'> when 'true' -> S end <'false'> when 'true' -> #{#<60>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> A <'false'> when 'true' -> #{#<91>(8,1,'integer',['unsigned'|['big']]),#<93>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<123>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']])}# end
+'Any.int'/1 =
+    fun (A) ->
+        apply 'decode_int'/1(A)
+'Any.i64'/1 =
+    fun (A) ->
+        apply 'decode_i64'/1(A)
+'Any.f64'/1 =
+    fun (A) ->
+        apply 'decode_f64'/1(A)
+'Any.bool'/1 =
+    fun (A) ->
+        apply 'decode_bool'/1(A)
+'Any.as_array'/1 =
+    fun (A) ->
+        case call 'erlang':'is'(A, 'false') of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                []
+        end
+'Any.as_map'/1 =
+    fun (A) ->
+        case call 'erlang':'is'(A, 'false') of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                ~{}~
+        end
+'Null.str'/1 =
+    fun (N) ->
+        #{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.json')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.json', _0)
+end

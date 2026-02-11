@@ -1,0 +1,24 @@
+module 'v.sokol.memory' ['salloc'/2,
+                'sfree'/2,
+                'slog'/7,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'salloc'/2 =
+        fun (Size, User_data) ->
+            'nil'
+    'sfree'/2 =
+        fun (Ptr, User_data) ->
+            'ok'
+    'slog'/7 =
+        fun (Const_tag, Log_level, Log_item_id, Const_message_or_null, Line_nr, Const_filename_or_null, User_data) ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sokol.memory')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sokol.memory', _0)
+    end

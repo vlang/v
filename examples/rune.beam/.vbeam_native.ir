@@ -1,0 +1,26 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov_imm, {vreg, 0}, 128512},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 1}, 64},
+                {print_int, {vreg, 1}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

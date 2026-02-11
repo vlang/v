@@ -1,0 +1,372 @@
+module 'v.obj' ['get_int'/2,
+                'get_float'/2,
+                'parse_3f'/2,
+                'ObjPart.parse_floats'/3,
+                'Part.parse_faces'/4,
+                'ObjPart.parse_obj_buffer'/3,
+                'ObjPart.load_materials'/1,
+                'ObjPart.get_buffer'/2,
+                'ObjPart.summary'/1,
+                'tst'/0,
+                'create_texture'/3,
+                'destroy_texture'/1,
+                'load_texture'/1,
+                'ObjPart.create_pipeline'/5,
+                'ObjPart.init_render_data'/3,
+                'ObjPart.bind_and_draw'/3,
+                'ObjPart.bind_and_draw_all'/2,
+                'ObjPart.calc_bbox'/1,
+                'read_lines_from_file'/1,
+                'read_bytes_from_file'/1,
+                'F_state__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'get_int'/2 =
+        fun (S, Start_index) ->
+            let <Res> =
+                0
+            in  let <Sgn> =
+                    1
+                in  let <State> =
+                        'start'
+                    in  call 'erlang':'*'(Res, Sgn)
+    'get_float'/2 =
+        fun (S, Start_index) ->
+            let <F_res> =
+                call 'v.strconv':'atof_quick'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Start_index, Start_index), 1), S))
+            in  F_res
+    'parse_3f'/2 =
+        fun (Row, Start_index) ->
+            let <F1> =
+                0
+            in  let <F2> =
+                    0
+                in  let <F0> =
+                        apply 'get_float'/2(Row, Start_index)
+                    in  let <P> =
+                            apply 'get_float'/2(Row, Start_index)
+                        in  let <F1_1> =
+                                apply 'get_float'/2(Row, call 'erlang':'+'(P, 1))
+                            in  let <P_2> =
+                                    apply 'get_float'/2(Row, call 'erlang':'+'(P, 1))
+                                in  let <F2_3> =
+                                        apply 'get_float'/2(Row, call 'erlang':'+'(P_2, 1))
+                                    in  let <P_4> =
+                                            apply 'get_float'/2(Row, call 'erlang':'+'(P_2, 1))
+                                        in  ~{'e'=>[F0|[F1_1|[F2_3|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'ObjPart.parse_floats'/3 =
+        fun (M, Row, Start_index) ->
+            let <Res_f> =
+                0
+            in  let <Res> =
+                    ~{'e'=>[0|[0|[0|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~
+                in  let <C> =
+                        0
+                    in  Res
+    'Part.parse_faces'/4 =
+        fun (P, Row, Start_index, Obj_part) ->
+            let <I> =
+                call 'erlang':'+'(Start_index, 1)
+            in  let <Res> =
+                    []
+                in  let <V> =
+                        0
+                    in  let <T> =
+                            0
+                        in  let <N> =
+                                0
+                            in  call 'erlang':'bsl'(call 'erlang':'map_get'('faces', P), Res)
+    'ObjPart.parse_obj_buffer'/3 =
+        fun (Obj_part, Rows, Single_material) ->
+            let <Mat_count> =
+                0
+            in  let <Row_count> =
+                    0
+                in  let <Default_part> =
+                        ~{'name'=>#{#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#,{'vbeam','type'}=>'Part'}~
+                    in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('part', Obj_part), Default_part)
+                            do  let <_1> =
+                                fun (Row, C) ->
+                                    do  0
+                                        do  Row_count
+                                            do  'ok'
+                                                do  case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'rem'(C, 100000), 0), call 'erlang':'>'(C, 0)) of <'true'> when 'true' -> call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(C)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]]) <'false'> when 'true' -> 'ok' end
+                                                    call 'erlang':'+'(C, 1)
+                            in  call 'lists':'foldl'(_1, 0, Rows)
+                                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(Row_count)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<106>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[]])
+                                    case call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('part', Obj_part)), 1), call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('faces', call 'lists':'nth'(1, call 'erlang':'map_get'('part', Obj_part)))), 0)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'ObjPart.load_materials'/1 =
+        fun (Obj_part) ->
+            let <Rows> =
+                apply 'read_lines_from_file'/1(call 'erlang':'map_get'('material_file', Obj_part))
+            in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('material_file', Obj_part)|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(Rows))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])|[]])
+                    do  let <_1> =
+                        fun (Row) ->
+                            let <I> =
+                                0
+                            in  'ok'
+                    in  call 'lists':'foreach'(_1, Rows)
+                        do  let <_2> =
+                            fun (M, I) ->
+                                do  case call 'erlang':'not'(call 'lists':'member'(call 'erlang':'map_get'('name', M), call 'erlang':'map_get'('mat_map', Obj_part))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'+'(I, 1)
+                        in  call 'lists':'foldl'(_2, 0, call 'erlang':'map_get'('mat', Obj_part))
+                            call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]])
+    'ObjPart.get_buffer'/2 =
+        fun (Obj_part, In_part_list) ->
+            let <V_count_index> =
+                0
+            in  let <Out_buf> =
+                    ~{{'vbeam','type'}=>'Skl_buffer'}~
+                in  let <Cache> =
+                        ~{}~
+                    in  let <Cache_hit> =
+                            0
+                        in  do  let <_1> =
+                                fun (In_part) ->
+                                    let <Part> =
+                                        call 'lists':'nth'(call 'erlang':'+'(In_part, 1), call 'erlang':'map_get'('part', Obj_part))
+                                    in  'ok'
+                            in  call 'lists':'foreach'(_1, In_part_list)
+                                do  call 'erlang':'length'(call 'erlang':'map_get'('ibuf', Out_buf))
+                                    Out_buf
+    'ObjPart.summary'/1 =
+        fun (Obj_part) ->
+            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('v', Obj_part)))|[]]])|[]])
+                    do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('vn', Obj_part)))|[]]])|[]])
+                        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<117>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('vt', Obj_part)))|[]]])|[]])
+                            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('part', Obj_part)))|[]]])|[]])
+                                do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                                    do  let <_1> =
+                                        fun (X, C) ->
+                                            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(C)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', X)|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('material', X)|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('faces', X)))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]])|[]])
+                                                call 'erlang':'+'(C, 1)
+                                    in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('part', Obj_part))
+                                        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                                            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'maps':'keys'(call 'erlang':'map_get'('mat_map', Obj_part))|[]]])|[]])
+                                                'ok'
+    'tst'/0 =
+        fun () ->
+            let <S> =
+                #{#<75>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <R> =
+                    call 'v.strconv':'atof_quick'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(1, call 'erlang':'-'(call 'erlang':'length'(S), 1)), 1), S))
+                in  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'float_to_binary'(R)|[]])
+    'create_texture'/3 =
+        fun (W, H, Buf) ->
+            let <Sz> =
+                call 'erlang':'*'(call 'erlang':'*'(W, H), 4)
+            in  let <Img_desc> =
+                    ~{'width'=>W,'height'=>H,'num_mipmaps'=>0,'label'=>'nil','d3d11_texture'=>0,{'vbeam','type'}=>'ImageDesc'}~
+                in  do  ~{'ptr'=>Buf,'size'=>Sz,{'vbeam','type'}=>'Range'}~
+                        let <Sg_img> =
+                            call 'v.sokol.gfx':'make_image'(Img_desc)
+                        in  let <Smp_desc> =
+                                ~{'min_filter'=>'linear','mag_filter'=>'linear','wrap_u'=>'clamp_to_edge','wrap_v'=>'clamp_to_edge',{'vbeam','type'}=>'SamplerDesc'}~
+                            in  let <Sg_smp> =
+                                    call 'v.sokol.gfx':'make_sampler'(Smp_desc)
+                                in  Sg_img
+    'destroy_texture'/1 =
+        fun (Sg_img) ->
+            call 'v.sokol.gfx':'destroy_image'(Sg_img)
+    'load_texture'/1 =
+        fun (File_name) ->
+            let <Buffer> =
+                apply 'read_bytes_from_file'/1(File_name)
+            in  do  call 'v.stbi':'set_flip_vertically_on_load'('true')
+                    let <Img> =
+                        try call 'v.stbi':'load_from_memory'(call 'erlang':'map_get'('data', Buffer), call 'erlang':'length'(Buffer), ~{{'vbeam','type'}=>'LoadParams'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' ->                         do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[File_name|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                            call 'erlang':'halt'(0)
+
+                    in  let <Sg_img> =
+                            apply 'create_texture'/3(call 'erlang':'map_get'('width', Img), call 'erlang':'map_get'('height', Img), call 'erlang':'map_get'('data', Img))
+                        in  let <Sg_smp> =
+                                apply 'create_texture'/3(call 'erlang':'map_get'('width', Img), call 'erlang':'map_get'('height', Img), call 'erlang':'map_get'('data', Img))
+                            in  do  apply 'Image.free'/1(Img)
+                                    Sg_img
+    'ObjPart.create_pipeline'/5 =
+        fun (Obj_part, In_part, Shader, Texture, Sampler) ->
+            let <Res> =
+                ~{{'vbeam','type'}=>'Render_data'}~
+            in  let <Obj_buf> =
+                    apply 'ObjPart.get_buffer'/2(Obj_part, In_part)
+                in  do  call 'erlang':'map_get'('n_vertex', Obj_buf)
+                        do  call 'erlang':'map_get'('material', call 'lists':'nth'(call 'erlang':'+'(call 'lists':'nth'(1, In_part), 1), call 'erlang':'map_get'('part', Obj_part)))
+                            let <Vert_buffer_desc> =
+                                ~{{'vbeam','type'}=>'BufferDesc'}~
+                            in  do  apply 'vmemset'/3(Vert_buffer_desc, 0, 8)
+                                    do  call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('vbuf', Obj_buf)), 8)
+                                        do  ~{'ptr'=>call 'erlang':'map_get'('data', call 'erlang':'map_get'('vbuf', Obj_buf)),'size'=>call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('vbuf', Obj_buf)), 8),{'vbeam','type'}=>'Range'}~
+                                            do  'vertexbuffer'
+                                                do  call 'erlang':'map_get'('str', call 'erlang':'iolist_to_binary'([#{#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']])}#|[In_part|[]]]))
+                                                    let <Vbuf> =
+                                                        call 'v.sokol.gfx':'make_buffer'(Vert_buffer_desc)
+                                                    in  let <Index_buffer_desc> =
+                                                            ~{{'vbeam','type'}=>'BufferDesc'}~
+                                                        in  do  apply 'vmemset'/3(Index_buffer_desc, 0, 8)
+                                                                do  call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('ibuf', Obj_buf)), 8)
+                                                                    do  ~{'ptr'=>call 'erlang':'map_get'('data', call 'erlang':'map_get'('ibuf', Obj_buf)),'size'=>call 'erlang':'*'(call 'erlang':'length'(call 'erlang':'map_get'('ibuf', Obj_buf)), 8),{'vbeam','type'}=>'Range'}~
+                                                                        do  'indexbuffer'
+                                                                            do  call 'erlang':'map_get'('str', call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']])}#|[In_part|[]]]))
+                                                                                let <Ibuf> =
+                                                                                    call 'v.sokol.gfx':'make_buffer'(Index_buffer_desc)
+                                                                                in  let <Pipdesc> =
+                                                                                        ~{{'vbeam','type'}=>'PipelineDesc'}~
+                                                                                    in  do  apply 'vmemset'/3(Pipdesc, 0, 8)
+                                                                                            do  8
+                                                                                                do  'float3'
+                                                                                                    do  'float3'
+                                                                                                        do  'float2'
+                                                                                                            do  'uint32'
+                                                                                                                let <Color_state> =
+                                                                                                                    ~{'blend'=>~{'enabled'=>'true','src_factor_rgb'=>'src_alpha','dst_factor_rgb'=>'one_minus_src_alpha',{'vbeam','type'}=>'BlendState'}~,{'vbeam','type'}=>'ColorTargetState'}~
+                                                                                                                in  do  Color_state
+                                                                                                                        do  ~{'write_enabled'=>'true','compare'=>'less_equal',{'vbeam','type'}=>'DepthState'}~
+                                                                                                                            do  'front'
+                                                                                                                                do  call 'erlang':'map_get'('str', call 'erlang':'iolist_to_binary'([#{#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']])}#|[In_part|[]]]))
+                                                                                                                                    do  Shader
+                                                                                                                                        do  Vbuf
+                                                                                                                                            do  Ibuf
+                                                                                                                                                do  Texture
+                                                                                                                                                    do  Sampler
+                                                                                                                                                        do  call 'v.sokol.gfx':'make_pipeline'(Pipdesc)
+                                                                                                                                                            Res
+    'ObjPart.init_render_data'/3 =
+        fun (Obj_part, Texture, Sampler) ->
+            let <Shader> =
+                call 'v.sokol.gfx':'make_shader'(call 'v.C':'gouraud_shader_desc'(call 'v.sokol.gfx':'query_backend'()))
+            in  let <Part_dict> =
+                    ~{}~
+                in  do  let <_1> =
+                        fun (P, I) ->
+                            do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('faces', P)), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'(call 'erlang':'map_get'('material', P), Part_dict), I) <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('part', Obj_part))
+                        do  apply 'array.clear'/1(call 'erlang':'map_get'('rend_data', Obj_part))
+                            do  let <_3> =
+                                fun (V, K) ->
+                                    do  Texture
+                                        do  Sampler
+                                            do  case call 'lists':'member'(K, call 'erlang':'map_get'('mat_map', Obj_part)) of <'true'> when 'true' -> 
+                                                let <Mat_map> =
+                                                    call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'(K, call 'erlang':'map_get'('mat_map', Obj_part)), 1), call 'erlang':'map_get'('mat', Obj_part))
+                                                in  case call 'lists':'member'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('maps', Mat_map)) of <'true'> when 'true' -> 
+                                                        let <File_name> =
+                                                            call 'erlang':'map_get'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('maps', Mat_map))
+                                                        in  case call 'lists':'member'(File_name, call 'erlang':'map_get'('texture', Obj_part)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                                                                let <Txt> =
+                                                                    apply 'load_texture'/1(File_name)
+                                                                in  let <Smp> =
+                                                                        apply 'load_texture'/1(File_name)
+                                                                    in  do  Txt
+                                                                            'ok'
+                                                             end
+                                                     <'false'> when 'true' -> 'ok' end
+                                             <'false'> when 'true' -> 'ok' end
+                                                do  call 'erlang':'bsl'(call 'erlang':'map_get'('rend_data', Obj_part), apply 'ObjPart.create_pipeline'/5(Obj_part, V, Shader, Txt, Smp))
+                                                    call 'erlang':'+'(K, 1)
+                            in  call 'lists':'foldl'(_3, 0, Part_dict)
+                                do  apply 'ObjPart.calc_bbox'/1(Obj_part)
+                                    call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]])
+    'ObjPart.bind_and_draw'/3 =
+        fun (Obj_part, Rend_data_index, In_data) ->
+            let <Part_render_data> =
+                call 'lists':'nth'(call 'erlang':'+'(Rend_data_index, 1), call 'erlang':'map_get'('rend_data', Obj_part))
+            in  let <Tmp_fs_params> =
+                    ~{{'vbeam','type'}=>'Tmp_fs_param'}~
+                in  do  call 'erlang':'map_get'('light', call 'erlang':'map_get'('fs_data', In_data))
+                        do  case call 'lists':'member'(call 'erlang':'map_get'('material', Part_render_data), call 'erlang':'map_get'('mat_map', Obj_part)) of <'true'> when 'true' -> 
+                            let <Mat_index> =
+                                call 'erlang':'map_get'(call 'erlang':'map_get'('material', Part_render_data), call 'erlang':'map_get'('mat_map', Obj_part))
+                            in  let <Mat> =
+                                    call 'lists':'nth'(call 'erlang':'+'(Mat_index, 1), call 'erlang':'map_get'('mat', Obj_part))
+                                in  do  call 'erlang':'map_get'('ka', call 'erlang':'map_get'('fs_data', In_data))
+                                        do  case call 'lists':'member'(#{#<75>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('ks', Mat)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            do  call 'erlang':'map_get'('ks', call 'erlang':'map_get'('fs_data', In_data))
+                                                do  case call 'lists':'member'(#{#<75>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('ks', Mat)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                    do  case call 'lists':'member'(#{#<78>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('ns', Mat)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                        do  call 'erlang':'map_get'('kd', call 'erlang':'map_get'('fs_data', In_data))
+                                                            do  case call 'lists':'member'(#{#<75>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('ks', Mat)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                case call 'lists':'member'(#{#<84>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('ns', Mat)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                         <'false'> when 'true' -> 'ok' end
+                            do  call 'v.sokol.gfx':'apply_pipeline'(call 'erlang':'map_get'('pipeline', Part_render_data))
+                                do  call 'v.sokol.gfx':'apply_bindings'(call 'erlang':'map_get'('bind', Part_render_data))
+                                    let <Vs_uniforms_range> =
+                                        ~{'ptr'=>call 'erlang':'map_get'('vs_data', In_data),'size'=>call 'erlang':'map_get'('vs_len', In_data),{'vbeam','type'}=>'Range'}~
+                                    in  let <Fs_uniforms_range> =
+                                            ~{'ptr'=>Tmp_fs_params,'size'=>call 'erlang':'map_get'('fs_len', In_data),{'vbeam','type'}=>'Range'}~
+                                        in  do  call 'v.sokol.gfx':'apply_uniforms'('vs', fun (_fref0) -> call 'v.C':'SLOT_vs_params'(_fref0), Vs_uniforms_range)
+                                                do  call 'v.sokol.gfx':'apply_uniforms'('fs', fun (_fref0) -> call 'v.C':'SLOT_fs_params'(_fref0), Fs_uniforms_range)
+                                                    do  call 'v.sokol.gfx':'draw'(0, call 'erlang':'map_get'('n_vert', Part_render_data), 1)
+                                                        call 'erlang':'map_get'('n_vert', Part_render_data)
+    'ObjPart.bind_and_draw_all'/2 =
+        fun (Obj_part, In_data) ->
+            let <N_vert> =
+                0
+            in  let <_1> =
+                    let <_3> =
+                        fun (_, _7) ->
+                            let <N_vertAcc> =
+                                call 'erlang':'element'(1, _7)
+                            in                              let <IAcc> =
+                                call 'erlang':'element'(2, _7)
+                            in  
+                            let <N_vertOut_5> =
+                                apply 'ObjPart.bind_and_draw'/3(Obj_part, IAcc, In_data)
+                            in  {N_vertOut_5, call 'erlang':'+'(IAcc, 1)}
+                    in  call 'lists':'foldl'(_3, {N_vert, 0}, call 'erlang':'map_get'('rend_data', Obj_part))
+                in  let <N_vert_2> =
+                        call 'erlang':'element'(1, _1)
+                    in  N_vert_2
+    'ObjPart.calc_bbox'/1 =
+        fun (Obj_part) ->
+            do  ~{'e'=>[call 'erlang':'-'(3.40282346638528859811704183484516925440e+38)|[call 'erlang':'-'(3.40282346638528859811704183484516925440e+38)|[call 'erlang':'-'(3.40282346638528859811704183484516925440e+38)|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~
+                do  ~{'e'=>[3.40282346638528859811704183484516925440e+38|[3.40282346638528859811704183484516925440e+38|[3.40282346638528859811704183484516925440e+38|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~
+                    do  let <_1> =
+                        fun (V) ->
+                            do  case call 'erlang':'>'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', call 'erlang':'map_get'('max', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                do  case call 'erlang':'>'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', call 'erlang':'map_get'('max', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    do  case call 'erlang':'>'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', call 'erlang':'map_get'('max', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        do  case call 'erlang':'<'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', call 'erlang':'map_get'('min', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            do  case call 'erlang':'<'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', call 'erlang':'map_get'('min', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                case call 'erlang':'<'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', call 'erlang':'map_get'('min', Obj_part)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('v', Obj_part))
+                        let <Val1> =
+                            apply 'Vec4.mod3'/1(call 'erlang':'map_get'('max', Obj_part))
+                        in  let <Val2> =
+                                apply 'Vec4.mod3'/1(call 'erlang':'map_get'('min', Obj_part))
+                            in  case call 'erlang':'>'(Val1, Val2) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'read_lines_from_file'/1 =
+        fun (File_path) ->
+            case call 'filelib':'is_regular'(call 'erlang':'binary_to_list'(File_path)) of
+                <'true'> when 'true' -> try call 'binary':'split'(call 'erlang':'element'(2, call 'file':'read_file'(File_path)), #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> []
+                <'false'> when 'true' -> 
+                    call 'binary':'split'(call 'erlang':'list_to_binary'(apply 'read_bytes_from_file'/1(File_path)), #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+            end
+    'read_bytes_from_file'/1 =
+        fun (File_path) ->
+            case call 'filelib':'is_regular'(call 'erlang':'binary_to_list'(File_path)) of
+                <'true'> when 'true' -> try call 'file':'read_file'(File_path) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> []
+                <'false'> when 'true' -> 
+                    let <Mpath> =
+                        call 'erlang':'iolist_to_binary'([#{#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']])}#|[File_path|[]]])
+                    in  try call 'file':'read_file'(#{#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' ->                         do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<77>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<85>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#|[Mpath|[#{#<96>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                            call 'erlang':'halt'(0)
+
+            end
+    'F_state__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.obj')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.obj', _0)
+    end

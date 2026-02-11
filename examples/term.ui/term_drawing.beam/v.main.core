@@ -1,0 +1,197 @@
+module 'v.main' ['main'/0,
+                'frame'/1,
+                'event'/2,
+                'App.render'/2,
+                'App.select_color'/3,
+                'App.set_pixel'/4,
+                'App.paint'/2,
+                'App.draw_content'/1,
+                'App.draw_cursor'/1,
+                'App.draw_header'/1,
+                'App.draw_footer'/1,
+                'App.inc_size'/1,
+                'App.dec_size'/1,
+                'App.footer_click'/2,
+                'App.show_msg'/3,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  'ok'
+                    do  40
+                        do  15
+                            do  'ok'
+                                try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'frame'/1 =
+        fun (App) ->
+            let <Redraw> =
+                call 'erlang':'map_get'('should_redraw', App)
+            in  let <Redraw_1> =
+                    case call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('msg', App), #{  }#), call 'erlang':'>='(call 'erlang':'map_get'('frame_count', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('msg_hide_tick', App))) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> Redraw end
+                in  case Redraw_1 of <'true'> when 'true' -> 
+                        do  apply 'App.render'/2(App, 'false')
+                            'ok'
+                     <'false'> when 'true' -> 'ok' end
+    'event'/2 =
+        fun (Event, App) ->
+            do  case call 'erlang':'map_get'('typ', Event) of <'mouse_down'> when 'true' -> case call 'erlang':'<'(call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('y', Event)), 5) of <'true'> when 'true' -> apply 'App.footer_click'/2(App, Event) <'false'> when 'true' -> apply 'App.paint'/2(App, Event) end <'mouse_up'> when 'true' -> 'ok' <'mouse_drag'> when 'true' -> apply 'App.paint'/2(App, Event) <'mouse_move'> when 'true' -> 'ok' <'mouse_scroll'> when 'true' -> case apply 'Modifiers.has'/2(call 'erlang':'map_get'('modifiers', Event), 'ctrl') of <'true'> when 'true' -> 
+                let <P> =
+                    call 'erlang':'not'(apply 'Modifiers.has'/2(call 'erlang':'map_get'('modifiers', Event), 'shift'))
+                in  let <C> =
+                        case D of <'true'> when 'true' -> case P of <'true'> when 'true' -> call 'erlang':'-'(call 'erlang':'map_get'('primary_color_idx', App), 1) <'false'> when 'true' -> call 'erlang':'-'(call 'erlang':'map_get'('secondary_color_idx', App), 1) end <'false'> when 'true' -> case P of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('primary_color_idx', App), 1) <'false'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('secondary_color_idx', App), 1) end end
+                    in  apply 'App.select_color'/3(App, P, C)
+             <'false'> when 'true' -> case D of <'true'> when 'true' -> apply 'App.inc_size'/1(App) <'false'> when 'true' -> apply 'App.dec_size'/1(App) end end <'key_down'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'f1') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), '_1') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'f2') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), '_2') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'space') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'enter') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'delete') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'backspace') of <'true'> when 'true' -> apply 'App.paint'/2(App, Nevent) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'j') of <'true'> when 'true' -> call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'down') of <'true'> when 'true' -> call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'k') of <'true'> when 'true' -> call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'up') of <'true'> when 'true' -> call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'h') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'left') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'l') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'right') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 't') of <'true'> when 'true' -> apply 'App.select_color'/3(App, P, C) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'r') of <'true'> when 'true' -> apply 'App.select_color'/3(App, P, C) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'plus') of <'true'> when 'true' -> apply 'App.inc_size'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'minus') of <'true'> when 'true' -> apply 'App.dec_size'/1(App) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'c') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'q') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', Event), 'escape') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> 'ok' end end end end end end end end end end end end end end end end end end end end end end end <_> when 'true' -> 'ok' end
+                'ok'
+    'App.render'/2 =
+        fun (App, Paint_only) ->
+            do  'ok'
+                do  apply 'App.draw_header'/1(App)
+                    do  apply 'App.draw_content'/1(App)
+                        do  case call 'erlang':'not'(Paint_only) of <'true'> when 'true' -> 
+                            do  apply 'App.draw_footer'/1(App)
+                                apply 'App.draw_cursor'/1(App)
+                         <'false'> when 'true' -> 'ok' end
+                            'ok'
+    'App.select_color'/3 =
+        fun (App, Primary, Idx) ->
+            let <C> =
+                call 'erlang':'rem'(call 'erlang':'+'(Idx, 57), 57)
+            in  let <Cx> =
+                    call 'erlang':'rem'(C, 19)
+                in  let <Cy> =
+                        call 'erlang':'rem'(call 'erlang':'div'(C, 19), 3)
+                    in  let <Color> =
+                            call 'lists':'nth'(call 'erlang':'+'(Cx, 1), call 'lists':'nth'(call 'erlang':'+'(Cy, 1), [[~{'r'=>239,'g'=>154,'b'=>154,{'vbeam','type'}=>'Color'}~|[~{'r'=>244,'g'=>143,'b'=>177,{'vbeam','type'}=>'Color'}~|[~{'r'=>206,'g'=>147,'b'=>216,{'vbeam','type'}=>'Color'}~|[~{'r'=>179,'g'=>157,'b'=>219,{'vbeam','type'}=>'Color'}~|[~{'r'=>159,'g'=>168,'b'=>218,{'vbeam','type'}=>'Color'}~|[~{'r'=>144,'g'=>202,'b'=>249,{'vbeam','type'}=>'Color'}~|[~{'r'=>129,'g'=>212,'b'=>250,{'vbeam','type'}=>'Color'}~|[~{'r'=>128,'g'=>222,'b'=>234,{'vbeam','type'}=>'Color'}~|[~{'r'=>128,'g'=>203,'b'=>196,{'vbeam','type'}=>'Color'}~|[~{'r'=>165,'g'=>214,'b'=>167,{'vbeam','type'}=>'Color'}~|[~{'r'=>197,'g'=>225,'b'=>165,{'vbeam','type'}=>'Color'}~|[~{'r'=>230,'g'=>238,'b'=>156,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>245,'b'=>157,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>224,'b'=>130,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>204,'b'=>128,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>171,'b'=>145,{'vbeam','type'}=>'Color'}~|[~{'r'=>188,'g'=>170,'b'=>164,{'vbeam','type'}=>'Color'}~|[~{'r'=>238,'g'=>238,'b'=>238,{'vbeam','type'}=>'Color'}~|[~{'r'=>176,'g'=>190,'b'=>197,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[[~{'r'=>244,'g'=>67,'b'=>54,{'vbeam','type'}=>'Color'}~|[~{'r'=>233,'g'=>30,'b'=>99,{'vbeam','type'}=>'Color'}~|[~{'r'=>156,'g'=>39,'b'=>176,{'vbeam','type'}=>'Color'}~|[~{'r'=>103,'g'=>58,'b'=>183,{'vbeam','type'}=>'Color'}~|[~{'r'=>63,'g'=>81,'b'=>181,{'vbeam','type'}=>'Color'}~|[~{'r'=>33,'g'=>150,'b'=>243,{'vbeam','type'}=>'Color'}~|[~{'r'=>3,'g'=>169,'b'=>244,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>188,'b'=>212,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>150,'b'=>136,{'vbeam','type'}=>'Color'}~|[~{'r'=>76,'g'=>175,'b'=>80,{'vbeam','type'}=>'Color'}~|[~{'r'=>139,'g'=>195,'b'=>74,{'vbeam','type'}=>'Color'}~|[~{'r'=>205,'g'=>220,'b'=>57,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>235,'b'=>59,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>193,'b'=>7,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>152,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>87,'b'=>34,{'vbeam','type'}=>'Color'}~|[~{'r'=>121,'g'=>85,'b'=>72,{'vbeam','type'}=>'Color'}~|[~{'r'=>120,'g'=>120,'b'=>120,{'vbeam','type'}=>'Color'}~|[~{'r'=>96,'g'=>125,'b'=>139,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[[~{'r'=>198,'g'=>40,'b'=>40,{'vbeam','type'}=>'Color'}~|[~{'r'=>173,'g'=>20,'b'=>87,{'vbeam','type'}=>'Color'}~|[~{'r'=>106,'g'=>27,'b'=>154,{'vbeam','type'}=>'Color'}~|[~{'r'=>69,'g'=>39,'b'=>160,{'vbeam','type'}=>'Color'}~|[~{'r'=>40,'g'=>53,'b'=>147,{'vbeam','type'}=>'Color'}~|[~{'r'=>21,'g'=>101,'b'=>192,{'vbeam','type'}=>'Color'}~|[~{'r'=>2,'g'=>119,'b'=>189,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>131,'b'=>143,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>105,'b'=>92,{'vbeam','type'}=>'Color'}~|[~{'r'=>46,'g'=>125,'b'=>50,{'vbeam','type'}=>'Color'}~|[~{'r'=>85,'g'=>139,'b'=>47,{'vbeam','type'}=>'Color'}~|[~{'r'=>158,'g'=>157,'b'=>36,{'vbeam','type'}=>'Color'}~|[~{'r'=>249,'g'=>168,'b'=>37,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>143,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>239,'g'=>108,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>216,'g'=>67,'b'=>21,{'vbeam','type'}=>'Color'}~|[~{'r'=>78,'g'=>52,'b'=>46,{'vbeam','type'}=>'Color'}~|[~{'r'=>33,'g'=>33,'b'=>33,{'vbeam','type'}=>'Color'}~|[~{'r'=>55,'g'=>71,'b'=>79,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[]]]]))
+                        in  do  case Primary of <'true'> when 'true' -> 
+                                do  call 'erlang':'rem'(C, 57)
+                                    'ok'
+                             <'false'> when 'true' -> 
+                                do  call 'erlang':'rem'(C, 57)
+                                    'ok'
+                             end
+                                let <C_str> =
+                                    case Primary of <'true'> when 'true' -> #{#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}# end
+                                in  apply 'App.show_msg'/3(App, call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[C_str|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Idx)|[]]]]]), 1)
+    'App.set_pixel'/4 =
+        fun (App, X_, Y_, C) ->
+            let <X> =
+                call 'erlang':'-'(X_, 1)
+            in  let <Y> =
+                    call 'erlang':'-'(Y_, 4)
+                in  case call 'erlang':'or'(call 'erlang':'<'(Y, 0), call 'erlang':'<'(call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), Y), 3)) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'>='(Y, call 'erlang':'length'(call 'erlang':'map_get'('drawing', App))), call 'erlang':'<'(X, 0)), call 'erlang':'>='(X, call 'erlang':'length'(call 'lists':'nth'(1, call 'erlang':'map_get'('drawing', App))))) of
+                                <'true'> when 'true' -> 'ok'
+                                <'false'> when 'true' -> 
+                                    'ok'
+                            end
+                    end
+    'App.paint'/2 =
+        fun (App, Event) ->
+            case call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'map_get'('y', Event), 4), call 'erlang':'<'(call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('y', Event)), 4)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <X_start> =
+                        call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'float'(call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'map_get'('x', Event), 1), 2)), call 'erlang':'div'(call 'erlang':'map_get'('size', App), 2)), 1))
+                    in  let <Y_start> =
+                            call 'erlang':'-'(call 'erlang':'map_get'('y', Event), call 'erlang':'div'(call 'erlang':'map_get'('size', App), 2))
+                        in  let <Color> =
+                                case call 'erlang':'map_get'('button', Event) of <'left'> when 'true' -> call 'erlang':'map_get'('primary_color', App) <'right'> when 'true' -> call 'erlang':'map_get'('secondary_color', App) <_> when 'true' -> call 'erlang':'map_get'('bg_color', App) end
+                            in  'ok'
+            end
+    'App.draw_content'/1 =
+        fun (App) ->
+            let <W_> =
+                call 'erlang':'div'(call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App)), 2)
+            in  let <H_> =
+                    call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), 8)
+                in  let <H__1> =
+                        case call 'erlang':'>'(H_, call 'erlang':'length'(call 'erlang':'map_get'('drawing', App))) of <'true'> when 'true' -> call 'erlang':'length'(call 'erlang':'map_get'('drawing', App)) <'false'> when 'true' -> H_ end
+                    in  'ok'
+    'App.draw_cursor'/1 =
+        fun (App) ->
+            case call 'lists':'member'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)), [3|[call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), 5)|[]]]) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    let <Cursor_color> =
+                        case call 'erlang':'map_get'('is_dragging', App) of <'true'> when 'true' -> ~{'r'=>220,'g'=>220,'b'=>220,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> ~{'r'=>160,'g'=>160,'b'=>160,{'vbeam','type'}=>'Color'}~ end
+                    in  do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('ui', App), Cursor_color)
+                            do  case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)), 3), call 'erlang':'=<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)), call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), 4))) of <'true'> when 'true' -> 
+                                let <X_start> =
+                                    call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'float'(call 'erlang':'div'(call 'erlang':'-'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('mouse_pos', App)), 1), 2)), call 'erlang':'div'(call 'erlang':'map_get'('size', App), 2)), 1)), 2), 1)
+                                in  let <Y_start> =
+                                        call 'erlang':'-'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('mouse_pos', App)), call 'erlang':'div'(call 'erlang':'map_get'('size', App), 2))
+                                    in  let <X_end> =
+                                            call 'erlang':'-'(call 'erlang':'+'(X_start, call 'erlang':'*'(call 'erlang':'map_get'('size', App), 2)), 1)
+                                        in  let <Y_end> =
+                                                call 'erlang':'-'(call 'erlang':'+'(Y_start, call 'erlang':'map_get'('size', App)), 1)
+                                            in  let <X_start_1> =
+                                                    case call 'erlang':'<'(X_start, 1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> X_start end
+                                                in  let <Y_start_2> =
+                                                        case call 'erlang':'<'(Y_start, 4) of <'true'> when 'true' -> 4 <'false'> when 'true' -> Y_start end
+                                                    in  let <X_end_3> =
+                                                            case call 'erlang':'>'(X_end, call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))) of <'true'> when 'true' -> call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App)) <'false'> when 'true' -> X_end end
+                                                        in  let <Y_end_4> =
+                                                                case call 'erlang':'>'(Y_end, call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), 5)) of <'true'> when 'true' -> call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), 5) <'false'> when 'true' -> Y_end end
+                                                            in  'ok'
+                             <'false'> when 'true' -> 'ok' end
+                                'ok'
+            end
+    'App.draw_header'/1 =
+        fun (App) ->
+            do  case call 'erlang':'=/='(call 'erlang':'map_get'('msg', App), #{  }#) of <'true'> when 'true' -> 
+                do  apply 'Context.set_color'/2(call 'erlang':'map_get'('ui', App), ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                    do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('ui', App), ~{'r'=>220,'g'=>220,'b'=>220,{'vbeam','type'}=>'Color'}~)
+                        do  'ok'
+                            'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  'ok'
+                    apply 'Context.horizontal_separator'/2(call 'erlang':'map_get'('ui', App), 3)
+    'App.draw_footer'/1 =
+        fun (App) ->
+            do  call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('ui', App))
+let <Wh> =
+                call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App))
+            in  do  apply 'Context.horizontal_separator'/2(call 'erlang':'map_get'('ui', App), call 'erlang':'-'(Wh, 4))
+                    do  let <_1> =
+                        fun (Color_row, I) ->
+                            do  'ok'
+                                call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, [[~{'r'=>239,'g'=>154,'b'=>154,{'vbeam','type'}=>'Color'}~|[~{'r'=>244,'g'=>143,'b'=>177,{'vbeam','type'}=>'Color'}~|[~{'r'=>206,'g'=>147,'b'=>216,{'vbeam','type'}=>'Color'}~|[~{'r'=>179,'g'=>157,'b'=>219,{'vbeam','type'}=>'Color'}~|[~{'r'=>159,'g'=>168,'b'=>218,{'vbeam','type'}=>'Color'}~|[~{'r'=>144,'g'=>202,'b'=>249,{'vbeam','type'}=>'Color'}~|[~{'r'=>129,'g'=>212,'b'=>250,{'vbeam','type'}=>'Color'}~|[~{'r'=>128,'g'=>222,'b'=>234,{'vbeam','type'}=>'Color'}~|[~{'r'=>128,'g'=>203,'b'=>196,{'vbeam','type'}=>'Color'}~|[~{'r'=>165,'g'=>214,'b'=>167,{'vbeam','type'}=>'Color'}~|[~{'r'=>197,'g'=>225,'b'=>165,{'vbeam','type'}=>'Color'}~|[~{'r'=>230,'g'=>238,'b'=>156,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>245,'b'=>157,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>224,'b'=>130,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>204,'b'=>128,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>171,'b'=>145,{'vbeam','type'}=>'Color'}~|[~{'r'=>188,'g'=>170,'b'=>164,{'vbeam','type'}=>'Color'}~|[~{'r'=>238,'g'=>238,'b'=>238,{'vbeam','type'}=>'Color'}~|[~{'r'=>176,'g'=>190,'b'=>197,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[[~{'r'=>244,'g'=>67,'b'=>54,{'vbeam','type'}=>'Color'}~|[~{'r'=>233,'g'=>30,'b'=>99,{'vbeam','type'}=>'Color'}~|[~{'r'=>156,'g'=>39,'b'=>176,{'vbeam','type'}=>'Color'}~|[~{'r'=>103,'g'=>58,'b'=>183,{'vbeam','type'}=>'Color'}~|[~{'r'=>63,'g'=>81,'b'=>181,{'vbeam','type'}=>'Color'}~|[~{'r'=>33,'g'=>150,'b'=>243,{'vbeam','type'}=>'Color'}~|[~{'r'=>3,'g'=>169,'b'=>244,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>188,'b'=>212,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>150,'b'=>136,{'vbeam','type'}=>'Color'}~|[~{'r'=>76,'g'=>175,'b'=>80,{'vbeam','type'}=>'Color'}~|[~{'r'=>139,'g'=>195,'b'=>74,{'vbeam','type'}=>'Color'}~|[~{'r'=>205,'g'=>220,'b'=>57,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>235,'b'=>59,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>193,'b'=>7,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>152,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>87,'b'=>34,{'vbeam','type'}=>'Color'}~|[~{'r'=>121,'g'=>85,'b'=>72,{'vbeam','type'}=>'Color'}~|[~{'r'=>120,'g'=>120,'b'=>120,{'vbeam','type'}=>'Color'}~|[~{'r'=>96,'g'=>125,'b'=>139,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[[~{'r'=>198,'g'=>40,'b'=>40,{'vbeam','type'}=>'Color'}~|[~{'r'=>173,'g'=>20,'b'=>87,{'vbeam','type'}=>'Color'}~|[~{'r'=>106,'g'=>27,'b'=>154,{'vbeam','type'}=>'Color'}~|[~{'r'=>69,'g'=>39,'b'=>160,{'vbeam','type'}=>'Color'}~|[~{'r'=>40,'g'=>53,'b'=>147,{'vbeam','type'}=>'Color'}~|[~{'r'=>21,'g'=>101,'b'=>192,{'vbeam','type'}=>'Color'}~|[~{'r'=>2,'g'=>119,'b'=>189,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>131,'b'=>143,{'vbeam','type'}=>'Color'}~|[~{'r'=>0,'g'=>105,'b'=>92,{'vbeam','type'}=>'Color'}~|[~{'r'=>46,'g'=>125,'b'=>50,{'vbeam','type'}=>'Color'}~|[~{'r'=>85,'g'=>139,'b'=>47,{'vbeam','type'}=>'Color'}~|[~{'r'=>158,'g'=>157,'b'=>36,{'vbeam','type'}=>'Color'}~|[~{'r'=>249,'g'=>168,'b'=>37,{'vbeam','type'}=>'Color'}~|[~{'r'=>255,'g'=>143,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>239,'g'=>108,'b'=>0,{'vbeam','type'}=>'Color'}~|[~{'r'=>216,'g'=>67,'b'=>21,{'vbeam','type'}=>'Color'}~|[~{'r'=>78,'g'=>52,'b'=>46,{'vbeam','type'}=>'Color'}~|[~{'r'=>33,'g'=>33,'b'=>33,{'vbeam','type'}=>'Color'}~|[~{'r'=>55,'g'=>71,'b'=>79,{'vbeam','type'}=>'Color'}~|[]]]]]]]]]]]]]]]]]]]]|[]]]])
+                        do  apply 'Context.reset_bg_color'/1(call 'erlang':'map_get'('ui', App))
+                            do  'ok'
+                                do  apply 'Context.bold'/1(call 'erlang':'map_get'('ui', App))
+                                    do  'ok'
+                                        'ok'
+    'App.inc_size'/1 =
+        fun (App) ->
+            do  case call 'erlang':'<'(call 'erlang':'map_get'('size', App), 30) of <'true'> when 'true' -> call 'erlang':'map_get'('size', App) <'false'> when 'true' -> 'ok' end
+                apply 'App.show_msg'/3(App, call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('size', App))|[]]]), 1)
+    'App.dec_size'/1 =
+        fun (App) ->
+            do  case call 'erlang':'>'(call 'erlang':'map_get'('size', App), 1) of <'true'> when 'true' -> call 'erlang':'map_get'('size', App) <'false'> when 'true' -> 'ok' end
+                apply 'App.show_msg'/3(App, call 'erlang':'iolist_to_binary'([#{#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('size', App))|[]]]), 1)
+    'App.footer_click'/2 =
+        fun (App, Event) ->
+            let <Footer_y> =
+                call 'erlang':'-'(3, call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('ui', App)), call 'erlang':'map_get'('y', Event)))
+            in  case call 'erlang':'map_get'('x', Event) of <call 'lists':'seq'(8, 11)> when 'true' -> apply 'App.inc_size'/1(App) <call 'lists':'seq'(12, 15)> when 'true' -> apply 'App.dec_size'/1(App) <call 'lists':'seq'(18, 75)> when 'true' -> apply 'App.select_color'/3(App, call 'erlang':'=:='(call 'erlang':'map_get'('button', Event), 'left'), Idx) <_> when 'true' -> 'ok' end
+    'App.show_msg'/3 =
+        fun (App, Text, Time) ->
+            let <Frames> =
+                call 'erlang':'*'(Time, 30)
+            in  do  case call 'erlang':'>'(Time, 0) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'('frame_count', call 'erlang':'map_get'('ui', App)), Frames) <'false'> when 'true' -> -1 end
+                    'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

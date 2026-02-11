@@ -1,0 +1,42 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 7,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"decode">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {field_get, {vreg, 1}, {vreg, 0}, {imm, 0}},
+                {print_str, {vreg, 1}},
+                {string_lit, {vreg, 2}, {data_ref, <<"str_0">>}, 13},
+                {print_str, {vreg, 2}},
+                {field_get, {vreg, 3}, {vreg, 0}, {imm, 16}},
+                {print_str, {vreg, 3}},
+                {string_lit, {vreg, 4}, {data_ref, <<"str_1">>}, 1},
+                {print_str, {vreg, 4}},
+                {string_lit, {vreg, 5}, {data_ref, <<"str_2">>}, 25},
+                {print_str, {vreg, 5}},
+                {print_int, {vreg, 0}},
+                {string_lit, {vreg, 6}, {data_ref, <<"str_3">>}, 1},
+                {print_str, {vreg, 6}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<" has version ">>},
+        {<<"str_1">>, 1, <<"\n">>},
+        {<<"str_2">>, 1, <<"\\nThe full mod struct: \\n">>},
+        {<<"str_3">>, 1, <<"\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

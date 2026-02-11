@@ -1,0 +1,39 @@
+module 'v.main' ['foo'/1,
+                'foo2'/1,
+                'foo3'/1,
+                'foo4'/1,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'foo'/1 =
+            fun (A) ->
+                'ok'
+        'foo2'/1 =
+            fun (A) ->
+                let <I> =
+                    0
+                in  'ok'
+        'foo3'/1 =
+            fun (A) ->
+                'ok'
+        'foo4'/1 =
+            fun (A) ->
+                'ok'
+        'main'/0 =
+            fun () ->
+                do  call 'vbeam_task':'async'(fun () -> apply 'foo'/1(10))
+                    do  call 'vbeam_task':'async'(fun () -> apply 'foo2'/1(20))
+                        do  call 'vbeam_task':'async'(fun () -> apply 'foo3'/1(30))
+                            do  call 'vbeam_task':'async'(fun () -> apply 'foo3'/1(40))
+                                do  'ok'
+                                    call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]])
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end
