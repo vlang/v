@@ -144,7 +144,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 
 	fm := C.CreateFileMapping(h, C.NULL, protect, dw_max_size_high, dw_max_size_low, C.NULL)
 	if fm == C.NULL {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 
 	defer {
@@ -156,7 +156,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 	map_ := C.MapViewOfFile(fm, desired_access, dw_file_offset_high, dw_file_offset_low,
 		args.len)
 	if map_ == C.NULL {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 
 	return map_
@@ -165,7 +165,7 @@ pub fn mmap(args MmapOptions) !voidptr {
 // munmap unmap the memory mapping
 pub fn munmap(addr voidptr, len usize) ! {
 	if C.UnmapViewOfFile(addr) == 0 {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 }
 
@@ -175,27 +175,27 @@ pub fn mprotect(addr voidptr, len usize, prot int) ! {
 	old_protect := u32(0)
 
 	if !C.VirtualProtect(addr, len, new_protect, &old_protect) {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 }
 
 // msync sync memory mapping to disk
 pub fn msync(addr voidptr, len usize, flags int) ! {
 	if C.FlushViewOfFile(addr, len) == 0 {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 }
 
 // mlock lock memory pages to prevent swapping
 pub fn mlock(addr voidptr, len usize) ! {
 	if C.VirtualLock(addr, len) == 0 {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 }
 
 // munlock unlock memory pages to allow swapping
 pub fn munlock(addr voidptr, len usize) ! {
 	if C.VirtualUnlock(addr, len) == 0 {
-		return os.error_win32()
+		return os.error_win32(code: int(C.GetLastError()))
 	}
 }
