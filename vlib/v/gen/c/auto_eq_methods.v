@@ -590,7 +590,9 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 		}
 		else {
 			if value.typ.has_flag(.option) {
-				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
+				// For option types, use the unaliased type to get the correct sizeof
+				unaliased_typ := g.table.unaliased_type(value.typ)
+				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(unaliased_typ)})) != 0) {')
 			} else {
 				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
 			}

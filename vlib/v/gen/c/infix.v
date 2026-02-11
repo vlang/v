@@ -112,8 +112,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	left_is_option := left_type.has_flag(.option)
-	right_is_option := right_type.has_flag(.option)
+	left_sym := g.table.sym(left_type)
+	right_sym := g.table.sym(right_type)
+	left_is_option := left_type.has_flag(.option) || (left_sym.kind == .alias
+		&& left_sym.info is ast.Alias && left_sym.info.parent_type.has_flag(.option))
+	right_is_option := right_type.has_flag(.option) || (right_sym.kind == .alias
+		&& right_sym.info is ast.Alias && right_sym.info.parent_type.has_flag(.option))
 	is_none_check := left_is_option && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)

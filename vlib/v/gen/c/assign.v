@@ -127,7 +127,10 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 				g.past_tmp_var_done(past)
 			}
 			unwrapped_ret := g.unwrap_generic(ret_typ)
-			styp := g.base_type(unwrapped_ret)
+			// Unwrap type aliases to ensure sizeof uses the base type size, not the alias size
+			// This fixes the ASAN stack-buffer-overflow issue when using type aliases like MaybeInt = ?int
+			unaliased_ret := g.table.unaliased_type(unwrapped_ret)
+			styp := g.base_type(unaliased_ret)
 			decl_styp := g.styp(unwrapped_ret).replace('*', '_ptr')
 			g.writeln('${decl_styp} ${past.tmp_var};')
 			is_none := expr is ast.CastExpr && expr.expr is ast.None

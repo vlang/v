@@ -119,7 +119,26 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	if typ.typ.has_flag(.option) {
 		opt_typ := if typ.typ.has_flag(.option_mut_param_t) { styp.replace('*', '') } else { styp }
-		g.gen_str_for_option(typ.typ, opt_typ, str_fn_name)
+		// Check if this is a type alias to an option type
+		mut type_name := 'Option'
+		mut unwrapped_typ := g.table.unaliased_type(typ.typ)
+		if unwrapped_typ != typ.typ {
+			// This is a type alias, check if it's an alias to an option type
+			alias_sym := g.table.sym(typ.typ)
+			if alias_sym.kind == .alias && alias_sym.info is ast.Alias {
+				// Check if the parent type has the option flag
+				if alias_sym.info.parent_type.has_flag(.option) {
+					// This is an alias to an option type (e.g., type MyOpt = ?MyStruct)
+					// Use the alias name instead of "Option"
+					mut alias_name := alias_sym.name
+					if alias_name.contains('.') {
+						alias_name = alias_name.all_after_last('.')
+					}
+					type_name = '?${alias_name}'
+				}
+			}
+		}
+		g.gen_str_for_option(typ.typ, opt_typ, str_fn_name, type_name)
 		return
 	}
 	if typ.typ.has_flag(.result) {
@@ -177,7 +196,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 }
 
-fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string) {
+fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string, type_name string) {
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_option: ${typ.debug()} | ${styp} | ${str_fn_name}')
 	}
@@ -224,9 +243,9 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 			g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(${deref}it.data);')
 		}
 	}
-	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('${type_name}(%%)', 'res')};')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\treturn _S("Option(none)");')
+	g.auto_str_funcs.writeln('\treturn _S("${type_name}(none)");')
 	g.auto_str_funcs.writeln('}')
 }
 

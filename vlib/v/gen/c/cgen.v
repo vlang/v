@@ -1380,6 +1380,11 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
 	mut styp := ''
 	sym := g.table.sym(t)
+	// If this is a type alias to an option type, use the parent type's option name
+	// This ensures that ?int and MaybeInt (where MaybeInt = ?int) generate the same C type
+	if sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+		return g.option_type_name(sym.info.parent_type)
+	}
 	if sym.info is ast.FnType {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
@@ -1396,12 +1401,16 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
+	mut styp := ''
+	sym := g.table.sym(t)
+	// If this is a type alias to a result type, use the parent type's result name
+	if sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.result) {
+		return g.result_type_name(sym.info.parent_type)
+	}
 	if t.has_flag(.option) {
 		g.register_option(t)
 		base = '_option_' + base
 	}
-	mut styp := ''
-	sym := g.table.sym(t)
 	if sym.info is ast.FnType {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
@@ -3182,7 +3191,7 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := ast.mktyp(got_type_raw)
-	exp_sym := g.table.sym(expected_type)
+	exp_sym := g.table.final_sym(expected_type)
 	got_sym := g.table.sym(got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()

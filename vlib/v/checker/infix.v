@@ -879,8 +879,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				node.promoted_type = return_type
 				return return_type
 			}
-			left_is_option := left_type.has_flag(.option)
+			left_is_option := left_type.has_flag(.option) || (left_sym.kind == .alias
+				&& (left_sym.info as ast.Alias).parent_type.has_flag(.option))
 			right_is_option := right_type.has_flag(.option)
+				|| (right_sym.kind == .alias
+				&& (right_sym.info as ast.Alias).parent_type.has_flag(.option))
 			if (node.right is ast.None && left_is_option)
 				|| (node.left is ast.None && right_is_option) {
 				return ast.bool_type
@@ -1093,7 +1096,9 @@ fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Typ
 		return
 	}
 	left_is_option := left_type.has_flag(.option)
+		|| (left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.has_flag(.option))
 	right_is_option := right_type.has_flag(.option)
+		|| (right_sym.kind == .alias && (right_sym.info as ast.Alias).parent_type.has_flag(.option))
 	if (node.left is ast.None && right_is_option)
 		|| (node.right is ast.None && left_is_option)
 		|| (left_sym.kind == .none || right_sym.kind == .none) {
