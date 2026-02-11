@@ -4,29 +4,25 @@ import regex.pcre
 // This version uses `compile` and direct struct access for match results.
 
 fn example() {
-	// 1. Use pcre.compile() which returns a result (!)
+	// Use pcre.compile() which returns a result (!)
 	r := pcre.compile('Match everything after this: (.+)') or {
 		println('An error occurred: ${err}')
 		return
 	}
 
-	// 2. Use r.find() to search for the pattern. 
+	// Use r.find() to search for the pattern.
 	// Returns an option (?) containing a Match struct.
 	m := r.find('Match everything after this: "I ❤️ VLang!"') or {
 		println('No match!')
 		return
 	}
 
-	// In the new module:
-	// m.text      -> Corresponds to the whole match (formerly m.get(0))
-	// m.groups[0] -> Corresponds to the first capturing group (formerly m.get(1))
-
 	whole_match := m.text
-	
+
 	// Check if group exists before accessing
 	if m.groups.len > 0 {
 		matched_captured := m.groups[0]
-		println(whole_match)      // Match everything after this: "I ❤️ VLang!"
+		println(whole_match) // Match everything after this: "I ❤️ VLang!"
 		println(matched_captured) // "I ❤️ VLang!"
 	}
 }
@@ -61,7 +57,7 @@ fn main() {
 
 	// Print all captured groups
 	println('Groups found: ${m.groups}')
-	
+
 	// If you want to find ALL matches in the text instead of just the first:
 	println('\nFinding all non-overlapping matches:')
 	all_matches := r.find_all(text)
