@@ -298,4 +298,3 @@ r_multi := pcre.compile(r'(?m)^Log:')!
 text := 'Error: 1\nLog: Something happened'
 println(r_multi.find(text)) // Matches 'Log:' on the second line
 ```
-```
