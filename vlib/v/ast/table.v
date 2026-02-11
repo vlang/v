@@ -59,7 +59,8 @@ pub fn (mut uf UsedFeatures) free() {
 @[heap; minify]
 pub struct Table {
 mut:
-	parsing_type string // name of the type to enable recursive type parsing
+	parsing_type                 string         // name of the type to enable recursive type parsing
+	unwrap_generic_type_in_depth map[string]int // guards against recursive generic unwrapping loops
 pub mut:
 	type_symbols       []&TypeSymbol
 	type_idxs          map[string]int
@@ -138,6 +139,7 @@ pub fn (mut t Table) free() {
 		t.fn_generic_types.free()
 		t.cmod_prefix.free()
 		t.used_features.free()
+		t.unwrap_generic_type_in_depth.free()
 	}
 }
 
@@ -2138,10 +2140,12 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 	return names
 }
 
+// unwrap_generic_type resolves generic symbols to their concrete types.
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
 	return t.unwrap_generic_type_ex(typ, generic_names, concrete_types, false)
 }
 
+// unwrap_generic_type_ex resolves generic symbols to concrete types and can recheck nested concrete fields.
 pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
@@ -2249,7 +2253,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				}
 			}
 			nrt += ']'
-			idx := t.type_idxs[nrt]
+			mut idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
 				if recheck_concrete_types {
 					fields = ts.info.fields.clone()
@@ -2277,66 +2281,76 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 					}
 				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
-			} else {
-				// fields type translate to concrete type
-				fields = ts.info.fields.clone()
-				for i in 0 .. fields.len {
-					if fields[i].typ.has_flag(.generic) {
-						orig_type := fields[i].typ
-						sym := t.sym(fields[i].typ)
-						if sym.kind == .struct && fields[i].typ.idx() != typ.idx() {
+			}
+			if idx == 0 {
+				idx = t.add_placeholder_type(nrt, c_nrt, .v)
+			}
+			if nrt in t.unwrap_generic_type_in_depth {
+				// The concrete type is currently being built higher in the stack.
+				// Reuse its placeholder to avoid recursive generic unwrapping loops.
+				return new_type(idx).derive(typ).clear_flag(.generic)
+			}
+			t.unwrap_generic_type_in_depth[nrt] = 1
+			defer {
+				t.unwrap_generic_type_in_depth.delete(nrt)
+			}
+			// fields type translate to concrete type
+			fields = ts.info.fields.clone()
+			for i in 0 .. fields.len {
+				if fields[i].typ.has_flag(.generic) {
+					orig_type := fields[i].typ
+					sym := t.sym(fields[i].typ)
+					if sym.kind == .struct && fields[i].typ.idx() != typ.idx() {
+						fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
+							t_concrete_types)
+					} else {
+						if t_typ := t.convert_generic_type(fields[i].typ, t_generic_names,
+							t_concrete_types)
+						{
+							fields[i].typ = t_typ
+						}
+						if fields[i].typ.has_flag(.generic)
+							&& sym.kind in [.array, .array_fixed, .map]
+							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
 							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
 								t_concrete_types)
-						} else {
-							if t_typ := t.convert_generic_type(fields[i].typ, t_generic_names,
-								t_concrete_types)
-							{
-								fields[i].typ = t_typ
-							}
-							if fields[i].typ.has_flag(.generic)
-								&& sym.kind in [.array, .array_fixed, .map]
-								&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
-								fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-									t_concrete_types)
-							}
 						}
-						// Update type in `info.embeds`, if it's embed
-						if fields[i].is_embed {
-							mut parent_sym := t.sym(typ)
-							mut parent_info := parent_sym.info
-							if mut parent_info is Struct {
-								for mut embed in parent_info.embeds {
-									if embed == orig_type {
-										embed = fields[i].typ
-										break
-									}
+					}
+					// Update type in `info.embeds`, if it's embed
+					if fields[i].is_embed {
+						mut parent_sym := t.sym(typ)
+						mut parent_info := parent_sym.info
+						if mut parent_info is Struct {
+							for mut embed in parent_info.embeds {
+								if embed == orig_type {
+									embed = fields[i].typ
+									break
 								}
 							}
 						}
 					}
-					if fields[i].has_default_expr {
-						if fields[i].default_expr_typ.has_flag(.generic) {
-							if t_typ := t.convert_generic_type(fields[i].default_expr_typ,
-								t_generic_names, t_concrete_types)
-							{
-								fields[i].default_expr_typ = t_typ
-							}
-						} else if fields[i].default_expr_typ == 0
-							|| fields[i].default_expr_typ == nil_type {
-							if fields[i].default_expr.is_nil()
-								&& fields[i].typ.is_any_kind_of_pointer() {
-								fields[i].default_expr_typ = fields[i].typ
-							}
+				}
+				if fields[i].has_default_expr {
+					if fields[i].default_expr_typ.has_flag(.generic) {
+						if t_typ := t.convert_generic_type(fields[i].default_expr_typ,
+							t_generic_names, t_concrete_types)
+						{
+							fields[i].default_expr_typ = t_typ
+						}
+					} else if fields[i].default_expr_typ == 0
+						|| fields[i].default_expr_typ == nil_type {
+						if fields[i].default_expr.is_nil() && fields[i].typ.is_any_kind_of_pointer() {
+							fields[i].default_expr_typ = fields[i].typ
 						}
 					}
 				}
-				// update concrete types
-				for i in 0 .. ts.info.generic_types.len {
-					if t_typ := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
-						t_concrete_types)
-					{
-						final_concrete_types << t_typ
-					}
+			}
+			// update concrete types
+			for i in 0 .. ts.info.generic_types.len {
+				if t_typ := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
+					t_concrete_types)
+				{
+					final_concrete_types << t_typ
 				}
 			}
 		}

@@ -14,17 +14,18 @@ pub struct Gen {
 	env   &types.Environment = unsafe { nil }
 	pref  &pref.Preferences  = unsafe { nil }
 mut:
-	sb                  strings.Builder
-	indent              int
-	cur_fn_scope        &types.Scope = unsafe { nil }
-	cur_fn_name         string
-	cur_fn_ret_type     string
-	cur_module          string
-	emitted_types       map[string]bool
-	fn_param_is_ptr     map[string][]bool
-	fn_param_types      map[string][]string
-	fn_return_types     map[string]string
-	runtime_local_types map[string]string
+	sb                     strings.Builder
+	indent                 int
+	cur_fn_scope           &types.Scope = unsafe { nil }
+	cur_fn_name            string
+	cur_fn_ret_type        string
+	cur_module             string
+	emitted_types          map[string]bool
+	fn_param_is_ptr        map[string][]bool
+	fn_param_types         map[string][]string
+	fn_return_types        map[string]string
+	fn_names_in_decl_order []string
+	runtime_local_types    map[string]string
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
@@ -281,14 +282,15 @@ pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
-		files:               files
-		env:                 unsafe { env }
-		pref:                unsafe { p }
-		sb:                  strings.new_builder(4096)
-		fn_param_is_ptr:     map[string][]bool{}
-		fn_param_types:      map[string][]string{}
-		fn_return_types:     map[string]string{}
-		runtime_local_types: map[string]string{}
+		files:                  files
+		env:                    unsafe { env }
+		pref:                   unsafe { p }
+		sb:                     strings.new_builder(4096)
+		fn_param_is_ptr:        map[string][]bool{}
+		fn_param_types:         map[string][]string{}
+		fn_return_types:        map[string]string{}
+		fn_names_in_decl_order: []string{}
+		runtime_local_types:    map[string]string{}
 
 		fixed_array_fields:     map[string]bool{}
 		fixed_array_field_elem: map[string]string{}
@@ -305,6 +307,10 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		emitted_option_structs: map[string]bool{}
 		embedded_field_owner:   map[string]string{}
 	}
+}
+
+fn (g &Gen) use_prealloc_allocator() bool {
+	return g.pref != unsafe { nil } && g.pref.use_prealloc_allocator
 }
 
 pub fn (mut g Gen) gen() string {
@@ -408,7 +414,8 @@ pub fn (mut g Gen) gen() string {
 		for info in all_structs {
 			g.cur_module = info.mod
 			name := g.get_struct_name(info.decl)
-			if 'body_${name}' in g.emitted_types {
+			body_key := 'body_${name}'
+			if body_key in g.emitted_types {
 				continue
 			}
 			// Check if all field types are already defined
@@ -454,6 +461,8 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('')
 
 	// Pass 4: Function forward declarations
+	mut test_fn_names := []string{}
+	mut has_main := false
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -471,6 +480,12 @@ pub fn (mut g Gen) gen() string {
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
 					continue
+				}
+				if fn_name == 'main' {
+					has_main = true
+				}
+				if stmt.name.starts_with('test_') && !stmt.is_method && stmt.typ.params.len == 0 {
+					test_fn_names << fn_name
 				}
 				if g.env != unsafe { nil } {
 					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
@@ -493,6 +508,25 @@ pub fn (mut g Gen) gen() string {
 		g.gen_file(file)
 	}
 
+	// Generate test runner main if this is a test file (has test_ functions but no main)
+	if !has_main && test_fn_names.len > 0 {
+		g.sb.writeln('')
+		g.sb.writeln('int main(int ___argc, char** ___argv) {')
+		g.sb.writeln('\tg_main_argc = ___argc;')
+		g.sb.writeln('\tg_main_argv = (void*)___argv;')
+		for test_fn in test_fn_names {
+			msg_run := 'Running test: ${test_fn}...'
+			msg_ok := '  OK'
+			g.sb.writeln('\tprintln((string){"${msg_run}", sizeof("${msg_run}") - 1});')
+			g.sb.writeln('\t${test_fn}();')
+			g.sb.writeln('\tprintln((string){"${msg_ok}", sizeof("${msg_ok}") - 1});')
+		}
+		msg_all := 'All ${test_fn_names.len} tests passed.'
+		g.sb.writeln('\tprintln((string){"${msg_all}", sizeof("${msg_all}") - 1});')
+		g.sb.writeln('\treturn 0;')
+		g.sb.writeln('}')
+	}
+
 	return g.sb.str()
 }
 
@@ -504,8 +538,7 @@ fn (mut g Gen) emit_interface_method_wrappers() {
 	mut emitted := map[string]bool{}
 	mut iface_names := g.interface_methods.keys()
 	iface_names.sort()
-	mut fn_names := g.fn_param_is_ptr.keys()
-	fn_names.sort()
+	fn_names := g.fn_names_in_decl_order
 	for iface_name in iface_names {
 		methods := g.interface_methods[iface_name]
 		for method in methods {
@@ -620,6 +653,9 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('typedef void* chan;')
 	g.sb.writeln('typedef double float_literal;')
 	g.sb.writeln('typedef int64_t int_literal;')
+	if g.use_prealloc_allocator() {
+		g.write_prealloc_allocator_preamble()
+	}
 	// wyhash implementation used by builtin/map and hash modules.
 	g.sb.writeln('#ifndef wyhash_final_version_4_2')
 	g.sb.writeln('#define wyhash_final_version_4_2')
@@ -709,6 +745,170 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('')
 }
 
+fn (mut g Gen) write_prealloc_allocator_preamble() {
+	preamble := [
+		'// prealloc arena allocator (enabled by -prealloc)',
+		'static void* (*v2_sys_malloc_fn)(size_t) = malloc;',
+		'static void* (*v2_sys_realloc_fn)(void*, size_t) = realloc;',
+		'static void (*v2_sys_free_fn)(void*) = free;',
+		'typedef struct v2_realloc_chunk {',
+		'    u8* data;',
+		'    size_t used;',
+		'    size_t cap;',
+		'    struct v2_realloc_chunk* prev;',
+		'} v2_realloc_chunk;',
+		'typedef union v2_realloc_header {',
+		'    struct {',
+		'        size_t size;',
+		'    } meta;',
+		'    max_align_t _align;',
+		'} v2_realloc_header;',
+		'static v2_realloc_chunk* v2_realloc_current_chunk = NULL;',
+		'static int v2_realloc_cleanup_registered = 0;',
+		'static const size_t v2_realloc_min_chunk_cap = ((size_t)64 * 1024 * 1024);',
+		'static void v2_realloc_alloc_panic(size_t bytes) {',
+		'    fprintf(stderr, "v2 -prealloc arena: allocation failed for %zu bytes\\n", bytes);',
+		'    exit(1);',
+		'}',
+		'static size_t v2_realloc_align_up(size_t value, size_t align) {',
+		'    if (align == 0) {',
+		'        return value;',
+		'    }',
+		'    size_t rem = value % align;',
+		'    return rem == 0 ? value : value + (align - rem);',
+		'}',
+		'static void v2_realloc_cleanup(void) {',
+		'    v2_realloc_chunk* chunk = v2_realloc_current_chunk;',
+		'    while (chunk != NULL) {',
+		'        v2_realloc_chunk* prev = chunk->prev;',
+		'        v2_sys_free_fn(chunk->data);',
+		'        v2_sys_free_fn(chunk);',
+		'        chunk = prev;',
+		'    }',
+		'    v2_realloc_current_chunk = NULL;',
+		'}',
+		'static void v2_realloc_add_chunk(size_t min_cap) {',
+		'    size_t cap = v2_realloc_min_chunk_cap;',
+		'    if (v2_realloc_current_chunk != NULL && v2_realloc_current_chunk->cap > cap) {',
+		'        cap = v2_realloc_current_chunk->cap;',
+		'    }',
+		'    while (cap < min_cap) {',
+		'        size_t next = cap * 2;',
+		'        if (next <= cap) {',
+		'            cap = min_cap;',
+		'            break;',
+		'        }',
+		'        cap = next;',
+		'    }',
+		'    v2_realloc_chunk* chunk = (v2_realloc_chunk*)v2_sys_malloc_fn(sizeof(v2_realloc_chunk));',
+		'    if (chunk == NULL) {',
+		'        v2_realloc_alloc_panic(sizeof(v2_realloc_chunk));',
+		'    }',
+		'    chunk->data = (u8*)v2_sys_realloc_fn(NULL, cap);',
+		'    if (chunk->data == NULL) {',
+		'        v2_realloc_alloc_panic(cap);',
+		'    }',
+		'    chunk->used = 0;',
+		'    chunk->cap = cap;',
+		'    chunk->prev = v2_realloc_current_chunk;',
+		'    v2_realloc_current_chunk = chunk;',
+		'    if (!v2_realloc_cleanup_registered) {',
+		'        atexit(v2_realloc_cleanup);',
+		'        v2_realloc_cleanup_registered = 1;',
+		'    }',
+		'}',
+		'static v2_realloc_chunk* v2_realloc_find_chunk(const u8* ptr) {',
+		'    for (v2_realloc_chunk* chunk = v2_realloc_current_chunk; chunk != NULL; chunk = chunk->prev) {',
+		'        const u8* start = chunk->data;',
+		'        const u8* end = chunk->data + chunk->used;',
+		'        if (ptr > start && ptr <= end) {',
+		'            return chunk;',
+		'        }',
+		'    }',
+		'    return NULL;',
+		'}',
+		'static void* v2_realloc_malloc(size_t size) {',
+		'    if (size == 0) {',
+		'        size = 1;',
+		'    }',
+		'    size_t align = sizeof(max_align_t);',
+		'    size_t needed = sizeof(v2_realloc_header) + size;',
+		'    if (v2_realloc_current_chunk == NULL) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'    }',
+		'    size_t offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    if (offset + needed > v2_realloc_current_chunk->cap) {',
+		'        v2_realloc_add_chunk(needed + align);',
+		'        offset = v2_realloc_align_up(v2_realloc_current_chunk->used, align);',
+		'    }',
+		'    v2_realloc_header* header = (v2_realloc_header*)(v2_realloc_current_chunk->data + offset);',
+		'    header->meta.size = size;',
+		'    v2_realloc_current_chunk->used = offset + needed;',
+		'    return (void*)(header + 1);',
+		'}',
+		'static void* v2_realloc_calloc(size_t count, size_t size) {',
+		'    if (count == 0 || size == 0) {',
+		'        return v2_realloc_malloc(1);',
+		'    }',
+		'    if (count > ((size_t)-1) / size) {',
+		'        v2_realloc_alloc_panic((size_t)-1);',
+		'    }',
+		'    size_t total = count * size;',
+		'    void* ptr = v2_realloc_malloc(total);',
+		'    memset(ptr, 0, total);',
+		'    return ptr;',
+		'}',
+		'static void* v2_realloc_realloc(void* ptr, size_t new_size) {',
+		'    if (ptr == NULL) {',
+		'        return v2_realloc_malloc(new_size);',
+		'    }',
+		'    if (new_size == 0) {',
+		'        new_size = 1;',
+		'    }',
+		'    v2_realloc_chunk* chunk = v2_realloc_find_chunk((const u8*)ptr);',
+		'    if (chunk == NULL) {',
+		'        void* out = v2_sys_realloc_fn(ptr, new_size);',
+		'        if (out == NULL) {',
+		'            v2_realloc_alloc_panic(new_size);',
+		'        }',
+		'        return out;',
+		'    }',
+		'    v2_realloc_header* header = ((v2_realloc_header*)ptr) - 1;',
+		'    size_t old_size = header->meta.size;',
+		'    size_t header_offset = (size_t)((u8*)header - chunk->data);',
+		'    size_t alloc_start = header_offset + sizeof(v2_realloc_header);',
+		'    size_t alloc_end = alloc_start + old_size;',
+		'    if (chunk == v2_realloc_current_chunk && alloc_end == chunk->used) {',
+		'        size_t new_end = alloc_start + new_size;',
+		'        if (new_end <= chunk->cap) {',
+		'            header->meta.size = new_size;',
+		'            chunk->used = new_end;',
+		'            return ptr;',
+		'        }',
+		'    }',
+		'    void* new_ptr = v2_realloc_malloc(new_size);',
+		'    size_t copy_size = old_size < new_size ? old_size : new_size;',
+		'    memcpy(new_ptr, ptr, copy_size);',
+		'    return new_ptr;',
+		'}',
+		'static void v2_realloc_free(void* ptr) {',
+		'    if (ptr == NULL) {',
+		'        return;',
+		'    }',
+		'    if (v2_realloc_find_chunk((const u8*)ptr) != NULL) {',
+		'        return;',
+		'    }',
+		'    v2_sys_free_fn(ptr);',
+		'}',
+		'#define malloc(n) v2_realloc_malloc((size_t)(n))',
+		'#define calloc(c, n) v2_realloc_calloc((size_t)(c), (size_t)(n))',
+		'#define realloc(p, n) v2_realloc_realloc((p), (size_t)(n))',
+		'#define free(p) v2_realloc_free((p))',
+	].join('\n')
+	g.sb.write_string(preamble)
+	g.sb.write_string('\n\n')
+}
+
 fn is_c_identifier_like(name string) bool {
 	if name.len == 0 {
 		return false
@@ -765,10 +965,12 @@ fn (mut g Gen) collect_module_type_names() {
 						}
 						fields[field.name] = true
 					}
-					g.enum_type_fields[enum_name] = fields.clone()
+					mut cloned_fields := fields.clone()
+					g.enum_type_fields[enum_name] = cloned_fields.move()
 					if enum_name.contains('__') {
 						short_name := enum_name.all_after_last('__')
-						g.enum_type_fields[short_name] = fields.clone()
+						mut short_cloned_fields := fields.clone()
+						g.enum_type_fields[short_name] = short_cloned_fields.move()
 					}
 				}
 				ast.TypeDecl {
@@ -793,6 +995,13 @@ fn (mut g Gen) collect_runtime_aliases() {
 	// Also use type-checker output so aliases used only in expressions are captured.
 	if g.env != unsafe { nil } {
 		for _, typ in g.env.expr_types {
+			// Some self-host runs leave zero-value Type entries in expr_types.
+			// Those decode as `types.Alias` with an invalid payload.
+			// Skip top-level aliases from env cache; declarations are collected
+			// from the AST path above.
+			if typ is types.Alias {
+				continue
+			}
 			g.collect_aliases_from_type(typ)
 		}
 	}
@@ -847,6 +1056,7 @@ fn (mut g Gen) collect_fn_signatures() {
 					g.fn_param_is_ptr[fn_name] = params
 					g.fn_param_types[fn_name] = param_types
 					g.fn_return_types[fn_name] = ret_type
+					g.fn_names_in_decl_order << fn_name
 				}
 				else {}
 			}
@@ -855,11 +1065,14 @@ fn (mut g Gen) collect_fn_signatures() {
 }
 
 fn (mut g Gen) emit_ierror_wrappers() {
-	if 'body_IError' !in g.emitted_types && 'body_builtin__IError' !in g.emitted_types {
+	body_ierror_key := 'body_IError'
+	body_builtin_ierror_key := 'body_builtin__IError'
+	if body_ierror_key !in g.emitted_types && body_builtin_ierror_key !in g.emitted_types {
 		return
 	}
 	mut emitted_any := false
 	mut base_set := map[string]bool{}
+	error_code_fn := 'Error__code'
 	for fn_name, ret_type in g.fn_return_types {
 		if !fn_name.ends_with('__msg') || ret_type != 'string' {
 			continue
@@ -882,9 +1095,10 @@ fn (mut g Gen) emit_ierror_wrappers() {
 		g.sb.writeln('\treturn ${base}__msg(*(${base}*)_obj);')
 		g.sb.writeln('}')
 		g.sb.writeln('static int IError_${base}_code_wrapper(void* _obj) {')
-		if '${base}__code' in g.fn_return_types {
+		code_fn := '${base}__code'
+		if code_fn in g.fn_return_types {
 			g.sb.writeln('\treturn ${base}__code(*(${base}*)_obj);')
-		} else if 'Error__code' in g.fn_return_types {
+		} else if error_code_fn in g.fn_return_types {
 			g.sb.writeln('\treturn Error__code(*(Error*)_obj);')
 		} else {
 			g.sb.writeln('\t(void)_obj;')
@@ -938,8 +1152,9 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 			g.register_alias_type('_result_${base}')
 		}
 		types.Alias {
-			g.collect_aliases_from_type(t.base_type)
-			g.register_alias_type(t.name)
+			// Alias payloads from self-host env caches can be malformed.
+			// Decls are collected from AST, so skip runtime alias recursion here.
+			return
 		}
 		types.Pointer {
 			g.collect_aliases_from_type(t.base_type)
@@ -1027,7 +1242,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if g.option_result_payload_invalid(val_type) || val_type == 'void' {
 		return false
 	}
-	if 'body_IError' !in g.emitted_types && 'body_builtin__IError' !in g.emitted_types {
+	ierror_body_key := 'body_IError'
+	ierror_builtin_body_key := 'body_builtin__IError'
+	if ierror_body_key !in g.emitted_types && ierror_builtin_body_key !in g.emitted_types {
 		return false
 	}
 	if val_type in primitive_types || val_type in ['bool', 'char', 'void*', 'u8*', 'char*'] {
@@ -1035,7 +1252,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	}
 	// `string` is a struct payload and needs its body emitted before sizeof(string).
 	if val_type == 'string' || val_type == 'builtin__string' {
-		return 'body_string' in g.emitted_types || 'body_builtin__string' in g.emitted_types
+		string_body_key := 'body_string'
+		builtin_string_body_key := 'body_builtin__string'
+		return string_body_key in g.emitted_types || builtin_string_body_key in g.emitted_types
 	}
 	if val_type == 'IError' || val_type == 'builtin__IError' {
 		return true
@@ -1044,7 +1263,9 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 		return true
 	}
 	if val_type.starts_with('Array_fixed_') {
-		return 'body_${val_type}' in g.emitted_types || 'alias_${val_type}' in g.emitted_types
+		body_key := 'body_${val_type}'
+		alias_key := 'alias_${val_type}'
+		return body_key in g.emitted_types || alias_key in g.emitted_types
 	}
 	if val_type.starts_with('Array_') {
 		return true
@@ -1052,8 +1273,10 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if val_type.starts_with('Map_') {
 		return true
 	}
-	if 'body_${val_type}' in g.emitted_types || 'enum_${val_type}' in g.emitted_types
-		|| 'alias_${val_type}' in g.emitted_types {
+	body_key := 'body_${val_type}'
+	enum_key := 'enum_${val_type}'
+	alias_key := 'alias_${val_type}'
+	if body_key in g.emitted_types || enum_key in g.emitted_types || alias_key in g.emitted_types {
 		return true
 	}
 	return false
@@ -1140,8 +1363,10 @@ fn (mut g Gen) emit_runtime_aliases() {
 			if info.elem_type in primitive_types
 				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
 				g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
-				g.emitted_types['alias_${name}'] = true
-				g.emitted_types['body_${name}'] = true
+				alias_key := 'alias_${name}'
+				body_key := 'body_${name}'
+				g.emitted_types[alias_key] = true
+				g.emitted_types[body_key] = true
 			}
 		}
 	}
@@ -1199,8 +1424,10 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 				continue // already emitted in emit_runtime_aliases
 			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
-			g.emitted_types['alias_${name}'] = true
-			g.emitted_types['body_${name}'] = true
+			alias_key := 'alias_${name}'
+			body_key := 'body_${name}'
+			g.emitted_types[alias_key] = true
+			g.emitted_types[body_key] = true
 		}
 	}
 }
@@ -1275,8 +1502,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			if node.expr is ast.UnsafeExpr {
 				unsafe_expr := node.expr as ast.UnsafeExpr
+				if unsafe_expr.stmts.len > 1 {
+					g.write_indent()
+					g.sb.writeln('{')
+					g.indent++
+				}
 				for stmt in unsafe_expr.stmts {
 					g.gen_stmt(stmt)
+				}
+				if unsafe_expr.stmts.len > 1 {
+					g.indent--
+					g.write_indent()
+					g.sb.writeln('}')
 				}
 				return
 			}
@@ -2199,10 +2436,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if name != '' && g.cur_fn_scope != unsafe { nil } {
 			if obj := g.cur_fn_scope.lookup_parent(name, 0) {
 				if obj !is types.Module {
-					scoped_type := g.types_type_to_c(obj.typ())
-					if (typ == '' || typ == 'int' || typ == 'int_literal') && scoped_type != ''
-						&& scoped_type !in ['int', 'void'] {
-						typ = scoped_type
+					obj_type := obj.typ()
+					if obj_type !is types.Alias {
+						scoped_type := g.types_type_to_c(obj_type)
+						if (typ == '' || typ == 'int' || typ == 'int_literal') && scoped_type != ''
+							&& scoped_type !in ['int', 'void'] {
+							typ = scoped_type
+						}
 					}
 				}
 			}
@@ -2355,7 +2595,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
-		if typ == '' {
+		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
 		g.sb.write_string('${typ} ${name} = ')
@@ -2739,8 +2979,11 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	for emb in node.embedded {
 		emb_name := g.field_type_name(emb)
 		if emb_name != '' && emb_name !in primitive_types {
-			if 'body_${emb_name}' !in g.emitted_types && 'enum_${emb_name}' !in g.emitted_types
-				&& 'alias_${emb_name}' !in g.emitted_types {
+			emb_body_key := 'body_${emb_name}'
+			emb_enum_key := 'enum_${emb_name}'
+			emb_alias_key := 'alias_${emb_name}'
+			if emb_body_key !in g.emitted_types && emb_enum_key !in g.emitted_types
+				&& emb_alias_key !in g.emitted_types {
 				return false
 			}
 		}
@@ -2782,8 +3025,11 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 			continue
 		}
 		// Check if this type's body has been emitted
-		if 'body_${typ_name}' !in g.emitted_types && 'enum_${typ_name}' !in g.emitted_types
-			&& 'alias_${typ_name}' !in g.emitted_types {
+		typ_body_key := 'body_${typ_name}'
+		typ_enum_key := 'enum_${typ_name}'
+		typ_alias_key := 'alias_${typ_name}'
+		if typ_body_key !in g.emitted_types && typ_enum_key !in g.emitted_types
+			&& typ_alias_key !in g.emitted_types {
 			return false
 		}
 	}
@@ -2891,11 +3137,12 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			for ef in embedded.fields {
 				key := name + '.' + ef.name
 				g.embedded_field_owner[key] = emb_type
-				g.struct_field_types[key] = g.types_type_to_c(ef.typ)
+				embedded_field_type := g.types_type_to_c(ef.typ)
+				g.struct_field_types[key] = embedded_field_type
 				if name.contains('__') {
 					short_key := name.all_after_last('__') + '.' + ef.name
 					g.embedded_field_owner[short_key] = emb_type
-					g.struct_field_types[short_key] = g.types_type_to_c(ef.typ)
+					g.struct_field_types[short_key] = embedded_field_type
 				}
 			}
 		}
@@ -2904,6 +3151,13 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	mut has_shared_fields := false
 	for field in node.fields {
 		field_name := escape_c_keyword(field.name)
+		field_lookup_type := g.expr_type_to_c(field.typ)
+		field_key := '${name}.${field.name}'
+		g.struct_field_types[field_key] = field_lookup_type
+		if name.contains('__') {
+			short_field_key := '${name.all_after_last('__')}.${field.name}'
+			g.struct_field_types[short_field_key] = field_lookup_type
+		}
 		if field.typ is ast.Type && field.typ is ast.ArrayFixedType {
 			fixed_typ := field.typ as ast.ArrayFixedType
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
@@ -2930,7 +3184,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		if field.typ is ast.ModifierExpr && field.typ.kind == .key_shared {
 			has_shared_fields = true
 		}
-		field_type := g.expr_type_to_c(field.typ)
+		field_type := field_lookup_type
 		g.sb.writeln('\t${field_type} ${field_name};')
 	}
 	// Add mutex field for shared fields
@@ -2950,13 +3204,11 @@ fn (mut g Gen) lookup_struct_type(struct_name string) types.Struct {
 	}
 	mod_name := if g.cur_module != '' { g.cur_module } else { 'main' }
 	mut out := types.Struct{}
-	lock g.env.scopes {
-		if scope := g.env.scopes[mod_name] {
-			if obj := scope.objects[struct_name] {
-				typ := obj.typ()
-				if typ is types.Struct {
-					out = typ
-				}
+	if scope := g.env_scope(mod_name) {
+		if obj := scope.objects[struct_name] {
+			typ := obj.typ()
+			if typ is types.Struct {
+				out = typ
 			}
 		}
 	}
@@ -3006,10 +3258,12 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 	}
 	g.sb.writeln('} ${name};')
 	g.sb.writeln('')
-	if '${name}__str' !in g.fn_return_types {
+	enum_str_fn := '${name}__str'
+	if enum_str_fn !in g.fn_return_types {
 		g.sb.writeln('#define ${name}__str(v) int__str((int)(v))')
 	}
-	if '${name}_str' !in g.fn_return_types {
+	enum_short_str_fn := '${name}_str'
+	if enum_short_str_fn !in g.fn_return_types {
 		g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
 	}
 	g.sb.writeln('')
@@ -3190,12 +3444,10 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 		return false
 	}
 	mut is_iface := false
-	lock g.env.scopes {
-		if mut scope := g.env.scopes[g.cur_module] {
-			if obj := scope.lookup_parent(type_name, 0) {
-				if obj is types.Type && obj is types.Interface {
-					is_iface = true
-				}
+	if mut scope := g.env_scope(g.cur_module) {
+		if obj := scope.lookup_parent(type_name, 0) {
+			if obj is types.Type && obj is types.Interface {
+				is_iface = true
 			}
 		}
 	}
@@ -3251,22 +3503,22 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 
 fn (g &Gen) is_enum_type(name string) bool {
 	// Check emitted_types for enum_Name or enum_module__Name
-	if 'enum_${name}' in g.emitted_types {
+	enum_key := 'enum_${name}'
+	if enum_key in g.emitted_types {
 		return true
 	}
 	qualified := g.get_qualified_name(name)
-	if 'enum_${qualified}' in g.emitted_types {
+	qualified_enum_key := 'enum_${qualified}'
+	if qualified_enum_key in g.emitted_types {
 		return true
 	}
 	// Also check the types.Environment
 	if g.env != unsafe { nil } {
 		mut found := false
-		lock g.env.scopes {
-			if mut scope := g.env.scopes[g.cur_module] {
-				if obj := scope.lookup_parent(name, 0) {
-					if obj is types.Type && obj is types.Enum {
-						found = true
-					}
+		if mut scope := g.env_scope(g.cur_module) {
+			if obj := scope.lookup_parent(name, 0) {
+				if obj is types.Type && obj is types.Enum {
+					found = true
 				}
 			}
 		}
@@ -3326,13 +3578,19 @@ fn (g &Gen) is_type_name(name string) bool {
 	}
 	// Check if it's a known emitted type (enum, struct, alias, sum type, interface)
 	qualified := g.get_qualified_name(name)
-	if 'enum_${name}' in g.emitted_types || 'enum_${qualified}' in g.emitted_types {
+	enum_key := 'enum_${name}'
+	qualified_enum_key := 'enum_${qualified}'
+	if enum_key in g.emitted_types || qualified_enum_key in g.emitted_types {
 		return true
 	}
-	if 'body_${name}' in g.emitted_types || 'body_${qualified}' in g.emitted_types {
+	body_key := 'body_${name}'
+	qualified_body_key := 'body_${qualified}'
+	if body_key in g.emitted_types || qualified_body_key in g.emitted_types {
 		return true
 	}
-	if 'alias_${name}' in g.emitted_types || 'alias_${qualified}' in g.emitted_types {
+	alias_key := 'alias_${name}'
+	qualified_alias_key := 'alias_${qualified}'
+	if alias_key in g.emitted_types || qualified_alias_key in g.emitted_types {
 		return true
 	}
 	if name in g.emitted_types || qualified in g.emitted_types {
@@ -3349,11 +3607,9 @@ fn (mut g Gen) is_module_ident(name string) bool {
 	}
 	if g.env != unsafe { nil } {
 		mut found := false
-		lock g.env.scopes {
-			if mut scope := g.env.scopes[g.cur_module] {
-				if obj := scope.lookup_parent(name, 0) {
-					found = obj is types.Module
-				}
+		if mut scope := g.env_scope(g.cur_module) {
+			if obj := scope.lookup_parent(name, 0) {
+				found = obj is types.Module
 			}
 		}
 		if found {
@@ -3400,14 +3656,33 @@ fn escape_char_literal_content(raw string) string {
 	return sb.str()
 }
 
-fn escape_c_string_literal_content(raw string) string {
+fn escape_c_string_literal_content(raw string, kind ast.StringLiteralKind) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	for ch in raw {
-		if ch == `"` {
-			sb.write_u8(`\\`)
-			sb.write_u8(`"`)
-		} else {
-			sb.write_u8(ch)
+		match ch {
+			`"` {
+				sb.write_u8(`\\`)
+				sb.write_u8(`"`)
+			}
+			`\n` {
+				sb.write_string('\\n')
+			}
+			`\r` {
+				sb.write_string('\\r')
+			}
+			`\t` {
+				sb.write_string('\\t')
+			}
+			`\\` {
+				if kind == .raw {
+					sb.write_string('\\\\')
+				} else {
+					sb.write_u8(`\\`)
+				}
+			}
+			else {
+				sb.write_u8(ch)
+			}
 		}
 	}
 	return sb.str()
@@ -3518,7 +3793,8 @@ fn (mut g Gen) register_tuple_alias(elem_types []string) string {
 	}
 	name := 'Tuple_${parts.join('_')}'
 	if name !in g.tuple_aliases {
-		g.tuple_aliases[name] = elem_types.clone()
+		cloned_elem_types := elem_types.clone()
+		g.tuple_aliases[name] = cloned_elem_types
 	}
 	return name
 }
@@ -3615,17 +3891,27 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.sb.write_string('false')
 			} else if node.kind == .char {
 				raw := strip_literal_quotes(node.value)
-				escaped := escape_char_literal_content(raw)
-				g.sb.write_u8(`'`)
-				g.sb.write_string(escaped)
-				g.sb.write_u8(`'`)
+				if raw.len > 1 && raw[0] != `\\` {
+					// Multi-byte UTF-8 character: emit as numeric codepoint
+					runes := raw.runes()
+					if runes.len > 0 {
+						g.sb.write_string(int(runes[0]).str())
+					} else {
+						g.sb.write_string("'${raw}'")
+					}
+				} else {
+					escaped := escape_char_literal_content(raw)
+					g.sb.write_u8(`'`)
+					g.sb.write_string(escaped)
+					g.sb.write_u8(`'`)
+				}
 			} else {
 				g.sb.write_string(sanitize_c_number_literal(node.value))
 			}
 		}
 		ast.StringLiteral {
 			val := strip_literal_quotes(node.value)
-			escaped := escape_c_string_literal_content(val)
+			escaped := escape_c_string_literal_content(val, node.kind)
 			if node.kind == .c {
 				// C string literal: emit raw C string
 				g.sb.write_u8(`"`)
@@ -3675,10 +3961,11 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					g.sb.write_string('${g.cur_module}__${node.name}')
 				} else {
 					is_local_var := g.get_local_var_c_type(node.name) != none
+					const_key := 'const_${g.cur_module}__${node.name}'
+					global_key := 'global_${g.cur_module}__${node.name}'
 					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
 						&& !node.name.contains('__') && !is_local_var
-						&& (('const_${g.cur_module}__${node.name}' in g.emitted_types
-						|| 'global_${g.cur_module}__${node.name}' in g.emitted_types)
+						&& ((const_key in g.emitted_types || global_key in g.emitted_types)
 						|| g.is_module_local_const_or_global(node.name)) {
 						g.sb.write_string('${g.cur_module}__${node.name}')
 					} else if g.cur_module != '' && g.cur_module != 'main'
@@ -4379,6 +4666,12 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
+			// typeof(x).name -> just emit the typeof string directly (already a string)
+			if node.lhs is ast.KeywordOperator && node.lhs.op == .key_typeof
+				&& node.rhs.name == 'name' {
+				g.gen_keyword_operator(node.lhs)
+				return
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if node.lhs is ast.Ident && node.lhs.name == 'C' {
 				g.sb.write_string(node.rhs.name)
@@ -4462,8 +4755,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			if node.rhs.name == 'len' {
 				if node.lhs is ast.Ident {
 					mut fixed_name := node.lhs.name
+					module_const_key := 'const_${g.cur_module}__${node.lhs.name}'
 					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-						&& 'const_${g.cur_module}__${node.lhs.name}' in g.emitted_types {
+						&& module_const_key in g.emitted_types {
 						fixed_name = '${g.cur_module}__${node.lhs.name}'
 					}
 					if fixed_name in g.fixed_array_globals {
@@ -5892,23 +6186,85 @@ struct SumVariantMatch {
 }
 
 fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, expr ast.Expr) SumVariantMatch {
+	// Handle module constants used as sum variants in selfhosted checker code
+	// (e.g. char_, string_, void_, nil_, none_).
+	if expr is ast.Ident {
+		variant_hint := match expr.name {
+			'char_' {
+				'Char'
+			}
+			'string_' {
+				'String'
+			}
+			'void_' {
+				'Void'
+			}
+			'nil_' {
+				'Nil'
+			}
+			'none_' {
+				'None'
+			}
+			'rune_' {
+				'Rune'
+			}
+			'usize_' {
+				'USize'
+			}
+			'isize_' {
+				'ISize'
+			}
+			'thread_' {
+				'Thread'
+			}
+			'chan_' {
+				'Channel'
+			}
+			'bool_', 'i8_', 'i16_', 'i32_', 'int_', 'i64_', 'u8_', 'u16_', 'u32_', 'u64_', 'f32_',
+			'f64_', 'int_literal_', 'float_literal_' {
+				'Primitive'
+			}
+			else {
+				''
+			}
+		}
+		if variant_hint != '' {
+			for i, v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if v_short == variant_hint || v == variant_hint || v.ends_with('__${variant_hint}') {
+					return SumVariantMatch{
+						tag:          i
+						field_name:   v
+						is_primitive: variant_hint == 'Primitive'
+						inner_type:   ''
+					}
+				}
+			}
+		}
+	}
+
 	// For InitExpr, infer from the struct type name
 	if expr is ast.InitExpr {
 		init_type := g.expr_type_to_c(expr.typ)
-		if init_type != '' {
-			init_short := if init_type.contains('__') {
-				init_type.all_after_last('__')
+		mut resolved_init_type := init_type
+		if (resolved_init_type == '' || resolved_init_type == 'int') && expr.typ is ast.Ident {
+			resolved_init_type = expr.typ.name.replace('.', '__')
+		}
+		if resolved_init_type != '' {
+			init_short := if resolved_init_type.contains('__') {
+				resolved_init_type.all_after_last('__')
 			} else {
-				init_type
+				resolved_init_type
 			}
 			for i, v in variants {
-				if v == init_short || v == init_type || init_type.ends_with('__${v}')
-					|| v.ends_with('__${init_type}') {
+				if v == init_short || v == resolved_init_type
+					|| resolved_init_type.ends_with('__${v}')
+					|| v.ends_with('__${resolved_init_type}') {
 					return SumVariantMatch{
 						tag:          i
 						field_name:   v
 						is_primitive: false
-						inner_type:   init_type
+						inner_type:   resolved_init_type
 					}
 				}
 			}
@@ -6385,7 +6741,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		arg_type_name = arg_type_name.trim_space().trim_left('&').trim_left('*')
 		if arg_type_name != '' && (arg_type_name == expected_ctor_type
 			|| arg_type_name == expected_ctor_type.all_after_last('__')) {
-			call_args = call_args[1..].clone()
+			call_args.delete(0)
 		}
 	}
 	if call_args.len == 1 && g.is_type_name(name) && !name.ends_with('__new') {
@@ -7030,6 +7386,11 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	pos := e.pos()
 	if pos != 0 {
 		if typ := g.env.get_expr_type(pos) {
+			// Self-hosting can leave malformed alias payloads in env expr cache.
+			// Skip those entries and fall back to AST/scope-based inference.
+			if typ is types.Alias {
+				return none
+			}
 			return g.types_type_to_c(typ)
 		}
 	}
@@ -7088,20 +7449,19 @@ fn (mut g Gen) ensure_cur_fn_scope() ?&types.Scope {
 	}
 	suffix := '__${g.cur_fn_name}'
 	mut matched_key := ''
-	lock g.env.fn_scopes {
-		for key, _ in g.env.fn_scopes {
-			if key.ends_with(suffix) {
-				matched_key = key
-				break
-			}
+	fn_scope_keys := lock g.env.fn_scopes {
+		g.env.fn_scopes.keys()
+	}
+	for key in fn_scope_keys {
+		if key.ends_with(suffix) {
+			matched_key = key
+			break
 		}
 	}
 	if matched_key != '' {
-		lock g.env.fn_scopes {
-			if fn_scope := g.env.fn_scopes[matched_key] {
-				g.cur_fn_scope = fn_scope
-				return fn_scope
-			}
+		if fn_scope := g.env_fn_scope_by_key(matched_key) {
+			g.cur_fn_scope = fn_scope
+			return fn_scope
 		}
 	}
 	return none
@@ -7142,9 +7502,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		}
 		// Prefer scope-backed type resolution for identifiers (type names, locals, aliases).
 		if raw_type := g.get_raw_type(node) {
-			typ_name := g.types_type_to_c(raw_type)
-			if typ_name != '' {
-				return typ_name
+			// Self-host transitional env values can carry malformed alias payloads.
+			if raw_type !is types.Alias {
+				typ_name := g.types_type_to_c(raw_type)
+				if typ_name != '' {
+					return typ_name
+				}
 			}
 		}
 	}
@@ -7192,9 +7555,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				return field_type
 			}
 			if raw_type := g.get_raw_type(node) {
-				resolved := g.types_type_to_c(raw_type)
-				if resolved != '' {
-					return resolved
+				if raw_type !is types.Alias {
+					resolved := g.types_type_to_c(raw_type)
+					if resolved != '' {
+						return resolved
+					}
 				}
 			}
 			return 'int'
@@ -7267,18 +7632,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 						return g.types_type_to_c(raw_type.value_type)
 					}
 					types.Alias {
-						match raw_type.base_type {
-							types.Array {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
-							}
-							types.ArrayFixed {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
-							}
-							types.Map {
-								return g.types_type_to_c(raw_type.base_type.value_type)
-							}
-							else {}
-						}
+						// Avoid alias payload dereference in self-host fallback path.
 					}
 					types.Pointer {
 						match raw_type.base_type {
@@ -7295,21 +7649,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 								return g.types_type_to_c(raw_type.base_type.value_type)
 							}
 							types.Alias {
-								match raw_type.base_type.base_type {
-									types.Pointer {
-										return g.types_type_to_c(raw_type.base_type.base_type)
-									}
-									types.Array {
-										return g.types_type_to_c(raw_type.base_type.base_type.elem_type)
-									}
-									types.ArrayFixed {
-										return g.types_type_to_c(raw_type.base_type.base_type.elem_type)
-									}
-									types.Map {
-										return g.types_type_to_c(raw_type.base_type.base_type.value_type)
-									}
-									else {}
-								}
+								// Avoid nested alias payload dereference in self-host fallback path.
 							}
 							types.String {
 								return 'string'
@@ -7612,6 +7952,20 @@ fn (g &Gen) is_c_type_name(name string) bool {
 		'mach_timebase_info_data_t']
 }
 
+fn (g &Gen) env_scope(module_name string) ?&types.Scope {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	return g.env.get_scope(module_name)
+}
+
+fn (g &Gen) env_fn_scope_by_key(key string) ?&types.Scope {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	return g.env.get_fn_scope_by_key(key)
+}
+
 fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.env == unsafe { nil } {
 		return none
@@ -7619,11 +7973,9 @@ fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
 	if g.cur_module == '' {
 		return none
 	}
-	lock g.env.scopes {
-		if mut module_scope := g.env.scopes[g.cur_module] {
-			if obj := module_scope.lookup(name) {
-				return obj
-			}
+	if mut module_scope := g.env_scope(g.cur_module) {
+		if obj := module_scope.lookup(name) {
+			return obj
 		}
 	}
 	return none
@@ -7692,23 +8044,19 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		}
 		// Fallback to module scopes when function scope chain misses the symbol.
 		if g.cur_module != '' {
-			lock g.env.scopes {
-				if mut mod_scope := g.env.scopes[g.cur_module] {
-					if obj := mod_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							return obj.typ()
-						}
+			if mut mod_scope := g.env_scope(g.cur_module) {
+				if obj := mod_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						return obj.typ()
 					}
 				}
 			}
 		}
 		if g.cur_module != 'builtin' {
-			lock g.env.scopes {
-				if mut builtin_scope := g.env.scopes['builtin'] {
-					if obj := builtin_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							return obj.typ()
-						}
+			if mut builtin_scope := g.env_scope('builtin') {
+				if obj := builtin_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						return obj.typ()
 					}
 				}
 			}
@@ -7738,14 +8086,12 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 				}
 			}
 			if g.cur_module != '' {
-				lock g.env.scopes {
-					if mut mod_scope := g.env.scopes[g.cur_module] {
-						if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
-							if obj is types.Module {
-								if rhs_obj := obj.lookup(node.rhs.name) {
-									if rhs_obj !is types.Module {
-										return rhs_obj.typ()
-									}
+				if mut mod_scope := g.env_scope(g.cur_module) {
+					if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
+						if obj is types.Module {
+							if rhs_obj := obj.lookup(node.rhs.name) {
+								if rhs_obj !is types.Module {
+									return rhs_obj.typ()
 								}
 							}
 						}
@@ -7806,17 +8152,15 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 		mod_name = type_name.all_before_last('__')
 		type_name = type_name.all_after_last('__')
 	}
-	lock g.env.scopes {
-		if mut scope := g.env.scopes[mod_name] {
+	if scope := g.env_scope(mod_name) {
+		if obj := scope.objects[type_name] {
+			return obj.typ()
+		}
+	}
+	if mod_name != 'builtin' {
+		if scope := g.env_scope('builtin') {
 			if obj := scope.objects[type_name] {
 				return obj.typ()
-			}
-		}
-		if mod_name != 'builtin' {
-			if mut scope := g.env.scopes['builtin'] {
-				if obj := scope.objects[type_name] {
-					return obj.typ()
-				}
 			}
 		}
 	}
@@ -8165,23 +8509,27 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
 	}
 	if struct_name != '' {
-		if field_type := g.struct_field_types[struct_name + '.' + sel.rhs.name] {
+		field_key := struct_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[field_key] {
 			return field_type
 		}
 	}
 	if struct_name.contains('__') {
 		short_name := struct_name.all_after_last('__')
-		if field_type := g.struct_field_types[short_name + '.' + sel.rhs.name] {
+		short_field_key := short_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[short_field_key] {
 			return field_type
 		}
 	}
 	if struct_name.contains('.') {
 		mangled_name := struct_name.replace('.', '__')
-		if field_type := g.struct_field_types[mangled_name + '.' + sel.rhs.name] {
+		mangled_field_key := mangled_name + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[mangled_field_key] {
 			return field_type
 		}
 		short_dot := struct_name.all_after_last('.')
-		if field_type := g.struct_field_types[short_dot + '.' + sel.rhs.name] {
+		short_dot_field_key := short_dot + '.' + sel.rhs.name
+		if field_type := g.struct_field_types[short_dot_field_key] {
 			return field_type
 		}
 	}
@@ -8252,13 +8600,15 @@ fn (mut g Gen) fixed_array_selector_elem_type(sel ast.SelectorExpr) string {
 		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
 	}
 	if struct_name != '' {
-		if elem := g.fixed_array_field_elem['${struct_name}.${sel.rhs.name}'] {
+		field_key := '${struct_name}.${sel.rhs.name}'
+		if elem := g.fixed_array_field_elem[field_key] {
 			return elem
 		}
 	}
 	if struct_name.contains('__') {
 		short_name := struct_name.all_after_last('__')
-		if elem := g.fixed_array_field_elem['${short_name}.${sel.rhs.name}'] {
+		short_field_key := '${short_name}.${sel.rhs.name}'
+		if elem := g.fixed_array_field_elem[short_field_key] {
 			return elem
 		}
 	}
@@ -8642,10 +8992,12 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 		if field.value is ast.SelectorExpr {
 			sel := field.value as ast.SelectorExpr
 			if sel.lhs is ast.EmptyExpr {
-				mut expected_enum := g.struct_field_types['${type_name}.${field.name}'] or { '' }
+				expected_enum_key := '${type_name}.${field.name}'
+				mut expected_enum := g.struct_field_types[expected_enum_key] or { '' }
 				if expected_enum == '' && type_name.contains('__') {
 					short_type := type_name.all_after_last('__')
-					expected_enum = g.struct_field_types['${short_type}.${field.name}'] or { '' }
+					short_expected_enum_key := '${short_type}.${field.name}'
+					expected_enum = g.struct_field_types[short_expected_enum_key] or { '' }
 				}
 				if expected_enum != '' && g.is_enum_type(expected_enum) {
 					g.sb.write_string('${g.normalize_enum_name(expected_enum)}__${sel.rhs.name}')
@@ -9167,10 +9519,12 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 }
 
 fn (mut g Gen) should_deref_init_field_value(struct_type string, field_name string, value ast.Expr) bool {
-	mut expected := g.struct_field_types['${struct_type}.${field_name}'] or { '' }
+	expected_key := '${struct_type}.${field_name}'
+	mut expected := g.struct_field_types[expected_key] or { '' }
 	if expected == '' && struct_type.contains('__') {
 		short_struct := struct_type.all_after_last('__')
-		expected = g.struct_field_types['${short_struct}.${field_name}'] or { '' }
+		short_expected_key := '${short_struct}.${field_name}'
+		expected = g.struct_field_types[short_expected_key] or { '' }
 	}
 	if expected == '' || is_type_name_pointer_like(expected) {
 		return false

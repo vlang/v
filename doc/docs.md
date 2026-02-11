@@ -799,7 +799,7 @@ age := 12
 println('age = ${age}')
 ```
 
-See all methods of [string](https://modules.vlang.io/index.html#string)
+See all methods of [string](https://modules.vlang.io/builtin.html#string)
 and related modules [strings](https://modules.vlang.io/strings.html),
 [strconv](https://modules.vlang.io/strconv.html).
 
@@ -1202,7 +1202,7 @@ There are further built-in methods for arrays:
 * `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
-See all methods of [array](https://modules.vlang.io/index.html#array)
+See all methods of [array](https://modules.vlang.io/builtin.html#array)
 
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 

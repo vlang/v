@@ -112,6 +112,25 @@ pub:
 	groups []string
 }
 
+// get retrieves the captured text by index.
+// Index 0 returns the whole match, 1+ returns capture groups.
+pub fn (m Match) get(idx int) ?string {
+	if idx == 0 {
+		return m.text
+	}
+	if idx > 0 && idx <= m.groups.len {
+		return m.groups[idx - 1]
+	}
+	return none
+}
+
+// get_all returns the whole match followed by all capture groups.
+pub fn (m Match) get_all() []string {
+	mut res := [m.text]
+	res << m.groups
+	return res
+}
+
 // --- AST Nodes ---
 
 // Quantifier represents a repetition range.
@@ -259,6 +278,13 @@ pub fn compile(pattern string) !Regex {
 		total_groups: final_group_count
 		group_map:    group_map
 	}
+}
+
+// new_regex is an alias for compile, for compatibility with older PCRE wrappers.
+// Note: The second argument (flags) is currently ignored as flags should be
+// embedded in the pattern (e.g., '(?i)pattern').
+pub fn new_regex(pattern string, _ int) !Regex {
+	return compile(pattern)
 }
 
 // Compiler manages the state of the bytecode generation process.
@@ -1157,4 +1183,9 @@ pub fn (r Regex) find_from(text string, start_index int) ?Match {
 		}
 	}
 	return none
+}
+
+// match_str is an alias for find_from, for compatibility with older PCRE wrappers.
+pub fn (r Regex) match_str(text string, start_index int, _ int) ?Match {
+	return r.find_from(text, start_index)
 }

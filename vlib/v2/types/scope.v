@@ -159,8 +159,5 @@ pub fn (obj &Object) typ() Type {
 		Type {
 			return obj
 		}
-		// else {
-		// 	panic('missing obj.typ() for ${obj.type_name()}')
-		// }
 	}
 }

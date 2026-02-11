@@ -1,3 +1,10 @@
 vlib/v/parser/tests/prohibit_redeclaration_of_builtin_types.vv:1:8: error: cannot register struct `Option`, another type with this name exists
     1 | struct Option {}
       |        ~~~~~~
+Details: vlib/builtin/chan_option_result.v:142:8: details: another declaration was found here
+  140 |
+  141 | // Option is the base of V's internal option return system.
+  142 | struct Option {
+      |        ~~~~~~
+  143 |     state u8 // 0 - ok; 2 - none; 1 - ?
+  144 |     err   IError = none__
