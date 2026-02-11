@@ -205,7 +205,40 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			node.typ
 		}
-		mut styp := g.styp(node_typ)
+		// For generic functions, if the if-expression's type was set to a concrete type
+		// by the checker but we're generating a different generic instance, we need to
+		// use the correct concrete type from cur_concrete_types
+		resolved_typ := if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+			&& g.cur_concrete_types.len > 0 {
+			// Try to unwrap generic, and if that doesn't work, check if we should use
+			// the function's return type
+			unwrapped := g.unwrap_generic(node_typ)
+			if unwrapped == node_typ && g.cur_fn.return_type.has_flag(.generic) {
+				// The node type didn't unwrap, but the function return type is generic
+				// Get the unwrapped function return type for this instance
+				mut fn_ret_typ := g.unwrap_generic(g.cur_fn.return_type)
+				if g.inside_or_block {
+					fn_ret_typ = fn_ret_typ.clear_option_and_result()
+				}
+				// Check if the function return type directly matches one of the concrete types
+				// If it does, the if expression type should also match that concrete type
+				fn_ret_is_direct_generic := g.cur_concrete_types.any(it == fn_ret_typ)
+				if fn_ret_is_direct_generic && node_typ != fn_ret_typ {
+					// The function returns T directly, and node_typ doesn't match the current T
+					// This means node_typ is stale from another instance
+					fn_ret_typ
+				} else {
+					// Either the function return type is wrapped (like !T or []T),
+					// or node_typ is correct for this instance
+					unwrapped
+				}
+			} else {
+				unwrapped
+			}
+		} else {
+			g.unwrap_generic(node_typ)
+		}
+		mut styp := g.styp(resolved_typ)
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
 			if node.typ != ast.void_type {
@@ -237,7 +270,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if tmp != '' {
 			if node.typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
-				g.write2(g.styp(g.last_if_option_type), ' ')
+				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else {
 				g.write('${styp} ')
 			}
