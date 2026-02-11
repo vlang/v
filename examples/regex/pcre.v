@@ -1,69 +1,73 @@
 import regex.pcre
 
-// Since 2026/02/08, regex.pcre is built-in and implemented in pure V.
-// The same example will compile and run with the C wrapper of the PCRE library
-// too, but you will need to `import pcre` instead.
+// Since 2026/02/08, regex.pcre is built-in and implemented in pure V (VM Edition).
+// This version uses `compile` and direct struct access for match results.
 
 fn example() {
-	r := pcre.new_regex('Match everything after this: (.+)', 0) or {
-		println('An error occurred!')
+	// 1. Use pcre.compile() which returns a result (!)
+	r := pcre.compile('Match everything after this: (.+)') or {
+		println('An error occurred: ${err}')
 		return
 	}
 
-	m := r.match_str('Match everything after this: "I ❤️ VLang!"', 0, 0) or {
+	// 2. Use r.find() to search for the pattern. 
+	// Returns an option (?) containing a Match struct.
+	m := r.find('Match everything after this: "I ❤️ VLang!"') or {
 		println('No match!')
 		return
 	}
 
-	// m.get(0) -> Match everything after this: "I ❤️ VLang!"
-	// m.get(1) -> "I ❤️ VLang!"'
-	// m.get(2) -> Error!
-	whole_match := m.get(0) or {
-		println('We matched nothing...')
-		return
-	}
+	// In the new module:
+	// m.text      -> Corresponds to the whole match (formerly m.get(0))
+	// m.groups[0] -> Corresponds to the first capturing group (formerly m.get(1))
 
-	matched_str := m.get(1) or {
-		println('We matched nothing...')
-		return
+	whole_match := m.text
+	
+	// Check if group exists before accessing
+	if m.groups.len > 0 {
+		matched_captured := m.groups[0]
+		println(whole_match)      // Match everything after this: "I ❤️ VLang!"
+		println(matched_captured) // "I ❤️ VLang!"
 	}
-
-	println(whole_match) // Match everything after this: "I ❤️ VLang!"
-	println(matched_str) // "I ❤️ VLang!"
 }
 
 fn main() {
 	example()
 
-	mut text := '[ an s. s! ]( wi4ki:something )
+	text := '[ an s. s! ]( wi4ki:something )
 	[ an s. s! ]( wi4ki:something )
 	[ an s. s! ](wiki:something)
 	[ an s. s! ](something)dd
 	d [ an s. s! ](something ) d
-	[  more text ]( something ) s [ something b ](something)dd
+	[  more text ]( something ) s [ something b ](something)dd'
 
-	'
+	// Regex for markdown-style links
+	regex_str := r'(\[[a-z\.\! ]*\]\( *\w*\:*\w* *\))*'
 
-	// check the regex on https://regex101.com/r/HdYya8/1/
-
-	regex := r'(\[[a-z\.\! ]*\]\( *\w*\:*\w* *\))*'
-
-	r := pcre.new_regex(regex, 0) or {
-		println('An error occurred!')
+	r := pcre.compile(regex_str) or {
+		println('An error occurred during compile!')
 		return
 	}
 
-	m := r.match_str(text, 0, 0) or {
-		println('No match!')
+	// find() scans the text for the first occurrence
+	m := r.find(text) or {
+		println('No match found in text block!')
 		return
 	}
 
-	whole_match1 := m.get(0) or {
-		println('We matched nothing 0...')
-		return
+	// Print the full match found
+	println('Whole match found:')
+	println(m.text)
+
+	// Print all captured groups
+	println('Groups found: ${m.groups}')
+	
+	// If you want to find ALL matches in the text instead of just the first:
+	println('\nFinding all non-overlapping matches:')
+	all_matches := r.find_all(text)
+	for i, mt in all_matches {
+		if mt.text.trim_space() != '' {
+			println('${i}: ${mt.text.trim_space()}')
+		}
 	}
-
-	println(whole_match1)
-
-	println(m.get_all())
 }
