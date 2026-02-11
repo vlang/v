@@ -524,6 +524,14 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 				all << '-Werror=implicit-function-declaration'
 			}
 		}
+	} $else {
+		// On non-Windows platforms, always add -Werror=implicit-function-declaration
+		// to catch implicit function declarations at compile time
+		if ccoptions.cc != .msvc {
+			if !v.pref.is_cstrict {
+				all << '-Werror=implicit-function-declaration'
+			}
+		}
 	}
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
