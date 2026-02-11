@@ -16,6 +16,8 @@ pub enum Hash {
 	sha3_512
 	sha512_224
 	sha512_256
+	shake128
+	shake256
 	blake2s_256
 	blake2b_256
 	blake2b_384
