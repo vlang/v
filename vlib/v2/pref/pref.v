@@ -9,6 +9,7 @@ import os.cmdline
 pub enum Backend {
 	v      // V source output (default)
 	cleanc // Clean C backend (AST -> C)
+	c      // SSA -> C backend
 	x64    // Native x64/AMD64 backend
 	arm64  // Native ARM64 backend
 }
@@ -21,51 +22,82 @@ pub enum Arch {
 
 pub struct Preferences {
 pub mut:
-	debug                  bool
-	verbose                bool
-	skip_genv              bool
-	skip_builtin           bool
-	skip_imports           bool
-	skip_type_check        bool // Skip type checking phase (for backends that don't need it yet)
-	no_parallel            bool = true // default to sequential parsing until parallel is fixed
-	keep_c                 bool // Keep generated C file after compilation
-	use_context_allocator  bool // Use context allocator for heap allocations (enables profiling)
-	use_prealloc_allocator bool // Use prealloc-backed arena allocator for generated heap allocations
-	backend                Backend
-	arch                   Arch = .auto
-	output_file            string
-	printfn_list           []string // List of function names whose generated C source should be printed
+	debug                 bool
+	verbose               bool
+	skip_genv             bool
+	skip_builtin          bool
+	skip_imports          bool
+	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
+	no_parallel           bool = true // default to sequential parsing until parallel is fixed
+	no_cache              bool // Disable build cache
+	no_markused           bool // Disable markused stage and dead-function pruning
+	show_cc               bool // Print C compiler command(s)
+	stats                 bool // Print extended statistics
+	print_parsed_files    bool // Print all parsed files grouped by full/.vh parse mode
+	keep_c                bool // Keep generated C file after compilation
+	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
+	backend               Backend
+	arch                  Arch = .auto
+	output_file           string
+	printfn_list          []string // List of function names whose generated C source should be printed
 pub:
 	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
 }
 
-fn detect_vroot() string {
-	// Prefer deriving from executable path: <vroot>/cmd/v2/v3
-	if os.args.len > 0 && os.args[0].len > 0 {
-		exe_path := os.abs_path(os.args[0])
-		dir1 := os.dir(exe_path)
-		p1 := os.join_path(dir1, 'vlib', 'builtin')
-		if os.is_dir(p1) {
-			return dir1
-		}
-		dir2 := os.dir(dir1)
-		if os.is_dir(os.join_path(dir2, 'vlib', 'builtin')) {
-			return dir2
-		}
-		dir3 := os.dir(dir2)
-		if os.is_dir(os.join_path(dir3, 'vlib', 'builtin')) {
-			return dir3
+fn detect_vroot_from(start string) string {
+	if start.len == 0 {
+		return ''
+	}
+	mut dir := start
+	// Avoid os.abs_path during bootstrap; normalize relative paths manually.
+	if !os.is_abs_path(dir) {
+		cwd := os.getwd()
+		if cwd.len > 0 {
+			dir = os.join_path(cwd, dir)
 		}
 	}
-	// Fallback to cwd if already at repository root.
+	for _ in 0 .. 8 {
+		if os.is_dir(os.join_path(dir, 'vlib', 'builtin')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ''
+}
+
+fn detect_vroot() string {
+	// First prefer the compile-time module root when it points to a valid
+	// V source tree. This keeps self-host binaries stable during bootstrapping.
+	compile_time_root := @VMODROOT
+	if os.is_dir(os.join_path(compile_time_root, 'vlib', 'builtin')) {
+		return compile_time_root
+	}
+	// Prefer deriving from executable path: <vroot>/cmd/v2/v3.
+	if os.args.len > 0 && os.args[0].len > 0 {
+		vroot := detect_vroot_from(os.args[0])
+		if vroot.len > 0 {
+			return vroot
+		}
+	}
+	// Fallback to current directory ancestry.
 	cwd := os.getwd()
-	if cwd.len > 0 && os.is_dir(os.join_path(cwd, 'vlib', 'builtin')) {
+	vroot := detect_vroot_from(cwd)
+	if vroot.len > 0 {
+		return vroot
+	}
+	// Final fallback: keep old behavior for unusual bootstrap contexts.
+	if os.args.len > 0 && os.args[0].len > 0 {
+		if os.is_abs_path(os.args[0]) {
+			return os.dir(os.args[0])
+		}
 		return cwd
 	}
-	// Final fallback preserves previous behavior.
-	vexe_dir := os.dir(@VEXE)
-	return vexe_dir
+	return cwd
 }
 
 pub fn new_preferences() Preferences {
@@ -96,6 +128,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	mut backend := Backend.cleanc
 	match backend_str {
 		'cleanc' { backend = .cleanc }
+		'c' { backend = .c }
 		'v' { backend = .v }
 		'arm64' { backend = .arm64 }
 		'x64' { backend = .x64 }
@@ -126,22 +159,26 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	// Default to sequential parsing (no_parallel=true) unless --parallel is specified
 	use_parallel := '--parallel' in options
 	return Preferences{
-		debug:                  '--debug' in options || '-d' in options
-		verbose:                '--verbose' in options || '-v' in options
-		skip_genv:              '--skip-genv' in options
-		skip_builtin:           '--skip-builtin' in options
-		skip_imports:           '--skip-imports' in options
-		skip_type_check:        '--skip-type-check' in options
-		no_parallel:            !use_parallel
-		keep_c:                 '-keepc' in options
-		use_context_allocator:  '--profile-alloc' in options || '-profile-alloc' in options
-		use_prealloc_allocator: '--prealloc' in options || '-prealloc' in options
-		backend:                backend
-		arch:                   arch
-		output_file:            output_file
-		printfn_list:           printfn_list
-		vroot:                  detect_vroot()
-		vmodules_path:          os.vmodules_dir()
+		debug:                 '--debug' in options || '-d' in options
+		verbose:               '--verbose' in options || '-v' in options
+		skip_genv:             '--skip-genv' in options
+		skip_builtin:          '--skip-builtin' in options
+		skip_imports:          '--skip-imports' in options
+		skip_type_check:       '--skip-type-check' in options
+		no_parallel:           !use_parallel
+		no_cache:              '-nocache' in options || '--nocache' in options
+		no_markused:           '-nomarkused' in options || '--nomarkused' in options
+		show_cc:               '-showcc' in options || '--showcc' in options
+		stats:                 '-stats' in options || '--stats' in options
+		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
+		keep_c:                '-keepc' in options
+		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		backend:               backend
+		arch:                  arch
+		output_file:           output_file
+		printfn_list:          printfn_list
+		vroot:                 detect_vroot()
+		vmodules_path:         os.vmodules_dir()
 	}
 }
 
@@ -150,6 +187,8 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
 	if '--cleanc' in options || 'cleanc' in options {
 		backend = .cleanc
+	} else if '--c' in options || 'c' in options {
+		backend = .c
 	} else if '--v' in options || 'v' in options {
 		backend = .v
 	} else if '--arm64' in options || 'arm64' in options {
@@ -169,17 +208,21 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	use_parallel := '--parallel' in options
 	return Preferences{
 		// config flags
-		debug:                  '--debug' in options || '-d' in options
-		verbose:                '--verbose' in options || '-v' in options
-		skip_genv:              '--skip-genv' in options
-		skip_builtin:           '--skip-builtin' in options
-		skip_imports:           '--skip-imports' in options
-		skip_type_check:        '--skip-type-check' in options
-		no_parallel:            !use_parallel
-		use_context_allocator:  '--profile-alloc' in options || '-profile-alloc' in options
-		use_prealloc_allocator: '--prealloc' in options || '-prealloc' in options
-		backend:                backend
-		arch:                   arch
+		debug:                 '--debug' in options || '-d' in options
+		verbose:               '--verbose' in options || '-v' in options
+		skip_genv:             '--skip-genv' in options
+		skip_builtin:          '--skip-builtin' in options
+		skip_imports:          '--skip-imports' in options
+		skip_type_check:       '--skip-type-check' in options
+		no_parallel:           !use_parallel
+		no_cache:              '-nocache' in options || '--nocache' in options
+		no_markused:           '-nomarkused' in options || '--nomarkused' in options
+		show_cc:               '-showcc' in options || '--showcc' in options
+		stats:                 '-stats' in options || '--stats' in options
+		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
+		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
+		backend:               backend
+		arch:                  arch
 	}
 }
 

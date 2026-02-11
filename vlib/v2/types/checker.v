@@ -1837,7 +1837,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		mut receiver_type := c.expr(decl.receiver.typ)
 		mut recv_scope_type := receiver_type
 		if receiver_type is Pointer {
-			recv_scope_type = receiver_type.base_type()
+			recv_scope_type = (receiver_type as Pointer).base_type
 		}
 		mut recv_name := if recv_scope_type is Alias {
 			recv_scope_type.name()
@@ -2242,23 +2242,40 @@ fn (mut c Checker) add_inferred_generic_type(mut type_map map[string]Type, name 
 // TODO: clean up & add any missing cases & missing recursion
 fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_map map[string]Type) ! {
 	match param_type {
+		Alias {
+			c.infer_generic_type(param_type.base_type, arg_type, mut type_map)!
+		}
 		Array {
-			if param_type.elem_type is NamedType && arg_type is Array {
-				c.add_inferred_generic_type(mut type_map, param_type.elem_type, arg_type.elem_type)!
+			if arg_type is Array {
+				c.infer_generic_type(param_type.elem_type, arg_type.elem_type, mut type_map)!
+			}
+		}
+		ArrayFixed {
+			if arg_type is ArrayFixed {
+				c.infer_generic_type(param_type.elem_type, arg_type.elem_type, mut type_map)!
+			} else if arg_type is Array {
+				// `[]T` call-sites can infer generic params from `[N]T` params and vice versa.
+				c.infer_generic_type(param_type.elem_type, arg_type.elem_type, mut type_map)!
 			}
 		}
 		Channel {
 			if pt_et := param_type.elem_type {
-				if pt_et is NamedType && arg_type is Channel {
+				if arg_type is Channel {
 					if at_et := arg_type.elem_type {
-						c.add_inferred_generic_type(mut type_map, pt_et, at_et)!
+						c.infer_generic_type(pt_et, at_et, mut type_map)!
 					}
 				}
 			}
 		}
 		FnType {
 			if arg_type is FnType {
-				for i, param_param in param_type.params {
+				max_params := if param_type.params.len < arg_type.params.len {
+					param_type.params.len
+				} else {
+					arg_type.params.len
+				}
+				for i in 0 .. max_params {
+					param_param := param_type.params[i]
 					arg_param := arg_type.params[i]
 					c.infer_generic_type(param_param.typ, arg_param.typ, mut type_map)!
 				}
@@ -2271,12 +2288,8 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		}
 		Map {
 			if arg_type is Map {
-				if param_type.key_type is NamedType {
-					c.add_inferred_generic_type(mut type_map, param_type.key_type, arg_type.key_type)!
-				}
-				if param_type.value_type is NamedType {
-					c.add_inferred_generic_type(mut type_map, param_type.value_type, arg_type.value_type)!
-				}
+				c.infer_generic_type(param_type.key_type, arg_type.key_type, mut type_map)!
+				c.infer_generic_type(param_type.value_type, arg_type.value_type, mut type_map)!
 			}
 		}
 		NamedType {
@@ -2284,29 +2297,47 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		}
 		Struct {}
 		OptionType {
-			if param_type.base_type is NamedType && arg_type is OptionType {
-				c.add_inferred_generic_type(mut type_map, param_type.base_type.name(),
-					arg_type.base_type)!
+			if arg_type is OptionType {
+				c.infer_generic_type(param_type.base_type, arg_type.base_type, mut type_map)!
+			} else {
+				c.infer_generic_type(param_type.base_type, arg_type, mut type_map)!
+			}
+		}
+		Pointer {
+			if arg_type is Pointer {
+				c.infer_generic_type(param_type.base_type, arg_type.base_type, mut type_map)!
 			}
 		}
 		ResultType {
-			if param_type.base_type is NamedType && arg_type is ResultType {
-				c.add_inferred_generic_type(mut type_map, param_type.base_type.name(),
-					arg_type.base_type)!
+			if arg_type is ResultType {
+				c.infer_generic_type(param_type.base_type, arg_type.base_type, mut type_map)!
+			} else {
+				c.infer_generic_type(param_type.base_type, arg_type, mut type_map)!
 			}
 		}
 		Thread {
 			if pt_et := param_type.elem_type {
-				if pt_et is NamedType && arg_type is Thread {
+				if arg_type is Thread {
 					if at_et := arg_type.elem_type {
-						c.add_inferred_generic_type(mut type_map, pt_et, at_et)!
+						c.infer_generic_type(pt_et, at_et, mut type_map)!
 					}
 				}
 			}
 		}
-		else {
-			println('missing ${param_type.name()}')
+		Tuple {
+			if arg_type is Tuple {
+				max_types := if param_type.types.len < arg_type.types.len {
+					param_type.types.len
+				} else {
+					arg_type.types.len
+				}
+				for i in 0 .. max_types {
+					c.infer_generic_type(param_type.types[i], arg_type.types[i], mut type_map)!
+				}
+			}
 		}
+		// Other concrete types do not participate in generic inference.
+		Primitive, Char, Enum, ISize, Interface, Nil, None, Rune, String, SumType, USize, Void {}
 	}
 }
 

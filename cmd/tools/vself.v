@@ -37,6 +37,9 @@ fn main() {
 			args << '-cc tcc'
 		}
 	}
+	if !has_gc_arg(args) {
+		args << ['-gc', 'none']
+	}
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }
@@ -51,6 +54,18 @@ fn main() {
 	}
 	backup_old_version_and_rename_newer(short_v_name) or { panic(err.msg()) }
 	println('V built successfully as executable "${vexe_name}".')
+}
+
+fn has_gc_arg(args []string) bool {
+	for arg in args {
+		if arg == '-gc' {
+			return true
+		}
+		if arg.starts_with('-gc=') {
+			return true
+		}
+	}
+	return false
 }
 
 fn compile(vroot string, cmd string) {

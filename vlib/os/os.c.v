@@ -861,18 +861,21 @@ pub fn chdir(path string) ! {
 @[manualfree]
 pub fn getwd() string {
 	unsafe {
-		buf := [max_path_buffer_size]u8{}
 		$if windows {
+			buf := [max_path_buffer_size]u8{}
 			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
 				return ''
 			}
 			res := string_from_wide(&u16(&buf[0]))
 			return res
 		} $else {
-			if C.getcwd(&char(&buf[0]), max_path_len) == 0 {
+			// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
+			cwd_ptr := C.getcwd(0, 4096)
+			if cwd_ptr == 0 {
 				return ''
 			}
-			res := tos_clone(&buf[0])
+			res := tos_clone(byteptr(cwd_ptr))
+			C.free(cwd_ptr)
 			return res
 		}
 	}

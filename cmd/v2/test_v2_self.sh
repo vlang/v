@@ -1,30 +1,48 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Build v2 with v1
-rm v2 || true
-V=${V:-$HOME/code/v/v}
-$V v2.v
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 
-rm v3 || true
-rm v3.c || true
-# Use v2 to compile itself to v3 (using cleanc backend)
-./v2 -o v3 -backend cleanc v2.v || exit
+v2_source="${script_dir}/v2.v"
+v2_bin="${script_dir}/v2"
+v3_bin="${script_dir}/v3"
+v4_bin="${script_dir}/v4"
+v5_bin="${script_dir}/v5"
 
-echo "SUCCESS: v2 successfully compiled itself to v3"
-echo "v3 binary size: $(ls -lh v3 | awk '{print $5}')"
-
-# Test that v3 runs and produces expected output
-OUTPUT=$(./v3 2>&1 || true)
-EXPECTED="At least 1 .v file expected"
-
-if echo "$OUTPUT" | grep -q "$EXPECTED"; then
-    echo "SUCCESS: v3 runs correctly and prints expected message"
-else
-    echo "FAILURE: Expected '$EXPECTED' but got:"
-    echo "$OUTPUT"
-    exit 1
+v1_compiler="${V:-${repo_root}/v}"
+if [[ ! -x "${v1_compiler}" ]]; then
+	echo "FAILURE: v1 compiler not found or not executable: ${v1_compiler}"
+	exit 1
 fi
 
-echo ""
-echo "=== SELF-COMPILATION TEST PASSED ==="
+# Build v2 with v1.
+rm -f "${v2_bin}" "${v3_bin}" "${v3_bin}.c" "${v4_bin}" "${v4_bin}.c" "${v5_bin}" "${v5_bin}.c"
+"${v1_compiler}" -o "${v2_bin}" "${v2_source}"
+
+# Use v2 to compile itself to v3 (using cleanc backend).
+"${v2_bin}" -o "${v3_bin}" -backend cleanc "${v2_source}"
+
+echo "SUCCESS: v2 successfully compiled itself to v3"
+echo "v3 binary size: $(ls -lh "${v3_bin}" | awk '{print $5}')"
+
+"${v3_bin}" -realloc -o "${v4_bin}" -backend cleanc "${v2_source}"
+printf '\nV4 compiled\n\n'
+
+"${v4_bin}" -o "${v5_bin}" -backend cleanc "${v2_source}"
+printf '\nV5 compiled\n\n'
+
+# Test that v3 runs and produces expected output.
+output="$("${v3_bin}" 2>&1 || true)"
+expected='At least 1 .v file expected'
+
+if echo "${output}" | grep -q "${expected}"; then
+	echo "SUCCESS: v3 runs correctly and prints expected message"
+else
+	echo "FAILURE: Expected '${expected}' but got:"
+	echo "${output}"
+	exit 1
+fi
+
+echo ''
+echo '=== SELF-COMPILATION TEST PASSED ==='

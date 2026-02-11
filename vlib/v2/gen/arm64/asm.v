@@ -185,6 +185,21 @@ fn asm_str(rt Reg, rn Reg) u32 {
 	return 0xF9000000 | (u32(rn) << 5) | u32(rt)
 }
 
+// str wt, [rn] (store 32-bit)
+fn asm_str_w(rt Reg, rn Reg) u32 {
+	return 0xB9000000 | (u32(rn) << 5) | u32(rt)
+}
+
+// strh wt, [rn] (store 16-bit)
+fn asm_str_h(rt Reg, rn Reg) u32 {
+	return 0x79000000 | (u32(rn) << 5) | u32(rt)
+}
+
+// strb wt, [rn] (store 8-bit)
+fn asm_str_b(rt Reg, rn Reg) u32 {
+	return 0x39000000 | (u32(rn) << 5) | u32(rt)
+}
+
 // str rt, [rn, #imm12] (scaled by 8)
 fn asm_str_imm(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0xF9000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
@@ -198,6 +213,21 @@ fn asm_stur(rt Reg, rn Reg, simm9 i32) u32 {
 // ldr rt, [rn] (load 64-bit)
 fn asm_ldr(rt Reg, rn Reg) u32 {
 	return 0xF9400000 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldr wt, [rn] (load 32-bit, zero-extend to x)
+fn asm_ldr_w(rt Reg, rn Reg) u32 {
+	return 0xB9400000 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrh wt, [rn] (load 16-bit, zero-extend to x)
+fn asm_ldr_h(rt Reg, rn Reg) u32 {
+	return 0x79400000 | (u32(rn) << 5) | u32(rt)
+}
+
+// ldrb wt, [rn] (load 8-bit, zero-extend to x)
+fn asm_ldr_b(rt Reg, rn Reg) u32 {
+	return 0x39400000 | (u32(rn) << 5) | u32(rt)
 }
 
 // ldr rt, [rn, #imm12] (load 64-bit with unsigned scaled offset)

@@ -25,6 +25,8 @@ fn main() {
 	mut backend := 'arm64' // default
 	if os.args.contains('x64') {
 		backend = 'x64'
+	} else if os.args.contains('c') {
+		backend = 'c'
 	} else if os.args.contains('cleanc') {
 		backend = 'cleanc'
 	}
@@ -45,13 +47,20 @@ fn main() {
 
 	// Derive output binary name from input file
 	base_name := os.file_name(input_file).replace('.v', '')
+	ref_output_path := './.${base_name}_ref.out.tmp'
+	gen_output_path := './.${base_name}_gen.out.tmp'
 
 	// Run v2 with selected backend
 	println('[*] Running v2 -backend ${backend} ${input_file}...')
-	mut v2_cmd := '${v2_binary} -backend ${backend} ${input_file} -o ${base_name}'
-	if os.args.contains('--skip-builtin') {
-		v2_cmd = '${v2_binary} -backend ${backend} --skip-builtin ${input_file} -o ${base_name}'
+	mut backend_flags := '-backend ${backend}'
+	if backend == 'cleanc' {
+		// cleanc needs full per-run codegen for this suite right now.
+		backend_flags += ' -nomarkused -nocache'
 	}
+	if os.args.contains('--skip-builtin') && !backend_flags.contains('--skip-builtin') {
+		backend_flags += ' --skip-builtin'
+	}
+	v2_cmd := '${v2_binary} ${backend_flags} ${input_file} -o ${base_name}'
 	v2_res := os.execute(v2_cmd)
 	if v2_res.exit_code != 0 {
 		eprintln('Error: v2 compilation failed')
@@ -62,6 +71,10 @@ fn main() {
 	println('compilation took ${time.since(t0)}')
 
 	// Save the v2-produced binary before running reference (which would overwrite it)
+	os.rm('./${base_name}_v2') or {}
+	if os.user_os() == 'windows' {
+		os.rm('./${base_name}_v2.exe') or {}
+	}
 	os.cp('./${base_name}', './${base_name}_v2') or {
 		eprintln('Error: Failed to save v2 binary')
 		return
@@ -76,14 +89,18 @@ fn main() {
 	} else {
 		// Run Reference (v run test.v)
 		println('[*] Running reference: ${@VEXE} -enable-globals run ${input_file}...')
-		ref_res := os.execute('${@VEXE} -n -w -enable-globals run ${input_file}')
+		os.rm(ref_output_path) or {}
+		ref_cmd := '${@VEXE} -n -w -enable-globals run ${input_file} > ${ref_output_path} 2>&1'
+		ref_res := os.execute(ref_cmd)
+		ref_out := os.read_file(ref_output_path) or { '' }
+		os.rm(ref_output_path) or {}
 		if ref_res.exit_code != 0 {
 			eprintln('Error: Reference run failed')
-			eprintln(ref_res.output)
+			eprintln(ref_out)
 			return
 		}
 		// Normalize newlines
-		expected_out = ref_res.output.trim_space().replace('\r\n', '\n')
+		expected_out = ref_out.trim_space().replace('\r\n', '\n')
 	}
 
 	// Run Generated Binary (the v2-produced one we saved earlier)
@@ -92,7 +109,11 @@ fn main() {
 	if os.user_os() == 'windows' {
 		cmd = '${base_name}_v2.exe'
 	}
-	gen_res := os.execute(cmd)
+	os.rm(gen_output_path) or {}
+	gen_cmd := '${cmd} > ${gen_output_path} 2>&1'
+	gen_res := os.execute(gen_cmd)
+	gen_out := os.read_file(gen_output_path) or { '' }
+	os.rm(gen_output_path) or {}
 	if gen_res.exit_code != 0 {
 		if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
 			eprintln('Error: Execution timed out (infinite loop detected)')
@@ -102,8 +123,7 @@ fn main() {
 	}
 
 	// Strip terminal control characters that script command may prepend
-	mut cleaned := gen_res.output.replace('\r\n', '\n').replace('\x04', '').replace('\x08',
-		'')
+	mut cleaned := gen_out.replace('\r\n', '\n').replace('\x04', '').replace('\x08', '')
 	// Remove "^D" literal string that macOS script may add
 	if cleaned.starts_with('^D') {
 		cleaned = cleaned[2..]

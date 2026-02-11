@@ -94,6 +94,27 @@ fn promote_memory_to_register(mut m ssa.Module) {
 }
 
 fn is_promotable(m ssa.Module, alloc_id int) bool {
+	// Keep array-backed slots in memory. Promoting pointer-to-array allocas can
+	// lose correct addressing semantics for fixed-array literals/indexing.
+	if alloc_id > 0 && alloc_id < m.values.len {
+		alloc_typ_id := m.values[alloc_id].typ
+		if alloc_typ_id > 0 && alloc_typ_id < m.type_store.types.len {
+			alloc_typ := m.type_store.types[alloc_typ_id]
+			if alloc_typ.kind == .ptr_t {
+				elem_typ_id := alloc_typ.elem_type
+				if elem_typ_id > 0 && elem_typ_id < m.type_store.types.len {
+					elem_typ := m.type_store.types[elem_typ_id]
+					if elem_typ.kind == .ptr_t {
+						return false
+					}
+					if elem_typ.kind == .array_t {
+						return false
+					}
+				}
+			}
+		}
+	}
+
 	uses := m.values[alloc_id].uses
 	for u in uses {
 		if u >= m.values.len {

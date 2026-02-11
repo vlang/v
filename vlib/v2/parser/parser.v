@@ -1825,14 +1825,22 @@ fn (mut p Parser) directive() ast.Directive {
 fn (mut p Parser) const_decl(is_public bool) ast.ConstDecl {
 	p.next()
 	is_grouped := p.tok == .lpar
+	is_v_header := p.file.name.ends_with('.vh')
 	if is_grouped {
 		p.next()
 	}
 	mut fields := []ast.FieldInit{}
 	for {
 		name := p.expect_name()
-		p.expect(.assign)
-		value := p.expr(.lowest)
+		mut value := ast.empty_expr
+		if p.tok == .assign {
+			p.next()
+			value = p.expr(.lowest)
+		} else if is_v_header {
+			value = p.expect_type()
+		} else {
+			p.error('expecting `=` in const declaration')
+		}
 		fields << ast.FieldInit{
 			name:  name
 			value: value
@@ -1910,7 +1918,11 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 			if p.tok != .lcbr {
 				return_type = p.expect_type()
 			}
-			stmts := p.block()
+			stmts := if p.tok == .lcbr {
+				p.block()
+			} else {
+				[]ast.Stmt{}
+			}
 			p.expect(.semicolon)
 			return ast.FnDecl{
 				attributes: attributes

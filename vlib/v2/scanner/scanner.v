@@ -478,10 +478,21 @@ fn (mut s Scanner) comment() {
 fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 	// shortcut, scan whole string
 	if scan_as_raw {
-		for s.offset < s.src.len && s.src[s.offset] != c_quote {
+		for s.offset < s.src.len {
+			c := s.src[s.offset]
+			if c == c_quote {
+				break
+			}
+			if c == `\n` {
+				s.offset++
+				s.file.add_line(s.offset)
+				continue
+			}
 			s.offset++
 		}
-		s.offset++
+		if s.offset < s.src.len {
+			s.offset++
+		}
 		return
 	}
 	// normal strings

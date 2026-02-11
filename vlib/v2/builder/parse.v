@@ -10,22 +10,22 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
+	mut use_core_headers := false
 	if !skip_builtin {
-		// Parse builtin
-		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('builtin')), mut
-			b.file_set)
-		// Parse strconv (used by builtin for string formatting)
-		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('strconv')), mut
-			b.file_set)
-		// Parse strings (used by builtin for string building)
-		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('strings')), mut
-			b.file_set)
-		// Parse hash (used by maps for wyhash)
-		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('hash')), mut
-			b.file_set)
-		// Parse math.bits (used by strconv for bit operations)
-		ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path('math.bits')), mut
-			b.file_set)
+		use_core_headers = b.can_use_cached_core_headers()
+		// SSA/C and native backends need full core module bodies (not .vh summaries),
+		// otherwise runtime helpers can be lowered to stubs.
+		if b.pref.backend in [.c, .cleanc, .x64, .arm64] {
+			use_core_headers = false
+		}
+		if use_core_headers {
+			ast_files << parser_reused.parse_files(b.core_cached_parse_paths(), mut b.file_set)
+		} else {
+			for module_path in core_cached_module_paths {
+				ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path)), mut
+					b.file_set)
+			}
+		}
 	}
 	// parse user files
 	ast_files << parser_reused.parse_files(files, mut b.file_set)
@@ -35,6 +35,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	// parse imports
 	mut parsed_imports := []string{}
+	if !skip_builtin {
+		parsed_imports << core_cached_module_paths
+	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
 		for mod in ast_file.imports {
