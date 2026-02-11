@@ -4875,8 +4875,15 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 				t.close_scope()
 				return result
 			}
-			// Dynamic array or string - transform to indexed for loop with .len
-			if iter_base is types.Array || iter_base is types.String {
+			// Dynamic array or string - transform to indexed for loop with .len.
+			// Keep these as separate type checks because `is A || is B` currently
+			// lowers incorrectly in cleanc self-host output.
+			if iter_base is types.Array {
+				result := t.transform_array_for_in(stmt, for_in, iter_base)
+				t.close_scope()
+				return result
+			}
+			if iter_base is types.String {
 				result := t.transform_array_for_in(stmt, for_in, iter_base)
 				t.close_scope()
 				return result

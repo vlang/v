@@ -272,26 +272,30 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		write_u64_le(mut symtab_data, vm_addr) // n_value
 	}
 
-	// Symbol table follows bind info
-	symtab_off := bind_off + bind_size
+	// Symbol table follows bind info and must be aligned in LINKEDIT.
+	symtab_unaligned_off := bind_off + bind_size
+	symtab_off := (symtab_unaligned_off + 7) & ~7
+	symtab_pad := symtab_off - symtab_unaligned_off
 	n_syms := symtab_data.len / 16
 	strtab_off := symtab_off + symtab_data.len
 	strtab_size := strtab_data.len
 
-	// Code signature follows string table (will be calculated later)
+	// Code signature follows string table and should be aligned in LINKEDIT.
+	code_limit_unaligned := strtab_off + strtab_size
+	cs_off := (code_limit_unaligned + 15) & ~15
+	cs_pad := cs_off - code_limit_unaligned
 	// code_limit is where the signature starts (everything before is hashed)
-	code_limit := strtab_off + strtab_size
+	code_limit := cs_off
 	// Signature size: SuperBlob(12) + 2*BlobIndex(8) + CodeDirectory header + identifier + hashes + Requirements blob
 	ident := output_path.all_after_last('/') // Use filename as identifier
 	cs_size := l.estimate_signature_size(code_limit, ident)
-	cs_off := code_limit
 
 	l.linkedit_off = bind_off
-	l.linkedit_size = bind_size + symtab_data.len + strtab_size + cs_size
+	l.linkedit_size = bind_size + symtab_pad + symtab_data.len + strtab_size + cs_pad + cs_size
 
 	l.write_dyld_info(bind_off, bind_size)
 	l.write_symtab(symtab_off, n_syms, strtab_off, strtab_size)
-	l.write_dysymtab()
+	l.write_dysymtab(n_syms)
 	l.write_load_dylinker()
 	l.write_load_dylib()
 
@@ -344,12 +348,16 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Write LINKEDIT content
 	l.buf << bind_info
+	l.write_zeros(symtab_pad)
 
 	// Write symbol table nlist entries
 	l.buf << symtab_data
 
 	// Write string table
 	l.buf << strtab_data
+
+	// Align code signature start in LINKEDIT.
+	l.write_zeros(cs_pad)
 
 	println('  padding+data: ${time.since(t)}')
 	t = time.now()
@@ -374,8 +382,17 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Make executable
 	os.chmod(output_path, 0o755) or {}
+	l.codesign_output(output_path)
 
 	println('  TOTAL linker: ${time.since(t_total)}')
+}
+
+fn (l Linker) codesign_output(output_path string) {
+	$if macos {
+		codesign_path := os.find_abs_path_of_executable('codesign') or { return }
+		sign_cmd := '${os.quoted_path(codesign_path)} -s - -f ${os.quoted_path(output_path)}'
+		_ := os.execute(sign_cmd)
+	}
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
@@ -540,12 +557,27 @@ fn (mut l Linker) write_symtab(symoff int, nsyms int, stroff int, strsize int) {
 	write_u32_le(mut l.buf, u32(strsize))
 }
 
-fn (mut l Linker) write_dysymtab() {
+fn (mut l Linker) write_dysymtab(_nsyms int) {
 	write_u32_le(mut l.buf, u32(lc_dysymtab))
 	write_u32_le(mut l.buf, 80)
-	for _ in 0 .. 18 {
-		write_u32_le(mut l.buf, 0)
-	}
+	write_u32_le(mut l.buf, 0) // ilocalsym
+	write_u32_le(mut l.buf, 0) // nlocalsym
+	write_u32_le(mut l.buf, 0) // iextdefsym
+	write_u32_le(mut l.buf, 0) // nextdefsym
+	write_u32_le(mut l.buf, 0) // iundefsym
+	write_u32_le(mut l.buf, 0) // nundefsym
+	write_u32_le(mut l.buf, 0) // tocoff
+	write_u32_le(mut l.buf, 0) // ntoc
+	write_u32_le(mut l.buf, 0) // modtaboff
+	write_u32_le(mut l.buf, 0) // nmodtab
+	write_u32_le(mut l.buf, 0) // extrefsymoff
+	write_u32_le(mut l.buf, 0) // nextrefsyms
+	write_u32_le(mut l.buf, 0) // indirectsymoff
+	write_u32_le(mut l.buf, 0) // nindirectsyms
+	write_u32_le(mut l.buf, 0) // extreloff
+	write_u32_le(mut l.buf, 0) // nextrel
+	write_u32_le(mut l.buf, 0) // locreloff
+	write_u32_le(mut l.buf, 0) // nlocrel
 }
 
 fn (mut l Linker) write_load_dylinker() {
@@ -890,8 +922,9 @@ fn (mut l Linker) write_text_with_relocations() {
 			if addr := sym_name_to_addr[sym.name] {
 				// Resolve to local definition
 				sym_addrs[i] = addr
-			} else if got_idx := l.sym_to_got[sym.name] {
+			} else if sym.name in l.sym_to_got {
 				// External symbol - address is in stub
+				got_idx := l.sym_to_got[sym.name]
 				sym_addrs[i] = stubs_vmaddr + u64(got_idx * 12)
 			}
 		}
@@ -905,7 +938,8 @@ fn (mut l Linker) write_text_with_relocations() {
 		mut sym_addr := sym_addrs[r.sym_idx]
 		if sym_name in force_external_syms {
 			// Use stub address for force_external symbols
-			if got_idx := l.sym_to_got[sym_name] {
+			if sym_name in l.sym_to_got {
+				got_idx := l.sym_to_got[sym_name]
 				sym_addr = stubs_vmaddr + u64(got_idx * 12)
 			}
 		}

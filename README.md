@@ -275,6 +275,8 @@ hello world
 >>>
 ```
 
+`v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
+
 ```bash
 cd examples
 v hello_world.v && ./hello_world    # or simply

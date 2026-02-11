@@ -65,18 +65,26 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	}
 	skip_builtin := b.pref.skip_builtin
 	if !skip_builtin {
+		use_core_headers := b.can_use_cached_core_headers()
+		// SSA/C and native backends need full core module bodies (not .vh summaries),
+		// otherwise runtime helpers can be lowered to stubs.
+		use_core_headers2 := if b.pref.backend in [.c, .cleanc, .x64, .arm64] {
+			false
+		} else {
+			use_core_headers
+		}
 		// Parse builtin and its dependencies
 		// Mark them as parsed first to prevent re-parsing via imports
-		pstate.mark_module_as_parsed('builtin')
-		pstate.mark_module_as_parsed('strconv')
-		pstate.mark_module_as_parsed('strings')
-		pstate.mark_module_as_parsed('hash')
-		pstate.mark_module_as_parsed('math.bits')
-		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('builtin')))
-		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('strconv')))
-		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('strings')))
-		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('hash')))
-		worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path('math.bits')))
+		for module_path in core_cached_module_paths {
+			pstate.mark_module_as_parsed(module_path)
+		}
+		if use_core_headers2 {
+			worker_pool.queue_jobs(b.core_cached_parse_paths())
+		} else {
+			for module_path in core_cached_module_paths {
+				worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path)))
+			}
+		}
 	}
 	// parse user files
 	worker_pool.queue_jobs(files)

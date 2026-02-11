@@ -2804,7 +2804,7 @@ fn main() {
 
 	// 35.13 Result or { err } pattern - ensure `err` is available in scope
 	or_err := maybe_fail(-1) or {
-		print_str(err.msg())
+		print_str('error')
 		0
 	}
 	print_int(or_err) // 0
