@@ -176,7 +176,7 @@ fn test_mlock_unlock() {
 fn test_mmap_protection_flags() {
 	size := usize(4096)
 
-	// Test read-only mapping
+	// Test read-only mapping (supported on all platforms)
 	read_only_addr := mmap.mmap(
 		len:    size
 		prot:   mmap.prot_read
@@ -186,35 +186,59 @@ fn test_mmap_protection_flags() {
 	)!
 	mmap.munmap(read_only_addr, size)!
 
-	// Test write-only mapping (platform dependent, but API should work)
-	write_only_addr := mmap.mmap(
-		len:    size
-		prot:   mmap.prot_write
-		flags:  mmap.map_anonymous | mmap.map_private
-		fd:     -1
-		offset: 0
-	)!
-	mmap.munmap(write_only_addr, size)!
+	$if !windows {
+		// Test write-only mapping (not supported on Windows)
+		write_only_addr := mmap.mmap(
+			len:    size
+			prot:   mmap.prot_write
+			flags:  mmap.map_anonymous | mmap.map_private
+			fd:     -1
+			offset: 0
+		)!
+		mmap.munmap(write_only_addr, size)!
 
-	// Test execute mapping (platform dependent, but API should work)
-	exec_addr := mmap.mmap(
-		len:    size
-		prot:   mmap.prot_exec
-		flags:  mmap.map_anonymous | mmap.map_private
-		fd:     -1
-		offset: 0
-	)!
-	mmap.munmap(exec_addr, size)!
+		// Test execute mapping (not supported on Windows)
+		exec_addr := mmap.mmap(
+			len:    size
+			prot:   mmap.prot_exec
+			flags:  mmap.map_anonymous | mmap.map_private
+			fd:     -1
+			offset: 0
+		)!
+		mmap.munmap(exec_addr, size)!
+	}
 
-	// Test read/write/execute mapping
-	rwx_addr := mmap.mmap(
+	// Test read/write mapping (supported on all platforms)
+	rw_addr := mmap.mmap(
 		len:    size
-		prot:   mmap.prot_read | mmap.prot_write | mmap.prot_exec
+		prot:   mmap.prot_read | mmap.prot_write
 		flags:  mmap.map_anonymous | mmap.map_private
 		fd:     -1
 		offset: 0
 	)!
-	mmap.munmap(rwx_addr, size)!
+	mmap.munmap(rw_addr, size)!
+
+	$if !windows {
+		// Test read/write/execute mapping (not supported on Windows with exec alone)
+		rwx_addr := mmap.mmap(
+			len:    size
+			prot:   mmap.prot_read | mmap.prot_write | mmap.prot_exec
+			flags:  mmap.map_anonymous | mmap.map_private
+			fd:     -1
+			offset: 0
+		)!
+		mmap.munmap(rwx_addr, size)!
+	} $else {
+		// On Windows, test read/write/execute which is supported
+		rwx_addr := mmap.mmap(
+			len:    size
+			prot:   mmap.prot_read | mmap.prot_write | mmap.prot_exec
+			flags:  mmap.map_anonymous | mmap.map_private
+			fd:     -1
+			offset: 0
+		)!
+		mmap.munmap(rwx_addr, size)!
+	}
 }
 
 // Test mmap with different mapping flags
