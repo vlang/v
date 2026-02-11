@@ -1,0 +1,50 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <Args> =
+                try call 'v.sim.args':'parse_args'(~{{'vbeam','type'}=>'ParserSettings'}~) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  let <Img_settings> =
+                    call 'v.sim.img':'image_settings_from_grid'(call 'erlang':'map_get'('grid', Args))
+                in  let <Width> =
+                        call 'erlang':'map_get'('width', Img_settings)
+                    in  let <Height> =
+                            call 'erlang':'map_get'('height', Img_settings)
+                        in  let <Total_pixels> =
+                                call 'erlang':'*'(Width, Height)
+                            in  let <Request_chan> =
+                                    'false'
+                                in  let <Result_chan> =
+                                        'false'
+                                    in  let <Writer> =
+                                            try call 'v.sim.img':'ppm_writer_for_fname'(call 'erlang':'map_get'('filename', Args), Img_settings) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                        in  let <Image_writer> =
+                                                call 'v.sim.img':'new_image_writer'(Writer, Img_settings)
+                                            in  let <Workers> =
+                                                    []
+                                                in  let <Bmark> =
+                                                        call 'v.benchmark':'start'()
+                                                    in  do  let <_3> =
+                                                            fun (Id) ->
+                                                                call 'erlang':'bsl'(Workers, call 'vbeam_task':'async'(fun () -> call 'v.sim':'sim_worker'(Id, Request_chan, [Result_chan|[]])))
+                                                        in  let <_4> =
+                                                                call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('workers', Args), 1))
+                                                            in  call 'lists':'foreach'(_3, _4)
+                                                            let <X> =
+                                                                0
+                                                            in  let <Y> =
+                                                                    0
+                                                                in  let <Request_index> =
+                                                                        0
+                                                                    in  'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

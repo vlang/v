@@ -1,0 +1,190 @@
+%% vbeam_genserver - GenServer wrapper for V language BEAM backend
+%%
+%% Maps V's stateful concurrent patterns to OTP gen_server behavior.
+%% V programs use this module for managed state with synchronous/async access.
+%%
+%% V Concept -> GenServer Pattern:
+%%   shared T + lock     -> gen_server call with state mutation
+%%   shared T + rlock    -> gen_server call with state read
+%%   struct methods      -> handler module callbacks
+%%   inline closures     -> functional call/cast style
+%%
+%% Two usage styles:
+%%   1. Handler module:  start(State, #{handler => Mod}) where Mod exports
+%%                       handle_call/2, handle_cast/2
+%%   2. Functional:      call(Pid, fun(State) -> {Reply, NewState} end)
+%%                       for inline state transformations
+%%
+%% Example (V perspective):
+%%   // V code
+%%   shared counter := 0
+%%   lock counter { counter++ }
+%%   val := rlock counter { counter }
+%%
+%% Generated Erlang:
+%%   {ok, Pid} = vbeam_genserver:start(0, #{}),
+%%   vbeam_genserver:call(Pid, fun(S) -> {ok, S + 1} end),
+%%   Val = vbeam_genserver:get_state(Pid).
+
+-module(vbeam_genserver).
+-behaviour(gen_server).
+
+%% API - what V codegen calls
+-export([
+    start/2,
+    start_link/2,
+    call/2, call/3,
+    cast/2,
+    stop/1,
+    get_state/1
+]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
+
+%% Internal state record
+-record(state, {
+    value :: term(),          %% The managed V value
+    handler :: module() | undefined  %% Optional callback module
+}).
+
+%% ============================================================================
+%% API Functions
+%% ============================================================================
+
+%% Start a GenServer with initial state and options.
+%% Options map:
+%%   handler => Module  - Module with handle_call/2, handle_cast/2 callbacks
+%%   name => atom()     - Optional registered name
+%%
+%% V: shared counter := 0
+%% Erlang: {ok, Pid} = vbeam_genserver:start(0, #{})
+-spec start(InitState :: term(), Options :: map()) ->
+    {ok, pid()} | {error, term()}.
+start(InitState, Options) when is_map(Options) ->
+    case maps:get(name, Options, undefined) of
+        undefined ->
+            gen_server:start(?MODULE, {InitState, Options}, []);
+        Name when is_atom(Name) ->
+            gen_server:start({local, Name}, ?MODULE, {InitState, Options}, [])
+    end.
+
+%% Start a GenServer under a supervisor (linked).
+%% V: spawn_supervised worker(...)
+%% Erlang: {ok, Pid} = vbeam_genserver:start_link(State, Opts)
+-spec start_link(InitState :: term(), Options :: map()) ->
+    {ok, pid()} | {error, term()}.
+start_link(InitState, Options) when is_map(Options) ->
+    case maps:get(name, Options, undefined) of
+        undefined ->
+            gen_server:start_link(?MODULE, {InitState, Options}, []);
+        Name when is_atom(Name) ->
+            gen_server:start_link({local, Name}, ?MODULE, {InitState, Options}, [])
+    end.
+
+%% Synchronous call with default timeout (5 seconds).
+%% Two styles:
+%%   1. Handler module: call(Pid, Request) -> handler:handle_call(Request, State)
+%%      Handler returns {Reply, NewState}
+%%   2. Functional: call(Pid, fun(State) -> {Reply, NewState} end)
+%%
+%% V: lock counter { counter++ }   (returns ok, mutates state)
+%% V: rlock counter { counter }    (returns value, state unchanged)
+-spec call(pid() | atom(), term()) -> term().
+call(Server, Request) ->
+    gen_server:call(Server, {vbeam_call, Request}).
+
+%% Synchronous call with explicit timeout (milliseconds or infinity).
+-spec call(pid() | atom(), term(), timeout()) -> term().
+call(Server, Request, Timeout) ->
+    gen_server:call(Server, {vbeam_call, Request}, Timeout).
+
+%% Asynchronous cast (fire and forget).
+%% Handler module: cast(Pid, Msg) -> handler:handle_cast(Msg, State) -> NewState
+%% Functional: cast(Pid, fun(State) -> NewState end)
+%%
+%% V: spawn fn() { shared_var.update(new_val) }
+-spec cast(pid() | atom(), term()) -> ok.
+cast(Server, Msg) ->
+    gen_server:cast(Server, {vbeam_cast, Msg}).
+
+%% Stop the server gracefully.
+%% V: (end of scope / explicit cleanup)
+-spec stop(pid() | atom()) -> ok.
+stop(Server) ->
+    gen_server:stop(Server).
+
+%% Read current state without modification.
+%% V: rlock counter { counter }
+%% This is a convenience for reading shared state atomically.
+-spec get_state(pid() | atom()) -> term().
+get_state(Server) ->
+    gen_server:call(Server, vbeam_get_state).
+
+%% ============================================================================
+%% gen_server Callbacks
+%% ============================================================================
+
+%% @private
+-spec init({term(), map()}) -> {ok, #state{}}.
+init({InitState, Options}) ->
+    Handler = maps:get(handler, Options, undefined),
+    {ok, #state{value = InitState, handler = Handler}}.
+
+%% @private
+-spec handle_call(term(), {pid(), term()}, #state{}) ->
+    {reply, term(), #state{}}.
+
+%% State read - returns current value
+handle_call(vbeam_get_state, _From, State = #state{value = Value}) ->
+    {reply, Value, State};
+
+%% Functional style: caller passes a fun(State) -> {Reply, NewState}
+handle_call({vbeam_call, Fun}, _From, State = #state{})
+  when is_function(Fun, 1) ->
+    {Reply, NewValue} = Fun(State#state.value),
+    {reply, Reply, State#state{value = NewValue}};
+
+%% Handler module style: delegate to handler:handle_call(Request, State)
+handle_call({vbeam_call, Request}, _From, State = #state{handler = Handler})
+  when Handler =/= undefined ->
+    case Handler:handle_call(Request, State#state.value) of
+        {Reply, NewValue} ->
+            {reply, Reply, State#state{value = NewValue}};
+        Reply ->
+            %% If handler returns a single value, state is unchanged
+            {reply, Reply, State}
+    end;
+
+%% No handler and not a function - treat request as direct value query
+handle_call({vbeam_call, _Request}, _From, State) ->
+    {reply, {error, no_handler}, State}.
+
+%% @private
+-spec handle_cast(term(), #state{}) -> {noreply, #state{}}.
+
+%% Functional style: caller passes a fun(State) -> NewState
+handle_cast({vbeam_cast, Fun}, State = #state{})
+  when is_function(Fun, 1) ->
+    NewValue = Fun(State#state.value),
+    {noreply, State#state{value = NewValue}};
+
+%% Handler module style: delegate to handler:handle_cast(Msg, State)
+handle_cast({vbeam_cast, Msg}, State = #state{handler = Handler})
+  when Handler =/= undefined ->
+    NewValue = Handler:handle_cast(Msg, State#state.value),
+    {noreply, State#state{value = NewValue}};
+
+%% No handler and not a function - ignore
+handle_cast({vbeam_cast, _Msg}, State) ->
+    {noreply, State}.
+
+%% @private
+-spec handle_info(term(), #state{}) -> {noreply, #state{}}.
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%% @private
+-spec terminate(term(), #state{}) -> ok.
+terminate(_Reason, _State) ->
+    ok.

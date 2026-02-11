@@ -1,0 +1,24 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <M> =
+            ~{{'vbeam','type'}=>'Module'}~
+        in  let <Bif> =
+                apply 'Module.new_function'/4(M, #{#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, ['i32_t'|[]], ['i32_t'|[]])
+            in  do  apply 'Module.commit'/3(M, Bif, 'true')
+                    let <Ifexpr> =
+                        apply 'Module.new_function'/4(M, #{#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#, ['i32_t'|[]], ['i64_t'|[]])
+                    in  do  apply 'Module.commit'/3(M, Ifexpr, 'true')
+                            call 'io':'format'([126|[115|[]]], [call 'erlang':'list_to_binary'(apply 'Module.compile'/1(M))|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

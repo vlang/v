@@ -1,0 +1,138 @@
+module 'v.encoding.leb128' ['encode_i32'/1,
+                'encode_i64'/1,
+                'encode_u64'/1,
+                'encode_u32'/1,
+                'decode_i32'/1,
+                'decode_i64'/1,
+                'decode_u64'/1,
+                'decode_u32'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'encode_i32'/1 =
+    fun (Value) ->
+        let <Result> =
+            []
+        in  let <I> =
+                0
+            in  Result
+'encode_i64'/1 =
+    fun (Value) ->
+        let <Result> =
+            []
+        in  Result
+'encode_u64'/1 =
+    fun (Value) ->
+        let <Result> =
+            []
+        in  Result
+'encode_u32'/1 =
+    fun (Value) ->
+        let <Result> =
+            []
+        in  Result
+'decode_i32'/1 =
+    fun (Value) ->
+        let <Result> =
+            0
+        in  let <Shift> =
+                0
+            in  let <Result_1> =
+                    let <_2> =
+                        fun (B, _6) ->
+                            let <ResultAcc> =
+                                call 'erlang':'element'(1, _6)
+                            in                              let <ShiftAcc> =
+                                call 'erlang':'element'(2, _6)
+                            in  
+                            let <ResultOut_4> =
+                                call 'erlang':'bsl'(call 'erlang':'band'(B, 16#7f), ShiftAcc)
+                            in                              let <ShiftOut_5> =
+                                7
+                            in                              do  case call 'erlang':'=:='(call 'erlang':'band'(B, 16#80), 0) of <'true'> when 'true' -> 
+                                let <Result_7> =
+                                    case call 'erlang':'and'(call 'erlang':'<'(ShiftOut_5, 32), call 'erlang':'=/='(call 'erlang':'band'(B, 16#40), 0)) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'bnot'(0), ShiftOut_5) <'false'> when 'true' -> ResultOut_4 end
+                                in  'ok'
+                             <'false'> when 'true' -> 'ok' end
+{Result_7, ShiftOut_5}
+                    in  call 'lists':'foldl'(_2, {Result, Shift}, Value)
+                in  Result_1
+'decode_i64'/1 =
+    fun (Value) ->
+        let <Result> =
+            0
+        in  let <Shift> =
+                0
+            in  let <Result_1> =
+                    let <_2> =
+                        fun (B, _6) ->
+                            let <ResultAcc> =
+                                call 'erlang':'element'(1, _6)
+                            in                              let <ShiftAcc> =
+                                call 'erlang':'element'(2, _6)
+                            in  
+                            let <ResultOut_4> =
+                                call 'erlang':'bsl'(call 'erlang':'band'(B, 16#7f), ShiftAcc)
+                            in                              let <ShiftOut_5> =
+                                7
+                            in                              do  case call 'erlang':'=:='(call 'erlang':'band'(B, 16#80), 0) of <'true'> when 'true' -> 
+                                let <Result_7> =
+                                    case call 'erlang':'and'(call 'erlang':'<'(ShiftOut_5, 64), call 'erlang':'=/='(call 'erlang':'band'(B, 16#40), 0)) of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'bnot'(0), ShiftOut_5) <'false'> when 'true' -> ResultOut_4 end
+                                in  'ok'
+                             <'false'> when 'true' -> 'ok' end
+{Result_7, ShiftOut_5}
+                    in  call 'lists':'foldl'(_2, {Result, Shift}, Value)
+                in  Result_1
+'decode_u64'/1 =
+    fun (Value) ->
+        let <Result> =
+            0
+        in  let <Shift> =
+                0
+            in  let <Result_1> =
+                    let <_2> =
+                        fun (B, _6) ->
+                            let <ResultAcc> =
+                                call 'erlang':'element'(1, _6)
+                            in                              let <ShiftAcc> =
+                                call 'erlang':'element'(2, _6)
+                            in  
+                            let <ResultOut_4> =
+                                call 'erlang':'bsl'(call 'erlang':'band'(B, 16#7f), ShiftAcc)
+                            in                              do  case call 'erlang':'=:='(call 'erlang':'band'(B, 16#80), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                let <ShiftOut_5> =
+                                    7
+                                in  {ResultOut_4, ShiftOut_5}
+                    in  call 'lists':'foldl'(_2, {Result, Shift}, Value)
+                in  Result_1
+'decode_u32'/1 =
+    fun (Value) ->
+        let <Result> =
+            0
+        in  let <Shift> =
+                0
+            in  let <Result_1> =
+                    let <_2> =
+                        fun (B, _6) ->
+                            let <ResultAcc> =
+                                call 'erlang':'element'(1, _6)
+                            in                              let <ShiftAcc> =
+                                call 'erlang':'element'(2, _6)
+                            in  
+                            let <ResultOut_4> =
+                                call 'erlang':'bsl'(call 'erlang':'band'(B, 16#7f), ShiftAcc)
+                            in                              do  case call 'erlang':'=:='(call 'erlang':'band'(B, 16#80), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                let <ShiftOut_5> =
+                                    7
+                                in  {ResultOut_4, ShiftOut_5}
+                    in  call 'lists':'foldl'(_2, {Result, Shift}, Value)
+                in  Result_1
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.leb128')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.encoding.leb128', _0)
+end

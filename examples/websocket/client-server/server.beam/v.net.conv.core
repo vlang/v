@@ -1,0 +1,107 @@
+module 'v.net.conv' ['htonf32'/1,
+                'htonf64'/1,
+                'hton64'/1,
+                'hton32'/1,
+                'hton16'/1,
+                'ntoh64'/1,
+                'ntoh32'/1,
+                'ntoh16'/1,
+                'u64tovarint'/1,
+                'varinttou64'/1,
+                'reverse_bytes_u64'/1,
+                'reverse_bytes_u32'/1,
+                'reverse_bytes_u16'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'htonf32'/1 =
+    fun (Host) ->
+        'ok'
+'htonf64'/1 =
+    fun (Host) ->
+        'ok'
+'hton64'/1 =
+    fun (Host) ->
+        'ok'
+'hton32'/1 =
+    fun (Host) ->
+        'ok'
+'hton16'/1 =
+    fun (Host) ->
+        'ok'
+'ntoh64'/1 =
+    fun (Net) ->
+        apply 'hton64'/1(Net)
+'ntoh32'/1 =
+    fun (Net) ->
+        apply 'hton32'/1(Net)
+'ntoh16'/1 =
+    fun (Net) ->
+        apply 'hton16'/1(Net)
+'u64tovarint'/1 =
+    fun (N) ->
+        case call 'erlang':'>'(N, call 'erlang':'bsl'(1, 62)) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<94>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Msb> =
+                    case call 'erlang':'<'(N, 64) of <'true'> when 'true' -> 2#00 <'false'> when 'true' -> case call 'erlang':'<'(N, 16384) of <'true'> when 'true' -> 2#01 <'false'> when 'true' -> case call 'erlang':'<'(N, 1073741824) of <'true'> when 'true' -> 2#10 <'false'> when 'true' -> 2#11 end end end
+                in  let <Len> =
+                        call 'erlang':'bsl'(1, Msb)
+                    in  let <Result> =
+                            []
+                        in  let <Tn_1> =
+                                let <_2> =
+                                    fun (I, TnAcc) ->
+                                        let <TnOut_4> =
+                                            256
+                                        in  TnOut_4
+                                in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(Len, 1))
+                                in  call 'lists':'foldl'(_2, N, _3)
+                            in  do  call 'erlang':'bsl'(Msb, 6)
+                                    Result
+        end
+'varinttou64'/1 =
+    fun (B) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(B), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Msb> =
+                    call 'erlang':'bsr'(call 'lists':'nth'(1, B), 6)
+                in  let <Len> =
+                        call 'erlang':'bsl'(1, Msb)
+                    in  case call 'erlang':'>'(Len, call 'erlang':'length'(B)) of
+                            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Len)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(B))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]))
+                            <'false'> when 'true' -> 
+                                let <N> =
+                                    call 'erlang':'band'(call 'lists':'nth'(1, B), 2#00111111)
+                                in  let <N_1> =
+                                        let <_2> =
+                                            fun (I, NAcc) ->
+                                                let <NOut_4> =
+                                                    call 'erlang':'+'(call 'erlang':'*'(NAcc, 256), call 'lists':'nth'(call 'erlang':'+'(I, 1), B))
+                                                in  NOut_4
+                                        in  let <_3> =
+                                            call 'lists':'seq'(1, call 'erlang':'-'(Len, 1))
+                                        in  call 'lists':'foldl'(_2, N, _3)
+                                    in  N_1
+                        end
+        end
+'reverse_bytes_u64'/1 =
+    fun (A) ->
+        call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(A, 56), 16#00000000000000FF), call 'erlang':'band'(call 'erlang':'bsr'(A, 40), 16#000000000000FF00)), call 'erlang':'band'(call 'erlang':'bsr'(A, 24), 16#0000000000FF0000)), call 'erlang':'band'(call 'erlang':'bsr'(A, 8), 16#00000000FF000000)), call 'erlang':'band'(call 'erlang':'bsl'(A, 8), 16#000000FF00000000)), call 'erlang':'band'(call 'erlang':'bsl'(A, 24), 16#0000FF0000000000)), call 'erlang':'band'(call 'erlang':'bsl'(A, 40), 16#00FF000000000000)), call 'erlang':'band'(call 'erlang':'bsl'(A, 56), 16#FF00000000000000))
+'reverse_bytes_u32'/1 =
+    fun (A) ->
+        call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(A, 24), 16#000000FF), call 'erlang':'band'(call 'erlang':'bsr'(A, 8), 16#0000FF00)), call 'erlang':'band'(call 'erlang':'bsl'(A, 8), 16#00FF0000)), call 'erlang':'band'(call 'erlang':'bsl'(A, 24), 16#FF000000))
+'reverse_bytes_u16'/1 =
+    fun (A) ->
+        call 'erlang':'bor'(call 'erlang':'band'(call 'erlang':'bsr'(A, 8), 16#00FF), call 'erlang':'band'(call 'erlang':'bsl'(A, 8), 16#FF00))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.net.conv')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.net.conv', _0)
+end

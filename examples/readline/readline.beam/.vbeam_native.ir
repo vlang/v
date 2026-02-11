@@ -1,0 +1,55 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 1,
+            body => [
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"run">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 2,
+            body => [
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {call, {sym, <<"enable_raw_mode_nosig">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {label, <<"loop_2">>},
+                {call, {sym, <<"read_char">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {cmp, {vreg, 1}, {vreg, 0}},
+                {jcc, ne, <<"if_end_4">>},
+                {jmp, <<"loop_end_3">>},
+                {label, <<"if_end_4">>},
+                {print_int, {vreg, 0}},
+                {jmp, <<"loop_2">>},
+                {label, <<"loop_end_3">>},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 9},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {label, <<"if_end_0">>},
+                ret
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"Goodbye.\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

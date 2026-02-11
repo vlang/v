@@ -1,0 +1,91 @@
+module 'v.dl.loader' ['register_dl_loader'/1,
+                'registered_dl_loader_keys'/0,
+                'new_dynamic_lib_loader'/1,
+                'get_or_create_dynamic_lib_loader'/1,
+                'DynamicLibLoader.open'/1,
+                'DynamicLibLoader.close'/1,
+                'DynamicLibLoader.get_sym'/2,
+                'DynamicLibLoader.unregister'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'register_dl_loader'/1 =
+        fun (Dl_loader) ->
+            case call 'lists':'member'(call 'erlang':'map_get'('key', Dl_loader), Registered_dl_loaders) of
+                <'true'> when 'true' -> apply 'error_with_code'/2(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#, 4)
+                <'false'> when 'true' -> 
+                    do  Dl_loader
+                        'ok'
+            end
+    'registered_dl_loader_keys'/0 =
+        fun () ->
+            call 'maps':'keys'(Registered_dl_loaders)
+    'new_dynamic_lib_loader'/1 =
+        fun (Conf) ->
+            let <Paths> =
+                []
+            in  do  case call 'erlang':'=/='(call 'erlang':'map_get'('env_path', Conf), #{  }#) of <'true'> when 'true' -> case try call 'v.os':'getenv_opt'(call 'erlang':'map_get'('env_path', Conf)) of <_cor1> when 'true' -> {'ok', _cor1} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', Env_path}> when 'true' -> call 'erlang':'bsl'(Paths, call 'binary':'split'(Env_path, #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])) <_> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                    do  call 'erlang':'bsl'(Paths, call 'erlang':'map_get'('paths', Conf))
+                        case call 'erlang':'=:='(call 'erlang':'length'(Paths), 0) of
+                            <'true'> when 'true' -> apply 'error_with_code'/2(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#, 1)
+                            <'false'> when 'true' -> 
+                                let <Dl_loader> =
+                                    ~{'key'=>call 'erlang':'map_get'('key', Conf),'flags'=>call 'erlang':'map_get'('flags', Conf),'paths'=>Paths,{'vbeam','type'}=>'DynamicLibLoader'}~
+                                in  do  try apply 'register_dl_loader'/1(Dl_loader) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                                        Dl_loader
+                        end
+    'get_or_create_dynamic_lib_loader'/1 =
+        fun (Conf) ->
+            case call 'maps':'find'(call 'erlang':'map_get'('key', Conf), Registered_dl_loaders) of
+                <{'ok', Dl_loader}> when 'true' -> Dl_loader
+                <_> when 'true' -> 
+                    apply 'new_dynamic_lib_loader'/1(Conf)
+            end
+    'DynamicLibLoader.open'/1 =
+        fun (Dl_loader) ->
+            case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('handle', Dl_loader))) of
+                <'true'> when 'true' -> call 'erlang':'map_get'('handle', Dl_loader)
+                <'false'> when 'true' -> 
+                    do  let <_1> =
+                        fun (Path) ->
+                            case try call 'v.dl':'open_opt'(Path, call 'erlang':'map_get'('flags', Dl_loader)) of <_cor2> when 'true' -> {'ok', _cor2} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', Handle}> when 'true' -> 
+                                do  Handle
+                                    Handle
+                             <_> when 'true' -> 'ok' end
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('paths', Dl_loader))
+                        apply 'error_with_code'/2(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#, 1)
+            end
+    'DynamicLibLoader.close'/1 =
+        fun (Dl_loader) ->
+            do  case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('handle', Dl_loader))) of <'true'> when 'true' -> case call 'v.dl':'close'(call 'erlang':'map_get'('handle', Dl_loader)) of <'true'> when 'true' -> 
+                do  'nil'
+                    'ok'
+             <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                apply 'error_with_code'/2(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#, 3)
+    'DynamicLibLoader.get_sym'/2 =
+        fun (Dl_loader, Name) ->
+            case call 'maps':'find'(Name, call 'erlang':'map_get'('sym_map', Dl_loader)) of
+                <{'ok', Sym}> when 'true' -> Sym
+                <_> when 'true' -> 
+                    let <Handle> =
+                        try apply 'DynamicLibLoader.open'/1(Dl_loader) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    in  case try call 'v.dl':'sym_opt'(Handle, Name) of <_cor3> when 'true' -> {'ok', _cor3} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of
+                            <{'ok', Sym_2}> when 'true' -> Sym_2
+                            <_> when 'true' -> 
+                                do  try apply 'DynamicLibLoader.close'/1(Dl_loader) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> 'ok'
+                                    apply 'error_with_code'/2(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']])}#, 2)
+                        end
+            end
+    'DynamicLibLoader.unregister'/1 =
+        fun (Dl_loader) ->
+            do  try apply 'DynamicLibLoader.close'/1(Dl_loader) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                call 'maps':'remove'(call 'erlang':'map_get'('key', Dl_loader), Registered_dl_loaders)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.dl.loader')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.dl.loader', _0)
+    end

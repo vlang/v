@@ -1,0 +1,498 @@
+module 'v.sokol.gfx' ['Buffer.free'/1,
+                'Image.free'/1,
+                'Shader.free'/1,
+                'Pipeline.free'/1,
+                'Attachments.free'/1,
+                'Bindings.set_vert_image'/3,
+                'Bindings.set_frag_image'/3,
+                'Bindings.update_vert_buffer'/5,
+                'Bindings.append_vert_buffer'/5,
+                'Bindings.update_index_buffer'/4,
+                'Bindings.append_index_buffer'/4,
+                'ShaderStageDesc.set_image'/3,
+                'ShaderDesc.set_vert_src'/2,
+                'ShaderDesc.set_frag_src'/2,
+                'ShaderDesc.set_vert_image'/3,
+                'ShaderDesc.set_frag_image'/3,
+                'ShaderDesc.set_vert_uniform_block_size'/3,
+                'ShaderDesc.set_frag_uniform_block_size'/3,
+                'ShaderDesc.set_vert_uniform'/6,
+                'ShaderDesc.set_frag_uniform'/6,
+                'ShaderDesc.make_shader'/1,
+                'setup'/1,
+                'shutdown'/0,
+                'is_valid'/0,
+                'reset_state_cache'/0,
+                'make_buffer'/1,
+                'make_image'/1,
+                'make_sampler'/1,
+                'make_shader'/1,
+                'make_pipeline'/1,
+                'make_attachments'/1,
+                'destroy_buffer'/1,
+                'destroy_image'/1,
+                'destroy_sampler'/1,
+                'destroy_shader'/1,
+                'destroy_pipeline'/1,
+                'destroy_attachments'/1,
+                'update_buffer'/2,
+                'update_image'/2,
+                'append_buffer'/2,
+                'query_buffer_overflow'/1,
+                'begin_pass'/1,
+                'apply_viewport'/5,
+                'apply_scissor_rect'/5,
+                'apply_pipeline'/1,
+                'apply_bindings'/1,
+                'apply_uniforms'/3,
+                'draw'/3,
+                'end_pass'/0,
+                'commit'/0,
+                'query_desc'/0,
+                'query_backend'/0,
+                'query_features'/0,
+                'query_limits'/0,
+                'query_pixelformat'/1,
+                'query_buffer_state'/1,
+                'query_image_state'/1,
+                'query_shader_state'/1,
+                'query_pipeline_state'/1,
+                'query_attachments_state'/1,
+                'query_buffer_info'/1,
+                'query_image_info'/1,
+                'query_shader_info'/1,
+                'query_pipeline_info'/1,
+                'query_attachments_info'/1,
+                'query_buffer_defaults'/1,
+                'query_image_defaults'/1,
+                'query_shader_defaults'/1,
+                'query_pipeline_defaults'/1,
+                'query_attachments_defaults'/1,
+                'enable_frame_stats'/0,
+                'disable_frame_stats'/0,
+                'frame_stats_enabled'/0,
+                'query_frame_stats'/0,
+                'create_clear_pass_action'/4,
+                'Backend__static__from'/1,
+                'PixelFormat__static__from'/1,
+                'ResourceState__static__from'/1,
+                'Usage__static__from'/1,
+                'BufferType__static__from'/1,
+                'IndexType__static__from'/1,
+                'ImageType__static__from'/1,
+                'ImageSampleType__static__from'/1,
+                'SamplerType__static__from'/1,
+                'CubeFace__static__from'/1,
+                'ShaderStage__static__from'/1,
+                'PrimitiveType__static__from'/1,
+                'Filter__static__from'/1,
+                'Wrap__static__from'/1,
+                'BorderColor__static__from'/1,
+                'VertexFormat__static__from'/1,
+                'VertexStep__static__from'/1,
+                'UniformType__static__from'/1,
+                'CullMode__static__from'/1,
+                'FaceWinding__static__from'/1,
+                'CompareFunc__static__from'/1,
+                'StencilOp__static__from'/1,
+                'BlendFactor__static__from'/1,
+                'BlendOp__static__from'/1,
+                'ColorMask__static__from'/1,
+                'LoadAction__static__from'/1,
+                'StoreAction__static__from'/1,
+                'UniformLayout__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'Buffer.free'/1 =
+    fun (B) ->
+        'ok'
+'Image.free'/1 =
+    fun (I) ->
+        'ok'
+'Shader.free'/1 =
+    fun (S) ->
+        'ok'
+'Pipeline.free'/1 =
+    fun (P) ->
+        'ok'
+'Attachments.free'/1 =
+    fun (A) ->
+        'ok'
+'Bindings.set_vert_image'/3 =
+    fun (B, Index, Img) ->
+        'ok'
+'Bindings.set_frag_image'/3 =
+    fun (B, Index, Img) ->
+        'ok'
+'Bindings.update_vert_buffer'/5 =
+    fun (B, Index, Data, Element_size, Element_count) ->
+        'ok'
+'Bindings.append_vert_buffer'/5 =
+    fun (B, Index, Data, Element_size, Element_count) ->
+        0
+'Bindings.update_index_buffer'/4 =
+    fun (B, Data, Element_size, Element_count) ->
+        'ok'
+'Bindings.append_index_buffer'/4 =
+    fun (B, Data, Element_size, Element_count) ->
+        0
+'ShaderStageDesc.set_image'/3 =
+    fun (Desc, Index, Name) ->
+        do  '_2d'
+            Desc
+'ShaderDesc.set_vert_src'/2 =
+    fun (Desc, Src) ->
+        do  call 'erlang':'map_get'('str', Src)
+            Desc
+'ShaderDesc.set_frag_src'/2 =
+    fun (Desc, Src) ->
+        do  call 'erlang':'map_get'('str', Src)
+            Desc
+'ShaderDesc.set_vert_image'/3 =
+    fun (Desc, Index, Name) ->
+        do  '_2d'
+            Desc
+'ShaderDesc.set_frag_image'/3 =
+    fun (Desc, Index, Name) ->
+        do  '_2d'
+            Desc
+'ShaderDesc.set_vert_uniform_block_size'/3 =
+    fun (Desc, Block_index, Size) ->
+        do  Size
+            Desc
+'ShaderDesc.set_frag_uniform_block_size'/3 =
+    fun (Desc, Block_index, Size) ->
+        do  Size
+            Desc
+'ShaderDesc.set_vert_uniform'/6 =
+    fun (Desc, Block_index, Uniform_index, Name, Typ, Array_count) ->
+        do  call 'erlang':'map_get'('str', Name)
+            do  Typ
+                do  Array_count
+                    Desc
+'ShaderDesc.set_frag_uniform'/6 =
+    fun (Desc, Block_index, Uniform_index, Name, Typ, Array_count) ->
+        do  call 'erlang':'map_get'('str', Name)
+            do  Typ
+                do  Array_count
+                    Desc
+'ShaderDesc.make_shader'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Shader'}~
+'setup'/1 =
+    fun (Desc) ->
+        'ok'
+'shutdown'/0 =
+    fun () ->
+        'ok'
+'is_valid'/0 =
+    fun () ->
+        'false'
+'reset_state_cache'/0 =
+    fun () ->
+        'ok'
+'make_buffer'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Buffer'}~
+'make_image'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Image'}~
+'make_sampler'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Sampler'}~
+'make_shader'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Shader'}~
+'make_pipeline'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'Pipeline'}~
+'make_attachments'/1 =
+    fun (Const_desc) ->
+        ~{{'vbeam','type'}=>'Attachments'}~
+'destroy_buffer'/1 =
+    fun (Buf) ->
+        'ok'
+'destroy_image'/1 =
+    fun (Img) ->
+        'ok'
+'destroy_sampler'/1 =
+    fun (Smp) ->
+        'ok'
+'destroy_shader'/1 =
+    fun (Shd) ->
+        'ok'
+'destroy_pipeline'/1 =
+    fun (Pip) ->
+        'ok'
+'destroy_attachments'/1 =
+    fun (Atts) ->
+        'ok'
+'update_buffer'/2 =
+    fun (Buf, Data) ->
+        'ok'
+'update_image'/2 =
+    fun (Img, Data) ->
+        'ok'
+'append_buffer'/2 =
+    fun (Buf, Data) ->
+        0
+'query_buffer_overflow'/1 =
+    fun (Buf) ->
+        'false'
+'begin_pass'/1 =
+    fun (Const_pass) ->
+        'ok'
+'apply_viewport'/5 =
+    fun (X, Y, Width, Height, Origin_top_left) ->
+        'ok'
+'apply_scissor_rect'/5 =
+    fun (X, Y, Width, Height, Origin_top_left) ->
+        'ok'
+'apply_pipeline'/1 =
+    fun (Pip) ->
+        'ok'
+'apply_bindings'/1 =
+    fun (Bindings) ->
+        'ok'
+'apply_uniforms'/3 =
+    fun (Stage, Ub_index, Data) ->
+        'ok'
+'draw'/3 =
+    fun (Base_element, Num_elements, Num_instances) ->
+        'ok'
+'end_pass'/0 =
+    fun () ->
+        'ok'
+'commit'/0 =
+    fun () ->
+        'ok'
+'query_desc'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'Desc'}~
+'query_backend'/0 =
+    fun () ->
+        'dummy'
+'query_features'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'Features'}~
+'query_limits'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'Limits'}~
+'query_pixelformat'/1 =
+    fun (Fmt) ->
+        ~{{'vbeam','type'}=>'PixelFormatInfo'}~
+'query_buffer_state'/1 =
+    fun (Buf) ->
+        'invalid'
+'query_image_state'/1 =
+    fun (Img) ->
+        'invalid'
+'query_shader_state'/1 =
+    fun (Shd) ->
+        'invalid'
+'query_pipeline_state'/1 =
+    fun (Pip) ->
+        'invalid'
+'query_attachments_state'/1 =
+    fun (Atts) ->
+        'invalid'
+'query_buffer_info'/1 =
+    fun (Buf) ->
+        ~{{'vbeam','type'}=>'BufferInfo'}~
+'query_image_info'/1 =
+    fun (Img) ->
+        ~{{'vbeam','type'}=>'ImageInfo'}~
+'query_shader_info'/1 =
+    fun (Shd) ->
+        ~{{'vbeam','type'}=>'ShaderInfo'}~
+'query_pipeline_info'/1 =
+    fun (Pip) ->
+        ~{{'vbeam','type'}=>'PipelineInfo'}~
+'query_attachments_info'/1 =
+    fun (Atts) ->
+        ~{{'vbeam','type'}=>'AttachmentsInfo'}~
+'query_buffer_defaults'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'BufferDesc'}~
+'query_image_defaults'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'ImageDesc'}~
+'query_shader_defaults'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'ShaderDesc'}~
+'query_pipeline_defaults'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'PipelineDesc'}~
+'query_attachments_defaults'/1 =
+    fun (Desc) ->
+        ~{{'vbeam','type'}=>'AttachmentsDesc'}~
+'enable_frame_stats'/0 =
+    fun () ->
+        'ok'
+'disable_frame_stats'/0 =
+    fun () ->
+        'ok'
+'frame_stats_enabled'/0 =
+    fun () ->
+        'false'
+'query_frame_stats'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'FrameStats'}~
+'create_clear_pass_action'/4 =
+    fun (R, G, B, A) ->
+        let <Color_action> =
+            ~{'load_action'=>'clear','clear_value'=>~{'r'=>R,'g'=>G,'b'=>B,'a'=>A,{'vbeam','type'}=>'Color'}~,{'vbeam','type'}=>'ColorAttachmentAction'}~
+        in  let <Pass_action> =
+                ~{{'vbeam','type'}=>'PassAction'}~
+            in  do  Color_action
+                    Pass_action
+'Backend__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'PixelFormat__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ResourceState__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Usage__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'BufferType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'IndexType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ImageType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ImageSampleType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'SamplerType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'CubeFace__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ShaderStage__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'PrimitiveType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Filter__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Wrap__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'BorderColor__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'VertexFormat__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'VertexStep__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'UniformType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'CullMode__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'FaceWinding__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'CompareFunc__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'StencilOp__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'BlendFactor__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'BlendOp__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ColorMask__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'LoadAction__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'StoreAction__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'UniformLayout__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.gfx')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.gfx', _0)
+end

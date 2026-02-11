@@ -1,0 +1,350 @@
+module 'v.sokol.sgl' ['setup'/1,
+                'shutdown'/0,
+                'error'/0,
+                'context_error'/1,
+                'rad'/1,
+                'deg'/1,
+                'make_context'/1,
+                'destroy_context'/1,
+                'set_context'/1,
+                'get_context'/0,
+                'default_context'/0,
+                'make_pipeline'/1,
+                'context_make_pipeline'/2,
+                'destroy_pipeline'/1,
+                'defaults'/0,
+                'viewport'/5,
+                'scissor_rect'/5,
+                'scissor_rectf'/5,
+                'enable_texture'/0,
+                'disable_texture'/0,
+                'texture'/2,
+                'load_default_pipeline'/0,
+                'default_pipeline'/0,
+                'load_pipeline'/1,
+                'push_pipeline'/0,
+                'pop_pipeline'/0,
+                'matrix_mode_modelview'/0,
+                'matrix_mode_projection'/0,
+                'matrix_mode_texture'/0,
+                'load_identity'/0,
+                'load_matrix'/1,
+                'load_transpose_matrix'/1,
+                'mult_matrix'/1,
+                'mult_transpose_matrix'/1,
+                'rotate'/4,
+                'scale'/3,
+                'translate'/3,
+                'frustum'/6,
+                'ortho'/6,
+                'perspective'/4,
+                'lookat'/9,
+                'push_matrix'/0,
+                'pop_matrix'/0,
+                't2f'/2,
+                'c3f'/3,
+                'c4f'/4,
+                'c3b'/3,
+                'c4b'/4,
+                'c1i'/1,
+                'point_size'/1,
+                'begin_points'/0,
+                'begin_lines'/0,
+                'begin_line_strip'/0,
+                'begin_triangles'/0,
+                'begin_triangle_strip'/0,
+                'begin_quads'/0,
+                'v2f'/2,
+                'v3f'/3,
+                'v2f_t2f'/4,
+                'v3f_t2f'/5,
+                'v2f_c3f'/5,
+                'v2f_c3b'/5,
+                'v2f_c4f'/6,
+                'v2f_c4b'/6,
+                'v2f_c1i'/3,
+                'v3f_c3f'/6,
+                'v3f_c3b'/6,
+                'v3f_c4f'/7,
+                'v3f_c4b'/7,
+                'v3f_c1i'/4,
+                'v2f_t2f_c3f'/7,
+                'v2f_t2f_c3b'/7,
+                'v2f_t2f_c4f'/8,
+                'v2f_t2f_c4b'/8,
+                'v2f_t2f_c1i'/5,
+                'v3f_t2f_c3f'/8,
+                'v3f_t2f_c3b'/8,
+                'v3f_t2f_c4f'/9,
+                'v3f_t2f_c4b'/9,
+                'v3f_t2f_c1i'/6,
+                'end'/0,
+                'draw'/0,
+                'context_draw'/1,
+                'SglError__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'setup'/1 =
+        fun (Desc) ->
+            'ok'
+    'shutdown'/0 =
+        fun () ->
+            'ok'
+    'error'/0 =
+        fun () ->
+            'no_error'
+    'context_error'/1 =
+        fun (Ctx) ->
+            'no_error'
+    'rad'/1 =
+        fun (Deg) ->
+            call 'erlang':'*'(Deg, 0.01745329252)
+    'deg'/1 =
+        fun (R) ->
+            call 'erlang':'*'(R, 57.2957795131)
+    'make_context'/1 =
+        fun (Desc) ->
+            ~{{'vbeam','type'}=>'Context'}~
+    'destroy_context'/1 =
+        fun (Ctx) ->
+            'ok'
+    'set_context'/1 =
+        fun (Ctx) ->
+            'ok'
+    'get_context'/0 =
+        fun () ->
+            ~{{'vbeam','type'}=>'Context'}~
+    'default_context'/0 =
+        fun () ->
+            ~{'id'=>16#00010001,{'vbeam','type'}=>'Context'}~
+    'make_pipeline'/1 =
+        fun (Desc) ->
+            ~{{'vbeam','type'}=>'Pipeline'}~
+    'context_make_pipeline'/2 =
+        fun (Ctx, Desc) ->
+            ~{{'vbeam','type'}=>'Pipeline'}~
+    'destroy_pipeline'/1 =
+        fun (Pip) ->
+            'ok'
+    'defaults'/0 =
+        fun () ->
+            'ok'
+    'viewport'/5 =
+        fun (X, Y, W, H, Origin_top_left) ->
+            'ok'
+    'scissor_rect'/5 =
+        fun (X, Y, W, H, Origin_top_left) ->
+            'ok'
+    'scissor_rectf'/5 =
+        fun (X, Y, W, H, Origin_top_left) ->
+            'ok'
+    'enable_texture'/0 =
+        fun () ->
+            'ok'
+    'disable_texture'/0 =
+        fun () ->
+            'ok'
+    'texture'/2 =
+        fun (Img, Smp) ->
+            'ok'
+    'load_default_pipeline'/0 =
+        fun () ->
+            'ok'
+    'default_pipeline'/0 =
+        fun () ->
+            'ok'
+    'load_pipeline'/1 =
+        fun (Pip) ->
+            'ok'
+    'push_pipeline'/0 =
+        fun () ->
+            'ok'
+    'pop_pipeline'/0 =
+        fun () ->
+            'ok'
+    'matrix_mode_modelview'/0 =
+        fun () ->
+            'ok'
+    'matrix_mode_projection'/0 =
+        fun () ->
+            'ok'
+    'matrix_mode_texture'/0 =
+        fun () ->
+            'ok'
+    'load_identity'/0 =
+        fun () ->
+            'ok'
+    'load_matrix'/1 =
+        fun (M) ->
+            'ok'
+    'load_transpose_matrix'/1 =
+        fun (M) ->
+            'ok'
+    'mult_matrix'/1 =
+        fun (M) ->
+            'ok'
+    'mult_transpose_matrix'/1 =
+        fun (M) ->
+            'ok'
+    'rotate'/4 =
+        fun (Angle_rad, X, Y, Z) ->
+            'ok'
+    'scale'/3 =
+        fun (X, Y, Z) ->
+            'ok'
+    'translate'/3 =
+        fun (X, Y, Z) ->
+            'ok'
+    'frustum'/6 =
+        fun (L, R, B, T, N, F) ->
+            'ok'
+    'ortho'/6 =
+        fun (L, R, B, T, N, F) ->
+            'ok'
+    'perspective'/4 =
+        fun (Fov_y, Aspect, Z_near, Z_far) ->
+            'ok'
+    'lookat'/9 =
+        fun (Eye_x, Eye_y, Eye_z, Center_x, Center_y, Center_z, Up_x, Up_y, Up_z) ->
+            'ok'
+    'push_matrix'/0 =
+        fun () ->
+            'ok'
+    'pop_matrix'/0 =
+        fun () ->
+            'ok'
+    't2f'/2 =
+        fun (U, V) ->
+            'ok'
+    'c3f'/3 =
+        fun (R, G, B) ->
+            'ok'
+    'c4f'/4 =
+        fun (R, G, B, A) ->
+            'ok'
+    'c3b'/3 =
+        fun (R, G, B) ->
+            'ok'
+    'c4b'/4 =
+        fun (R, G, B, A) ->
+            'ok'
+    'c1i'/1 =
+        fun (Rgba) ->
+            'ok'
+    'point_size'/1 =
+        fun (S) ->
+            'ok'
+    'begin_points'/0 =
+        fun () ->
+            'ok'
+    'begin_lines'/0 =
+        fun () ->
+            'ok'
+    'begin_line_strip'/0 =
+        fun () ->
+            'ok'
+    'begin_triangles'/0 =
+        fun () ->
+            'ok'
+    'begin_triangle_strip'/0 =
+        fun () ->
+            'ok'
+    'begin_quads'/0 =
+        fun () ->
+            'ok'
+    'v2f'/2 =
+        fun (X, Y) ->
+            'ok'
+    'v3f'/3 =
+        fun (X, Y, Z) ->
+            'ok'
+    'v2f_t2f'/4 =
+        fun (X, Y, U, V) ->
+            'ok'
+    'v3f_t2f'/5 =
+        fun (X, Y, Z, U, V) ->
+            'ok'
+    'v2f_c3f'/5 =
+        fun (X, Y, R, G, B) ->
+            'ok'
+    'v2f_c3b'/5 =
+        fun (X, Y, R, G, B) ->
+            'ok'
+    'v2f_c4f'/6 =
+        fun (X, Y, R, G, B, A) ->
+            'ok'
+    'v2f_c4b'/6 =
+        fun (X, Y, R, G, B, A) ->
+            'ok'
+    'v2f_c1i'/3 =
+        fun (X, Y, Rgba) ->
+            'ok'
+    'v3f_c3f'/6 =
+        fun (X, Y, Z, R, G, B) ->
+            'ok'
+    'v3f_c3b'/6 =
+        fun (X, Y, Z, R, G, B) ->
+            'ok'
+    'v3f_c4f'/7 =
+        fun (X, Y, Z, R, G, B, A) ->
+            'ok'
+    'v3f_c4b'/7 =
+        fun (X, Y, Z, R, G, B, A) ->
+            'ok'
+    'v3f_c1i'/4 =
+        fun (X, Y, Z, Rgba) ->
+            'ok'
+    'v2f_t2f_c3f'/7 =
+        fun (X, Y, U, V, R, G, B) ->
+            'ok'
+    'v2f_t2f_c3b'/7 =
+        fun (X, Y, U, V, R, G, B) ->
+            'ok'
+    'v2f_t2f_c4f'/8 =
+        fun (X, Y, U, V, R, G, B, A) ->
+            'ok'
+    'v2f_t2f_c4b'/8 =
+        fun (X, Y, U, V, R, G, B, A) ->
+            'ok'
+    'v2f_t2f_c1i'/5 =
+        fun (X, Y, U, V, Rgba) ->
+            'ok'
+    'v3f_t2f_c3f'/8 =
+        fun (X, Y, Z, U, V, R, G, B) ->
+            'ok'
+    'v3f_t2f_c3b'/8 =
+        fun (X, Y, Z, U, V, R, G, B) ->
+            'ok'
+    'v3f_t2f_c4f'/9 =
+        fun (X, Y, Z, U, V, R, G, B, A) ->
+            'ok'
+    'v3f_t2f_c4b'/9 =
+        fun (X, Y, Z, U, V, R, G, B, A) ->
+            'ok'
+    'v3f_t2f_c1i'/6 =
+        fun (X, Y, Z, U, V, Rgba) ->
+            'ok'
+    'end'/0 =
+        fun () ->
+            'ok'
+    'draw'/0 =
+        fun () ->
+            'ok'
+    'context_draw'/1 =
+        fun (Ctx) ->
+            'ok'
+    'SglError__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sokol.sgl')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sokol.sgl', _0)
+    end

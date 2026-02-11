@@ -1,0 +1,430 @@
+module 'v.strings' ['new_builder'/1,
+                'Builder.write_ptr'/3,
+                'Builder.write_string'/2,
+                'Builder.write_byte'/2,
+                'Builder.write_u8'/2,
+                'Builder.write_rune'/2,
+                'Builder.writeln'/2,
+                'Builder.str'/1,
+                'Builder.clear'/1,
+                'Builder.go_back'/2,
+                'Builder.go_back_to'/2,
+                'Builder.byte_at'/2,
+                'Builder.last_n'/2,
+                'Builder.after'/2,
+                'Builder.free'/1,
+                'Builder.reuse_as_plain_u8_array'/1,
+                'min'/3,
+                'max2'/2,
+                'min2'/2,
+                'abs2'/2,
+                'levenshtein_distance'/2,
+                'levenshtein_distance_percentage'/2,
+                'dice_coefficient'/2,
+                'hamming_distance'/2,
+                'hamming_similarity'/2,
+                'jaro_similarity'/2,
+                'jaro_winkler_similarity'/2,
+                'repeat'/2,
+                'repeat_string'/2,
+                'find_between_pair_u8'/3,
+                'find_between_pair_rune'/3,
+                'find_between_pair_string'/3,
+                'split_capital'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'new_builder'/1 =
+    fun (Initial_size) ->
+        []
+'Builder.write_ptr'/3 =
+    fun (B, Ptr, Len) ->
+        case call 'erlang':'=:='(Len, 0) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'Builder.write_string'/2 =
+    fun (B, S) ->
+        'ok'
+'Builder.write_byte'/2 =
+    fun (B, Data) ->
+        call 'erlang':'bsl'(B, Data)
+'Builder.write_u8'/2 =
+    fun (B, Data) ->
+        call 'erlang':'bsl'(B, Data)
+'Builder.write_rune'/2 =
+    fun (B, R) ->
+        case call 'erlang':'<'(R, 16#80) of <'true'> when 'true' -> call 'erlang':'bsl'(B, R) <'false'> when 'true' -> case call 'erlang':'<'(R, 16#800) of <'true'> when 'true' -> 
+            do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#C0, call 'erlang':'bsr'(R, 6)))
+                call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(R, 16#3F)))
+         <'false'> when 'true' -> case call 'erlang':'<'(R, 16#10000) of <'true'> when 'true' -> 
+            do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#E0, call 'erlang':'bsr'(R, 12)))
+                do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(call 'erlang':'bsr'(R, 6), 16#3F)))
+                    call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(R, 16#3F)))
+         <'false'> when 'true' -> 
+            do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#F0, call 'erlang':'bsr'(R, 18)))
+                do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(call 'erlang':'bsr'(R, 12), 16#3F)))
+                    do  call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(call 'erlang':'bsr'(R, 6), 16#3F)))
+                        call 'erlang':'bsl'(B, call 'erlang':'bor'(16#80, call 'erlang':'band'(R, 16#3F)))
+         end end end
+'Builder.writeln'/2 =
+    fun (B, S) ->
+        do  apply 'Builder.write_string'/2(B, S)
+            call 'erlang':'bsl'(B, 10)
+'Builder.str'/1 =
+    fun (B) ->
+        let <S> =
+            apply 'Builder.bytestr'/1(B)
+        in  do  apply 'Builder.clear'/1(B)
+                S
+'Builder.clear'/1 =
+    fun (B) ->
+        apply 'Builder.clear'/1(B)
+'Builder.go_back'/2 =
+    fun (B, N) ->
+        case call 'erlang':'>'(N, call 'erlang':'length'(B)) of <'true'> when 'true' -> apply 'Builder.clear'/1(B) <'false'> when 'true' -> apply 'Builder.trim'/2(B, call 'erlang':'-'(call 'erlang':'length'(B), N)) end
+'Builder.go_back_to'/2 =
+    fun (B, Pos) ->
+        case call 'erlang':'=<'(Pos, 0) of <'true'> when 'true' -> apply 'Builder.clear'/1(B) <'false'> when 'true' -> case call 'erlang':'<'(Pos, call 'erlang':'length'(B)) of <'true'> when 'true' -> apply 'Builder.trim'/2(B, Pos) <'false'> when 'true' -> 'ok' end end
+'Builder.byte_at'/2 =
+    fun (B, N) ->
+        call 'lists':'nth'(call 'erlang':'+'(N, 1), B)
+'Builder.last_n'/2 =
+    fun (B, N) ->
+        case call 'erlang':'>'(N, call 'erlang':'length'(B)) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                apply 'Builder.bytestr'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(call 'erlang':'-'(call 'erlang':'length'(B), N), 0), 1), B))
+        end
+'Builder.after'/2 =
+    fun (B, N) ->
+        case call 'erlang':'>='(N, call 'erlang':'length'(B)) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                apply 'Builder.bytestr'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(N, 0), 1), B))
+        end
+'Builder.free'/1 =
+    fun (B) ->
+        'ok'
+'Builder.reuse_as_plain_u8_array'/1 =
+    fun (B) ->
+        B
+'min'/3 =
+    fun (A, B, C) ->
+        let <M_1> =
+            case call 'erlang':'<'(B, A) of <'true'> when 'true' -> B <'false'> when 'true' -> A end
+        in  let <M_2> =
+                case call 'erlang':'<'(C, M_1) of <'true'> when 'true' -> C <'false'> when 'true' -> M_1 end
+            in  M_2
+'max2'/2 =
+    fun (A, B) ->
+        case call 'erlang':'<'(A, B) of
+            <'true'> when 'true' -> B
+            <'false'> when 'true' -> 
+                A
+        end
+'min2'/2 =
+    fun (A, B) ->
+        case call 'erlang':'<'(A, B) of
+            <'true'> when 'true' -> A
+            <'false'> when 'true' -> 
+                B
+        end
+'abs2'/2 =
+    fun (A, B) ->
+        case call 'erlang':'<'(A, B) of
+            <'true'> when 'true' -> call 'erlang':'-'(B, A)
+            <'false'> when 'true' -> 
+                call 'erlang':'-'(A, B)
+        end
+'levenshtein_distance'/2 =
+    fun (A, B) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(A), 0) of
+            <'true'> when 'true' -> call 'erlang':'length'(B)
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(call 'erlang':'length'(B), 0) of
+                    <'true'> when 'true' -> call 'erlang':'length'(A)
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'=:='(A, B) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                let <Row> =
+                                    []
+                                in  call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'length'(A), 1), Row)
+                        end
+                end
+        end
+'levenshtein_distance_percentage'/2 =
+    fun (A, B) ->
+        let <D> =
+            apply 'levenshtein_distance'/2(A, B)
+        in  let <L> =
+                case call 'erlang':'>='(call 'erlang':'length'(A), call 'erlang':'length'(B)) of <'true'> when 'true' -> call 'erlang':'length'(A) <'false'> when 'true' -> call 'erlang':'length'(B) end
+            in  call 'erlang':'*'(call 'erlang':'-'(1.00, call 'erlang':'/'(call 'erlang':'float'(D), call 'erlang':'float'(L))), 100.00)
+'dice_coefficient'/2 =
+    fun (S1, S2) ->
+        case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'length'(S1), 0), call 'erlang':'=:='(call 'erlang':'length'(S2), 0)) of
+            <'true'> when 'true' -> 0.0
+            <'false'> when 'true' -> 
+                case call 'erlang':'=:='(S1, S2) of
+                    <'true'> when 'true' -> 1.0
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'or'(call 'erlang':'<'(call 'erlang':'length'(S1), 2), call 'erlang':'<'(call 'erlang':'length'(S2), 2)) of
+                            <'true'> when 'true' -> 0.0
+                            <'false'> when 'true' -> 
+                                let <A> =
+                                    case call 'erlang':'>'(call 'erlang':'length'(S1), call 'erlang':'length'(S2)) of <'true'> when 'true' -> S1 <'false'> when 'true' -> S2 end
+                                in  let <B> =
+                                        case call 'erlang':'=:='(A, S1) of <'true'> when 'true' -> S2 <'false'> when 'true' -> S1 end
+                                    in  let <First_bigrams> =
+                                            ~{}~
+                                        in  do  let <_1> =
+                                                fun (I) ->
+                                                    let <Bigram> =
+                                                        call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(I, call 'erlang':'+'(I, 2)), 1), A)
+                                                    in  let <Q> =
+                                                            case call 'lists':'member'(Bigram, First_bigrams) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'map_get'(Bigram, First_bigrams), 1) <'false'> when 'true' -> 1 end
+                                                        in  'ok'
+                                            in  let <_2> =
+                                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'length'(A), 1), 1))
+                                                in  call 'lists':'foreach'(_1, _2)
+                                                let <Intersection_size> =
+                                                    0
+                                                in  let <Bigram_3> =
+                                                        let <_4> =
+                                                            fun (I, BigramAcc) ->
+                                                                let <BigramOut_6> =
+                                                                    call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(I, call 'erlang':'+'(I, 2)), 1), B)
+                                                                in                                                                  let <Count> =
+                                                                    case call 'lists':'member'(BigramOut_6, First_bigrams) of <'true'> when 'true' -> call 'erlang':'map_get'(BigramOut_6, First_bigrams) <'false'> when 'true' -> 0 end
+                                                                in                                                                  do  case call 'erlang':'>'(Count, 0) of <'true'> when 'true' -> 
+                                                                    do  call 'erlang':'-'(Count, 1)
+                                                                        Intersection_size
+                                                                 <'false'> when 'true' -> 'ok' end
+BigramOut_6
+                                                        in  let <_5> =
+                                                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'length'(B), 1), 1))
+                                                        in  call 'lists':'foldl'(_4, Bigram, _5)
+                                                    in  call 'erlang':'/'(call 'erlang':'*'(2.0, call 'erlang':'float'(Intersection_size)), call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'float'(call 'erlang':'length'(A)), call 'erlang':'float'(call 'erlang':'length'(B))), 2))
+                        end
+                end
+        end
+'hamming_distance'/2 =
+    fun (A, B) ->
+        case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'length'(A), 0), call 'erlang':'=:='(call 'erlang':'length'(B), 0)) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                let <Match_len> =
+                    apply 'min2'/2(call 'erlang':'length'(A), call 'erlang':'length'(B))
+                in  let <Diff_count> =
+                        apply 'abs2'/2(call 'erlang':'length'(A), call 'erlang':'length'(B))
+                    in  do  let <_1> =
+                            fun (I) ->
+                                case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(I, 1), A), call 'lists':'nth'(call 'erlang':'+'(I, 1), B)) of <'true'> when 'true' -> Diff_count <'false'> when 'true' -> 'ok' end
+                        in  let <_2> =
+                                call 'lists':'seq'(0, call 'erlang':'-'(Match_len, 1))
+                            in  call 'lists':'foreach'(_1, _2)
+                            Diff_count
+        end
+'hamming_similarity'/2 =
+    fun (A, B) ->
+        let <L> =
+            apply 'max2'/2(call 'erlang':'length'(A), call 'erlang':'length'(B))
+        in  case call 'erlang':'=:='(L, 0) of
+                <'true'> when 'true' -> 1.0
+                <'false'> when 'true' -> 
+                    let <D> =
+                        apply 'hamming_distance'/2(A, B)
+                    in  call 'erlang':'-'(1.00, call 'erlang':'/'(call 'erlang':'float'(D), call 'erlang':'float'(L)))
+            end
+'jaro_similarity'/2 =
+    fun (A, B) ->
+        let <A_len> =
+            call 'erlang':'length'(A)
+        in  let <B_len> =
+                call 'erlang':'length'(B)
+            in  case call 'erlang':'and'(call 'erlang':'=:='(A_len, 0), call 'erlang':'=:='(B_len, 0)) of
+                    <'true'> when 'true' -> 1.0
+                    <'false'> when 'true' -> 
+                        case call 'erlang':'or'(call 'erlang':'=:='(A_len, 0), call 'erlang':'=:='(B_len, 0)) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                let <Match_distance> =
+                                    call 'erlang':'-'(call 'erlang':'div'(apply 'max2'/2(A_len, B_len), 2), 1)
+                                in  let <A_matches> =
+                                        []
+                                    in  let <B_matches> =
+                                            []
+                                        in  let <Matches> =
+                                                0
+                                            in  let <Transpositions> =
+                                                    0.0
+                                                in  do  let <_1> =
+                                                        fun (I) ->
+                                                            let <Start> =
+                                                                apply 'max2'/2(0, call 'erlang':'-'(I, Match_distance))
+                                                            in  let <End> =
+                                                                    apply 'min2'/2(B_len, call 'erlang':'+'(call 'erlang':'+'(I, Match_distance), 1))
+                                                                in  'ok'
+                                                    in  let <_2> =
+                                                            call 'lists':'seq'(0, call 'erlang':'-'(A_len, 1))
+                                                        in  call 'lists':'foreach'(_1, _2)
+                                                        case call 'erlang':'=:='(Matches, 0) of
+                                                            <'true'> when 'true' -> 0
+                                                            <'false'> when 'true' -> 
+                                                                let <K> =
+                                                                    0
+                                                                in  do  let <_3> =
+                                                                        fun (I) ->
+                                                                            do  case call 'erlang':'not'(call 'lists':'nth'(call 'erlang':'+'(I, 1), A_matches)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                                                                do  case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(I, 1), A), call 'lists':'nth'(call 'erlang':'+'(K, 1), B)) of <'true'> when 'true' -> Transpositions <'false'> when 'true' -> 'ok' end
+                                                                                    K
+                                                                    in  let <_4> =
+                                                                            call 'lists':'seq'(0, call 'erlang':'-'(A_len, 1))
+                                                                        in  call 'lists':'foreach'(_3, _4)
+                                                                        let <Transpositions_5> =
+                                                                            2
+                                                                        in  call 'erlang':'/'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'/'(Matches, call 'erlang':'float'(A_len)), call 'erlang':'/'(Matches, call 'erlang':'float'(B_len))), call 'erlang':'/'(call 'erlang':'-'(Matches, Transpositions_5), Matches)), 3)
+                                                        end
+                        end
+                end
+'jaro_winkler_similarity'/2 =
+    fun (A, B) ->
+        let <Lmax> =
+            apply 'min2'/2(4, apply 'min2'/2(call 'erlang':'length'(A), call 'erlang':'length'(B)))
+        in  let <L> =
+                0
+            in  do  let <_1> =
+                    fun (I) ->
+                        case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(I, 1), A), call 'lists':'nth'(call 'erlang':'+'(I, 1), B)) of <'true'> when 'true' -> L <'false'> when 'true' -> 'ok' end
+                in  let <_2> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(Lmax, 1))
+                    in  call 'lists':'foreach'(_1, _2)
+                    let <Js> =
+                        apply 'jaro_similarity'/2(A, B)
+                    in  let <P> =
+                            0.1
+                        in  let <Ws> =
+                                call 'erlang':'+'(Js, call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'float'(L), P), call 'erlang':'-'(1, Js)))
+                            in  Ws
+'repeat'/2 =
+    fun (C, N) ->
+        case call 'erlang':'=<'(N, 0) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                let <Arr> =
+                    []
+                in  do  let <_1> =
+                        fun (_) ->
+                            call 'erlang':'bsl'(Arr, C)
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(N, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        call 'erlang':'list_to_binary'(Arr)
+        end
+'repeat_string'/2 =
+    fun (S, N) ->
+        case call 'erlang':'or'(call 'erlang':'=<'(N, 0), call 'erlang':'=:='(call 'erlang':'length'(S), 0)) of
+            <'true'> when 'true' -> #{  }#
+            <'false'> when 'true' -> 
+                let <Result> =
+                    apply 'new_builder'/1(call 'erlang':'*'(call 'erlang':'length'(S), N))
+                in  do  let <_1> =
+                        fun (_) ->
+                            apply 'Builder.write_string'/2(Result, S)
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(N, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        apply 'Builder.str'/1(Result)
+        end
+'find_between_pair_u8'/3 =
+    fun (Input, Start, End) ->
+        let <Marks> =
+            0
+        in  let <Start_index> =
+                -1
+            in  do  let <_1> =
+                    fun (B, I) ->
+                        do  case call 'erlang':'=:='(B, Start) of <'true'> when 'true' -> 
+                            let <Start_index_3> =
+                                case call 'erlang':'=:='(Start_index, -1) of <'true'> when 'true' -> call 'erlang':'+'(I, 1) <'false'> when 'true' -> Start_index end
+                            in  do  Marks
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'>'(Start_index_3, 0) of <'true'> when 'true' -> case call 'erlang':'=:='(B, End) of <'true'> when 'true' -> 
+                                do  Marks
+                                    case call 'erlang':'=:='(Marks, 0) of <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Start_index_3, I), 1), Input) <'false'> when 'true' -> 'ok' end
+                             <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                call 'erlang':'+'(I, 1)
+                in  call 'lists':'foldl'(_1, 0, Input)
+                    #{  }#
+'find_between_pair_rune'/3 =
+    fun (Input, Start, End) ->
+        let <Marks> =
+            0
+        in  let <Start_index> =
+                -1
+            in  let <Runes> =
+                    apply 'string.runes'/1(Input)
+                in  do  let <_1> =
+                        fun (R, I) ->
+                            do  case call 'erlang':'=:='(R, Start) of <'true'> when 'true' -> 
+                                let <Start_index_3> =
+                                    case call 'erlang':'=:='(Start_index, -1) of <'true'> when 'true' -> call 'erlang':'+'(I, 1) <'false'> when 'true' -> Start_index end
+                                in  do  Marks
+                                        'ok'
+                             <'false'> when 'true' -> 'ok' end
+                                do  case call 'erlang':'>'(Start_index_3, 0) of <'true'> when 'true' -> case call 'erlang':'=:='(R, End) of <'true'> when 'true' -> 
+                                    do  Marks
+                                        case call 'erlang':'=:='(Marks, 0) of <'true'> when 'true' -> apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Start_index_3, I), 1), Runes)) <'false'> when 'true' -> 'ok' end
+                                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'+'(I, 1)
+                    in  call 'lists':'foldl'(_1, 0, Runes)
+                        #{  }#
+'find_between_pair_string'/3 =
+    fun (Input, Start, End) ->
+        let <Start_index> =
+            -1
+        in  let <Marks> =
+                0
+            in  let <Start_runes> =
+                    apply 'string.runes'/1(Start)
+                in  let <End_runes> =
+                        apply 'string.runes'/1(End)
+                    in  let <Runes> =
+                            apply 'string.runes'/1(Input)
+                        in  let <I> =
+                                0
+                            in  #{  }#
+'split_capital'/1 =
+    fun (S) ->
+        let <Res> =
+            []
+        in  let <Word_start> =
+                0
+            in  let <_1> =
+                    let <_3> =
+                        fun (C, _7) ->
+                            let <Word_startAcc> =
+                                call 'erlang':'element'(1, _7)
+                            in                              let <IdxAcc> =
+                                call 'erlang':'element'(2, _7)
+                            in  
+                            let <Word_startOut_5> =
+                                case apply 'u8.is_capital'/1(C) of <'true'> when 'true' -> do  case call 'erlang':'=/='(Word_startAcc, IdxAcc) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Word_startAcc, IdxAcc), 1), S)) <'false'> when 'true' -> 'ok' end IdxAcc <'false'> when 'true' -> Word_startAcc end
+                            in  {Word_startOut_5, call 'erlang':'+'(IdxAcc, 1)}
+                    in  call 'lists':'foldl'(_3, {Word_start, 0}, S)
+                in  let <Word_start_2> =
+                        call 'erlang':'element'(1, _1)
+                    in  do  case call 'erlang':'=/='(Word_start_2, call 'erlang':'length'(S)) of <'true'> when 'true' -> call 'erlang':'bsl'(Res, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Word_start_2, 0), 1), S)) <'false'> when 'true' -> 'ok' end
+                            Res
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.strings')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.strings', _0)
+end

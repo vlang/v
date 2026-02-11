@@ -1,0 +1,763 @@
+module 'v.wasm' ['constexpr_value'/1,
+                'constexpr_value_zero'/1,
+                'constexpr_ref_null'/1,
+                'ConstExpression.i32_const'/2,
+                'ConstExpression.i64_const'/2,
+                'ConstExpression.f32_const'/2,
+                'ConstExpression.f64_const'/2,
+                'ConstExpression.add'/2,
+                'ConstExpression.sub'/2,
+                'ConstExpression.mul'/2,
+                'ConstExpression.global_get'/2,
+                'ConstExpression.ref_null'/2,
+                'ConstExpression.ref_func'/2,
+                'ConstExpression.ref_func_import'/3,
+                'Module.u32'/2,
+                'Module.patch_start'/1,
+                'Module.patch_len'/2,
+                'Module.patch_u32'/3,
+                'Module.result_type'/2,
+                'Module.function_type'/2,
+                'Module.global_type'/3,
+                'push_f32'/2,
+                'push_f64'/2,
+                'Module.get_function_idx'/2,
+                'Module.patch'/2,
+                'Module.name'/2,
+                'Module.start_subsection'/2,
+                'Module.start_section'/2,
+                'Module.end_section'/2,
+                'Module.compile'/1,
+                'Function.export_name'/2,
+                'Function.u32'/2,
+                'Function.blocktype'/2,
+                'Function.patch_pos'/1,
+                'Function.patch'/3,
+                'Function.new_local'/2,
+                'Function.new_local_named'/3,
+                'Function.i32_const'/2,
+                'Function.i64_const'/2,
+                'Function.f32_const'/2,
+                'Function.f64_const'/2,
+                'Function.local_get'/2,
+                'Function.local_set'/2,
+                'Function.local_tee'/2,
+                'Function.global_get'/2,
+                'Function.global_set'/2,
+                'Function.drop'/1,
+                'Function.c_select'/1,
+                'Function.add'/2,
+                'Function.sub'/2,
+                'Function.mul'/2,
+                'Function.div'/3,
+                'Function.rem'/3,
+                'Function.b_and'/2,
+                'Function.b_or'/2,
+                'Function.b_xor'/2,
+                'Function.b_shl'/2,
+                'Function.b_shr'/3,
+                'Function.clz'/2,
+                'Function.ctz'/2,
+                'Function.popcnt'/2,
+                'Function.rotl'/2,
+                'Function.rotr'/2,
+                'Function.abs'/2,
+                'Function.neg'/2,
+                'Function.ceil'/2,
+                'Function.floor'/2,
+                'Function.trunc'/2,
+                'Function.nearest'/2,
+                'Function.sqrt'/2,
+                'Function.min'/2,
+                'Function.max'/2,
+                'Function.copysign'/2,
+                'Function.eqz'/2,
+                'Function.eq'/2,
+                'Function.ne'/2,
+                'Function.lt'/3,
+                'Function.gt'/3,
+                'Function.le'/3,
+                'Function.ge'/3,
+                'Function.sign_extend8'/2,
+                'Function.sign_extend16'/2,
+                'Function.sign_extend32'/1,
+                'Function.cast'/4,
+                'Function.cast_trapping'/4,
+                'Function.reinterpret'/2,
+                'Function.unreachable'/1,
+                'Function.nop'/1,
+                'Function.c_block'/3,
+                'Function.c_loop'/3,
+                'Function.c_if'/3,
+                'Function.c_else'/2,
+                'Function.c_return'/1,
+                'Function.c_end'/2,
+                'Function.c_br'/2,
+                'Function.c_br_if'/2,
+                'Function.call'/2,
+                'Function.call_import'/3,
+                'Function.load'/4,
+                'Function.load8'/5,
+                'Function.load16'/5,
+                'Function.load32_i64'/4,
+                'Function.store'/4,
+                'Function.store8'/4,
+                'Function.store16'/4,
+                'Function.store32_i64'/3,
+                'Function.memory_size'/1,
+                'Function.memory_grow'/1,
+                'Function.memory_init'/2,
+                'Function.data_drop'/2,
+                'Function.memory_copy'/1,
+                'Function.memory_fill'/1,
+                'Function.ref_null'/2,
+                'Function.ref_is_null'/2,
+                'Function.ref_func'/2,
+                'Function.ref_func_import'/3,
+                'Module.new_functype'/2,
+                'Module.new_function'/4,
+                'Module.new_debug_function'/4,
+                'Module.enable_debug'/2,
+                'Module.assign_memory'/5,
+                'Module.assign_start'/2,
+                'Module.new_function_import'/5,
+                'Module.new_function_import_debug'/4,
+                'Module.commit'/3,
+                'Module.new_data_segment'/4,
+                'Module.new_passive_data_segment'/3,
+                'Module.new_global'/6,
+                'Module.new_global_import'/5,
+                'Module.assign_global_init'/3,
+                'Section__static__from'/1,
+                'Subsection__static__from'/1,
+                'NumType__static__from'/1,
+                'ValType__static__from'/1,
+                'RefType__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'constexpr_value'/1 =
+    fun (V) ->
+        let <Expr> =
+            ~{{'vbeam','type'}=>'ConstExpression'}~
+        in  do  'ok'
+                Expr
+'constexpr_value_zero'/1 =
+    fun (V) ->
+        let <Expr> =
+            ~{{'vbeam','type'}=>'ConstExpression'}~
+        in  do  case call 'erlang':'=:='(V, 'i32_t') of <'true'> when 'true' -> apply 'ConstExpression.i32_const'/2(Expr, 0) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'i64_t') of <'true'> when 'true' -> apply 'ConstExpression.i64_const'/2(Expr, 0) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'f32_t') of <'true'> when 'true' -> apply 'ConstExpression.f32_const'/2(Expr, 0.0) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'f64_t') of <'true'> when 'true' -> apply 'ConstExpression.f64_const'/2(Expr, 0.0) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'funcref_t') of <'true'> when 'true' -> apply 'ConstExpression.ref_null'/2(Expr, V) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'externref_t') of <'true'> when 'true' -> apply 'ConstExpression.ref_null'/2(Expr, V) <'false'> when 'true' -> case call 'erlang':'=:='(V, 'v128_t') of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end end end end end end end
+                Expr
+'constexpr_ref_null'/1 =
+    fun (Rt) ->
+        let <Expr> =
+            ~{{'vbeam','type'}=>'ConstExpression'}~
+        in  do  apply 'ConstExpression.ref_null'/2(Expr, Rt)
+                Expr
+'ConstExpression.i32_const'/2 =
+    fun (Expr, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#41)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), call 'v.encoding.leb128':'encode_i32'(V))
+'ConstExpression.i64_const'/2 =
+    fun (Expr, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#42)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), call 'v.encoding.leb128':'encode_i64'(V))
+'ConstExpression.f32_const'/2 =
+    fun (Expr, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#43)
+            apply 'push_f32'/2(call 'erlang':'map_get'('code', Expr), V)
+'ConstExpression.f64_const'/2 =
+    fun (Expr, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#44)
+            apply 'push_f64'/2(call 'erlang':'map_get'('code', Expr), V)
+'ConstExpression.add'/2 =
+    fun (Expr, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#6A) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#7C) <_> when 'true' -> 'ok' end
+'ConstExpression.sub'/2 =
+    fun (Expr, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#6B) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#7D) <_> when 'true' -> 'ok' end
+'ConstExpression.mul'/2 =
+    fun (Expr, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#6C) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#7E) <_> when 'true' -> 'ok' end
+'ConstExpression.global_get'/2 =
+    fun (Expr, Global) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#23)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), call 'v.encoding.leb128':'encode_u32'(Global))
+'ConstExpression.ref_null'/2 =
+    fun (Expr, Rt) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#D0)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), Rt)
+'ConstExpression.ref_func'/2 =
+    fun (Expr, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#D2)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('call_patches', Expr), ~{'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Expr)),{'vbeam','type'}=>'FunctionCallPatch'}~)
+'ConstExpression.ref_func_import'/3 =
+    fun (Expr, Mod, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Expr), 16#D2)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('call_patches', Expr), ~{'mod'=>Mod,'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Expr)),{'vbeam','type'}=>'ImportCallPatch'}~)
+'Module.u32'/2 =
+    fun (Mod, V) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), call 'v.encoding.leb128':'encode_u32'(V))
+'Module.patch_start'/1 =
+    fun (Mod) ->
+        call 'erlang':'length'(call 'erlang':'map_get'('buf', Mod))
+'Module.patch_len'/2 =
+    fun (Mod, Pos) ->
+        let <Len> =
+            call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('buf', Mod)), Pos)
+        in  let <Data> =
+                call 'v.encoding.leb128':'encode_u32'(Len)
+            in  apply 'array.insert'/3(call 'erlang':'map_get'('buf', Mod), Pos, Data)
+'Module.patch_u32'/3 =
+    fun (Mod, Pos, Val) ->
+        let <Data> =
+            call 'v.encoding.leb128':'encode_u32'(Val)
+        in  apply 'array.insert'/3(call 'erlang':'map_get'('buf', Mod), Pos, Data)
+'Module.result_type'/2 =
+    fun (Mod, Results) ->
+        do  apply 'Module.u32'/2(Mod, call 'erlang':'length'(Results))
+            'ok'
+'Module.function_type'/2 =
+    fun (Mod, Ft) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), 16#60)
+            do  apply 'Module.result_type'/2(Mod, call 'erlang':'map_get'('parameters', Ft))
+                apply 'Module.result_type'/2(Mod, call 'erlang':'map_get'('results', Ft))
+'Module.global_type'/3 =
+    fun (Mod, Vt, Is_mut) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), Vt)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), Is_mut)
+'push_f32'/2 =
+    fun (Buf, V) ->
+        let <Rv> =
+            call 'v.math.bits':'f32_bits'(V)
+        in  do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 0))
+                do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 8))
+                    do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 16))
+                        call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 24))
+'push_f64'/2 =
+    fun (Buf, V) ->
+        let <Rv> =
+            call 'v.math.bits':'f64_bits'(V)
+        in  do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 0))
+                do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 8))
+                    do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 16))
+                        do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 24))
+                            do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 32))
+                                do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 40))
+                                    do  call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 48))
+                                        call 'erlang':'bsl'(Buf, call 'erlang':'bsr'(Rv, 56))
+'Module.get_function_idx'/2 =
+    fun (Mod, Patch) ->
+        let <Idx> =
+            -1
+        in  do  case Patch of <'false'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(Idx, -1) of <'true'> when 'true' -> call 'erlang':'error'({'panic', call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('mod', Patch)|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('name', Patch)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]])}) <'false'> when 'true' -> 'ok' end end
+                Idx
+'Module.patch'/2 =
+    fun (Mod, Ft) ->
+        let <Ptr> =
+            0
+        in  let <Ptr_1> =
+                let <_2> =
+                    fun (Patch, PtrAcc) ->
+                        let <Idx> =
+                            0
+                        in                          do  case Patch of <'false'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(PtrAcc, call 'erlang':'map_get'('pos', Patch)), 1), call 'erlang':'map_get'('code', Ft)))
+                                do  apply 'Module.u32'/2(Mod, Idx)
+                                    let <PtrOut_4> =
+                                        call 'erlang':'map_get'('pos', Patch)
+                                    in  PtrOut_4
+                in  call 'lists':'foldl'(_2, Ptr, call 'erlang':'map_get'('patches', Ft))
+            in  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Ptr_1, 0), 1), call 'erlang':'map_get'('code', Ft)))
+'Module.name'/2 =
+    fun (Mod, Name) ->
+        do  apply 'Module.u32'/2(Mod, call 'erlang':'length'(Name))
+            call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), call 'erlang':'binary_to_list'(Name))
+'Module.start_subsection'/2 =
+    fun (Mod, Sec) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), Sec)
+            apply 'Module.patch_start'/1(Mod)
+'Module.start_section'/2 =
+    fun (Mod, Sec) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), Sec)
+            apply 'Module.patch_start'/1(Mod)
+'Module.end_section'/2 =
+    fun (Mod, Tpatch) ->
+        apply 'Module.patch_len'/2(Mod, Tpatch)
+'Module.compile'/1 =
+    fun (Mod) ->
+        do  []
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('buf', Mod), [16#00|[16#61|[16#73|[16#6d|[16#01|[16#00|[16#00|[16#00|[]]]]]]]]])
+                do  case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('functypes', Mod)), 0) of <'true'> when 'true' -> 
+                    let <Tpatch> =
+                        apply 'Module.start_section'/2(Mod, 'type_section')
+                    in  apply 'Module.end_section'/2(Mod, Tpatch)
+                 <'false'> when 'true' -> 'ok' end
+                    let <Tpatch_1> =
+                        case call 'erlang':'or'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('fn_imports', Mod)), 0), call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('global_imports', Mod)), 0)) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'import_section') <'false'> when 'true' -> Tpatch end
+                    in  let <Tpatch_2> =
+                            case call 'erlang':'>'(call 'maps':'size'(call 'erlang':'map_get'('functions', Mod)), 0) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'function_section') <'false'> when 'true' -> Tpatch_1 end
+                        in  let <Tpatch_3> =
+                                case 'false' of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'memory_section') <'false'> when 'true' -> Tpatch_2 end
+                            in  let <Tpatch_4> =
+                                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('globals', Mod)), 0) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'global_section') <'false'> when 'true' -> Tpatch_3 end
+                                in  let <Tpatch_5> =
+                                        case 'false' of <'true'> when 'true' -> let <Ftt> = call 'erlang':'map_get'(Start, call 'erlang':'map_get'('functions', Mod)) in apply 'Module.start_section'/2(Mod, 'start_section') <'false'> when 'true' -> Tpatch_4 end
+                                    in  let <Tpatch_6> =
+                                            case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('segments', Mod)), 0) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'data_count_section') <'false'> when 'true' -> Tpatch_5 end
+                                        in  let <Tpatch_7> =
+                                                case call 'erlang':'>'(call 'maps':'size'(call 'erlang':'map_get'('functions', Mod)), 0) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'code_section') <'false'> when 'true' -> Tpatch_6 end
+                                            in  let <Tpatch_8> =
+                                                    case call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('segments', Mod)), 0) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'data_section') <'false'> when 'true' -> Tpatch_7 end
+                                                in  let <Tpatch_9> =
+                                                        case call 'erlang':'map_get'('debug', Mod) of <'true'> when 'true' -> apply 'Module.start_section'/2(Mod, 'custom_section') <'false'> when 'true' -> Tpatch_8 end
+                                                    in  call 'erlang':'map_get'('buf', Mod)
+'Function.export_name'/2 =
+    fun (Func, Name) ->
+        'ok'
+'Function.u32'/2 =
+    fun (Func, V) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), call 'v.encoding.leb128':'encode_u32'(V))
+'Function.blocktype'/2 =
+    fun (Func, Typ) ->
+        do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('parameters', Typ)), 0) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('results', Typ)), 0) of <'true'> when 'true' -> 
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#40)
+                'ok'
+         <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('results', Typ)), 1) of <'true'> when 'true' -> 
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), call 'lists':'nth'(1, call 'erlang':'map_get'('results', Typ)))
+                'ok'
+         <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> 'ok' end
+            let <Tidx> =
+                apply 'Module.new_functype'/2(call 'erlang':'map_get'('mod', Func), Typ)
+            in  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), call 'v.encoding.leb128':'encode_i32'(Tidx))
+'Function.patch_pos'/1 =
+    fun (Func) ->
+        call 'erlang':'length'(call 'erlang':'map_get'('code', Func))
+'Function.patch'/3 =
+    fun (Func, Loc, Begin) ->
+        case call 'erlang':'=:='(Loc, Begin) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                let <V> =
+                    call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Begin, 0), 1), call 'erlang':'map_get'('code', Func))
+                in  do  apply 'array.trim'/2(call 'erlang':'map_get'('code', Func), Begin)
+                        do  apply 'array.insert'/3(call 'erlang':'map_get'('code', Func), Loc, V)
+                            do  let <_1> =
+                                fun (Patch) ->
+                                    case call 'erlang':'>='(call 'erlang':'map_get'('pos', Patch), Begin) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'map_get'('pos', Patch), Loc) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end
+                            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('patches', Func))
+                                call 'lists':'sort'(call 'erlang':'map_get'('patches', Func))
+        end
+'Function.new_local'/2 =
+    fun (Func, V) ->
+        let <Ret> =
+            call 'erlang':'length'(call 'erlang':'map_get'('locals', Func))
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('locals', Func), ~{'typ'=>V,{'vbeam','type'}=>'FunctionLocal'}~)
+                Ret
+'Function.new_local_named'/3 =
+    fun (Func, V, Name) ->
+        let <Ret> =
+            call 'erlang':'length'(call 'erlang':'map_get'('locals', Func))
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('locals', Func), ~{'typ'=>V,'name'=>Name,{'vbeam','type'}=>'FunctionLocal'}~)
+                Ret
+'Function.i32_const'/2 =
+    fun (Func, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#41)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), call 'v.encoding.leb128':'encode_i32'(V))
+'Function.i64_const'/2 =
+    fun (Func, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#42)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), call 'v.encoding.leb128':'encode_i64'(V))
+'Function.f32_const'/2 =
+    fun (Func, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#43)
+            apply 'push_f32'/2(call 'erlang':'map_get'('code', Func), V)
+'Function.f64_const'/2 =
+    fun (Func, V) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#44)
+            apply 'push_f64'/2(call 'erlang':'map_get'('code', Func), V)
+'Function.local_get'/2 =
+    fun (Func, Local) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#20)
+            apply 'Function.u32'/2(Func, Local)
+'Function.local_set'/2 =
+    fun (Func, Local) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#21)
+            apply 'Function.u32'/2(Func, Local)
+'Function.local_tee'/2 =
+    fun (Func, Local) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#22)
+            apply 'Function.u32'/2(Func, Local)
+'Function.global_get'/2 =
+    fun (Func, Global) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#23)
+            case Global of <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'idx'=>Global,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'FunctionGlobalPatch'}~) <'false'> when 'true' -> apply 'Function.u32'/2(Func, Global) end
+'Function.global_set'/2 =
+    fun (Func, Global) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#24)
+            case Global of <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'idx'=>Global,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'FunctionGlobalPatch'}~) <'false'> when 'true' -> apply 'Function.u32'/2(Func, Global) end
+'Function.drop'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#1A)
+'Function.c_select'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#1B)
+'Function.add'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6A) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7C) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#92) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A0) end
+'Function.sub'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6B) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7D) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#93) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A1) end
+'Function.mul'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6C) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7E) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#94) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A2) end
+'Function.div'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6D) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6E) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7F) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#80) end <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#95) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A3) end
+'Function.rem'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#6F) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#70) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#81) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#82) end <_> when 'true' -> 'ok' end
+'Function.b_and'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#71) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#83) <_> when 'true' -> 'ok' end
+'Function.b_or'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#72) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#84) <_> when 'true' -> 'ok' end
+'Function.b_xor'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#73) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#85) <_> when 'true' -> 'ok' end
+'Function.b_shl'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#74) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#86) <_> when 'true' -> 'ok' end
+'Function.b_shr'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#75) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#76) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#87) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#88) end <_> when 'true' -> 'ok' end
+'Function.clz'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#67) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#79) <_> when 'true' -> 'ok' end
+'Function.ctz'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#68) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7A) <_> when 'true' -> 'ok' end
+'Function.popcnt'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#69) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#7B) <_> when 'true' -> 'ok' end
+'Function.rotl'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#77) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#89) <_> when 'true' -> 'ok' end
+'Function.rotr'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#78) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A8) <_> when 'true' -> 'ok' end
+'Function.abs'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#8B) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#99) <_> when 'true' -> 'ok' end
+'Function.neg'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#8C) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9A) <_> when 'true' -> 'ok' end
+'Function.ceil'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#8D) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9B) <_> when 'true' -> 'ok' end
+'Function.floor'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#8E) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9C) <_> when 'true' -> 'ok' end
+'Function.trunc'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#8F) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9D) <_> when 'true' -> 'ok' end
+'Function.nearest'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#90) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9E) <_> when 'true' -> 'ok' end
+'Function.sqrt'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#91) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#9F) <_> when 'true' -> 'ok' end
+'Function.min'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#96) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A4) <_> when 'true' -> 'ok' end
+'Function.max'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#97) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A5) <_> when 'true' -> 'ok' end
+'Function.copysign'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#98) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#A6) <_> when 'true' -> 'ok' end
+'Function.eqz'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#45) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#50) <_> when 'true' -> 'ok' end
+'Function.eq'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#46) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#51) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5B) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#61) end
+'Function.ne'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#47) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#52) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5C) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#62) end
+'Function.lt'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#48) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#49) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#53) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#54) end <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5D) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#63) end
+'Function.gt'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4A) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4B) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#55) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#56) end <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5E) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#64) end
+'Function.le'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4C) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4D) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#57) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#58) end <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5F) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#65) end
+'Function.ge'/3 =
+    fun (Func, Typ, Is_signed) ->
+        case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4E) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#4F) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#59) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#5A) end <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#60) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#66) end
+'Function.sign_extend8'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#C0) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#C2) <_> when 'true' -> 'ok' end
+'Function.sign_extend16'/2 =
+    fun (Func, Typ) ->
+        case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#C1) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#C3) <_> when 'true' -> 'ok' end
+'Function.sign_extend32'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#C4)
+'Function.cast'/4 =
+    fun (Func, A, Is_signed, B) ->
+        case call 'lists':'member'(A, ['f32_t'|['f64_t'|[]]]) of
+            <'true'> when 'true' -> 'ok'
+            <'false'> when 'true' -> 
+                case call 'erlang':'and'(call 'erlang':'=:='(A, 'i64_t'), call 'erlang':'=:='(B, 'i32_t')) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        case Is_signed of <'true'> when 'true' -> case A of <'i32_t'> when 'true' -> case B of <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#AC) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B2) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B7) <_> when 'true' -> 'ok' end <'i64_t'> when 'true' -> case B of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B4) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B9) <_> when 'true' -> 'ok' end <_> when 'true' -> 'ok' end <'false'> when 'true' -> case A of <'i32_t'> when 'true' -> case B of <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#AD) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B3) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B8) <_> when 'true' -> 'ok' end <'i64_t'> when 'true' -> case B of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#B5) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#BA) <_> when 'true' -> 'ok' end <_> when 'true' -> 'ok' end end
+                end
+        end
+'Function.cast_trapping'/4 =
+    fun (Func, A, Is_signed, B) ->
+        do  case call 'lists':'member'(A, ['f32_t'|['f64_t'|[]]]) of <'true'> when 'true' -> case Is_signed of <'true'> when 'true' -> case call 'erlang':'=:='(A, 'f32_t') of <'true'> when 'true' -> case B of <'i32_t'> when 'true' -> 'ok' <'i64_t'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end <'false'> when 'true' -> case B of <'i32_t'> when 'true' -> 'ok' <'i64_t'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end end <'false'> when 'true' -> case call 'erlang':'=:='(A, 'f32_t') of <'true'> when 'true' -> case B of <'i32_t'> when 'true' -> 'ok' <'i64_t'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end <'false'> when 'true' -> case B of <'i32_t'> when 'true' -> 'ok' <'i64_t'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end end end <'false'> when 'true' -> 'ok' end
+            apply 'Function.cast'/4(Func, A, Is_signed, B)
+'Function.reinterpret'/2 =
+    fun (Func, A) ->
+        case A of <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#BC) <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#BE) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#BD) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#BF) end
+'Function.unreachable'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#00)
+'Function.nop'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#01)
+'Function.c_block'/3 =
+    fun (Func, Parameters, Results) ->
+        do  call 'erlang':'map_get'('label', Func)
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#02)
+                do  apply 'Function.blocktype'/2(Func, ~{'parameters'=>Parameters,'results'=>Results,{'vbeam','type'}=>'FuncType'}~)
+                    call 'erlang':'map_get'('label', Func)
+'Function.c_loop'/3 =
+    fun (Func, Parameters, Results) ->
+        do  call 'erlang':'map_get'('label', Func)
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#03)
+                do  apply 'Function.blocktype'/2(Func, ~{'parameters'=>Parameters,'results'=>Results,{'vbeam','type'}=>'FuncType'}~)
+                    call 'erlang':'map_get'('label', Func)
+'Function.c_if'/3 =
+    fun (Func, Parameters, Results) ->
+        do  call 'erlang':'map_get'('label', Func)
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#04)
+                do  apply 'Function.blocktype'/2(Func, ~{'parameters'=>Parameters,'results'=>Results,{'vbeam','type'}=>'FuncType'}~)
+                    call 'erlang':'map_get'('label', Func)
+'Function.c_else'/2 =
+    fun (Func, Label) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#05)
+'Function.c_return'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#0F)
+'Function.c_end'/2 =
+    fun (Func, Label) ->
+        do  call 'erlang':'map_get'('label', Func)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#0B)
+'Function.c_br'/2 =
+    fun (Func, Label) ->
+        let <V> =
+            call 'erlang':'-'(call 'erlang':'map_get'('label', Func), Label)
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#0C)
+                apply 'Function.u32'/2(Func, V)
+'Function.c_br_if'/2 =
+    fun (Func, Label) ->
+        let <V> =
+            call 'erlang':'-'(call 'erlang':'map_get'('label', Func), Label)
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#0D)
+                apply 'Function.u32'/2(Func, V)
+'Function.call'/2 =
+    fun (Func, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#10)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'FunctionCallPatch'}~)
+'Function.call_import'/3 =
+    fun (Func, Mod, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#10)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'mod'=>Mod,'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'ImportCallPatch'}~)
+'Function.load'/4 =
+    fun (Func, Typ, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#28) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#29) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2A) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2B) end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.load8'/5 =
+    fun (Func, Typ, Is_signed, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2C) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2D) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#30) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#31) end <_> when 'true' -> 'ok' end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.load16'/5 =
+    fun (Func, Typ, Is_signed, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2E) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#2F) end <'i64_t'> when 'true' -> case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#32) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#33) end <_> when 'true' -> 'ok' end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.load32_i64'/4 =
+    fun (Func, Is_signed, Align, Offset) ->
+        do  case Is_signed of <'true'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#34) <'false'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#35) end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.store'/4 =
+    fun (Func, Typ, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#36) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#37) <'f32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#38) <'f64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#39) end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.store8'/4 =
+    fun (Func, Typ, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3A) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3C) <_> when 'true' -> 'ok' end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.store16'/4 =
+    fun (Func, Typ, Align, Offset) ->
+        do  case Typ of <'i32_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3B) <'i64_t'> when 'true' -> call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3D) <_> when 'true' -> 'ok' end
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.store32_i64'/3 =
+    fun (Func, Align, Offset) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3E)
+            do  apply 'Function.u32'/2(Func, Align)
+                apply 'Function.u32'/2(Func, Offset)
+'Function.memory_size'/1 =
+    fun (Func) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#3F)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#00)
+'Function.memory_grow'/1 =
+    fun (Func) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#40)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#00)
+'Function.memory_init'/2 =
+    fun (Func, Idx) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#FC)
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#08)
+                do  apply 'Function.u32'/2(Func, Idx)
+                    call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#00)
+'Function.data_drop'/2 =
+    fun (Func, Idx) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#FC)
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#09)
+                apply 'Function.u32'/2(Func, Idx)
+'Function.memory_copy'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), [16#FC|[16#0A|[16#00|[16#00|[]]]]])
+'Function.memory_fill'/1 =
+    fun (Func) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), [16#FC|[16#0B|[16#00|[]]]])
+'Function.ref_null'/2 =
+    fun (Func, Rt) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#D0)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), Rt)
+'Function.ref_is_null'/2 =
+    fun (Func, Rt) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#D1)
+'Function.ref_func'/2 =
+    fun (Func, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#D2)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'FunctionCallPatch'}~)
+'Function.ref_func_import'/3 =
+    fun (Func, Mod, Name) ->
+        do  call 'erlang':'bsl'(call 'erlang':'map_get'('code', Func), 16#D2)
+            call 'erlang':'bsl'(call 'erlang':'map_get'('patches', Func), ~{'mod'=>Mod,'name'=>Name,'pos'=>call 'erlang':'length'(call 'erlang':'map_get'('code', Func)),{'vbeam','type'}=>'ImportCallPatch'}~)
+'Module.new_functype'/2 =
+    fun (Mod, Ft) ->
+        let <Idx> =
+            let <_1> = fun (_1_x) -> call 'erlang':'=/='(_1_x, Ft) in call 'erlang':'length'(call 'lists':'takewhile'(_1, call 'erlang':'map_get'('functypes', Mod)))
+        in  let <Idx_2> =
+                case call 'erlang':'=:='(Idx, -1) of <'true'> when 'true' -> call 'erlang':'length'(call 'erlang':'map_get'('functypes', Mod)) <'false'> when 'true' -> Idx end
+            in  Idx_2
+'Module.new_function'/4 =
+    fun (Mod, Name, Parameters, Results) ->
+        let <Idx> =
+            call 'maps':'size'(call 'erlang':'map_get'('functions', Mod))
+        in  let <Tidx> =
+                apply 'Module.new_functype'/2(Mod, ~{'parameters'=>Parameters,'results'=>Results,'name'=>'none',{'vbeam','type'}=>'FuncType'}~)
+            in  ~{'name'=>Name,'tidx'=>Tidx,'idx'=>Idx,'mod'=>Mod,'locals'=>call 'lists':'map'(~{{'vbeam','type'}=>'FunctionLocal'}~, Parameters),{'vbeam','type'}=>'Function'}~
+'Module.new_debug_function'/4 =
+    fun (Mod, Name, Typ, Argument_names) ->
+        let <Idx> =
+            call 'maps':'size'(call 'erlang':'map_get'('functions', Mod))
+        in  let <Tidx> =
+                apply 'Module.new_functype'/2(Mod, Typ)
+            in  ~{'name'=>Name,'tidx'=>Tidx,'idx'=>Idx,'mod'=>Mod,'locals'=>call 'lists':'map'(~{'name'=>It,{'vbeam','type'}=>'FunctionLocal'}~, Argument_names),{'vbeam','type'}=>'Function'}~
+'Module.enable_debug'/2 =
+    fun (Mod, Mod_name) ->
+        do  'true'
+            'ok'
+'Module.assign_memory'/5 =
+    fun (Mod, Name, Export, Min, Max) ->
+        'ok'
+'Module.assign_start'/2 =
+    fun (Mod, Name) ->
+        'ok'
+'Module.new_function_import'/5 =
+    fun (Mod, Modn, Name, Parameters, Results) ->
+        let <Tidx> =
+            apply 'Module.new_functype'/2(Mod, ~{'parameters'=>Parameters,'results'=>Results,'name'=>'none',{'vbeam','type'}=>'FuncType'}~)
+        in  call 'erlang':'bsl'(call 'erlang':'map_get'('fn_imports', Mod), ~{'mod'=>Modn,'name'=>Name,'tidx'=>Tidx,{'vbeam','type'}=>'FunctionImport'}~)
+'Module.new_function_import_debug'/4 =
+    fun (Mod, Modn, Name, Typ) ->
+        let <Tidx> =
+            apply 'Module.new_functype'/2(Mod, Typ)
+        in  call 'erlang':'bsl'(call 'erlang':'map_get'('fn_imports', Mod), ~{'mod'=>Modn,'name'=>Name,'tidx'=>Tidx,{'vbeam','type'}=>'FunctionImport'}~)
+'Module.commit'/3 =
+    fun (Mod, Func, Export) ->
+        'ok'
+'Module.new_data_segment'/4 =
+    fun (Mod, Name, Pos, Data) ->
+        let <Len> =
+            call 'erlang':'length'(call 'erlang':'map_get'('segments', Mod))
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('segments', Mod), ~{'idx'=>Pos,'data'=>Data,'name'=>Name,{'vbeam','type'}=>'DataSegment'}~)
+                Len
+'Module.new_passive_data_segment'/3 =
+    fun (Mod, Name, Data) ->
+        call 'erlang':'bsl'(call 'erlang':'map_get'('segments', Mod), ~{'data'=>Data,'name'=>Name,{'vbeam','type'}=>'DataSegment'}~)
+'Module.new_global'/6 =
+    fun (Mod, Name, Export, Typ, Is_mut, Init) ->
+        let <Len> =
+            call 'erlang':'length'(call 'erlang':'map_get'('globals', Mod))
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('globals', Mod), ~{'typ'=>Typ,'is_mut'=>Is_mut,'name'=>Name,'export'=>Export,'init'=>Init,{'vbeam','type'}=>'Global'}~)
+                Len
+'Module.new_global_import'/5 =
+    fun (Mod, Modn, Name, Typ, Is_mut) ->
+        let <Len> =
+            call 'erlang':'length'(call 'erlang':'map_get'('global_imports', Mod))
+        in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('global_imports', Mod), ~{'mod'=>Modn,'name'=>Name,'typ'=>Typ,'is_mut'=>Is_mut,{'vbeam','type'}=>'GlobalImport'}~)
+                Len
+'Module.assign_global_init'/3 =
+    fun (Mod, Global, Init) ->
+        'ok'
+'Section__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Subsection__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'NumType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'ValType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'RefType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.wasm')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.wasm', _0)
+end

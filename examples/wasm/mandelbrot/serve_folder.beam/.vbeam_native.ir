@@ -1,0 +1,61 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 7,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"dir">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"chdir">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {print_int, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"execute_or_panic">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"resource_abs_path">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 3}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"mount_static_folder_at">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 3001},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 5}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"index">>,
+            arity => 1,
+            exported => true,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"read_file">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"html">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

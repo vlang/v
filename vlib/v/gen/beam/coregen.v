@@ -23,6 +23,7 @@ mut:
 	etf_mode       bool     // true = emit Erlang term text (AST), false = Core Erlang text
 	erl_mode       bool     // true = transpile Core Erlang to Erlang source, compile via erlc
 	fn_count       int      // track function definitions for separator
+	match_cond_var string   // temp var for let-bound match condition (prevents re-evaluation)
 }
 
 pub fn core_gen(files []&ast.File, mut table ast.Table, out_name string, prefs_ &pref.Preferences) {

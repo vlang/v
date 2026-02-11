@@ -1,0 +1,30 @@
+module 'v.encoding.html' ['escape'/2,
+                'unescape'/2,
+                'unescape_all'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'escape'/2 =
+        fun (Input, Config) ->
+            case call 'erlang':'map_get'('quote', Config) of <'true'> when 'true' -> apply 'string.replace_each'/2(apply 'string.replace_each'/2(Input, [#{#<38>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]), [#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<39>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]) <'false'> when 'true' -> apply 'string.replace_each'/2(Input, [#{#<38>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]) end
+    'unescape'/2 =
+        fun (Input, Config) ->
+            case call 'erlang':'map_get'('all', Config) of <'true'> when 'true' -> apply 'unescape_all'/1(Input) <'false'> when 'true' -> case call 'erlang':'map_get'('quote', Config) of <'true'> when 'true' -> apply 'string.replace_each'/2(apply 'string.replace_each'/2(Input, [#{#<38>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]), [#{#<38>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<34>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<35>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<57>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<39>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]) <'false'> when 'true' -> apply 'string.replace_each'/2(Input, [#{#<38>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[#{#<62>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]) end end
+    'unescape_all'/1 =
+        fun (Input) ->
+            let <Result> =
+                []
+            in  let <Runes> =
+                    apply 'string.runes'/1(Input)
+                in  let <I> =
+                        0
+                    in  apply 'array.string'/1(Result)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.encoding.html')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.encoding.html', _0)
+    end

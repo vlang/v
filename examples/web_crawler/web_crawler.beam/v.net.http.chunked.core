@@ -1,0 +1,47 @@
+module 'v.net.http.chunked' ['ChunkScanner.read_chunk_size'/1,
+                'unhex'/1,
+                'ChunkScanner.skip_crlf'/1,
+                'ChunkScanner.read_chunk'/2,
+                'decode'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'ChunkScanner.read_chunk_size'/1 =
+    fun (S) ->
+        let <N> =
+            0
+        in  N
+'unhex'/1 =
+    fun (C) ->
+        do  case call 'erlang':'and'(call 'erlang':'=<'(48, C), call 'erlang':'=<'(C, 57)) of <'true'> when 'true' -> call 'erlang':'-'(C, 48) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=<'(97, C), call 'erlang':'=<'(C, 102)) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'-'(C, 97), 10) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=<'(65, C), call 'erlang':'=<'(C, 70)) of <'true'> when 'true' -> call 'erlang':'+'(call 'erlang':'-'(C, 65), 10) <'false'> when 'true' -> 'ok' end end end
+            0
+'ChunkScanner.skip_crlf'/1 =
+    fun (S) ->
+        'ok'
+'ChunkScanner.read_chunk'/2 =
+    fun (S, Chunksize) ->
+        let <Startpos> =
+            call 'erlang':'map_get'('pos', S)
+        in  do  Chunksize
+                case call 'erlang':'>'(call 'erlang':'map_get'('pos', S), call 'erlang':'length'(call 'erlang':'map_get'('text', S))) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Startpos, call 'erlang':'map_get'('pos', S)), 1), call 'erlang':'map_get'('text', S))
+                end
+'decode'/1 =
+    fun (Text) ->
+        let <Sb> =
+            call 'v.strings':'new_builder'(100)
+        in  let <Cscanner> =
+                ~{'pos'=>0,'text'=>Text,{'vbeam','type'}=>'ChunkScanner'}~
+            in  do  apply 'ChunkScanner.skip_crlf'/1(Cscanner)
+                    apply 'Builder.str'/1(Sb)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.net.http.chunked')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.net.http.chunked', _0)
+end

@@ -1,0 +1,12 @@
+module 'v.v.preludes.embed_file' ['module_info'/0,
+                'module_info'/1]
+        attributes []
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.v.preludes.embed_file')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.v.preludes.embed_file', _0)
+    end

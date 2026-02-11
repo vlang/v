@@ -1,0 +1,58 @@
+module 'v.rand.seed' ['nr_next'/1,
+                'time_seed_array'/1,
+                'time_seed_32'/0,
+                'time_seed_64'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'nr_next'/1 =
+    fun (Prev) ->
+        call 'erlang':'+'(call 'erlang':'*'(Prev, 1664525), 1013904223)
+'time_seed_array'/1 =
+    fun (Count) ->
+        let <Ctime> =
+            call 'v.time':'sys_mono_now'()
+        in  let <Seed> =
+                call 'erlang':'bxor'(call 'erlang':'bsr'(Ctime, 32), call 'erlang':'band'(Ctime, 16#00000000FFFFFFFF))
+            in  let <Seed_data> =
+                    []
+                in  let <Seed_1> =
+                        let <_2> =
+                            fun (_, SeedAcc) ->
+                                let <SeedOut_4> =
+                                    apply 'nr_next'/1(SeedAcc)
+                                in                                  do  call 'erlang':'bsl'(Seed_data, apply 'nr_next'/1(SeedOut_4))
+SeedOut_4
+                        in  let <_3> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(Count, 1))
+                        in  call 'lists':'foldl'(_2, Seed, _3)
+                    in  Seed_data
+'time_seed_32'/0 =
+    fun () ->
+        let <Sa> =
+            apply 'time_seed_array'/1(1)
+        in  let <Res> =
+                call 'lists':'nth'(1, Sa)
+            in  do  apply 'array.free'/1(Sa)
+                    Res
+'time_seed_64'/0 =
+    fun () ->
+        let <Seed_data> =
+            apply 'time_seed_array'/1(2)
+        in  let <Lower> =
+                call 'lists':'nth'(1, Seed_data)
+            in  let <Upper> =
+                    call 'lists':'nth'(2, Seed_data)
+                in  do  apply 'array.free'/1(Seed_data)
+                        let <Res> =
+                            call 'erlang':'bor'(Lower, call 'erlang':'bsl'(Upper, 32))
+                        in  Res
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.rand.seed')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.rand.seed', _0)
+end

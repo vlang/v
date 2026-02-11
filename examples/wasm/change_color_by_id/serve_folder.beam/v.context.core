@@ -1,0 +1,239 @@
+module 'v.context' ['with_cancel'/1,
+                'new_cancel_context'/1,
+                'CancelContext.deadline'/1,
+                'CancelContext.done'/1,
+                'CancelContext.err'/1,
+                'CancelContext.value'/2,
+                'CancelContext.str'/1,
+                'CancelContext.cancel'/3,
+                'propagate_cancel'/2,
+                'parent_cancel_context'/1,
+                'remove_child'/2,
+                'context_name'/1,
+                'with_deadline'/2,
+                'with_timeout'/2,
+                'TimerContext.deadline'/1,
+                'TimerContext.done'/1,
+                'TimerContext.err'/1,
+                'TimerContext.value'/2,
+                'TimerContext.cancel'/3,
+                'TimerContext.str'/1,
+                'EmptyContext.deadline'/1,
+                'EmptyContext.done'/1,
+                'EmptyContext.err'/1,
+                'EmptyContext.value'/2,
+                'EmptyContext.str'/1,
+                'BackgroundContext.str'/1,
+                'background'/0,
+                'TodoContext.str'/1,
+                'todo'/0,
+                'with_value'/3,
+                'ValueContext.deadline'/1,
+                'ValueContext.done'/1,
+                'ValueContext.err'/1,
+                'ValueContext.value'/2,
+                'ValueContext.str'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'with_cancel'/1 =
+        fun (Parent) ->
+            let <C> =
+                apply 'new_cancel_context'/1(Parent)
+            in  do  apply 'propagate_cancel'/2(Parent, C)
+                    let <Cancel_fn> =
+                        fun () ->                         apply 'CancelContext.cancel'/3(C, 'true', call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#))
+
+                    in  C
+    'new_cancel_context'/1 =
+        fun (Parent) ->
+            ~{'id'=>call 'v.rand':'uuid_v4'(),'context'=>Parent,'mutex'=>~{{'vbeam','type'}=>'Mutex'}~,'done'=>'false','err'=>'none',{'vbeam','type'}=>'CancelContext'}~
+    'CancelContext.deadline'/1 =
+        fun (Ctx) ->
+            'none'
+    'CancelContext.done'/1 =
+        fun (Ctx) ->
+            do  'ok'
+                let <Done> =
+                    call 'erlang':'map_get'('done', Ctx)
+                in  do  'ok'
+                        Done
+    'CancelContext.err'/1 =
+        fun (Ctx) ->
+            do  'ok'
+                let <Err> =
+                    call 'erlang':'map_get'('err', Ctx)
+                in  do  'ok'
+                        Err
+    'CancelContext.value'/2 =
+        fun (Ctx, Key) ->
+            case call 'erlang':'=:='(Key, #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) of
+                <'true'> when 'true' -> Ctx
+                <'false'> when 'true' -> 
+                    apply 'Context.value'/2(call 'erlang':'map_get'('context', Ctx), Key)
+            end
+    'CancelContext.str'/1 =
+        fun (Ctx) ->
+            call 'erlang':'iolist_to_binary'([apply 'context_name'/1(call 'erlang':'map_get'('context', Ctx))|[#{#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'CancelContext.cancel'/3 =
+        fun (Ctx, Remove_from_parent, Err) ->
+            do  case call 'erlang':'is'(Err, 'none') of <'true'> when 'true' -> call 'erlang':'error'({'panic', #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#}) <'false'> when 'true' -> 'ok' end
+                do  'ok'
+                    case call 'erlang':'!is'(call 'erlang':'map_get'('err', Ctx), 'none') of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            do  Err
+                                do  case call 'erlang':'not'(call 'erlang':'map_get'('closed', call 'erlang':'map_get'('done', Ctx))) of <'true'> when 'true' -> 
+                                    do  call 'erlang':'<-'(call 'erlang':'map_get'('done', Ctx), 0)
+                                        call 'vbeam_concurrency':'channel_close'(call 'erlang':'map_get'('done', Ctx))
+                                 <'false'> when 'true' -> 'ok' end
+                                    do  let <_1> =
+                                        fun (Child) ->
+                                            apply 'Canceler.cancel'/3(Child, 'false', Err)
+                                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('children', Ctx))
+                                        do  ~{}~
+                                            do  'ok'
+                                                case Remove_from_parent of <'true'> when 'true' -> 
+                                                    let <Cc> =
+                                                        call 'erlang':'map_get'('context', Ctx)
+                                                    in  apply 'remove_child'/2(Cc, Ctx)
+                                                 <'false'> when 'true' -> 'ok' end
+                    end
+    'propagate_cancel'/2 =
+        fun (Parent, Child) ->
+            let <Done> =
+                apply 'Context.done'/1(Parent)
+            in  do  receive <_msg1> when 'true' -> let <_> = _msg1 in 'ok' after 'infinity' -> 'ok' end
+                    let <P> =
+                        try apply 'parent_cancel_context'/1(Parent) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' ->                         do  call 'vbeam_task':'async'(fun () -> apply ''/2(Parent, Child))
+                            'ok'
+
+                    in  case call 'erlang':'is'(call 'erlang':'map_get'('err', P), 'none') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> apply 'Canceler.cancel'/3(Child, 'false', call 'erlang':'map_get'('err', P)) end
+    'parent_cancel_context'/1 =
+        fun (Parent) ->
+            let <Done> =
+                apply 'Context.done'/1(Parent)
+            in  case call 'erlang':'map_get'('closed', Done) of
+                    <'true'> when 'true' -> 'none'
+                    <'false'> when 'true' -> 
+                        let <P> =
+                            try apply 'Context.value'/2(Parent, #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        in  do  case P of <'false'> when 'true' -> case call 'erlang':'=:='(Done, Pdone) of <'true'> when 'true' -> P <'false'> when 'true' -> 'ok' end <_> when 'true' -> 'ok' end
+                                'none'
+                end
+    'remove_child'/2 =
+        fun (Parent, Child) ->
+            let <P> =
+                try apply 'parent_cancel_context'/1(Parent) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+            in  call 'maps':'remove'(call 'erlang':'map_get'('id', Child), call 'erlang':'map_get'('children', P))
+    'context_name'/1 =
+        fun (Ctx) ->
+            #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#
+    'with_deadline'/2 =
+        fun (Parent, D) ->
+            let <Id> =
+                call 'v.rand':'uuid_v4'()
+            in  do  case try apply 'Context.deadline'/1(Parent) of <_cor1> when 'true' -> {'ok', _cor1} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', Cur}> when 'true' -> case call 'erlang':'<'(Cur, D) of <'true'> when 'true' -> apply 'with_cancel'/1(Parent) <'false'> when 'true' -> 'ok' end <_> when 'true' -> 'ok' end
+                    let <Cancel_ctx> =
+                        apply 'new_cancel_context'/1(Parent)
+                    in  let <Ctx> =
+                            ~{'cancel_ctx'=>Cancel_ctx,'deadline'=>D,'id'=>Id,{'vbeam','type'}=>'TimerContext'}~
+                        in  do  apply 'propagate_cancel'/2(Parent, Ctx)
+                                let <Dur> =
+                                    call 'erlang':'-'(D, call 'erlang':'localtime'())
+                                in  case call 'erlang':'=<'(apply 'Duration.nanoseconds'/1(Dur), 0) of
+                                        <'true'> when 'true' -> Ctx
+                                        <'false'> when 'true' -> 
+                                            do  case call 'erlang':'is'(apply 'TimerContext.err'/1(Ctx), 'none') of <'true'> when 'true' -> call 'vbeam_task':'async'(fun () -> apply ''/2(Ctx, Dur)) <'false'> when 'true' -> 'ok' end
+                                                let <Cancel_fn> =
+                                                    fun () ->                                                     apply 'TimerContext.cancel'/3(Ctx, 'true', call 'erlang':'error'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#))
+
+                                                in  Ctx
+                                    end
+    'with_timeout'/2 =
+        fun (Parent, Timeout) ->
+            apply 'with_deadline'/2(Parent, apply 'Time.add'/2(call 'erlang':'localtime'(), Timeout))
+    'TimerContext.deadline'/1 =
+        fun (Ctx) ->
+            call 'erlang':'map_get'('deadline', Ctx)
+    'TimerContext.done'/1 =
+        fun (Ctx) ->
+            apply 'CancelContext.done'/1(call 'erlang':'map_get'('cancel_ctx', Ctx))
+    'TimerContext.err'/1 =
+        fun (Ctx) ->
+            apply 'CancelContext.err'/1(call 'erlang':'map_get'('cancel_ctx', Ctx))
+    'TimerContext.value'/2 =
+        fun (Ctx, Key) ->
+            apply 'CancelContext.value'/2(call 'erlang':'map_get'('cancel_ctx', Ctx), Key)
+    'TimerContext.cancel'/3 =
+        fun (Ctx, Remove_from_parent, Err) ->
+            do  apply 'CancelContext.cancel'/3(call 'erlang':'map_get'('cancel_ctx', Ctx), 'false', Err)
+                case Remove_from_parent of <'true'> when 'true' -> 
+                    let <Cc> =
+                        call 'erlang':'map_get'('context', call 'erlang':'map_get'('cancel_ctx', Ctx))
+                    in  apply 'remove_child'/2(Cc, Ctx)
+                 <'false'> when 'true' -> 'ok' end
+    'TimerContext.str'/1 =
+        fun (Ctx) ->
+            call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([apply 'context_name'/1(call 'erlang':'map_get'('context', call 'erlang':'map_get'('cancel_ctx', Ctx)))|[#{#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[apply 'Time.str'/1(call 'erlang':'map_get'('deadline', Ctx))|[]]])|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[apply 'Duration.str'/1(call 'erlang':'-'(call 'erlang':'localtime'(), call 'erlang':'map_get'('deadline', Ctx)))|[]]])|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'EmptyContext.deadline'/1 =
+        fun (Ctx) ->
+            'none'
+    'EmptyContext.done'/1 =
+        fun (Ctx) ->
+            let <Ch> =
+                'false'
+            in  do  call 'vbeam_concurrency':'channel_close'(Ch)
+                    Ch
+    'EmptyContext.err'/1 =
+        fun (Ctx) ->
+            'none'
+    'EmptyContext.value'/2 =
+        fun (Ctx, Key) ->
+            'none'
+    'EmptyContext.str'/1 =
+        fun (Ctx) ->
+            #{#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#
+    'BackgroundContext.str'/1 =
+        fun (Ctx) ->
+            #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#
+    'background'/0 =
+        fun () ->
+            ~{{'vbeam','type'}=>'BackgroundContext'}~
+    'TodoContext.str'/1 =
+        fun (Ctx) ->
+            #{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']])}#
+    'todo'/0 =
+        fun () ->
+            ~{{'vbeam','type'}=>'TodoContext'}~
+    'with_value'/3 =
+        fun (Parent, Key, Value) ->
+            ~{'context'=>Parent,'key'=>Key,'value'=>Value,{'vbeam','type'}=>'ValueContext'}~
+    'ValueContext.deadline'/1 =
+        fun (Ctx) ->
+            apply 'Context.deadline'/1(call 'erlang':'map_get'('context', Ctx))
+    'ValueContext.done'/1 =
+        fun (Ctx) ->
+            apply 'Context.done'/1(call 'erlang':'map_get'('context', Ctx))
+    'ValueContext.err'/1 =
+        fun (Ctx) ->
+            apply 'Context.err'/1(call 'erlang':'map_get'('context', Ctx))
+    'ValueContext.value'/2 =
+        fun (Ctx, Key) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('key', Ctx), Key) of
+                <'true'> when 'true' -> call 'erlang':'map_get'('value', Ctx)
+                <'false'> when 'true' -> 
+                    apply 'Context.value'/2(call 'erlang':'map_get'('context', Ctx), Key)
+            end
+    'ValueContext.str'/1 =
+        fun (Ctx) ->
+            call 'erlang':'iolist_to_binary'([apply 'context_name'/1(call 'erlang':'map_get'('context', Ctx))|[#{#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.context')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.context', _0)
+    end

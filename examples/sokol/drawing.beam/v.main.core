@@ -1,0 +1,70 @@
+module 'v.main' ['main'/0,
+                'init'/1,
+                'frame'/1,
+                'draw'/0,
+                'draw_hollow_rect'/4,
+                'draw_filled_rect'/4,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <State> =
+            ~{'pass_action'=>call 'v.sokol.gfx':'create_clear_pass_action'(0.1, 0.1, 0.1, 1.0),{'vbeam','type'}=>'AppState'}~
+        in  let <Title> =
+                #{#<83>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#
+            in  let <Desc> =
+                    ~{'width'=>640,'height'=>480,'user_data'=>State,'init_userdata_cb'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'window_title'=>call 'erlang':'map_get'('str', Title),'html5_canvas_name'=>call 'erlang':'map_get'('str', Title),{'vbeam','type'}=>'Desc'}~
+                in  call 'v.sokol.sapp':'run'(Desc)
+'init'/1 =
+    fun (_user_data) ->
+        let <Desc> =
+            call 'v.sokol.sapp':'create_desc'()
+        in  do  call 'v.sokol.gfx':'setup'(Desc)
+                let <Sgl_desc> =
+                    ~{{'vbeam','type'}=>'Desc'}~
+                in  call 'v.sokol.sgl':'setup'(Sgl_desc)
+'frame'/1 =
+    fun (State) ->
+        do  apply 'draw'/0()
+            let <Pass> =
+                call 'v.sokol.sapp':'create_default_pass'(call 'erlang':'map_get'('pass_action', State))
+            in  do  call 'v.sokol.gfx':'begin_pass'(Pass)
+                    do  call 'v.sokol.sgl':'draw'()
+                        do  call 'v.sokol.gfx':'end_pass'()
+                            call 'v.sokol.gfx':'commit'()
+'draw'/0 =
+    fun () ->
+        do  call 'v.sokol.sgl':'defaults'()
+            do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                do  call 'v.sokol.sgl':'ortho'(0.0, call 'erlang':'float'(call 'v.sokol.sapp':'width'()), call 'erlang':'float'(call 'v.sokol.sapp':'height'()), 0.0, -1.0, 1.0)
+                    do  call 'v.sokol.sgl':'c4b'(255, 0, 0, 128)
+                        do  apply 'draw_hollow_rect'/4(220, 140, 200, 200)
+                            do  call 'v.sokol.sgl':'c4b'(25, 150, 255, 128)
+                                apply 'draw_filled_rect'/4(270, 190, 100, 100)
+'draw_hollow_rect'/4 =
+    fun (X, Y, W, H) ->
+        do  call 'v.sokol.sgl':'begin_line_strip'()
+            do  call 'v.sokol.sgl':'v2f'(X, Y)
+                do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(X, W), Y)
+                    do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(X, W), call 'erlang':'+'(Y, H))
+                        do  call 'v.sokol.sgl':'v2f'(X, call 'erlang':'+'(Y, H))
+                            do  call 'v.sokol.sgl':'v2f'(X, Y)
+                                call 'v.sokol.sgl':'end'()
+'draw_filled_rect'/4 =
+    fun (X, Y, W, H) ->
+        do  call 'v.sokol.sgl':'begin_quads'()
+            do  call 'v.sokol.sgl':'v2f'(X, Y)
+                do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(X, W), Y)
+                    do  call 'v.sokol.sgl':'v2f'(call 'erlang':'+'(X, W), call 'erlang':'+'(Y, H))
+                        do  call 'v.sokol.sgl':'v2f'(X, call 'erlang':'+'(Y, H))
+                            call 'v.sokol.sgl':'end'()
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

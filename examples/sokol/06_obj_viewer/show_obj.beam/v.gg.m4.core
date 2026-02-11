@@ -1,0 +1,338 @@
+module 'v.gg.m4' ['rad'/1,
+                'deg'/1,
+                'ortho'/6,
+                'perspective'/4,
+                'look_at'/3,
+                'calc_tr_matrices'/5,
+                'Mat4.str'/1,
+                'Mat4.clean'/1,
+                'Mat4.sum_all'/1,
+                'Mat4.is_equal'/2,
+                'Mat4.get_e'/2,
+                'Mat4.get_f'/3,
+                'Mat4.set_e'/3,
+                'Mat4.set_f'/4,
+                'Mat4.copy'/2,
+                'Mat4.set_trace'/2,
+                'Mat4.get_trace'/1,
+                'Mat4.set_f32'/2,
+                'Mat4.set_row'/3,
+                'Mat4.get_row'/2,
+                'Mat4.set_col'/3,
+                'Mat4.get_col'/2,
+                'Mat4.swap_col'/3,
+                'Mat4.swap_row'/3,
+                'Mat4.transpose'/1,
+                'Mat4.mul_scalar'/2,
+                'zero_m4'/0,
+                'unit_m4'/0,
+                'set_m4'/1,
+                'Mat4.+'/2,
+                'Mat4.-'/2,
+                'Mat4.*'/2,
+                'add'/2,
+                'sub'/2,
+                'mul'/2,
+                'mul_vec'/2,
+                'det'/1,
+                'Mat4.inverse'/1,
+                'rotate'/2,
+                'Mat4.translate'/2,
+                'scale'/1,
+                'Vec4.str'/1,
+                'vec3'/3,
+                'vec4'/4,
+                'Vec4.is_equal'/2,
+                'Vec4.clean'/1,
+                'Vec4.copy'/2,
+                'Vec4.mul_scalar'/2,
+                'Vec4.inv'/1,
+                'Vec4.normalize'/1,
+                'Vec4.normalize3'/1,
+                'Vec4.mod'/1,
+                'Vec4.mod3'/1,
+                'zero_v4'/0,
+                'one_v4'/0,
+                'blank_v4'/0,
+                'set_v4'/1,
+                'Vec4.sum'/1,
+                'Vec4.+'/2,
+                'Vec4.-'/2,
+                'Vec4.*'/2,
+                'Vec4.%'/2,
+                'Vec4.mul_vec4'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'rad'/1 =
+        fun (Deg) ->
+            call 'erlang':'*'(0.017453292519943295, Deg)
+    'deg'/1 =
+        fun (Grad) ->
+            call 'erlang':'*'(57.29577951308232, Grad)
+    'ortho'/6 =
+        fun (Left, Right, Bottom, Top, Z_near, Z_far) ->
+            let <Rml> =
+                call 'erlang':'-'(Right, Left)
+            in  let <Rpl> =
+                    call 'erlang':'+'(Right, Left)
+                in  let <Tmb> =
+                        call 'erlang':'-'(Top, Bottom)
+                    in  let <Tpb> =
+                            call 'erlang':'+'(Top, Bottom)
+                        in  let <Fmn> =
+                                call 'erlang':'-'(Z_far, Z_near)
+                            in  let <Fpn> =
+                                    call 'erlang':'+'(Z_far, Z_near)
+                                in  case call 'erlang':'=/='(Fmn, 0) of
+                                        <'true'> when 'true' -> ~{'e'=>[call 'erlang':'/'(2, Rml)|[0|[0|[call 'erlang':'-'(call 'erlang':'/'(Rpl, Rml))|[0|[call 'erlang':'/'(2, Tmb)|[0|[call 'erlang':'-'(call 'erlang':'/'(Tpb, Tmb))|[0|[0|[call 'erlang':'/'(2, Fmn)|[call 'erlang':'-'(call 'erlang':'/'(Fpn, Fmn))|[0|[0|[0|[1|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+                                        <'false'> when 'true' -> 
+                                            ~{'e'=>[call 'erlang':'/'(2, Rml)|[0|[0|[call 'erlang':'-'(call 'erlang':'/'(Rpl, Rml))|[0|[call 'erlang':'/'(2, Tmb)|[0|[call 'erlang':'-'(call 'erlang':'/'(Tpb, Tmb))|[0|[0|[0|[0|[0|[0|[0|[1|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+                                    end
+    'perspective'/4 =
+        fun (Fov, Ar, N, F) ->
+            let <Ctan> =
+                call 'erlang':'/'(1.0, call 'math':'tan'(call 'erlang':'*'(Fov, call 'erlang':'/'(3.14159265358979323846264338327950288419716939937510582097494459, 360.0))))
+            in  ~{'e'=>[call 'erlang':'/'(Ctan, Ar)|[0|[0|[0|[0|[Ctan|[0|[0|[0|[0|[call 'erlang':'/'(call 'erlang':'+'(N, F), call 'erlang':'-'(N, F))|[-1.0|[0|[0|[call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(2.0, N), F), call 'erlang':'-'(N, F))|[0|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'look_at'/3 =
+        fun (Eye, Center, Up) ->
+            let <F> =
+                apply 'Vec4.normalize3'/1(call 'erlang':'-'(Center, Eye))
+            in  let <S> =
+                    apply 'Vec4.normalize3'/1(call 'erlang':'rem'(F, Up))
+                in  let <U> =
+                        call 'erlang':'rem'(S, F)
+                    in  ~{'e'=>[call 'lists':'nth'(1, call 'erlang':'map_get'('e', S))|[call 'lists':'nth'(1, call 'erlang':'map_get'('e', U))|[call 'erlang':'-'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', F)))|[0|[call 'lists':'nth'(2, call 'erlang':'map_get'('e', S))|[call 'lists':'nth'(2, call 'erlang':'map_get'('e', U))|[call 'erlang':'-'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', F)))|[0|[call 'lists':'nth'(3, call 'erlang':'map_get'('e', S))|[call 'lists':'nth'(3, call 'erlang':'map_get'('e', U))|[call 'erlang':'-'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', F)))|[0|[call 'erlang':'-'(call 'erlang':'*'(S, Eye))|[call 'erlang':'-'(call 'erlang':'*'(U, Eye))|[call 'erlang':'*'(F, Eye)|[1|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'calc_tr_matrices'/5 =
+        fun (W, H, Rx, Ry, In_scale) ->
+            let <Proj> =
+                apply 'perspective'/4(60, call 'erlang':'/'(W, H), 0.01, 10.0)
+            in  let <View> =
+                    apply 'look_at'/3(~{'e'=>[0.0|[1.5|[6|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~, ~{'e'=>[0|[0|[0|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~, ~{'e'=>[0|[1.0|[0|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~)
+                in  let <View_proj> =
+                        call 'erlang':'*'(View, Proj)
+                    in  let <Rxm> =
+                            apply 'rotate'/2(apply 'rad'/1(Rx), ~{'e'=>[1|[0|[0|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~)
+                        in  let <Rym> =
+                                apply 'rotate'/2(apply 'rad'/1(Ry), ~{'e'=>[0|[1|[0|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~)
+                            in  let <Scale_m> =
+                                    apply 'scale'/1(~{'e'=>[In_scale|[In_scale|[In_scale|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~)
+                                in  let <Model> =
+                                        call 'erlang':'*'(Rym, Rxm)
+                                    in  let <Res> =
+                                            call 'erlang':'*'(call 'erlang':'*'(Scale_m, Model), View_proj)
+                                        in  Res
+    'Mat4.str'/1 =
+        fun (X) ->
+            call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)))|[#{#<124>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])|[call 'erlang':'iolist_to_binary'([#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(5, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(6, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(7, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(8, call 'erlang':'map_get'('e', X)))|[#{#<124>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])|[]]])|[call 'erlang':'iolist_to_binary'([#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(9, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(10, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(11, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(12, call 'erlang':'map_get'('e', X)))|[#{#<124>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])|[]]])|[call 'erlang':'iolist_to_binary'([#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(16, call 'erlang':'map_get'('e', X)))|[#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])|[]]])
+    'Mat4.clean'/1 =
+        fun (A) ->
+            apply 'zero_m4'/0()
+    'Mat4.sum_all'/1 =
+        fun (X) ->
+            let <Res> =
+                0
+            in  let <Res_1> =
+                    let <_2> =
+                        fun (V, ResAcc) ->
+                            let <ResOut_4> =
+                                V
+                            in  ResOut_4
+                    in  call 'lists':'foldl'(_2, Res, call 'erlang':'map_get'('e', X))
+                in  Res_1
+    'Mat4.is_equal'/2 =
+        fun (X, Y) ->
+            'ok'
+    'Mat4.get_e'/2 =
+        fun (X, Elem_index) ->
+            'ok'
+    'Mat4.get_f'/3 =
+        fun (X, Index_col, Index_row) ->
+            'ok'
+    'Mat4.set_e'/3 =
+        fun (X, Index, Value) ->
+            'ok'
+    'Mat4.set_f'/4 =
+        fun (X, Index_col, Index_row, Value) ->
+            'ok'
+    'Mat4.copy'/2 =
+        fun (X, Y) ->
+            'ok'
+    'Mat4.set_trace'/2 =
+        fun (X, V3) ->
+            'ok'
+    'Mat4.get_trace'/1 =
+        fun (X) ->
+            'ok'
+    'Mat4.set_f32'/2 =
+        fun (X, Value) ->
+            'ok'
+    'Mat4.set_row'/3 =
+        fun (X, Row, V3) ->
+            'ok'
+    'Mat4.get_row'/2 =
+        fun (X, Row) ->
+            'ok'
+    'Mat4.set_col'/3 =
+        fun (X, Col, V3) ->
+            'ok'
+    'Mat4.get_col'/2 =
+        fun (X, Col) ->
+            'ok'
+    'Mat4.swap_col'/3 =
+        fun (X, Col1, Col2) ->
+            'ok'
+    'Mat4.swap_row'/3 =
+        fun (X, Row1, Row2) ->
+            'ok'
+    'Mat4.transpose'/1 =
+        fun (X) ->
+            ~{'e'=>[call 'lists':'nth'(1, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(5, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(9, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(13, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(2, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(6, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(10, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(14, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(3, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(7, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(11, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(15, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(4, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(8, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(12, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(16, call 'erlang':'map_get'('e', X))|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'Mat4.mul_scalar'/2 =
+        fun (X, S) ->
+            ~{'e'=>[call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(5, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(6, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(7, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(8, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(9, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(10, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(11, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(12, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', X)), S)|[call 'erlang':'*'(call 'lists':'nth'(16, call 'erlang':'map_get'('e', X)), S)|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'zero_m4'/0 =
+        fun () ->
+            ~{'e'=>[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[0|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'unit_m4'/0 =
+        fun () ->
+            ~{'e'=>[1|[0|[0|[0|[0|[1|[0|[0|[0|[0|[1|[0|[0|[0|[0|[1|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'set_m4'/1 =
+        fun (Value) ->
+            ~{'e'=>[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[Value|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'Mat4.+'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'+'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(5, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(5, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(6, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(6, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(7, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(7, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(8, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(8, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(9, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(9, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(10, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(10, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(11, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(11, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(12, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(12, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(13, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(14, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(15, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(16, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(16, call 'erlang':'map_get'('e', B)))|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'Mat4.-'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'-'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(5, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(5, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(6, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(6, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(7, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(7, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(8, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(8, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(9, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(9, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(10, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(10, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(11, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(11, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(12, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(12, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(13, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(14, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(15, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(16, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(16, call 'erlang':'map_get'('e', B)))|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'Mat4.*'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(1, call 'erlang':'map_get'('f', B)))), call 'erlang':'*'(call 'lists':'nth'(2, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(2, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(3, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(3, call 'erlang':'map_get'('f', B))))), call 'erlang':'*'(call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', A))), call 'lists':'nth'(4, call 'lists':'nth'(4, call 'erlang':'map_get'('f', B)))))|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'add'/2 =
+        fun (A, B) ->
+            call 'erlang':'+'(A, B)
+    'sub'/2 =
+        fun (A, B) ->
+            call 'erlang':'-'(A, B)
+    'mul'/2 =
+        fun (A, B) ->
+            call 'erlang':'*'(A, B)
+    'mul_vec'/2 =
+        fun (A, V) ->
+            ~{'e'=>[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', V))), call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', V))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(5, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', V))), call 'erlang':'*'(call 'lists':'nth'(6, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(7, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(8, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', V))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(9, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', V))), call 'erlang':'*'(call 'lists':'nth'(10, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(11, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(12, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', V))))|[call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', V))), call 'erlang':'*'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', V)))), call 'erlang':'*'(call 'lists':'nth'(16, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', V))))|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'det'/1 =
+        fun (X) ->
+            0
+    'Mat4.inverse'/1 =
+        fun (X) ->
+            apply 'zero_m4'/0()
+    'rotate'/2 =
+        fun (Angle, W) ->
+            let <Cs> =
+                call 'math':'cos'(Angle)
+            in  let <Sn> =
+                    call 'math':'sin'(Angle)
+                in  let <Cv> =
+                        call 'erlang':'-'(1.0, Cs)
+                    in  let <Axis> =
+                            apply 'Vec4.normalize3'/1(W)
+                        in  apply 'zero_m4'/0()
+    'Mat4.translate'/2 =
+        fun (X, W) ->
+            ~{'e'=>[call 'lists':'nth'(1, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(2, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(3, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(4, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(5, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(6, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(7, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(8, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(9, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(10, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(11, call 'erlang':'map_get'('e', X))|[call 'lists':'nth'(12, call 'erlang':'map_get'('e', X))|[call 'erlang':'+'(call 'lists':'nth'(13, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', W)))|[call 'erlang':'+'(call 'lists':'nth'(14, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', W)))|[call 'erlang':'+'(call 'lists':'nth'(15, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', W)))|[call 'lists':'nth'(16, call 'erlang':'map_get'('e', X))|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'scale'/1 =
+        fun (W) ->
+            ~{'e'=>[call 'lists':'nth'(1, call 'erlang':'map_get'('e', W))|[0|[0|[0|[0|[call 'lists':'nth'(2, call 'erlang':'map_get'('e', W))|[0|[0|[0|[0|[call 'lists':'nth'(3, call 'erlang':'map_get'('e', W))|[0|[0|[0|[0|[1|[]]]]]]]]]]]]]]]]],{'vbeam','type'}=>'Mat4'}~
+    'Vec4.str'/1 =
+        fun (X) ->
+            call 'erlang':'iolist_to_binary'([#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)))|[#{#<44>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)))|[#{#<124>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]])
+    'vec3'/3 =
+        fun (X, Y, Z) ->
+            ~{'e'=>[X|[Y|[Z|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'vec4'/4 =
+        fun (X, Y, Z, W) ->
+            ~{'e'=>[X|[Y|[Z|[W|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.is_equal'/2 =
+        fun (X, Y) ->
+            'ok'
+    'Vec4.clean'/1 =
+        fun (X) ->
+            do  let <_1> =
+                fun (Value, C) ->
+                    do  case call 'erlang':'<'(apply 'f32_abs'/1(Value), 10.0e-7) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        call 'erlang':'+'(C, 1)
+            in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('e', X))
+                X
+    'Vec4.copy'/2 =
+        fun (X, Value) ->
+            'ok'
+    'Vec4.mul_scalar'/2 =
+        fun (X, Value) ->
+            ~{'e'=>[call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), Value)|[call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), Value)|[call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), Value)|[call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), Value)|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.inv'/1 =
+        fun (X) ->
+            ~{'e'=>[case call 'erlang':'=/='(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), 0) of <'true'> when 'true' -> call 'erlang':'/'(1.0, call 'lists':'nth'(1, call 'erlang':'map_get'('e', X))) <'false'> when 'true' -> 0 end|[case call 'erlang':'=/='(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), 0) of <'true'> when 'true' -> call 'erlang':'/'(1.0, call 'lists':'nth'(2, call 'erlang':'map_get'('e', X))) <'false'> when 'true' -> 0 end|[case call 'erlang':'=/='(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), 0) of <'true'> when 'true' -> call 'erlang':'/'(1.0, call 'lists':'nth'(3, call 'erlang':'map_get'('e', X))) <'false'> when 'true' -> 0 end|[case call 'erlang':'=/='(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), 0) of <'true'> when 'true' -> call 'erlang':'/'(1.0, call 'lists':'nth'(4, call 'erlang':'map_get'('e', X))) <'false'> when 'true' -> 0 end|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.normalize'/1 =
+        fun (X) ->
+            let <M> =
+                apply 'Vec4.mod'/1(X)
+            in  case call 'erlang':'=:='(M, 0) of
+                    <'true'> when 'true' -> apply 'zero_v4'/0()
+                    <'false'> when 'true' -> 
+                        ~{'e'=>[call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[]]]]],{'vbeam','type'}=>'Vec4'}~
+                end
+    'Vec4.normalize3'/1 =
+        fun (X) ->
+            let <M> =
+                apply 'Vec4.mod3'/1(X)
+            in  case call 'erlang':'=:='(M, 0) of
+                    <'true'> when 'true' -> apply 'zero_v4'/0()
+                    <'false'> when 'true' -> 
+                        ~{'e'=>[call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), call 'erlang':'/'(1, M))|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~
+                end
+    'Vec4.mod'/1 =
+        fun (X) ->
+            call 'v.math':'sqrtf'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', X))), call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)))), call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)))), call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)))))
+    'Vec4.mod3'/1 =
+        fun (X) ->
+            call 'v.math':'sqrtf'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', X))), call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)))), call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)))))
+    'zero_v4'/0 =
+        fun () ->
+            ~{'e'=>[0|[0|[0|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'one_v4'/0 =
+        fun () ->
+            ~{'e'=>[1|[1|[1|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'blank_v4'/0 =
+        fun () ->
+            ~{'e'=>[0|[0|[0|[1|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'set_v4'/1 =
+        fun (Value) ->
+            ~{'e'=>[Value|[Value|[Value|[Value|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.sum'/1 =
+        fun (X) ->
+            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', X))), call 'lists':'nth'(3, call 'erlang':'map_get'('e', X))), call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)))
+    'Vec4.+'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'+'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B)))|[call 'erlang':'+'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', B)))|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.-'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'-'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B)))|[call 'erlang':'-'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', B)))|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.*'/2 =
+        fun (A, B) ->
+            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B))), call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B)))), call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B)))), call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', B))))
+    'Vec4.%'/2 =
+        fun (A, B) ->
+            ~{'e'=>[call 'erlang':'-'(call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B))), call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B))))|[call 'erlang':'-'(call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B))), call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', B))))|[call 'erlang':'-'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', B))), call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', A)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', B))))|[0|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'Vec4.mul_vec4'/2 =
+        fun (X, Y) ->
+            ~{'e'=>[call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(1, call 'erlang':'map_get'('e', Y)))|[call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(2, call 'erlang':'map_get'('e', Y)))|[call 'erlang':'*'(call 'lists':'nth'(3, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(3, call 'erlang':'map_get'('e', Y)))|[call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('e', X)), call 'lists':'nth'(4, call 'erlang':'map_get'('e', Y)))|[]]]]],{'vbeam','type'}=>'Vec4'}~
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.gg.m4')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.gg.m4', _0)
+    end

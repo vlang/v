@@ -1,0 +1,111 @@
+module 'v.crypto.sha1' ['Digest.free'/1,
+                'Digest.init'/1,
+                'Digest.reset'/1,
+                'Digest.clone'/1,
+                'new'/0,
+                'Digest.write'/2,
+                'Digest.sum'/2,
+                'Digest.checksum'/1,
+                'sum'/1,
+                'block'/2,
+                'Digest.size'/1,
+                'Digest.block_size'/1,
+                'hexhash'/1,
+                'block_generic'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Digest.free'/1 =
+        fun (D) ->
+            'ok'
+    'Digest.init'/1 =
+        fun (D) ->
+            do  []
+                do  []
+                    'ok'
+    'Digest.reset'/1 =
+        fun (D) ->
+            do  16#67452301
+                do  16#EFCDAB89
+                    do  16#98BADCFE
+                        do  16#10325476
+                            do  16#C3D2E1F0
+                                do  0
+                                    'ok'
+    'Digest.clone'/1 =
+        fun (D) ->
+            ~{'h'=>call 'erlang':'map_get'('h', D),'x'=>call 'erlang':'map_get'('x', D),{'vbeam','type'}=>'Digest'}~
+    'new'/0 =
+        fun () ->
+            let <D> =
+                ~{{'vbeam','type'}=>'Digest'}~
+            in  do  apply 'Digest.init'/1(D)
+                    D
+    'Digest.write'/2 =
+        fun (D, P_) ->
+            let <Nn> =
+                call 'erlang':'length'(P_)
+            in  Nn
+    'Digest.sum'/2 =
+        fun (D, B_in) ->
+            let <D0> =
+                apply 'Digest.clone'/1(D)
+            in  let <Hash> =
+                    apply 'Digest.checksum'/1(D0)
+                in  let <B_out> =
+                        B_in
+                    in  do  let <_1> =
+                            fun (B) ->
+                                call 'erlang':'bsl'(B_out, B)
+                        in  call 'lists':'foreach'(_1, Hash)
+                            B_out
+    'Digest.checksum'/1 =
+        fun (D) ->
+            let <Len> =
+                call 'erlang':'length'(D)
+            in  let <Tmp> =
+                    []
+                in  do  16#80
+                        do  case call 'erlang':'<'(call 'erlang':'rem'(Len, 64), 56) of <'true'> when 'true' -> try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err}) <'false'> when 'true' -> try 'ok' of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> call 'erlang':'error'({'panic', Err}) end
+                            let <Len_3> =
+                                3
+                            in  do  call 'v.encoding.binary':'big_endian_put_u64'(Tmp, Len_3)
+                                    do  try 'ok' of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                        let <Digest> =
+                                            []
+                                        in  do  call 'v.encoding.binary':'big_endian_put_u32'(Digest, call 'lists':'nth'(1, call 'erlang':'map_get'('h', D)))
+                                                do  call 'v.encoding.binary':'big_endian_put_u32'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(4, 0), 1), Digest), call 'lists':'nth'(2, call 'erlang':'map_get'('h', D)))
+                                                    do  call 'v.encoding.binary':'big_endian_put_u32'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(8, 0), 1), Digest), call 'lists':'nth'(3, call 'erlang':'map_get'('h', D)))
+                                                        do  call 'v.encoding.binary':'big_endian_put_u32'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(12, 0), 1), Digest), call 'lists':'nth'(4, call 'erlang':'map_get'('h', D)))
+                                                            do  call 'v.encoding.binary':'big_endian_put_u32'(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(16, 0), 1), Digest), call 'lists':'nth'(5, call 'erlang':'map_get'('h', D)))
+                                                                Digest
+    'sum'/1 =
+        fun (Data) ->
+            let <D> =
+                ~{{'vbeam','type'}=>'unknown'}~
+            in  do  try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err})
+                    apply 'Digest.checksum'/1(D)
+    'block'/2 =
+        fun (Dig, P) ->
+            apply 'block_generic'/2(Dig, P)
+    'Digest.size'/1 =
+        fun (D) ->
+            20
+    'Digest.block_size'/1 =
+        fun (D) ->
+            64
+    'hexhash'/1 =
+        fun (S) ->
+            call 'binary':'encode_hex'(call 'erlang':'list_to_binary'(call 'crypto':'hash'('sha256', call 'erlang':'binary_to_list'(S))))
+    'block_generic'/2 =
+        fun (Dig, P_) ->
+            'ok'
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.sha1')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.crypto.sha1', _0)
+    end

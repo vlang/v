@@ -1,0 +1,90 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"find_pattern">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 10,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"visited_init">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"push">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {label, <<"loop_0">>},
+                {call, {sym, <<"pop">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {call, {sym, <<"last">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {cmp, {vreg, 6}, {vreg, 2}},
+                {jcc, ne, <<"if_end_2">>},
+                {add, {vreg, 7}, {vreg, 0}, {vreg, 5}},
+                {label, <<"if_end_2">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"print">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"print">>}},
+                {mov, {vreg, 9}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"print_pattern">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+            ]
+        },
+        #{
+            name => <<"visited_init">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"find_pattern">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 47},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"print_pattern">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"The all pattern path from node A to node F is:\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

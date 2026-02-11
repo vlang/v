@@ -1,0 +1,204 @@
+module 'v.sim' ['log'/1,
+                'sim_params'/1,
+                'SimParams.get_rope_vector'/2,
+                'SimParams.get_forces_sum'/2,
+                'SimParams.get_grav_force'/2,
+                'SimParams.get_magnet_position'/2,
+                'SimParams.get_magnet_force'/3,
+                'SimParams.get_magnet_dist'/3,
+                'SimParams.get_magnet1_force'/2,
+                'SimParams.get_magnet2_force'/2,
+                'SimParams.get_magnet3_force'/2,
+                'SimParams.get_tension_force'/3,
+                'new_grid_settings'/1,
+                'run'/2,
+                'new_state'/1,
+                'SimState.satisfy_rope_constraint'/2,
+                'SimState.increment'/3,
+                'SimState.done'/1,
+                'vector'/1,
+                'Vector3D.+'/2,
+                'Vector3D.*'/2,
+                'Vector3D.scale'/2,
+                'Vector3D.norm_squared'/1,
+                'Vector3D.norm'/1,
+                'sim_worker'/3,
+                'compute_result'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'log'/1 =
+        fun (Info) ->
+            'ok'
+    'sim_params'/1 =
+        fun (Params) ->
+            ~{{'vbeam','type'}=>'SimParams'}~
+    'SimParams.get_rope_vector'/2 =
+        fun (Params, State) ->
+            let <Rope_origin> =
+                apply 'vector'/1(~{'z'=>call 'erlang':'map_get'('rope_length', Params),{'vbeam','type'}=>'Vector3D'}~)
+            in  call 'erlang':'+'(call 'erlang':'map_get'('position', State), apply 'Vector3D.scale'/2(Rope_origin, -1))
+    'SimParams.get_forces_sum'/2 =
+        fun (Params, State) ->
+            let <F_gravity> =
+                apply 'SimParams.get_grav_force'/2(Params, State)
+            in  let <F_magnet1> =
+                    apply 'SimParams.get_magnet1_force'/2(Params, State)
+                in  let <F_magnet2> =
+                        apply 'SimParams.get_magnet2_force'/2(Params, State)
+                    in  let <F_magnet3> =
+                            apply 'SimParams.get_magnet3_force'/2(Params, State)
+                        in  let <F_passive> =
+                                apply 'vector'/1(~{'x'=>0.0,'y'=>0.0,'z'=>0.0,{'vbeam','type'}=>'Vector3D'}~)
+                            in  let <F_passive_1> =
+                                    let <_2> =
+                                        fun (Force, F_passiveAcc) ->
+                                            let <F_passiveOut_4> =
+                                                call 'erlang':'+'(F_passiveAcc, Force)
+                                            in  F_passiveOut_4
+                                    in  call 'lists':'foldl'(_2, F_passive, [F_gravity|[F_magnet1|[F_magnet2|[F_magnet3|[]]]]])
+                                in  let <F_tension> =
+                                        apply 'SimParams.get_tension_force'/3(Params, State, F_passive_1)
+                                    in  call 'erlang':'+'(F_passive_1, F_tension)
+    'SimParams.get_grav_force'/2 =
+        fun (Params, State) ->
+            apply 'vector'/1(~{'z'=>call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('bearing_mass', Params)), call 'erlang':'map_get'('gravity', Params)),{'vbeam','type'}=>'Vector3D'}~)
+    'SimParams.get_magnet_position'/2 =
+        fun (Params, Theta) ->
+            apply 'vector'/1(~{'x'=>call 'erlang':'*'(call 'math':'cos'(Theta), call 'erlang':'map_get'('magnet_spacing', Params)),'y'=>call 'erlang':'*'(call 'math':'sin'(Theta), call 'erlang':'map_get'('magnet_spacing', Params)),'z'=>call 'erlang':'-'(call 'erlang':'map_get'('magnet_height', Params)),{'vbeam','type'}=>'Vector3D'}~)
+    'SimParams.get_magnet_force'/3 =
+        fun (Params, Theta, State) ->
+            let <Magnet_position> =
+                apply 'SimParams.get_magnet_position'/2(Params, Theta)
+            in  let <Diff> =
+                    call 'erlang':'+'(Magnet_position, apply 'Vector3D.scale'/2(call 'erlang':'map_get'('position', State), -1))
+                in  let <Distance_squared> =
+                        apply 'Vector3D.norm_squared'/1(Diff)
+                    in  let <Diff_1> =
+                            apply 'Vector3D.scale'/2(Diff, call 'erlang':'/'(1.0, call 'math':'sqrt'(Distance_squared)))
+                        in  apply 'Vector3D.scale'/2(Diff_1, call 'erlang':'/'(call 'erlang':'map_get'('magnet_strength', Params), Distance_squared))
+    'SimParams.get_magnet_dist'/3 =
+        fun (Params, Theta, State) ->
+            apply 'Vector3D.norm'/1(call 'erlang':'+'(apply 'SimParams.get_magnet_position'/2(Params, Theta), apply 'Vector3D.scale'/2(call 'erlang':'map_get'('position', State), -1)))
+    'SimParams.get_magnet1_force'/2 =
+        fun (Params, State) ->
+            apply 'SimParams.get_magnet_force'/3(Params, call 'erlang':'/'(call 'erlang':'*'(0.0, 3.14159265358979323846264338327950288419716939937510582097494459), 3.0), State)
+    'SimParams.get_magnet2_force'/2 =
+        fun (Params, State) ->
+            apply 'SimParams.get_magnet_force'/3(Params, call 'erlang':'/'(call 'erlang':'*'(2.0, 3.14159265358979323846264338327950288419716939937510582097494459), 3.0), State)
+    'SimParams.get_magnet3_force'/2 =
+        fun (Params, State) ->
+            apply 'SimParams.get_magnet_force'/3(Params, call 'erlang':'/'(call 'erlang':'*'(4.0, 3.14159265358979323846264338327950288419716939937510582097494459), 3.0), State)
+    'SimParams.get_tension_force'/3 =
+        fun (Params, State, F_passive) ->
+            let <Rope_vector> =
+                apply 'SimParams.get_rope_vector'/2(Params, State)
+            in  let <Rope_vector_norm> =
+                    apply 'Vector3D.scale'/2(Rope_vector, call 'erlang':'/'(1.0, apply 'Vector3D.norm'/1(Rope_vector)))
+                in  apply 'Vector3D.scale'/2(Rope_vector_norm, call 'erlang':'*'(-1.0, call 'erlang':'*'(Rope_vector_norm, F_passive)))
+    'new_grid_settings'/1 =
+        fun (Settings) ->
+            ~{{'vbeam','type'}=>'GridSettings'}~
+    'run'/2 =
+        fun (Params, Settings) ->
+            let <Height> =
+                call 'erlang':'map_get'('height', call 'erlang':'map_get'('grid', Settings))
+            in  let <Width> =
+                    call 'erlang':'map_get'('width', call 'erlang':'map_get'('grid', Settings))
+                in  do  case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('on_start', Settings))) of <'true'> when 'true' -> try apply 'RunnerSettings.on_start'/1(Settings) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'math':'log'(call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[#{#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'erlang':'iolist_to_binary'([#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]])|[]]])) <'false'> when 'true' -> 'ok' end
+                        let <Index> =
+                            0
+                        in  do  call 'math':'log'(#{  }#)
+                                let <Bmark> =
+                                    call 'v.benchmark':'new_benchmark'()
+                                in  do  let <_2> =
+                                        fun (Y) ->
+                                            do  call 'math':'log'(call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[#{#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'erlang':'iolist_to_binary'([#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(Y, 1))|[]]])|[]]]))
+                                                'ok'
+                                    in  let <_3> =
+                                            call 'lists':'seq'(0, call 'erlang':'-'(Height, 1))
+                                        in  call 'lists':'foreach'(_2, _3)
+                                        do  apply 'Benchmark.stop'/1(Bmark)
+                                            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Benchmark.total_message'/2(Bmark, #{#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)|[]])
+                                                case call 'erlang':'not'(apply 'isnil'/1(call 'erlang':'map_get'('on_finish', Settings))) of <'true'> when 'true' -> try apply 'RunnerSettings.on_finish'/1(Settings) of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> call 'math':'log'(call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']])}#|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[#{#<114>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]])|[call 'erlang':'iolist_to_binary'([#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]])|[]]])) <'false'> when 'true' -> 'ok' end
+    'new_state'/1 =
+        fun (State) ->
+            ~{{'vbeam','type'}=>'SimState'}~
+    'SimState.satisfy_rope_constraint'/2 =
+        fun (State, Params) ->
+            let <Rope_vector> =
+                apply 'SimParams.get_rope_vector'/2(Params, State)
+            in  let <Rope_vector_1> =
+                    apply 'Vector3D.scale'/2(Rope_vector, call 'erlang':'/'(call 'erlang':'map_get'('rope_length', Params), apply 'Vector3D.norm'/1(Rope_vector)))
+                in  'ok'
+    'SimState.increment'/3 =
+        fun (State, Delta_t, Params) ->
+            let <Forces_sum> =
+                apply 'SimParams.get_forces_sum'/2(Params, State)
+            in  let <Accel> =
+                    apply 'Vector3D.scale'/2(Forces_sum, call 'erlang':'/'(1.0, call 'erlang':'map_get'('bearing_mass', Params)))
+                in  do  Accel
+                        do  call 'erlang':'+'(call 'erlang':'map_get'('velocity', State), apply 'Vector3D.scale'/2(Accel, Delta_t))
+                            do  call 'erlang':'+'(call 'erlang':'map_get'('position', State), apply 'Vector3D.scale'/2(call 'erlang':'map_get'('velocity', State), Delta_t))
+                                apply 'SimState.satisfy_rope_constraint'/2(State, Params)
+    'SimState.done'/1 =
+        fun (State) ->
+            call 'erlang':'and'(call 'erlang':'<'(apply 'Vector3D.norm'/1(call 'erlang':'map_get'('velocity', State)), 0.05), call 'erlang':'<'(apply 'Vector3D.norm'/1(call 'erlang':'map_get'('accel', State)), 0.01))
+    'vector'/1 =
+        fun (Data) ->
+            ~{{'vbeam','type'}=>'Vector3D'}~
+    'Vector3D.+'/2 =
+        fun (V, V2) ->
+            ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V2)),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V2)),'z'=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', V2)),{'vbeam','type'}=>'Vector3D'}~
+    'Vector3D.*'/2 =
+        fun (V, V2) ->
+            call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V2)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V2))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', V2)))
+    'Vector3D.scale'/2 =
+        fun (V, Scalar) ->
+            ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Scalar),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Scalar),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), Scalar),{'vbeam','type'}=>'Vector3D'}~
+    'Vector3D.norm_squared'/1 =
+        fun (V) ->
+            call 'erlang':'*'(V, V)
+    'Vector3D.norm'/1 =
+        fun (V) ->
+            call 'math':'sqrt'(apply 'Vector3D.norm_squared'/1(V))
+    'sim_worker'/3 =
+        fun (Id, Request_chan, Result_channels) ->
+            let <Bmark> =
+                call 'v.benchmark':'new_benchmark'()
+            in  do  apply 'Benchmark.stop'/1(Bmark)
+                    call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Benchmark.total_message'/2(Bmark, call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'iolist_to_binary'([#{#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Id)|[]]])|[]]]))|[]])
+    'compute_result'/1 =
+        fun (Request) ->
+            let <State> =
+                call 'erlang':'map_get'('state', Request)
+            in  let <Params> =
+                    call 'erlang':'map_get'('params', Request)
+                in  do  let <_1> =
+                        fun (_) ->
+                            do  apply 'SimState.increment'/3(State, 0.0005, Params)
+                                case apply 'SimState.done'/1(State) of <'true'> when 'true' -> 
+                                    do  call 'io':'format'([126|[115|[126|[110|[]]]]], [#{#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<33>(8,1,'integer',['unsigned'|['big']])}#|[]])
+                                        'ok'
+                                 <'false'> when 'true' -> 'ok' end
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(1000, 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        let <M1_dist> =
+                            apply 'SimParams.get_magnet_dist'/3(Params, 0, State)
+                        in  let <M2_dist> =
+                                apply 'SimParams.get_magnet_dist'/3(Params, call 'erlang':'/'(call 'erlang':'*'(2.0, 3.14159265358979323846264338327950288419716939937510582097494459), 3.0), State)
+                            in  let <M3_dist> =
+                                    apply 'SimParams.get_magnet_dist'/3(Params, call 'erlang':'/'(call 'erlang':'*'(4.0, 3.14159265358979323846264338327950288419716939937510582097494459), 3.0), State)
+                                in  let <Id> =
+                                        call 'erlang':'map_get'('id', Request)
+                                    in  ~{'id'=>Id,'state'=>State,'magnet1_distance'=>M1_dist,'magnet2_distance'=>M2_dist,'magnet3_distance'=>M3_dist,{'vbeam','type'}=>'SimResult'}~
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sim')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sim', _0)
+    end

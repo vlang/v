@@ -1,0 +1,28 @@
+module 'v.main' ['sintone'/3,
+                'my_audio_stream_callback'/3,
+                'main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'sintone'/3 =
+    fun (Periods, Frame, Num_frames) ->
+        call 'v.math':'sinf'(call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'float'(Periods), call 'erlang':'*'(2, 3.14159265358979323846264338327950288419716939937510582097494459)), call 'erlang':'float'(Frame)), call 'erlang':'float'(Num_frames)))
+'my_audio_stream_callback'/3 =
+    fun (Soundbuffer, Num_frames, Num_channels) ->
+        let <Ms> =
+            call 'erlang':'-'(apply 'Duration.milliseconds'/1(apply 'StopWatch.elapsed'/1(call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~))), apply 'Duration.milliseconds'/1(apply 'StopWatch.elapsed'/1(call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~))))
+        in  'ok'
+'main'/0 =
+    fun () ->
+        do  call 'v.sokol.audio':'setup'(~{'stream_cb'=>fun (_fref0, _fref1, _fref2) -> call 'v.main':'my_audio_stream_callback'(_fref0, _fref1, _fref2),{'vbeam','type'}=>'AudioDesc'}~)
+            do  call 'timer':'sleep'(call 'erlang':'*'(2000, call 'erlang':'*'(1000, call 'erlang':'*'(1000, 1))))
+                call 'v.sokol.audio':'shutdown'()
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

@@ -1,0 +1,300 @@
+module 'v.sokol.sapp' ['Event.str'/1,
+                'create_desc'/0,
+                'create_default_pass'/1,
+                'glue_environment'/0,
+                'glue_swapchain'/0,
+                'isvalid'/0,
+                'width'/0,
+                'height'/0,
+                'color_format'/0,
+                'depth_format'/0,
+                'sample_count'/0,
+                'high_dpi'/0,
+                'dpi_scale'/0,
+                'show_keyboard'/1,
+                'keyboard_shown'/0,
+                'show_mouse'/1,
+                'set_mouse_cursor'/1,
+                'mouse_shown'/0,
+                'lock_mouse'/1,
+                'mouse_locked'/0,
+                'userdata'/0,
+                'query_desc'/0,
+                'request_quit'/0,
+                'cancel_quit'/0,
+                'quit'/0,
+                'consume_event'/0,
+                'frame_count'/0,
+                'frame_duration'/0,
+                'set_clipboard_string'/1,
+                'get_clipboard_string'/0,
+                'run'/1,
+                'html5_ask_leave_site'/1,
+                'metal_get_device'/0,
+                'metal_get_current_drawable'/0,
+                'metal_get_depth_stencil_texture'/0,
+                'metal_get_msaa_color_texture'/0,
+                'macos_get_window'/0,
+                'ios_get_window'/0,
+                'd3d11_get_device'/0,
+                'd3d11_get_device_context'/0,
+                'd3d11_get_render_view'/0,
+                'd3d11_get_resolve_view'/0,
+                'd3d11_get_depth_stencil_view'/0,
+                'win32_get_hwnd'/0,
+                'wgpu_get_device'/0,
+                'wgpu_get_render_view'/0,
+                'wgpu_get_resolve_view'/0,
+                'wgpu_get_depth_stencil_view'/0,
+                'gl_get_framebuffer'/0,
+                'android_get_native_activity'/0,
+                'toggle_fullscreen'/0,
+                'is_fullscreen'/0,
+                'get_num_dropped_files'/0,
+                'get_dropped_file_path'/1,
+                'screenshot'/1,
+                'screenshot_ppm'/1,
+                'screenshot_png'/1,
+                'screenshot_window'/0,
+                'Screenshot.free'/1,
+                'Screenshot.destroy'/1,
+                'EventType__static__from'/1,
+                'MouseButton__static__from'/1,
+                'MouseCursor__static__from'/1,
+                'Modifier__static__from'/1,
+                'KeyCode__static__from'/1,
+                'TouchToolType__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'Event.str'/1 =
+    fun (E) ->
+        call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('frame_count', E))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('type', E)|[]]]]])
+'create_desc'/0 =
+    fun () ->
+        ~{'environment'=>apply 'glue_environment'/0(),'image_pool_size'=>1000,{'vbeam','type'}=>'Desc'}~
+'create_default_pass'/1 =
+    fun (Action) ->
+        ~{'action'=>Action,'swapchain'=>apply 'glue_swapchain'/0(),{'vbeam','type'}=>'Pass'}~
+'glue_environment'/0 =
+    fun () ->
+        let <Env> =
+            ~{{'vbeam','type'}=>'Environment'}~
+        in  do  'rgba8'
+                do  'depth'
+                    do  1
+                        Env
+'glue_swapchain'/0 =
+    fun () ->
+        let <Swapchain> =
+            ~{{'vbeam','type'}=>'Swapchain'}~
+        in  do  apply 'width'/0()
+                do  apply 'height'/0()
+                    do  apply 'sample_count'/0()
+                        do  'rgba8'
+                            do  'depth'
+                                Swapchain
+'isvalid'/0 =
+    fun () ->
+        'false'
+'width'/0 =
+    fun () ->
+        0
+'height'/0 =
+    fun () ->
+        0
+'color_format'/0 =
+    fun () ->
+        0
+'depth_format'/0 =
+    fun () ->
+        0
+'sample_count'/0 =
+    fun () ->
+        1
+'high_dpi'/0 =
+    fun () ->
+        'false'
+'dpi_scale'/0 =
+    fun () ->
+        1.0
+'show_keyboard'/1 =
+    fun (Visible) ->
+        'ok'
+'keyboard_shown'/0 =
+    fun () ->
+        'false'
+'show_mouse'/1 =
+    fun (Visible) ->
+        'ok'
+'set_mouse_cursor'/1 =
+    fun (Cursor) ->
+        'ok'
+'mouse_shown'/0 =
+    fun () ->
+        'false'
+'lock_mouse'/1 =
+    fun (Locked) ->
+        'ok'
+'mouse_locked'/0 =
+    fun () ->
+        'false'
+'userdata'/0 =
+    fun () ->
+        'nil'
+'query_desc'/0 =
+    fun () ->
+        ~{{'vbeam','type'}=>'Desc'}~
+'request_quit'/0 =
+    fun () ->
+        'ok'
+'cancel_quit'/0 =
+    fun () ->
+        'ok'
+'quit'/0 =
+    fun () ->
+        'ok'
+'consume_event'/0 =
+    fun () ->
+        'ok'
+'frame_count'/0 =
+    fun () ->
+        0
+'frame_duration'/0 =
+    fun () ->
+        0.0
+'set_clipboard_string'/1 =
+    fun (Str) ->
+        'ok'
+'get_clipboard_string'/0 =
+    fun () ->
+        'nil'
+'run'/1 =
+    fun (Desc) ->
+        'ok'
+'html5_ask_leave_site'/1 =
+    fun (Ask) ->
+        'ok'
+'metal_get_device'/0 =
+    fun () ->
+        'nil'
+'metal_get_current_drawable'/0 =
+    fun () ->
+        'nil'
+'metal_get_depth_stencil_texture'/0 =
+    fun () ->
+        'nil'
+'metal_get_msaa_color_texture'/0 =
+    fun () ->
+        'nil'
+'macos_get_window'/0 =
+    fun () ->
+        'nil'
+'ios_get_window'/0 =
+    fun () ->
+        'nil'
+'d3d11_get_device'/0 =
+    fun () ->
+        'nil'
+'d3d11_get_device_context'/0 =
+    fun () ->
+        'nil'
+'d3d11_get_render_view'/0 =
+    fun () ->
+        'nil'
+'d3d11_get_resolve_view'/0 =
+    fun () ->
+        'nil'
+'d3d11_get_depth_stencil_view'/0 =
+    fun () ->
+        'nil'
+'win32_get_hwnd'/0 =
+    fun () ->
+        'nil'
+'wgpu_get_device'/0 =
+    fun () ->
+        'nil'
+'wgpu_get_render_view'/0 =
+    fun () ->
+        'nil'
+'wgpu_get_resolve_view'/0 =
+    fun () ->
+        'nil'
+'wgpu_get_depth_stencil_view'/0 =
+    fun () ->
+        'nil'
+'gl_get_framebuffer'/0 =
+    fun () ->
+        0
+'android_get_native_activity'/0 =
+    fun () ->
+        'nil'
+'toggle_fullscreen'/0 =
+    fun () ->
+        'ok'
+'is_fullscreen'/0 =
+    fun () ->
+        'false'
+'get_num_dropped_files'/0 =
+    fun () ->
+        0
+'get_dropped_file_path'/1 =
+    fun (Index) ->
+        #{  }#
+'screenshot'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+'screenshot_ppm'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+'screenshot_png'/1 =
+    fun (Path) ->
+        call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#)
+'screenshot_window'/0 =
+    fun () ->
+        ~{'width'=>0,'height'=>0,'size'=>0,'pixels'=>'nil',{'vbeam','type'}=>'Screenshot'}~
+'Screenshot.free'/1 =
+    fun (Ss) ->
+        'ok'
+'Screenshot.destroy'/1 =
+    fun (Ss) ->
+        'ok'
+'EventType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'MouseButton__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'MouseCursor__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'Modifier__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'KeyCode__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'TouchToolType__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.sapp')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.sapp', _0)
+end

@@ -1,0 +1,16 @@
+module 'v.coroutines' ['sleep'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'sleep'/1 =
+        fun (Duration) ->
+            call 'timer':'sleep'(Duration)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.coroutines')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.coroutines', _0)
+    end

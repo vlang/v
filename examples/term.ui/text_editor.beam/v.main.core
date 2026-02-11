@@ -1,0 +1,340 @@
+module 'v.main' ['App.set_status'/3,
+                'App.save'/1,
+                'App.cfile'/1,
+                'App.visit_prev_file'/1,
+                'App.visit_next_file'/1,
+                'App.footer'/1,
+                'Buffer.flat'/1,
+                'Buffer.raw'/1,
+                'Buffer.view'/3,
+                'Buffer.line'/2,
+                'Buffer.cur_line'/1,
+                'Buffer.cur_slice'/1,
+                'Buffer.cursor_index'/1,
+                'Buffer.put'/2,
+                'Buffer.del'/2,
+                'Buffer.free'/1,
+                'Buffer.move_updown'/2,
+                'Buffer.move_cursor'/3,
+                'Buffer.move_to_word'/2,
+                'Cursor.set'/3,
+                'Cursor.move'/3,
+                'Cursor.xy'/1,
+                'init'/1,
+                'App.init_file'/1,
+                'App.view_height'/1,
+                'App.magnet_cursor_x'/1,
+                'frame'/1,
+                'event'/2,
+                'main'/0,
+                'Movement__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'App.set_status'/3 =
+        fun (A, Msg, Duration_ms) ->
+            do  Msg
+                'ok'
+    'App.save'/1 =
+        fun (A) ->
+            case call 'erlang':'>'(call 'erlang':'length'(apply 'App.cfile'/1(A)), 0) of <'true'> when 'true' -> 
+                let <B> =
+                    call 'erlang':'map_get'('ed', A)
+                in  do  try call 'file':'write_file'(apply 'App.cfile'/1(A), apply 'Buffer.raw'/1(B)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err})
+                        apply 'App.set_status'/3(A, #{#<83>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, 2000)
+             <'false'> when 'true' -> apply 'App.set_status'/3(A, #{#<78>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, 4000) end
+    'App.cfile'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('files', A)), 0) of
+                <'true'> when 'true' -> #{  }#
+                <'false'> when 'true' -> 
+                    case call 'erlang':'>='(call 'erlang':'map_get'('current_file', A), call 'erlang':'length'(call 'erlang':'map_get'('files', A))) of
+                        <'true'> when 'true' -> #{  }#
+                        <'false'> when 'true' -> 
+                            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A))
+                    end
+            end
+    'App.visit_prev_file'/1 =
+        fun (A) ->
+            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('files', A)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                apply 'App.init_file'/1(A)
+    'App.visit_next_file'/1 =
+        fun (A) ->
+            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('files', A)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                apply 'App.init_file'/1(A)
+    'App.footer'/1 =
+        fun (A) ->
+            let <W> =
+                call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('tui', A))
+            in  let <H> =
+                    call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('tui', A))
+                in  let <B> =
+                        call 'erlang':'map_get'('ed', A)
+                    in  let <Finfo> =
+                            case call 'erlang':'>'(call 'erlang':'length'(apply 'App.cfile'/1(A)), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']])}#|[call 'v.os':'file_name'(apply 'App.cfile'/1(A))|[]]])|[#{#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> #{  }# end
+                        in  let <Status> =
+                                call 'erlang':'map_get'('status', A)
+                            in  do  'ok'
+                                    let <Footer> =
+                                        call 'erlang':'iolist_to_binary'([Finfo|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1))|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'+'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), 1))|[#{#<47>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(apply 'Buffer.cur_line'/1(B)))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(apply 'Buffer.cursor_index'/1(B))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<113>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<43>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]]]]])
+                                    in  do  case call 'erlang':'<'(call 'erlang':'length'(Footer), W) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'length'(Footer), W) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end
+                                            case call 'erlang':'=<'(call 'erlang':'map_get'('t', A), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 
+                                                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('tui', A), ~{'r'=>200,'g'=>200,'b'=>200,{'vbeam','type'}=>'Color'}~)
+                                                    do  apply 'Context.set_color'/2(call 'erlang':'map_get'('tui', A), ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                                        do  'ok'
+                                                            do  'ok'
+                                                                'ok'
+                                             end
+    'Buffer.flat'/1 =
+        fun (B) ->
+            apply 'string.replace_each'/2(apply 'Buffer.raw'/1(B), [#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#|[]]]]])
+    'Buffer.raw'/1 =
+        fun (B) ->
+            call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('lines', B)))
+    'Buffer.view'/3 =
+        fun (B, From, To) ->
+            let <L> =
+                apply 'string.runes'/1(apply 'Buffer.cur_line'/1(B))
+            in  let <X> =
+                    0
+                in  let <Lines> =
+                        []
+                    in  do  let <_1> =
+                            fun (Line, I) ->
+                                do  case call 'erlang':'and'(call 'erlang':'>='(I, From), call 'erlang':'=<'(I, To)) of <'true'> when 'true' -> call 'erlang':'bsl'(Lines, Line) <'false'> when 'true' -> 'ok' end
+                                    call 'erlang':'+'(I, 1)
+                        in  call 'lists':'foldl'(_1, 0, call 'erlang':'map_get'('lines', B))
+                            let <Raw> =
+                                call 'erlang':'iolist_to_binary'(call 'lists':'join'(#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, Lines))
+                            in  ~{'raw'=>call 'binary':'replace'(Raw, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, call 'v.strings':'repeat'(32, call 'erlang':'map_get'('tab_width', B)), ['global'|[]]),'cursor'=>~{'pos_x'=>X,'pos_y'=>call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)),{'vbeam','type'}=>'Cursor'}~,{'vbeam','type'}=>'View'}~
+    'Buffer.line'/2 =
+        fun (B, I) ->
+            case call 'erlang':'or'(call 'erlang':'<'(I, 0), call 'erlang':'>='(I, call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))) of
+                <'true'> when 'true' -> #{  }#
+                <'false'> when 'true' -> 
+                    call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('lines', B))
+            end
+    'Buffer.cur_line'/1 =
+        fun (B) ->
+            apply 'Buffer.line'/2(B, call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)))
+    'Buffer.cur_slice'/1 =
+        fun (B) ->
+            let <Line> =
+                apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))))
+            in  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), 0), call 'erlang':'>'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), call 'erlang':'length'(Line))) of
+                    <'true'> when 'true' -> #{  }#
+                    <'false'> when 'true' -> 
+                        apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B))), 1), Line))
+                end
+    'Buffer.cursor_index'/1 =
+        fun (B) ->
+            let <I> =
+                0
+            in  let <_1> =
+                    let <_3> =
+                        fun (Line, _7) ->
+                            let <IAcc> =
+                                call 'erlang':'element'(1, _7)
+                            in                              let <YAcc> =
+                                call 'erlang':'element'(2, _7)
+                            in  
+                            let <IOut_5> =
+                                case call 'erlang':'=:='(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), YAcc) of <'true'> when 'true' -> call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)) <'false'> when 'true' -> IAcc end
+                            in                              let <IOut_5> =
+                                call 'erlang':'+'(call 'erlang':'length'(apply 'string.runes'/1(Line)), 1)
+                            in  {IOut_5, call 'erlang':'+'(YAcc, 1)}
+                    in  call 'lists':'foldl'(_3, {I, 0}, call 'erlang':'map_get'('lines', B))
+                in  let <I_2> =
+                        call 'erlang':'element'(1, _1)
+                    in  I_2
+    'Buffer.put'/2 =
+        fun (B, S) ->
+            let <Has_line_ending> =
+                case call 'binary':'match'(S, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end
+            in  let <X> =
+                    apply 'Cursor.xy'/1(call 'erlang':'map_get'('cursor', B))
+                in  let <Y> =
+                        apply 'Cursor.xy'/1(call 'erlang':'map_get'('cursor', B))
+                    in  do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('lines', B)), 0) of <'true'> when 'true' -> apply 'array.prepend'/2(call 'erlang':'map_get'('lines', B), #{  }#) <'false'> when 'true' -> 'ok' end
+                            let <Line> =
+                                apply 'string.runes'/1(call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('lines', B)))
+                            in  let <L> =
+                                    apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(0, X), 1), Line))
+                                in  let <R> =
+                                        apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(X, 0), 1), Line))
+                                    in  do  case Has_line_ending of <'true'> when 'true' -> 
+                                            let <Lines> =
+                                                call 'binary':'split'(S, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                            in  do  call 'erlang':'iolist_to_binary'([L|[call 'lists':'nth'(1, Lines)|[]]])
+                                                    do  R
+                                                        do  call 'lists':'delete'(Y, call 'erlang':'map_get'('lines', B))
+                                                            do  apply 'array.insert'/3(call 'erlang':'map_get'('lines', B), Y, Lines)
+                                                                let <Last> =
+                                                                    apply 'string.runes'/1(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(Lines), 1), 1), Lines))
+                                                                in  do  apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'length'(Last), call 'erlang':'-'(call 'erlang':'+'(Y, call 'erlang':'length'(Lines)), 1))
+                                                                        case call 'erlang':'=:='(S, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), 0, call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))) <'false'> when 'true' -> 'ok' end
+                                         <'false'> when 'true' -> 
+                                            do  call 'erlang':'iolist_to_binary'([call 'erlang':'iolist_to_binary'([L|[S|[]]])|[R|[]]])
+                                                apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'+'(X, call 'erlang':'length'(apply 'string.runes'/1(S))), Y)
+                                         end
+                                            'ok'
+    'Buffer.del'/2 =
+        fun (B, Amount) ->
+            case call 'erlang':'=:='(Amount, 0) of
+                <'true'> when 'true' -> #{  }#
+                <'false'> when 'true' -> 
+                    let <X> =
+                        apply 'Cursor.xy'/1(call 'erlang':'map_get'('cursor', B))
+                    in  let <Y> =
+                            apply 'Cursor.xy'/1(call 'erlang':'map_get'('cursor', B))
+                        in  do  case call 'erlang':'<'(Amount, 0) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'=:='(X, 0), call 'erlang':'=:='(Y, 0)) of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(X, call 'erlang':'length'(apply 'string.runes'/1(apply 'Buffer.cur_line'/1(B)))), call 'erlang':'>='(Y, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('lines', B)), 1))) of <'true'> when 'true' -> #{  }# <'false'> when 'true' -> 'ok' end end
+                                let <Removed> =
+                                    #{  }#
+                                in  let <Removed_1> =
+                                        case call 'erlang':'<'(Amount, 0) of <'true'> when 'true' -> let <I> = apply 'Buffer.cursor_index'/1(B) in let <Raw_runes> = apply 'string.runes'/1(apply 'Buffer.raw'/1(B)) in apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(call 'erlang':'+'(I, Amount), I), 1), Raw_runes)) <'false'> when 'true' -> let <I_2> = call 'erlang':'+'(apply 'Buffer.cursor_index'/1(B), 1) in let <Raw_buffer> = apply 'string.runes'/1(apply 'Buffer.raw'/1(B)) in let <From_i> = I_2 in let <To_i> = call 'erlang':'+'(I_2, Amount) in do  case call 'erlang':'>'(To_i, call 'erlang':'length'(Raw_buffer)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end apply 'array.string'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(From_i, To_i), 1), Raw_buffer)) end
+                                    in  Removed_1
+            end
+    'Buffer.free'/1 =
+        fun (B) ->
+            do  let <_1> =
+                fun (Line) ->
+                    apply 'string.free'/1(Line)
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('lines', B))
+                apply 'array.free'/1(call 'erlang':'map_get'('lines', B))
+    'Buffer.move_updown'/2 =
+        fun (B, Amount) ->
+            do  apply 'Cursor.move'/3(call 'erlang':'map_get'('cursor', B), 0, Amount)
+                let <Line> =
+                    apply 'string.runes'/1(apply 'Buffer.cur_line'/1(B))
+                in  case call 'erlang':'>'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), call 'erlang':'length'(Line)) of <'true'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'length'(Line), call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))) <'false'> when 'true' -> 'ok' end
+    'Buffer.move_cursor'/3 =
+        fun (B, Amount, Movement) ->
+            let <Cur_line> =
+                apply 'string.runes'/1(apply 'Buffer.cur_line'/1(B))
+            in  case Movement of <'up'> when 'true' -> case call 'erlang':'>='(call 'erlang':'-'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), Amount), 0) of <'true'> when 'true' -> apply 'Buffer.move_updown'/2(B, call 'erlang':'-'(Amount)) <'false'> when 'true' -> 'ok' end <'down'> when 'true' -> case call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), Amount), call 'erlang':'length'(call 'erlang':'map_get'('lines', B))) of <'true'> when 'true' -> apply 'Buffer.move_updown'/2(B, Amount) <'false'> when 'true' -> 'ok' end <'page_up'> when 'true' -> apply 'Buffer.move_updown'/2(B, call 'erlang':'-'(Dlines)) <'page_down'> when 'true' -> apply 'Buffer.move_updown'/2(B, Dlines) <'left'> when 'true' -> case call 'erlang':'>='(call 'erlang':'-'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), Amount), 0) of <'true'> when 'true' -> apply 'Cursor.move'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'-'(Amount), 0) <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 0) of <'true'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'length'(apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'-'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1)))), call 'erlang':'-'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1)) <'false'> when 'true' -> 'ok' end end <'right'> when 'true' -> case call 'erlang':'=<'(call 'erlang':'+'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B)), Amount), call 'erlang':'length'(Cur_line)) of <'true'> when 'true' -> apply 'Cursor.move'/3(call 'erlang':'map_get'('cursor', B), Amount, 0) <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1), call 'erlang':'length'(call 'erlang':'map_get'('lines', B))) of <'true'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), 0, call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1)) <'false'> when 'true' -> 'ok' end end <'home'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), 0, call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))) <'end'> when 'true' -> apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), call 'erlang':'length'(Cur_line), call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))) end
+    'Buffer.move_to_word'/2 =
+        fun (B, Movement) ->
+            let <A> =
+                case call 'erlang':'=:='(Movement, 'left') of <'true'> when 'true' -> -1 <'false'> when 'true' -> 1 end
+            in  let <Line> =
+                    apply 'string.runes'/1(apply 'Buffer.cur_line'/1(B))
+                in  let <X> =
+                        call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', B))
+                    in  let <Y> =
+                            call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B))
+                        in  let <Line_1> =
+                                case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(X, A), 0), call 'erlang':'>'(Y, 0)) of <'true'> when 'true' -> do  Y apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'-'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1))) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'+'(X, A), call 'erlang':'length'(Line)), call 'erlang':'<'(call 'erlang':'+'(Y, 1), call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))) of <'true'> when 'true' -> do  Y apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1))) <'false'> when 'true' -> Line end end
+                            in  let <X_2> =
+                                    case call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'+'(X, A), 0), call 'erlang':'>'(Y, 0)) of <'true'> when 'true' -> do  Y let <Line_3> = apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'-'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1))) in call 'erlang':'length'(Line_3) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'+'(X, A), call 'erlang':'length'(Line_3)), call 'erlang':'<'(call 'erlang':'+'(Y, 1), call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))) of <'true'> when 'true' -> do  Y let <Line_4> = apply 'string.runes'/1(apply 'Buffer.line'/2(B, call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', B)), 1))) in 0 <'false'> when 'true' -> X end end
+                                in  let <X_5> =
+                                        case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'+'(X_2, A), 0), call 'erlang':'=<'(call 'erlang':'+'(X_2, A), call 'erlang':'length'(Line_4))) of <'true'> when 'true' -> A <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(A, 0), call 'erlang':'>'(call 'erlang':'+'(Y, 1), call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))), call 'erlang':'>='(call 'erlang':'-'(Y, 1), 0)) of <'true'> when 'true' -> let <Y_6> = A in 0 <'false'> when 'true' -> X_2 end end
+                                    in  let <Y_7> =
+                                            case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'+'(X_5, A), 0), call 'erlang':'=<'(call 'erlang':'+'(X_5, A), call 'erlang':'length'(Line_4))) of <'true'> when 'true' -> Y_6 <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(A, 0), call 'erlang':'>'(call 'erlang':'+'(Y_6, 1), call 'erlang':'length'(call 'erlang':'map_get'('lines', B)))), call 'erlang':'>='(call 'erlang':'-'(Y_6, 1), 0)) of <'true'> when 'true' -> A <'false'> when 'true' -> Y_6 end end
+                                        in  apply 'Cursor.set'/3(call 'erlang':'map_get'('cursor', B), X_5, Y_7)
+    'Cursor.set'/3 =
+        fun (C, X, Y) ->
+            do  X
+                'ok'
+    'Cursor.move'/3 =
+        fun (C, X, Y) ->
+            do  X
+                'ok'
+    'Cursor.xy'/1 =
+        fun (C) ->
+            call 'erlang':'map_get'('pos_x', C)
+    'init'/1 =
+        fun (App) ->
+            apply 'App.init_file'/1(App)
+    'App.init_file'/1 =
+        fun (A) ->
+            do  ~{{'vbeam','type'}=>'Buffer'}~
+                let <Init_y> =
+                    0
+                in  let <Init_x> =
+                        0
+                    in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'('files', A)), 0), call 'erlang':'<'(call 'erlang':'map_get'('current_file', A), call 'erlang':'length'(call 'erlang':'map_get'('files', A)))), call 'erlang':'>'(call 'erlang':'length'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A))), 0)) of <'true'> when 'true' -> 
+                            do  case call 'erlang':'and'(call 'erlang':'not'(call 'filelib':'is_file'(call 'erlang':'binary_to_list'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A))))), case call 'binary':'match'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A)), #{#<58>(8,1,'integer',['unsigned'|['big']])}#) of <'nomatch'> when 'true' -> 'false' <_> when 'true' -> 'true' end) of <'true'> when 'true' -> 
+                                let <Fparts> =
+                                    call 'binary':'split'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A)), #{#<58>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]])
+                                in  do  case call 'erlang':'>'(call 'erlang':'length'(Fparts), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        let <Init_y_1> =
+                                            case call 'erlang':'>'(call 'erlang':'length'(Fparts), 1) of <'true'> when 'true' -> call 'erlang':'-'(call 'erlang':'binary_to_integer'(call 'lists':'nth'(2, Fparts)), 1) <'false'> when 'true' -> Init_y end
+                                        in  case call 'erlang':'>'(call 'erlang':'length'(Fparts), 2) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                             <'false'> when 'true' -> 'ok' end
+                                case call 'filelib':'is_file'(call 'erlang':'binary_to_list'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A)))) of <'true'> when 'true' -> 
+                                    do  apply 'Context.set_window_title'/2(call 'erlang':'map_get'('tui', A), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A)))
+                                        let <B> =
+                                            call 'erlang':'map_get'('ed', A)
+                                        in  let <Content> =
+                                                try call 'file':'read_file'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('current_file', A), 1), call 'erlang':'map_get'('files', A))) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                            in  do  apply 'Buffer.put'/2(B, Content)
+                                                    do  Init_x
+                                                        'ok'
+                                 <'false'> when 'true' -> 'ok' end
+                         <'false'> when 'true' -> 'ok' end
+    'App.view_height'/1 =
+        fun (A) ->
+            call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('tui', A)), call 'erlang':'map_get'('footer_height', A)), 1)
+    'App.magnet_cursor_x'/1 =
+        fun (A) ->
+            let <Buffer> =
+                call 'erlang':'map_get'('ed', A)
+            in  case call 'erlang':'<'(call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', Buffer)), call 'erlang':'map_get'('magnet_x', A)) of <'true'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('magnet_x', A), call 'erlang':'length'(apply 'string.runes'/1(apply 'Buffer.cur_line'/1(Buffer)))) of <'true'> when 'true' -> 
+                    let <Move_x> =
+                        call 'erlang':'-'(call 'erlang':'map_get'('magnet_x', A), call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', Buffer)))
+                    in  apply 'Buffer.move_cursor'/3(Buffer, Move_x, 'right')
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+    'frame'/1 =
+        fun (A) ->
+            let <Ed> =
+                call 'erlang':'map_get'('ed', A)
+            in  do  'ok'
+                    let <Scroll_limit> =
+                        apply 'App.view_height'/1(A)
+                    in  do  case call 'erlang':'>'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', Ed)), call 'erlang':'+'(call 'erlang':'map_get'('viewport', A), Scroll_limit)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', Ed)), call 'erlang':'map_get'('viewport', A)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end end
+                            let <View> =
+                                apply 'Buffer.view'/3(Ed, call 'erlang':'map_get'('viewport', A), call 'erlang':'+'(Scroll_limit, call 'erlang':'map_get'('viewport', A)))
+                            in  do  'ok'
+                                    do  apply 'App.footer'/1(A)
+                                        let <Ch_x> =
+                                            call 'erlang':'map_get'('pos_x', call 'erlang':'map_get'('cursor', View))
+                                        in  let <Sl> =
+                                                call 'binary':'replace'(apply 'Buffer.cur_slice'/1(Ed), #{#<92>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#, apply 'string.repeat'/2(#{#<32>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tab_width', Ed)), ['global'|[]])
+                                            in  let <Sl_1> =
+                                                    case call 'erlang':'>'(call 'erlang':'length'(Sl), 0) of <'true'> when 'true' -> apply 'array.string'/1(call 'lists':'filter'(call 'erlang':'not'(call 'lists':'member'(It, [847|[1564|[6068|[6069|[8202|[8203|[8204|[8205|[8206|[8207|[8288|[8289|[8290|[8291|[8292|[8298|[8299|[8300|[8301|[8302|[8303|[65279|[]]]]]]]]]]]]]]]]]]]]]]])), apply 'string.runes'/1(Sl))) <'false'> when 'true' -> Sl end
+                                                in  let <Ch_x_2> =
+                                                        case call 'erlang':'>'(call 'erlang':'length'(Sl_1), 0) of <'true'> when 'true' -> let <Sl_3> = apply 'array.string'/1(call 'lists':'filter'(call 'erlang':'not'(call 'lists':'member'(It, [847|[1564|[6068|[6069|[8202|[8203|[8204|[8205|[8206|[8207|[8288|[8289|[8290|[8291|[8292|[8298|[8299|[8300|[8301|[8302|[8303|[65279|[]]]]]]]]]]]]]]]]]]]]]]])), apply 'string.runes'/1(Sl_3))) in call 'v.encoding.utf8.east_asian':'display_width'(Sl_3, 1) <'false'> when 'true' -> Ch_x end
+                                                    in  do  apply 'Context.set_cursor_position'/3(call 'erlang':'map_get'('tui', A), call 'erlang':'+'(Ch_x_2, 1), call 'erlang':'-'(call 'erlang':'+'(call 'erlang':'map_get'('pos_y', call 'erlang':'map_get'('cursor', Ed)), 1), call 'erlang':'map_get'('viewport', A)))
+                                                            'ok'
+    'event'/2 =
+        fun (E, A) ->
+            let <Buffer> =
+                call 'erlang':'map_get'('ed', A)
+            in  case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'key_down') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'escape') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'enter') of <'true'> when 'true' -> apply 'Buffer.put'/2(Buffer, #{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'backspace') of <'true'> when 'true' -> apply 'Buffer.del'/2(Buffer, -1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'delete') of <'true'> when 'true' -> apply 'Buffer.del'/2(Buffer, 1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'left') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'right') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'up') of <'true'> when 'true' -> apply 'App.magnet_cursor_x'/1(A) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'down') of <'true'> when 'true' -> apply 'App.magnet_cursor_x'/1(A) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'page_up') of <'true'> when 'true' -> apply 'Buffer.move_cursor'/3(Buffer, apply 'App.view_height'/1(A), 'page_up') <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'page_down') of <'true'> when 'true' -> apply 'Buffer.move_cursor'/3(Buffer, apply 'App.view_height'/1(A), 'page_down') <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'home') of <'true'> when 'true' -> apply 'Buffer.move_cursor'/3(Buffer, 1, 'home') <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'end') of <'true'> when 'true' -> apply 'Buffer.move_cursor'/3(Buffer, 1, 'end') <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), call 'lists':'seq'(48, 57)) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('modifiers', E), 'ctrl') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 's') of <'true'> when 'true' -> apply 'App.save'/1(A) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'not'(call 'erlang':'or'(apply 'Modifiers.has'/2(call 'erlang':'map_get'('modifiers', E), call 'erlang':'bor'('ctrl', 'alt')), call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'null'))) of <'true'> when 'true' -> apply 'Buffer.put'/2(Buffer, call 'erlang':'list_to_binary'([call 'erlang':'map_get'('ascii', E)|[]])) <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), call 'lists':'seq'(97, 122)) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('modifiers', E), 'ctrl') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 's') of <'true'> when 'true' -> apply 'App.save'/1(A) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'not'(call 'erlang':'or'(apply 'Modifiers.has'/2(call 'erlang':'map_get'('modifiers', E), call 'erlang':'bor'('ctrl', 'alt')), call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'null'))) of <'true'> when 'true' -> apply 'Buffer.put'/2(Buffer, call 'erlang':'list_to_binary'([call 'erlang':'map_get'('ascii', E)|[]])) <'false'> when 'true' -> 'ok' end end <'false'> when 'true' -> apply 'Buffer.put'/2(Buffer, call 'erlang':'map_get'('utf8', E)) end end end end end end end end end end end end end end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'mouse_scroll') of <'true'> when 'true' -> 
+                    let <Direction> =
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('direction', E), 'up') of <'true'> when 'true' -> 'down' <'false'> when 'true' -> 'up' end
+                    in  apply 'Buffer.move_cursor'/3(Buffer, 1, Direction)
+                 <'false'> when 'true' -> 'ok' end end
+    'main'/0 =
+        fun () ->
+            let <Files> =
+                []
+            in  do  case call 'erlang':'>'(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 1) of <'true'> when 'true' -> call 'erlang':'bsl'(Files, call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(1, 0), 1), call 'init':'get_plain_arguments'())) <'false'> when 'true' -> 'ok' end
+                    let <A> =
+                        ~{'files'=>Files,{'vbeam','type'}=>'App'}~
+                    in  do  'ok'
+                            try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'Movement__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

@@ -1,0 +1,120 @@
+module 'v.main' ['main'/0,
+                'play_sounds'/1,
+                'audio_player_callback'/4,
+                'Player.init'/1,
+                'Player.stop'/1,
+                'Player.play_wav_file'/2,
+                'Player.free'/1,
+                'read_wav_file_samples'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            do  case call 'erlang':'<'(call 'erlang':'length'(call 'init':'get_plain_arguments'()), 2) of <'true'> when 'true' -> 
+                do  call 'io':'format'('standard_error', [85|[115|[97|[103|[101|[58|[32|[112|[108|[97|[121|[95|[119|[97|[118|[32|[102|[105|[108|[101|[49|[46|[119|[97|[118|[32|[102|[105|[108|[101|[50|[46|[119|[97|[118|[32|[46|[46|[46|[126|[110|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]], [])
+                    do  try apply 'play_sounds'/1([#{#<117>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']])}#|[]]) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                        call 'erlang':'halt'(1)
+             <'false'> when 'true' -> 'ok' end
+                try apply 'play_sounds'/1(call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(1, 0), 1), call 'init':'get_plain_arguments'())) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+    'play_sounds'/1 =
+        fun (Files) ->
+            let <Player> =
+                ~{{'vbeam','type'}=>'Player'}~
+            in  do  apply 'Player.init'/1(Player)
+                    do  let <_1> =
+                        fun (F) ->
+                            do  case call 'erlang':'or'(call 'erlang':'not'(call 'filelib':'is_regular'(call 'erlang':'binary_to_list'(F))), call 'filelib':'is_dir'(call 'erlang':'binary_to_list'(F))) of <'true'> when 'true' -> 
+                                do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[F|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                    'ok'
+                             <'false'> when 'true' -> 'ok' end
+                                let <Fext> =
+                                    call 'string':'lowercase'(call 'v.os':'file_ext'(F))
+                                in  do  case call 'erlang':'=/='(Fext, #{#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']])}#) of <'true'> when 'true' -> 
+                                        do  call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[F|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<40>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<41>(8,1,'integer',['unsigned'|['big']])}#|[]]]])|[]])
+                                            'ok'
+                                     <'false'> when 'true' -> 'ok' end
+                                        try apply 'Player.play_wav_file'/2(Player, F) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                    in  call 'lists':'foreach'(_1, Files)
+                        do  apply 'Player.stop'/1(Player)
+                            'ok'
+    'audio_player_callback'/4 =
+        fun (Buffer, Num_frames, Num_channels, P) ->
+            let <Ntotal> =
+                call 'erlang':'*'(Num_channels, Num_frames)
+            in  do  apply 'vmemset'/3(Buffer, 0, call 'erlang':'*'(Ntotal, 4))
+                    case call 'erlang':'map_get'('finished', P) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Nremaining> =
+                                call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('samples', P)), call 'erlang':'map_get'('pos', P))
+                            in  let <Nsamples> =
+                                    case call 'erlang':'<'(Nremaining, Ntotal) of <'true'> when 'true' -> Nremaining <'false'> when 'true' -> Ntotal end
+                                in  case call 'erlang':'=<'(Nsamples, 0) of
+                                        <'true'> when 'true' -> 'ok'
+                                        <'false'> when 'true' -> 
+                                            do  apply 'vmemcpy'/3(Buffer, call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', P), 1), call 'erlang':'map_get'('samples', P)), call 'erlang':'*'(Nsamples, 4))
+                                                'ok'
+                                    end
+                    end
+    'Player.init'/1 =
+        fun (P) ->
+            do  call 'v.sokol.audio':'setup'(~{'num_channels'=>1,'stream_userdata_cb'=>fun (_fref0, _fref1, _fref2, _fref3) -> call 'v.main':'audio_player_callback'(_fref0, _fref1, _fref2, _fref3),'user_data'=>P,'sample_rate'=>44100,{'vbeam','type'}=>'AudioDesc'}~)
+                'ok'
+    'Player.stop'/1 =
+        fun (P) ->
+            do  call 'v.sokol.audio':'shutdown'()
+                apply 'Player.free'/1(P)
+    'Player.play_wav_file'/2 =
+        fun (P, Fpath) ->
+            do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<62>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Fpath|[]]])|[]])
+                let <Samples> =
+                    try apply 'read_wav_file_samples'/1(Fpath) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  do  'true'
+                        do  call 'erlang':'bsl'(call 'erlang':'map_get'('samples', P), Samples)
+                            do  'false'
+                                do  apply 'Player.free'/1(P)
+                                    'ok'
+    'Player.free'/1 =
+        fun (P) ->
+            do  'false'
+                do  []
+                    'ok'
+    'read_wav_file_samples'/1 =
+        fun (Fpath) ->
+            let <Res> =
+                []
+            in  let <Bytes> =
+                    try call 'file':'read_file'(Fpath) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                in  let <Pbytes> =
+                        call 'erlang':'map_get'('data', Bytes)
+                    in  let <Offset> =
+                            0
+                        in  let <Rh> =
+                                Pbytes
+                            in  case call 'erlang':'=/='(call 'erlang':'map_get'('riff', Rh), [82|[73|[70|[70|[]]]]]) of
+                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']])}#)
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'=/='(call 'erlang':'map_get'('form_type', Rh), [87|[65|[86|[69|[]]]]]) of
+                                            <'true'> when 'true' -> call 'erlang':'error'(#{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<96>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                                            <'false'> when 'true' -> 
+                                                case call 'erlang':'=/='(call 'erlang':'+'(call 'erlang':'map_get'('file_size', Rh), 8), call 'erlang':'length'(Bytes)) of
+                                                    <'true'> when 'true' -> call 'erlang':'error'(#{#<87>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']])}#)
+                                                    <'false'> when 'true' -> 
+                                                        let <Offset_2> =
+                                                            8
+                                                        in  let <Rf> =
+                                                                'nil'
+                                                            in  Res
+                                                end
+                                        end
+                                end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

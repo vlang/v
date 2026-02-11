@@ -1,0 +1,133 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"index">>,
+            arity => 2,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"create_todo">>,
+            arity => 3,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 6,
+            body => [
+                {cmp, {vreg, 2}, {vreg, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_status">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"index">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"index">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret
+            ]
+        },
+        #{
+            name => <<"complete_todo">>,
+            arity => 3,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 6,
+            body => [
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_status">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"text">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"redirect">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret
+            ]
+        },
+        #{
+            name => <<"delete_todo">>,
+            arity => 3,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 7,
+            body => [
+                {cmp, {vreg, 0}, {imm, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"set_status">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"text">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"request_error">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret,
+                {label, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"redirect">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 6}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 7,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"dir">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"chdir">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {vreg, 2}, {vreg, 0}},
+                {mov_imm, {vreg, 3}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 3}},
+                {call, {sym, <<"handle_static">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 8080},
+                {mov, {preg, x0}, {vreg, 2}},
+                {mov, {preg, x1}, {vreg, 5}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

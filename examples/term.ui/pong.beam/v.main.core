@@ -1,0 +1,278 @@
+module 'v.main' ['App.init'/1,
+                'App.start_game'/1,
+                'App.frame'/1,
+                'App.quit'/1,
+                'App.event'/2,
+                'App.free'/1,
+                'App.render'/1,
+                'App.draw_menu'/1,
+                'App.draw_game'/1,
+                'Player.move'/3,
+                'Player.update'/1,
+                'Vec.set'/3,
+                'Ball.update'/2,
+                'Game.move_player'/4,
+                'Game.init'/1,
+                'Game.reset'/1,
+                'Game.new_round'/1,
+                'Game.update'/1,
+                'Game.quit'/1,
+                'Game.draw_big_digit'/4,
+                'Game.draw'/1,
+                'Game.free'/1,
+                'init'/1,
+                'frame'/1,
+                'cleanup'/1,
+                'fail'/1,
+                'event'/2,
+                'main'/0,
+                'Mode__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'App.init'/1 =
+        fun (A) ->
+            do  ~{'app'=>A,{'vbeam','type'}=>'Game'}~
+                let <W> =
+                    call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('tui', A))
+                in  let <H> =
+                        call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('tui', A))
+                    in  do  W
+                            do  H
+                                do  call 'v.term':'erase_del_clear'()
+                                    'ok'
+    'App.start_game'/1 =
+        fun (A) ->
+            do  case call 'erlang':'=/='(call 'erlang':'map_get'('mode', A), 'game') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                apply 'Game.init'/1(call 'erlang':'map_get'('game', A))
+    'App.frame'/1 =
+        fun (A) ->
+            let <Ticks> =
+                call 'erlang':'monotonic_time'('millisecond')
+            in  do  call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'-'(Ticks, call 'erlang':'map_get'('ticks', A))), 1000.0)
+                    do  call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('tui', A))
+do  call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('tui', A))
+                        do  case call 'erlang':'=:='(call 'erlang':'map_get'('mode', A), 'game') of <'true'> when 'true' -> apply 'Game.update'/1(call 'erlang':'map_get'('game', A)) <'false'> when 'true' -> 'ok' end
+                            do  'ok'
+                                do  apply 'App.render'/1(A)
+                                    do  'ok'
+                                        'ok'
+    'App.quit'/1 =
+        fun (A) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('mode', A), 'menu') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  'ok'
+                        call 'erlang':'halt'(0)
+            end
+    'App.event'/2 =
+        fun (A, E) ->
+            case call 'erlang':'map_get'('typ', E) of <'mouse_move'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'map_get'('mode', A), 'game') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'key_down'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'escape') of <'true'> when 'true' -> apply 'App.quit'/1(A) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'q') of <'true'> when 'true' -> apply 'App.quit'/1(A) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'w') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 1, 0, -1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'a') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 1, 0, -1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 's') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 1, 0, 1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'd') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 1, 0, 1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'left') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 0, 0, -1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'right') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 0, 0, 1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'up') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 0, 0, -1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'down') of <'true'> when 'true' -> apply 'Game.move_player'/4(call 'erlang':'map_get'('game', A), 0, 0, 1) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'enter') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('mode', A), 'menu') of <'true'> when 'true' -> apply 'App.start_game'/1(A) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'space') of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('mode', A), 'menu') of <'true'> when 'true' -> apply 'App.start_game'/1(A) <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end end end end end end end end end end end end <_> when 'true' -> 'ok' end
+    'App.free'/1 =
+        fun (A) ->
+            'ok'
+    'App.render'/1 =
+        fun (A) ->
+            case call 'erlang':'map_get'('mode', A) of <'menu'> when 'true' -> apply 'App.draw_menu'/1(A) <_> when 'true' -> apply 'App.draw_game'/1(A) end
+    'App.draw_menu'/1 =
+        fun (A) ->
+            let <Cx> =
+                call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', A)), 0.5))
+            in  let <Y025> =
+                    call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', A)), 0.25))
+                in  let <Y075> =
+                        call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', A)), 0.75))
+                    in  let <Cy> =
+                            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', A)), 0.5))
+                        in  do  apply 'Context.set_color'/2(call 'erlang':'map_get'('tui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                do  apply 'Context.bold'/1(call 'erlang':'map_get'('tui', A))
+                                    do  'ok'
+                                        do  'ok'
+                                            do  'ok'
+                                                do  apply 'Context.set_color'/2(call 'erlang':'map_get'('tui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                                    do  apply 'Context.bold'/1(call 'erlang':'map_get'('tui', A))
+                                                        do  'ok'
+                                                            do  'ok'
+                                                                do  'ok'
+                                                                    do  'ok'
+                                                                        do  'ok'
+                                                                            'ok'
+    'App.draw_game'/1 =
+        fun (A) ->
+            apply 'Game.draw'/1(call 'erlang':'map_get'('game', A))
+    'Player.move'/3 =
+        fun (P, X, Y) ->
+            do  X
+                'ok'
+    'Player.update'/1 =
+        fun (P) ->
+            case call 'erlang':'not'(call 'erlang':'map_get'('ai', P)) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    case apply 'isnil'/1(call 'erlang':'map_get'('game', P)) of
+                        <'true'> when 'true' -> 'ok'
+                        <'false'> when 'true' -> 
+                            let <Ball> =
+                                call 'erlang':'map_get'('ball', call 'erlang':'map_get'('game', P))
+                            in  'ok'
+                    end
+            end
+    'Vec.set'/3 =
+        fun (V, X, Y) ->
+            do  X
+                'ok'
+    'Ball.update'/2 =
+        fun (B, Dt) ->
+            do  call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('vel', B)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('acc', B))), Dt)
+                'ok'
+    'Game.move_player'/4 =
+        fun (G, Id, X, Y) ->
+            let <P> =
+                call 'lists':'nth'(call 'erlang':'+'(Id, 1), call 'erlang':'map_get'('players', G))
+            in  do  case call 'erlang':'map_get'('ai', P) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    apply 'Player.move'/3(P, X, Y)
+    'Game.init'/1 =
+        fun (G) ->
+            do  case call 'erlang':'=:='(call 'erlang':'length'(call 'erlang':'map_get'('players', G)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                apply 'Game.reset'/1(G)
+    'Game.reset'/1 =
+        fun (G) ->
+            let <I> =
+                0
+            in  do  let <_1> =
+                    fun (P) ->
+                        do  0
+                            do  case call 'erlang':'=/='(I, 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                I
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('players', G))
+                    apply 'Game.new_round'/1(G)
+    'Game.new_round'/1 =
+        fun (G) ->
+            let <I> =
+                0
+            in  do  let <_1> =
+                    fun (P) ->
+                        do  case call 'erlang':'=:='(I, 0) of <'true'> when 'true' -> 3 <'false'> when 'true' -> call 'erlang':'-'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G)), 2) end
+                            do  call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G))), 0.5), call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('racket_size', P)), 0.5))
+                                I
+                in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('players', G))
+                    do  apply 'Vec.set'/3(call 'erlang':'map_get'('pos', call 'erlang':'map_get'('ball', G)), call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.5), call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G))), 0.5))
+                        do  apply 'Vec.set'/3(call 'erlang':'map_get'('vel', call 'erlang':'map_get'('ball', G)), -8, -15)
+                            apply 'Vec.set'/3(call 'erlang':'map_get'('acc', call 'erlang':'map_get'('ball', G)), 2.0, 1.0)
+    'Game.update'/1 =
+        fun (G) ->
+            let <Dt> =
+                call 'erlang':'map_get'('dt', call 'erlang':'map_get'('app', G))
+            in  let <B> =
+                    call 'erlang':'map_get'('ball', G)
+                in  do  let <_1> =
+                        fun (P) ->
+                            do  apply 'Player.update'/1(P)
+                                do  case call 'erlang':'=<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P)), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    do  case call 'erlang':'>='(call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P)), call 'erlang':'map_get'('racket_size', P)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                        case call 'erlang':'<'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P)), call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.5)) of <'true'> when 'true' -> 
+                                            do  case call 'erlang':'=<'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P)), 1)) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P))), call 'erlang':'=<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P)), call 'erlang':'map_get'('racket_size', P)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                                case call 'erlang':'<'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P))) of <'true'> when 'true' -> 
+                                                    do  call 'erlang':'map_get'('score', call 'lists':'nth'(2, call 'erlang':'map_get'('players', G)))
+                                                        apply 'Game.new_round'/1(G)
+                                                 <'false'> when 'true' -> 'ok' end
+                                         <'false'> when 'true' -> 
+                                            do  case call 'erlang':'>='(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), call 'erlang':'-'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P)), 1)) of <'true'> when 'true' -> case call 'erlang':'and'(call 'erlang':'>='(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P))), call 'erlang':'=<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P)), call 'erlang':'map_get'('racket_size', P)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                                case call 'erlang':'>'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P))) of <'true'> when 'true' -> 
+                                                    do  call 'erlang':'map_get'('score', call 'lists':'nth'(1, call 'erlang':'map_get'('players', G)))
+                                                        apply 'Game.new_round'/1(G)
+                                                 <'false'> when 'true' -> 'ok' end
+                                         end
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('players', G))
+                        do  case call 'erlang':'or'(call 'erlang':'=<'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), 1), call 'erlang':'>='(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'or'(call 'erlang':'=<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), 2), call 'erlang':'>='(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', B)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G)))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                apply 'Ball.update'/2(B, Dt)
+    'Game.quit'/1 =
+        fun (G) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('mode', call 'erlang':'map_get'('app', G)), 'game') of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    'ok'
+            end
+    'Game.draw_big_digit'/4 =
+        fun (G, Px, Py, Digit) ->
+            let <Gfx> =
+                call 'erlang':'map_get'('tui', call 'erlang':'map_get'('app', G))
+            in  let <X> =
+                    call 'erlang':'trunc'(Px)
+                in  let <Y> =
+                        call 'erlang':'trunc'(Py)
+                    in  case Digit of <0> when 'true' -> 'ok' <1> when 'true' -> 'ok' <2> when 'true' -> 'ok' <3> when 'true' -> 'ok' <4> when 'true' -> 'ok' <5> when 'true' -> 'ok' <6> when 'true' -> 'ok' <7> when 'true' -> 'ok' <8> when 'true' -> 'ok' <9> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+    'Game.draw'/1 =
+        fun (G) ->
+            let <Gfx> =
+                call 'erlang':'map_get'('tui', call 'erlang':'map_get'('app', G))
+            in  do  apply 'Context.set_bg_color'/2(Gfx, ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                    do  apply 'Context.draw_empty_rect'/5(Gfx, 1, 1, call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G)))
+                        do  apply 'Context.draw_dashed_line'/5(Gfx, call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.5)), 0, call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.5)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', G)))
+                            let <Border> =
+                                1
+                            in  let <Y> =
+                                    0
+                                in  let <X> =
+                                        0
+                                    in  let <X_1> =
+                                            let <_2> =
+                                                fun (P, _6) ->
+                                                    let <XAcc> =
+                                                        call 'erlang':'element'(1, _6)
+                                                    in                                                      let <YAcc> =
+                                                        call 'erlang':'element'(2, _6)
+                                                    in  
+                                                    let <XOut_4> =
+                                                        call 'erlang':'trunc'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', P)))
+                                                    in                                                      let <YOut_5> =
+                                                        call 'erlang':'trunc'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', P)))
+                                                    in                                                      do  apply 'Context.reset_bg_color'/1(Gfx)
+                                                        do  apply 'Context.set_color'/2(Gfx, ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                                            do  case call 'erlang':'<'(XOut_4, call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.5)) of <'true'> when 'true' -> apply 'Game.draw_big_digit'/4(G, call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.25), 3, call 'erlang':'map_get'('score', P)) <'false'> when 'true' -> apply 'Game.draw_big_digit'/4(G, call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', G))), 0.75), 3, call 'erlang':'map_get'('score', P)) end
+                                                                do  apply 'Context.reset_color'/1(Gfx)
+                                                                    do  apply 'Context.set_bg_color'/2(Gfx, ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                                                        do  'ok'
+{XOut_4, YOut_5}
+                                            in  call 'lists':'foldl'(_2, {X, Y}, call 'erlang':'map_get'('players', G))
+                                        in  do  apply 'Context.draw_point'/3(Gfx, call 'erlang':'trunc'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', call 'erlang':'map_get'('ball', G)))), call 'erlang':'trunc'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', call 'erlang':'map_get'('ball', G)))))
+                                                apply 'Context.reset_bg_color'/1(Gfx)
+    'Game.free'/1 =
+        fun (G) ->
+            apply 'array.clear'/1(call 'erlang':'map_get'('players', G))
+    'init'/1 =
+        fun (App) ->
+            apply 'App.init'/1(App)
+    'frame'/1 =
+        fun (App) ->
+            apply 'App.frame'/1(App)
+    'cleanup'/1 =
+        fun (App) ->
+            apply 'App.free'/1(App)
+    'fail'/1 =
+        fun (Error) ->
+            call 'io':'format'('standard_error', [126|[115|[126|[110|[]]]]], [Error|[]])
+    'event'/2 =
+        fun (E, App) ->
+            apply 'App.event'/2(App, E)
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  'ok'
+                    try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'Mode__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

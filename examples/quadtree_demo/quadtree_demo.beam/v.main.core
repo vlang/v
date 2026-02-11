@@ -1,0 +1,136 @@
+module 'v.main' ['Particle.update'/1,
+                'App.start'/1,
+                'App.update'/1,
+                'App.insert_particles'/1,
+                'App.find_particles'/1,
+                'main'/0,
+                'App.on_mouse_move'/3,
+                'on_event'/2,
+                'App.run'/1,
+                'frame'/1,
+                'App.display'/1,
+                'App.draw'/1,
+                'rand_minmax'/2,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Particle.update'/1 =
+        fun (P) ->
+            do  call 'erlang':'*'(call 'erlang':'map_get'('speed', P), call 'math':'cos'(call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'map_get'('angle', P), 3.14159265358979323846264338327950288419716939937510582097494459), 180)))
+                do  call 'erlang':'*'(call 'erlang':'map_get'('speed', P), call 'math':'sin'(call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'map_get'('angle', P), 3.14159265358979323846264338327950288419716939937510582097494459), 180)))
+                    do  case call 'erlang':'<'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pmt', P)), 0) of <'true'> when 'true' -> 
+                        do  0
+                            do  call 'erlang':'-'(call 'erlang':'map_get'('speed', P))
+                                'ok'
+                     <'false'> when 'true' -> 'ok' end
+                        do  case call 'erlang':'>'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pmt', P)), 1340) of <'true'> when 'true' -> 
+                            do  1340
+                                do  call 'erlang':'-'(call 'erlang':'map_get'('speed', P))
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+                            do  case call 'erlang':'<'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pmt', P)), 0) of <'true'> when 'true' -> 
+                                do  0
+                                    do  call 'erlang':'-'(call 'erlang':'map_get'('speed', P))
+                                        'ok'
+                             <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'>'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pmt', P)), 640) of <'true'> when 'true' -> 
+                                    do  640
+                                        do  call 'erlang':'-'(call 'erlang':'map_get'('speed', P))
+                                            'ok'
+                                 <'false'> when 'true' -> 'ok' end
+    'App.start'/1 =
+        fun (App) ->
+            do  call 'erlang':'bsl'(call 'erlang':'map_get'('players', App), ~{'x'=>call 'erlang':'*'(1200, call 'rand':'uniform'()),'y'=>call 'erlang':'*'(500, call 'rand':'uniform'()),'width'=>20,'height'=>20,{'vbeam','type'}=>'AABB'}~)
+                do  apply 'App.insert_particles'/1(App)
+                    do  let <_1> =
+                        fun (Particle) ->
+                            do  call 'erlang':'*'(10, call 'rand':'uniform'())
+                                'ok'
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('particles', App))
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', App), apply 'Quadtree.get_nodes'/1(call 'erlang':'map_get'('qt', App)))
+    'App.update'/1 =
+        fun (App) ->
+            do  apply 'Quadtree.clear'/1(call 'erlang':'map_get'('qt', App))
+                do  []
+                    do  let <_1> =
+                        fun (Particle) ->
+                            do  apply 'Particle.update'/1(Particle)
+                                apply 'Quadtree.insert'/2(call 'erlang':'map_get'('qt', App), call 'erlang':'map_get'('pmt', Particle))
+                    in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('particles', App))
+                        do  apply 'App.find_particles'/1(App)
+                            call 'erlang':'bsl'(call 'erlang':'map_get'('nodes', App), apply 'Quadtree.get_nodes'/1(call 'erlang':'map_get'('qt', App)))
+    'App.insert_particles'/1 =
+        fun (App) ->
+            let <Grid> =
+                10.0
+            in  let <Gridh> =
+                    call 'erlang':'/'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('perimeter', call 'erlang':'map_get'('qt', App))), Grid)
+                in  let <Gridv> =
+                        call 'erlang':'/'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('perimeter', call 'erlang':'map_get'('qt', App))), Grid)
+                    in  let <Num_particles> =
+                            100
+                        in  'ok'
+    'App.find_particles'/1 =
+        fun (App) ->
+            do  []
+                call 'erlang':'bsl'(call 'erlang':'map_get'('retrieveds', App), apply 'Quadtree.retrieve'/2(call 'erlang':'map_get'('qt', App), call 'lists':'nth'(1, call 'erlang':'map_get'('players', App))))
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{'gg'=>'nil',{'vbeam','type'}=>'App'}~
+            in  do  call 'v.gg':'new_context'(~{'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'width'=>1340,'height'=>640,'create_window'=>'true','window_title'=>#{#<81>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']])}#,'frame_fn'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'event_fn'=>fun (_fref0, _fref1) -> call 'v.main':'on_event'(_fref0, _fref1),'user_data'=>App,{'vbeam','type'}=>'Config'}~)
+                    do  apply 'Quadtree.create'/8(call 'erlang':'map_get'('qt', App), 0, 0, 1340, 640, 8, 4, 0)
+                        do  apply 'App.start'/1(App)
+                            do  call 'vbeam_task':'async'(fun () -> apply 'App.run'/1(App))
+                                'ok'
+    'App.on_mouse_move'/3 =
+        fun (App, Mouse_x, Mouse_y) ->
+            'ok'
+    'on_event'/2 =
+        fun (E, App) ->
+            case call 'erlang':'map_get'('typ', E) of <'mouse_move'> when 'true' -> apply 'App.on_mouse_move'/3(App, call 'erlang':'map_get'('mouse_x', E), call 'erlang':'map_get'('mouse_y', E)) <_> when 'true' -> 'ok' end
+    'App.run'/1 =
+        fun (App) ->
+            'ok'
+    'frame'/1 =
+        fun (App) ->
+            do  'ok'
+                do  apply 'App.draw'/1(App)
+                    apply 'Context.end'/2(call 'erlang':'map_get'('gg', App), ~{{'vbeam','type'}=>'EndOptions'}~)
+    'App.display'/1 =
+        fun (App) ->
+            do  let <_1> =
+                fun (Player) ->
+                    apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('x', Player), call 'erlang':'map_get'('y', Player), call 'erlang':'map_get'('width', Player), call 'erlang':'map_get'('height', Player), ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('players', App))
+                do  let <_2> =
+                    fun (Particle) ->
+                        apply 'Context.draw_rect_empty'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('x', call 'erlang':'map_get'('pmt', Particle)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('pmt', Particle)), call 'erlang':'map_get'('width', call 'erlang':'map_get'('pmt', Particle)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('pmt', Particle)), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                in  call 'lists':'foreach'(_2, call 'erlang':'map_get'('particles', App))
+                    do  let <_3> =
+                        fun (Node) ->
+                            apply 'Context.draw_rect_empty'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'map_get'('x', call 'erlang':'map_get'('perimeter', Node)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('perimeter', Node)), call 'erlang':'map_get'('width', call 'erlang':'map_get'('perimeter', Node)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('perimeter', Node)), ~{'r'=>255,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                    in  call 'lists':'foreach'(_3, call 'erlang':'map_get'('nodes', App))
+                        do  let <_4> =
+                            fun (Retrieved) ->
+                                apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', App), call 'erlang':'+'(call 'erlang':'map_get'('x', Retrieved), 1), call 'erlang':'+'(call 'erlang':'map_get'('y', Retrieved), 1), call 'erlang':'-'(call 'erlang':'map_get'('width', Retrieved), 2), call 'erlang':'-'(call 'erlang':'map_get'('height', Retrieved), 2), ~{'r'=>0,'g'=>255,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                        in  call 'lists':'foreach'(_4, call 'erlang':'map_get'('retrieveds', App))
+                            do  'ok'
+                                'ok'
+    'App.draw'/1 =
+        fun (App) ->
+            apply 'App.display'/1(App)
+    'rand_minmax'/2 =
+        fun (Min, Max) ->
+            let <Val> =
+                call 'erlang':'+'(Min, call 'erlang':'*'(call 'rand':'uniform'(), call 'erlang':'-'(Max, Min)))
+            in  Val
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

@@ -1,0 +1,870 @@
+module 'v.math.vec' ['vec2'/2,
+                'Vec2.zero'/1,
+                'Vec2.one'/1,
+                'Vec2.copy'/1,
+                'Vec2.from'/2,
+                'Vec2.from_vec3'/2,
+                'Vec2.as_vec3'/1,
+                'Vec2.from_vec4'/2,
+                'Vec2.as_vec4'/1,
+                'Vec2.+'/2,
+                'Vec2.add'/2,
+                'Vec2.add_scalar'/2,
+                'Vec2.plus'/2,
+                'Vec2.plus_scalar'/2,
+                'Vec2.-'/2,
+                'Vec2.sub'/2,
+                'Vec2.sub_scalar'/2,
+                'Vec2.subtract'/2,
+                'Vec2.subtract_scalar'/2,
+                'Vec2.*'/2,
+                'Vec2.mul'/2,
+                'Vec2.mul_scalar'/2,
+                'Vec2.multiply'/2,
+                'Vec2.multiply_scalar'/2,
+                'Vec2./'/2,
+                'Vec2.div'/2,
+                'Vec2.div_scalar'/2,
+                'Vec2.divide'/2,
+                'Vec2.divide_scalar'/2,
+                'Vec2.magnitude'/1,
+                'Vec2.magnitude_x'/1,
+                'Vec2.magnitude_y'/1,
+                'Vec2.dot'/2,
+                'Vec2.cross'/2,
+                'Vec2.unit'/1,
+                'Vec2.perp_cw'/1,
+                'Vec2.perp_ccw'/1,
+                'Vec2.perpendicular'/2,
+                'Vec2.project'/2,
+                'Vec2.rotate_around_cw'/3,
+                'Vec2.rotate_around_ccw'/3,
+                'Vec2.eq'/2,
+                'Vec2.eq_epsilon'/2,
+                'Vec2.eq_approx'/3,
+                'Vec2.is_approx_zero'/2,
+                'Vec2.eq_scalar'/2,
+                'Vec2.distance'/2,
+                'Vec2.manhattan_distance'/2,
+                'Vec2.angle_between'/2,
+                'Vec2.angle_towards'/2,
+                'Vec2.angle'/1,
+                'Vec2.abs'/1,
+                'Vec2.clean'/2,
+                'Vec2.clean_tolerance'/2,
+                'Vec2.inv'/1,
+                'Vec2.normalize'/1,
+                'Vec2.sum'/1,
+                'vec3'/3,
+                'Vec3.zero'/1,
+                'Vec3.one'/1,
+                'Vec3.copy'/1,
+                'Vec3.from'/2,
+                'Vec3.from_vec2'/2,
+                'Vec3.as_vec2'/1,
+                'Vec3.from_vec4'/2,
+                'Vec3.as_vec4'/1,
+                'Vec3.+'/2,
+                'Vec3.add'/2,
+                'Vec3.add_vec2'/2,
+                'Vec3.add_scalar'/2,
+                'Vec3.plus'/2,
+                'Vec3.plus_vec2'/2,
+                'Vec3.plus_scalar'/2,
+                'Vec3.-'/2,
+                'Vec3.sub'/2,
+                'Vec3.sub_scalar'/2,
+                'Vec3.subtract'/2,
+                'Vec3.subtract_scalar'/2,
+                'Vec3.*'/2,
+                'Vec3.mul'/2,
+                'Vec3.mul_scalar'/2,
+                'Vec3.multiply'/2,
+                'Vec3.multiply_scalar'/2,
+                'Vec3./'/2,
+                'Vec3.div'/2,
+                'Vec3.div_scalar'/2,
+                'Vec3.divide'/2,
+                'Vec3.divide_scalar'/2,
+                'Vec3.magnitude'/1,
+                'Vec3.dot'/2,
+                'Vec3.cross'/2,
+                'Vec3.unit'/1,
+                'Vec3.perpendicular'/2,
+                'Vec3.project'/2,
+                'Vec3.eq'/2,
+                'Vec3.eq_epsilon'/2,
+                'Vec3.eq_approx'/3,
+                'Vec3.is_approx_zero'/2,
+                'Vec3.eq_scalar'/2,
+                'Vec3.distance'/2,
+                'Vec3.manhattan_distance'/2,
+                'Vec3.angle_between'/2,
+                'Vec3.abs'/1,
+                'Vec3.clean'/2,
+                'Vec3.clean_tolerance'/2,
+                'Vec3.inv'/1,
+                'Vec3.normalize'/1,
+                'Vec3.sum'/1,
+                'vec4'/4,
+                'Vec4.zero'/1,
+                'Vec4.one'/1,
+                'Vec4.copy'/1,
+                'Vec4.from'/2,
+                'Vec4.from_vec2'/2,
+                'Vec4.as_vec2'/1,
+                'Vec4.from_vec3'/2,
+                'Vec4.as_vec3'/1,
+                'Vec4.+'/2,
+                'Vec4.add'/2,
+                'Vec4.add_vec2'/2,
+                'Vec4.add_vec3'/2,
+                'Vec4.add_scalar'/2,
+                'Vec4.plus'/2,
+                'Vec4.plus_scalar'/2,
+                'Vec4.-'/2,
+                'Vec4.sub'/2,
+                'Vec4.sub_scalar'/2,
+                'Vec4.subtract'/2,
+                'Vec4.subtract_scalar'/2,
+                'Vec4.*'/2,
+                'Vec4.mul'/2,
+                'Vec4.mul_scalar'/2,
+                'Vec4.multiply'/2,
+                'Vec4.multiply_scalar'/2,
+                'Vec4./'/2,
+                'Vec4.div'/2,
+                'Vec4.div_scalar'/2,
+                'Vec4.divide'/2,
+                'Vec4.divide_scalar'/2,
+                'Vec4.magnitude'/1,
+                'Vec4.dot'/2,
+                'Vec4.cross_xyz'/2,
+                'Vec4.unit'/1,
+                'Vec4.perpendicular'/2,
+                'Vec4.project'/2,
+                'Vec4.eq'/2,
+                'Vec4.eq_epsilon'/2,
+                'Vec4.eq_approx'/3,
+                'Vec4.is_approx_zero'/2,
+                'Vec4.eq_scalar'/2,
+                'Vec4.distance'/2,
+                'Vec4.manhattan_distance'/2,
+                'Vec4.abs'/1,
+                'Vec4.clean'/2,
+                'Vec4.clean_tolerance'/2,
+                'Vec4.inv'/1,
+                'Vec4.normalize'/1,
+                'Vec4.sum'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'vec2'/2 =
+    fun (X, Y) ->
+        ~{'x'=>X,'y'=>Y,{'vbeam','type'}=>'Vec2'}~
+'Vec2.zero'/1 =
+    fun (V) ->
+        do  0
+            'ok'
+'Vec2.one'/1 =
+    fun (V) ->
+        do  1
+            'ok'
+'Vec2.copy'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),{'vbeam','type'}=>'Vec2'}~
+'Vec2.from'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.from_vec3'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.as_vec3'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),'z'=>0,{'vbeam','type'}=>'Vec3'}~
+'Vec2.from_vec4'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.as_vec4'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),'z'=>0,'w'=>0,{'vbeam','type'}=>'Vec4'}~
+'Vec2.+'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.add'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(V, U)
+'Vec2.add_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), Scalar),{'vbeam','type'}=>'Vec2'}~
+'Vec2.plus'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.plus_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            'ok'
+'Vec2.-'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.sub'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, U)
+'Vec2.sub_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), Scalar),{'vbeam','type'}=>'Vec2'}~
+'Vec2.subtract'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.subtract_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            'ok'
+'Vec2.*'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.mul'/2 =
+    fun (V, U) ->
+        call 'erlang':'*'(V, U)
+'Vec2.mul_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Scalar),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Scalar),{'vbeam','type'}=>'Vec2'}~
+'Vec2.multiply'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.multiply_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            'ok'
+'Vec2./'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.div'/2 =
+    fun (V, U) ->
+        call 'erlang':'/'(V, U)
+'Vec2.div_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), Scalar),{'vbeam','type'}=>'Vec2'}~
+'Vec2.divide'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec2.divide_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            'ok'
+'Vec2.magnitude'/1 =
+    fun (V) ->
+        case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), 0), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), 0)) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                'ok'
+        end
+'Vec2.magnitude_x'/1 =
+    fun (V) ->
+        call 'math':'sqrt'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V)))
+'Vec2.magnitude_y'/1 =
+    fun (V) ->
+        call 'math':'sqrt'(call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V)))
+'Vec2.dot'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))
+'Vec2.cross'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('x', U)))
+'Vec2.unit'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), M),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), M),{'vbeam','type'}=>'Vec2'}~
+'Vec2.perp_cw'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('y', V),'y'=>call 'erlang':'-'(call 'erlang':'map_get'('x', V)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.perp_ccw'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'map_get'('y', V)),'y'=>call 'erlang':'map_get'('x', V),{'vbeam','type'}=>'Vec2'}~
+'Vec2.perpendicular'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, apply 'Vec2.project'/2(V, U))
+'Vec2.project'/2 =
+    fun (V, U) ->
+        let <Scale> =
+            call 'erlang':'/'(0.0, 0.0)
+        in  U
+'Vec2.rotate_around_cw'/3 =
+    fun (V, O, Radians) ->
+        apply 'Vec2.rotate_around_ccw'/3(V, O, call 'erlang':'-'(Radians))
+'Vec2.rotate_around_ccw'/3 =
+    fun (V, O, Radians) ->
+        let <S> =
+            call 'math':'sin'(Radians)
+        in  let <C> =
+                call 'math':'cos'(Radians)
+            in  let <Dx> =
+                    call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', O))
+                in  let <Dy> =
+                        call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', O))
+                    in  ~{'x'=>call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'*'(C, Dx), call 'erlang':'*'(S, Dy)), call 'erlang':'map_get'('x', O)),'y'=>call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(S, Dx), call 'erlang':'*'(C, Dy)), call 'erlang':'map_get'('y', O)),{'vbeam','type'}=>'Vec2'}~
+'Vec2.eq'/2 =
+    fun (V, U) ->
+        call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))
+'Vec2.eq_epsilon'/2 =
+    fun (V, U) ->
+        apply 'Vec2.eq_approx'/3(V, U, 10.0e-7)
+'Vec2.eq_approx'/3 =
+    fun (V, U, Tolerance) ->
+        let <Diff_x> =
+            call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)))
+        in  let <Diff_y> =
+                call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))
+            in  case call 'erlang':'and'(call 'erlang':'=<'(Diff_x, Tolerance), call 'erlang':'=<'(Diff_y, Tolerance)) of
+                    <'true'> when 'true' -> 'true'
+                    <'false'> when 'true' -> 
+                        let <Max_x> =
+                            call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), call 'erlang':'abs'(call 'erlang':'map_get'('x', U)))
+                        in  let <Max_y> =
+                                call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), call 'erlang':'abs'(call 'erlang':'map_get'('y', U)))
+                            in  case call 'erlang':'and'(call 'erlang':'<'(Diff_x, call 'erlang':'*'(Max_x, Tolerance)), call 'erlang':'<'(Diff_y, call 'erlang':'*'(Max_y, Tolerance))) of
+                                    <'true'> when 'true' -> 'true'
+                                    <'false'> when 'true' -> 
+                                        'false'
+                                end
+                end
+'Vec2.is_approx_zero'/2 =
+    fun (V, Tolerance) ->
+        case call 'erlang':'and'(call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance)) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                'false'
+        end
+'Vec2.eq_scalar'/2 =
+    fun (V, Scalar) ->
+        call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), Scalar), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), Scalar))
+'Vec2.distance'/2 =
+    fun (V, U) ->
+        'ok'
+'Vec2.manhattan_distance'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U))))
+'Vec2.angle_between'/2 =
+    fun (V, U) ->
+        'ok'
+'Vec2.angle_towards'/2 =
+    fun (P1, P2) ->
+        'ok'
+'Vec2.angle'/1 =
+    fun (V) ->
+        'ok'
+'Vec2.abs'/1 =
+    fun (V) ->
+        do  call 'erlang':'abs'(call 'erlang':'map_get'('x', V))
+            'ok'
+'Vec2.clean'/2 =
+    fun (V, Tolerance) ->
+        let <R> =
+            apply 'unknown.copy'/1(V)
+        in  do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    R
+'Vec2.clean_tolerance'/2 =
+    fun (V, Tolerance) ->
+        do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'Vec2.inv'/1 =
+    fun (V) ->
+        ~{'x'=>case call 'erlang':'=/='(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('x', V)) <'false'> when 'true' -> 0 end,'y'=>case call 'erlang':'=/='(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('y', V)) <'false'> when 'true' -> 0 end,{'vbeam','type'}=>'Vec2'}~
+'Vec2.normalize'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  case call 'erlang':'=:='(M, 0) of
+                <'true'> when 'true' -> apply 'vec2'/2(0, 0)
+                <'false'> when 'true' -> 
+                    ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'/'(1, M)),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'/'(1, M)),{'vbeam','type'}=>'Vec2'}~
+            end
+'Vec2.sum'/1 =
+    fun (V) ->
+        call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', V))
+'vec3'/3 =
+    fun (X, Y, Z) ->
+        ~{'x'=>X,'y'=>Y,'z'=>Z,{'vbeam','type'}=>'Vec3'}~
+'Vec3.zero'/1 =
+    fun (V) ->
+        do  0
+            do  0
+                'ok'
+'Vec3.one'/1 =
+    fun (V) ->
+        do  1
+            do  1
+                'ok'
+'Vec3.copy'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),'z'=>call 'erlang':'map_get'('z', V),{'vbeam','type'}=>'Vec3'}~
+'Vec3.from'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.from_vec2'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec3.as_vec2'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),{'vbeam','type'}=>'Vec2'}~
+'Vec3.from_vec4'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.as_vec4'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),'z'=>call 'erlang':'map_get'('z', V),'w'=>0,{'vbeam','type'}=>'Vec4'}~
+'Vec3.+'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),{'vbeam','type'}=>'Vec3'}~
+'Vec3.add'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(V, U)
+'Vec3.add_vec2'/2 =
+    fun (V, U) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),''=>call 'erlang':'map_get'('z', V),{'vbeam','type'}=>'Vec3'}~
+'Vec3.add_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), Scalar),{'vbeam','type'}=>'Vec3'}~
+'Vec3.plus'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.plus_vec2'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec3.plus_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                'ok'
+'Vec3.-'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),{'vbeam','type'}=>'Vec3'}~
+'Vec3.sub'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, U)
+'Vec3.sub_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('z', V), Scalar),{'vbeam','type'}=>'Vec3'}~
+'Vec3.subtract'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.subtract_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                'ok'
+'Vec3.*'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),{'vbeam','type'}=>'Vec3'}~
+'Vec3.mul'/2 =
+    fun (V, U) ->
+        call 'erlang':'*'(V, U)
+'Vec3.mul_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Scalar),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Scalar),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), Scalar),{'vbeam','type'}=>'Vec3'}~
+'Vec3.multiply'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.multiply_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                'ok'
+'Vec3./'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),{'vbeam','type'}=>'Vec3'}~
+'Vec3.div'/2 =
+    fun (V, U) ->
+        call 'erlang':'/'(V, U)
+'Vec3.div_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), Scalar),{'vbeam','type'}=>'Vec3'}~
+'Vec3.divide'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec3.divide_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                'ok'
+'Vec3.magnitude'/1 =
+    fun (V) ->
+        case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), 0), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), 0)), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), 0)) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', V))))
+        end
+'Vec3.dot'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))
+'Vec3.cross'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('z', U)), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('y', U))),'y'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('x', U)), call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('z', U))),'z'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('x', U))),{'vbeam','type'}=>'Vec3'}~
+'Vec3.unit'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  let <Invm> =
+                call 'erlang':'/'(1, M)
+            in  ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Invm),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Invm),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), Invm),{'vbeam','type'}=>'Vec3'}~
+'Vec3.perpendicular'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, apply 'Vec3.project'/2(V, U))
+'Vec3.project'/2 =
+    fun (V, U) ->
+        let <Scale> =
+            call 'erlang':'/'(0.0, 0.0)
+        in  U
+'Vec3.eq'/2 =
+    fun (V, U) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U))), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))
+'Vec3.eq_epsilon'/2 =
+    fun (V, U) ->
+        apply 'Vec3.eq_approx'/3(V, U, 10.0e-7)
+'Vec3.eq_approx'/3 =
+    fun (V, U, Tolerance) ->
+        let <Diff_x> =
+            call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)))
+        in  let <Diff_y> =
+                call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))
+            in  let <Diff_z> =
+                    call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))
+                in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=<'(Diff_x, Tolerance), call 'erlang':'=<'(Diff_y, Tolerance)), call 'erlang':'=<'(Diff_z, Tolerance)) of
+                        <'true'> when 'true' -> 'true'
+                        <'false'> when 'true' -> 
+                            let <Max_x> =
+                                call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), call 'erlang':'abs'(call 'erlang':'map_get'('x', U)))
+                            in  let <Max_y> =
+                                    call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), call 'erlang':'abs'(call 'erlang':'map_get'('y', U)))
+                                in  let <Max_z> =
+                                        call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), call 'erlang':'abs'(call 'erlang':'map_get'('z', U)))
+                                    in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(Diff_x, call 'erlang':'*'(Max_x, Tolerance)), call 'erlang':'<'(Diff_y, call 'erlang':'*'(Max_y, Tolerance))), call 'erlang':'<'(Diff_z, call 'erlang':'*'(Max_z, Tolerance))) of
+                                            <'true'> when 'true' -> 'true'
+                                            <'false'> when 'true' -> 
+                                                'false'
+                                        end
+                    end
+'Vec3.is_approx_zero'/2 =
+    fun (V, Tolerance) ->
+        case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance)), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance)) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                'false'
+        end
+'Vec3.eq_scalar'/2 =
+    fun (V, Scalar) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), Scalar), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), Scalar)), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), Scalar))
+'Vec3.distance'/2 =
+    fun (V, U) ->
+        call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U))), call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)), call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))), call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)), call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))))
+'Vec3.manhattan_distance'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U))))
+'Vec3.angle_between'/2 =
+    fun (V, U) ->
+        'ok'
+'Vec3.abs'/1 =
+    fun (V) ->
+        do  case call 'erlang':'<'(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'<'(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'<'(call 'erlang':'map_get'('z', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'Vec3.clean'/2 =
+    fun (V, Tolerance) ->
+        let <R> =
+            apply 'unknown.copy'/1(V)
+        in  do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        R
+'Vec3.clean_tolerance'/2 =
+    fun (V, Tolerance) ->
+        do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'Vec3.inv'/1 =
+    fun (V) ->
+        ~{'x'=>case call 'erlang':'=/='(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('x', V)) <'false'> when 'true' -> 0 end,'y'=>case call 'erlang':'=/='(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('y', V)) <'false'> when 'true' -> 0 end,'z'=>case call 'erlang':'=/='(call 'erlang':'map_get'('z', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('z', V)) <'false'> when 'true' -> 0 end,{'vbeam','type'}=>'Vec3'}~
+'Vec3.normalize'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  case call 'erlang':'=:='(M, 0) of
+                <'true'> when 'true' -> apply 'vec3'/3(0, 0, 0)
+                <'false'> when 'true' -> 
+                    ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), M),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), M),'z'=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), M),{'vbeam','type'}=>'Vec3'}~
+            end
+'Vec3.sum'/1 =
+    fun (V) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', V)), call 'erlang':'map_get'('z', V))
+'vec4'/4 =
+    fun (X, Y, Z, W) ->
+        ~{'x'=>X,'y'=>Y,'z'=>Z,'w'=>W,{'vbeam','type'}=>'Vec4'}~
+'Vec4.zero'/1 =
+    fun (V) ->
+        do  0
+            do  0
+                do  0
+                    'ok'
+'Vec4.one'/1 =
+    fun (V) ->
+        do  1
+            do  1
+                do  1
+                    'ok'
+'Vec4.copy'/1 =
+    fun (V) ->
+        ~{'x'=>call 'erlang':'map_get'('x', V),'y'=>call 'erlang':'map_get'('y', V),'z'=>call 'erlang':'map_get'('z', V),'w'=>call 'erlang':'map_get'('w', V),{'vbeam','type'}=>'Vec4'}~
+'Vec4.from'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                do  call 'erlang':'map_get'('z', U)
+                    'ok'
+'Vec4.from_vec2'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            'ok'
+'Vec4.as_vec2'/1 =
+    fun (V) ->
+        ~{''=>call 'erlang':'map_get'('x', V),''=>call 'erlang':'map_get'('y', V),{'vbeam','type'}=>'Vec2<U>'}~
+'Vec4.from_vec3'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                'ok'
+'Vec4.as_vec3'/1 =
+    fun (V) ->
+        ~{''=>call 'erlang':'map_get'('x', V),''=>call 'erlang':'map_get'('y', V),''=>call 'erlang':'map_get'('z', V),{'vbeam','type'}=>'Vec3<U>'}~
+'Vec4.+'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),'w'=>call 'erlang':'+'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)),{'vbeam','type'}=>'Vec4'}~
+'Vec4.add'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(V, U)
+'Vec4.add_vec2'/2 =
+    fun (V, U) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),''=>0,''=>0,{'vbeam','type'}=>'Vec4'}~
+'Vec4.add_vec3'/2 =
+    fun (V, U) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),''=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),''=>0,{'vbeam','type'}=>'Vec4'}~
+'Vec4.add_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'+'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('z', V), Scalar),''=>call 'erlang':'+'(call 'erlang':'map_get'('w', V), Scalar),{'vbeam','type'}=>'Vec4'}~
+'Vec4.plus'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                do  call 'erlang':'map_get'('z', U)
+                    'ok'
+'Vec4.plus_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                do  Scalar
+                    'ok'
+'Vec4.-'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),'w'=>call 'erlang':'-'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)),{'vbeam','type'}=>'Vec4'}~
+'Vec4.sub'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, U)
+'Vec4.sub_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'-'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('z', V), Scalar),''=>call 'erlang':'-'(call 'erlang':'map_get'('w', V), Scalar),{'vbeam','type'}=>'Vec4'}~
+'Vec4.subtract'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                do  call 'erlang':'map_get'('z', U)
+                    'ok'
+'Vec4.subtract_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                do  Scalar
+                    'ok'
+'Vec4.*'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),'w'=>call 'erlang':'*'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)),{'vbeam','type'}=>'Vec4'}~
+'Vec4.mul'/2 =
+    fun (V, U) ->
+        call 'erlang':'*'(V, U)
+'Vec4.mul_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), Scalar),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), Scalar),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), Scalar),'w'=>call 'erlang':'*'(call 'erlang':'map_get'('w', V), Scalar),{'vbeam','type'}=>'Vec4'}~
+'Vec4.multiply'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                do  call 'erlang':'map_get'('z', U)
+                    'ok'
+'Vec4.multiply_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                do  Scalar
+                    'ok'
+'Vec4./'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)),'z'=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)),'w'=>call 'erlang':'/'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)),{'vbeam','type'}=>'Vec4'}~
+'Vec4.div'/2 =
+    fun (V, U) ->
+        call 'erlang':'/'(V, U)
+'Vec4.div_scalar'/2 =
+    fun (V, Scalar) ->
+        ~{''=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), Scalar),''=>call 'erlang':'/'(call 'erlang':'map_get'('w', V), Scalar),{'vbeam','type'}=>'Vec4'}~
+'Vec4.divide'/2 =
+    fun (V, U) ->
+        do  call 'erlang':'map_get'('x', U)
+            do  call 'erlang':'map_get'('y', U)
+                do  call 'erlang':'map_get'('z', U)
+                    'ok'
+'Vec4.divide_scalar'/2 =
+    fun (V, Scalar) ->
+        do  Scalar
+            do  Scalar
+                do  Scalar
+                    'ok'
+'Vec4.magnitude'/1 =
+    fun (V) ->
+        case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), 0), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), 0)), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), 0)), call 'erlang':'=:='(call 'erlang':'map_get'('w', V), 0)) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', V)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', V))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', V))), call 'erlang':'*'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', V))))
+        end
+'Vec4.dot'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U))), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U))), call 'erlang':'*'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)))
+'Vec4.cross_xyz'/2 =
+    fun (V, U) ->
+        ~{'x'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('z', U)), call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('y', U))),'y'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('x', U)), call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('z', U))),'z'=>call 'erlang':'-'(call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', U)), call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('x', U))),'w'=>0,{'vbeam','type'}=>'Vec4'}~
+'Vec4.unit'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  ~{'x'=>call 'erlang':'/'(call 'erlang':'map_get'('x', V), M),'y'=>call 'erlang':'/'(call 'erlang':'map_get'('y', V), M),'z'=>call 'erlang':'/'(call 'erlang':'map_get'('z', V), M),'w'=>call 'erlang':'/'(call 'erlang':'map_get'('w', V), M),{'vbeam','type'}=>'Vec4'}~
+'Vec4.perpendicular'/2 =
+    fun (V, U) ->
+        call 'erlang':'-'(V, apply 'Vec4.project'/2(V, U))
+'Vec4.project'/2 =
+    fun (V, U) ->
+        let <Scale> =
+            call 'erlang':'/'(0.0, 0.0)
+        in  U
+'Vec4.eq'/2 =
+    fun (V, U) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U))), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U))), call 'erlang':'=:='(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)))
+'Vec4.eq_epsilon'/2 =
+    fun (V, U) ->
+        apply 'Vec4.eq_approx'/3(V, U, 10.0e-7)
+'Vec4.eq_approx'/3 =
+    fun (V, U, Tolerance) ->
+        let <Diff_x> =
+            call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)))
+        in  let <Diff_y> =
+                call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))
+            in  let <Diff_z> =
+                    call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))
+                in  let <Diff_w> =
+                        call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)))
+                    in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=<'(Diff_x, Tolerance), call 'erlang':'=<'(Diff_y, Tolerance)), call 'erlang':'=<'(Diff_z, Tolerance)), call 'erlang':'=<'(Diff_w, Tolerance)) of
+                            <'true'> when 'true' -> 'true'
+                            <'false'> when 'true' -> 
+                                let <Max_x> =
+                                    call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), call 'erlang':'abs'(call 'erlang':'map_get'('x', U)))
+                                in  let <Max_y> =
+                                        call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), call 'erlang':'abs'(call 'erlang':'map_get'('y', U)))
+                                    in  let <Max_z> =
+                                            call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), call 'erlang':'abs'(call 'erlang':'map_get'('z', U)))
+                                        in  let <Max_w> =
+                                                call 'v.math':'max'(call 'erlang':'abs'(call 'erlang':'map_get'('w', V)), call 'erlang':'abs'(call 'erlang':'map_get'('w', U)))
+                                            in  case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'<'(Diff_x, call 'erlang':'*'(Max_x, Tolerance)), call 'erlang':'<'(Diff_y, call 'erlang':'*'(Max_y, Tolerance))), call 'erlang':'<'(Diff_z, call 'erlang':'*'(Max_z, Tolerance))), call 'erlang':'<'(Diff_w, call 'erlang':'*'(Max_w, Tolerance))) of
+                                                    <'true'> when 'true' -> 'true'
+                                                    <'false'> when 'true' -> 
+                                                        'false'
+                                                end
+                        end
+'Vec4.is_approx_zero'/2 =
+    fun (V, Tolerance) ->
+        case call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance)), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance)), call 'erlang':'=<'(call 'erlang':'abs'(call 'erlang':'map_get'('w', V)), Tolerance)) of
+            <'true'> when 'true' -> 'true'
+            <'false'> when 'true' -> 
+                'false'
+        end
+'Vec4.eq_scalar'/2 =
+    fun (V, Scalar) ->
+        call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', V), Scalar), call 'erlang':'=:='(call 'erlang':'map_get'('y', V), Scalar)), call 'erlang':'=:='(call 'erlang':'map_get'('z', V), Scalar)), call 'erlang':'=:='(call 'erlang':'map_get'('w', V), Scalar))
+'Vec4.distance'/2 =
+    fun (V, U) ->
+        call 'math':'sqrt'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U)), call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U))), call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)), call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))), call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)), call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))), call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)), call 'erlang':'-'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U)))))
+'Vec4.manhattan_distance'/2 =
+    fun (V, U) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('x', U))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y', V), call 'erlang':'map_get'('y', U)))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('z', V), call 'erlang':'map_get'('z', U)))), call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('w', V), call 'erlang':'map_get'('w', U))))
+'Vec4.abs'/1 =
+    fun (V) ->
+        do  case call 'erlang':'<'(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'<'(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'<'(call 'erlang':'map_get'('z', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'<'(call 'erlang':'map_get'('w', V), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'Vec4.clean'/2 =
+    fun (V, Tolerance) ->
+        let <R> =
+            apply 'unknown.copy'/1(V)
+        in  do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('w', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                            R
+'Vec4.clean_tolerance'/2 =
+    fun (V, Tolerance) ->
+        do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('x', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+            do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('y', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                do  case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('z', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                    case call 'erlang':'<'(call 'erlang':'abs'(call 'erlang':'map_get'('w', V)), Tolerance) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+'Vec4.inv'/1 =
+    fun (V) ->
+        ~{'x'=>case call 'erlang':'=/='(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('x', V)) <'false'> when 'true' -> 0 end,'y'=>case call 'erlang':'=/='(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('y', V)) <'false'> when 'true' -> 0 end,'z'=>case call 'erlang':'=/='(call 'erlang':'map_get'('z', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('z', V)) <'false'> when 'true' -> 0 end,'w'=>case call 'erlang':'=/='(call 'erlang':'map_get'('w', V), 0) of <'true'> when 'true' -> call 'erlang':'/'(1, call 'erlang':'map_get'('w', V)) <'false'> when 'true' -> 0 end,{'vbeam','type'}=>'Vec4'}~
+'Vec4.normalize'/1 =
+    fun (V) ->
+        let <M> =
+            0.0
+        in  case call 'erlang':'=:='(M, 0) of
+                <'true'> when 'true' -> apply 'vec4'/4(0, 0, 0, 0)
+                <'false'> when 'true' -> 
+                    ~{'x'=>call 'erlang':'*'(call 'erlang':'map_get'('x', V), call 'erlang':'/'(1, M)),'y'=>call 'erlang':'*'(call 'erlang':'map_get'('y', V), call 'erlang':'/'(1, M)),'z'=>call 'erlang':'*'(call 'erlang':'map_get'('z', V), call 'erlang':'/'(1, M)),'w'=>call 'erlang':'*'(call 'erlang':'map_get'('w', V), call 'erlang':'/'(1, M)),{'vbeam','type'}=>'Vec4'}~
+            end
+'Vec4.sum'/1 =
+    fun (V) ->
+        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('x', V), call 'erlang':'map_get'('y', V)), call 'erlang':'map_get'('z', V)), call 'erlang':'map_get'('w', V))
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.math.vec')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.math.vec', _0)
+end

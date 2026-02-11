@@ -1,0 +1,169 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"sqlite3_array">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"msql_array">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 5,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"query">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"query">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"psql_array">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 4,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec_one">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"sqlite3">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"msql">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 5,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"query">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"query">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"psql">>,
+            arity => 0,
+            exported => false,
+            params => [],
+            locals => 4,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"exec_one">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 7,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"eprintln">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {call, {sym, <<"sqlite3_array">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"msql_array">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"psql_array">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {call, {sym, <<"sqlite3">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {call, {sym, <<"msql">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {call, {sym, <<"psql">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

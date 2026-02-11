@@ -1,0 +1,1278 @@
+module 'v.x.ttf' ['dprintln'/1,
+                'BitMap.format_texture'/1,
+                'BitMap.save_as_ppm'/2,
+                'BitMap.get_raw_bytes'/1,
+                'BitMap.save_raw_data'/2,
+                'ipart'/1,
+                'round'/1,
+                'fpart'/1,
+                'rfpart'/1,
+                'color_multiply_alpha'/2,
+                'color_multiply'/2,
+                'BitMap.clear'/1,
+                'BitMap.trf_txt'/2,
+                'BitMap.trf_ch'/2,
+                'BitMap.set_pos'/3,
+                'BitMap.set_rotation'/2,
+                'BitMap.init_filler'/1,
+                'BitMap.clear_filler'/1,
+                'BitMap.exec_filler'/1,
+                'BitMap.fline'/6,
+                'BitMap.plot'/4,
+                'BitMap.aline'/6,
+                'BitMap.line'/6,
+                'BitMap.box'/6,
+                'BitMap.quadratic'/8,
+                'BitMap.get_chars_bbox'/2,
+                'BitMap.get_bbox'/2,
+                'BitMap.draw_notdef_glyph'/3,
+                'BitMap.draw_text'/2,
+                'BitMap.draw_glyph'/2,
+                'BitMap.get_justify_space_cw'/5,
+                'BitMap.draw_text_block'/3,
+                'TTF_File.init'/1,
+                'TTF_File.get_horizontal_metrics'/2,
+                'TTF_File.get_glyph_offset'/2,
+                'TTF_File.glyph_count'/1,
+                'TTF_File.read_glyph_dim'/2,
+                'TTF_File.get_ttf_widths'/1,
+                'TTF_File.read_glyph'/2,
+                'TTF_File.read_simple_glyph'/2,
+                'TTF_File.read_compound_glyph'/2,
+                'TTF_File.get_u8'/1,
+                'TTF_File.get_i8'/1,
+                'TTF_File.get_u16'/1,
+                'TTF_File.get_ufword'/1,
+                'TTF_File.get_i16'/1,
+                'TTF_File.get_fword'/1,
+                'TTF_File.get_u32'/1,
+                'TTF_File.get_i32'/1,
+                'TTF_File.get_2dot14'/1,
+                'TTF_File.get_fixed'/1,
+                'TTF_File.get_string'/2,
+                'TTF_File.get_unicode_string'/2,
+                'TTF_File.get_date'/1,
+                'TTF_File.calc_checksum'/3,
+                'TTF_File.read_offset_tables'/1,
+                'TTF_File.read_head_table'/1,
+                'TTF_File.read_name_table'/1,
+                'TTF_File.read_cmap_table'/1,
+                'TTF_File.read_cmap'/2,
+                'TTF_File.map_code'/2,
+                'TrueTypeCmap.init_0'/2,
+                'TrueTypeCmap.map_0'/2,
+                'TrueTypeCmap.init_4'/2,
+                'TrueTypeCmap.map_4'/3,
+                'TTF_File.read_hhea_table'/1,
+                'Kern0Table.reset'/1,
+                'Kern0Table.get'/2,
+                'TTF_File.create_kern_table0'/3,
+                'TTF_File.read_kern_table'/1,
+                'TTF_File.reset_kern'/1,
+                'TTF_File.next_kern'/2,
+                'TTF_File.read_panose_table'/1,
+                'TTF_File.get_info_string'/1,
+                'tst'/0,
+                'Text_align__static__from'/1,
+                'Style__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'dprintln'/1 =
+        fun (Txt) ->
+            call 'io':'format'([126|[115|[126|[110|[]]]]], [Txt|[]])
+    'BitMap.format_texture'/1 =
+        fun (Bmp) ->
+            let <R> =
+                call 'erlang':'bsr'(call 'erlang':'map_get'('color', Bmp), 24)
+            in  let <G> =
+                    call 'erlang':'band'(call 'erlang':'bsr'(call 'erlang':'map_get'('color', Bmp), 16), 16#FF)
+                in  let <B> =
+                        call 'erlang':'band'(call 'erlang':'bsr'(call 'erlang':'map_get'('color', Bmp), 8), 16#FF)
+                    in  let <A> =
+                            call 'erlang':'band'(call 'erlang':'map_get'('color', Bmp), 16#FF)
+                        in  let <B_r> =
+                                call 'erlang':'bsr'(call 'erlang':'map_get'('bg_color', Bmp), 24)
+                            in  let <B_g> =
+                                    call 'erlang':'band'(call 'erlang':'bsr'(call 'erlang':'map_get'('bg_color', Bmp), 16), 16#FF)
+                                in  let <B_b> =
+                                        call 'erlang':'band'(call 'erlang':'bsr'(call 'erlang':'map_get'('bg_color', Bmp), 8), 16#FF)
+                                    in  let <B_a> =
+                                            call 'erlang':'band'(call 'erlang':'map_get'('bg_color', Bmp), 16#FF)
+                                        in  let <X> =
+                                                call 'erlang':'map_get'('buf', Bmp)
+                                            in  'ok'
+    'BitMap.save_as_ppm'/2 =
+        fun (Bmp, File_name) ->
+            let <Tmp_buf> =
+                call 'erlang':'map_get'('buf', Bmp)
+            in  let <Buf> =
+                    apply 'malloc_noscan'/1(call 'erlang':'map_get'('buf_size', Bmp))
+                in  do  apply 'vmemcpy'/3(Buf, Tmp_buf, call 'erlang':'map_get'('buf_size', Bmp))
+                        do  Buf
+                            do  apply 'BitMap.format_texture'/1(Bmp)
+                                let <Npixels> =
+                                    call 'erlang':'*'(call 'erlang':'map_get'('width', Bmp), call 'erlang':'map_get'('height', Bmp))
+                                in  let <F_out> =
+                                        try {'ok', ~{{'vbeam','type'}=>'File'}~} of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                    in  do  try 'ok' of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                            do  try 'ok' of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                                do  try 'ok' of <_cor4> when 'true' -> _cor4 catch <_cor_c4,_cor_r4,_cor_s4> when 'true' -> call 'erlang':'error'({'panic', Err})
+                                                    do  let <_5> =
+                                                        fun (I) ->
+                                                            let <Pos> =
+                                                                call 'erlang':'*'(I, call 'erlang':'map_get'('bp', Bmp))
+                                                            in  'ok'
+                                                    in  let <_6> =
+                                                            call 'lists':'seq'(0, call 'erlang':'-'(Npixels, 1))
+                                                        in  call 'lists':'foreach'(_5, _6)
+                                                        do  'ok'
+                                                            do  apply 'free'/1(Buf)
+                                                                'ok'
+    'BitMap.get_raw_bytes'/1 =
+        fun (Bmp) ->
+            let <F_buf> =
+                []
+            in  let <I> =
+                    0
+                in  F_buf
+    'BitMap.save_raw_data'/2 =
+        fun (Bmp, File_name) ->
+            try call 'v.os':'write_file_array'(File_name, apply 'BitMap.get_raw_bytes'/1(Bmp)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', Err})
+    'ipart'/1 =
+        fun (X) ->
+            call 'math':'floor'(X)
+    'round'/1 =
+        fun (X) ->
+            apply 'ipart'/1(call 'erlang':'+'(X, 0.5))
+    'fpart'/1 =
+        fun (X) ->
+            call 'erlang':'-'(X, call 'math':'floor'(X))
+    'rfpart'/1 =
+        fun (X) ->
+            call 'erlang':'-'(1, apply 'fpart'/1(X))
+    'color_multiply_alpha'/2 =
+        fun (C, Level) ->
+            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'band'(C, 16#FF)), Level))
+    'color_multiply'/2 =
+        fun (C, Level) ->
+            let <R> =
+                call 'erlang':'*'(call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'band'(call 'erlang':'bsr'(C, 24), 16#FF)), 255.0), Level)
+            in  let <G> =
+                    call 'erlang':'*'(call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'band'(call 'erlang':'bsr'(C, 16), 16#FF)), 255.0), Level)
+                in  let <B> =
+                        call 'erlang':'*'(call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'band'(call 'erlang':'bsr'(C, 8), 16#FF)), 255.0), Level)
+                    in  let <A> =
+                            call 'erlang':'*'(call 'erlang':'/'(call 'erlang':'float'(call 'erlang':'band'(C, 16#FF)), 255.0), Level)
+                        in  let <R_1> =
+                                case call 'erlang':'>'(R, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> R end
+                            in  let <G_2> =
+                                    case call 'erlang':'>'(G, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> G end
+                                in  let <B_3> =
+                                        case call 'erlang':'>'(B, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> B end
+                                    in  let <A_4> =
+                                            case call 'erlang':'>'(A, 1.0) of <'true'> when 'true' -> 1.0 <'false'> when 'true' -> A end
+                                        in  call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bsl'(call 'erlang':'trunc'(call 'erlang':'*'(R_1, 255)), 24), call 'erlang':'bsl'(call 'erlang':'trunc'(call 'erlang':'*'(G_2, 255)), 16)), call 'erlang':'bsl'(call 'erlang':'trunc'(call 'erlang':'*'(B_3, 255)), 8)), call 'erlang':'trunc'(call 'erlang':'*'(A_4, 255)))
+    'BitMap.clear'/1 =
+        fun (Bmp) ->
+            let <Sz> =
+                call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('width', Bmp), call 'erlang':'map_get'('height', Bmp)), call 'erlang':'map_get'('bp', Bmp))
+            in  apply 'vmemset'/3(call 'erlang':'map_get'('buf', Bmp), 16#00, Sz)
+    'BitMap.trf_txt'/2 =
+        fun (Bmp, P) ->
+            call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', P), call 'lists':'nth'(1, call 'erlang':'map_get'('tr_matrix', Bmp))), call 'erlang':'*'(call 'erlang':'map_get'('y', P), call 'lists':'nth'(4, call 'erlang':'map_get'('tr_matrix', Bmp)))), call 'lists':'nth'(7, call 'erlang':'map_get'('tr_matrix', Bmp))))
+    'BitMap.trf_ch'/2 =
+        fun (Bmp, P) ->
+            call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'map_get'('x', P), call 'lists':'nth'(1, call 'erlang':'map_get'('ch_matrix', Bmp))), call 'erlang':'*'(call 'erlang':'map_get'('y', P), call 'lists':'nth'(4, call 'erlang':'map_get'('ch_matrix', Bmp)))), call 'lists':'nth'(7, call 'erlang':'map_get'('ch_matrix', Bmp))))
+    'BitMap.set_pos'/3 =
+        fun (Bmp, X, Y) ->
+            do  X
+                'ok'
+    'BitMap.set_rotation'/2 =
+        fun (Bmp, A) ->
+            do  call 'math':'cos'(A)
+                do  call 'erlang':'-'(call 'math':'sin'(A))
+                    do  call 'math':'sin'(A)
+                        'ok'
+    'BitMap.init_filler'/1 =
+        fun (Bmp) ->
+            let <H> =
+                call 'erlang':'-'(call 'erlang':'map_get'('height', Bmp), call 'erlang':'length'(call 'erlang':'map_get'('filler', Bmp)))
+            in  case call 'erlang':'<'(H, 1) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        'ok'
+                end
+    'BitMap.clear_filler'/1 =
+        fun (Bmp) ->
+            'ok'
+    'BitMap.exec_filler'/1 =
+        fun (Bmp) ->
+            'ok'
+    'BitMap.fline'/6 =
+        fun (Bmp, In_x0, In_y0, In_x1, In_y1, C) ->
+            let <X0> =
+                call 'erlang':'float'(In_x0)
+            in  let <X1> =
+                    call 'erlang':'float'(In_x1)
+                in  let <Y0> =
+                        call 'erlang':'float'(In_y0)
+                    in  let <Y1> =
+                            call 'erlang':'float'(In_y1)
+                        in  let <Tmp> =
+                                0
+                            in  case call 'erlang':'or'(call 'erlang':'and'(call 'erlang':'<'(In_x0, 0), call 'erlang':'<'(In_x1, 0)), call 'erlang':'and'(call 'erlang':'>'(In_x0, call 'erlang':'map_get'('width', Bmp)), call 'erlang':'>'(In_x1, call 'erlang':'map_get'('width', Bmp)))) of
+                                    <'true'> when 'true' -> 'ok'
+                                    <'false'> when 'true' -> 
+                                        let <Tmp_1> =
+                                            case call 'erlang':'<'(Y1, Y0) of <'true'> when 'true' -> do  X0 let <X0_2> = X1 in let <X1_3> = Tmp in Y0 <'false'> when 'true' -> Tmp end
+                                        in  let <X0_4> =
+                                                case call 'erlang':'<'(Y1, Y0) of <'true'> when 'true' -> let <Tmp_5> = X0_2 in X1_3 <'false'> when 'true' -> X0_2 end
+                                            in  let <X1_6> =
+                                                    case call 'erlang':'<'(Y1, Y0) of <'true'> when 'true' -> let <Tmp_7> = X0_4 in let <X0_8> = X1_3 in Tmp_7 <'false'> when 'true' -> X1_3 end
+                                                in  let <Y0_9> =
+                                                        case call 'erlang':'<'(Y1, Y0) of <'true'> when 'true' -> let <Tmp_10> = X0_8 in let <X0_11> = X1_6 in let <X1_12> = Tmp_10 in let <Tmp_13> = Y0 in Y1 <'false'> when 'true' -> Y0 end
+                                                    in  let <Y1_14> =
+                                                            case call 'erlang':'<'(Y1, Y0_9) of <'true'> when 'true' -> let <Tmp_15> = X0_11 in let <X0_16> = X1_12 in let <X1_17> = Tmp_15 in let <Tmp_18> = Y0_9 in let <Y0_19> = Y1 in Tmp_18 <'false'> when 'true' -> Y1 end
+                                                        in  let <Dx> =
+                                                                call 'erlang':'-'(X1_17, X0_16)
+                                                            in  let <Dy> =
+                                                                    call 'erlang':'-'(Y1_14, Y0_19)
+                                                                in  case call 'erlang':'=:='(Dy, 0) of
+                                                                        <'true'> when 'true' -> 'ok'
+                                                                        <'false'> when 'true' -> 
+                                                                            let <N> =
+                                                                                call 'erlang':'/'(Dx, Dy)
+                                                                            in  'ok'
+                                                                    end
+                                end
+    'BitMap.plot'/4 =
+        fun (Bmp, X, Y, C) ->
+            case call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'<'(X, 0), call 'erlang':'>='(X, call 'erlang':'map_get'('width', Bmp))), call 'erlang':'<'(Y, 0)), call 'erlang':'>='(Y, call 'erlang':'map_get'('height', Bmp))) of
+                <'true'> when 'true' -> 'false'
+                <'false'> when 'true' -> 
+                    let <Index> =
+                        call 'erlang':'*'(call 'erlang':'+'(X, call 'erlang':'*'(Y, call 'erlang':'map_get'('width', Bmp))), call 'erlang':'map_get'('bp', Bmp))
+                    in  'true'
+            end
+    'BitMap.aline'/6 =
+        fun (Bmp, In_x0, In_y0, In_x1, In_y1, C) ->
+            let <X0> =
+                call 'erlang':'float'(In_x0)
+            in  let <X1> =
+                    call 'erlang':'float'(In_x1)
+                in  let <Y0> =
+                        call 'erlang':'float'(In_y0)
+                    in  let <Y1> =
+                            call 'erlang':'float'(In_y1)
+                        in  let <Tmp> =
+                                0
+                            in  let <Dx> =
+                                    call 'erlang':'-'(X1, X0)
+                                in  let <Dy> =
+                                        call 'erlang':'-'(Y1, Y0)
+                                    in  let <Dist> =
+                                            0.4
+                                        in  case call 'erlang':'>'(call 'erlang':'abs'(Dx), call 'erlang':'abs'(Dy)) of <'true'> when 'true' -> 
+                                                let <Tmp_1> =
+                                                    case call 'erlang':'<'(X1, X0) of <'true'> when 'true' -> do  X0 let <X0_2> = X1 in let <X1_3> = Tmp in Y0 <'false'> when 'true' -> Tmp end
+                                                in  let <X0_4> =
+                                                        case call 'erlang':'<'(X1_3, X0_2) of <'true'> when 'true' -> let <Tmp_5> = X0_2 in X1_3 <'false'> when 'true' -> X0_2 end
+                                                    in  let <X1_6> =
+                                                            case call 'erlang':'<'(X1_3, X0_4) of <'true'> when 'true' -> let <Tmp_7> = X0_4 in let <X0_8> = X1_3 in Tmp_7 <'false'> when 'true' -> X1_3 end
+                                                        in  let <Y0_9> =
+                                                                case call 'erlang':'<'(X1_6, X0_8) of <'true'> when 'true' -> let <Tmp_10> = X0_8 in let <X0_11> = X1_6 in let <X1_12> = Tmp_10 in let <Tmp_13> = Y0 in Y1 <'false'> when 'true' -> Y0 end
+                                                            in  let <Y1_14> =
+                                                                    case call 'erlang':'<'(X1_12, X0_11) of <'true'> when 'true' -> let <Tmp_15> = X0_11 in let <X0_16> = X1_12 in let <X1_17> = Tmp_15 in let <Tmp_18> = Y0_9 in let <Y0_19> = Y1 in Tmp_18 <'false'> when 'true' -> Y1 end
+                                                                in  let <Dx_20> =
+                                                                        call 'erlang':'-'(X1_17, X0_16)
+                                                                    in  let <Dy_21> =
+                                                                            call 'erlang':'-'(Y1_14, Y0_19)
+                                                                        in  let <X0_22> =
+                                                                                0.5
+                                                                            in  let <Y0_23> =
+                                                                                    0.5
+                                                                                in  let <M> =
+                                                                                        call 'erlang':'/'(Dy_21, Dx_20)
+                                                                                    in  'ok'
+                                             <'false'> when 'true' -> 
+                                                let <Tmp_24> =
+                                                    case call 'erlang':'<'(Y1_14, Y0_23) of <'true'> when 'true' -> do  X0_22 let <X0_25> = X1_17 in let <X1_26> = Tmp_18 in Y0_23 <'false'> when 'true' -> Tmp_18 end
+                                                in  let <X0_27> =
+                                                        case call 'erlang':'<'(Y1_14, Y0_23) of <'true'> when 'true' -> let <Tmp_28> = X0_25 in X1_26 <'false'> when 'true' -> X0_25 end
+                                                    in  let <X1_29> =
+                                                            case call 'erlang':'<'(Y1_14, Y0_23) of <'true'> when 'true' -> let <Tmp_30> = X0_27 in let <X0_31> = X1_26 in Tmp_30 <'false'> when 'true' -> X1_26 end
+                                                        in  let <Y0_32> =
+                                                                case call 'erlang':'<'(Y1_14, Y0_23) of <'true'> when 'true' -> let <Tmp_33> = X0_31 in let <X0_34> = X1_29 in let <X1_35> = Tmp_33 in let <Tmp_36> = Y0_23 in Y1_14 <'false'> when 'true' -> Y0_23 end
+                                                            in  let <Y1_37> =
+                                                                    case call 'erlang':'<'(Y1_14, Y0_32) of <'true'> when 'true' -> let <Tmp_38> = X0_34 in let <X0_39> = X1_35 in let <X1_40> = Tmp_38 in let <Tmp_41> = Y0_32 in let <Y0_42> = Y1_14 in Tmp_41 <'false'> when 'true' -> Y1_14 end
+                                                                in  let <Dx_43> =
+                                                                        call 'erlang':'-'(X1_40, X0_39)
+                                                                    in  let <Dy_44> =
+                                                                            call 'erlang':'-'(Y1_37, Y0_42)
+                                                                        in  let <X0_45> =
+                                                                                0.5
+                                                                            in  let <Y0_46> =
+                                                                                    0.5
+                                                                                in  let <N> =
+                                                                                        call 'erlang':'/'(Dx_43, Dy_44)
+                                                                                    in  'ok'
+                                             end
+    'BitMap.line'/6 =
+        fun (Bmp, In_x0, In_y0, In_x1, In_y1, C) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'outline_aliased') of <'true'> when 'true' -> 
+                do  apply 'BitMap.aline'/6(Bmp, In_x0, In_y0, In_x1, In_y1, C)
+                    'ok'
+             <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'filled') of <'true'> when 'true' -> 
+                do  apply 'BitMap.aline'/6(Bmp, In_x0, In_y0, In_x1, In_y1, C)
+                    do  apply 'BitMap.fline'/6(Bmp, In_x0, In_y0, In_x1, In_y1, C)
+                        'ok'
+             <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'raw') of <'true'> when 'true' -> 
+                do  apply 'BitMap.fline'/6(Bmp, In_x0, In_y0, In_x1, In_y1, C)
+                    'ok'
+             <'false'> when 'true' -> 'ok' end end end
+                let <X0> =
+                    In_x0
+                in  let <X1> =
+                        In_x1
+                    in  let <Y0> =
+                            In_y0
+                        in  let <Y1> =
+                                In_y1
+                            in  let <Dx> =
+                                    call 'erlang':'abs'(call 'erlang':'-'(X1, X0))
+                                in  let <Sx> =
+                                        case call 'erlang':'<'(X0, X1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                                    in  let <Dy> =
+                                            call 'erlang':'-'(call 'erlang':'abs'(call 'erlang':'-'(Y1, Y0)))
+                                        in  let <Sy> =
+                                                case call 'erlang':'<'(Y0, Y1) of <'true'> when 'true' -> 1 <'false'> when 'true' -> -1 end
+                                            in  do  case call 'erlang':'=:='(Dx, 0) of <'true'> when 'true' -> 
+                                                    case call 'erlang':'<'(Y0, Y1) of
+                                                        <'true'> when 'true' -> 'ok'
+                                                        <'false'> when 'true' -> 
+                                                            do  let <_1> =
+                                                                fun (Yt) ->
+                                                                    apply 'BitMap.plot'/4(Bmp, X0, Yt, C)
+                                                            in  let <_2> =
+                                                                    call 'lists':'seq'(Y1, call 'erlang':'-'(call 'erlang':'+'(Y0, 1), 1))
+                                                                in  call 'lists':'foreach'(_1, _2)
+                                                                'ok'
+                                                    end
+                                                 <'false'> when 'true' -> case call 'erlang':'=:='(Dy, 0) of <'true'> when 'true' -> 
+                                                    case call 'erlang':'<'(X0, X1) of
+                                                        <'true'> when 'true' -> 'ok'
+                                                        <'false'> when 'true' -> 
+                                                            do  let <_3> =
+                                                                fun (Xt) ->
+                                                                    apply 'BitMap.plot'/4(Bmp, Xt, Y0, C)
+                                                            in  let <_4> =
+                                                                    call 'lists':'seq'(X1, call 'erlang':'-'(call 'erlang':'+'(X0, 1), 1))
+                                                                in  call 'lists':'foreach'(_3, _4)
+                                                                'ok'
+                                                    end
+                                                 <'false'> when 'true' -> 'ok' end end
+                                                    let <Err> =
+                                                        call 'erlang':'+'(Dx, Dy)
+                                                    in  'ok'
+    'BitMap.box'/6 =
+        fun (Bmp, In_x0, In_y0, In_x1, In_y1, C) ->
+            do  apply 'BitMap.line'/6(Bmp, In_x0, In_y0, In_x1, In_y0, C)
+                do  apply 'BitMap.line'/6(Bmp, In_x1, In_y0, In_x1, In_y1, C)
+                    do  apply 'BitMap.line'/6(Bmp, In_x0, In_y1, In_x1, In_y1, C)
+                        apply 'BitMap.line'/6(Bmp, In_x0, In_y0, In_x0, In_y1, C)
+    'BitMap.quadratic'/8 =
+        fun (Bmp, In_x0, In_y0, In_x1, In_y1, In_cx, In_cy, C) ->
+            let <X0> =
+                In_x0
+            in  let <X1> =
+                    In_x1
+                in  let <Y0> =
+                        In_y0
+                    in  let <Y1> =
+                            In_y1
+                        in  let <Cx> =
+                                In_cx
+                            in  let <Cy> =
+                                    In_cy
+                                in  let <Division> =
+                                        1.0
+                                    in  let <Dx> =
+                                            call 'erlang':'abs'(call 'erlang':'-'(X0, X1))
+                                        in  let <Dy> =
+                                                call 'erlang':'abs'(call 'erlang':'-'(Y0, Y1))
+                                            in  case call 'erlang':'or'(call 'erlang':'=<'(Dx, 2), call 'erlang':'=<'(Dy, 2)) of
+                                                    <'true'> when 'true' -> 'ok'
+                                                    <'false'> when 'true' -> 
+                                                        let <Division_1> =
+                                                            call 'erlang':'/'(1.0, call 'erlang':'float'(case call 'erlang':'>'(Dx, Dy) of <'true'> when 'true' -> Dx <'false'> when 'true' -> Dy end))
+                                                        in  let <T> =
+                                                                0.0
+                                                            in  'ok'
+                                                end
+    'BitMap.get_chars_bbox'/2 =
+        fun (Bmp, In_string) ->
+            let <Res> =
+                []
+            in  let <W> =
+                    0
+                in  let <Space_cw> =
+                        apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                    in  do  apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                            let <Div_space_cw> =
+                                call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'float'(Space_cw), call 'erlang':'map_get'('space_mult', Bmp)), call 'erlang':'map_get'('scale', Bmp)))
+                            in  let <Space_cw_1> =
+                                    call 'erlang':'trunc'(call 'erlang':'*'(Space_cw, call 'erlang':'map_get'('scale', Bmp)))
+                                in  do  apply 'TTF_File.reset_kern'/1(call 'erlang':'map_get'('tf', Bmp))
+                                        let <I> =
+                                            0
+                                        in  Res
+    'BitMap.get_bbox'/2 =
+        fun (Bmp, In_string) ->
+            let <W> =
+                0
+            in  let <Space_cw> =
+                    apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                in  do  apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                        let <Div_space_cw> =
+                            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'float'(Space_cw), call 'erlang':'map_get'('space_mult', Bmp)), call 'erlang':'map_get'('scale', Bmp)))
+                        in  let <Space_cw_1> =
+                                call 'erlang':'trunc'(call 'erlang':'*'(Space_cw, call 'erlang':'map_get'('scale', Bmp)))
+                            in  do  apply 'TTF_File.reset_kern'/1(call 'erlang':'map_get'('tf', Bmp))
+                                    let <I> =
+                                        0
+                                    in  W
+    'BitMap.draw_notdef_glyph'/3 =
+        fun (Bmp, In_x, In_w) ->
+            let <P> =
+                ~{'x'=>In_x,'y'=>0,'on_curve'=>'false',{'vbeam','type'}=>'Point'}~
+            in  let <X1> =
+                    apply 'BitMap.trf_txt'/2(Bmp, P)
+                in  let <Y1> =
+                        apply 'BitMap.trf_txt'/2(Bmp, P)
+                    in  do  call 'erlang':'*'(call 'erlang':'*'(call 'lists':'nth'(1, call 'erlang':'map_get'('tr_matrix', Bmp)), call 'erlang':'map_get'('scale', Bmp)), call 'erlang':'map_get'('scale_x', Bmp))
+                            do  call 'erlang':'*'(call 'erlang':'*'(call 'lists':'nth'(2, call 'erlang':'map_get'('tr_matrix', Bmp)), call 'erlang':'map_get'('scale', Bmp)), call 'erlang':'map_get'('scale_x', Bmp))
+                                do  call 'erlang':'*'(call 'erlang':'*'(call 'lists':'nth'(4, call 'erlang':'map_get'('tr_matrix', Bmp)), call 'erlang':'-'(call 'erlang':'map_get'('scale', Bmp))), call 'erlang':'map_get'('scale_y', Bmp))
+                                    do  call 'erlang':'*'(call 'erlang':'*'(call 'lists':'nth'(5, call 'erlang':'map_get'('tr_matrix', Bmp)), call 'erlang':'-'(call 'erlang':'map_get'('scale', Bmp))), call 'erlang':'map_get'('scale_y', Bmp))
+                                        do  X1
+                                            do  Y1
+                                                let <X> =
+                                                    apply 'BitMap.trf_ch'/2(Bmp, P)
+                                                in  let <Y> =
+                                                        apply 'BitMap.trf_ch'/2(Bmp, P)
+                                                    in  let <Y_h> =
+                                                            call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'abs'(call 'erlang':'-'(call 'erlang':'map_get'('y_max', call 'erlang':'map_get'('tf', Bmp)), call 'erlang':'map_get'('y_min', call 'erlang':'map_get'('tf', Bmp)))), call 'erlang':'map_get'('scale', Bmp)), 0.5)
+                                                        in  do  apply 'BitMap.box'/6(Bmp, X, Y, call 'erlang':'-'(X, In_w), call 'erlang':'trunc'(call 'erlang':'-'(Y, Y_h)), call 'erlang':'map_get'('color', Bmp))
+                                                                do  apply 'BitMap.line'/6(Bmp, X, Y, call 'erlang':'-'(X, In_w), call 'erlang':'trunc'(call 'erlang':'-'(Y, Y_h)), call 'erlang':'map_get'('color', Bmp))
+                                                                    apply 'BitMap.line'/6(Bmp, call 'erlang':'-'(X, In_w), Y, X, call 'erlang':'trunc'(call 'erlang':'-'(Y, Y_h)), call 'erlang':'map_get'('color', Bmp))
+    'BitMap.draw_text'/2 =
+        fun (Bmp, In_string) ->
+            let <W> =
+                0
+            in  let <Space_cw> =
+                    apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                in  do  apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                        let <Div_space_cw> =
+                            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'float'(Space_cw), call 'erlang':'map_get'('space_mult', Bmp)), call 'erlang':'map_get'('scale', Bmp)))
+                        in  let <Space_cw_1> =
+                                call 'erlang':'trunc'(call 'erlang':'*'(Space_cw, call 'erlang':'map_get'('scale', Bmp)))
+                            in  do  apply 'TTF_File.reset_kern'/1(call 'erlang':'map_get'('tf', Bmp))
+                                    let <I> =
+                                        0
+                                    in  W
+    'BitMap.draw_glyph'/2 =
+        fun (Bmp, Index) ->
+            let <Glyph> =
+                apply 'TTF_File.read_glyph'/2(call 'erlang':'map_get'('tf', Bmp), Index)
+            in  case call 'erlang':'not'(call 'erlang':'map_get'('valid_glyph', Glyph)) of
+                    <'true'> when 'true' -> 0
+                    <'false'> when 'true' -> 
+                        do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'filled'), call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'raw')) of <'true'> when 'true' -> apply 'BitMap.clear_filler'/1(Bmp) <'false'> when 'true' -> 'ok' end
+                            let <S> =
+                                0
+                            in  let <C> =
+                                    0
+                                in  let <Contour_start> =
+                                        0
+                                    in  let <X0> =
+                                            0
+                                        in  let <Y0> =
+                                                0
+                                            in  let <Color> =
+                                                    call 'erlang':'map_get'('color', Bmp)
+                                                in  let <Sp_x> =
+                                                        0
+                                                    in  let <Sp_y> =
+                                                            0
+                                                        in  let <Point> =
+                                                                ~{{'vbeam','type'}=>'Point'}~
+                                                            in  let <_1> =
+                                                                    let <_3> =
+                                                                        fun (Point_raw, _12) ->
+                                                                            let <X0Acc> =
+                                                                                call 'erlang':'element'(1, _12)
+                                                                            in                                                                              let <Y0Acc> =
+                                                                                call 'erlang':'element'(2, _12)
+                                                                            in                                                                              let <Sp_xAcc> =
+                                                                                call 'erlang':'element'(3, _12)
+                                                                            in                                                                              let <Sp_yAcc> =
+                                                                                call 'erlang':'element'(4, _12)
+                                                                            in                                                                              let <SAcc> =
+                                                                                call 'erlang':'element'(5, _12)
+                                                                            in                                                                              let <Contour_startAcc> =
+                                                                                call 'erlang':'element'(6, _12)
+                                                                            in                                                                              let <CountAcc> =
+                                                                                call 'erlang':'element'(7, _12)
+                                                                            in  
+                                                                            let <_13> =
+                                                                                case call 'erlang':'=:='(SAcc, 0) of <'true'> when 'true' -> {call 'erlang':'map_get'('x', Point), call 'erlang':'map_get'('y', Point), X0Acc, Y0Acc, 1} <'false'> when 'true' -> case call 'erlang':'=:='(SAcc, 1) of <'true'> when 'true' -> {X0Acc, Y0Acc, Sp_xAcc, Sp_yAcc, SAcc} <'false'> when 'true' -> {X0Acc, Y0Acc, Sp_xAcc, Sp_yAcc, SAcc} end end
+                                                                            in                                                                              let <X0Out_5> =
+                                                                                call 'erlang':'element'(1, _13)
+                                                                            in                                                                              let <Y0Out_6> =
+                                                                                call 'erlang':'element'(2, _13)
+                                                                            in                                                                              let <Sp_xOut_7> =
+                                                                                call 'erlang':'element'(3, _13)
+                                                                            in                                                                              let <Sp_yOut_8> =
+                                                                                call 'erlang':'element'(4, _13)
+                                                                            in                                                                              let <SOut_9> =
+                                                                                call 'erlang':'element'(5, _13)
+                                                                            in                                                                              let <_14> =
+                                                                                case call 'erlang':'=:='(CountAcc, call 'lists':'nth'(call 'erlang':'+'(C, 1), call 'erlang':'map_get'('contour_ends', Glyph))) of <'true'> when 'true' -> do  case call 'erlang':'=:='(SOut_9, 2) of <'true'> when 'true' -> 
+                                                                                    let <Start_point> =
+                                                                                        call 'lists':'nth'(call 'erlang':'+'(Contour_startAcc, 1), call 'erlang':'map_get'('points', Glyph))
+                                                                                    in  do  apply 'BitMap.trf_ch'/2(Bmp, Start_point)
+do  apply 'BitMap.trf_ch'/2(Bmp, Start_point)
+                                                                                            case call 'erlang':'map_get'('on_curve', Point) of <'true'> when 'true' -> apply 'BitMap.quadratic'/8(Bmp, X0Out_5, Y0Out_6, call 'erlang':'map_get'('x', Start_point), call 'erlang':'map_get'('y', Start_point), call 'erlang':'map_get'('x', Start_point), call 'erlang':'map_get'('y', Start_point), Color) <'false'> when 'true' -> apply 'BitMap.quadratic'/8(Bmp, X0Out_5, Y0Out_6, call 'erlang':'map_get'('x', Start_point), call 'erlang':'map_get'('y', Start_point), call 'erlang':'div'(call 'erlang':'+'(call 'erlang':'map_get'('x', Point), call 'erlang':'map_get'('x', Start_point)), 2), call 'erlang':'div'(call 'erlang':'+'(call 'erlang':'map_get'('y', Point), call 'erlang':'map_get'('y', Start_point)), 2), Color) end
+                                                                                 <'false'> when 'true' -> apply 'BitMap.line'/6(Bmp, call 'erlang':'map_get'('x', Point), call 'erlang':'map_get'('y', Point), Sp_xOut_7, Sp_yOut_8, Color) end {call 'erlang':'+'(CountAcc, 1), 0} <'false'> when 'true' -> {Contour_startAcc, SOut_9} end
+                                                                            in                                                                              let <Contour_startOut_10> =
+                                                                                call 'erlang':'element'(1, _14)
+                                                                            in                                                                              let <SOut_9> =
+                                                                                call 'erlang':'element'(2, _14)
+                                                                            in  {X0Out_5, Y0Out_6, Sp_xOut_7, Sp_yOut_8, SOut_9, Contour_startOut_10, call 'erlang':'+'(CountAcc, 1)}
+                                                                    in  call 'lists':'foldl'(_3, {X0, Y0, Sp_x, Sp_y, S, Contour_start, 0}, call 'erlang':'map_get'('points', Glyph))
+                                                                in  let <X0_2> =
+                                                                        call 'erlang':'element'(1, _1)
+                                                                    in  do  case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'filled'), call 'erlang':'=:='(call 'erlang':'map_get'('style', Bmp), 'raw')) of <'true'> when 'true' -> apply 'BitMap.exec_filler'/1(Bmp) <'false'> when 'true' -> 'ok' end
+                                                                            let <X_min> =
+                                                                                call 'erlang':'map_get'('x_min', Glyph)
+                                                                            in  let <X_max> =
+                                                                                    call 'erlang':'map_get'('x_max', Glyph)
+                                                                                in  X_min
+                end
+    'BitMap.get_justify_space_cw'/5 =
+        fun (Dev, Txt, W, Block_w, Space_cw) ->
+            let <Num_spaces> =
+                apply 'string.count'/2(Txt, #{#<32>(8,1,'integer',['unsigned'|['big']])}#)
+            in  case call 'erlang':'<'(Num_spaces, 1) of
+                    <'true'> when 'true' -> 0
+                    <'false'> when 'true' -> 
+                        let <Delta> =
+                            call 'erlang':'-'(Block_w, W)
+                        in  let <Res> =
+                                call 'erlang':'/'(call 'erlang':'/'(call 'erlang':'float'(Delta), call 'erlang':'float'(Num_spaces)), call 'erlang':'float'(Space_cw))
+                            in  Res
+                end
+    'BitMap.draw_text_block'/3 =
+        fun (Bmp, Text, Block) ->
+            let <X> =
+                call 'erlang':'map_get'('x', Block)
+            in  let <Y> =
+                    call 'erlang':'map_get'('y', Block)
+                in  let <Y_base> =
+                        call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('y_max', call 'erlang':'map_get'('tf', Bmp)), call 'erlang':'map_get'('y_min', call 'erlang':'map_get'('tf', Bmp))), call 'erlang':'map_get'('scale', Bmp)))
+                    in  let <Space_cw> =
+                            apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                        in  do  apply 'TTF_File.get_horizontal_metrics'/2(call 'erlang':'map_get'('tf', Bmp), 32)
+                                let <Space_cw_1> =
+                                    call 'erlang':'trunc'(call 'erlang':'*'(Space_cw, call 'erlang':'map_get'('scale', Bmp)))
+                                in  let <Old_space_cw> =
+                                        call 'erlang':'map_get'('space_cw', Bmp)
+                                    in  let <Offset_flag> =
+                                            0
+                                        in  let <Offset_flag_2> =
+                                                case call 'erlang':'=:='(call 'erlang':'map_get'('align', Bmp), 'right') of <'true'> when 'true' -> 1 <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('align', Bmp), 'center') of <'true'> when 'true' -> 0.5 <'false'> when 'true' -> Offset_flag end end
+                                            in  let <Y_3> =
+                                                    let <_4> =
+                                                        fun (Txt, YAcc) ->
+                                                            let <W> =
+                                                                apply 'BitMap.get_bbox'/2(Bmp, Txt)
+                                                            in                                                              let <_> =
+                                                                apply 'BitMap.get_bbox'/2(Bmp, Txt)
+                                                            in                                                              let <YOut_6> =
+                                                                case call 'erlang':'or'(call 'erlang':'=<'(W, call 'erlang':'map_get'('w', Block)), call 'erlang':'=:='(call 'erlang':'map_get'('cut_lines', Block), 'false')) of <'true'> when 'true' -> let <Left_offset> = call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('w', Block), W), Offset_flag_2)) in do  case call 'erlang':'and'(call 'erlang':'map_get'('justify', Bmp), call 'erlang':'>='(call 'erlang':'/'(call 'erlang':'float'(W), call 'erlang':'float'(call 'erlang':'map_get'('w', Block))), call 'erlang':'map_get'('justify_fill_ratio', Bmp))) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end do  apply 'BitMap.set_pos'/3(Bmp, call 'erlang':'+'(X, Left_offset), call 'erlang':'+'(YAcc, Y_base)) do  apply 'BitMap.draw_text'/2(Bmp, Txt) Y_base <'false'> when 'true' -> YAcc end
+                                                            in  YOut_6
+                                                    in  call 'lists':'foldl'(_4, Y, call 'binary':'split'(Text, #{#<10>(8,1,'integer',['unsigned'|['big']])}#, ['global'|[]]))
+                                                in  'ok'
+    'TTF_File.init'/1 =
+        fun (Tf) ->
+            do  apply 'TTF_File.read_offset_tables'/1(Tf)
+                do  apply 'TTF_File.read_head_table'/1(Tf)
+                    do  apply 'TTF_File.read_name_table'/1(Tf)
+                        do  apply 'TTF_File.read_cmap_table'/1(Tf)
+                            do  apply 'TTF_File.read_hhea_table'/1(Tf)
+                                do  apply 'TTF_File.read_kern_table'/1(Tf)
+                                    do  apply 'TTF_File.read_panose_table'/1(Tf)
+                                        do  apply 'TTF_File.glyph_count'/1(Tf)
+                                            do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<78>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('length', Tf))|[]]]))
+                                                do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                                                    do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<85>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('units_per_em', Tf))|[]]]))
+                                                        apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('advance_width_max', Tf))|[]]]))
+    'TTF_File.get_horizontal_metrics'/2 =
+        fun (Tf, Glyph_index) ->
+            let <Old_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  let <Offset> =
+                    call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                in  let <Advance_width> =
+                        0
+                    in  let <Left_side_bearing> =
+                            0
+                        in  let <Offset_1> =
+                                case call 'erlang':'<'(Glyph_index, call 'erlang':'map_get'('num_of_long_hor_metrics', Tf)) of <'true'> when 'true' -> call 'erlang':'*'(Glyph_index, 4) <'false'> when 'true' -> Offset end
+                            in  let <Advance_width_2> =
+                                    case call 'erlang':'<'(Glyph_index, call 'erlang':'map_get'('num_of_long_hor_metrics', Tf)) of <'true'> when 'true' -> let <Offset_3> = call 'erlang':'*'(Glyph_index, 4) in apply 'TTF_File.get_u16'/1(Tf) <'false'> when 'true' -> apply 'TTF_File.get_u16'/1(Tf) end
+                                in  let <Left_side_bearing_4> =
+                                        case call 'erlang':'<'(Glyph_index, call 'erlang':'map_get'('num_of_long_hor_metrics', Tf)) of <'true'> when 'true' -> let <Offset_5> = call 'erlang':'*'(Glyph_index, 4) in let <Advance_width_6> = apply 'TTF_File.get_u16'/1(Tf) in apply 'TTF_File.get_i16'/1(Tf) <'false'> when 'true' -> let <Advance_width_7> = apply 'TTF_File.get_u16'/1(Tf) in apply 'TTF_File.get_fword'/1(Tf) end
+                                    in  do  Old_pos
+                                            Advance_width_7
+    'TTF_File.get_glyph_offset'/2 =
+        fun (Tf, Index) ->
+            let <Old_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  let <Table> =
+                    call 'erlang':'map_get'(#{#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))
+                in  let <Offset> =
+                        0
+                    in  let <Next> =
+                            0
+                        in  let <Offset_1> =
+                                case call 'erlang':'=:='(call 'erlang':'map_get'('index_to_loc_format', Tf), 1) of <'true'> when 'true' -> apply 'TTF_File.get_u32'/1(Tf) <'false'> when 'true' -> call 'erlang':'bsl'(apply 'TTF_File.get_u16'/1(Tf), 1) end
+                            in  let <Next_2> =
+                                    case call 'erlang':'=:='(call 'erlang':'map_get'('index_to_loc_format', Tf), 1) of <'true'> when 'true' -> let <Offset_3> = apply 'TTF_File.get_u32'/1(Tf) in apply 'TTF_File.get_u32'/1(Tf) <'false'> when 'true' -> let <Offset_4> = call 'erlang':'bsl'(apply 'TTF_File.get_u16'/1(Tf), 1) in call 'erlang':'bsl'(apply 'TTF_File.get_u16'/1(Tf), 1) end
+                                in  case call 'erlang':'=:='(Offset_4, Next_2) of
+                                        <'true'> when 'true' -> 0
+                                        <'false'> when 'true' -> 
+                                            do  Old_pos
+                                                call 'erlang':'+'(Offset_4, call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))))
+                                    end
+    'TTF_File.glyph_count'/1 =
+        fun (Tf) ->
+            let <Old_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  do  call 'erlang':'+'(call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))), 4)
+                    let <Count> =
+                        apply 'TTF_File.get_u16'/1(Tf)
+                    in  do  Old_pos
+                            Count
+    'TTF_File.read_glyph_dim'/2 =
+        fun (Tf, Index) ->
+            let <Offset> =
+                apply 'TTF_File.get_glyph_offset'/2(Tf, Index)
+            in  case call 'erlang':'or'(call 'erlang':'=:='(Offset, 0), call 'erlang':'>='(Offset, call 'erlang':'+'(call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))), call 'erlang':'map_get'('length', call 'erlang':'map_get'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))))) of
+                    <'true'> when 'true' -> 0
+                    <'false'> when 'true' -> 
+                        do  Offset
+                            do  apply 'TTF_File.get_i16'/1(Tf)
+                                let <X_min> =
+                                    apply 'TTF_File.get_fword'/1(Tf)
+                                in  let <Y_min> =
+                                        apply 'TTF_File.get_fword'/1(Tf)
+                                    in  let <X_max> =
+                                            apply 'TTF_File.get_fword'/1(Tf)
+                                        in  let <Y_max> =
+                                                apply 'TTF_File.get_fword'/1(Tf)
+                                            in  X_min
+                end
+    'TTF_File.get_ttf_widths'/1 =
+        fun (Tf) ->
+            let <Space_cw> =
+                apply 'TTF_File.get_horizontal_metrics'/2(Tf, 32)
+            in  do  apply 'TTF_File.get_horizontal_metrics'/2(Tf, 32)
+                    let <Min_code> =
+                        call 'erlang':'+'(16#FFFF, 1)
+                    in  let <Max_code> =
+                            0
+                        in  let <Max_code_1> =
+                                let <_2> =
+                                    fun (I, _6) ->
+                                        let <Max_codeAcc> =
+                                            call 'erlang':'element'(1, _6)
+                                        in                                          let <Min_codeAcc> =
+                                            call 'erlang':'element'(2, _6)
+                                        in  
+                                        let <Glyph_index> =
+                                            apply 'TTF_File.map_code'/2(Tf, I)
+                                        in                                          do  case call 'erlang':'=:='(Glyph_index, 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            let <Max_codeOut_4> =
+                                                case call 'erlang':'>'(I, Max_codeAcc) of <'true'> when 'true' -> I <'false'> when 'true' -> Max_codeAcc end
+                                            in                                              let <Min_codeOut_5> =
+                                                case call 'erlang':'<'(I, Min_codeAcc) of <'true'> when 'true' -> I <'false'> when 'true' -> Min_codeAcc end
+                                            in  {Max_codeOut_4, Min_codeOut_5}
+                                in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(300, 1))
+                                in  call 'lists':'foldl'(_2, {Max_code, Min_code}, _3)
+                            in  let <Widths> =
+                                    []
+                                in  let <Glyph_index_7> =
+                                        let <_8> =
+                                            fun (I, Glyph_indexAcc) ->
+                                                let <Pos> =
+                                                    call 'erlang':'-'(I, Min_code)
+                                                in                                                  let <Glyph_indexOut_10> =
+                                                    apply 'TTF_File.map_code'/2(Tf, I)
+                                                in                                                  do  case call 'erlang':'or'(call 'erlang':'=:='(Glyph_indexOut_10, 0), call 'erlang':'=:='(I, 32)) of <'true'> when 'true' -> 
+                                                    do  Space_cw
+                                                        'ok'
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    let <X_min> =
+                                                        apply 'TTF_File.read_glyph_dim'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <X_max> =
+                                                        apply 'TTF_File.read_glyph_dim'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <_> =
+                                                        apply 'TTF_File.read_glyph_dim'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <__11> =
+                                                        apply 'TTF_File.read_glyph_dim'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <Aw> =
+                                                        apply 'TTF_File.get_horizontal_metrics'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <Lsb> =
+                                                        apply 'TTF_File.get_horizontal_metrics'/2(Tf, Glyph_indexOut_10)
+                                                    in                                                      let <W> =
+                                                        call 'erlang':'-'(X_max, X_min)
+                                                    in                                                      let <Rsb> =
+                                                        call 'erlang':'-'(Aw, call 'erlang':'+'(Lsb, W))
+                                                    in                                                      let <W1> =
+                                                        call 'erlang':'+'(call 'erlang':'+'(W, Lsb), Rsb)
+                                                    in  Glyph_indexOut_10
+                                        in  let <_9> =
+                                            call 'lists':'seq'(Min_code, call 'erlang':'-'(Max_code_1, 1))
+                                        in  call 'lists':'foldl'(_8, Glyph_index, _9)
+                                    in  Widths
+    'TTF_File.read_glyph'/2 =
+        fun (Tf, Index) ->
+            let <Index_int> =
+                Index
+            in  case call 'lists':'member'(Index_int, call 'erlang':'map_get'('glyph_cache', Tf)) of
+                    <'true'> when 'true' -> call 'erlang':'map_get'(Index_int, call 'erlang':'map_get'('glyph_cache', Tf))
+                    <'false'> when 'true' -> 
+                        let <Offset> =
+                            apply 'TTF_File.get_glyph_offset'/2(Tf, Index)
+                        in  case call 'erlang':'or'(call 'erlang':'=:='(Offset, 0), call 'erlang':'>='(Offset, call 'erlang':'+'(call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))), call 'erlang':'map_get'('length', call 'erlang':'map_get'(#{#<103>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))))) of
+                                <'true'> when 'true' -> ~{{'vbeam','type'}=>'Glyph'}~
+                                <'false'> when 'true' -> 
+                                    do  Offset
+                                        let <Tmp_glyph> =
+                                            ~{{'vbeam','type'}=>'Glyph'}~
+                                        in  do  apply 'TTF_File.get_i16'/1(Tf)
+                                                do  apply 'TTF_File.get_fword'/1(Tf)
+                                                    do  apply 'TTF_File.get_fword'/1(Tf)
+                                                        do  apply 'TTF_File.get_fword'/1(Tf)
+                                                            do  apply 'TTF_File.get_fword'/1(Tf)
+                                                                do  case call 'erlang':'=:='(call 'erlang':'map_get'('number_of_contours', Tmp_glyph), -1) of <'true'> when 'true' -> apply 'TTF_File.read_compound_glyph'/2(Tf, Tmp_glyph) <'false'> when 'true' -> apply 'TTF_File.read_simple_glyph'/2(Tf, Tmp_glyph) end
+                                                                    do  Tmp_glyph
+                                                                        Tmp_glyph
+                            end
+                end
+    'TTF_File.read_simple_glyph'/2 =
+        fun (Tf, In_glyph) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('number_of_contours', In_glyph), 0) of
+                <'true'> when 'true' -> 'ok'
+                <'false'> when 'true' -> 
+                    do  let <_1> =
+                        fun (_) ->
+                            call 'erlang':'bsl'(call 'erlang':'map_get'('contour_ends', In_glyph), apply 'TTF_File.get_u16'/1(Tf))
+                    in  let <_2> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'map_get'('number_of_contours', In_glyph), 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        do  call 'erlang':'+'(apply 'TTF_File.get_u16'/1(Tf), call 'erlang':'map_get'('pos', Tf))
+                            let <Num_points> =
+                                0
+                            in  let <Num_points_3> =
+                                    let <_4> =
+                                        fun (Ce, Num_pointsAcc) ->
+                                            let <Num_pointsOut_6> =
+                                                case call 'erlang':'>'(Ce, Num_pointsAcc) of <'true'> when 'true' -> Ce <'false'> when 'true' -> Num_pointsAcc end
+                                            in  Num_pointsOut_6
+                                    in  call 'lists':'foldl'(_4, Num_points, call 'erlang':'map_get'('contour_ends', In_glyph))
+                                in  do  Num_points_3
+                                        let <I> =
+                                            0
+                                        in  let <Flags> =
+                                                []
+                                            in  let <Value> =
+                                                    0
+                                                in  let <Value_7> =
+                                                        let <_8> =
+                                                            fun (I_x, ValueAcc) ->
+                                                                let <Flag_x> =
+                                                                    call 'lists':'nth'(call 'erlang':'+'(I_x, 1), Flags)
+                                                                in                                                                  let <ValueOut_10> =
+                                                                    case call 'erlang':'>'(call 'erlang':'band'(Flag_x, 2), 0) of <'true'> when 'true' -> do  case call 'erlang':'>'(call 'erlang':'band'(Flag_x, 16), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end ValueAcc <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'band'(call 'erlang':'bnot'(Flag_x), 16), 0) of <'true'> when 'true' -> apply 'TTF_File.get_i16'/1(Tf) <'false'> when 'true' -> ValueAcc end end
+                                                                in  ValueOut_10
+                                                        in  let <_9> =
+                                                            call 'lists':'seq'(0, call 'erlang':'-'(Num_points_3, 1))
+                                                        in  call 'lists':'foldl'(_8, Value, _9)
+                                                    in  let <Value_11> =
+                                                            0
+                                                        in  let <Value_12> =
+                                                                let <_13> =
+                                                                    fun (I_y, ValueAcc) ->
+                                                                        let <Flag_y> =
+                                                                            call 'lists':'nth'(call 'erlang':'+'(I_y, 1), Flags)
+                                                                        in                                                                          let <ValueOut_15> =
+                                                                            case call 'erlang':'>'(call 'erlang':'band'(Flag_y, 4), 0) of <'true'> when 'true' -> do  case call 'erlang':'>'(call 'erlang':'band'(Flag_y, 32), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end ValueAcc <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'band'(call 'erlang':'bnot'(Flag_y), 32), 0) of <'true'> when 'true' -> apply 'TTF_File.get_i16'/1(Tf) <'false'> when 'true' -> ValueAcc end end
+                                                                        in  ValueOut_15
+                                                                in  let <_14> =
+                                                                    call 'lists':'seq'(0, call 'erlang':'-'(Num_points_3, 1))
+                                                                in  call 'lists':'foldl'(_13, Value_11, _14)
+                                                            in  'ok'
+            end
+    'TTF_File.read_compound_glyph'/2 =
+        fun (Tf, In_glyph) ->
+            do  2
+                let <Component> =
+                    ~{{'vbeam','type'}=>'Component'}~
+                in  let <Flags> =
+                        32
+                    in  do  call 'erlang':'length'(call 'erlang':'map_get'('contour_ends', In_glyph))
+                            do  case call 'erlang':'>'(call 'erlang':'band'(Flags, 256), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                'ok'
+    'TTF_File.get_u8'/1 =
+        fun (Tf) ->
+            let <X> =
+                call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 1), call 'erlang':'map_get'('buf', Tf))
+            in  do  call 'erlang':'map_get'('pos', Tf)
+                    X
+    'TTF_File.get_i8'/1 =
+        fun (Tf) ->
+            apply 'TTF_File.get_u8'/1(Tf)
+    'TTF_File.get_u16'/1 =
+        fun (Tf) ->
+            let <X> =
+                call 'erlang':'bor'(call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 1), call 'erlang':'map_get'('buf', Tf)), 8), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 1), 1), call 'erlang':'map_get'('buf', Tf)))
+            in  do  2
+                    X
+    'TTF_File.get_ufword'/1 =
+        fun (Tf) ->
+            apply 'TTF_File.get_u16'/1(Tf)
+    'TTF_File.get_i16'/1 =
+        fun (Tf) ->
+            let <Res> =
+                apply 'TTF_File.get_u16'/1(Tf)
+            in  let <Res_1> =
+                    case call 'erlang':'>'(call 'erlang':'band'(Res, 16#8000), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(1, 16) <'false'> when 'true' -> Res end
+                in  Res_1
+    'TTF_File.get_fword'/1 =
+        fun (Tf) ->
+            apply 'TTF_File.get_i16'/1(Tf)
+    'TTF_File.get_u32'/1 =
+        fun (Tf) ->
+            let <X> =
+                call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 1), call 'erlang':'map_get'('buf', Tf)), 24), call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 1), 1), call 'erlang':'map_get'('buf', Tf)), 16)), call 'erlang':'bsl'(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 2), 1), call 'erlang':'map_get'('buf', Tf)), 8)), call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('pos', Tf), 3), 1), call 'erlang':'map_get'('buf', Tf)))
+            in  do  4
+                    X
+    'TTF_File.get_i32'/1 =
+        fun (Tf) ->
+            let <Res> =
+                apply 'TTF_File.get_u32'/1(Tf)
+            in  let <Res_1> =
+                    case call 'erlang':'>'(call 'erlang':'band'(Res, 16#80000000), 0) of <'true'> when 'true' -> call 'erlang':'bsl'(1, 32) <'false'> when 'true' -> Res end
+                in  Res_1
+    'TTF_File.get_2dot14'/1 =
+        fun (Tf) ->
+            call 'erlang':'/'(call 'erlang':'float'(apply 'TTF_File.get_i16'/1(Tf)), call 'erlang':'float'(call 'erlang':'bsl'(1, 14)))
+    'TTF_File.get_fixed'/1 =
+        fun (Tf) ->
+            call 'erlang':'/'(apply 'TTF_File.get_i32'/1(Tf), call 'erlang':'bsl'(1, 16))
+    'TTF_File.get_string'/2 =
+        fun (Tf, Length) ->
+            let <Tmp_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  do  Length
+                    apply 'tos'/2(call 'erlang':'+'(call 'erlang':'map_get'('data', call 'erlang':'map_get'('buf', Tf)), Tmp_pos), Length)
+    'TTF_File.get_unicode_string'/2 =
+        fun (Tf, Length) ->
+            let <Tmp_txt> =
+                call 'v.strings':'new_builder'(Length)
+            in  let <Real_len> =
+                    0
+                in  let <Real_len_1> =
+                        let <_2> =
+                            fun (_, Real_lenAcc) ->
+                                let <C> =
+                                    apply 'TTF_File.get_u16'/1(Tf)
+                                in                                  let <C_len> =
+                                    call 'erlang':'+'(call 'erlang':'band'(call 'erlang':'bsr'(16#e5000000, call 'erlang':'band'(call 'erlang':'bsr'(C, 3), 16#1e)), 3), 1)
+                                in                                  let <Real_lenOut_4> =
+                                    C_len
+                                in                                  do  case call 'erlang':'=:='(C_len, 1) of <'true'> when 'true' -> apply 'Builder.write_u8'/2(Tmp_txt, call 'erlang':'band'(C, 16#ff)) <'false'> when 'true' -> 
+                                    do  apply 'Builder.write_u8'/2(Tmp_txt, call 'erlang':'band'(call 'erlang':'bsr'(C, 8), 16#ff))
+                                        apply 'Builder.write_u8'/2(Tmp_txt, call 'erlang':'band'(C, 16#ff))
+                                 end
+Real_lenOut_4
+                        in  let <_3> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'bsr'(Length, 1), 1))
+                        in  call 'lists':'foldl'(_2, Real_len, _3)
+                    in  do  Real_len_1
+                            let <Res_txt> =
+                                apply 'Builder.str'/1(Tmp_txt)
+                            in  Res_txt
+    'TTF_File.get_date'/1 =
+        fun (Tf) ->
+            let <Mac_time> =
+                call 'erlang':'+'(call 'erlang':'bsl'(apply 'TTF_File.get_u32'/1(Tf), 32), apply 'TTF_File.get_u32'/1(Tf))
+            in  let <Utc_time> =
+                    call 'erlang':'-'(Mac_time, 2082844800)
+                in  Utc_time
+    'TTF_File.calc_checksum'/3 =
+        fun (Tf, Offset, Length) ->
+            let <Old_index> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  let <Sum> =
+                    0
+                in  let <Nlongs> =
+                        call 'erlang':'bsr'(call 'erlang':'+'(Length, 3), 2)
+                    in  do  Offset
+                            do  Old_index
+                                call 'erlang':'band'(Sum, 16#ffffffff)
+    'TTF_File.read_offset_tables'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                do  0
+                    do  apply 'TTF_File.get_u32'/1(Tf)
+                        let <Num_tables> =
+                            apply 'TTF_File.get_u16'/1(Tf)
+                        in  do  apply 'TTF_File.get_u16'/1(Tf)
+                                do  apply 'TTF_File.get_u16'/1(Tf)
+                                    do  apply 'TTF_File.get_u16'/1(Tf)
+                                        do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('scalar_type', Tf), 16)|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                            do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Num_tables)|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u16.hex'/1(call 'erlang':'map_get'('search_range', Tf))|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                    do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u16.hex'/1(call 'erlang':'map_get'('entry_selector', Tf))|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                        do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u16.hex'/1(call 'erlang':'map_get'('range_shift', Tf))|[#{#<93>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                            let <I> =
+                                                                0
+                                                            in  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+    'TTF_File.read_head_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                do  call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                    do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<79>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('pos', Tf))|[]]]))
+                        do  apply 'TTF_File.get_fixed'/1(Tf)
+                            do  apply 'TTF_File.get_fixed'/1(Tf)
+                                do  apply 'TTF_File.get_u32'/1(Tf)
+                                    do  apply 'TTF_File.get_u32'/1(Tf)
+                                        do  apply 'TTF_File.get_u16'/1(Tf)
+                                            do  apply 'TTF_File.get_u16'/1(Tf)
+                                                do  apply 'TTF_File.get_date'/1(Tf)
+                                                    do  apply 'TTF_File.get_date'/1(Tf)
+                                                        do  apply 'TTF_File.get_i16'/1(Tf)
+                                                            do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                    do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                        do  apply 'TTF_File.get_u16'/1(Tf)
+                                                                            do  apply 'TTF_File.get_u16'/1(Tf)
+                                                                                do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                                    do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                                        'ok'
+    'TTF_File.read_name_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                let <Table_offset> =
+                    call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                in  do  call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                        let <Format> =
+                            apply 'TTF_File.get_u16'/1(Tf)
+                        in  let <Count> =
+                                apply 'TTF_File.get_u16'/1(Tf)
+                            in  let <String_offset> =
+                                    apply 'TTF_File.get_u16'/1(Tf)
+                                in  'ok'
+    'TTF_File.read_cmap_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                let <Table_offset> =
+                    call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<99>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                in  do  Table_offset
+                        let <Version> =
+                            apply 'TTF_File.get_u16'/1(Tf)
+                        in  let <Number_sub_tables> =
+                                apply 'TTF_File.get_u16'/1(Tf)
+                            in  'ok'
+    'TTF_File.read_cmap'/2 =
+        fun (Tf, Offset) ->
+            let <Old_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  do  Offset
+                    let <Format> =
+                        apply 'TTF_File.get_u16'/1(Tf)
+                    in  let <Length> =
+                            apply 'TTF_File.get_u16'/1(Tf)
+                        in  let <Language> =
+                                apply 'TTF_File.get_u16'/1(Tf)
+                            in  do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Format)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Length)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Language)|[]]]]]]]))
+                                    do  case call 'erlang':'=:='(Format, 0) of <'true'> when 'true' -> 
+                                        do  apply 'dprintln'/1(#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                                            let <Cmap> =
+                                                ~{{'vbeam','type'}=>'TrueTypeCmap'}~
+                                            in  do  apply 'TrueTypeCmap.init_0'/2(Cmap, Tf)
+                                                    call 'erlang':'bsl'(call 'erlang':'map_get'('cmaps', Tf), Cmap)
+                                     <'false'> when 'true' -> case call 'erlang':'=:='(Format, 4) of <'true'> when 'true' -> 
+                                        do  apply 'dprintln'/1(#{#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<67>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#)
+                                            let <Cmap_1> =
+                                                ~{{'vbeam','type'}=>'TrueTypeCmap'}~
+                                            in  do  apply 'TrueTypeCmap.init_4'/2(Cmap_1, Tf)
+                                                    call 'erlang':'bsl'(call 'erlang':'map_get'('cmaps', Tf), Cmap_1)
+                                     <'false'> when 'true' -> 'ok' end end
+                                        'ok'
+    'TTF_File.map_code'/2 =
+        fun (Tf, Char_code) ->
+            let <Index> =
+                0
+            in  let <Index_1> =
+                    let <_2> =
+                        fun (I, IndexAcc) ->
+                            let <Cmap> =
+                                call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('cmaps', Tf))
+                            in                              let <IndexOut_4> =
+                                case call 'erlang':'=:='(call 'erlang':'map_get'('format', Cmap), 0) of <'true'> when 'true' -> apply 'TrueTypeCmap.map_0'/2(Cmap, Char_code) <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('format', Cmap), 4) of <'true'> when 'true' -> apply 'TrueTypeCmap.map_4'/3(Cmap, Char_code, Tf) <'false'> when 'true' -> IndexAcc end end
+                            in  IndexOut_4
+                    in  let <_3> =
+                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('cmaps', Tf)), 1))
+                    in  call 'lists':'foldl'(_2, Index, _3)
+                in  Index_1
+    'TrueTypeCmap.init_0'/2 =
+        fun (Tm, Tf) ->
+            do  0
+                'ok'
+    'TrueTypeCmap.map_0'/2 =
+        fun (Tm, Char_code) ->
+            case call 'erlang':'and'(call 'erlang':'>='(Char_code, 0), call 'erlang':'=<'(Char_code, 255)) of
+                <'true'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Char_code, 1), call 'erlang':'map_get'('arr', Tm))
+                <'false'> when 'true' -> 
+                    0
+            end
+    'TrueTypeCmap.init_4'/2 =
+        fun (Tm, Tf) ->
+            do  4
+                let <Seg_count> =
+                    call 'erlang':'bsr'(apply 'TTF_File.get_u16'/1(Tf), 1)
+                in  do  apply 'TTF_File.get_u16'/1(Tf)
+                        do  apply 'TTF_File.get_u16'/1(Tf)
+                            do  apply 'TTF_File.get_u16'/1(Tf)
+                                do  let <_1> =
+                                    fun (_) ->
+                                        call 'erlang':'bsl'(call 'erlang':'map_get'('segments', Tm), ~{'id_range_offset'=>0,'start_code'=>0,'end_code'=>apply 'TTF_File.get_u16'/1(Tf),'id_delta'=>0,{'vbeam','type'}=>'Segment'}~)
+                                in  let <_2> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(Seg_count, 1))
+                                    in  call 'lists':'foreach'(_1, _2)
+                                    do  apply 'TTF_File.get_u16'/1(Tf)
+                                        do  let <_3> =
+                                            fun (I) ->
+                                                'ok'
+                                        in  let <_4> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(Seg_count, 1))
+                                            in  call 'lists':'foreach'(_3, _4)
+                                            do  let <_5> =
+                                                fun (I) ->
+                                                    'ok'
+                                            in  let <_6> =
+                                                    call 'lists':'seq'(0, call 'erlang':'-'(Seg_count, 1))
+                                                in  call 'lists':'foreach'(_5, _6)
+                                                'ok'
+    'TrueTypeCmap.map_4'/3 =
+        fun (Tm, Char_code, Tf) ->
+            let <Old_pos> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  do  case call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Char_code, 1), call 'erlang':'map_get'('cache', Tm)), -1) of <'true'> when 'true' -> 
+                    let <Found> =
+                        'false'
+                    in  let <Found_1> =
+                            let <_2> =
+                                fun (Segment, FoundAcc) ->
+                                    let <FoundOut_4> =
+                                        case call 'erlang':'and'(call 'erlang':'=<'(call 'erlang':'map_get'('start_code', Segment), Char_code), call 'erlang':'>='(call 'erlang':'map_get'('end_code', Segment), Char_code)) of <'true'> when 'true' -> let <Index> = call 'erlang':'band'(call 'erlang':'+'(call 'erlang':'map_get'('id_delta', Segment), Char_code), 16#ffff) in do  case call 'erlang':'>'(call 'erlang':'map_get'('id_range_offset', Segment), 0) of <'true'> when 'true' -> 
+                                            let <Glyph_index_address> =
+                                                call 'erlang':'+'(call 'erlang':'map_get'('id_range_offset', Segment), call 'erlang':'*'(2, call 'erlang':'-'(Char_code, call 'erlang':'map_get'('start_code', Segment))))
+                                            in  do  Glyph_index_address
+                                                    let <Index_5> =
+                                                        apply 'TTF_File.get_u16'/1(Tf)
+                                                    in  Index_5
+                                         <'false'> when 'true' -> 'ok' end 'true' <'false'> when 'true' -> FoundAcc end
+                                    in  FoundOut_4
+                            in  call 'lists':'foldl'(_2, Found, call 'erlang':'map_get'('segments', Tm))
+                        in  case call 'erlang':'not'(Found_1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                 <'false'> when 'true' -> 'ok' end
+                    do  Old_pos
+                        call 'lists':'nth'(call 'erlang':'+'(Char_code, 1), call 'erlang':'map_get'('cache', Tm))
+    'TTF_File.read_hhea_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<72>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                let <Table_offset> =
+                    call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<104>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                in  do  Table_offset
+                        do  apply 'TTF_File.get_fixed'/1(Tf)
+                            do  apply 'TTF_File.get_fword'/1(Tf)
+                                do  apply 'TTF_File.get_fword'/1(Tf)
+                                    do  apply 'TTF_File.get_fword'/1(Tf)
+                                        do  apply 'TTF_File.get_ufword'/1(Tf)
+                                            do  apply 'TTF_File.get_fword'/1(Tf)
+                                                do  apply 'TTF_File.get_fword'/1(Tf)
+                                                    do  apply 'TTF_File.get_fword'/1(Tf)
+                                                        do  apply 'TTF_File.get_i16'/1(Tf)
+                                                            do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                do  apply 'TTF_File.get_fword'/1(Tf)
+                                                                    do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                        do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                            do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                                do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                                    do  apply 'TTF_File.get_i16'/1(Tf)
+                                                                                        'ok'
+    'Kern0Table.reset'/1 =
+        fun (Kt) ->
+            'ok'
+    'Kern0Table.get'/2 =
+        fun (Kt, Glyph_index) ->
+            let <X> =
+                0
+            in  do  case call 'erlang':'>='(call 'erlang':'map_get'('old_index', Kt), 0) of <'true'> when 'true' -> 
+                    let <Ch> =
+                        call 'erlang':'bor'(call 'erlang':'bsl'(call 'erlang':'band'(call 'erlang':'map_get'('old_index', Kt), 16#FFFF), 16), call 'erlang':'band'(Glyph_index, 16#FFFF))
+                    in  case call 'lists':'member'(Ch, call 'erlang':'map_get'('kmap', Kt)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                 <'false'> when 'true' -> 'ok' end
+                    do  Glyph_index
+                        case call 'erlang':'map_get'('swap', Kt) of
+                            <'true'> when 'true' -> 0
+                            <'false'> when 'true' -> 
+                                X
+                        end
+    'TTF_File.create_kern_table0'/3 =
+        fun (Tf, Vertical, Cross) ->
+            let <Offset> =
+                call 'erlang':'map_get'('pos', Tf)
+            in  let <N_pairs> =
+                    apply 'TTF_File.get_u16'/1(Tf)
+                in  let <Search_range> =
+                        apply 'TTF_File.get_u16'/1(Tf)
+                    in  let <Entry_selector> =
+                            apply 'TTF_File.get_u16'/1(Tf)
+                        in  let <Range_shift> =
+                                apply 'TTF_File.get_u16'/1(Tf)
+                            in  do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(N_pairs)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Search_range)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Entry_selector)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Range_shift)|[]]]]]]]]]))
+                                    let <Kt0> =
+                                        ~{'swap'=>call 'erlang':'or'(call 'erlang':'and'(Vertical, call 'erlang':'not'(Cross)), call 'erlang':'and'(call 'erlang':'not'(Vertical), Cross)),'offset'=>Offset,'n_pairs'=>N_pairs,{'vbeam','type'}=>'Kern0Table'}~
+                                    in  do  let <_1> =
+                                            fun (_) ->
+                                                let <Left> =
+                                                    apply 'TTF_File.get_u16'/1(Tf)
+                                                in  let <Right> =
+                                                        apply 'TTF_File.get_u16'/1(Tf)
+                                                    in  let <Value> =
+                                                            apply 'TTF_File.get_fword'/1(Tf)
+                                                        in  let <Tmp_index> =
+                                                                call 'erlang':'bor'(call 'erlang':'bsl'(Left, 16), Right)
+                                                            in  'ok'
+                                        in  let <_2> =
+                                                call 'lists':'seq'(0, call 'erlang':'-'(N_pairs, 1))
+                                            in  call 'lists':'foreach'(_1, _2)
+                                            do  -1
+                                                Kt0
+    'TTF_File.read_kern_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                case call 'erlang':'not'(call 'lists':'member'(#{#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <Table_offset> =
+                            call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                        in  do  Table_offset
+                                let <Version> =
+                                    apply 'TTF_File.get_u16'/1(Tf)
+                                in  let <N_tables> =
+                                        apply 'TTF_File.get_u16'/1(Tf)
+                                    in  do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<75>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Version)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(N_tables)|[]]]]]))
+                                            'ok'
+                end
+    'TTF_File.reset_kern'/1 =
+        fun (Tf) ->
+            'ok'
+    'TTF_File.next_kern'/2 =
+        fun (Tf, Glyph_index) ->
+            let <X> =
+                0
+            in  let <Y> =
+                    0
+                in  let <X_1> =
+                        let <_2> =
+                            fun (I, _6) ->
+                                let <XAcc> =
+                                    call 'erlang':'element'(1, _6)
+                                in                                  let <YAcc> =
+                                    call 'erlang':'element'(2, _6)
+                                in  
+                                let <Tmp_x> =
+                                    apply 'Kern0Table.get'/2(call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('kern', Tf)), Glyph_index)
+                                in                                  let <Tmp_y> =
+                                    apply 'Kern0Table.get'/2(call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('kern', Tf)), Glyph_index)
+                                in                                  let <XOut_4> =
+                                    call 'erlang':'+'(XAcc, Tmp_x)
+                                in                                  let <YOut_5> =
+                                    call 'erlang':'+'(YAcc, Tmp_y)
+                                in  {XOut_4, YOut_5}
+                        in  let <_3> =
+                            call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('kern', Tf)), 1))
+                        in  call 'lists':'foldl'(_2, {X, Y}, _3)
+                    in  X_1
+    'TTF_File.read_panose_table'/1 =
+        fun (Tf) ->
+            do  apply 'dprintln'/1(#{#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<68>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<79>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']]),#<42>(8,1,'integer',['unsigned'|['big']])}#)
+                case call 'erlang':'not'(call 'lists':'member'(#{#<79>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf))) of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        let <Table_offset> =
+                            call 'erlang':'map_get'('offset', call 'erlang':'map_get'(#{#<79>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('tables', Tf)))
+                        in  do  Table_offset
+                                let <Version> =
+                                    apply 'TTF_File.get_u16'/1(Tf)
+                                in  do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<80>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Version)|[]]]))
+                                        do  call 'erlang':'*'(2, 14)
+                                            let <Count> =
+                                                0
+                                            in  let <Family_class> =
+                                                    apply 'TTF_File.get_i16'/1(Tf)
+                                                in  do  call 'erlang':'bsr'(Family_class, 8)
+                                                        do  Count
+                                                            do  call 'erlang':'band'(Family_class, 16#FF)
+                                                                do  Count
+                                                                    do  apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Family_class)|[]]]))
+                                                                        'ok'
+                end
+    'TTF_File.get_info_string'/1 =
+        fun (Tf) ->
+            let <Txt> =
+                call 'erlang':'iolist_to_binary'([#{#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<70>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<10>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('font_family', Tf)|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('font_sub_family', Tf)|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('full_name', Tf)|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'map_get'('postscript_name', Tf)|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('version', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('font_revision', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('magic_number', Tf), 16)|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[apply 'u16.hex'/1(call 'erlang':'map_get'('flags', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('created', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('modified', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('x_min', Tf))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('y_min', Tf))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('x_max', Tf))|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(call 'erlang':'map_get'('y_max', Tf))|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<10>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('mac_style', Tf))|[#{#<10>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<10>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+            in  Txt
+    'tst'/0 =
+        fun () ->
+            let <Tf> =
+                ~{{'vbeam','type'}=>'TTF_File'}~
+            in  do  [16#FF|[16#F1|[16#F2|[16#81|[16#23|[16#45|[16#67|[16#12|[16#34|[16#12|[16#34|[16#12|[16#34|[16#12|[16#34|[]]]]]]]]]]]]]]]]
+                    apply 'dprintln'/1(call 'erlang':'iolist_to_binary'([#{#<98>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(call 'erlang':'map_get'('buf', Tf)))|[]]]))
+    'Text_align__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'Style__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.x.ttf')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.x.ttf', _0)
+    end

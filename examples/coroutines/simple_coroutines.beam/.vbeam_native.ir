@@ -1,0 +1,137 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"foo">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {label, <<"loop_0">>},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 1}, 1},
+                {mul, {vreg, 2}, {vreg, 1}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>}
+            ]
+        },
+        #{
+            name => <<"foo2">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 9,
+            body => [
+                {mov_imm, {vreg, 1}, 0},
+                {label, <<"loop_0">>},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 2}, 2},
+                {mul, {vreg, 3}, {vreg, 2}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 3}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {add, {vreg, 1}, {vreg, 1}, {imm, 1}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"get">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {print_int, {vreg, 5}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"create">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"write_string">>}},
+                {mov, {vreg, 7}, {preg, x0}},
+                {call, {sym, <<"close">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>}
+            ]
+        },
+        #{
+            name => <<"foo3">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {label, <<"loop_0">>},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 1}, 3},
+                {mul, {vreg, 2}, {vreg, 1}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>}
+            ]
+        },
+        #{
+            name => <<"foo4">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {label, <<"loop_0">>},
+                {print_int, {vreg, 0}},
+                {mov_imm, {vreg, 1}, 3},
+                {mul, {vreg, 2}, {vreg, 1}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {jmp, <<"loop_0">>},
+                {label, <<"loop_end_1">>}
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 3,
+            body => [
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 19},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {label, <<"if_end_0">>},
+                {label, <<"loop_2">>},
+                {lea, {preg, x1}, {data_ref, <<"str_1">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 16},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov_imm, {vreg, 0}, 1},
+                {mul, {vreg, 1}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"sleep">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {jmp, <<"loop_2">>},
+                {label, <<"loop_end_3">>},
+                {lea, {preg, x1}, {data_ref, <<"str_2">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 5},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"IS COROUTINE=false\n">>},
+        {<<"str_1">>, 1, <<"hello from MAIN\n">>},
+        {<<"str_2">>, 1, <<"done\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

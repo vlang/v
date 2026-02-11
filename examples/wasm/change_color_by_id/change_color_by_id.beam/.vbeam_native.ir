@@ -1,0 +1,83 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"change_color_by_id">>,
+            arity => 4,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}],
+            locals => 4,
+            body => [
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 4,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 22},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"change_color_by_id">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"change_color_by_id">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"change_color_by_id">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"change_color_by_id">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"click_callback">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 0,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_1">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 13},
+                {mov_imm, {preg, x16}, 4},
+                syscall
+            ]
+        },
+        #{
+            name => <<"change_color_by_id">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {call, {sym, <<"change_color_by_id">>}},
+                {mov, {vreg, 2}, {preg, x0}}
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"starting main.main...\n">>},
+        {<<"str_1">>, 1, <<"Hello from V\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

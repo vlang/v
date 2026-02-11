@@ -1,0 +1,34 @@
+module 'v.main' ['gcd'/2,
+                'powi'/2,
+                ''/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'gcd'/2 =
+    fun (A_, B_) ->
+        let <A_1> =
+            case call 'erlang':'<'(A_, 0) of <'true'> when 'true' -> call 'erlang':'-'(A_) <'false'> when 'true' -> A_ end
+        in  let <B_2> =
+                case call 'erlang':'<'(B_, 0) of <'true'> when 'true' -> call 'erlang':'-'(B_) <'false'> when 'true' -> B_ end
+            in  A_1
+'powi'/2 =
+    fun (A, B) ->
+        let <V> =
+            1
+        in  case call 'erlang':'<'(B, 0) of
+                <'true'> when 'true' -> case call 'erlang':'=/='(call 'erlang':'*'(A, A), 1) of <'true'> when 'true' -> 0 <'false'> when 'true' -> case call 'erlang':'>'(call 'erlang':'band'(B, 1), 0) of <'true'> when 'true' -> A <'false'> when 'true' -> 1 end end
+                <'false'> when 'true' -> 
+                    V
+            end
+''/0 =
+    fun () ->
+        'ok'
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

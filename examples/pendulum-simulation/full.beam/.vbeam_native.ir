@@ -1,0 +1,39 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 6,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"image_settings_from_grid">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"ppm_writer_for_fname">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_app">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"start">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {add, {vreg, 4}, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

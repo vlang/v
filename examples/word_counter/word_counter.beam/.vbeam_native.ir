@@ -1,0 +1,86 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 4,
+            body => [
+                {cmp, {vreg, 0}, {imm, 2}},
+                {jcc, eq, <<"elif_1">>},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 32},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {print_int, {vreg, 0}},
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"trim_space">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"read_file">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"keys">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"sort">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"extract_words">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"filter_word">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 2,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"or_ok_1">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, ne, <<"if_end_0">>},
+                {label, <<"or_ok_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret,
+                {label, <<"if_end_0">>},
+                {mov_imm, {vreg, 1}, 0},
+                {label, <<"loop_2">>},
+                {cmp, {vreg, 1}, {vreg, 0}},
+                {jcc, ge, <<"loop_end_3">>},
+                {add, {vreg, 1}, {vreg, 1}, {imm, 1}},
+                {jmp, <<"loop_2">>},
+                {label, <<"loop_end_3">>},
+                {label, <<"loop_4">>},
+                {cmp, {vreg, 1}, {vreg, 0}},
+                {jcc, ge, <<"loop_end_5">>},
+                {add, {vreg, 1}, {vreg, 1}, {imm, 1}},
+                {jmp, <<"loop_4">>},
+                {label, <<"loop_end_5">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"usage: word_counter [text_file]\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

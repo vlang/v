@@ -1,0 +1,579 @@
+module 'v.strconv' ['byte_to_lower'/1,
+                'common_parse_uint'/5,
+                'common_parse_uint2'/3,
+                'parse_uint'/3,
+                'common_parse_int'/5,
+                'parse_int'/3,
+                'atoi_common_check'/1,
+                'atoi_common'/3,
+                'atoi'/1,
+                'atoi8'/1,
+                'atoi16'/1,
+                'atoi32'/1,
+                'atoi64'/1,
+                'safe_add_64bits'/2,
+                'safe_mul10_64bits'/1,
+                'atou_common_check'/1,
+                'atou_common'/2,
+                'atou8'/1,
+                'atou16'/1,
+                'atou'/1,
+                'atou32'/1,
+                'atou64'/1,
+                'format_str'/2,
+                'atof64'/2,
+                'atof_quick'/1,
+                'format_int'/2,
+                'format_uint'/2,
+                'ftoa_64'/1,
+                'ftoa_long_64'/1,
+                'ftoa_32'/1,
+                'ftoa_long_32'/1,
+                'f64_to_str'/2,
+                'f64_to_str_pad'/2,
+                'f32_to_str'/2,
+                'f32_to_str_pad'/2,
+                'f64_to_str_l'/1,
+                'f64_to_str_l_with_dot'/1,
+                'f32_to_str_l'/1,
+                'f32_to_str_l_with_dot'/1,
+                'fxx_to_str_l_parse'/1,
+                'fxx_to_str_l_parse_with_dot'/1,
+                'f64_to_str_lnd1'/2,
+                'remove_tail_zeros'/1,
+                'v_printf'/2,
+                'v_sprintf'/2,
+                'assert1'/2,
+                'bool_to_int'/1,
+                'bool_to_u32'/1,
+                'bool_to_u64'/1,
+                'get_string_special'/3,
+                'mul_shift_32'/3,
+                'mul_pow5_invdiv_pow2'/3,
+                'mul_pow5_div_pow2'/3,
+                'pow5_factor_32'/1,
+                'multiple_of_power_of_five_32'/2,
+                'multiple_of_power_of_two_32'/2,
+                'log10_pow2'/1,
+                'log10_pow5'/1,
+                'pow5_bits'/1,
+                'shift_right_128'/2,
+                'mul_shift_64'/3,
+                'pow5_factor_64'/1,
+                'multiple_of_power_of_five_64'/2,
+                'multiple_of_power_of_two_64'/2,
+                'dec_digits'/1,
+                'Align_text__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'byte_to_lower'/1 =
+    fun (C) ->
+        call 'erlang':'bor'(C, 32)
+'common_parse_uint'/5 =
+    fun (S, _base, _bit_size, Error_on_non_digit, Error_on_high_digit) ->
+        let <Result> =
+            apply 'common_parse_uint2'/3(S, _base, _bit_size)
+        in  let <Err> =
+                apply 'common_parse_uint2'/3(S, _base, _bit_size)
+            in  do  case call 'erlang':'and'(call 'erlang':'=/='(Err, 0), call 'erlang':'or'(Error_on_non_digit, Error_on_high_digit)) of <'true'> when 'true' -> case Err of <-1> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(_base)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]]]])) <-2> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<122>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(_bit_size)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]]]])) <-3> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]])) <_> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]])) end <'false'> when 'true' -> 'ok' end
+                    Result
+'common_parse_uint2'/3 =
+    fun (S, _base, _bit_size) ->
+        case call 'erlang':'=:='(S, #{  }#) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                let <Start_index> =
+                    0
+                in  let <Base_1> =
+                        case call 'erlang':'=:='(_base, 0) of <'true'> when 'true' -> 10 <'false'> when 'true' -> _base end
+                    in  let <Bit_size_2> =
+                            case call 'erlang':'=:='(_bit_size, 0) of <'true'> when 'true' -> 32 <'false'> when 'true' -> case call 'erlang':'or'(call 'erlang':'<'(_bit_size, 0), call 'erlang':'>'(_bit_size, 64)) of <'true'> when 'true' -> _bit_size <'false'> when 'true' -> _bit_size end end
+                        in  let <Cutoff> =
+                                call 'erlang':'+'(call 'erlang':'div'(18446744073709551615, Base_1), 1)
+                            in  let <Max_val> =
+                                    case call 'erlang':'=:='(Bit_size_2, 64) of <'true'> when 'true' -> 18446744073709551615 <'false'> when 'true' -> call 'erlang':'-'(call 'erlang':'bsl'(1, Bit_size_2), 1) end
+                                in  let <Basem1> =
+                                        call 'erlang':'-'(Base_1, 1)
+                                    in  let <N> =
+                                            0
+                                        in  let <N_3> =
+                                                let <_4> =
+                                                    fun (I, NAcc) ->
+                                                        let <C> =
+                                                            call 'lists':'nth'(call 'erlang':'+'(I, 1), S)
+                                                        in                                                          do  case call 'erlang':'=:='(C, 95) of <'true'> when 'true' -> 
+                                                            case call 'erlang':'or'(call 'erlang':'=:='(I, Start_index), call 'erlang':'>='(I, call 'erlang':'-'(call 'erlang':'length'(S), 1))) of
+                                                                <'true'> when 'true' -> 0
+                                                                <'false'> when 'true' -> 
+                                                                    case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(I, 1), 1), S), 95), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'+'(I, 1), 1), S), 95)) of
+                                                                        <'true'> when 'true' -> 0
+                                                                        <'false'> when 'true' -> 
+                                                                            'ok'
+                                                                    end
+                                                            end
+                                                         <'false'> when 'true' -> 'ok' end
+                                                            let <Sub_count> =
+                                                                0
+                                                            in                                                              let <C_7> =
+                                                                48
+                                                            in                                                              do  case call 'erlang':'>='(C_7, 17) of <'true'> when 'true' -> 
+                                                                do  Sub_count
+                                                                    let <C_8> =
+                                                                        7
+                                                                    in  case call 'erlang':'>='(C_8, 42) of <'true'> when 'true' -> 
+                                                                            do  Sub_count
+                                                                                let <C_9> =
+                                                                                    32
+                                                                                in  C_9
+                                                                         <'false'> when 'true' -> 'ok' end
+                                                             <'false'> when 'true' -> 'ok' end
+                                                                do  case call 'erlang':'or'(call 'erlang':'>'(C_9, Basem1), call 'erlang':'and'(call 'erlang':'=:='(Sub_count, 0), call 'erlang':'>'(C_9, 9))) of <'true'> when 'true' -> NAcc <'false'> when 'true' -> 'ok' end
+                                                                    do  case call 'erlang':'>='(NAcc, Cutoff) of <'true'> when 'true' -> Max_val <'false'> when 'true' -> 'ok' end
+                                                                        let <NOut_6> =
+                                                                            Base_1
+                                                                        in                                                                          let <N1> =
+                                                                            call 'erlang':'+'(NOut_6, C_9)
+                                                                        in                                                                          do  case call 'erlang':'or'(call 'erlang':'<'(N1, NOut_6), call 'erlang':'>'(N1, Max_val)) of <'true'> when 'true' -> Max_val <'false'> when 'true' -> 'ok' end
+                                                                            let <NOut_6> =
+                                                                                N1
+                                                                            in  NOut_6
+                                                in  let <_5> =
+                                                    call 'lists':'seq'(Start_index, call 'erlang':'-'(call 'erlang':'length'(S), 1))
+                                                in  call 'lists':'foldl'(_4, N, _5)
+                                            in  N_3
+        end
+'parse_uint'/3 =
+    fun (S, _base, _bit_size) ->
+        apply 'common_parse_uint'/5(S, _base, _bit_size, 'true', 'true')
+'common_parse_int'/5 =
+    fun (_s, Base, _bit_size, Error_on_non_digit, Error_on_high_digit) ->
+        case call 'erlang':'=:='(_s, #{  }#) of
+            <'true'> when 'true' -> 0
+            <'false'> when 'true' -> 
+                let <Bit_size_1> =
+                    case call 'erlang':'=:='(_bit_size, 0) of <'true'> when 'true' -> 32 <'false'> when 'true' -> _bit_size end
+                in  let <Neg> =
+                        'false'
+                    in  let <Neg_2> =
+                            case call 'erlang':'=:='(call 'lists':'nth'(1, _s), 43) of <'true'> when 'true' -> Neg <'false'> when 'true' -> case call 'erlang':'=:='(call 'lists':'nth'(1, _s), 45) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> Neg end end
+                        in  let <Un> =
+                                try apply 'common_parse_uint'/5(_s, Base, Bit_size_1, Error_on_non_digit, Error_on_high_digit) of <_cor3> when 'true' -> _cor3 catch <_cor_c3,_cor_r3,_cor_s3> when 'true' -> 'ok'
+                            in  case call 'erlang':'=:='(Un, 0) of
+                                    <'true'> when 'true' -> 0
+                                    <'false'> when 'true' -> 
+                                        let <Cutoff> =
+                                            call 'erlang':'bsl'(1, call 'erlang':'-'(Bit_size_1, 1))
+                                        in  case call 'erlang':'and'(call 'erlang':'not'(Neg_2), call 'erlang':'>='(Un, Cutoff)) of
+                                                <'true'> when 'true' -> call 'erlang':'-'(Cutoff, 1)
+                                                <'false'> when 'true' -> 
+                                                    case call 'erlang':'and'(Neg_2, call 'erlang':'>'(Un, Cutoff)) of
+                                                        <'true'> when 'true' -> call 'erlang':'-'(Cutoff)
+                                                        <'false'> when 'true' -> 
+                                                            case Neg_2 of <'true'> when 'true' -> call 'erlang':'-'(Un) <'false'> when 'true' -> Un end
+                                                    end
+                                            end
+                                end
+        end
+'parse_int'/3 =
+    fun (_s, Base, _bit_size) ->
+        apply 'common_parse_int'/5(_s, Base, _bit_size, 'true', 'true')
+'atoi_common_check'/1 =
+    fun (S) ->
+        case call 'erlang':'=:='(S, #{  }#) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Start_idx> =
+                    0
+                in  let <Sign> =
+                        1
+                    in  do  case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(1, S), 45), call 'erlang':'=:='(call 'lists':'nth'(1, S), 43)) of <'true'> when 'true' -> 
+                            do  Start_idx
+                                case call 'erlang':'=:='(call 'lists':'nth'(1, S), 45) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                         <'false'> when 'true' -> 'ok' end
+                            case call 'erlang':'<'(call 'erlang':'-'(call 'erlang':'length'(S), Start_idx), 1) of
+                                <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                <'false'> when 'true' -> 
+                                    case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Start_idx, 1), S), 95), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(S), 1), 1), S), 95)) of
+                                        <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                        <'false'> when 'true' -> 
+                                            Sign
+                                    end
+                            end
+        end
+'atoi_common'/3 =
+    fun (S, Type_min, Type_max) ->
+        let <Sign> =
+            try apply 'atoi_common_check'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  let <Start_idx> =
+                try apply 'atoi_common_check'/1(S) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+            in  let <X> =
+                    0
+                in  let <Underscored> =
+                        'false'
+                    in  let <Underscored_3> =
+                            let <_4> =
+                                fun (I, _8) ->
+                                    let <UnderscoredAcc> =
+                                        call 'erlang':'element'(1, _8)
+                                    in                                      let <XAcc> =
+                                        call 'erlang':'element'(2, _8)
+                                    in  
+                                    let <C> =
+                                        call 'erlang':'-'(call 'lists':'nth'(call 'erlang':'+'(I, 1), S), 48)
+                                    in                                      let <_9> =
+                                        case call 'erlang':'=:='(C, 47) of <'true'> when 'true' -> do  case call 'erlang':'=:='(UnderscoredAcc, 'true') of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'true', XAcc} <'false'> when 'true' -> do  case call 'erlang':'>'(C, 9) of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'false', call 'erlang':'+'(call 'erlang':'*'(XAcc, 10), call 'erlang':'*'(C, Sign))} end
+                                    in                                      let <UnderscoredOut_6> =
+                                        call 'erlang':'element'(1, _9)
+                                    in                                      let <XOut_7> =
+                                        call 'erlang':'element'(2, _9)
+                                    in  {UnderscoredOut_6, XOut_7}
+                            in  let <_5> =
+                                call 'lists':'seq'(Start_idx, call 'erlang':'-'(call 'erlang':'length'(S), 1))
+                            in  call 'lists':'foldl'(_4, {Underscored, X}, _5)
+                        in  X
+'atoi'/1 =
+    fun (S) ->
+        try apply 'atoi_common'/3(S, call 'erlang':'-'(-2147483647, 1), call 'erlang':'+'(2147483646, 1)) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atoi8'/1 =
+    fun (S) ->
+        try apply 'atoi_common'/3(S, -128, 127) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atoi16'/1 =
+    fun (S) ->
+        try apply 'atoi_common'/3(S, -32768, 32767) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atoi32'/1 =
+    fun (S) ->
+        try apply 'atoi_common'/3(S, -2147483648, 2147483647) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atoi64'/1 =
+    fun (S) ->
+        let <Sign> =
+            try apply 'atoi_common_check'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  let <Start_idx> =
+                try apply 'atoi_common_check'/1(S) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+            in  let <X> =
+                    0
+                in  let <Underscored> =
+                        'false'
+                    in  let <Underscored_3> =
+                            let <_4> =
+                                fun (I, _8) ->
+                                    let <UnderscoredAcc> =
+                                        call 'erlang':'element'(1, _8)
+                                    in                                      let <XAcc> =
+                                        call 'erlang':'element'(2, _8)
+                                    in  
+                                    let <C> =
+                                        call 'erlang':'-'(call 'lists':'nth'(call 'erlang':'+'(I, 1), S), 48)
+                                    in                                      let <_9> =
+                                        case call 'erlang':'=:='(C, 47) of <'true'> when 'true' -> do  case call 'erlang':'=:='(UnderscoredAcc, 'true') of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'true', XAcc} <'false'> when 'true' -> do  case call 'erlang':'>'(C, 9) of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'false', try apply 'safe_add_64bits'/2(XAcc, call 'erlang':'*'(C, Sign)) of <_cor10> when 'true' -> _cor10 catch <_cor_c10,_cor_r10,_cor_s10> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Err|[]]]]]))} end
+                                    in                                      let <UnderscoredOut_6> =
+                                        call 'erlang':'element'(1, _9)
+                                    in                                      let <XOut_7> =
+                                        call 'erlang':'element'(2, _9)
+                                    in  {UnderscoredOut_6, XOut_7}
+                            in  let <_5> =
+                                call 'lists':'seq'(Start_idx, call 'erlang':'-'(call 'erlang':'length'(S), 1))
+                            in  call 'lists':'foldl'(_4, {Underscored, X}, _5)
+                        in  X
+'safe_add_64bits'/2 =
+    fun (A, B) ->
+        do  case call 'erlang':'and'(call 'erlang':'>'(A, 0), call 'erlang':'>'(B, call 'erlang':'-'(9223372036854775807, A))) of <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> case call 'erlang':'and'(call 'erlang':'<'(A, 0), call 'erlang':'<'(B, call 'erlang':'-'(call 'erlang':'-'(-9223372036854775807, 1), A))) of <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}#) <'false'> when 'true' -> 'ok' end end
+            call 'erlang':'+'(A, B)
+'safe_mul10_64bits'/1 =
+    fun (A) ->
+        case call 'erlang':'and'(call 'erlang':'>'(A, 0), call 'erlang':'>'(A, call 'erlang':'div'(9223372036854775807, 10))) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                case call 'erlang':'and'(call 'erlang':'<'(A, 0), call 'erlang':'<'(A, call 'erlang':'div'(call 'erlang':'-'(-9223372036854775807, 1), 10))) of
+                    <'true'> when 'true' -> call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']])}#)
+                    <'false'> when 'true' -> 
+                        call 'erlang':'*'(A, 10)
+                end
+        end
+'atou_common_check'/1 =
+    fun (S) ->
+        case call 'erlang':'=:='(S, #{  }#) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                let <Start_idx> =
+                    0
+                in  case call 'erlang':'=:='(call 'lists':'nth'(1, S), 45) of
+                        <'true'> when 'true' -> call 'erlang':'error'(#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<123>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<125>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                        <'false'> when 'true' -> 
+                            do  case call 'erlang':'=:='(call 'lists':'nth'(1, S), 43) of <'true'> when 'true' -> Start_idx <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'<'(call 'erlang':'-'(call 'erlang':'length'(S), Start_idx), 1) of
+                                    <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                    <'false'> when 'true' -> 
+                                        case call 'erlang':'or'(call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(Start_idx, 1), S), 95), call 'erlang':'=:='(call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(S), 1), 1), S), 95)) of
+                                            <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                            <'false'> when 'true' -> 
+                                                Start_idx
+                                        end
+                                end
+                    end
+        end
+'atou_common'/2 =
+    fun (S, Type_max) ->
+        let <Start_idx> =
+            try apply 'atou_common_check'/1(S) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+        in  let <X> =
+                0
+            in  let <Underscored> =
+                    'false'
+                in  let <Underscored_2> =
+                        let <_3> =
+                            fun (I, _7) ->
+                                let <UnderscoredAcc> =
+                                    call 'erlang':'element'(1, _7)
+                                in                                  let <XAcc> =
+                                    call 'erlang':'element'(2, _7)
+                                in  
+                                let <C> =
+                                    call 'erlang':'-'(call 'lists':'nth'(call 'erlang':'+'(I, 1), S), 48)
+                                in                                  let <_8> =
+                                    case call 'erlang':'=:='(C, 47) of <'true'> when 'true' -> do  case call 'erlang':'=:='(UnderscoredAcc, 'true') of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'true', XAcc} <'false'> when 'true' -> do  case call 'erlang':'>'(C, 9) of <'true'> when 'true' -> call 'erlang':'error'(call 'erlang':'iolist_to_binary'([#{#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<34>(8,1,'integer',['unsigned'|['big']])}#|[S|[#{#<34>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[]]]])) <'false'> when 'true' -> 'ok' end {'false', call 'erlang':'+'(call 'erlang':'*'(XAcc, 10), C)} end
+                                in                                  let <UnderscoredOut_5> =
+                                    call 'erlang':'element'(1, _8)
+                                in                                  let <XOut_6> =
+                                    call 'erlang':'element'(2, _8)
+                                in  {UnderscoredOut_5, XOut_6}
+                        in  let <_4> =
+                            call 'lists':'seq'(Start_idx, call 'erlang':'-'(call 'erlang':'length'(S), 1))
+                        in  call 'lists':'foldl'(_3, {Underscored, X}, _4)
+                    in  X
+'atou8'/1 =
+    fun (S) ->
+        try apply 'atou_common'/2(S, 255) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atou16'/1 =
+    fun (S) ->
+        try apply 'atou_common'/2(S, 65535) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atou'/1 =
+    fun (S) ->
+        try apply 'atou_common'/2(S, 4294967295) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atou32'/1 =
+    fun (S) ->
+        try apply 'atou_common'/2(S, 4294967295) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'atou64'/1 =
+    fun (S) ->
+        try apply 'atou_common'/2(S, 18446744073709551615) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+'format_str'/2 =
+    fun (S, P) ->
+        case call 'erlang':'=<'(call 'erlang':'map_get'('len0', P), 0) of
+            <'true'> when 'true' -> apply 'string.clone'/1(S)
+            <'false'> when 'true' -> 
+                let <Dif> =
+                    call 'erlang':'-'(call 'erlang':'map_get'('len0', P), apply 'utf8_str_visible_length'/1(S))
+                in  case call 'erlang':'=<'(Dif, 0) of
+                        <'true'> when 'true' -> apply 'string.clone'/1(S)
+                        <'false'> when 'true' -> 
+                            let <Res> =
+                                call 'v.strings':'new_builder'(call 'erlang':'+'(call 'erlang':'length'(S), Dif))
+                            in  do  case call 'erlang':'=:='(call 'erlang':'map_get'('align', P), 'right') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                    do  apply 'Builder.write_string'/2(Res, S)
+                                        do  case call 'erlang':'=:='(call 'erlang':'map_get'('align', P), 'left') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                            apply 'Builder.str'/1(Res)
+                    end
+        end
+'atof64'/2 =
+    fun (S, Param) ->
+        case call 'erlang':'=:='(call 'erlang':'length'(S), 0) of
+            <'true'> when 'true' -> call 'erlang':'error'(#{#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#)
+            <'false'> when 'true' -> 
+                0.0
+        end
+'atof_quick'/1 =
+    fun (S) ->
+        0.0
+'format_int'/2 =
+    fun (N, Radix) ->
+        #{  }#
+'format_uint'/2 =
+    fun (N, Radix) ->
+        #{  }#
+'ftoa_64'/1 =
+    fun (F) ->
+        #{  }#
+'ftoa_long_64'/1 =
+    fun (F) ->
+        #{  }#
+'ftoa_32'/1 =
+    fun (F) ->
+        #{  }#
+'ftoa_long_32'/1 =
+    fun (F) ->
+        #{  }#
+'f64_to_str'/2 =
+    fun (F, N_digit) ->
+        #{  }#
+'f64_to_str_pad'/2 =
+    fun (F, N_digit) ->
+        #{  }#
+'f32_to_str'/2 =
+    fun (F, N_digit) ->
+        #{  }#
+'f32_to_str_pad'/2 =
+    fun (F, N_digit) ->
+        #{  }#
+'f64_to_str_l'/1 =
+    fun (F) ->
+        #{  }#
+'f64_to_str_l_with_dot'/1 =
+    fun (F) ->
+        #{  }#
+'f32_to_str_l'/1 =
+    fun (F) ->
+        #{  }#
+'f32_to_str_l_with_dot'/1 =
+    fun (F) ->
+        #{  }#
+'fxx_to_str_l_parse'/1 =
+    fun (S) ->
+        S
+'fxx_to_str_l_parse_with_dot'/1 =
+    fun (S) ->
+        S
+'f64_to_str_lnd1'/2 =
+    fun (F, Dec_digit) ->
+        #{  }#
+'remove_tail_zeros'/1 =
+    fun (S) ->
+        S
+'v_printf'/2 =
+    fun (Str, Pt) ->
+        'ok'
+'v_sprintf'/2 =
+    fun (Str, Pt) ->
+        #{  }#
+'assert1'/2 =
+    fun (T, Msg) ->
+        case call 'erlang':'not'(T) of <'true'> when 'true' -> call 'erlang':'error'({'panic', Msg}) <'false'> when 'true' -> 'ok' end
+'bool_to_int'/1 =
+    fun (B) ->
+        case B of
+            <'true'> when 'true' -> 1
+            <'false'> when 'true' -> 
+                0
+        end
+'bool_to_u32'/1 =
+    fun (B) ->
+        case B of
+            <'true'> when 'true' -> 1
+            <'false'> when 'true' -> 
+                0
+        end
+'bool_to_u64'/1 =
+    fun (B) ->
+        case B of
+            <'true'> when 'true' -> 1
+            <'false'> when 'true' -> 
+                0
+        end
+'get_string_special'/3 =
+    fun (Neg, ExpZero, MantZero) ->
+        case call 'erlang':'not'(MantZero) of
+            <'true'> when 'true' -> #{#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#
+            <'false'> when 'true' -> 
+                do  case call 'erlang':'not'(ExpZero) of <'true'> when 'true' -> case Neg of <'true'> when 'true' -> #{#<45>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}# <'false'> when 'true' -> #{#<43>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}# end <'false'> when 'true' -> 'ok' end
+                    case Neg of
+                        <'true'> when 'true' -> #{#<45>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<43>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#
+                        <'false'> when 'true' -> 
+                            #{#<48>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<43>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#
+                    end
+        end
+'mul_shift_32'/3 =
+    fun (M, Mul, Ishift) ->
+        let <Hi> =
+            call 'v.math.bits':'mul_64'(M, Mul)
+        in  let <Lo> =
+                call 'v.math.bits':'mul_64'(M, Mul)
+            in  let <Shifted_sum> =
+                    call 'erlang':'+'(call 'erlang':'bsr'(Lo, Ishift), call 'erlang':'bsl'(Hi, call 'erlang':'-'(64, Ishift)))
+                in  do  apply 'assert1'/2(call 'erlang':'=<'(Shifted_sum, 2147483647), #{#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<83>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']])}#)
+                        Shifted_sum
+'mul_pow5_invdiv_pow2'/3 =
+    fun (M, Q, J) ->
+        do  apply 'assert1'/2(call 'erlang':'<'(Q, call 'erlang':'length'([576460752303423489|[461168601842738791|[368934881474191033|[295147905179352826|[472236648286964522|[377789318629571618|[302231454903657294|[483570327845851670|[386856262276681336|[309485009821345069|[495176015714152110|[396140812571321688|[316912650057057351|[507060240091291761|[405648192073033409|[324518553658426727|[519229685853482763|[415383748682786211|[332306998946228969|[531691198313966350|[425352958651173080|[340282366920938464|[544451787073501542|[435561429658801234|[348449143727040987|[557518629963265579|[446014903970612463|[356811923176489971|[570899077082383953|[456719261665907162|[365375409332725730|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])), #{#<113>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            apply 'mul_shift_32'/3(M, call 'lists':'nth'(call 'erlang':'+'(Q, 1), [576460752303423489|[461168601842738791|[368934881474191033|[295147905179352826|[472236648286964522|[377789318629571618|[302231454903657294|[483570327845851670|[386856262276681336|[309485009821345069|[495176015714152110|[396140812571321688|[316912650057057351|[507060240091291761|[405648192073033409|[324518553658426727|[519229685853482763|[415383748682786211|[332306998946228969|[531691198313966350|[425352958651173080|[340282366920938464|[544451787073501542|[435561429658801234|[348449143727040987|[557518629963265579|[446014903970612463|[356811923176489971|[570899077082383953|[456719261665907162|[365375409332725730|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]), J)
+'mul_pow5_div_pow2'/3 =
+    fun (M, I, J) ->
+        do  apply 'assert1'/2(call 'erlang':'<'(I, call 'erlang':'length'([1152921504606846976|[1441151880758558720|[1801439850948198400|[2251799813685248000|[1407374883553280000|[1759218604441600000|[2199023255552000000|[1374389534720000000|[1717986918400000000|[2147483648000000000|[1342177280000000000|[1677721600000000000|[2097152000000000000|[1310720000000000000|[1638400000000000000|[2048000000000000000|[1280000000000000000|[1600000000000000000|[2000000000000000000|[1250000000000000000|[1562500000000000000|[1953125000000000000|[1220703125000000000|[1525878906250000000|[1907348632812500000|[1192092895507812500|[1490116119384765625|[1862645149230957031|[1164153218269348144|[1455191522836685180|[1818989403545856475|[2273736754432320594|[1421085471520200371|[1776356839400250464|[2220446049250313080|[1387778780781445675|[1734723475976807094|[2168404344971008868|[1355252715606880542|[1694065894508600678|[2117582368135750847|[1323488980084844279|[1654361225106055349|[2067951531382569187|[1292469707114105741|[1615587133892632177|[2019483917365790221|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])), #{#<105>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#)
+            apply 'mul_shift_32'/3(M, call 'lists':'nth'(call 'erlang':'+'(I, 1), [1152921504606846976|[1441151880758558720|[1801439850948198400|[2251799813685248000|[1407374883553280000|[1759218604441600000|[2199023255552000000|[1374389534720000000|[1717986918400000000|[2147483648000000000|[1342177280000000000|[1677721600000000000|[2097152000000000000|[1310720000000000000|[1638400000000000000|[2048000000000000000|[1280000000000000000|[1600000000000000000|[2000000000000000000|[1250000000000000000|[1562500000000000000|[1953125000000000000|[1220703125000000000|[1525878906250000000|[1907348632812500000|[1192092895507812500|[1490116119384765625|[1862645149230957031|[1164153218269348144|[1455191522836685180|[1818989403545856475|[2273736754432320594|[1421085471520200371|[1776356839400250464|[2220446049250313080|[1387778780781445675|[1734723475976807094|[2168404344971008868|[1355252715606880542|[1694065894508600678|[2117582368135750847|[1323488980084844279|[1654361225106055349|[2067951531382569187|[1292469707114105741|[1615587133892632177|[2019483917365790221|[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]), J)
+'pow5_factor_32'/1 =
+    fun (I_v) ->
+        I_v
+'multiple_of_power_of_five_32'/2 =
+    fun (V, P) ->
+        call 'erlang':'>='(apply 'pow5_factor_32'/1(V), P)
+'multiple_of_power_of_two_32'/2 =
+    fun (V, P) ->
+        call 'erlang':'>='(call 'v.math.bits':'trailing_zeros_32'(V), P)
+'log10_pow2'/1 =
+    fun (E) ->
+        do  apply 'assert1'/2(call 'erlang':'>='(E, 0), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'assert1'/2(call 'erlang':'=<'(E, 1650), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<49>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+                call 'erlang':'bsr'(call 'erlang':'*'(E, 78913), 18)
+'log10_pow5'/1 =
+    fun (E) ->
+        do  apply 'assert1'/2(call 'erlang':'>='(E, 0), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'assert1'/2(call 'erlang':'=<'(E, 2620), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+                call 'erlang':'bsr'(call 'erlang':'*'(E, 732923), 20)
+'pow5_bits'/1 =
+    fun (E) ->
+        do  apply 'assert1'/2(call 'erlang':'>='(E, 0), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<48>(8,1,'integer',['unsigned'|['big']])}#)
+            do  apply 'assert1'/2(call 'erlang':'=<'(E, 3528), #{#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<61>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<51>(8,1,'integer',['unsigned'|['big']]),#<53>(8,1,'integer',['unsigned'|['big']]),#<50>(8,1,'integer',['unsigned'|['big']]),#<56>(8,1,'integer',['unsigned'|['big']])}#)
+                call 'erlang':'+'(call 'erlang':'bsr'(call 'erlang':'*'(E, 1217359), 19), 1)
+'shift_right_128'/2 =
+    fun (V, Shift) ->
+        do  apply 'assert1'/2(call 'erlang':'<'(Shift, 64), #{#<115>(8,1,'integer',['unsigned'|['big']]),#<104>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<60>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<54>(8,1,'integer',['unsigned'|['big']]),#<52>(8,1,'integer',['unsigned'|['big']])}#)
+            call 'erlang':'bor'(call 'erlang':'bsl'(call 'erlang':'map_get'('hi', V), call 'erlang':'-'(64, Shift)), call 'erlang':'bsr'(call 'erlang':'map_get'('lo', V), Shift))
+'mul_shift_64'/3 =
+    fun (M, Mul, Shift) ->
+        let <Hihi> =
+            call 'v.math.bits':'mul_64'(M, call 'erlang':'map_get'('hi', Mul))
+        in  let <Hilo> =
+                call 'v.math.bits':'mul_64'(M, call 'erlang':'map_get'('hi', Mul))
+            in  let <Lohi> =
+                    call 'v.math.bits':'mul_64'(M, call 'erlang':'map_get'('lo', Mul))
+                in  do  call 'v.math.bits':'mul_64'(M, call 'erlang':'map_get'('lo', Mul))
+                        let <Sum> =
+                            ~{'lo'=>call 'erlang':'+'(Lohi, Hilo),'hi'=>Hihi,{'vbeam','type'}=>'Uint128'}~
+                        in  do  case call 'erlang':'<'(call 'erlang':'map_get'('lo', Sum), Lohi) of <'true'> when 'true' -> call 'erlang':'map_get'('hi', Sum) <'false'> when 'true' -> 'ok' end
+                                apply 'shift_right_128'/2(Sum, call 'erlang':'-'(Shift, 64))
+'pow5_factor_64'/1 =
+    fun (V_i) ->
+        0
+'multiple_of_power_of_five_64'/2 =
+    fun (V, P) ->
+        call 'erlang':'>='(apply 'pow5_factor_64'/1(V), P)
+'multiple_of_power_of_two_64'/2 =
+    fun (V, P) ->
+        call 'erlang':'>='(call 'v.math.bits':'trailing_zeros_64'(V), P)
+'dec_digits'/1 =
+    fun (N) ->
+        case call 'erlang':'=<'(N, 9999999999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 99999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 99) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 9) of <'true'> when 'true' -> 1 <'false'> when 'true' -> 2 end <'false'> when 'true' -> case call 'erlang':'=<'(N, 999) of <'true'> when 'true' -> 3 <'false'> when 'true' -> case call 'erlang':'=<'(N, 9999) of <'true'> when 'true' -> 4 <'false'> when 'true' -> 5 end end end <'false'> when 'true' -> case call 'erlang':'=<'(N, 9999999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 999999) of <'true'> when 'true' -> 6 <'false'> when 'true' -> 7 end <'false'> when 'true' -> case call 'erlang':'=<'(N, 99999999) of <'true'> when 'true' -> 8 <'false'> when 'true' -> 
+            case call 'erlang':'=<'(N, 999999999) of
+                <'true'> when 'true' -> 9
+                <'false'> when 'true' -> 
+                    10
+            end
+         end end end <'false'> when 'true' -> case call 'erlang':'=<'(N, 999999999999999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 999999999999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 99999999999) of <'true'> when 'true' -> 11 <'false'> when 'true' -> 12 end <'false'> when 'true' -> case call 'erlang':'=<'(N, 9999999999999) of <'true'> when 'true' -> 13 <'false'> when 'true' -> case call 'erlang':'=<'(N, 99999999999999) of <'true'> when 'true' -> 14 <'false'> when 'true' -> 15 end end end <'false'> when 'true' -> case call 'erlang':'=<'(N, 99999999999999999) of <'true'> when 'true' -> case call 'erlang':'=<'(N, 9999999999999999) of <'true'> when 'true' -> 16 <'false'> when 'true' -> 17 end <'false'> when 'true' -> case call 'erlang':'=<'(N, 999999999999999999) of <'true'> when 'true' -> 18 <'false'> when 'true' -> 
+            case call 'erlang':'=<'(N, 9999999999999999999) of
+                <'true'> when 'true' -> 19
+                <'false'> when 'true' -> 
+                    20
+            end
+         end end end end
+'Align_text__static__from'/1 =
+    fun (Input) ->
+        do  'ok'
+            do  'ok'
+                call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.strconv')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.strconv', _0)
+end

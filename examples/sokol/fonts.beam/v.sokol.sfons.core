@@ -1,0 +1,32 @@
+module 'v.sokol.sfons' ['create'/3,
+                'destroy'/1,
+                'rgba'/4,
+                'flush'/1,
+                'is_power_of_two'/1,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'create'/3 =
+    fun (Width, Height, Flags) ->
+        'nil'
+'destroy'/1 =
+    fun (Ctx) ->
+        'ok'
+'rgba'/4 =
+    fun (R, G, B, A) ->
+        call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bor'(call 'erlang':'bsl'(A, 24), call 'erlang':'bsl'(B, 16)), call 'erlang':'bsl'(G, 8)), R)
+'flush'/1 =
+    fun (Ctx) ->
+        'ok'
+'is_power_of_two'/1 =
+    fun (X) ->
+        call 'lists':'member'(X, [2|[4|[8|[16|[32|[64|[128|[256|[512|[1024|[2048|[4096|[8192|[16384|[32768|[]]]]]]]]]]]]]]]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.sfons')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.sokol.sfons', _0)
+end

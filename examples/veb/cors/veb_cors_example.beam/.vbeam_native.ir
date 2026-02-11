@@ -1,0 +1,54 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"time">>,
+            arity => 2,
+            exported => true,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"json">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 5,
+            body => [
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 380},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {mov, {vreg, 0}, {vreg, 0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"cors">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 1}},
+                {call, {sym, <<"use">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov_imm, {vreg, 3}, 45678},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 3}},
+                {call, {sym, <<"run">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"\nTo test if CORS works, copy this JS snippet, then go to for example https://stackoverflow.com/ ,\npress F12, then paste the snippet in the opened JS console. You should see the veb server's time:\nvar xhr = new XMLHttpRequest();\nxhr.onload = function(data) {\n\tconsole.log('xhr loaded');\n\tconsole.log(xhr.response);\n};\nxhr.open('POST', 'http://localhost:45678/time');\nxhr.send();\n\t\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

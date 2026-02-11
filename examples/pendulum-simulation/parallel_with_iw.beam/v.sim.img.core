@@ -1,0 +1,106 @@
+module 'v.sim.img' ['new_image_settings'/1,
+                'image_settings_from_grid'/1,
+                'ImageSettings.to_grid_settings'/1,
+                'ppm_writer_for_fname'/2,
+                'PPMWriter.start_for_file'/3,
+                'PPMWriter.handle_pixel'/2,
+                'PPMWriter.flush'/1,
+                'PPMWriter.write'/1,
+                'PPMWriter.close'/1,
+                'image_worker'/3,
+                'new_image_writer'/2,
+                'ImageWriter.handle'/2,
+                'compute_pixel'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_image_settings'/1 =
+        fun (Settings) ->
+            ~{{'vbeam','type'}=>'ImageSettings'}~
+    'image_settings_from_grid'/1 =
+        fun (Grid) ->
+            ~{'width'=>call 'erlang':'map_get'('width', Grid),'height'=>call 'erlang':'map_get'('height', Grid),{'vbeam','type'}=>'ImageSettings'}~
+    'ImageSettings.to_grid_settings'/1 =
+        fun (S) ->
+            ~{'width'=>call 'erlang':'map_get'('width', S),'height'=>call 'erlang':'map_get'('height', S),{'vbeam','type'}=>'GridSettings'}~
+    'ppm_writer_for_fname'/2 =
+        fun (Fname, Settings) ->
+            let <Writer> =
+                ~{'cache_size'=>call 'erlang':'map_get'('cache_size', Settings),'cache'=>[],{'vbeam','type'}=>'PPMWriter'}~
+            in  do  try apply 'PPMWriter.start_for_file'/3(Writer, Fname, Settings) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    Writer
+    'PPMWriter.start_for_file'/3 =
+        fun (Writer, Fname, Settings) ->
+            do  try {'ok', ~{{'vbeam','type'}=>'File'}~} of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                do  try 'ok' of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+                    'ok'
+    'PPMWriter.handle_pixel'/2 =
+        fun (Writer, P) ->
+            do  case call 'erlang':'>='(call 'erlang':'length'(call 'erlang':'map_get'('cache', Writer)), call 'erlang':'map_get'('cache_size', Writer)) of <'true'> when 'true' -> 
+                do  try apply 'PPMWriter.write'/1(Writer) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                    try apply 'PPMWriter.flush'/1(Writer) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 'ok'
+             <'false'> when 'true' -> 'ok' end
+                do  call 'erlang':'bsl'(call 'erlang':'map_get'('cache', Writer), [call 'erlang':'map_get'('r', P)|[call 'erlang':'map_get'('g', P)|[call 'erlang':'map_get'('b', P)|[]]]])
+                    'ok'
+    'PPMWriter.flush'/1 =
+        fun (Writer) ->
+            do  apply 'array.clear'/1(call 'erlang':'map_get'('cache', Writer))
+                'ok'
+    'PPMWriter.write'/1 =
+        fun (Writer) ->
+            do  try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+                'ok'
+    'PPMWriter.close'/1 =
+        fun (Writer) ->
+            'ok'
+    'image_worker'/3 =
+        fun (Writer, Result_chan, Settings) ->
+            let <Width> =
+                call 'erlang':'map_get'('width', Settings)
+            in  let <Height> =
+                    call 'erlang':'map_get'('height', Settings)
+                in  let <Total_pixels> =
+                        call 'erlang':'*'(Width, Height)
+                    in  let <Current_index> =
+                            0
+                        in  let <Pixel_buf> =
+                                []
+                            in  let <Bmark> =
+                                    call 'v.benchmark':'new_benchmark'()
+                                in  do  apply 'Benchmark.stop'/1(Bmark)
+                                        do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Benchmark.total_message'/2(Bmark, #{#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<107>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#)|[]])
+                                            try apply 'PPMWriter.write'/1(Writer) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> call 'erlang':'error'({'panic', #{#<67>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<119>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#})
+    'new_image_writer'/2 =
+        fun (Writer, Settings) ->
+            let <Total_pixels> =
+                call 'erlang':'*'(call 'erlang':'map_get'('width', Settings), call 'erlang':'map_get'('height', Settings))
+            in  let <Buffer> =
+                    []
+                in  ~{'writer'=>Writer,'settings'=>Settings,'buffer'=>Buffer,{'vbeam','type'}=>'ImageWriter'}~
+    'ImageWriter.handle'/2 =
+        fun (Iw, Result) ->
+            let <Total_pixels> =
+                call 'erlang':'*'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('settings', Iw)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('settings', Iw)))
+            in  do  apply 'compute_pixel'/1(Result)
+                    do  'true'
+                        case call 'erlang':'=:='(call 'erlang':'map_get'('current_index', Iw), Total_pixels) of
+                            <'true'> when 'true' -> call 'erlang':'error'(#{#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+                            <'false'> when 'true' -> 
+                                call 'erlang':'map_get'('current_index', Iw)
+                        end
+    'compute_pixel'/1 =
+        fun (Result) ->
+            let <Closest_to_m1> =
+                call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('magnet1_distance', Result), call 'erlang':'map_get'('magnet2_distance', Result)), call 'erlang':'<'(call 'erlang':'map_get'('magnet1_distance', Result), call 'erlang':'map_get'('magnet3_distance', Result)))
+            in  let <Closest_to_m2> =
+                    call 'erlang':'and'(call 'erlang':'<'(call 'erlang':'map_get'('magnet2_distance', Result), call 'erlang':'map_get'('magnet1_distance', Result)), call 'erlang':'<'(call 'erlang':'map_get'('magnet2_distance', Result), call 'erlang':'map_get'('magnet3_distance', Result)))
+                in  case Closest_to_m1 of <'true'> when 'true' -> ~{'r'=>255,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> case Closest_to_m2 of <'true'> when 'true' -> ~{'r'=>0,'g'=>255,'b'=>0,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~ end end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.sim.img')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.sim.img', _0)
+    end

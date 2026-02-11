@@ -1,0 +1,176 @@
+module 'v.main' ['main'/0,
+                'init'/1,
+                'frame'/1,
+                'AppState.render_font'/1,
+                'line'/4,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'main'/0 =
+        fun () ->
+            let <State> =
+                ~{'pass_action'=>call 'v.sokol.gfx':'create_clear_pass_action'(0.3, 0.3, 0.32, 1.0),'font_context'=>'nil',{'vbeam','type'}=>'AppState'}~
+            in  let <Title> =
+                    #{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<71>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']])}#
+                in  let <Desc> =
+                        ~{'user_data'=>State,'init_userdata_cb'=>fun (_fref0) -> call 'v.main':'init'(_fref0),'frame_userdata_cb'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'window_title'=>call 'erlang':'map_get'('str', Title),'html5_canvas_name'=>call 'erlang':'map_get'('str', Title),{'vbeam','type'}=>'Desc'}~
+                    in  call 'v.sokol.sapp':'run'(Desc)
+    'init'/1 =
+        fun (State) ->
+            let <Desc> =
+                call 'v.sokol.sapp':'create_desc'()
+            in  do  call 'v.sokol.gfx':'setup'(Desc)
+                    let <S> =
+                        ~{{'vbeam','type'}=>'Desc'}~
+                    in  do  call 'v.sokol.sgl':'setup'(S)
+                            do  {'ok', ~{{'vbeam','type'}=>'File'}~}
+                                case try call 'file':'read_file'(call 'filename':'join'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']])}#, #{#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#)) of <_cor1> when 'true' -> {'ok', _cor1} catch <_cor_c,_cor_r,_cor_s> when 'true' -> 'error' of <{'ok', Bytes}> when 'true' -> 
+                                    do  call 'io':'format'([126|[115|[126|[110|[]]]]], [call 'erlang':'iolist_to_binary'([#{#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'length'(Bytes))|[]]])|[]])
+                                        'ok'
+                                 <_> when 'true' -> 'ok' end
+    'frame'/1 =
+        fun (State) ->
+            do  apply 'AppState.render_font'/1(State)
+                let <Pass> =
+                    call 'v.sokol.sapp':'create_default_pass'(call 'erlang':'map_get'('pass_action', State))
+                in  do  call 'v.sokol.gfx':'begin_pass'(Pass)
+                        do  call 'v.sokol.sgl':'draw'()
+                            do  call 'v.sokol.gfx':'end_pass'()
+                                call 'v.sokol.gfx':'commit'()
+    'AppState.render_font'/1 =
+        fun (State) ->
+            let <Sx> =
+                0.0
+            in  let <Sy> =
+                    0.0
+                in  let <Dx> =
+                        0.0
+                    in  let <Dy> =
+                            0.0
+                        in  let <Lh> =
+                                0.0
+                            in  let <White> =
+                                    call 'v.sokol.sfons':'rgba'(255, 255, 255, 255)
+                                in  let <Black> =
+                                        call 'v.sokol.sfons':'rgba'(0, 0, 0, 255)
+                                    in  let <Brown> =
+                                            call 'v.sokol.sfons':'rgba'(192, 128, 0, 128)
+                                        in  let <Blue> =
+                                                call 'v.sokol.sfons':'rgba'(0, 192, 255, 255)
+                                            in  let <Font_context> =
+                                                    call 'erlang':'map_get'('font_context', State)
+                                                in  do  apply 'Context.clear_state'/1(Font_context)
+                                                        do  call 'v.sokol.sgl':'defaults'()
+                                                            do  call 'v.sokol.sgl':'matrix_mode_projection'()
+                                                                do  call 'v.sokol.sgl':'ortho'(0.0, call 'erlang':'float'(call 'v.sokol.sapp':'width'()), call 'erlang':'float'(call 'v.sokol.sapp':'height'()), 0.0, -1.0, 1.0)
+                                                                    let <Sx_1> =
+                                                                        0
+                                                                    in  let <Sy_2> =
+                                                                            50
+                                                                        in  do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                do  apply 'Context.set_size'/2(Font_context, 100.0)
+                                                                                    let <Ascender> =
+                                                                                        0.0
+                                                                                    in  let <Descender> =
+                                                                                            0.0
+                                                                                        in  do  apply 'Context.vert_metrics'/4(Font_context, Ascender, Descender, Lh)
+                                                                                                do  apply 'Context.set_color'/2(Font_context, White)
+                                                                                                    let <Dx_3> =
+                                                                                                        'ok'
+                                                                                                    in  do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                            do  apply 'Context.set_size'/2(Font_context, 48.0)
+                                                                                                                do  apply 'Context.set_color'/2(Font_context, Brown)
+                                                                                                                    let <Dx_4> =
+                                                                                                                        'ok'
+                                                                                                                    in  do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                                            do  apply 'Context.set_size'/2(Font_context, 24.0)
+                                                                                                                                do  apply 'Context.set_color'/2(Font_context, White)
+                                                                                                                                    let <Dx_5> =
+                                                                                                                                        'ok'
+                                                                                                                                    in  let <Dy_6> =
+                                                                                                                                            call 'erlang':'*'(Lh, 1.2)
+                                                                                                                                        in  do  apply 'Context.set_size'/2(Font_context, 20.0)
+                                                                                                                                                do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                                                                    do  apply 'Context.set_color'/2(Font_context, Blue)
+                                                                                                                                                        do  'ok'
+                                                                                                                                                            let <Dx_7> =
+                                                                                                                                                                300
+                                                                                                                                                            in  let <Dy_8> =
+                                                                                                                                                                    350
+                                                                                                                                                                in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'baseline'))
+                                                                                                                                                                        do  apply 'Context.set_size'/2(Font_context, 60.0)
+                                                                                                                                                                            do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                                                                                                do  apply 'Context.set_color'/2(Font_context, White)
+                                                                                                                                                                                    do  apply 'Context.set_spacing'/2(Font_context, 5.0)
+                                                                                                                                                                                        do  apply 'Context.set_blur'/2(Font_context, 6.0)
+                                                                                                                                                                                            do  'ok'
+                                                                                                                                                                                                let <Dx_9> =
+                                                                                                                                                                                                    300
+                                                                                                                                                                                                in  let <Dy_10> =
+                                                                                                                                                                                                        50.0
+                                                                                                                                                                                                    in  do  apply 'Context.set_size'/2(Font_context, 28.0)
+                                                                                                                                                                                                            do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                                                                                                                                do  apply 'Context.set_color'/2(Font_context, White)
+                                                                                                                                                                                                                    do  apply 'Context.set_spacing'/2(Font_context, 0.0)
+                                                                                                                                                                                                                        do  apply 'Context.set_blur'/2(Font_context, 3.0)
+                                                                                                                                                                                                                            do  'ok'
+                                                                                                                                                                                                                                do  apply 'Context.set_color'/2(Font_context, Black)
+                                                                                                                                                                                                                                    do  apply 'Context.set_blur'/2(Font_context, 0)
+                                                                                                                                                                                                                                        do  'ok'
+                                                                                                                                                                                                                                            do  apply 'Context.set_size'/2(Font_context, 18.0)
+                                                                                                                                                                                                                                                do  apply 'Context.set_font'/2(Font_context, call 'erlang':'map_get'('font_normal', State))
+                                                                                                                                                                                                                                                    do  apply 'Context.set_color'/2(Font_context, White)
+                                                                                                                                                                                                                                                        let <Dx_11> =
+                                                                                                                                                                                                                                                            50
+                                                                                                                                                                                                                                                        in  let <Dy_12> =
+                                                                                                                                                                                                                                                                350
+                                                                                                                                                                                                                                                            in  do  apply 'line'/4(call 'erlang':'-'(Dx_11, 10), Dy_12, call 'erlang':'+'(Dx_11, 250), Dy_12)
+                                                                                                                                                                                                                                                                    do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'top'))
+                                                                                                                                                                                                                                                                        let <Dx_13> =
+                                                                                                                                                                                                                                                                            'ok'
+                                                                                                                                                                                                                                                                        in  let <Dx_14> =
+                                                                                                                                                                                                                                                                                10
+                                                                                                                                                                                                                                                                            in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'middle'))
+                                                                                                                                                                                                                                                                                    let <Dx_15> =
+                                                                                                                                                                                                                                                                                        'ok'
+                                                                                                                                                                                                                                                                                    in  let <Dx_16> =
+                                                                                                                                                                                                                                                                                            10
+                                                                                                                                                                                                                                                                                        in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'baseline'))
+                                                                                                                                                                                                                                                                                                let <Dx_17> =
+                                                                                                                                                                                                                                                                                                    'ok'
+                                                                                                                                                                                                                                                                                                in  let <Dx_18> =
+                                                                                                                                                                                                                                                                                                        10
+                                                                                                                                                                                                                                                                                                    in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'bottom'))
+                                                                                                                                                                                                                                                                                                            do  'ok'
+                                                                                                                                                                                                                                                                                                                let <Dx_19> =
+                                                                                                                                                                                                                                                                                                                    150
+                                                                                                                                                                                                                                                                                                                in  let <Dy_20> =
+                                                                                                                                                                                                                                                                                                                        400
+                                                                                                                                                                                                                                                                                                                    in  do  apply 'line'/4(Dx_19, call 'erlang':'-'(Dy_20, 30), Dx_19, call 'erlang':'+'(Dy_20, 80.0))
+                                                                                                                                                                                                                                                                                                                            do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('left', 'baseline'))
+                                                                                                                                                                                                                                                                                                                                do  'ok'
+                                                                                                                                                                                                                                                                                                                                    let <Dy_21> =
+                                                                                                                                                                                                                                                                                                                                        30
+                                                                                                                                                                                                                                                                                                                                    in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('center', 'baseline'))
+                                                                                                                                                                                                                                                                                                                                            do  'ok'
+                                                                                                                                                                                                                                                                                                                                                let <Dy_22> =
+                                                                                                                                                                                                                                                                                                                                                    30
+                                                                                                                                                                                                                                                                                                                                                in  do  apply 'Context.set_alignment'/2(Font_context, call 'erlang':'bor'('right', 'baseline'))
+                                                                                                                                                                                                                                                                                                                                                        do  'ok'
+                                                                                                                                                                                                                                                                                                                                                            call 'v.sokol.sfons':'flush'(Font_context)
+    'line'/4 =
+        fun (Sx, Sy, Ex, Ey) ->
+            do  call 'v.sokol.sgl':'begin_lines'()
+                do  call 'v.sokol.sgl':'c4b'(255, 255, 0, 128)
+                    do  call 'v.sokol.sgl':'v2f'(Sx, Sy)
+                        do  call 'v.sokol.sgl':'v2f'(Ex, Ey)
+                            call 'v.sokol.sgl':'end'()
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

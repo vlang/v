@@ -1,0 +1,60 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 11,
+            body => [
+                {mov_imm, {vreg, 0}, 1},
+                {mov_imm, {vreg, 1}, 101},
+                {mov, {vreg, 2}, {vreg, 0}},
+                {label, <<"forin_0">>},
+                {cmp, {vreg, 2}, {vreg, 1}},
+                {jcc, ge, <<"forin_end_2">>},
+                {srem, {vreg, 4}, {vreg, 2}, {imm, 15}},
+                {cmp, {vreg, 4}, {imm, 0}},
+                {jcc, ne, <<"mt_next_4">>},
+                {string_lit, {vreg, 5}, {data_ref, <<"str_0">>}, 8},
+                {mov, {vreg, 3}, {vreg, 5}},
+                {jmp, <<"match_end_3">>},
+                {label, <<"mt_next_4">>},
+                {srem, {vreg, 6}, {vreg, 2}, {imm, 5}},
+                {cmp, {vreg, 6}, {imm, 0}},
+                {jcc, ne, <<"mt_next_5">>},
+                {string_lit, {vreg, 7}, {data_ref, <<"str_1">>}, 4},
+                {mov, {vreg, 3}, {vreg, 7}},
+                {jmp, <<"match_end_3">>},
+                {label, <<"mt_next_5">>},
+                {srem, {vreg, 8}, {vreg, 2}, {imm, 3}},
+                {cmp, {vreg, 8}, {imm, 0}},
+                {jcc, ne, <<"mt_next_6">>},
+                {string_lit, {vreg, 9}, {data_ref, <<"str_2">>}, 4},
+                {mov, {vreg, 3}, {vreg, 9}},
+                {jmp, <<"match_end_3">>},
+                {label, <<"mt_next_6">>},
+                {method_call, {vreg, 10}, <<"int literal">>, <<"str">>, [{vreg, 2}]},
+                {mov, {vreg, 3}, {vreg, 10}},
+                {label, <<"match_end_3">>},
+                {print_int, {vreg, 3}},
+                {label, <<"forin_inc_1">>},
+                {add, {vreg, 2}, {vreg, 2}, {imm, 1}},
+                {jmp, <<"forin_0">>},
+                {label, <<"forin_end_2">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"FizzBuzz">>},
+        {<<"str_1">>, 1, <<"Buzz">>},
+        {<<"str_2">>, 1, <<"Fizz">>}
+    ],
+    bss => [],
+    imports => []
+}.

@@ -1,0 +1,21 @@
+module 'v.main' ['main'/0,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'main'/0 =
+    fun () ->
+        let <M> =
+            ~{{'vbeam','type'}=>'Module'}~
+        in  let <Func> =
+                apply 'Module.new_function'/4(M, #{#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']])}#, ['i32_t'|['i32_t'|[]]], ['i32_t'|[]])
+            in  do  apply 'Module.commit'/3(M, Func, 'true')
+                    call 'io':'format'([126|[115|[]]], [call 'erlang':'list_to_binary'(apply 'Module.compile'/1(M))|[]])
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.main')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.main', _0)
+end

@@ -1,0 +1,38 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"connect">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {lea, {preg, x1}, {data_ref, <<"str_0">>}},
+                {mov_imm, {preg, x0}, 1},
+                {mov_imm, {preg, x2}, 36},
+                {mov_imm, {preg, x16}, 4},
+                syscall,
+                {print_int, {vreg, 0}},
+                {print_int, {vreg, 0}},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+        {<<"str_0">>, 1, <<"Existing customer full information:\n">>}
+    ],
+    bss => [],
+    imports => []
+}.

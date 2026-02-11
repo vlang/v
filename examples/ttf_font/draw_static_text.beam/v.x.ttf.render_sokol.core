@@ -1,0 +1,151 @@
+module 'v.x.ttf.render_sokol' ['TTF_render_Sokol.format_texture'/1,
+                'TTF_render_Sokol.create_text'/3,
+                'TTF_render_Sokol.create_text_block'/5,
+                'TTF_render_Sokol.create_texture'/1,
+                'TTF_render_Sokol.destroy_texture'/1,
+                'TTF_render_Sokol.update_text_texture'/1,
+                'TTF_render_Sokol.draw_text_bmp'/4,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'TTF_render_Sokol.format_texture'/1 =
+        fun (Tf_skl) ->
+            apply 'BitMap.format_texture'/1(call 'erlang':'map_get'('bmp', Tf_skl))
+    'TTF_render_Sokol.create_text'/3 =
+        fun (Tf_skl, In_txt, In_font_size) ->
+            let <Scale_reduct> =
+                call 'erlang':'map_get'('scale_reduct', Tf_skl)
+            in  let <Device_dpi> =
+                    call 'erlang':'map_get'('device_dpi', Tf_skl)
+                in  let <Scale> =
+                        call 'erlang':'/'(call 'erlang':'*'(In_font_size, Device_dpi), call 'erlang':'float'(call 'erlang':'*'(72, call 'erlang':'map_get'('units_per_em', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl))))))
+                    in  do  call 'erlang':'*'(Scale, Scale_reduct)
+                            let <W> =
+                                apply 'BitMap.get_bbox'/2(call 'erlang':'map_get'('bmp', Tf_skl), In_txt)
+                            in  let <H> =
+                                    apply 'BitMap.get_bbox'/2(call 'erlang':'map_get'('bmp', Tf_skl), In_txt)
+                                in  do  W
+                                        do  call 'erlang':'+'(H, 8)
+                                            let <Sz> =
+                                                call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('bp', call 'erlang':'map_get'('bmp', Tf_skl)))
+                                            in  do  case call 'erlang':'>'(Sz, call 'erlang':'map_get'('buf_size', call 'erlang':'map_get'('bmp', Tf_skl))) of <'true'> when 'true' -> 
+                                                    do  case call 'erlang':'>'(Sz, 0) of <'true'> when 'true' -> apply 'free'/1(call 'erlang':'map_get'('buf', call 'erlang':'map_get'('bmp', Tf_skl))) <'false'> when 'true' -> 'ok' end
+                                                        do  call 'v.x.ttf':'dprintln'(call 'erlang':'iolist_to_binary'([#{#<99>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<95>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Sz)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                            do  apply 'malloc_noscan'/1(Sz)
+                                                                'ok'
+                                                 <'false'> when 'true' -> 'ok' end
+                                                    do  apply 'BitMap.init_filler'/1(call 'erlang':'map_get'('bmp', Tf_skl))
+                                                        let <Y_base> =
+                                                            call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('y_max', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('y_min', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl)))), call 'erlang':'map_get'('scale', call 'erlang':'map_get'('bmp', Tf_skl))))
+                                                        in  do  apply 'BitMap.set_pos'/3(call 'erlang':'map_get'('bmp', Tf_skl), 0, Y_base)
+                                                                do  apply 'BitMap.clear'/1(call 'erlang':'map_get'('bmp', Tf_skl))
+                                                                    do  apply 'BitMap.draw_text'/2(call 'erlang':'map_get'('bmp', Tf_skl), In_txt)
+                                                                        apply 'TTF_render_Sokol.format_texture'/1(Tf_skl)
+    'TTF_render_Sokol.create_text_block'/5 =
+        fun (Tf_skl, In_txt, In_w, In_h, In_font_size) ->
+            let <Scale_reduct> =
+                call 'erlang':'map_get'('scale_reduct', Tf_skl)
+            in  let <Device_dpi> =
+                    call 'erlang':'map_get'('device_dpi', Tf_skl)
+                in  let <Scale> =
+                        call 'erlang':'/'(call 'erlang':'*'(In_font_size, Device_dpi), call 'erlang':'float'(call 'erlang':'*'(72, call 'erlang':'map_get'('units_per_em', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl))))))
+                    in  do  call 'erlang':'*'(Scale, Scale_reduct)
+                            do  call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'*'(In_w, Scale_reduct), 0.5))
+                                do  call 'erlang':'trunc'(call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'+'(In_h, 2), Scale_reduct), 0.5))
+                                    let <Sz> =
+                                        call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('bp', call 'erlang':'map_get'('bmp', Tf_skl)))
+                                    in  do  case call 'erlang':'>'(Sz, call 'erlang':'map_get'('buf_size', call 'erlang':'map_get'('bmp', Tf_skl))) of <'true'> when 'true' -> 
+                                            do  case call 'erlang':'>'(Sz, 0) of <'true'> when 'true' -> apply 'free'/1(call 'erlang':'map_get'('buf', call 'erlang':'map_get'('bmp', Tf_skl))) <'false'> when 'true' -> 'ok' end
+                                                do  call 'v.x.ttf':'dprintln'(call 'erlang':'iolist_to_binary'([#{#<65>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(Sz)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]))
+                                                    do  apply 'malloc_noscan'/1(Sz)
+                                                        'ok'
+                                         <'false'> when 'true' -> 'ok' end
+                                            do  apply 'BitMap.init_filler'/1(call 'erlang':'map_get'('bmp', Tf_skl))
+                                                let <Y_base> =
+                                                    call 'erlang':'trunc'(call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'map_get'('y_max', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('y_min', call 'erlang':'map_get'('tf', call 'erlang':'map_get'('bmp', Tf_skl)))), call 'erlang':'map_get'('scale', call 'erlang':'map_get'('bmp', Tf_skl))))
+                                                in  do  apply 'BitMap.set_pos'/3(call 'erlang':'map_get'('bmp', Tf_skl), 0, Y_base)
+                                                        do  apply 'BitMap.clear'/1(call 'erlang':'map_get'('bmp', Tf_skl))
+                                                            do  apply 'BitMap.draw_text_block'/3(call 'erlang':'map_get'('bmp', Tf_skl), In_txt, ~{'x'=>0,'y'=>0,'w'=>In_w,'h'=>In_h,{'vbeam','type'}=>'Text_block'}~)
+                                                                apply 'TTF_render_Sokol.format_texture'/1(Tf_skl)
+    'TTF_render_Sokol.create_texture'/1 =
+        fun (Tf_skl) ->
+            let <W> =
+                call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl))
+            in  let <H> =
+                    call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl))
+                in  let <Sz> =
+                        call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('bp', call 'erlang':'map_get'('bmp', Tf_skl)))
+                    in  let <Img_desc> =
+                            ~{'width'=>W,'height'=>H,'num_mipmaps'=>0,'label'=>'nil','d3d11_texture'=>0,{'vbeam','type'}=>'ImageDesc'}~
+                        in  do  ~{'ptr'=>call 'erlang':'map_get'('buf', call 'erlang':'map_get'('bmp', Tf_skl)),'size'=>Sz,{'vbeam','type'}=>'Range'}~
+                                let <Simg> =
+                                    call 'v.sokol.gfx':'make_image'(Img_desc)
+                                in  let <Smp_desc> =
+                                        ~{'min_filter'=>'linear','mag_filter'=>'linear','wrap_u'=>'clamp_to_edge','wrap_v'=>'clamp_to_edge',{'vbeam','type'}=>'SamplerDesc'}~
+                                    in  let <Ssmp> =
+                                            call 'v.sokol.gfx':'make_sampler'(Smp_desc)
+                                        in  do  Simg
+                                                'ok'
+    'TTF_render_Sokol.destroy_texture'/1 =
+        fun (Tf_skl) ->
+            do  call 'v.sokol.gfx':'destroy_image'(call 'erlang':'map_get'('sg_img', Tf_skl))
+                call 'v.sokol.gfx':'destroy_sampler'(call 'erlang':'map_get'('sg_smp', Tf_skl))
+    'TTF_render_Sokol.update_text_texture'/1 =
+        fun (Tf_skl) ->
+            let <Sz> =
+                call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl))), call 'erlang':'map_get'('bp', call 'erlang':'map_get'('bmp', Tf_skl)))
+            in  let <Tmp_sbc> =
+                    ~{{'vbeam','type'}=>'ImageData'}~
+                in  do  ~{'ptr'=>call 'erlang':'map_get'('buf', call 'erlang':'map_get'('bmp', Tf_skl)),'size'=>Sz,{'vbeam','type'}=>'Range'}~
+                        call 'v.sokol.gfx':'update_image'(call 'erlang':'map_get'('sg_img', Tf_skl), Tmp_sbc)
+    'TTF_render_Sokol.draw_text_bmp'/4 =
+        fun (Tf_skl, Ctx, X, Y) ->
+            do  call 'v.sokol.sgl':'push_matrix'()
+                let <Width> =
+                    call 'erlang':'/'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('scale_reduct', Tf_skl))
+                in  let <Height> =
+                        call 'erlang':'/'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('bmp', Tf_skl)), call 'erlang':'map_get'('scale_reduct', Tf_skl))
+                    in  let <U0> =
+                            0.0
+                        in  let <V0> =
+                                0.0
+                            in  let <U1> =
+                                    1.0
+                                in  let <V1> =
+                                        1.0
+                                    in  let <X0> =
+                                            0
+                                        in  let <Y0> =
+                                                0
+                                            in  let <X1> =
+                                                    call 'erlang':'*'(Width, call 'erlang':'map_get'('scale', Ctx))
+                                                in  let <Y1> =
+                                                        call 'erlang':'*'(Height, call 'erlang':'map_get'('scale', Ctx))
+                                                    in  let <Ca> =
+                                                            call 'math':'cos'(call 'erlang':'map_get'('angle', call 'erlang':'map_get'('bmp', Tf_skl)))
+                                                        in  let <Sa> =
+                                                                call 'math':'sin'(call 'erlang':'map_get'('angle', call 'erlang':'map_get'('bmp', Tf_skl)))
+                                                            in  let <M> =
+                                                                    [Ca|[call 'erlang':'-'(Sa)|[0|[0|[Sa|[Ca|[0|[0|[0|[0|[1|[0|[call 'erlang':'*'(X, call 'erlang':'map_get'('scale', Ctx))|[call 'erlang':'*'(Y, call 'erlang':'map_get'('scale', Ctx))|[0|[1|[]]]]]]]]]]]]]]]]]
+                                                                in  do  call 'v.sokol.sgl':'mult_matrix'(M)
+                                                                        do  call 'v.sokol.sgl':'load_pipeline'(call 'erlang':'map_get'('alpha', call 'erlang':'map_get'('pipeline', Ctx)))
+                                                                            do  call 'v.sokol.sgl':'enable_texture'()
+                                                                                do  call 'v.sokol.sgl':'texture'(call 'erlang':'map_get'('sg_img', Tf_skl), call 'erlang':'map_get'('sg_smp', Tf_skl))
+                                                                                    do  call 'v.sokol.sgl':'begin_quads'()
+                                                                                        do  call 'v.sokol.sgl':'c4b'(255, 255, 255, 255)
+                                                                                            do  call 'v.sokol.sgl':'v2f_t2f'(X0, Y0, U0, V0)
+                                                                                                do  call 'v.sokol.sgl':'v2f_t2f'(X1, Y0, U1, V0)
+                                                                                                    do  call 'v.sokol.sgl':'v2f_t2f'(X1, Y1, U1, V1)
+                                                                                                        do  call 'v.sokol.sgl':'v2f_t2f'(X0, Y1, U0, V1)
+                                                                                                            do  call 'v.sokol.sgl':'end'()
+                                                                                                                do  call 'v.sokol.sgl':'disable_texture'()
+                                                                                                                    call 'v.sokol.sgl':'pop_matrix'()
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.x.ttf.render_sokol')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.x.ttf.render_sokol', _0)
+    end

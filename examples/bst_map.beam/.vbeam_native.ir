@@ -1,0 +1,84 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"==">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 5,
+            body => [
+                {field_get, {vreg, 2}, {vreg, 0}, {imm, 0}},
+                {field_get, {vreg, 3}, {vreg, 1}, {imm, 0}},
+                {add, {vreg, 4}, {vreg, 2}, {vreg, 3}},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret
+            ]
+        },
+        #{
+            name => <<"<">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 5,
+            body => [
+                {field_get, {vreg, 2}, {vreg, 0}, {imm, 0}},
+                {field_get, {vreg, 3}, {vreg, 1}, {imm, 0}},
+                {add, {vreg, 4}, {vreg, 2}, {vreg, 3}},
+                {mov, {preg, x0}, {vreg, 4}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 19,
+            body => [
+                {struct_new, {vreg, 0}, {imm, 8}},
+                {struct_new, {vreg, 1}, {imm, 16}},
+                {mov_imm, {vreg, 2}, 1},
+                {field_set, {vreg, 1}, {imm, 0}, {vreg, 2}},
+                {mov_imm, {vreg, 3}, 12},
+                {field_set, {vreg, 1}, {imm, 8}, {vreg, 3}},
+                {method_call, {vreg, 4}, <<"datatypes.BSTree[main.KeyVal]">>, <<"insert">>, [{vreg, 0}, {vreg, 1}]},
+                {method_call, {vreg, 5}, <<"datatypes.BSTree[main.KeyVal]">>, <<"in_order_traversal">>, [{vreg, 0}]},
+                {print_int, {vreg, 5}},
+                {struct_new, {vreg, 6}, {imm, 16}},
+                {mov_imm, {vreg, 7}, 2},
+                {field_set, {vreg, 6}, {imm, 0}, {vreg, 7}},
+                {mov_imm, {vreg, 8}, 34},
+                {field_set, {vreg, 6}, {imm, 8}, {vreg, 8}},
+                {method_call, {vreg, 9}, <<"datatypes.BSTree[main.KeyVal]">>, <<"insert">>, [{vreg, 0}, {vreg, 6}]},
+                {struct_new, {vreg, 10}, {imm, 16}},
+                {mov_imm, {vreg, 11}, -2},
+                {field_set, {vreg, 10}, {imm, 0}, {vreg, 11}},
+                {mov_imm, {vreg, 12}, 203},
+                {field_set, {vreg, 10}, {imm, 8}, {vreg, 12}},
+                {method_call, {vreg, 13}, <<"datatypes.BSTree[main.KeyVal]">>, <<"insert">>, [{vreg, 0}, {vreg, 10}]},
+                {method_call, {vreg, 14}, <<"datatypes.BSTree[main.KeyVal]">>, <<"in_order_traversal">>, [{vreg, 0}]},
+                {array_len, {vreg, 15}, {vreg, 14}},
+                {mov_imm, {vreg, 16}, 0},
+                {label, <<"forin_arr_0">>},
+                {cmp, {vreg, 16}, {vreg, 15}},
+                {jcc, ge, <<"forin_arr_end_2">>},
+                {array_get, {vreg, 17}, {vreg, 14}, {vreg, 16}, {imm, 8}},
+                {field_get, {vreg, 18}, {vreg, 17}, {imm, 8}},
+                {print_int, {vreg, 18}},
+                {label, <<"forin_arr_inc_1">>},
+                {add, {vreg, 16}, {vreg, 16}, {imm, 1}},
+                {jmp, <<"forin_arr_0">>},
+                {label, <<"forin_arr_end_2">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

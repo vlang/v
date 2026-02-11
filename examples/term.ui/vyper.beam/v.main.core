@@ -1,0 +1,267 @@
+module 'v.main' ['Vec.facing'/1,
+                'Vec.randomize'/5,
+                'Snake.length'/1,
+                'Snake.impulse'/2,
+                'Snake.move'/1,
+                'Snake.grow'/1,
+                'Snake.get_body'/1,
+                'Snake.get_head'/1,
+                'Snake.get_tail'/1,
+                'Snake.randomize'/1,
+                'Snake.check_overlap'/1,
+                'Snake.check_out_of_bounds'/1,
+                'Snake.draw'/1,
+                'Rat.randomize'/1,
+                'App.new_game'/1,
+                'init'/1,
+                'event'/2,
+                'frame'/1,
+                'App.update'/1,
+                'App.draw'/1,
+                'App.move_snake'/2,
+                'App.check_capture'/1,
+                'App.draw_snake'/1,
+                'App.draw_rat'/1,
+                'App.draw_gamescreen'/1,
+                'App.draw_score'/1,
+                'App.draw_pause'/1,
+                'App.draw_debug'/1,
+                'App.draw_gameover'/1,
+                'main'/0,
+                'Orientation__static__from'/1,
+                'GameState__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'Vec.facing'/1 =
+        fun (V) ->
+            let <Result> =
+                case call 'erlang':'>='(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> 'right' <'false'> when 'true' -> case call 'erlang':'<'(call 'erlang':'map_get'('x', V), 0) of <'true'> when 'true' -> 'left' <'false'> when 'true' -> case call 'erlang':'>='(call 'erlang':'map_get'('y', V), 0) of <'true'> when 'true' -> 'bottom' <'false'> when 'true' -> 'top' end end end
+            in  Result
+    'Vec.randomize'/5 =
+        fun (V, Min_x, Min_y, Max_x, Max_y) ->
+            do  try call 'erlang':'+'(call 'rand':'uniform'(call 'erlang':'-'(Max_x, Min_x)), Min_x) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> Min_x
+                'ok'
+    'Snake.length'/1 =
+        fun (S) ->
+            call 'erlang':'length'(call 'erlang':'map_get'('body', S))
+    'Snake.impulse'/2 =
+        fun (S, Direction) ->
+            let <Vel> =
+                ~{{'vbeam','type'}=>'Vec'}~
+            in  do  case Direction of <'top'> when 'true' -> 'ok' <'right'> when 'true' -> 'ok' <'bottom'> when 'true' -> 'ok' <'left'> when 'true' -> 'ok' end
+                    do  Direction
+                        'ok'
+    'Snake.move'/1 =
+        fun (S) ->
+            let <I> =
+                call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('body', S)), 1)
+            in  let <Width> =
+                    call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', S))
+                in  let <Height> =
+                        call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', S))
+                    in  'ok'
+    'Snake.grow'/1 =
+        fun (S) ->
+            let <Head> =
+                apply 'Snake.get_tail'/1(S)
+            in  let <Pos> =
+                    ~{{'vbeam','type'}=>'Vec'}~
+                in  do  case call 'erlang':'map_get'('facing', Head) of <'bottom'> when 'true' -> 'ok' <'left'> when 'true' -> 'ok' <'top'> when 'true' -> 'ok' <'right'> when 'true' -> 'ok' end
+                        call 'erlang':'bsl'(call 'erlang':'map_get'('body', S), ~{'pos'=>Pos,'facing'=>call 'erlang':'map_get'('facing', Head),{'vbeam','type'}=>'BodyPart'}~)
+    'Snake.get_body'/1 =
+        fun (S) ->
+            call 'erlang':'map_get'('body', S)
+    'Snake.get_head'/1 =
+        fun (S) ->
+            call 'lists':'nth'(1, call 'erlang':'map_get'('body', S))
+    'Snake.get_tail'/1 =
+        fun (S) ->
+            call 'lists':'nth'(call 'erlang':'+'(call 'erlang':'-'(call 'erlang':'length'(call 'erlang':'map_get'('body', S)), 1), 1), call 'erlang':'map_get'('body', S))
+    'Snake.randomize'/1 =
+        fun (S) ->
+            let <Speeds> =
+                [-2|[0|[2|[]]]]
+            in  let <Pos> =
+                    call 'erlang':'map_get'('pos', apply 'Snake.get_head'/1(S))
+                in  do  apply 'Vec.randomize'/5(Pos, 10, 10, call 'erlang':'-'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', S)), 10), call 'erlang':'-'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', S)), 10))
+                        do  try call 'erlang':'+'(call 'rand':'uniform'(call 'erlang':'-'(1, -1)), -1) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 0
+                            do  call 'lists':'nth'(call 'erlang':'+'(try call 'rand':'uniform'(call 'erlang':'length'(Speeds)) of <_cor2> when 'true' -> _cor2 catch <_cor_c2,_cor_r2,_cor_s2> when 'true' -> 0, 1), Speeds)
+                                do  apply 'Vec.facing'/1(call 'erlang':'map_get'('velocity', S))
+                                    'ok'
+    'Snake.check_overlap'/1 =
+        fun (S) ->
+            let <H> =
+                apply 'Snake.get_head'/1(S)
+            in  let <Head_pos> =
+                    call 'erlang':'map_get'('pos', H)
+                in  do  let <_1> =
+                        fun (I) ->
+                            let <Piece_pos> =
+                                call 'erlang':'map_get'('pos', call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('body', S)))
+                            in  case call 'erlang':'and'(call 'erlang':'=:='(call 'erlang':'map_get'('x', Head_pos), call 'erlang':'map_get'('x', Piece_pos)), call 'erlang':'=:='(call 'erlang':'map_get'('y', Head_pos), call 'erlang':'map_get'('y', Piece_pos))) of <'true'> when 'true' -> 'true' <'false'> when 'true' -> 'ok' end
+                    in  let <_2> =
+                            call 'lists':'seq'(2, call 'erlang':'-'(apply 'Snake.length'/1(S), 1))
+                        in  call 'lists':'foreach'(_1, _2)
+                        'false'
+    'Snake.check_out_of_bounds'/1 =
+        fun (S) ->
+            let <H> =
+                apply 'Snake.get_head'/1(S)
+            in  call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'or'(call 'erlang':'=<'(call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', H)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('velocity', S))), 1), call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('x', call 'erlang':'map_get'('pos', H)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('velocity', S))), call 'erlang':'-'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', S)), call 'erlang':'map_get'('x', call 'erlang':'map_get'('velocity', S))))), call 'erlang':'=<'(call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', H)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('velocity', S))), 1)), call 'erlang':'>'(call 'erlang':'+'(call 'erlang':'map_get'('y', call 'erlang':'map_get'('pos', H)), call 'erlang':'map_get'('y', call 'erlang':'map_get'('velocity', S))), call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', S)), 1), call 'erlang':'map_get'('y', call 'erlang':'map_get'('velocity', S)))))
+    'Snake.draw'/1 =
+        fun (S) ->
+            let <A> =
+                call 'erlang':'map_get'('app', S)
+            in  'ok'
+    'Rat.randomize'/1 =
+        fun (R) ->
+            apply 'Vec.randomize'/5(call 'erlang':'map_get'('pos', R), 12, 12, call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('width', call 'erlang':'map_get'('app', R)), 1), 10), call 'erlang':'-'(call 'erlang':'-'(call 'erlang':'map_get'('height', call 'erlang':'map_get'('app', R)), 1), 10))
+    'App.new_game'/1 =
+        fun (A) ->
+            let <Snake> =
+                ~{'body'=>[],'app'=>A,{'vbeam','type'}=>'Snake'}~
+            in  do  apply 'Snake.randomize'/1(Snake)
+                    let <Rat> =
+                        ~{'app'=>A,{'vbeam','type'}=>'Rat'}~
+                    in  do  apply 'Rat.randomize'/1(Rat)
+                            do  Snake
+                                do  Rat
+                                    do  'game'
+                                        'ok'
+    'init'/1 =
+        fun (App) ->
+            let <W> =
+                call 'erlang':'map_get'('window_width', call 'erlang':'map_get'('termui', App))
+            in  let <H> =
+                    call 'erlang':'map_get'('window_height', call 'erlang':'map_get'('termui', App))
+                in  do  W
+                        do  H
+                            apply 'App.new_game'/1(App)
+    'event'/2 =
+        fun (E, App) ->
+            do  case call 'erlang':'map_get'('typ', E) of <'mouse_down'> when 'true' -> 'ok' <'mouse_drag'> when 'true' -> 'ok' <'mouse_up'> when 'true' -> 'ok' <'key_down'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'c') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('code', E), 'escape') of <'true'> when 'true' -> call 'erlang':'halt'(0) <'false'> when 'true' -> 'ok' end end <_> when 'true' -> 'ok' end
+                'ok'
+    'frame'/1 =
+        fun (App) ->
+            do  apply 'App.update'/1(App)
+                apply 'App.draw'/1(App)
+    'App.update'/1 =
+        fun (A) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('state', A), 'game') of <'true'> when 'true' -> 
+                do  apply 'Snake.move'/1(call 'erlang':'map_get'('snake', A))
+                    do  case apply 'Snake.check_out_of_bounds'/1(call 'erlang':'map_get'('snake', A)) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        case apply 'Snake.check_overlap'/1(call 'erlang':'map_get'('snake', A)) of
+                            <'true'> when 'true' -> 'ok'
+                            <'false'> when 'true' -> 
+                                case apply 'App.check_capture'/1(A) of <'true'> when 'true' -> 
+                                    do  apply 'Rat.randomize'/1(call 'erlang':'map_get'('rat', A))
+                                        apply 'Snake.grow'/1(call 'erlang':'map_get'('snake', A))
+                                 <'false'> when 'true' -> 'ok' end
+                        end
+             <'false'> when 'true' -> 'ok' end
+    'App.draw'/1 =
+        fun (A) ->
+            do  'ok'
+                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                    do  apply 'Context.draw_empty_rect'/5(call 'erlang':'map_get'('termui', A), 1, 1, call 'erlang':'map_get'('width', A), call 'erlang':'map_get'('height', A))
+                        do  case call 'erlang':'map_get'('state', A) of <'gameover'> when 'true' -> 'ok' <'pause'> when 'true' -> apply 'App.draw_pause'/1(A) <_> when 'true' -> 'ok' end
+                            do  apply 'Context.set_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                                    do  'ok'
+                                        do  case call 'erlang':'map_get'('redraw', A) of <'true'> when 'true' -> 
+                                            do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>0,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                                                do  apply 'App.draw_gamescreen'/1(A)
+                                                    case call 'erlang':'=:='(call 'erlang':'map_get'('state', A), 'oob') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                                         <'false'> when 'true' -> 'ok' end
+                                            do  apply 'Context.reset_bg_color'/1(call 'erlang':'map_get'('termui', A))
+                                                'ok'
+    'App.move_snake'/2 =
+        fun (A, Direction) ->
+            apply 'Snake.impulse'/2(call 'erlang':'map_get'('snake', A), Direction)
+    'App.check_capture'/1 =
+        fun (A) ->
+            let <Snake_pos> =
+                call 'erlang':'map_get'('pos', apply 'Snake.get_head'/1(call 'erlang':'map_get'('snake', A)))
+            in  let <Rat_pos> =
+                    call 'erlang':'map_get'('pos', call 'erlang':'map_get'('rat', A))
+                in  call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'and'(call 'erlang':'=<'(call 'erlang':'map_get'('x', Snake_pos), call 'erlang':'+'(call 'erlang':'map_get'('x', Rat_pos), 1)), call 'erlang':'>='(call 'erlang':'+'(call 'erlang':'map_get'('x', Snake_pos), 1), call 'erlang':'map_get'('x', Rat_pos))), call 'erlang':'=<'(call 'erlang':'map_get'('y', Snake_pos), call 'erlang':'+'(call 'erlang':'map_get'('y', Rat_pos), 1))), call 'erlang':'>='(call 'erlang':'+'(call 'erlang':'map_get'('y', Snake_pos), 1), call 'erlang':'map_get'('y', Rat_pos)))
+    'App.draw_snake'/1 =
+        fun (A) ->
+            apply 'Snake.draw'/1(call 'erlang':'map_get'('snake', A))
+    'App.draw_rat'/1 =
+        fun (A) ->
+            do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), call 'erlang':'map_get'('color', call 'erlang':'map_get'('rat', A)))
+                'ok'
+    'App.draw_gamescreen'/1 =
+        fun (A) ->
+            do  apply 'App.draw_score'/1(A)
+                do  apply 'App.draw_rat'/1(A)
+                    apply 'App.draw_snake'/1(A)
+    'App.draw_score'/1 =
+        fun (A) ->
+            do  apply 'Context.set_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                    let <Score> =
+                        call 'erlang':'-'(apply 'Snake.length'/1(call 'erlang':'map_get'('snake', A)), 1)
+                    in  'ok'
+    'App.draw_pause'/1 =
+        fun (A) ->
+            do  apply 'Context.set_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                'ok'
+    'App.draw_debug'/1 =
+        fun (A) ->
+            do  apply 'Context.set_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>0,'g'=>0,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                    let <Snake> =
+                        call 'erlang':'map_get'('snake', A)
+                    in  do  'ok'
+                            do  'ok'
+                                do  'ok'
+                                    let <Snake_head> =
+                                        apply 'Snake.get_head'/1(Snake)
+                                    in  let <Rat> =
+                                            call 'erlang':'map_get'('rat', A)
+                                        in  do  'ok'
+                                                'ok'
+    'App.draw_gameover'/1 =
+        fun (A) ->
+            do  apply 'Context.set_bg_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~)
+                do  apply 'Context.set_color'/2(call 'erlang':'map_get'('termui', A), ~{'r'=>255,'g'=>0,'b'=>0,{'vbeam','type'}=>'Color'}~)
+                    do  ~{'x'=>-1,'y'=>-1,{'vbeam','type'}=>'Vec'}~
+                        let <X_offset> =
+                            32
+                        in  let <Start_x> =
+                                call 'erlang':'-'(call 'erlang':'div'(call 'erlang':'map_get'('width', A), 2), X_offset)
+                            in  do  'ok'
+                                    do  'ok'
+                                        do  'ok'
+                                            do  'ok'
+                                                do  'ok'
+                                                    do  'ok'
+                                                        'ok'
+    'main'/0 =
+        fun () ->
+            let <App> =
+                ~{{'vbeam','type'}=>'App'}~
+            in  do  'ok'
+                    try 'ok' of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 'ok'
+    'Orientation__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'GameState__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

@@ -1,0 +1,43 @@
+module 'v.main' ['main'/0,
+                'App.index'/2,
+                'App.upload'/2,
+                'App.submit'/2,
+                'module_info'/0,
+                'module_info'/1]
+            attributes []
+        'main'/0 =
+            fun () ->
+                let <App> =
+                    ~{{'vbeam','type'}=>'App'}~
+                in  call 'v.veb':'run'(App, 8082)
+        'App.index'/2 =
+            fun (App, Ctx) ->
+                'false'
+        'App.upload'/2 =
+            fun (App, Ctx) ->
+                do  call 'erlang':'map_get'('form', Ctx)
+                    do  call 'erlang':'map_get'('files', Ctx)
+                        let <Fdata> =
+                            call 'erlang':'map_get'(#{#<117>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#, call 'erlang':'map_get'('files', Ctx))
+                        in  let <Files> =
+                                []
+                            in  do  let <_1> =
+                                    fun (D) ->
+                                        call 'erlang':'bsl'(Files, apply 'string.replace_each'/2(call 'erlang':'map_get'('data', D), [#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}#|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<92>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']])}#|[#{#<60>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<62>(8,1,'integer',['unsigned'|['big']])}#|[#{#<92>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']])}#|[#{#<9>(8,1,'integer',['unsigned'|['big']])}#|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[#{#<38>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<112>(8,1,'integer',['unsigned'|['big']]),#<59>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]]))
+                                in  call 'lists':'foreach'(_1, Fdata)
+                                    'false'
+        'App.submit'/2 =
+            fun (App, Ctx) ->
+                do  call 'erlang':'map_get'('form', Ctx)
+                    let <Form_data> =
+                        call 'erlang':'map_get'('form', Ctx)
+                    in  'false'
+        'module_info'/0 =
+            fun () ->
+                call 'erlang':'get_module_info'
+                    ('v.main')
+        'module_info'/1 =
+            fun (_0) ->
+                call 'erlang':'get_module_info'
+                    ('v.main', _0)
+        end

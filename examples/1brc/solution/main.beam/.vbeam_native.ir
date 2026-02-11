@@ -1,0 +1,231 @@
+#{
+    target => arm64,
+    format => macho,
+    functions => [
+        #{
+            name => <<"mmap">>,
+            arity => 6,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}, {vreg, 3}, {vreg, 4}, {vreg, 5}],
+            locals => 6,
+            body => [
+            ]
+        },
+        #{
+            name => <<"munmap">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 2,
+            body => [
+            ]
+        },
+        #{
+            name => <<"mmap_file">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"unmap">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 4,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"munmap">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {cmp, {vreg, 1}, {imm, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"panic">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {label, <<"if_end_0">>},
+                {call, {sym, <<"close">>}},
+                {mov, {vreg, 3}, {preg, x0}}
+            ]
+        },
+        #{
+            name => <<"format_value">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"print_results">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 8,
+            body => [
+                {call, {sym, <<"keys">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {call, {sym, <<"sort">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"join">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {print_int, {vreg, 4}},
+                {jmp, <<"if_end_0">>},
+                {label, <<"elif_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"join">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {add, {vreg, 6}, {vreg, 0}, {vreg, 5}},
+                {add, {vreg, 7}, {vreg, 6}, {vreg, 0}},
+                {print_int, {vreg, 7}},
+                {label, <<"if_end_0">>}
+            ]
+        },
+        #{
+            name => <<"combine_results">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 1,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"process_chunk">>,
+            arity => 3,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}, {vreg, 2}],
+            locals => 3,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                ret
+            ]
+        },
+        #{
+            name => <<"process_in_parallel">>,
+            arity => 2,
+            exported => false,
+            params => [{vreg, 0}, {vreg, 1}],
+            locals => 6,
+            body => [
+                {sdiv, {vreg, 2}, {vreg, 0}, {vreg, 1}},
+                {mov, {vreg, 2}, {vreg, 0}},
+                {add, {vreg, 3}, {vreg, 0}, {vreg, 0}},
+                {call, {sym, <<"wait">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 4}},
+                {call, {sym, <<"combine_results">>}},
+                {mov, {vreg, 5}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 5}},
+                ret
+            ]
+        },
+        #{
+            name => <<"main">>,
+            arity => 0,
+            exported => true,
+            params => [],
+            locals => 17,
+            body => [
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"new_flag_parser">>}},
+                {mov, {vreg, 0}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"version">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {call, {sym, <<"skip_executable">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"application">>}},
+                {mov, {vreg, 3}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"description">>}},
+                {mov, {vreg, 4}, {preg, x0}},
+                {mov_imm, {vreg, 5}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 5}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {mov, {preg, x4}, {vreg, 0}},
+                {call, {sym, <<"bool">>}},
+                {mov, {vreg, 6}, {preg, x0}},
+                {mov_imm, {vreg, 7}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {mov, {preg, x2}, {vreg, 7}},
+                {mov, {preg, x3}, {vreg, 0}},
+                {mov, {preg, x4}, {vreg, 0}},
+                {call, {sym, <<"bool">>}},
+                {mov, {vreg, 8}, {preg, x0}},
+                {mov_imm, {vreg, 9}, 1},
+                {mov, {preg, x0}, {vreg, 9}},
+                {call, {sym, <<"limit_free_args_to_exactly">>}},
+                {mov, {vreg, 10}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"mmap_file">>}},
+                {mov, {vreg, 11}, {preg, x0}},
+                {cmp, {vreg, 0}, {imm, 1}},
+                {jcc, le, <<"ife_1">>},
+                {mov, {preg, x0}, {vreg, 11}},
+                {mov, {preg, x1}, {vreg, 0}},
+                {call, {sym, <<"process_in_parallel">>}},
+                {mov, {vreg, 13}, {preg, x0}},
+                {mov, {vreg, 12}, {vreg, 13}},
+                {jmp, <<"ife_end_0">>},
+                {label, <<"ife_1">>},
+                {mov_imm, {vreg, 14}, 0},
+                {mov, {preg, x0}, {vreg, 0}},
+                {mov, {preg, x1}, {vreg, 14}},
+                {mov, {preg, x2}, {vreg, 0}},
+                {call, {sym, <<"process_chunk">>}},
+                {mov, {vreg, 15}, {preg, x0}},
+                {mov, {vreg, 12}, {vreg, 15}},
+                {label, <<"ife_end_0">>},
+                {mov, {preg, x0}, {vreg, 12}},
+                {mov, {preg, x1}, {vreg, 6}},
+                {call, {sym, <<"print_results">>}},
+                {mov, {vreg, 16}, {preg, x0}},
+                {label, <<"if_end_2">>},
+                {mov_imm, {preg, x0}, 0},
+                {mov_imm, {preg, x16}, 1},
+                syscall
+            ]
+        },
+        #{
+            name => <<"ReadState__static__from">>,
+            arity => 1,
+            exported => false,
+            params => [{vreg, 0}],
+            locals => 3,
+            body => [
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_0">>},
+                {label, <<"if_end_0">>},
+                {cmp, {vreg, 0}, {vreg, 0}},
+                {jcc, eq, <<"if_end_1">>},
+                {call, {sym, <<"str">>}},
+                {mov, {vreg, 1}, {preg, x0}},
+                {label, <<"if_end_1">>},
+                {mov, {preg, x0}, {vreg, 0}},
+                {call, {sym, <<"error">>}},
+                {mov, {vreg, 2}, {preg, x0}},
+                {mov, {preg, x0}, {vreg, 2}},
+                ret
+            ]
+        }
+    ],
+    data => [
+    ],
+    bss => [],
+    imports => []
+}.

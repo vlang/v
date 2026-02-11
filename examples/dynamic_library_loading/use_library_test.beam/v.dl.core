@@ -1,0 +1,56 @@
+module 'v.dl' ['open'/2,
+                'close'/1,
+                'sym'/2,
+                'dlerror'/0,
+                'get_shared_library_extension'/0,
+                'get_libname'/1,
+                'open_opt'/2,
+                'sym_opt'/2,
+                'module_info'/0,
+                'module_info'/1]
+    attributes []
+'open'/2 =
+    fun (Filename, Flags) ->
+        'nil'
+'close'/1 =
+    fun (Handle) ->
+        'true'
+'sym'/2 =
+    fun (Handle, Symbol) ->
+        'nil'
+'dlerror'/0 =
+    fun () ->
+        #{#<100>(8,1,'integer',['unsigned'|['big']]),#<121>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<99>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<66>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']])}#
+'get_shared_library_extension'/0 =
+    fun () ->
+        'ok'
+'get_libname'/1 =
+    fun (Libname) ->
+        call 'erlang':'iolist_to_binary'([Libname|[apply 'get_shared_library_extension'/0()|[]]])
+'open_opt'/2 =
+    fun (Filename, Flags) ->
+        let <Shared_object_handle> =
+            {'ok', ~{{'vbeam','type'}=>'File'}~}
+        in  case call 'erlang':'=:='(Shared_object_handle, 0) of
+                <'true'> when 'true' -> call 'erlang':'error'(E)
+                <'false'> when 'true' -> 
+                    Shared_object_handle
+            end
+'sym_opt'/2 =
+    fun (Shared_object_handle, Symbol) ->
+        let <Sym_handle> =
+            apply 'sym'/2(Shared_object_handle, Symbol)
+        in  case call 'erlang':'=:='(Sym_handle, 0) of
+                <'true'> when 'true' -> call 'erlang':'error'(E)
+                <'false'> when 'true' -> 
+                    Sym_handle
+            end
+'module_info'/0 =
+    fun () ->
+        call 'erlang':'get_module_info'
+            ('v.dl')
+'module_info'/1 =
+    fun (_0) ->
+        call 'erlang':'get_module_info'
+            ('v.dl', _0)
+end

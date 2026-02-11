@@ -1,0 +1,301 @@
+module 'v.main' ['remap'/5,
+                'Game.showfps'/1,
+                'frame'/1,
+                'main'/0,
+                'Game.init_game'/1,
+                'Game.parse_tetros'/1,
+                'Game.update_game_state'/1,
+                'Game.draw_ghost'/1,
+                'Game.move_ghost'/1,
+                'Game.move_tetro'/1,
+                'Game.move_right'/2,
+                'Game.delete_completed_lines'/1,
+                'Game.delete_completed_line'/2,
+                'Game.generate_tetro'/1,
+                'Game.get_tetro'/1,
+                'Game.drop_tetro'/1,
+                'Game.draw_tetro'/1,
+                'Game.draw_next_tetro'/1,
+                'Game.draw_block_color'/4,
+                'Game.draw_block'/4,
+                'Game.draw_field'/1,
+                'Game.draw_ui'/1,
+                'Game.draw_scene'/1,
+                'parse_binary_tetro'/1,
+                'on_event'/2,
+                'Game.rotate_tetro'/1,
+                'Game.key_down'/2,
+                'Game.touch_event'/2,
+                'GameState__static__from'/1,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'remap'/5 =
+        fun (V, Min, Max, New_min, New_max) ->
+            call 'erlang':'+'(call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'-'(V, Min), call 'erlang':'-'(New_max, New_min)), call 'erlang':'-'(Max, Min)), New_min)
+    'Game.showfps'/1 =
+        fun (Game) ->
+            do  call 'erlang':'map_get'('frame', Game)
+                let <Last_frame_ms> =
+                    call 'erlang':'/'(call 'erlang':'float'(apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('frame_sw', Game)))), 1000.0)
+                in  let <Ticks> =
+                        call 'erlang':'/'(call 'erlang':'float'(apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('second_sw', Game)))), 1000.0)
+                    in  case call 'erlang':'>'(Ticks, 999.0) of <'true'> when 'true' -> 
+                            let <Fps> =
+                                call 'erlang':'/'(call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'-'(call 'erlang':'map_get'('frame', Game), call 'erlang':'map_get'('frame_old', Game))), Ticks), 1000.0)
+                            in  do  apply 'StopWatch.restart'/1(call 'erlang':'map_get'('second_sw', Game))
+                                    'ok'
+                         <'false'> when 'true' -> 'ok' end
+    'frame'/1 =
+        fun (Game) ->
+            do  case call 'erlang':'>'(apply 'Duration.milliseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('timer', call 'erlang':'map_get'('gg', Game)))), 264) of <'true'> when 'true' -> 
+                do  apply 'StopWatch.restart'/1(call 'erlang':'map_get'('timer', call 'erlang':'map_get'('gg', Game)))
+                    apply 'Game.update_game_state'/1(Game)
+             <'false'> when 'true' -> 'ok' end
+                let <Ws> =
+                    call 'v.gg':'window_size'()
+                in  let <Bs> =
+                        apply 'remap'/5(20, 0, call 'erlang':'*'(20, 20), 0, call 'erlang':'map_get'('height', Ws))
+                    in  let <M> =
+                            call 'erlang':'*'(call 'erlang':'-'(call 'erlang':'float'(call 'erlang':'map_get'('width', Ws)), call 'erlang':'*'(Bs, 10)), 0.5)
+                        in  do  call 'erlang':'trunc'(Bs)
+                                do  call 'erlang':'trunc'(M)
+                                    do  apply 'StopWatch.restart'/1(call 'erlang':'map_get'('frame_sw', Game))
+                                        do  'ok'
+                                            do  apply 'Game.draw_scene'/1(Game)
+                                                do  apply 'Game.showfps'/1(Game)
+                                                    apply 'Context.end'/2(call 'erlang':'map_get'('gg', Game), ~{{'vbeam','type'}=>'EndOptions'}~)
+    'main'/0 =
+        fun () ->
+            let <Game> =
+                ~{{'vbeam','type'}=>'Game'}~
+            in  do  call 'v.gg':'new_context'(~{'bg_color'=>~{'r'=>255,'g'=>255,'b'=>255,{'vbeam','type'}=>'Color'}~,'width'=>call 'erlang':'*'(20, 10),'height'=>call 'erlang':'*'(20, 20),'create_window'=>'true','window_title'=>#{#<86>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#,'user_data'=>Game,'frame_fn'=>fun (_fref0) -> call 'v.main':'frame'(_fref0),'event_fn'=>fun (_fref0, _fref1) -> call 'v.main':'on_event'(_fref0, _fref1),'font_path'=>call 'v.os.asset':'get_path'(#{#<46>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#, #{#<102>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<47>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<98>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<45>(8,1,'integer',['unsigned'|['big']]),#<82>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<114>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<102>(8,1,'integer',['unsigned'|['big']])}#),{'vbeam','type'}=>'Config'}~)
+                    do  apply 'Game.init_game'/1(Game)
+                        'ok'
+    'Game.init_game'/1 =
+        fun (G) ->
+            do  apply 'Game.parse_tetros'/1(G)
+                do  try call 'rand':'uniform'(call 'erlang':'length'([[66|[66|[66|[66|[]]]]]|[[27|[131|[72|[232|[]]]]]|[[36|[231|[36|[231|[]]]]]|[[63|[132|[63|[132|[]]]]]|[[311|[17|[223|[74|[]]]]]|[[322|[71|[113|[47|[]]]]]|[[1111|[9|[1111|[9|[]]]]]|[]]]]]]]])) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 0
+                    do  apply 'Game.generate_tetro'/1(G)
+                        do  []
+                            do  let <_2> =
+                                fun (_) ->
+                                    let <Row> =
+                                        []
+                                    in  do  -1
+                                            do  -1
+                                                call 'erlang':'bsl'(call 'erlang':'map_get'('field', G), Row)
+                            in  let <_3> =
+                                    call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'+'(20, 2), 1))
+                                in  call 'lists':'foreach'(_2, _3)
+                                do  let <_4> =
+                                    fun (J) ->
+                                        do  -1
+                                            'ok'
+                                in  let <_5> =
+                                        call 'lists':'seq'(0, call 'erlang':'-'(call 'erlang':'+'(10, 2), 1))
+                                    in  call 'lists':'foreach'(_4, _5)
+                                    do  0
+                                        do  0
+                                            'ok'
+    'Game.parse_tetros'/1 =
+        fun (G) ->
+            'ok'
+    'Game.update_game_state'/1 =
+        fun (G) ->
+            case call 'erlang':'=:='(call 'erlang':'map_get'('state', G), 'running') of <'true'> when 'true' -> 
+                do  apply 'Game.move_tetro'/1(G)
+                    apply 'Game.delete_completed_lines'/1(G)
+             <'false'> when 'true' -> 'ok' end
+    'Game.draw_ghost'/1 =
+        fun (G) ->
+            case call 'erlang':'and'(call 'erlang':'=/='(call 'erlang':'map_get'('state', G), 'gameover'), call 'erlang':'map_get'('show_ghost', G)) of <'true'> when 'true' -> 
+                let <Pos_y> =
+                    apply 'Game.move_ghost'/1(G)
+                in  'ok'
+             <'false'> when 'true' -> 'ok' end
+    'Game.move_ghost'/1 =
+        fun (G) ->
+            let <Pos_y> =
+                call 'erlang':'map_get'('pos_y', G)
+            in  let <End> =
+                    'false'
+                in  call 'erlang':'-'(Pos_y, 1)
+    'Game.move_tetro'/1 =
+        fun (G) ->
+            do  let <_1> =
+                fun (Block) ->
+                    let <Y> =
+                        call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('y', Block), call 'erlang':'map_get'('pos_y', G)), 1)
+                    in  let <X> =
+                            call 'erlang':'+'(call 'erlang':'map_get'('x', Block), call 'erlang':'map_get'('pos_x', G))
+                        in  case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('field', G))), 0) of <'true'> when 'true' -> 
+                                case call 'erlang':'<'(call 'erlang':'map_get'('pos_y', G), 2) of
+                                    <'true'> when 'true' -> 'false'
+                                    <'false'> when 'true' -> 
+                                        do  apply 'Game.drop_tetro'/1(G)
+                                            do  apply 'Game.generate_tetro'/1(G)
+                                                'false'
+                                end
+                             <'false'> when 'true' -> 'ok' end
+            in  call 'lists':'foreach'(_1, call 'erlang':'map_get'('tetro', G))
+                do  call 'erlang':'map_get'('pos_y', G)
+                    'true'
+    'Game.move_right'/2 =
+        fun (G, Dx) ->
+            do  let <_1> =
+                fun (I) ->
+                    let <Tetro> =
+                        call 'lists':'nth'(call 'erlang':'+'(I, 1), call 'erlang':'map_get'('tetro', G))
+                    in  let <Y> =
+                            call 'erlang':'+'(call 'erlang':'map_get'('y', Tetro), call 'erlang':'map_get'('pos_y', G))
+                        in  let <X> =
+                                call 'erlang':'+'(call 'erlang':'+'(call 'erlang':'map_get'('x', Tetro), call 'erlang':'map_get'('pos_x', G)), Dx)
+                            in  case call 'erlang':'=/='(call 'lists':'nth'(call 'erlang':'+'(X, 1), call 'lists':'nth'(call 'erlang':'+'(Y, 1), call 'erlang':'map_get'('field', G))), 0) of <'true'> when 'true' -> 'false' <'false'> when 'true' -> 'ok' end
+            in  let <_2> =
+                    call 'lists':'seq'(0, call 'erlang':'-'(4, 1))
+                in  call 'lists':'foreach'(_1, _2)
+                do  Dx
+                    'true'
+    'Game.delete_completed_lines'/1 =
+        fun (G) ->
+            'ok'
+    'Game.delete_completed_line'/2 =
+        fun (G, Y) ->
+            do  10
+                do  call 'erlang':'map_get'('lines', G)
+                    'ok'
+    'Game.generate_tetro'/1 =
+        fun (G) ->
+            do  0
+                do  3
+                    do  call 'erlang':'map_get'('next_tetro_idx', G)
+                        do  try call 'rand':'uniform'(call 'erlang':'length'([[66|[66|[66|[66|[]]]]]|[[27|[131|[72|[232|[]]]]]|[[36|[231|[36|[231|[]]]]]|[[63|[132|[63|[132|[]]]]]|[[311|[17|[223|[74|[]]]]]|[[322|[71|[113|[47|[]]]]]|[[1111|[9|[1111|[9|[]]]]]|[]]]]]]]])) of <_cor1> when 'true' -> _cor1 catch <_cor_c1,_cor_r1,_cor_s1> when 'true' -> 0
+                            do  0
+                                apply 'Game.get_tetro'/1(G)
+    'Game.get_tetro'/1 =
+        fun (G) ->
+            let <Idx> =
+                call 'erlang':'+'(call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('tetro_idx', G), 4), 4), call 'erlang':'*'(call 'erlang':'map_get'('rotation_idx', G), 4))
+            in  'ok'
+    'Game.drop_tetro'/1 =
+        fun (G) ->
+            'ok'
+    'Game.draw_tetro'/1 =
+        fun (G) ->
+            'ok'
+    'Game.draw_next_tetro'/1 =
+        fun (G) ->
+            case call 'erlang':'=/='(call 'erlang':'map_get'('state', G), 'gameover') of <'true'> when 'true' -> 
+                let <Idx> =
+                    call 'erlang':'*'(call 'erlang':'*'(call 'erlang':'map_get'('next_tetro_idx', G), 4), 4)
+                in  let <Next_tetro> =
+                        call 'lists':'nth'(call 'erlang':'+'(call 'lists':'seq'(Idx, call 'erlang':'+'(Idx, 4)), 1), call 'erlang':'map_get'('tetros_cache', G))
+                    in  let <Pos_y> =
+                            0
+                        in  let <Pos_x> =
+                                3
+                            in  'ok'
+             <'false'> when 'true' -> 'ok' end
+    'Game.draw_block_color'/4 =
+        fun (G, I, J, Color) ->
+            apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', G), call 'erlang':'+'(call 'erlang':'float'(call 'erlang':'*'(call 'erlang':'-'(J, 1), call 'erlang':'map_get'('block_size', G))), call 'erlang':'map_get'('margin', G)), call 'erlang':'float'(call 'erlang':'*'(call 'erlang':'-'(I, 1), call 'erlang':'map_get'('block_size', G))), call 'erlang':'float'(call 'erlang':'-'(call 'erlang':'map_get'('block_size', G), 1)), call 'erlang':'float'(call 'erlang':'-'(call 'erlang':'map_get'('block_size', G), 1)), Color)
+    'Game.draw_block'/4 =
+        fun (G, I, J, Color_idx) ->
+            let <Color> =
+                case call 'erlang':'=:='(call 'erlang':'map_get'('state', G), 'gameover') of <'true'> when 'true' -> ~{'r'=>128,'g'=>128,'b'=>128,{'vbeam','type'}=>'Color'}~ <'false'> when 'true' -> call 'lists':'nth'(call 'erlang':'+'(Color_idx, 1), [call 'v.gg':'rgb'(0, 0, 0)|[call 'v.gg':'rgb'(255, 242, 0)|[call 'v.gg':'rgb'(174, 0, 255)|[call 'v.gg':'rgb'(60, 255, 0)|[call 'v.gg':'rgb'(255, 0, 0)|[call 'v.gg':'rgb'(255, 180, 31)|[call 'v.gg':'rgb'(33, 66, 255)|[call 'v.gg':'rgb'(74, 198, 255)|[call 'v.gg':'rgb'(0, 170, 170)|[]]]]]]]]]]) end
+            in  apply 'Game.draw_block_color'/4(G, I, J, Color)
+    'Game.draw_field'/1 =
+        fun (G) ->
+            'ok'
+    'Game.draw_ui'/1 =
+        fun (G) ->
+            let <Ws> =
+                call 'v.gg':'window_size'()
+            in  let <Textsize> =
+                    call 'erlang':'trunc'(apply 'remap'/5(24, 0, call 'erlang':'*'(20, 10), 0, call 'erlang':'map_get'('width', Ws)))
+                in  do  'ok'
+                        let <Lines> =
+                            call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('lines', G))
+                        in  do  'ok'
+                                case call 'erlang':'=:='(call 'erlang':'map_get'('state', G), 'gameover') of <'true'> when 'true' -> 
+                                    do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', G), 0, call 'erlang':'-'(call 'erlang':'div'(call 'erlang':'map_get'('height', Ws), 2), Textsize), call 'erlang':'map_get'('width', Ws), call 'erlang':'*'(5, Textsize), call 'v.gg':'rgba'(255, 0, 0, 210))
+                                        do  'ok'
+                                            'ok'
+                                 <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('state', G), 'paused') of <'true'> when 'true' -> 
+                                    do  apply 'Context.draw_rect_filled'/6(call 'erlang':'map_get'('gg', G), 0, call 'erlang':'-'(call 'erlang':'div'(call 'erlang':'map_get'('height', Ws), 2), Textsize), call 'erlang':'map_get'('width', Ws), call 'erlang':'*'(5, Textsize), call 'v.gg':'rgba'(255, 0, 0, 210))
+                                        do  'ok'
+                                            'ok'
+                                 <'false'> when 'true' -> 'ok' end end
+    'Game.draw_scene'/1 =
+        fun (G) ->
+            do  apply 'Game.draw_ghost'/1(G)
+                do  apply 'Game.draw_next_tetro'/1(G)
+                    do  apply 'Game.draw_tetro'/1(G)
+                        do  apply 'Game.draw_field'/1(G)
+                            apply 'Game.draw_ui'/1(G)
+    'parse_binary_tetro'/1 =
+        fun (T_) ->
+            let <Res> =
+                []
+            in  let <Cnt> =
+                    0
+                in  let <Horizontal> =
+                        call 'erlang':'=:='(T_, 9)
+                    in  let <Ten_powers> =
+                            [1000|[100|[10|[1|[]]]]]
+                        in  Res
+    'on_event'/2 =
+        fun (E, Game) ->
+            do  case call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'key_down') of <'true'> when 'true' -> apply 'Game.key_down'/2(Game, call 'erlang':'map_get'('key_code', E)) <'false'> when 'true' -> 'ok' end
+                case call 'erlang':'or'(call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'touches_began'), call 'erlang':'=:='(call 'erlang':'map_get'('typ', E), 'touches_moved')) of <'true'> when 'true' -> case call 'erlang':'>'(call 'erlang':'map_get'('num_touches', E), 0) of <'true'> when 'true' -> 
+                    let <Touch_point> =
+                        call 'lists':'nth'(1, call 'erlang':'map_get'('touches', E))
+                    in  apply 'Game.touch_event'/2(Game, Touch_point)
+                 <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+    'Game.rotate_tetro'/1 =
+        fun (Game) ->
+            let <Old_rotation_idx> =
+                call 'erlang':'map_get'('rotation_idx', Game)
+            in  do  call 'erlang':'map_get'('rotation_idx', Game)
+                    do  case call 'erlang':'=:='(call 'erlang':'map_get'('rotation_idx', Game), 4) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+                        do  apply 'Game.get_tetro'/1(Game)
+                            do  case call 'erlang':'not'(apply 'Game.move_right'/2(Game, 0)) of <'true'> when 'true' -> 
+                                do  Old_rotation_idx
+                                    apply 'Game.get_tetro'/1(Game)
+                             <'false'> when 'true' -> 'ok' end
+                                case call 'erlang':'<'(call 'erlang':'map_get'('pos_x', Game), 0) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end
+    'Game.key_down'/2 =
+        fun (Game, Key) ->
+            do  case Key of <'escape'> when 'true' -> 'ok' <'space'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('state', Game), 'running') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('state', Game), 'paused') of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('state', Game), 'gameover') of <'true'> when 'true' -> 
+                do  apply 'Game.init_game'/1(Game)
+                    'ok'
+             <'false'> when 'true' -> 'ok' end end end <_> when 'true' -> 'ok' end
+                case call 'erlang':'=/='(call 'erlang':'map_get'('state', Game), 'running') of
+                    <'true'> when 'true' -> 'ok'
+                    <'false'> when 'true' -> 
+                        case Key of <'up'> when 'true' -> apply 'Game.rotate_tetro'/1(Game) <'left'> when 'true' -> apply 'Game.move_right'/2(Game, -1) <'right'> when 'true' -> apply 'Game.move_right'/2(Game, 1) <'down'> when 'true' -> apply 'Game.move_tetro'/1(Game) <'d'> when 'true' -> 'ok' <'g'> when 'true' -> 'ok' <_> when 'true' -> 'ok' end
+                end
+    'Game.touch_event'/2 =
+        fun (Game, Touch_point) ->
+            let <Ws> =
+                call 'v.gg':'window_size'()
+            in  let <Tx> =
+                    call 'erlang':'map_get'('pos_x', Touch_point)
+                in  let <Ty> =
+                        call 'erlang':'map_get'('pos_y', Touch_point)
+                    in  case call 'erlang':'<'(Ty, call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('height', Ws)), 0.5)) of <'true'> when 'true' -> apply 'Game.rotate_tetro'/1(Game) <'false'> when 'true' -> case call 'erlang':'=<'(Tx, call 'erlang':'*'(call 'erlang':'float'(call 'erlang':'map_get'('width', Ws)), 0.5)) of <'true'> when 'true' -> apply 'Game.move_right'/2(Game, -1) <'false'> when 'true' -> apply 'Game.move_right'/2(Game, 1) end end
+    'GameState__static__from'/1 =
+        fun (Input) ->
+            do  'ok'
+                do  'ok'
+                    call 'erlang':'error'(#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<100>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<117>(8,1,'integer',['unsigned'|['big']]),#<101>(8,1,'integer',['unsigned'|['big']])}#)
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.main')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.main', _0)
+    end

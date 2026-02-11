@@ -1,0 +1,168 @@
+module 'v.benchmark' ['new_benchmark'/0,
+                'new_benchmark_no_cstep'/0,
+                'new_benchmark_pointer'/0,
+                'Benchmark.set_total_expected_steps'/2,
+                'Benchmark.stop'/1,
+                'Benchmark.step'/1,
+                'Benchmark.step_restart'/1,
+                'Benchmark.fail'/1,
+                'Benchmark.ok'/1,
+                'Benchmark.skip'/1,
+                'Benchmark.fail_many'/2,
+                'Benchmark.ok_many'/2,
+                'Benchmark.neither_fail_nor_ok'/1,
+                'start'/0,
+                'Benchmark.measure'/2,
+                'Benchmark.record_measure'/2,
+                'Benchmark.step_message_with_label_and_duration'/5,
+                'Benchmark.step_message_with_label'/4,
+                'Benchmark.step_message'/3,
+                'Benchmark.step_message_ok'/3,
+                'Benchmark.step_message_fail'/3,
+                'Benchmark.step_message_skip'/3,
+                'Benchmark.total_message'/2,
+                'Benchmark.all_recorded_measures'/1,
+                'Benchmark.total_duration'/1,
+                'Benchmark.tdiff_in_ms'/3,
+                'module_info'/0,
+                'module_info'/1]
+        attributes []
+    'new_benchmark'/0 =
+        fun () ->
+            ~{'bench_timer'=>call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~),'verbose'=>'true',{'vbeam','type'}=>'Benchmark'}~
+    'new_benchmark_no_cstep'/0 =
+        fun () ->
+            ~{'bench_timer'=>call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~),'verbose'=>'true','no_cstep'=>'true',{'vbeam','type'}=>'Benchmark'}~
+    'new_benchmark_pointer'/0 =
+        fun () ->
+            ~{'bench_timer'=>call 'v.time':'new_stopwatch'(~{{'vbeam','type'}=>'StopWatchOptions'}~),'verbose'=>'true',{'vbeam','type'}=>'Benchmark'}~
+    'Benchmark.set_total_expected_steps'/2 =
+        fun (B, N) ->
+            'ok'
+    'Benchmark.stop'/1 =
+        fun (B) ->
+            apply 'StopWatch.stop'/1(call 'erlang':'map_get'('bench_timer', B))
+    'Benchmark.step'/1 =
+        fun (B) ->
+            do  apply 'StopWatch.restart'/1(call 'erlang':'map_get'('step_timer', B))
+                case call 'erlang':'not'(call 'erlang':'map_get'('no_cstep', B)) of <'true'> when 'true' -> call 'erlang':'map_get'('cstep', B) <'false'> when 'true' -> 'ok' end
+    'Benchmark.step_restart'/1 =
+        fun (B) ->
+            apply 'StopWatch.restart'/1(call 'erlang':'map_get'('step_timer', B))
+    'Benchmark.fail'/1 =
+        fun (B) ->
+            do  apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+                do  call 'erlang':'map_get'('ntotal', B)
+                    call 'erlang':'map_get'('nfail', B)
+    'Benchmark.ok'/1 =
+        fun (B) ->
+            do  apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+                do  call 'erlang':'map_get'('ntotal', B)
+                    call 'erlang':'map_get'('nok', B)
+    'Benchmark.skip'/1 =
+        fun (B) ->
+            do  apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+                do  call 'erlang':'map_get'('ntotal', B)
+                    call 'erlang':'map_get'('nskip', B)
+    'Benchmark.fail_many'/2 =
+        fun (B, N) ->
+            do  apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+                do  N
+                    'ok'
+    'Benchmark.ok_many'/2 =
+        fun (B, N) ->
+            do  apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+                do  N
+                    'ok'
+    'Benchmark.neither_fail_nor_ok'/1 =
+        fun (B) ->
+            apply 'StopWatch.stop'/1(call 'erlang':'map_get'('step_timer', B))
+    'start'/0 =
+        fun () ->
+            let <B> =
+                apply 'new_benchmark'/0()
+            in  do  apply 'Benchmark.step'/1(B)
+                    B
+    'Benchmark.measure'/2 =
+        fun (B, Label) ->
+            do  apply 'Benchmark.ok'/1(B)
+                let <Res> =
+                    apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('step_timer', B)))
+                in  do  call 'io':'format'([126|[115|[126|[110|[]]]]], [apply 'Benchmark.step_message_with_label'/4(B, call 'v.term':'ok_message'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}#), call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Label|[]]]), ~{{'vbeam','type'}=>'MessageOptions'}~)|[]])
+                        do  apply 'Benchmark.step'/1(B)
+                            Res
+    'Benchmark.record_measure'/2 =
+        fun (B, Label) ->
+            do  apply 'Benchmark.ok'/1(B)
+                let <Res> =
+                    apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('step_timer', B)))
+                in  do  call 'erlang':'bsl'(call 'erlang':'map_get'('measured_steps', B), apply 'Benchmark.step_message_with_label'/4(B, call 'v.term':'ok_message'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']]),#<69>(8,1,'integer',['unsigned'|['big']]),#<78>(8,1,'integer',['unsigned'|['big']]),#<84>(8,1,'integer',['unsigned'|['big']])}#), call 'erlang':'iolist_to_binary'([#{#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Label|[]]]), ~{{'vbeam','type'}=>'MessageOptions'}~))
+                        do  call 'erlang':'bsl'(call 'erlang':'map_get'(Label, call 'erlang':'map_get'('step_data', B)), Res)
+                            do  apply 'Benchmark.step'/1(B)
+                                Res
+    'Benchmark.step_message_with_label_and_duration'/5 =
+        fun (B, Label, Msg, Sduration, Opts) ->
+            let <Timed_line> =
+                apply 'Benchmark.tdiff_in_ms'/3(B, Msg, apply 'Duration.microseconds'/1(Sduration))
+            in  case call 'erlang':'>'(call 'erlang':'map_get'('nexpected_steps', B), 1) of
+                    <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([Label|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<91>(8,1,'integer',['unsigned'|['big']])}#|[Sprogress|[#{#<93>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[Timed_line|[]]]]]])
+                    <'false'> when 'true' -> 
+                        call 'erlang':'iolist_to_binary'([Label|[Timed_line|[]]])
+                end
+    'Benchmark.step_message_with_label'/4 =
+        fun (B, Label, Msg, Opts) ->
+            apply 'Benchmark.step_message_with_label_and_duration'/5(B, Label, Msg, apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('step_timer', B)), Opts)
+    'Benchmark.step_message'/3 =
+        fun (B, Msg, Opts) ->
+            apply 'Benchmark.step_message_with_label'/4(B, #{  }#, Msg, Opts)
+    'Benchmark.step_message_ok'/3 =
+        fun (B, Msg, Opts) ->
+            apply 'Benchmark.step_message_with_label'/4(B, call 'v.term':'ok_message'(#{#<79>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#), Msg, Opts)
+    'Benchmark.step_message_fail'/3 =
+        fun (B, Msg, Opts) ->
+            apply 'Benchmark.step_message_with_label'/4(B, call 'v.term':'fail_message'(#{#<70>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<76>(8,1,'integer',['unsigned'|['big']])}#), Msg, Opts)
+    'Benchmark.step_message_skip'/3 =
+        fun (B, Msg, Opts) ->
+            apply 'Benchmark.step_message_with_label'/4(B, call 'v.term':'warn_message'(#{#<83>(8,1,'integer',['unsigned'|['big']]),#<75>(8,1,'integer',['unsigned'|['big']]),#<73>(8,1,'integer',['unsigned'|['big']]),#<80>(8,1,'integer',['unsigned'|['big']])}#), Msg, Opts)
+    'Benchmark.total_message'/2 =
+        fun (B, Msg) ->
+            let <The_label> =
+                fun (_fref0) -> call 'v.term':'gray'(_fref0)
+            in  let <Tmsg> =
+                    call 'erlang':'iolist_to_binary'([fun (_fref0) -> call 'v.term':'bold'(_fref0)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]])
+                in  let <Tmsg_1> =
+                        case call 'erlang':'>'(call 'erlang':'map_get'('nfail', B), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([fun (_fref0) -> call 'v.term':'bold'(_fref0)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> Tmsg end
+                    in  let <Tmsg_2> =
+                            case call 'erlang':'>'(call 'erlang':'map_get'('nok', B), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([fun (_fref0) -> call 'v.term':'bold'(_fref0)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> Tmsg_1 end
+                        in  let <Tmsg_3> =
+                                case call 'erlang':'>'(call 'erlang':'map_get'('nskip', B), 0) of <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([fun (_fref0) -> call 'v.term':'bold'(_fref0)|[#{#<44>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[]]]) <'false'> when 'true' -> Tmsg_2 end
+                            in  let <Njobs_label> =
+                                    #{  }#
+                                in  do  case call 'erlang':'>'(call 'erlang':'map_get'('njobs', B), 0) of <'true'> when 'true' -> case call 'erlang':'=:='(call 'erlang':'map_get'('njobs', B), 1) of <'true'> when 'true' -> 'ok' <'false'> when 'true' -> 'ok' end <'false'> when 'true' -> 'ok' end
+                                        let <Tmsg_4> =
+                                            call 'erlang':'iolist_to_binary'([call 'erlang':'integer_to_binary'(call 'erlang':'map_get'('ntotal', B))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<111>(8,1,'integer',['unsigned'|['big']]),#<116>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<108>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[fun (_fref0) -> call 'v.term':'bold'(_fref0)|[#{#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'integer_to_binary'(call 'erlang':'div'(apply 'Duration.microseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('bench_timer', B))), 1000))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[Njobs_label|[#{#<46>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]])
+                                        in  let <Tmsg_5> =
+                                                case call 'erlang':'and'(call 'lists':'member'(Msg, call 'erlang':'map_get'('step_data', B)), call 'erlang':'>'(call 'erlang':'length'(call 'erlang':'map_get'(Msg, call 'erlang':'map_get'('step_data', B))), 1)) of <'true'> when 'true' -> let <Min> = call 'erlang':'/'(try call 'v.arrays':'min'(call 'erlang':'map_get'(Msg, call 'erlang':'map_get'('step_data', B))) of <_cor6> when 'true' -> _cor6 catch <_cor_c6,_cor_r6,_cor_s6> when 'true' -> 0, 1000.0) in let <Max> = call 'erlang':'/'(try call 'v.arrays':'max'(call 'erlang':'map_get'(Msg, call 'erlang':'map_get'('step_data', B))) of <_cor7> when 'true' -> _cor7 catch <_cor_c7,_cor_r7,_cor_s7> when 'true' -> 0, 1000.0) in let <Avg> = call 'erlang':'/'(call 'erlang':'/'(try call 'crypto':'hash'('sha256', call 'erlang':'map_get'(Msg, call 'erlang':'map_get'('step_data', B))) of <_cor8> when 'true' -> _cor8 catch <_cor_c8,_cor_r8,_cor_s8> when 'true' -> 0, call 'erlang':'length'(call 'erlang':'map_get'(Msg, call 'erlang':'map_get'('step_data', B)))), 1000.0) in call 'erlang':'iolist_to_binary'([#{#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<105>(8,1,'integer',['unsigned'|['big']]),#<110>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(Min)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<77>(8,1,'integer',['unsigned'|['big']]),#<97>(8,1,'integer',['unsigned'|['big']]),#<120>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(Max)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<46>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']]),#<65>(8,1,'integer',['unsigned'|['big']]),#<118>(8,1,'integer',['unsigned'|['big']]),#<103>(8,1,'integer',['unsigned'|['big']]),#<58>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[call 'erlang':'float_to_binary'(Avg)|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']])}#|[]]]]]]]]) <'false'> when 'true' -> Tmsg_4 end
+                                            in  Tmsg_5
+    'Benchmark.all_recorded_measures'/1 =
+        fun (B) ->
+            apply 'array.join_lines'/1(call 'erlang':'map_get'('measured_steps', B))
+    'Benchmark.total_duration'/1 =
+        fun (B) ->
+            apply 'Duration.milliseconds'/1(apply 'StopWatch.elapsed'/1(call 'erlang':'map_get'('bench_timer', B)))
+    'Benchmark.tdiff_in_ms'/3 =
+        fun (B, S, Tdiff) ->
+            case call 'erlang':'map_get'('verbose', B) of
+                <'true'> when 'true' -> call 'erlang':'iolist_to_binary'([call 'erlang':'float_to_binary'(call 'erlang':'/'(call 'erlang':'float'(Tdiff), 1000.0))|[#{#<32>(8,1,'integer',['unsigned'|['big']]),#<109>(8,1,'integer',['unsigned'|['big']]),#<115>(8,1,'integer',['unsigned'|['big']]),#<32>(8,1,'integer',['unsigned'|['big']])}#|[S|[]]]])
+                <'false'> when 'true' -> 
+                    S
+            end
+    'module_info'/0 =
+        fun () ->
+            call 'erlang':'get_module_info'
+                ('v.benchmark')
+    'module_info'/1 =
+        fun (_0) ->
+            call 'erlang':'get_module_info'
+                ('v.benchmark', _0)
+    end
