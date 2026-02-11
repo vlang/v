@@ -584,6 +584,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					}
 					return 0
 				}
+				C.MBEDTLS_ERR_SSL_TIMEOUT {
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: ${err} C.MBEDTLS_ERR_SSL_TIMEOUT')
+					}
+					return error_with_code('net.mbedtls SSLConn.socket_read_into_ptr, did not receive any data within ${mbedtls_client_read_timeout_ms}ms. compile with `-d mbedtls_client_read_timeout_ms=100000` to set a higher timeout',
+						res)
+				}
 				else {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: could not read using SSL')
