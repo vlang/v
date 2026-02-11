@@ -1,9 +1,3 @@
-I have updated the documentation to include a section on **Non-greedy quantifiers** 
-under the "Advanced Usage" section. 
-This example clearly illustrates the difference between greedy and non-greedy matching using a
-common HTML tag scenario.
-
-```markdown
 # regex.pcre Module Documentation
 
 The `regex.pcre` module provides a **Virtual Machine (VM)** based regular expression engine with 
