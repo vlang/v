@@ -292,19 +292,18 @@ fn (mut c Compiler) emit_node(node Node) {
 		c.emit_single_node_logic(node)
 
 		c.emit(Inst{ typ: .jmp, target_x: split_idx })
-		
+
 		// In this VM, target_x is the first path taken (stack.pop order depends on implementation,
 		// but standard here is target_x executed immediately, target_y pushed to stack).
 		// Greedy: Prefer matching loop (start_pc) over exit.
 		// Lazy: Prefer exit over matching loop.
 		if node.quant.greedy {
-			c.prog[split_idx].target_x = start_pc   // Loop
+			c.prog[split_idx].target_x = start_pc // Loop
 			c.prog[split_idx].target_y = c.prog.len // Exit
 		} else {
 			c.prog[split_idx].target_x = c.prog.len // Exit
-			c.prog[split_idx].target_y = start_pc   // Loop
+			c.prog[split_idx].target_y = start_pc // Loop
 		}
-		
 	} else if node.quant.max > node.quant.min {
 		// Finite range
 		rem := node.quant.max - node.quant.min
@@ -313,7 +312,7 @@ fn (mut c Compiler) emit_node(node Node) {
 		for _ in 0 .. rem {
 			idx := c.emit(Inst{ typ: .split })
 			match_pc := c.prog.len
-			
+
 			// If greedy, we prefer to match the node (continue execution)
 			// If lazy, we prefer to skip the match (jump to end)
 			if node.quant.greedy {
@@ -321,7 +320,7 @@ fn (mut c Compiler) emit_node(node Node) {
 			} else {
 				c.prog[idx].target_y = match_pc // Match node (fallback)
 			}
-			
+
 			c.emit_single_node_logic(node)
 			splits << idx
 		}
