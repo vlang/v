@@ -1232,4 +1232,3 @@ pub fn (m Match) get_all() []string {
 	res << m.groups
 	return res
 }
-

@@ -576,7 +576,7 @@ fn test_compatibility_layer() {
 	// Passing '0' as the second argument to simulate the ignored C-flag argument
 	pattern := r'(\w+)\s+(\d+)'
 	re := pcre.new_regex(pattern, 0) or {
-		assert false, 'new_regex failed to compile: $err'
+		assert false, 'new_regex failed to compile: ${err}'
 		return
 	}
 
