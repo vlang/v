@@ -164,6 +164,7 @@ mut:
 	inside_global_decl        bool
 	inside_interface_deref    bool
 	inside_assign_fn_var      bool
+	outer_tmp_var             string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
 	last_tmp_call_var         []string
 	last_if_option_type       ast.Type // stores the expected if type on nested if expr
 	loop_depth                int
@@ -2353,6 +2354,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
+				mut is_if_expr_with_tmp := false
 				if stmt in [ast.Return, ast.BranchStmt] {
 					is_noreturn = true
 				} else if stmt is ast.ExprStmt {
@@ -2361,8 +2363,23 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
 					}
+					// Check if this is an if expression
+					// If so, pass the tmp_var to it and don't write the assignment here
+					if stmt.expr is ast.IfExpr {
+						$if trace_autofree ? {
+							eprintln('Found if expr in stmts_with_tmp_var, needs_tmp: ${g.need_tmp_var_in_if(stmt.expr)}')
+						}
+						// Pass the tmp_var to the if expression so it can use it
+						// This handles cases where the if expression might not be correctly
+						// marked as needing a tmp var but is being assigned to one
+						is_if_expr_with_tmp = true
+						g.outer_tmp_var = tmp_var
+						$if trace_autofree ? {
+							eprintln('Detected if expr in stmts_with_tmp_var, passing tmp_var=${tmp_var}')
+						}
+					}
 				}
-				if !is_noreturn {
+				if !is_noreturn && !is_if_expr_with_tmp {
 					if is_array_fixed_init {
 						g.write('memcpy(${tmp_var}, (${g.styp(ret_type)})')
 					} else {
@@ -2370,6 +2387,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					}
 				}
 				g.stmt(stmt)
+				// Reset outer_tmp_var after processing
+				if is_if_expr_with_tmp {
+					g.outer_tmp_var = ''
+				}
 				if is_array_fixed_init {
 					lines := g.go_before_last_stmt().trim_right('; \n')
 					g.writeln('${lines}, sizeof(${tmp_var}));')

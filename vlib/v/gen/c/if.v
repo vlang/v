@@ -6,6 +6,9 @@ module c
 import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
+	$if trace_autofree ? {
+		eprintln('need_tmp_var_in_if: is_expr=${node.is_expr}, inside_ternary=${g.inside_ternary}, is_autofree=${g.is_autofree}, is_assign_lhs=${g.is_assign_lhs}')
+	}
 	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
 		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime || g.is_assign_lhs {
 			return true
@@ -187,9 +190,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	needs_tmp_var := g.inside_if_option || g.need_tmp_var_in_if(node)
+	needs_tmp_var := g.inside_if_option || g.need_tmp_var_in_if(node) || g.outer_tmp_var != ''
 	needs_conds_order := g.needs_conds_order(node)
-	tmp := if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
+	tmp := if g.outer_tmp_var != '' {
+		// Use the tmp var from outer context (e.g. from stmts_with_tmp_var)
+		g.outer_tmp_var
+	} else if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
 		g.new_tmp_var()
 	} else {
 		''
@@ -267,7 +273,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
-		if tmp != '' {
+		if tmp != '' && g.outer_tmp_var == '' {
+			// Only declare the tmp var if it's not from outer context
 			if node.typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
