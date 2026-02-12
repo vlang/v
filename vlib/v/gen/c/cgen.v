@@ -2232,13 +2232,14 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 }
 
 // stmts_with_tmp_var is used in `if` or `match` branches.
-// It returns true, if the last statement was a `return`
+// It returns true, if the last statement was a `return` or `branch`
 fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	g.indent++
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
 	expected_cast_type := g.expected_cast_type
+	// Track if last statement was return or branch (for autofree, both skip scope cleanup)
 	mut last_stmt_was_return := false
 	for i, stmt in stmts {
 		if i == stmts.len - 1 {
