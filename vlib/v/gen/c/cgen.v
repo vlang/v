@@ -2245,6 +2245,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 			g.expected_cast_type = expected_cast_type
 			if stmt is ast.Return {
 				last_stmt_was_return = true
+			} else if stmt is ast.BranchStmt {
+				last_stmt_was_return = true
 			}
 		}
 		if i == stmts.len - 1 && tmp_var != '' {
@@ -2402,7 +2404,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	if g.inside_ternary > 0 {
 		g.write2('', ')')
 	}
-	if g.is_autofree && !g.inside_vweb_tmpl && stmts.len > 0 {
+	if g.is_autofree && !g.inside_vweb_tmpl && stmts.len > 0 && !last_stmt_was_return {
 		// use the first stmt to get the scope
 		stmt := stmts[0]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
