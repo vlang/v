@@ -308,7 +308,8 @@ fn Config.init(vargs []string, targs []string) !Config {
 }
 
 fn main() {
-	os.chdir(vroot) or { panic(err) }
+	unbuffer_stdout()
+	os.chdir(vroot)!
 	args_idx := os.args.index('test-self')
 	vargs := os.args[1..args_idx]
 	targs := os.args#[args_idx + 1..]
@@ -381,6 +382,7 @@ fn main() {
 	tsession.session_start(title)
 	tsession.test()
 	tsession.session_stop(title)
+	flush_stdout()
 	if tsession.benchmark.nfail > 0 {
 		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
