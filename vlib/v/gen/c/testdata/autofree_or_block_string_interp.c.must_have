@@ -1,0 +1,6 @@
+builtin__println(/*autofree arg*/_arg_expr_println_1_
+builtin__string_free(&_arg_expr_println_1_
+builtin__string_free(&msg);
+builtin__array_free(&data);
+return;
+}
