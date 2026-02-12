@@ -301,7 +301,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 						g.write(')(*(${elem_type_str}*)builtin__array_get(')
 					}
 				}
-				if left_is_ptr && !left_is_shared {
+				if left_is_ptr && !left_is_shared && !is_direct_array_access {
 					g.write('*')
 				}
 			} else if is_direct_array_access {
