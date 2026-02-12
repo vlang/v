@@ -2191,7 +2191,7 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 		if is_floats[i] {
 			if args_size[i] == 8
 				&& node.expected_arg_types[int(i) + args_offset] == ast.f32_type_idx {
-				c.g.write32(0xc05a0ff2)
+				c.g.write32(i32(0xc05a0ff2))
 				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
 			c.push_sse(.xmm0)
@@ -3000,7 +3000,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 		typ := if node.types.len > 1 { c.g.return_type } else { node.types[0] }
 		if typ == ast.float_literal_type_idx && c.g.return_type == ast.f32_type_idx {
 			if c.g.pref.arch == .amd64 {
-				c.g.write32(0xc05a0ff2)
+				c.g.write32(i32(0xc05a0ff2))
 				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
 		}
@@ -3485,7 +3485,7 @@ fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
 	}
 	match node.op {
 		.eq, .ne {
-			c.g.write32(0xc1c20ff3)
+			c.g.write32(i32(0xc1c20ff3))
 			c.g.write8(if node.op == .eq { i32(0x00) } else { i32(0x04) })
 			inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
 			c.g.println('${inst} xmm0, xmm1')
@@ -3712,7 +3712,7 @@ fn (mut c Amd64) cg_infix_expr(node ast.InfixExpr) {
 			c.sub_reg(.rax, .rdx)
 		}
 		.mul {
-			c.g.write32(0xc2af0f48)
+			c.g.write32(i32(0xc2af0f48))
 			c.g.println('imul .rax, .rdx')
 		}
 		.div {
@@ -4871,11 +4871,11 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 			from_size := c.g.get_type_size(expr.expr_type)
 			to_size := c.g.get_type_size(expr.typ)
 			if from_size == 4 && to_size == 8 {
-				c.g.write32(0xc05a0ff3)
+				c.g.write32(i32(0xc05a0ff3))
 				c.g.println('cvtss2sd xmm0, xmm0')
 			}
 			if from_size == 8 && to_size == 4 {
-				c.g.write32(0xc05a0ff2)
+				c.g.write32(i32(0xc05a0ff2))
 				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
 		} else if expr.typ.is_pure_float() {
