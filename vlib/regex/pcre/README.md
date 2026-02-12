@@ -16,6 +16,7 @@ and iterative searching.
 | **Wildcard** | `.` | Matches any character (excluding `\n` unless `(?s)` flag is used). |
 | **Alternation** | `|` | Matches the left OR right expression (e.g., `cat|dog`). |
 | **Quantifiers** | `*` | Matches 0 or more times. |
+| **Non-greedy quantifiers** | `*?`, `+?`, `??` | Avoid to consume as much as possible. |
 | | `+` | Matches 1 or more times. |
 | | `?` | Matches 0 or 1 time. |
 | | `{m}` | Matches exactly `m` times. |
@@ -243,6 +244,26 @@ println(year) // Output: 2025
 ---
 
 ## Advanced Usage
+
+### Non-greedy Matching
+By default, quantifiers like `*` and `+` are **greedy**, meaning they match
+as much text as possible. Adding a `?` makes them **non-greedy** (or lazy), 
+matching the shortest possible string.
+
+**Example:**
+```v
+import regex.pcre
+
+text := '<div>content</div>'
+
+// Greedy: Matches everything from the first '<' to the last '>'
+r_greedy := pcre.compile(r'<.*>')!
+println(r_greedy.find(text)?.text) // Output: <div>content</div>
+
+// Non-greedy: Matches only until the first '>'
+r_lazy := pcre.compile(r'<.*?>')!
+println(r_lazy.find(text)?.text) // Output: <div>
+```
 
 ### VM Stability (No Stack Overflow)
 Because this engine uses a VM with a heap-allocated stack, it can handle patterns that typically
