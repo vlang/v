@@ -1,0 +1,313 @@
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:54:7: warning: value `256` is outside the range of `u8` in argument, this will be considered hard error soon
+   52 | 
+   53 | fn main() {
+   54 |     f_u8(256)
+      |          ~~~
+   55 |     f_i8(128)
+   56 |     f_i8(-129)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:55:7: warning: value `128` is outside the range of `i8` in argument, this will be considered hard error soon
+   53 | fn main() {
+   54 |     f_u8(256)
+   55 |     f_i8(128)
+      |          ~~~
+   56 |     f_i8(-129)
+   57 |     f_u16(65536)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:56:7: warning: value `-129` is outside the range of `i8` in argument, this will be considered hard error soon
+   54 |     f_u8(256)
+   55 |     f_i8(128)
+   56 |     f_i8(-129)
+      |          ~~~~
+   57 |     f_u16(65536)
+   58 |     f_i16(32768)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:57:8: warning: value `65536` is outside the range of `u16` in argument, this will be considered hard error soon
+   55 |     f_i8(128)
+   56 |     f_i8(-129)
+   57 |     f_u16(65536)
+      |           ~~~~~
+   58 |     f_i16(32768)
+   59 |     f_i16(-32769)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:58:8: warning: value `32768` is outside the range of `i16` in argument, this will be considered hard error soon
+   56 |     f_i8(-129)
+   57 |     f_u16(65536)
+   58 |     f_i16(32768)
+      |           ~~~~~
+   59 |     f_i16(-32769)
+   60 |     f_u32(4294967296)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:59:8: warning: value `-32769` is outside the range of `i16` in argument, this will be considered hard error soon
+   57 |     f_u16(65536)
+   58 |     f_i16(32768)
+   59 |     f_i16(-32769)
+      |           ~~~~~~
+   60 |     f_u32(4294967296)
+   61 |     f_i32(2147483648)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:60:8: warning: value `4294967296` is outside the range of `u32` in argument, this will be considered hard error soon
+   58 |     f_i16(32768)
+   59 |     f_i16(-32769)
+   60 |     f_u32(4294967296)
+      |           ~~~~~~~~~~
+   61 |     f_i32(2147483648)
+   62 |     f_i32(-2147483649)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:61:8: warning: value `2147483648` is outside the range of `i32` in argument, this will be considered hard error soon
+   59 |     f_i16(-32769)
+   60 |     f_u32(4294967296)
+   61 |     f_i32(2147483648)
+      |           ~~~~~~~~~~
+   62 |     f_i32(-2147483649)
+   63 |     f_i64(9223372036854775808)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:62:8: warning: value `-2147483649` is outside the range of `i32` in argument, this will be considered hard error soon
+   60 |     f_u32(4294967296)
+   61 |     f_i32(2147483648)
+   62 |     f_i32(-2147483649)
+      |           ~~~~~~~~~~~
+   63 |     f_i64(9223372036854775808)
+   64 |     f_i64(-9223372036854775809)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:63:8: warning: value `9223372036854775808` is outside the range of `i64` in argument, this will be considered hard error soon
+   61 |     f_i32(2147483648)
+   62 |     f_i32(-2147483649)
+   63 |     f_i64(9223372036854775808)
+      |           ~~~~~~~~~~~~~~~~~~~
+   64 |     f_i64(-9223372036854775809)
+   65 |     f_isize(9223372036854775808)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:64:8: warning: value `-9223372036854775809` is outside the range of `i64` in argument, this will be considered hard error soon
+   62 |     f_i32(-2147483649)
+   63 |     f_i64(9223372036854775808)
+   64 |     f_i64(-9223372036854775809)
+      |           ~~~~~~~~~~~~~~~~~~~~
+   65 |     f_isize(9223372036854775808)
+   66 |     f_isize(-9223372036854775809)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:65:10: warning: value `9223372036854775808` is outside the range of `isize` in argument, this will be considered hard error soon
+   63 |     f_i64(9223372036854775808)
+   64 |     f_i64(-9223372036854775809)
+   65 |     f_isize(9223372036854775808)
+      |             ~~~~~~~~~~~~~~~~~~~
+   66 |     f_isize(-9223372036854775809)
+   67 |
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:66:10: warning: value `-9223372036854775809` is outside the range of `isize` in argument, this will be considered hard error soon
+   64 |     f_i64(-9223372036854775809)
+   65 |     f_isize(9223372036854775808)
+   66 |     f_isize(-9223372036854775809)
+      |             ~~~~~~~~~~~~~~~~~~~~
+   67 | 
+   68 |     _ := Sample{
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:69:3: warning: value `32768` is outside the range of `i16` in argument, this will be considered hard error soon
+   67 | 
+   68 |     _ := Sample{
+   69 |         i16_over_max:    32768
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   70 |         i16_under_min:   -32769
+   71 |         i32_over_max:    2147483648
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:70:3: warning: value `-32769` is outside the range of `i16` in argument, this will be considered hard error soon
+   68 |     _ := Sample{
+   69 |         i16_over_max:    32768
+   70 |         i16_under_min:   -32769
+      |         ~~~~~~~~~~~~~~~~~~~~~~~
+   71 |         i32_over_max:    2147483648
+   72 |         i32_under_min:   -2147483649
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:71:3: warning: value `2147483648` is outside the range of `i32` in argument, this will be considered hard error soon
+   69 |         i16_over_max:    32768
+   70 |         i16_under_min:   -32769
+   71 |         i32_over_max:    2147483648
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   72 |         i32_under_min:   -2147483649
+   73 |         i64_over_max:    9223372036854775808
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:72:3: warning: value `-2147483649` is outside the range of `i32` in argument, this will be considered hard error soon
+   70 |         i16_under_min:   -32769
+   71 |         i32_over_max:    2147483648
+   72 |         i32_under_min:   -2147483649
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   73 |         i64_over_max:    9223372036854775808
+   74 |         i64_under_min:   -9223372036854775809
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:73:3: warning: value `9223372036854775808` is outside the range of `i64` in argument, this will be considered hard error soon
+   71 |         i32_over_max:    2147483648
+   72 |         i32_under_min:   -2147483649
+   73 |         i64_over_max:    9223372036854775808
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   74 |         i64_under_min:   -9223372036854775809
+   75 |         i8_over_max:     128
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:74:3: warning: value `-9223372036854775809` is outside the range of `i64` in argument, this will be considered hard error soon
+   72 |         i32_under_min:   -2147483649
+   73 |         i64_over_max:    9223372036854775808
+   74 |         i64_under_min:   -9223372036854775809
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   75 |         i8_over_max:     128
+   76 |         i8_under_min:    -129
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:75:3: warning: value `128` is outside the range of `i8` in argument, this will be considered hard error soon
+   73 |         i64_over_max:    9223372036854775808
+   74 |         i64_under_min:   -9223372036854775809
+   75 |         i8_over_max:     128
+      |         ~~~~~~~~~~~~~~~~~~~~
+   76 |         i8_under_min:    -129
+   77 |         isize_over_max:  9223372036854775808
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:76:3: warning: value `-129` is outside the range of `i8` in argument, this will be considered hard error soon
+   74 |         i64_under_min:   -9223372036854775809
+   75 |         i8_over_max:     128
+   76 |         i8_under_min:    -129
+      |         ~~~~~~~~~~~~~~~~~~~~~
+   77 |         isize_over_max:  9223372036854775808
+   78 |         isize_under_min: -9223372036854775809
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:77:3: warning: value `9223372036854775808` is outside the range of `isize` in argument, this will be considered hard error soon
+   75 |         i8_over_max:     128
+   76 |         i8_under_min:    -129
+   77 |         isize_over_max:  9223372036854775808
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   78 |         isize_under_min: -9223372036854775809
+   79 |         u16_over_max:    65536
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:78:3: warning: value `-9223372036854775809` is outside the range of `isize` in argument, this will be considered hard error soon
+   76 |         i8_under_min:    -129
+   77 |         isize_over_max:  9223372036854775808
+   78 |         isize_under_min: -9223372036854775809
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   79 |         u16_over_max:    65536
+   80 |         u32_over_max:    4294967296
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:79:3: warning: value `65536` is outside the range of `u16` in argument, this will be considered hard error soon
+   77 |         isize_over_max:  9223372036854775808
+   78 |         isize_under_min: -9223372036854775809
+   79 |         u16_over_max:    65536
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   80 |         u32_over_max:    4294967296
+   81 |         u8_over_max:     256
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:80:3: warning: value `4294967296` is outside the range of `u32` in argument, this will be considered hard error soon
+   78 |         isize_under_min: -9223372036854775809
+   79 |         u16_over_max:    65536
+   80 |         u32_over_max:    4294967296
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   81 |         u8_over_max:     256
+   82 |     }
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:81:3: warning: value `256` is outside the range of `u8` in argument, this will be considered hard error soon
+   79 |         u16_over_max:    65536
+   80 |         u32_over_max:    4294967296
+   81 |         u8_over_max:     256
+      |         ~~~~~~~~~~~~~~~~~~~~
+   82 |     }
+   83 |
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:84:25: warning: value `256` is outside the range of `u8` in argument, this will be considered hard error soon
+   82 |     }
+   83 | 
+   84 |     _ := GenericSample[u8]{256}
+      |                            ~~~
+   85 |     _ := GenericSample[u16]{65536}
+   86 |     _ := GenericSample[u32]{4294967296}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:85:26: warning: value `65536` is outside the range of `u16` in argument, this will be considered hard error soon
+   83 | 
+   84 |     _ := GenericSample[u8]{256}
+   85 |     _ := GenericSample[u16]{65536}
+      |                             ~~~~~
+   86 |     _ := GenericSample[u32]{4294967296}
+   87 |
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:86:26: warning: value `4294967296` is outside the range of `u32` in argument, this will be considered hard error soon
+   84 |     _ := GenericSample[u8]{256}
+   85 |     _ := GenericSample[u16]{65536}
+   86 |     _ := GenericSample[u32]{4294967296}
+      |                             ~~~~~~~~~~
+   87 | 
+   88 |     _ := GenericSample[i8]{128}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:88:25: warning: value `128` is outside the range of `i8` in argument, this will be considered hard error soon
+   86 |     _ := GenericSample[u32]{4294967296}
+   87 | 
+   88 |     _ := GenericSample[i8]{128}
+      |                            ~~~
+   89 |     _ := GenericSample[i8]{-129}
+   90 |     _ := GenericSample[i16]{32768}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:89:25: warning: value `-129` is outside the range of `i8` in argument, this will be considered hard error soon
+   87 | 
+   88 |     _ := GenericSample[i8]{128}
+   89 |     _ := GenericSample[i8]{-129}
+      |                            ~~~~
+   90 |     _ := GenericSample[i16]{32768}
+   91 |     _ := GenericSample[i16]{-32769}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:90:26: warning: value `32768` is outside the range of `i16` in argument, this will be considered hard error soon
+   88 |     _ := GenericSample[i8]{128}
+   89 |     _ := GenericSample[i8]{-129}
+   90 |     _ := GenericSample[i16]{32768}
+      |                             ~~~~~
+   91 |     _ := GenericSample[i16]{-32769}
+   92 |     _ := GenericSample[i32]{2147483648}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:91:26: warning: value `-32769` is outside the range of `i16` in argument, this will be considered hard error soon
+   89 |     _ := GenericSample[i8]{-129}
+   90 |     _ := GenericSample[i16]{32768}
+   91 |     _ := GenericSample[i16]{-32769}
+      |                             ~~~~~~
+   92 |     _ := GenericSample[i32]{2147483648}
+   93 |     _ := GenericSample[i32]{-2147483649}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:92:26: warning: value `2147483648` is outside the range of `i32` in argument, this will be considered hard error soon
+   90 |     _ := GenericSample[i16]{32768}
+   91 |     _ := GenericSample[i16]{-32769}
+   92 |     _ := GenericSample[i32]{2147483648}
+      |                             ~~~~~~~~~~
+   93 |     _ := GenericSample[i32]{-2147483649}
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:93:26: warning: value `-2147483649` is outside the range of `i32` in argument, this will be considered hard error soon
+   91 |     _ := GenericSample[i16]{-32769}
+   92 |     _ := GenericSample[i32]{2147483648}
+   93 |     _ := GenericSample[i32]{-2147483649}
+      |                             ~~~~~~~~~~~
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:94:26: warning: value `9223372036854775808` is outside the range of `i64` in argument, this will be considered hard error soon
+   92 |     _ := GenericSample[i32]{2147483648}
+   93 |     _ := GenericSample[i32]{-2147483649}
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+      |                             ~~~~~~~~~~~~~~~~~~~
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:95:26: warning: value `-9223372036854775809` is outside the range of `i64` in argument, this will be considered hard error soon
+   93 |     _ := GenericSample[i32]{-2147483649}
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+      |                             ~~~~~~~~~~~~~~~~~~~~
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+   97 |     _ := GenericSample[isize]{-9223372036854775809}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:96:28: warning: value `9223372036854775808` is outside the range of `isize` in argument, this will be considered hard error soon
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+      |                               ~~~~~~~~~~~~~~~~~~~
+   97 |     _ := GenericSample[isize]{-9223372036854775809}
+   98 | }
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:97:28: warning: value `-9223372036854775809` is outside the range of `isize` in argument, this will be considered hard error soon
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+   97 |     _ := GenericSample[isize]{-9223372036854775809}
+      |                               ~~~~~~~~~~~~~~~~~~~~
+   98 | }
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:64:8: error: integer literal -9223372036854775809 overflows int
+   62 |     f_i32(-2147483649)
+   63 |     f_i64(9223372036854775808)
+   64 |     f_i64(-9223372036854775809)
+      |           ~~~~~~~~~~~~~~~~~~~~
+   65 |     f_isize(9223372036854775808)
+   66 |     f_isize(-9223372036854775809)
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:66:10: error: integer literal -9223372036854775809 overflows int
+   64 |     f_i64(-9223372036854775809)
+   65 |     f_isize(9223372036854775808)
+   66 |     f_isize(-9223372036854775809)
+      |             ~~~~~~~~~~~~~~~~~~~~
+   67 | 
+   68 |     _ := Sample{
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:74:20: error: integer literal -9223372036854775809 overflows int
+   72 |         i32_under_min:   -2147483649
+   73 |         i64_over_max:    9223372036854775808
+   74 |         i64_under_min:   -9223372036854775809
+      |                          ~~~~~~~~~~~~~~~~~~~~
+   75 |         i8_over_max:     128
+   76 |         i8_under_min:    -129
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:78:20: error: integer literal -9223372036854775809 overflows int
+   76 |         i8_under_min:    -129
+   77 |         isize_over_max:  9223372036854775808
+   78 |         isize_under_min: -9223372036854775809
+      |                          ~~~~~~~~~~~~~~~~~~~~
+   79 |         u16_over_max:    65536
+   80 |         u32_over_max:    4294967296
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:95:26: error: integer literal -9223372036854775809 overflows int
+   93 |     _ := GenericSample[i32]{-2147483649}
+   94 |     _ := GenericSample[i64]{9223372036854775808}
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+      |                             ~~~~~~~~~~~~~~~~~~~~
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+   97 |     _ := GenericSample[isize]{-9223372036854775809}
+vlib/v/checker/tests/number_literal_overflows_known_type_range_warn.vv:97:28: error: integer literal -9223372036854775809 overflows int
+   95 |     _ := GenericSample[i64]{-9223372036854775809}
+   96 |     _ := GenericSample[isize]{9223372036854775808}
+   97 |     _ := GenericSample[isize]{-9223372036854775809}
+      |                               ~~~~~~~~~~~~~~~~~~~~
+   98 | }
