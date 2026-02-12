@@ -115,16 +115,16 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			} else {
 				g.writeln('\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
 			}
-			g.writeln('\tFILE* res_fp = 0')
-			g.writeln('\terrno_t err')
+			g.writeln('\tFILE* res_fp = 0;')
+			g.writeln('\terrno_t err;')
 			g.writeln('\tif (con_valid) {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout)')
-			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr)')
+			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stdout);')
+			g.writeln('\t\terr = freopen_s(&res_fp, "CON", "w", stderr);')
 			g.writeln('\t} else {')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout)')
-			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr)')
+			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);')
+			g.writeln('\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);')
 			g.writeln('\t}')
-			g.writeln('\t(void)err')
+			g.writeln('\t(void)err;')
 
 			return
 		}
