@@ -29,38 +29,61 @@ return error("test")
 
 	// Compile with autofree and keepc
 	vexe := @VEXE
-	output_file := os.join_path(tmpdir, 'test_out')
-	result := os.execute('${vexe} -autofree -keepc -o ${output_file} ${test_file}')
+	unique_name := 'autofree_test_${os.getpid()}'
+	output_file := os.join_path(tmpdir, unique_name)
+
+	cmd := '${vexe} -autofree -keepc -o ${output_file} ${test_file} 2>&1'
+	result := os.execute(cmd)
 
 	if result.exit_code != 0 {
 		eprintln('Compilation failed: ${result.output}')
 		assert false, 'Compilation should succeed'
 	}
 
-	// Find the generated C file in /tmp/v_*/
-	tmp_v_pattern := '/tmp/v_*/test_out.tmp.c'
-	c_files := os.glob(tmp_v_pattern) or {
-		assert false, 'Could not find C file with pattern ${tmp_v_pattern}'
-		return
+	// Find C file by walking the temp directory
+	mut c_file := ''
+	v_tmp_dirs := ['/tmp/v_1001', '/tmp/v_0', '/tmp/v_${os.getpid()}']
+
+	for tmp_dir in v_tmp_dirs {
+		if !os.exists(tmp_dir) {
+			continue
+		}
+
+		c_file_path := os.join_path(tmp_dir, '${unique_name}.tmp.c')
+		if os.exists(c_file_path) {
+			c_file = c_file_path
+			break
+		}
+
+		// Also check subdirectories
+		entries := os.ls(tmp_dir) or { continue }
+		for entry in entries {
+			if entry.contains('tsession_') {
+				subdir_path := os.join_path(tmp_dir, entry, '${unique_name}.tmp.c')
+				if os.exists(subdir_path) {
+					c_file = subdir_path
+					break
+				}
+			}
+		}
+		if c_file != '' {
+			break
+		}
 	}
 
-	if c_files.len == 0 {
-		assert false, 'No C file found with pattern ${tmp_v_pattern}'
+	if c_file == '' {
+		assert false, 'Could not find generated C file'
 	}
 
-	c_file := c_files[0]
 	c_content := os.read_file(c_file) or { panic('Could not read C file: ${err}') }
-
 	check_no_duplicates(c_content)
 }
 
 fn check_no_duplicates(c_content string) {
-	// Look for the pattern: return; followed by free statements (unreachable code)
 	lines := c_content.split_into_lines()
 
 	for i, line in lines {
 		if line.contains('return;') {
-			// Check if there are any free statements in the next lines before closing brace
 			mut found_frees_after_return := []string{}
 
 			for j in i + 1 .. i + 10 {
@@ -69,12 +92,10 @@ fn check_no_duplicates(c_content string) {
 				}
 				next_line := lines[j].trim_space()
 
-				// Stop at closing brace
 				if next_line.starts_with('}') && !next_line.contains('//') {
 					break
 				}
 
-				// Check for free statements
 				if next_line.contains('_free(') && next_line.contains('//') {
 					found_frees_after_return << next_line
 				}
