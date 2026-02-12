@@ -570,3 +570,67 @@ fn test_non_greedy_quantifiers() {
 	tst_find(r'a?a', 'a', 'a')
 	tst_find(r'a??a', 'a', 'a')
 }
+
+fn test_compatibility_layer() {
+	// Test new_regex (alias for compile)
+	// Passing '0' as the second argument to simulate the ignored C-flag argument
+	pattern := r'(\w+)\s+(\d+)'
+	re := pcre.new_regex(pattern, 0) or {
+		assert false, 'new_regex failed to compile: $err'
+		return
+	}
+
+	text := 'item 42 ignored item 99'
+
+	// Test match_str (alias for find_from)
+	// We start searching from index 0. The third argument '0' is the ignored option flag.
+	// This should match "item 42"
+	m1 := re.match_str(text, 0, 0) or {
+		assert false, 'match_str failed to find match'
+		return
+	}
+
+	// Test get()
+	// Index 0 should be the full text of the match
+	full_match := m1.get(0) or { '' }
+	assert full_match == 'item 42'
+
+	// Index 1 should be the first capture group (\w+)
+	group_1 := m1.get(1) or { '' }
+	assert group_1 == 'item'
+
+	// Index 2 should be the second capture group (\d+)
+	group_2 := m1.get(2) or { '' }
+	assert group_2 == '42'
+
+	// Index 3 should be none (out of bounds)
+	if _ := m1.get(3) {
+		assert false, 'get(3) should return none for 2 groups'
+	}
+
+	// Test get_all()
+	// Should return ['item 42', 'item', '42']
+	all_captures := m1.get_all()
+	assert all_captures.len == 3
+	assert all_captures[0] == 'item 42'
+	assert all_captures[1] == 'item'
+	assert all_captures[2] == '42'
+
+	// Test match_str with a specific start index
+	// Start searching after "item 42" (length is 7)
+	// This should match "item 99"
+	m2 := re.match_str(text, 7, 0) or {
+		assert false, 'match_str failed to find second match from offset'
+		return
+	}
+
+	assert m2.get(0) or { '' } == 'item 99'
+	assert m2.get(2) or { '' } == '99'
+
+	// Test match_str failure case
+	// Start searching at the very end of string
+	no_match := re.match_str(text, text.len, 0)
+	if _ := no_match {
+		assert false, 'match_str should return none when no match is found'
+	}
+}
