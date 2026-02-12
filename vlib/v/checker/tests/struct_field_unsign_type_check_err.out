@@ -1,3 +1,10 @@
+vlib/v/checker/tests/struct_field_unsign_type_check_err.vv:8:3: warning: value `-1` is outside the range of `u32` in argument, this will be considered hard error soon
+    6 | fn main() {
+    7 |     mut foo := Foo{
+    8 |         n: -1
+      |         ~~~~~
+    9 |     }
+   10 |
 vlib/v/checker/tests/struct_field_unsign_type_check_err.vv:3:10: error: cannot assign negative value to unsigned integer type
     1 | struct Foo {
     2 | mut:

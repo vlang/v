@@ -302,6 +302,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 		return error('cannot use literal signed integer as `${expected_typ_str}`')
 	}
+	c.warn_if_integer_literal_overflow_for_known_type(expected, arg.expr, arg.pos)
 
 	idx_got := got.idx()
 	idx_expected := expected.idx()
@@ -380,6 +381,73 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	if got != ast.void_type {
 		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+	}
+}
+
+fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
+	if !expected.is_int() {
+		return
+	}
+	if expr !is ast.IntegerLiteral {
+		return
+	}
+	int_lit := expr as ast.IntegerLiteral
+	mut lit := int_lit.val.replace('_', '')
+	if lit.len == 0 {
+		return
+	}
+	is_negative := lit.starts_with('-')
+	if is_negative || lit.starts_with('+') {
+		lit = lit[1..]
+	}
+	if lit.len == 0 {
+		return
+	}
+	literal_value := lit.u64()
+	bits, _ := c.table.type_size(expected.idx_type())
+	bit_size := bits * 8
+	if bit_size == 0 {
+		return
+	}
+	mut outside_type_range := false
+	if expected.is_signed() {
+		max_signed_i64 := if bit_size >= 64 {
+			max_i64
+		} else {
+			i64((u64(1) << (bit_size - 1)) - 1)
+		}
+		min_signed := if bit_size >= 64 {
+			min_i64
+		} else {
+			-max_signed_i64 - 1
+		}
+		max_signed := u64(max_signed_i64)
+		if is_negative {
+			min_negative_abs := if min_signed == min_i64 {
+				u64(1) << 63
+			} else {
+				u64(-min_signed)
+			}
+			outside_type_range = literal_value > min_negative_abs
+		} else {
+			outside_type_range = literal_value > max_signed
+		}
+	} else {
+		if is_negative {
+			outside_type_range = true
+		} else {
+			max_unsigned := if bit_size >= 64 {
+				max_u64
+			} else {
+				(u64(1) << bit_size) - 1
+			}
+			outside_type_range = literal_value > max_unsigned
+		}
+	}
+	if outside_type_range {
+		expected_type_str := c.table.type_to_str(expected.clear_flag(.variadic))
+		c.warn('value `${int_lit.val}` is outside the range of `${expected_type_str}` in argument, this will be considered hard error soon',
+			pos)
 	}
 }
 
