@@ -1,3 +1,5 @@
+// vtest vflags: -autofree
+
 // Test for memory leak fix when using generics with math.min/max and autofree
 module main
 
