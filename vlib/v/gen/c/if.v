@@ -6,9 +6,6 @@ module c
 import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
-	$if trace_autofree ? {
-		eprintln('need_tmp_var_in_if: is_expr=${node.is_expr}, inside_ternary=${g.inside_ternary}, is_autofree=${g.is_autofree}, is_assign_lhs=${g.is_assign_lhs}')
-	}
 	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
 		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime || g.is_assign_lhs {
 			return true

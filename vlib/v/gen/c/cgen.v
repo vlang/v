@@ -2366,17 +2366,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					// Check if this is an if expression
 					// If so, pass the tmp_var to it and don't write the assignment here
 					if stmt.expr is ast.IfExpr {
-						$if trace_autofree ? {
-							eprintln('Found if expr in stmts_with_tmp_var, needs_tmp: ${g.need_tmp_var_in_if(stmt.expr)}')
-						}
 						// Pass the tmp_var to the if expression so it can use it
 						// This handles cases where the if expression might not be correctly
 						// marked as needing a tmp var but is being assigned to one
 						is_if_expr_with_tmp = true
 						g.outer_tmp_var = tmp_var
-						$if trace_autofree ? {
-							eprintln('Detected if expr in stmts_with_tmp_var, passing tmp_var=${tmp_var}')
-						}
 					}
 				}
 				if !is_noreturn && !is_if_expr_with_tmp {
