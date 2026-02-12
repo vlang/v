@@ -1,0 +1,17 @@
+--- vlib/v/gen/c/cgen.v
++++ vlib/v/gen/c/cgen.v
+@@ -2239,14 +2239,11 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
+ g.write('(')
+ }
+ expected_cast_type := g.expected_cast_type
+-// Track if last statement was return or branch (for autofree, both skip scope cleanup)
+ mut last_stmt_was_return := false
+ for i, stmt in stmts {
+ if i == stmts.len - 1 {
+ g.expected_cast_type = expected_cast_type
+ if stmt is ast.Return {
+ last_stmt_was_return = true
+-} else if stmt is ast.BranchStmt {
+-last_stmt_was_return = true
+ }
+ }
