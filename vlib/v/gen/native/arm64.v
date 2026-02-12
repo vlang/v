@@ -277,16 +277,16 @@ fn (mut c Arm64) adr(r Arm64Register, delta i32) {
 
 fn (mut c Arm64) bl() {
 	// g.write32(0xa9400000)
-	c.g.write32(0x94000000)
+	c.g.write32(i32(0x94000000))
 	c.g.println('bl 0')
 }
 
 fn (mut c Arm64) svc() {
 	if c.g.pref.os == .linux {
-		c.g.write32(0xd4001001)
+		c.g.write32(i32(0xd4001001))
 		c.g.println('svc 0x80')
 	} else {
-		c.g.write32(0xd4000001)
+		c.g.write32(i32(0xd4000001))
 		c.g.println('svc 0')
 	}
 }
@@ -388,7 +388,7 @@ fn (mut c Arm64) cg_convert_rune_to_string(r Register, buffer i32, var Var, conf
 }
 
 fn (mut c Arm64) cg_trap() {
-	c.g.write32(0xcccccccc)
+	c.g.write32(i32(0xcccccccc))
 	c.g.println('trap')
 }
 
@@ -397,7 +397,7 @@ fn (mut c Arm64) cg_leave() {
 }
 
 fn (mut c Arm64) cg_ret() {
-	c.g.write32(0xd65f03c0)
+	c.g.write32(i32(0xd65f03c0))
 	c.g.println('ret')
 }
 

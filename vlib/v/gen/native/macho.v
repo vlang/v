@@ -104,13 +104,13 @@ fn (mut g Gen) macho_segment64_linkedit() {
 }
 
 fn (mut g Gen) macho_header(ncmds i32, bintype i32) i32 {
-	g.write32(0xfeedfacf) // MH_MAGIC_64
+	g.write32(i32(0xfeedfacf)) // MH_MAGIC_64
 	if g.pref.arch == .arm64 {
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
 		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
 	} else {
 		g.write32(0x01000007) // CPU_TYPE_X64
-		g.write32(0x80000003) // CPU_SUBTYPE_X64
+		g.write32(i32(0x80000003)) // CPU_SUBTYPE_X64
 	}
 	g.write32(mh_execute) // filetype
 	g.write32(ncmds) // ncmds
@@ -163,7 +163,7 @@ fn (mut g Gen) macho_segment64_text() []i32 {
 	if g.pref.arch == .amd64 {
 		g.write32(0) // flags
 	} else {
-		g.write32(0x80000400) // flags
+		g.write32(i32(0x80000400)) // flags
 	}
 	g.write32(0)
 
@@ -273,11 +273,11 @@ fn (mut g Gen) write_nulls(len i32) {
 
 pub fn (mut g Gen) generate_macho_object_header() {
 	if g.pref.arch == .arm64 {
-		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(i32(0xfeedfacf)) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
 		g.write32(0) // CPU_SUBTYPE_ARM64_ALL
 	} else {
-		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(i32(0xfeedfacf)) // MH_MAGIC_64
 		g.write32(0x01000007) // CPU_TYPE_X64
 		g.write32(3) // CPU_SUBTYPE_X64
 	}
