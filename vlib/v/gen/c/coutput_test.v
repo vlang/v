@@ -9,7 +9,9 @@ const vexe = @VEXE
 
 const vroot = os.real_path(@VMODROOT)
 
-const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
+const local_tdata_path = 'vlib/v/gen/c/testdata'
+
+const testdata_folder = os.real_path(os.join_path(vroot, local_tdata_path))
 
 const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
 
@@ -26,7 +28,6 @@ fn mj(input ...string) string {
 }
 
 fn test_out_files() {
-	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot) or {}
 	output_path := os.join_path(os.vtmp_dir(), 'coutput_outs')
 	os.mkdir_all(output_path)!
@@ -39,11 +40,16 @@ fn test_out_files() {
 		eprintln('no `.out` tests found in ${testdata_folder}')
 		return
 	}
-	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
 	mut total_errors := 0
+	mut total_oks := 0
+	mut total_oks_panic := 0
+	mut total_skips := 0
+	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
+	println(term.colorize(term.green, '> testing whether ${paths.len} .out files in ${local_tdata_path} match:'))
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
 		if should_skip(relpath) {
+			total_skips++
 			continue
 		}
 		pexe := os.join_path(output_path, '${basename}.exe')
@@ -75,7 +81,8 @@ fn test_out_files() {
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
 				if n_found.starts_with(n_expected) {
-					println('${term.green('OK (panic)')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+					vprintln('${term.green('OK (panic)')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+					total_oks_panic++
 					continue
 				} else {
 					// Both have panics, but there was a difference...
@@ -100,14 +107,15 @@ fn test_out_files() {
 			println(term.h_divider('-'))
 			total_errors++
 		} else {
-			println('${term.green('OK  ')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+			vprintln('${term.green('OK  ')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+			total_oks++
 		}
 	}
+	println('>>> Summary for test_out_files: files: ${paths.len}, oks: ${total_oks}, ok panics: ${total_oks_panic}, skipped: ${total_skips}, error: ${total_errors} .')
 	assert total_errors == 0
 }
 
 fn test_c_must_have_files() {
-	println(term.colorize(term.green, '> testing whether all line patterns in `.c.must_have` files match:'))
 	os.chdir(vroot) or {}
 	output_path := os.join_path(os.vtmp_dir(), 'coutput_c_must_haves')
 	os.mkdir_all(output_path)!
@@ -122,10 +130,15 @@ fn test_c_must_have_files() {
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
 	mut total_errors := 0
+	mut total_oks := 0
+	mut total_oks_panic := 0
+	mut total_skips := 0
 	mut failed_descriptions := []string{cap: paths.len}
+	println(term.colorize(term.green, '> testing whether all line patterns in ${paths.len} `.c.must_have` files in ${local_tdata_path} match:'))
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		if should_skip(relpath) {
+			total_skips++
 			continue
 		}
 		file_options := get_file_options(path)
@@ -159,7 +172,8 @@ fn test_c_must_have_files() {
 			}
 		}
 		if nmatches == expected_lines.len {
-			println('${term.green('OK  ')} C:${compile_ms:5}ms ${description}')
+			vprintln('${term.green('OK  ')} C:${compile_ms:5}ms ${description}')
+			total_oks++
 		} else {
 			if show_compilation_output {
 				eprintln('> ALL lines:')
@@ -179,6 +193,7 @@ fn test_c_must_have_files() {
 		}
 		eprintln('----------------------------------------------------------------------')
 	}
+	println('>>> Summary for test_c_must_have_files: files: ${paths.len}, oks: ${total_oks}, ok panics: ${total_oks_panic}, skipped: ${total_skips}, error: ${total_errors} .')
 	assert total_errors == 0
 }
 
@@ -291,4 +306,9 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	return false
+}
+
+@[if !silent ?]
+fn vprintln(msg string) {
+	println(msg)
 }

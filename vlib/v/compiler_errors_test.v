@@ -42,7 +42,11 @@ const turn_on_normal_test_runner = os.setenv('VTEST_RUNNER', 'normal', true)
 
 const should_autofix = os.getenv('VAUTOFIX') != ''
 
+const is_silent = $if silent ? { true } $else { false }
+
 const github_job = os.getenv('GITHUB_JOB')
+
+const should_show_details = !is_silent && github_job == ''
 
 const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
 
@@ -104,24 +108,6 @@ fn test_all() {
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
-	mut tasks := Tasks{
-		vexe:  vexe
-		label: 'all tests'
-	}
-	tasks.add('', parser_dir, '', '.out', parser_tests, false)
-	tasks.add('', checker_dir, '', '.out', checker_tests, false)
-	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
-		false)
-	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
-		false)
-	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
-	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
-	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
-	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
-		false)
-	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)
-	tasks.run()
 
 	if os.user_os() == 'linux' {
 		mut su_tasks := Tasks{
@@ -179,6 +165,25 @@ fn test_all() {
 		'custom_comptime_define_if_debug.vv',
 	])
 	ct_tasks.run()
+
+	mut tasks := Tasks{
+		vexe:  vexe
+		label: 'all tests'
+	}
+	tasks.add('', parser_dir, '', '.out', parser_tests, false)
+	tasks.add('', checker_dir, '', '.out', checker_tests, false)
+	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
+	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
+		false)
+	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
+		false)
+	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
+	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
+	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
+		false)
+	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)
+	tasks.run()
 }
 
 fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, tests []string) {
@@ -267,7 +272,7 @@ fn (mut tasks Tasks) run() {
 	for _ in 0 .. vjobs {
 		spawn work_processor(work, results)
 	}
-	if github_job == '' {
+	if should_show_details {
 		println('')
 	}
 	mut line_can_be_erased := true
@@ -278,8 +283,10 @@ fn (mut tasks Tasks) run() {
 		bench.step()
 		if task.is_skipped {
 			bench.skip()
-			eprintln(bstep_message(mut bench, benchmark.b_skip, task.path, task.took))
-			line_can_be_erased = false
+			if should_show_details {
+				eprintln(bstep_message(mut bench, benchmark.b_skip, task.path, task.took))
+				line_can_be_erased = false
+			}
 			continue
 		}
 		if task.is_error {
@@ -303,20 +310,23 @@ fn (mut tasks Tasks) run() {
 			assert true
 			if tasks.show_cmd {
 				eprintln(bstep_message(mut bench, benchmark.b_ok, '${task.cli_cmd}', task.took))
+				line_can_be_erased = true
 			} else {
-				if github_job == '' {
+				if should_show_details {
 					// local mode:
 					if line_can_be_erased {
 						term.clear_previous_line()
 					}
 					println(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+					line_can_be_erased = true
 				}
 			}
-			line_can_be_erased = true
 		}
 	}
 	bench.stop()
-	eprintln(term.h_divider('-'))
+	if should_show_details {
+		eprintln(term.h_divider('-'))
+	}
 	eprintln(bench.total_message(tasks.label))
 	if total_errors != 0 {
 		exit(1)

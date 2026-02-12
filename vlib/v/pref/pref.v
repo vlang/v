@@ -426,6 +426,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-silent' {
 				res.output_mode = .silent
+				res.compile_defines_all << 'silent' // enable `$if silent? {`
+				res.compile_defines << 'silent'
 			}
 			'-skip-running' {
 				res.skip_running = true
