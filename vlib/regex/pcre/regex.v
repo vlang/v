@@ -1,5 +1,5 @@
 /*
-regex2 0.9.2 beta (VM Edition)
+regex2 0.9.3 beta (VM Edition)
 
 Copyright (c) 2026 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -12,6 +12,7 @@ Features:
  - UTF8 support
  - Literal characters, '.', '*', '{m,n}'
  - Short quantifiers: '?', '+'
+ - Non-greedy quantifiers: '*?', '+?', '??'
  - Nested groups: '()'
  - Named groups: '(?P<name>...)'
  - Non-capturing groups: '(?:...)'
@@ -112,31 +113,14 @@ pub:
 	groups []string
 }
 
-// get retrieves the captured text by index.
-// Index 0 returns the whole match, 1+ returns capture groups.
-pub fn (m Match) get(idx int) ?string {
-	if idx == 0 {
-		return m.text
-	}
-	if idx > 0 && idx <= m.groups.len {
-		return m.groups[idx - 1]
-	}
-	return none
-}
-
-// get_all returns the whole match followed by all capture groups.
-pub fn (m Match) get_all() []string {
-	mut res := [m.text]
-	res << m.groups
-	return res
-}
-
 // --- AST Nodes ---
 
 // Quantifier represents a repetition range.
 struct Quantifier {
-	min int
-	max int // -1 for infinity
+mut:
+	min    int
+	max    int  // -1 for infinity
+	greedy bool // true = greedy, false = lazy
 }
 
 // Flags holds the current state of regex options.
@@ -260,8 +244,9 @@ pub fn compile(pattern string) !Regex {
 		nodes:               nodes
 		group_capture_index: -1
 		quant:               Quantifier{
-			min: 1
-			max: 1
+			min:    1
+			max:    1
+			greedy: true
 		}
 	}
 
@@ -278,13 +263,6 @@ pub fn compile(pattern string) !Regex {
 		total_groups: final_group_count
 		group_map:    group_map
 	}
-}
-
-// new_regex is an alias for compile, for compatibility with older PCRE wrappers.
-// Note: The second argument (flags) is currently ignored as flags should be
-// embedded in the pattern (e.g., '(?i)pattern').
-pub fn new_regex(pattern string, _ int) !Regex {
-	return compile(pattern)
 }
 
 // Compiler manages the state of the bytecode generation process.
@@ -314,8 +292,18 @@ fn (mut c Compiler) emit_node(node Node) {
 		c.emit_single_node_logic(node)
 
 		c.emit(Inst{ typ: .jmp, target_x: split_idx })
-		c.prog[split_idx].target_x = start_pc
-		c.prog[split_idx].target_y = c.prog.len
+
+		// In this VM, target_x is the first path taken (stack.pop order depends on implementation,
+		// but standard here is target_x executed immediately, target_y pushed to stack).
+		// Greedy: Prefer matching loop (start_pc) over exit.
+		// Lazy: Prefer exit over matching loop.
+		if node.quant.greedy {
+			c.prog[split_idx].target_x = start_pc // Loop
+			c.prog[split_idx].target_y = c.prog.len // Exit
+		} else {
+			c.prog[split_idx].target_x = c.prog.len // Exit
+			c.prog[split_idx].target_y = start_pc // Loop
+		}
 	} else if node.quant.max > node.quant.min {
 		// Finite range
 		rem := node.quant.max - node.quant.min
@@ -323,14 +311,27 @@ fn (mut c Compiler) emit_node(node Node) {
 
 		for _ in 0 .. rem {
 			idx := c.emit(Inst{ typ: .split })
-			c.prog[idx].target_x = c.prog.len
+			match_pc := c.prog.len
+
+			// If greedy, we prefer to match the node (continue execution)
+			// If lazy, we prefer to skip the match (jump to end)
+			if node.quant.greedy {
+				c.prog[idx].target_x = match_pc // Match node
+			} else {
+				c.prog[idx].target_y = match_pc // Match node (fallback)
+			}
+
 			c.emit_single_node_logic(node)
 			splits << idx
 		}
 
 		end_pc := c.prog.len
 		for idx in splits {
-			c.prog[idx].target_y = end_pc
+			if node.quant.greedy {
+				c.prog[idx].target_y = end_pc // Skip match (fallback)
+			} else {
+				c.prog[idx].target_x = end_pc // Skip match (primary)
+			}
 		}
 	}
 }
@@ -467,7 +468,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 					Node{
 						typ:          .alternation
 						alternatives: alternatives
-						quant:        Quantifier{1, 1}
+						quant:        Quantifier{1, 1, true}
 					},
 				], pos, group_counter
 			}
@@ -714,20 +715,20 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 		}
 
 		if parsed_nodes.len > 0 {
-			mut q := Quantifier{1, 1}
+			mut q := Quantifier{1, 1, true}
 			if pos < pattern.len {
 				peek, pl := read_rune(pattern, pos)
 				match peek {
 					`*` {
-						q = Quantifier{0, -1}
+						q = Quantifier{0, -1, true}
 						pos += pl
 					}
 					`+` {
-						q = Quantifier{1, -1}
+						q = Quantifier{1, -1, true}
 						pos += pl
 					}
 					`?` {
-						q = Quantifier{0, 1}
+						q = Quantifier{0, 1, true}
 						pos += pl
 					}
 					`{` {
@@ -751,10 +752,20 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 								-1
 							}
 						}
-						q = Quantifier{min, max}
+						q = Quantifier{min, max, true}
 						pos = end_q + 1
 					}
 					else {}
+				}
+
+				// Check for Non-Greedy modifier '?'
+				// e.g. *?, +?, ??, {m,n}?
+				if pos < pattern.len {
+					peek_lazy, pl_lazy := read_rune(pattern, pos)
+					if peek_lazy == `?` {
+						q.greedy = false
+						pos += pl_lazy
+					}
 				}
 			}
 			parsed_nodes[parsed_nodes.len - 1].quant = q
@@ -772,7 +783,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 			Node{
 				typ:          .alternation
 				alternatives: alternatives
-				quant:        Quantifier{1, 1}
+				quant:        Quantifier{1, 1, true}
 			},
 		], pos, group_counter
 	}
@@ -1185,7 +1196,39 @@ pub fn (r Regex) find_from(text string, start_index int) ?Match {
 	return none
 }
 
+/******************************************************************************
+*
+* C PCRE compatibility layer
+*
+******************************************************************************/
+
+// new_regex is an alias for compile, for compatibility with older PCRE wrappers.
+// Note: The second argument (flags) is currently ignored as flags should be
+// embedded in the pattern (e.g., '(?i)pattern').
+pub fn new_regex(pattern string, _ int) !Regex {
+	return compile(pattern)
+}
+
 // match_str is an alias for find_from, for compatibility with older PCRE wrappers.
 pub fn (r Regex) match_str(text string, start_index int, _ int) ?Match {
 	return r.find_from(text, start_index)
+}
+
+// get retrieves the captured text by index.
+// Index 0 returns the whole match, 1+ returns capture groups.
+pub fn (m Match) get(idx int) ?string {
+	if idx == 0 {
+		return m.text
+	}
+	if idx > 0 && idx <= m.groups.len {
+		return m.groups[idx - 1]
+	}
+	return none
+}
+
+// get_all returns the whole match followed by all capture groups.
+pub fn (m Match) get_all() []string {
+	mut res := [m.text]
+	res << m.groups
+	return res
 }
