@@ -16,7 +16,8 @@
 %% Purges old version, loads new version.
 %% Returns {ok, Module} | {error, Reason}.
 -spec reload(atom()) -> {ok, atom()} | {error, term()}.
-reload(Module) ->
+reload(Module) when is_atom(Module) ->
+    true = atom_to_list(Module) =/= [],
     code:purge(Module),
     case code:load_file(Module) of
         {module, Module} -> {ok, Module};
@@ -25,7 +26,8 @@ reload(Module) ->
 
 %% Reload a module from a specific .beam file path.
 -spec reload_from(atom(), string()) -> {ok, atom()} | {error, term()}.
-reload_from(Module, BeamPath) ->
+reload_from(Module, BeamPath) when is_atom(Module), is_list(BeamPath) ->
+    true = filename:extension(BeamPath) =:= ".beam",
     case file:read_file(BeamPath) of
         {ok, Binary} ->
             code:purge(Module),
@@ -40,7 +42,7 @@ reload_from(Module, BeamPath) ->
 %% Reload all .beam files in a directory.
 %% Returns {ok, Loaded, Errors} with counts.
 -spec reload_all(string()) -> {ok, non_neg_integer(), [{atom(), term()}]}.
-reload_all(Dir) ->
+reload_all(Dir) when is_list(Dir), Dir =/= [] ->
     case file:list_dir(Dir) of
         {ok, Files} ->
             BeamFiles = [F || F <- Files, filename:extension(F) == ".beam"],
@@ -67,14 +69,15 @@ reload_all(Dir) ->
 %% Watch a directory and reload changed .beam files.
 %% Polls every IntervalMs milliseconds. Runs in calling process.
 -spec watch(string(), pos_integer()) -> no_return().
-watch(Dir, IntervalMs) ->
+watch(Dir, IntervalMs) when is_list(Dir), is_integer(IntervalMs), IntervalMs > 0 ->
     watch(Dir, IntervalMs, fun(Mod, Status) ->
         io:format("~s: ~p~n", [Mod, Status])
     end).
 
 %% Watch with a callback function for each reload.
 -spec watch(string(), pos_integer(), fun((atom(), term()) -> any())) -> no_return().
-watch(Dir, IntervalMs, Callback) ->
+watch(Dir, IntervalMs, Callback)
+  when is_list(Dir), is_integer(IntervalMs), IntervalMs > 0, is_function(Callback, 2) ->
     AbsDir = filename:absname(Dir),
     code:add_pathz(AbsDir),
     Mtimes = scan_mtimes(AbsDir),
