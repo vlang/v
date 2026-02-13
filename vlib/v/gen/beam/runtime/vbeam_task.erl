@@ -38,8 +38,26 @@ Provides asynchronous task helpers for V runtime execution.
     yield/1, yield/2
 ]).
 
+%% Export protocol types for cross-module contracts
+-export_type([
+    task_ref/0,
+    task_result/0,
+    task_msg/0,
+    task_down_msg/0,
+    task_protocol_msg/0,
+    yield_result/0
+]).
+
 %% Default timeout for await (5 seconds, matching Elixir's Task default)
 -define(DEFAULT_TIMEOUT, 5000).
+
+%% Inter-process task protocol types
+-type task_ref() :: #{pid := pid(), ref := reference(), result_ref := reference()}.
+-type task_result() :: {ok, term()} | {error, {atom(), term(), list()}}.
+-type task_msg() :: {reference(), task_result()}.
+-type task_down_msg() :: {'DOWN', reference(), process, pid(), term()}.
+-type task_protocol_msg() :: task_msg() | task_down_msg().
+-type yield_result() :: {ok, term()} | {error, term()} | timeout.
 
 %% ============================================================================
 %% API Functions
@@ -59,7 +77,7 @@ Parameters: `fun((`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec async(fun(() -> term())) -> map().
+-spec async(fun(() -> term())) -> task_ref().
 
 async(Fun) when is_function(Fun, 0) ->
     TaskRef = async(Fun, #{}),
@@ -71,7 +89,7 @@ async(Fun) when is_function(Fun, 0) ->
 %% Options:
 %%   timeout => integer() | infinity  (for internal use, not enforced at spawn)
 %%   link => boolean()                (default: true)
--spec async(fun(() -> term()), map()) -> map().
+-spec async(fun(() -> term()), map()) -> task_ref().
 async(Fun, Opts) when is_function(Fun, 0), is_map(Opts) ->
     Parent = self(),
     ResultRef = make_ref(),
@@ -119,7 +137,7 @@ Parameters: `map()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec await(map()) -> term().
+-spec await(task_ref()) -> term().
 
 await(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     await(TaskRef, ?DEFAULT_TIMEOUT).
@@ -132,7 +150,7 @@ await(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
 %% Returns the task's return value.
 %% Raises {task_timeout, TaskRef} on timeout.
 %% Re-raises the task's exception if it crashed.
--spec await(map(), timeout()) -> term().
+-spec await(task_ref(), timeout()) -> term().
 await(#{ref := MonRef, result_ref := ResultRef, pid := Pid} = _TaskRef, Timeout)
   when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
@@ -208,7 +226,7 @@ Parameters: `map()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec yield(map()) -> {ok, term()} | timeout.
+-spec yield(task_ref()) -> {ok, term()} | timeout.
 
 yield(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     yield(TaskRef, 0).
@@ -220,7 +238,7 @@ yield(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
 %%   {ok, Value}  - Task completed successfully
 %%   {error, Reason} - Task crashed
 %%   timeout      - Task still running
--spec yield(map(), timeout()) -> {ok, term()} | {error, term()} | timeout.
+-spec yield(task_ref(), timeout()) -> yield_result().
 yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout)
   when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
@@ -235,7 +253,6 @@ yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout)
     after Timeout ->
         timeout
     end.
-
 
 
 
