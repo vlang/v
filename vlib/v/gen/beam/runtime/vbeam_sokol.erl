@@ -162,41 +162,59 @@ frame_duration() ->
     end.
 
 %% @doc Returns true if the application context is valid.
+-spec isvalid() -> boolean().
 isvalid() ->
     try gen_server:call(?MODULE, isvalid, 1000)
     catch _:_ -> false
     end.
 
 %% @doc Returns DPI scale factor.
+-spec dpi_scale() -> number().
 dpi_scale() ->
     try gen_server:call(?MODULE, dpi_scale, 1000)
     catch _:_ -> 1.0
     end.
 
+-spec sample_count() -> non_neg_integer().
 sample_count() -> 1.
+-spec color_format() -> integer().
 color_format() -> 1. %% RGBA8
+-spec depth_format() -> integer().
 depth_format() -> 2. %% DEPTH
 
+-spec show_keyboard(boolean()) -> ok.
 show_keyboard(_Visible) -> ok.
+-spec keyboard_shown() -> boolean().
 keyboard_shown() -> false.
+-spec show_mouse(boolean()) -> ok.
 show_mouse(_Visible) -> ok.
+-spec mouse_shown() -> boolean().
 mouse_shown() -> true.
+-spec lock_mouse(boolean()) -> ok.
 lock_mouse(_Locked) -> ok.
+-spec mouse_locked() -> boolean().
 mouse_locked() -> false.
+-spec set_mouse_cursor(atom() | integer()) -> ok.
 set_mouse_cursor(_Cursor) -> ok.
+-spec high_dpi() -> boolean().
 high_dpi() -> false.
 
+-spec request_quit() -> ok.
 request_quit() ->
     gen_server:cast(?MODULE, request_quit).
 
+-spec cancel_quit() -> ok.
 cancel_quit() ->
     gen_server:cast(?MODULE, cancel_quit).
 
+-spec consume_event() -> ok.
 consume_event() -> ok.
 
+-spec toggle_fullscreen() -> ok.
 toggle_fullscreen() ->
     gen_server:cast(?MODULE, toggle_fullscreen).
 
+-spec is_fullscreen() -> boolean().
 is_fullscreen() ->
     try gen_server:call(?MODULE, is_fullscreen, 1000)
     catch _:_ -> false
@@ -207,20 +225,24 @@ is_fullscreen() ->
 %% ============================================================================
 
 %% @doc Initialize the graphics subsystem.
+-spec setup(map()) -> ok.
 setup(_Desc) ->
     %% Graphics setup happens in gen_server init when OpenGL context is created.
     %% This is called by V code after the window exists, so it's a no-op here.
     ok.
 
 %% @doc Shut down the graphics subsystem.
+-spec shutdown() -> ok.
 shutdown() ->
     ok.
 
 %% @doc Returns true if gfx is initialized.
+-spec is_valid() -> boolean().
 is_valid() ->
     isvalid().
 
 %% @doc Reset the internal state cache (for debugging).
+-spec reset_state_cache() -> ok.
 reset_state_cache() ->
     ok.
 
@@ -323,48 +345,63 @@ draw(BaseElement, NumElements, NumInstances, _Reserved) ->
     gen_server:cast(?MODULE, {draw, BaseElement, NumElements, NumInstances}).
 
 %% @doc Set the viewport rectangle.
+-spec apply_viewport(number(), number(), number(), number(), number() | undefined) -> ok.
 apply_viewport(X, Y, W, H, _OriginTopLeft) ->
     gen_server:cast(?MODULE, {apply_viewport, X, Y, W, H}).
 
 %% @doc Set the scissor rectangle.
+-spec apply_scissor_rect(number(), number(), number(), number(), number() | undefined) -> ok.
 apply_scissor_rect(X, Y, W, H, _OriginTopLeft) ->
     gen_server:cast(?MODULE, {apply_scissor_rect, X, Y, W, H}).
 
 %% @doc Destroy a buffer resource.
+-spec destroy_buffer(integer()) -> ok.
 destroy_buffer(Id) ->
     gen_server:cast(?MODULE, {destroy_buffer, Id}).
 
 %% @doc Destroy an image resource.
+-spec destroy_image(integer()) -> ok.
 destroy_image(Id) ->
     gen_server:cast(?MODULE, {destroy_image, Id}).
 
 %% @doc Destroy a sampler resource.
+-spec destroy_sampler(integer()) -> ok.
 destroy_sampler(Id) ->
     gen_server:cast(?MODULE, {destroy_sampler, Id}).
 
 %% @doc Destroy a shader resource.
+-spec destroy_shader(integer()) -> ok.
 destroy_shader(Id) ->
     gen_server:cast(?MODULE, {destroy_shader, Id}).
 
 %% @doc Destroy a pipeline resource.
+-spec destroy_pipeline(integer()) -> ok.
 destroy_pipeline(Id) ->
     gen_server:cast(?MODULE, {destroy_pipeline, Id}).
 
 %% @doc Update buffer data.
+-spec update_buffer(integer(), binary()) -> ok.
 update_buffer(BufId, Data) ->
     gen_server:cast(?MODULE, {update_buffer, BufId, Data}).
 
 %% @doc Append data to a buffer. Returns byte offset of appended data.
+-spec append_buffer(integer(), binary()) -> integer().
 append_buffer(BufId, Data) ->
     gen_server:call(?MODULE, {append_buffer, BufId, Data}, 5000).
 
 %% @doc Update image data.
+-spec update_image(integer(), binary()) -> ok.
 update_image(_ImgId, _Data) ->
     ok.
 
 %% @doc Query the rendering backend (always OpenGL for wx).
+-spec query_backend() -> atom().
 query_backend() -> gl.
+
+-spec query_features() -> map().
 query_features() -> #{}.
+
+-spec query_limits() -> map().
 query_limits() -> #{}.
 
 %% ============================================================================
@@ -374,11 +411,20 @@ query_limits() -> #{}.
 %% No gen_server round-trip needed since gl calls go to the driver directly.
 %% ============================================================================
 
+%% @doc Setup SGL.
+-spec sgl_setup(map()) -> ok.
 sgl_setup(_Desc) -> ok.
+
+%% @doc Shutdown SGL.
+-spec sgl_shutdown() -> ok.
 sgl_shutdown() -> ok.
+
+%% @doc Query SGL error state.
+-spec sgl_error() -> integer().
 sgl_error() -> 0. %% no_error
 
 %% Reset SGL state to defaults
+-spec sgl_defaults() -> ok.
 sgl_defaults() ->
     gl:matrixMode(?GL_PROJECTION),
     gl:loadIdentity(),
@@ -387,20 +433,25 @@ sgl_defaults() ->
     ok.
 
 %% Viewport and scissor
+-spec sgl_viewport(number(), number(), number(), number(), term()) -> ok.
 sgl_viewport(X, Y, W, H, _OriginTopLeft) ->
     gl:viewport(X, Y, W, H).
 
+-spec sgl_scissor_rect(number(), number(), number(), number(), term()) -> ok.
 sgl_scissor_rect(X, Y, W, H, _OriginTopLeft) ->
     gl:enable(?GL_SCISSOR_TEST),
     gl:scissor(X, Y, W, H).
 
 %% Texture control
+-spec sgl_enable_texture() -> ok.
 sgl_enable_texture() ->
     gl:enable(?GL_TEXTURE_2D).
 
+-spec sgl_disable_texture() -> ok.
 sgl_disable_texture() ->
     gl:disable(?GL_TEXTURE_2D).
 
+-spec sgl_texture(integer(), term()) -> ok.
 sgl_texture(ImgId, _SamplerId) ->
     %% Bind the GL texture associated with this image ID
     case get({sokol_image, ImgId}) of
@@ -409,41 +460,56 @@ sgl_texture(ImgId, _SamplerId) ->
     end.
 
 %% Begin primitive drawing
+-spec sgl_begin_points() -> ok.
 sgl_begin_points() -> gl:'begin'(?GL_POINTS).
+-spec sgl_begin_lines() -> ok.
 sgl_begin_lines() -> gl:'begin'(?GL_LINES).
+-spec sgl_begin_line_strip() -> ok.
 sgl_begin_line_strip() -> gl:'begin'(?GL_LINE_STRIP).
+-spec sgl_begin_triangles() -> ok.
 sgl_begin_triangles() -> gl:'begin'(?GL_TRIANGLES).
+-spec sgl_begin_triangle_strip() -> ok.
 sgl_begin_triangle_strip() -> gl:'begin'(?GL_TRIANGLE_STRIP).
+-spec sgl_begin_quads() -> ok.
 sgl_begin_quads() -> gl:'begin'(?GL_QUADS).
 
 %% Vertex submission
+-spec sgl_v2f(number(), number()) -> ok.
 sgl_v2f(X, Y) -> gl:vertex2f(X, Y).
+-spec sgl_v3f(number(), number(), number()) -> ok.
 sgl_v3f(X, Y, Z) -> gl:vertex3f(X, Y, Z).
 
+-spec sgl_v2f_t2f(number(), number(), number(), number()) -> ok.
 sgl_v2f_t2f(X, Y, U, V) ->
     gl:texCoord2f(U, V),
     gl:vertex2f(X, Y).
 
+-spec sgl_v3f_t2f(number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_t2f(X, Y, Z, U, V) ->
     gl:texCoord2f(U, V),
     gl:vertex3f(X, Y, Z).
 
+-spec sgl_v2f_c3f(number(), number(), number(), number(), number()) -> ok.
 sgl_v2f_c3f(X, Y, R, G, B) ->
     gl:color3f(R, G, B),
     gl:vertex2f(X, Y).
 
+-spec sgl_v2f_c4f(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v2f_c4f(X, Y, R, G, B, A) ->
     gl:color4f(R, G, B, A),
     gl:vertex2f(X, Y).
 
+-spec sgl_v2f_c3b(number(), number(), number(), number(), number()) -> ok.
 sgl_v2f_c3b(X, Y, R, G, B) ->
     gl:color3ub(R, G, B),
     gl:vertex2f(X, Y).
 
+-spec sgl_v2f_c4b(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v2f_c4b(X, Y, R, G, B, A) ->
     gl:color4ub(R, G, B, A),
     gl:vertex2f(X, Y).
 
+-spec sgl_v2f_c1i(number(), number(), integer()) -> ok.
 sgl_v2f_c1i(X, Y, RGBA) ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
@@ -452,22 +518,27 @@ sgl_v2f_c1i(X, Y, RGBA) ->
     gl:color4ub(R, G, B, A),
     gl:vertex2f(X, Y).
 
+-spec sgl_v3f_c3f(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_c3f(X, Y, Z, R, G, B) ->
     gl:color3f(R, G, B),
     gl:vertex3f(X, Y, Z).
 
+-spec sgl_v3f_c4f(number(), number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_c4f(X, Y, Z, R, G, B, A) ->
     gl:color4f(R, G, B, A),
     gl:vertex3f(X, Y, Z).
 
+-spec sgl_v3f_c3b(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_c3b(X, Y, Z, R, G, B) ->
     gl:color3ub(R, G, B),
     gl:vertex3f(X, Y, Z).
 
+-spec sgl_v3f_c4b(number(), number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_c4b(X, Y, Z, R, G, B, A) ->
     gl:color4ub(R, G, B, A),
     gl:vertex3f(X, Y, Z).
 
+-spec sgl_v3f_c1i(number(), number(), number(), integer()) -> ok.
 sgl_v3f_c1i(X, Y, Z, RGBA) ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
@@ -477,10 +548,15 @@ sgl_v3f_c1i(X, Y, Z, RGBA) ->
     gl:vertex3f(X, Y, Z).
 
 %% Color setting
+-spec sgl_c3f(number(), number(), number()) -> ok.
 sgl_c3f(R, G, B) -> gl:color3f(R, G, B).
+-spec sgl_c4f(number(), number(), number(), number()) -> ok.
 sgl_c4f(R, G, B, A) -> gl:color4f(R, G, B, A).
+-spec sgl_c3b(integer(), integer(), integer()) -> ok.
 sgl_c3b(R, G, B) -> gl:color3ub(R, G, B).
+-spec sgl_c4b(integer(), integer(), integer(), integer()) -> ok.
 sgl_c4b(R, G, B, A) -> gl:color4ub(R, G, B, A).
+-spec sgl_c1i(integer()) -> ok.
 sgl_c1i(RGBA) ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
@@ -489,84 +565,121 @@ sgl_c1i(RGBA) ->
     gl:color4ub(R, G, B, A).
 
 %% Texture coordinate setting
+-spec sgl_t2f(number(), number()) -> ok.
 sgl_t2f(U, V) -> gl:texCoord2f(U, V).
 
 %% Point size
+-spec sgl_point_size(number()) -> ok.
 sgl_point_size(S) -> gl:pointSize(S).
 
 %% End primitive and draw
+-spec sgl_end() -> ok.
 sgl_end() -> gl:'end'().
+-spec sgl_draw() -> ok.
 sgl_draw() -> ok.  %% Actual buffer swap happens in commit()
+-spec sgl_context_draw(integer()) -> ok.
 sgl_context_draw(_Ctx) -> ok.
 
 %% Matrix operations
+-spec sgl_matrix_mode_projection() -> ok.
 sgl_matrix_mode_projection() -> gl:matrixMode(?GL_PROJECTION).
+-spec sgl_matrix_mode_modelview() -> ok.
 sgl_matrix_mode_modelview() -> gl:matrixMode(?GL_MODELVIEW).
+-spec sgl_matrix_mode_texture() -> ok.
 sgl_matrix_mode_texture() -> gl:matrixMode(?GL_TEXTURE).
 
+-spec sgl_load_identity() -> ok.
 sgl_load_identity() -> gl:loadIdentity().
+-spec sgl_push_matrix() -> ok.
 sgl_push_matrix() -> gl:pushMatrix().
+-spec sgl_pop_matrix() -> ok.
 sgl_pop_matrix() -> gl:popMatrix().
 
+-spec sgl_load_matrix([number()]) -> ok.
 sgl_load_matrix(M) when is_list(M), length(M) >= 16 ->
     %% M is a 16-element list (column-major 4x4 matrix)
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:loadMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_load_matrix(_) -> ok.
 
+-spec sgl_load_transpose_matrix([number()]) -> ok.
 sgl_load_transpose_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:loadTransposeMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_load_transpose_matrix(_) -> ok.
 
+-spec sgl_mult_matrix([number()]) -> ok.
 sgl_mult_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:multMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_mult_matrix(_) -> ok.
 
+-spec sgl_mult_transpose_matrix([number()]) -> ok.
 sgl_mult_transpose_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:multTransposeMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_mult_transpose_matrix(_) -> ok.
 
+-spec sgl_translate(number(), number(), number()) -> ok.
 sgl_translate(X, Y, Z) -> gl:translatef(X, Y, Z).
+-spec sgl_rotate(number(), number(), number(), number()) -> ok.
 sgl_rotate(AngleRad, X, Y, Z) ->
     %% sokol_gl uses radians, OpenGL uses degrees
     gl:rotatef(AngleRad * 57.2957795131, X, Y, Z).
+-spec sgl_scale(number(), number(), number()) -> ok.
 sgl_scale(X, Y, Z) -> gl:scalef(X, Y, Z).
 
+-spec sgl_ortho(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_ortho(L, R, B, T, N, F) -> gl:ortho(L, R, B, T, N, F).
+-spec sgl_frustum(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_frustum(L, R, B, T, N, F) -> gl:frustum(L, R, B, T, N, F).
+-spec sgl_perspective(number(), number(), number(), number()) -> ok.
 sgl_perspective(FovY, Aspect, ZNear, ZFar) ->
     glu:perspective(FovY * 57.2957795131, Aspect, ZNear, ZFar).
+-spec sgl_lookat(number(), number(), number(), number(), number(), number(), number(), number(), number()) -> ok.
 sgl_lookat(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ) ->
     glu:lookAt(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ).
 
 %% Pipeline stack (no-ops for immediate mode, pipeline state managed via GL directly)
+-spec sgl_push_pipeline() -> ok.
 sgl_push_pipeline() -> ok.
+-spec sgl_pop_pipeline() -> ok.
 sgl_pop_pipeline() -> ok.
+-spec sgl_load_default_pipeline() -> ok.
 sgl_load_default_pipeline() -> ok.
+-spec sgl_load_pipeline(integer()) -> ok.
 sgl_load_pipeline(_Pip) -> ok.
 
 %% Context management (single-context for now)
+-spec sgl_make_context(map()) -> integer().
 sgl_make_context(_Desc) -> 1.
+-spec sgl_destroy_context(integer()) -> ok.
 sgl_destroy_context(_Ctx) -> ok.
+-spec sgl_set_context(integer()) -> ok.
 sgl_set_context(_Ctx) -> ok.
+-spec sgl_get_context() -> integer().
 sgl_get_context() -> 1.
+-spec sgl_default_context() -> integer().
 sgl_default_context() -> 1.
 
 %% Pipeline management for SGL
+-spec sgl_make_pipeline(map()) -> integer().
 sgl_make_pipeline(_Desc) -> 1.
+-spec sgl_destroy_pipeline(integer()) -> ok.
 sgl_destroy_pipeline(_Pip) -> ok.
 
 %% Utility
+-spec sgl_rad(number()) -> float().
 sgl_rad(Deg) -> Deg * 0.01745329252.
+ -spec sgl_deg(number()) -> float().
 sgl_deg(Rad) -> Rad * 57.2957795131.
 
 %% ============================================================================
 %% gen_server callbacks
 %% ============================================================================
 
+%% @doc Initialize sokol gen_server process.
+-spec init([map()]) -> {ok, #state{}}.
 init([Desc]) ->
     Wx = wx:new(),
     Title = maps:get(window_title, Desc, "V Application"),
@@ -637,6 +750,8 @@ init([Desc]) ->
 
 %% --- Synchronous calls ---
 
+-spec handle_call(term(), {pid(), term()}, #state{}) ->
+    {reply, term(), #state{}}.
 handle_call(width, _From, State) ->
     {reply, State#state.width, State};
 
@@ -756,6 +871,8 @@ handle_call(_Request, _From, State) ->
 
 %% --- Asynchronous casts ---
 
+-spec handle_cast(term(), #state{}) ->
+    {noreply, #state{}} | {stop, term(), #state{}}.
 handle_cast(quit, State) ->
     {stop, normal, State};
 
@@ -933,6 +1050,8 @@ handle_cast(_Msg, State) ->
 %% --- Info messages (events, render timer) ---
 
 %% Render frame timer
+-spec handle_info(term(), #state{}) ->
+    {noreply, #state{}} | {stop, term(), #state{}}.
 handle_info(render_frame, #state{canvas = Canvas, gl_ctx = Ctx,
                                   frame_cb = FrameCb} = State) ->
     wxGLCanvas:setCurrent(Canvas, Ctx),
@@ -1074,6 +1193,8 @@ handle_info(#wx{event = #wxMouse{type = leave_window}}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
+%% @doc gen_server callback: cleanup.
+-spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, #state{cleanup_cb = CleanupCb, timer_ref = Timer,
                            frame = Frame, wx = Wx}) ->
     %% Cancel render timer
