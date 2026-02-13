@@ -38,11 +38,13 @@
 %% ---------------------------------------------------------------------------
 
 -spec compile(tuple()) -> {ok, atom(), binary()} | {error, term()}.
-compile(CoreMod) ->
+compile(CoreMod) when is_tuple(CoreMod), tuple_size(CoreMod) > 0 ->
     compile(CoreMod, []).
 
 -spec compile(tuple(), [term()]) -> {ok, atom(), binary()} | {error, term()}.
-compile(CoreMod, Opts) ->
+compile(CoreMod, Opts)
+  when is_tuple(CoreMod), tuple_size(CoreMod) > 0, is_list(Opts) ->
+    true = lists:all(fun(Opt) -> Opt =/= undefined end, Opts),
     try
         Asm = compile_to_asm(CoreMod),
         compile:noenv_forms(Asm, [from_asm, binary, return_errors | Opts])
@@ -55,7 +57,7 @@ compile(CoreMod, Opts) ->
 %% @doc Translate Core Erlang AST to BEAM assembly 5-tuple.
 %% Format: {Module, Exports, Attrs, [{function,...}], LabelCount}
 -spec compile_to_asm(tuple()) -> tuple().
-compile_to_asm(CoreMod) ->
+compile_to_asm(CoreMod) when is_tuple(CoreMod), tuple_size(CoreMod) > 0 ->
     ModAtom = cerl:concrete(cerl:module_name(CoreMod)),
     Exports = [{cerl:fname_id(E), cerl:fname_arity(E)}
                || E <- cerl:module_exports(CoreMod)],
