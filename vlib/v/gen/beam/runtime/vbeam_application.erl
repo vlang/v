@@ -63,7 +63,7 @@ stop() ->
 %% V: import crypto  (for BEAM backend, ensures OTP crypto app is up)
 %% Erlang: vbeam_application:ensure_started(crypto)
 -spec ensure_started(Application :: atom()) -> ok | {error, term()}.
-ensure_started(App) when is_atom(App) ->
+ensure_started(App) when is_atom(App), App =/= '' ->
     case application:ensure_all_started(App) of
         {ok, _Started} -> ok;
         {error, Reason} -> {error, Reason}
@@ -75,6 +75,7 @@ ensure_started(App) when is_atom(App) ->
 %% V: import [crypto, ssl, inets]
 -spec ensure_all_started([atom()]) -> ok | {error, term()}.
 ensure_all_started(Apps) when is_list(Apps) ->
+    true = lists:all(fun is_atom/1, Apps),
     Results = lists:map(fun(App) -> ensure_started(App) end, Apps),
     case lists:filter(fun(R) -> R =/= ok end, Results) of
         [] -> ok;
@@ -86,12 +87,12 @@ ensure_all_started(Apps) when is_list(Apps) ->
 %%
 %% V: config.get("port", 8080)
 -spec get_env(Key :: atom(), Default :: term()) -> term().
-get_env(Key, Default) when is_atom(Key) ->
+get_env(Key, Default) when is_atom(Key), Key =/= '' ->
     get_env(vbeam, Key, Default).
 
 %% Get an application environment variable from a specific application.
 -spec get_env(App :: atom(), Key :: atom(), Default :: term()) -> term().
-get_env(App, Key, Default) when is_atom(App), is_atom(Key) ->
+get_env(App, Key, Default) when is_atom(App), App =/= '', is_atom(Key), Key =/= '' ->
     case application:get_env(App, Key) of
         {ok, Value} -> Value;
         undefined -> Default
@@ -101,12 +102,12 @@ get_env(App, Key, Default) when is_atom(App), is_atom(Key) ->
 %%
 %% V: config.set("port", 8080)
 -spec set_env(Key :: atom(), Value :: term()) -> ok.
-set_env(Key, Value) when is_atom(Key) ->
+set_env(Key, Value) when is_atom(Key), Key =/= '' ->
     set_env(vbeam, Key, Value).
 
 %% Set an application environment variable in a specific application.
 -spec set_env(App :: atom(), Key :: atom(), Value :: term()) -> ok.
-set_env(App, Key, Value) when is_atom(App), is_atom(Key) ->
+set_env(App, Key, Value) when is_atom(App), App =/= '', is_atom(Key), Key =/= '' ->
     application:set_env(App, Key, Value).
 
 %% ============================================================================
