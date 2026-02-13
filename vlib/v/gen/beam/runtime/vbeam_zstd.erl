@@ -38,12 +38,14 @@ is_available() ->
 
 %% @doc Compress data with default level (3).
 -spec compress(binary()) -> {ok, binary()} | {error, term()}.
-compress(Data) ->
-    compress(Data, 3).
+compress(Data) when is_binary(Data) ->
+    compress(Data, 3);
+compress(Data) when is_list(Data) ->
+    compress(list_to_binary(Data), 3).
 
 %% @doc Compress data with specified compression level (1-22).
 -spec compress(binary(), integer()) -> {ok, binary()} | {error, term()}.
-compress(Data, Level) when is_binary(Data), is_integer(Level) ->
+compress(Data, Level) when is_binary(Data), is_integer(Level), Level >= 1, Level =< 22 ->
     case is_available() of
         false ->
             {error, zstd_not_installed};
@@ -65,17 +67,19 @@ compress(Data, Level) when is_binary(Data), is_integer(Level) ->
                 file:delete(TmpOut)
             end
     end;
-compress(Data, Level) when is_list(Data), is_integer(Level) ->
+compress(Data, Level) when is_list(Data), is_integer(Level), Level >= 1, Level =< 22 ->
     compress(list_to_binary(Data), Level).
 
 %% @doc Decompress zstd-compressed data.
 -spec decompress(binary()) -> {ok, binary()} | {error, term()}.
-decompress(Data) ->
-    decompress(Data, #{}).
+decompress(Data) when is_binary(Data) ->
+    decompress(Data, #{});
+decompress(Data) when is_list(Data) ->
+    decompress(list_to_binary(Data), #{}).
 
 %% @doc Decompress zstd-compressed data with options.
 -spec decompress(binary(), map()) -> {ok, binary()} | {error, term()}.
-decompress(Data, _Opts) when is_binary(Data) ->
+decompress(Data, _Opts) when is_binary(Data), is_map(_Opts) ->
     case is_available() of
         false ->
             {error, zstd_not_installed};
@@ -97,7 +101,7 @@ decompress(Data, _Opts) when is_binary(Data) ->
                 file:delete(TmpOut)
             end
     end;
-decompress(Data, Opts) when is_list(Data) ->
+decompress(Data, Opts) when is_list(Data), is_map(Opts) ->
     decompress(list_to_binary(Data), Opts).
 
 %% --- Streaming API ---
@@ -109,7 +113,7 @@ compress_stream_start() ->
 
 %% @doc Start a streaming compression port with specified level.
 -spec compress_stream_start(integer()) -> {ok, port()} | {error, term()}.
-compress_stream_start(Level) ->
+compress_stream_start(Level) when is_integer(Level), Level >= 1, Level =< 22 ->
     case is_available() of
         false ->
             {error, zstd_not_installed};
@@ -123,13 +127,17 @@ compress_stream_start(Level) ->
 %% @doc Write data to a streaming compression port.
 %% Returns any compressed output available so far.
 -spec compress_stream_write(port(), binary()) -> binary().
-compress_stream_write(Port, Data) ->
+compress_stream_write(Port, Data) when is_port(Port), is_binary(Data) ->
+    true = erlang:port_info(Port) =/= undefined,
     port_command(Port, Data),
-    collect_port_data(Port, <<>>).
+    collect_port_data(Port, <<>>);
+compress_stream_write(Port, Data) when is_port(Port), is_list(Data) ->
+    compress_stream_write(Port, list_to_binary(Data)).
 
 %% @doc Close a streaming compression port and collect remaining output.
 -spec compress_stream_end(port()) -> binary().
-compress_stream_end(Port) ->
+compress_stream_end(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     port_close(Port),
     collect_final_data(<<>>).
 
@@ -148,13 +156,17 @@ decompress_stream_start() ->
 %% @doc Write data to a streaming decompression port.
 %% Returns any decompressed output available so far.
 -spec decompress_stream_write(port(), binary()) -> binary().
-decompress_stream_write(Port, Data) ->
+decompress_stream_write(Port, Data) when is_port(Port), is_binary(Data) ->
+    true = erlang:port_info(Port) =/= undefined,
     port_command(Port, Data),
-    collect_port_data(Port, <<>>).
+    collect_port_data(Port, <<>>);
+decompress_stream_write(Port, Data) when is_port(Port), is_list(Data) ->
+    decompress_stream_write(Port, list_to_binary(Data)).
 
 %% @doc Close a streaming decompression port and collect remaining output.
 -spec decompress_stream_end(port()) -> binary().
-decompress_stream_end(Port) ->
+decompress_stream_end(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     port_close(Port),
     collect_final_data(<<>>).
 
