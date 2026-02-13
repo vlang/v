@@ -45,7 +45,10 @@
 %% Returns a task reference map for use with await/yield.
 -spec async(fun(() -> term())) -> map().
 async(Fun) when is_function(Fun, 0) ->
-    async(Fun, #{}).
+    TaskRef = async(Fun, #{}),
+    true = maps:is_key(pid, TaskRef) andalso maps:is_key(ref, TaskRef)
+           andalso maps:is_key(result_ref, TaskRef),
+    TaskRef.
 
 %% Spawn an async task with options.
 %% Options:
@@ -94,7 +97,7 @@ async(Fun, Opts) when is_function(Fun, 0), is_map(Opts) ->
 %% V: result := t.wait()
 %% Erlang: Result = vbeam_task:await(TaskRef)
 -spec await(map()) -> term().
-await(TaskRef) ->
+await(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     await(TaskRef, ?DEFAULT_TIMEOUT).
 
 %% Wait for a task result with explicit timeout (milliseconds or infinity).
@@ -106,7 +109,8 @@ await(TaskRef) ->
 %% Raises {task_timeout, TaskRef} on timeout.
 %% Re-raises the task's exception if it crashed.
 -spec await(map(), timeout()) -> term().
-await(#{ref := MonRef, result_ref := ResultRef, pid := Pid} = _TaskRef, Timeout) ->
+await(#{ref := MonRef, result_ref := ResultRef, pid := Pid} = _TaskRef, Timeout)
+  when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
         {ResultRef, {ok, Value}} ->
             demonitor(MonRef, [flush]),
@@ -138,6 +142,7 @@ await(#{ref := MonRef, result_ref := ResultRef, pid := Pid} = _TaskRef, Timeout)
 %% Uses default timeout (5 seconds per task).
 -spec async_stream([fun(() -> term())]) -> [term()].
 async_stream(Funs) when is_list(Funs) ->
+    true = lists:all(fun(F) -> is_function(F, 0) end, Funs),
     async_stream(Funs, #{}).
 
 %% Run multiple functions concurrently with options.
@@ -148,6 +153,7 @@ async_stream(Funs) when is_list(Funs) ->
 %% Returns results in the same order as the input functions.
 -spec async_stream([fun(() -> term())], map()) -> [term()].
 async_stream(Funs, Opts) when is_list(Funs), is_map(Opts) ->
+    true = lists:all(fun(F) -> is_function(F, 0) end, Funs),
     Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
 
     %% Start all tasks
@@ -166,7 +172,7 @@ async_stream(Funs, Opts) when is_list(Funs), is_map(Opts) ->
 %%       timeout -> ...
 %%   end
 -spec yield(map()) -> {ok, term()} | timeout.
-yield(TaskRef) ->
+yield(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     yield(TaskRef, 0).
 
 %% Non-blocking check with a brief wait period.
@@ -177,7 +183,8 @@ yield(TaskRef) ->
 %%   {error, Reason} - Task crashed
 %%   timeout      - Task still running
 -spec yield(map(), timeout()) -> {ok, term()} | {error, term()} | timeout.
-yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout) ->
+yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout)
+  when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
         {ResultRef, {ok, Value}} ->
             demonitor(MonRef, [flush]),
