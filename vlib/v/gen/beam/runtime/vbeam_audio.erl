@@ -13,10 +13,13 @@
 %% Setup audio output.
 %% Desc is a map with optional keys: sample_rate, num_channels, buffer_frames.
 -spec setup(map()) -> ok | {error, term()}.
-setup(Desc) ->
+setup(Desc) when is_map(Desc) ->
     SampleRate = maps:get(sample_rate, Desc, 44100),
     NumChannels = maps:get(num_channels, Desc, 1),
     BufferFrames = maps:get(buffer_frames, Desc, 2048),
+    true = is_integer(SampleRate) andalso SampleRate > 0,
+    true = is_integer(NumChannels) andalso NumChannels > 0,
+    true = is_integer(BufferFrames) andalso BufferFrames > 0,
     Cmd = find_audio_cmd(SampleRate, NumChannels),
     case Cmd of
         false ->
@@ -61,7 +64,7 @@ find_audio_cmd(SampleRate, Channels) ->
 %% Push audio frames (float32 PCM data as binary).
 %% Returns number of frames actually pushed, or 0 on error.
 -spec push(binary(), non_neg_integer()) -> non_neg_integer().
-push(Frames, NumFrames) when is_binary(Frames) ->
+push(Frames, NumFrames) when is_binary(Frames), is_integer(NumFrames), NumFrames >= 0 ->
     case get(vbeam_audio_port) of
         undefined -> 0;
         Port ->
@@ -115,7 +118,8 @@ channels() ->
 
 %% Helper: clamp float value to [Min, Max].
 -spec fclamp(float(), float(), float()) -> float().
-fclamp(Val, Min, Max) ->
+fclamp(Val, Min, Max)
+  when is_number(Val), is_number(Min), is_number(Max), Min =< Max ->
     if Val < Min -> Min;
        Val > Max -> Max;
        true -> Val
@@ -124,7 +128,9 @@ fclamp(Val, Min, Max) ->
 %% Generate a sine wave tone for testing.
 %% Returns binary of 32-bit float little-endian PCM samples.
 -spec generate_tone(number(), number(), pos_integer()) -> binary().
-generate_tone(Frequency, Duration, SampleRate) ->
+generate_tone(Frequency, Duration, SampleRate)
+  when is_number(Frequency), Frequency > 0, is_number(Duration), Duration >= 0,
+       is_integer(SampleRate), SampleRate > 0 ->
     NumSamples = round(Duration * SampleRate),
     generate_samples(Frequency, SampleRate, 0, NumSamples, <<>>).
 
