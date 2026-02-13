@@ -18,108 +18,124 @@ abs(X) when is_float(X) -> erlang:abs(X).
 %% Minimum of two values
 %% 
 -spec min(number(), number()) -> number().
-min(A, B) when A < B -> A;
-min(_, B) -> B.
+min(A, B) when is_number(A), is_number(B), A < B -> A;
+min(A, B) when is_number(A), is_number(B), A >= B -> B.
 
 %% Maximum of two values
 %% 
 -spec max(number(), number()) -> number().
-max(A, B) when A > B -> A;
-max(_, B) -> B.
+max(A, B) when is_number(A), is_number(B), A > B -> A;
+max(A, B) when is_number(A), is_number(B), A =< B -> B.
 
 %% Clamp value between min and max
 %% 
 -spec clamp(number(), number(), number()) -> number().
-clamp(X, Min, Max) ->
+clamp(X, Min, Max) when is_number(X), is_number(Min), is_number(Max), Min =< Max ->
     erlang:max(Min, erlang:min(Max, X)).
 
 %% Floor (round toward negative infinity)
 %% 
 -spec floor(number()) -> number().
-floor(X) when is_float(X) -> math:floor(X);
+floor(X) when is_float(X), X =:= X -> math:floor(X);
 floor(X) when is_integer(X) -> X.
 
 %% Ceiling (round toward positive infinity)
 %% 
 -spec ceil(number()) -> number().
-ceil(X) when is_float(X) -> math:ceil(X);
+ceil(X) when is_float(X), X =:= X -> math:ceil(X);
 ceil(X) when is_integer(X) -> X.
 
 %% Round to nearest integer
 %% 
 -spec round(number()) -> number().
-round(X) when is_float(X) -> erlang:round(X);
+round(X) when is_float(X), X =:= X -> erlang:round(X);
 round(X) when is_integer(X) -> X.
 
 %% Truncate (round toward zero)
 %% 
 -spec trunc(number()) -> number().
-trunc(X) when is_float(X) -> erlang:trunc(X);
+trunc(X) when is_float(X), X =:= X -> erlang:trunc(X);
 trunc(X) when is_integer(X) -> X.
 
 %% Square root
 %% 
 -spec sqrt(number()) -> float().
-sqrt(X) -> math:sqrt(X).
+sqrt(X) when is_number(X), X >= 0 ->
+    math:sqrt(X).
 
 %% Power
 %% 
 -spec pow(number(), number()) -> float().
-pow(Base, Exp) -> math:pow(Base, Exp).
+pow(Base, Exp) when is_number(Base), is_number(Exp), Base =:= Base, Exp =:= Exp ->
+    math:pow(Base, Exp).
 
 %% Exponential (e^x)
 %% 
 -spec exp(number()) -> float().
-exp(X) -> math:exp(X).
+exp(X) when is_number(X), X =:= X ->
+    math:exp(X).
 
 %% Natural logarithm
 %% 
 -spec log(number()) -> float().
-log(X) -> math:log(X).
+log(X) when is_number(X), X =:= X, X > 0 ->
+    math:log(X).
 
 %% Base-10 logarithm
 %% 
 -spec log10(number()) -> float().
-log10(X) -> math:log10(X).
+log10(X) when is_number(X), X =:= X, X > 0 ->
+    math:log10(X).
 
 %% Base-2 logarithm
 %% 
 -spec log2(number()) -> float().
-log2(X) -> math:log2(X).
+log2(X) when is_number(X), X =:= X, X > 0 ->
+    math:log2(X).
 
 %% Trigonometric functions
 %% 
 -spec sin(number()) -> float().
-sin(X) -> math:sin(X).
+sin(X) when is_number(X), X =:= X ->
+    math:sin(X).
 %% 
 -spec cos(number()) -> float().
-cos(X) -> math:cos(X).
+cos(X) when is_number(X), X =:= X ->
+    math:cos(X).
 %% 
 -spec tan(number()) -> float().
-tan(X) -> math:tan(X).
+tan(X) when is_number(X), X =:= X ->
+    math:tan(X).
 %% 
 -spec asin(number()) -> float().
-asin(X) -> math:asin(X).
+asin(X) when is_number(X), X =:= X ->
+    math:asin(X).
 %% 
 -spec acos(number()) -> float().
-acos(X) -> math:acos(X).
+acos(X) when is_number(X), X =:= X ->
+    math:acos(X).
 %% 
 -spec atan(number()) -> float().
-atan(X) -> math:atan(X).
+atan(X) when is_number(X), X =:= X ->
+    math:atan(X).
 %% 
 -spec atan2(number(), number()) -> float().
-atan2(Y, X) -> math:atan2(Y, X).
+atan2(Y, X) when is_number(Y), is_number(X), Y =:= Y, X =:= X ->
+    math:atan2(Y, X).
 
 %% Hyperbolic functions
 %% 
 -spec sinh(number()) -> float().
-sinh(X) -> math:sinh(X).
+sinh(X) when is_number(X), X =:= X ->
+    math:sinh(X).
 %% 
 -spec cosh(number()) -> float().
-cosh(X) -> math:cosh(X).
+cosh(X) when is_number(X), X =:= X ->
+    math:cosh(X).
 %% 
 -spec tanh(number()) -> float().
-tanh(X) -> math:tanh(X).
+tanh(X) when is_number(X), X =:= X ->
+    math:tanh(X).
 
 %% Constants
 %% 
