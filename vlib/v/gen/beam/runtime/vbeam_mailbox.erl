@@ -12,6 +12,9 @@
 
 -module(vbeam_mailbox).
 
+-define(VSN, "1.0.0").
+-vsn(?VSN).
+
 -moduledoc """
 Provides mailbox and monitor utilities for V runtime processes.
 """.
@@ -22,6 +25,7 @@ Provides mailbox and monitor utilities for V runtime processes.
 
 
 -export([check/0, check/1, monitor_start/1, monitor_start/2]).
+-export([terminate/2, code_change/3, format_status/1]).
 
 %% Export protocol types for cross-module contracts
 -export_type([mailbox_msg/0, mailbox_warning/0]).
@@ -104,6 +108,18 @@ monitor_loop(Pid, Interval, MaxLen) ->
 mailbox_info(Pid) when is_pid(Pid) ->
     process_info(Pid, message_queue_len).
 
+%% OTP hot-code callbacks (Rule 30)
+-spec terminate(term(), map()) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(term(), map(), term()) -> {ok, map()}.
+code_change(_OldVsn, State, _Extra) when is_map(State) ->
+    {ok, State}.
+
+-spec format_status(map()) -> map().
+format_status(Status) ->
+    Status.
 
 
 
