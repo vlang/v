@@ -1,4 +1,5 @@
 // vtest vflags: -autofree
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 
 type Result = Success | Failure
 
