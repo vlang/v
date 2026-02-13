@@ -49,7 +49,11 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set uppercase for the result string
-	mut typ := g.unwrap_generic(node.expr_types[i])
+	mut typ := if i < node.expr_types.len {
+		g.unwrap_generic(node.expr_types[i])
+	} else {
+		ast.string_type
+	}
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
 	}
@@ -192,7 +196,11 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
-	typ := g.unwrap_generic(node.expr_types[i])
+	typ := if i < node.expr_types.len {
+		g.unwrap_generic(node.expr_types[i])
+	} else {
+		ast.string_type
+	}
 	typ_sym := g.table.sym(typ)
 	if g.comptime.inside_comptime_for && expr is ast.SelectorExpr && expr.field_name == 'name'
 		&& expr.expr is ast.TypeOf {
@@ -334,8 +342,10 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	for i, mut expr in node_.exprs {
 		mut field_typ := if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
 			g.comptime.comptime_for_field_type
-		} else {
+		} else if i < node_.expr_types.len {
 			node_.expr_types[i]
+		} else {
+			ast.void_type
 		}
 		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
 			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
@@ -365,7 +375,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		} else {
-			node_.expr_types[i] = field_typ
+			if i >= node_.expr_types.len {
+				node_.expr_types << field_typ
+			} else {
+				node_.expr_types[i] = field_typ
+			}
 		}
 	}
 	g.write2('builtin__str_intp(', node.vals.len.str())

@@ -1001,7 +1001,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		''
 	}
-	if gen_or || gen_keep_alive {
+	if (gen_or || gen_keep_alive) && node.return_type != 0 {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(ret_typ)
@@ -1064,7 +1064,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		g.fn_call(node)
 	}
-	if gen_or {
+	if gen_or && node.return_type != 0 {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		mut unwrapped_typ := node.return_type.clear_option_and_result()
 		if g.table.sym(unwrapped_typ).kind == .alias {
@@ -1109,7 +1109,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				}
 			}
 		}
-	} else if gen_keep_alive {
+	} else if gen_keep_alive && node.return_type != 0 {
 		if node.return_type == ast.void_type {
 			g.write('\n ${cur_line}')
 		} else {
