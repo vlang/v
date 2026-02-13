@@ -171,7 +171,8 @@ compile_one(CoreFile, OutDir) ->
 
 %% Compile a .core file to .beam using in-memory compilation
 -spec compile_core_file(string(), string()) -> {ok, atom(), string()} | {error, term()}.
-compile_core_file(CoreFile, OutDir) ->
+compile_core_file(CoreFile, OutDir) when is_list(CoreFile), is_list(OutDir) ->
+    true = filename:extension(CoreFile) =:= ".core",
     case file:read_file(CoreFile) of
         {ok, Bin} ->
             compile_core_text(binary_to_list(Bin), OutDir);
@@ -182,7 +183,8 @@ compile_core_file(CoreFile, OutDir) ->
 %% Compile Core Erlang text directly to .beam (the Tier 3 core)
 %% Flow: text -> core_scan -> core_parse -> compile:noenv_forms -> .beam binary
 -spec compile_core_text(string(), string()) -> {ok, atom(), string()} | {error, term()}.
-compile_core_text(Text, OutDir) ->
+compile_core_text(Text, OutDir) when is_list(Text), is_list(OutDir) ->
+    true = Text =/= [],
     case core_scan:string(Text) of
         {ok, Tokens, _} ->
             case core_parse:parse(Tokens) of
@@ -199,7 +201,9 @@ compile_core_text(Text, OutDir) ->
 %% Used by both text mode (after core_parse) and ETF mode (after erl_parse).
 %% Uses noenv_forms to prevent ERL_COMPILER_OPTIONS pollution.
 -spec compile_core_forms(term(), string()) -> {ok, atom(), string()} | {error, term()}.
-compile_core_forms(Forms, OutDir) ->
+compile_core_forms(Forms, OutDir)
+  when (is_tuple(Forms) orelse is_list(Forms)), is_list(OutDir) ->
+    true = OutDir =/= [],
     CompileOpts = [from_core, binary, debug_info, return_errors,
                    {compile_info, [{source, <<"vbeam">>},
                                    {version, <<"0.1.0">>},
@@ -225,7 +229,7 @@ write_beam(ModName, Binary, OutDir) ->
 %% Compile all .core and .erl files in a directory
 %% Returns {OkCount, ErrCount, Errors} — continues on failure
 -spec compile_dir(string()) -> {non_neg_integer(), non_neg_integer(), [{term(), term()}]}.
-compile_dir(Dir) ->
+compile_dir(Dir) when is_list(Dir), Dir =/= [] ->
     case file:list_dir(Dir) of
         {ok, Files} ->
             CoreFiles = [F || F <- lists:sort(Files),
