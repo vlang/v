@@ -14,7 +14,7 @@ fn main() {
 	vroot := os.dir(@VEXE)
 	v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
 	v2_binary := os.join_path(vroot, 'cmd', 'v2', 'v2')
-	build_res := os.execute('${@VEXE} ${v2_source} -o ${v2_binary}')
+	build_res := os.execute('${@VEXE} -gc none ${v2_source} -o ${v2_binary}')
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
@@ -52,7 +52,7 @@ fn main() {
 
 	// Run v2 with selected backend
 	println('[*] Running v2 -backend ${backend} ${input_file}...')
-	mut backend_flags := '-backend ${backend}'
+	mut backend_flags := '-gc none -backend ${backend}'
 	if backend == 'cleanc' {
 		// cleanc needs full per-run codegen for this suite right now.
 		backend_flags += ' -nomarkused -nocache'
@@ -90,7 +90,7 @@ fn main() {
 		// Run Reference (v run test.v)
 		println('[*] Running reference: ${@VEXE} -enable-globals run ${input_file}...')
 		os.rm(ref_output_path) or {}
-		ref_cmd := '${@VEXE} -n -w -enable-globals run ${input_file} > ${ref_output_path} 2>&1'
+		ref_cmd := '${@VEXE} -gc none -n -w -enable-globals run ${input_file} > ${ref_output_path} 2>&1'
 		ref_res := os.execute(ref_cmd)
 		ref_out := os.read_file(ref_output_path) or { '' }
 		os.rm(ref_output_path) or {}

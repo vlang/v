@@ -109,8 +109,6 @@ fn swap_bytes[T](input T) T {
 		return input
 	} $else $if T is i8 {
 		return input
-	} $else $if T is byte {
-		return input
 	} $else $if T is u16 {
 		return swap_bytes_u16(input)
 	} $else $if T is u32 {

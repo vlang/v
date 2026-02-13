@@ -191,8 +191,10 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 }
 
 fn (b &Builder) can_use_cached_module_bundle(cache_name string, module_paths []string, cc string, cc_flags string) bool {
-	obj_path := os.join_path(b.core_cache_dir(), '${cache_name}.o')
-	stamp_path := os.join_path(b.core_cache_dir(), '${cache_name}.stamp')
+	obj_file := cache_name + '.o'
+	stamp_file := cache_name + '.stamp'
+	obj_path := os.join_path(b.core_cache_dir(), obj_file)
+	stamp_path := os.join_path(b.core_cache_dir(), stamp_file)
 	if !os.exists(obj_path) || !os.exists(stamp_path) {
 		return false
 	}

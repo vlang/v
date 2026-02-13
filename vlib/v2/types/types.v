@@ -161,6 +161,11 @@ pub fn (f &FnType) get_param_types() []Type {
 	return param_types
 }
 
+// is_variadic_fn reports whether this function type was declared variadic.
+pub fn (f &FnType) is_variadic_fn() bool {
+	return f.is_variadic
+}
+
 pub struct Interface {
 pub:
 	name string

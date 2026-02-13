@@ -71,7 +71,7 @@ pub fn verify_and_panic(m &ssa.Module, pass_name string) {
 			}
 		}
 		for err in critical_errors {
-			msg += '  ${err}\n'
+			msg += '  ${err.msg}\n'
 		}
 		if warning_count > 0 {
 			msg += '  (${warning_count} non-critical warnings suppressed)\n'

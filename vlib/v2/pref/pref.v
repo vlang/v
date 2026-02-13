@@ -45,6 +45,17 @@ pub:
 	vmodules_path string = os.vmodules_dir()
 }
 
+fn dir_exists(path string) bool {
+	if path.len == 0 {
+		return false
+	}
+	if os.is_dir(path) {
+		return true
+	}
+	_ := os.ls(path) or { return false }
+	return true
+}
+
 fn detect_vroot_from(start string) string {
 	if start.len == 0 {
 		return ''
@@ -57,15 +68,40 @@ fn detect_vroot_from(start string) string {
 			dir = os.join_path(cwd, dir)
 		}
 	}
-	for _ in 0 .. 8 {
-		if os.is_dir(os.join_path(dir, 'vlib', 'builtin')) {
-			return dir
-		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
+	}
+	dir = os.dir(dir)
+	if dir_exists(os.join_path(dir, 'vlib', 'builtin')) {
+		return dir
 	}
 	return ''
 }
@@ -74,7 +110,8 @@ fn detect_vroot() string {
 	// First prefer the compile-time module root when it points to a valid
 	// V source tree. This keeps self-host binaries stable during bootstrapping.
 	compile_time_root := @VMODROOT
-	if os.is_dir(os.join_path(compile_time_root, 'vlib', 'builtin')) {
+	joined := os.join_path(compile_time_root, 'vlib', 'builtin')
+	if os.is_dir(joined) {
 		return compile_time_root
 	}
 	// Prefer deriving from executable path: <vroot>/cmd/v2/v3.

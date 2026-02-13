@@ -139,6 +139,19 @@ fn asm_lsrv(rd Reg, rn Reg, rm Reg) u32 {
 	return 0x9AC02400 | (u32(rm) << 16) | (u32(rn) << 5) | u32(rd)
 }
 
+// lsr xd, xn, #shift (logical shift right immediate, 64-bit)
+// Alias for UBFM Xd, Xn, #shift, #63
+fn asm_lsr_imm(rd Reg, rn Reg, shift u32) u32 {
+	return 0xD340FC00 | ((shift & 0x3F) << 16) | (u32(rn) << 5) | u32(rd)
+}
+
+// ubfx xd, xn, #0, #width  (unsigned bitfield extract, zero-extend lower bits)
+// Alias for UBFM Xd, Xn, #0, #(width-1)
+fn asm_ubfx_lower(rd Reg, rn Reg, width u32) u32 {
+	imms := (width - 1) & 0x3F
+	return 0xD3400000 | (imms << 10) | (u32(rn) << 5) | u32(rd)
+}
+
 // === Compare ===
 
 // cmp rn, rm (subs xzr, rn, rm)

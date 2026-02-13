@@ -5,8 +5,12 @@ module builder
 
 import os
 
+fn list_dir_entries(path string) []string {
+	return os.ls(path) or { []string{} }
+}
+
 pub fn get_v_files_from_dir(dir string) []string {
-	mod_files := os.ls(dir) or { panic('error getting ls from ${dir}') }
+	mod_files := list_dir_entries(dir)
 	mut v_files := []string{}
 	for file in mod_files {
 		// Include .v files (including .c.v), exclude .js.v and test files

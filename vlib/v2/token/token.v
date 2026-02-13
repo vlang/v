@@ -122,6 +122,7 @@ pub enum BindingPower {
 	lowest
 	one
 	two
+	shift
 	three
 	four
 	highest
@@ -134,8 +135,9 @@ pub fn (t Token) left_binding_power() BindingPower {
 		.logical_or { .lowest }
 		// `&&`
 		.and { .one }
-		// `<<` | `>>` | `>>>` - lower precedence so arr << a + b parses as arr << (a + b)
-		.left_shift, .right_shift, .right_shift_unsigned { .two }
+		// `<<` | `>>` | `>>>` - between comparison and additive so arr << a + b parses as arr << (a + b)
+		// and a == b << c parses as a == (b << c)
+		.left_shift, .right_shift, .right_shift_unsigned { .shift }
 		// `==` | `!=` | `<` | `<=` | `>` | `>=` | `in` | `!in` | `is` | `!is`
 		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .two }
 		// `+` |  `-` |  `|` | `^`

@@ -107,7 +107,7 @@ pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
 	}
-	b << data
+	unsafe { b.push_many(data.data, data.len) }
 	return data.len
 }
 

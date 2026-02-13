@@ -72,7 +72,7 @@ fn main() {
 	checker.check_files(ast_files)
 
 	// Transform
-	mut trans := transformer.Transformer.new(ast_files, env)
+	mut trans := transformer.Transformer.new_with_pref(ast_files, env, &prefs)
 	transformed_files := trans.transform_files(ast_files)
 
 	// Write post-transformation AST (only user files)

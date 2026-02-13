@@ -60,14 +60,26 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('#include <sys/types.h>')
 	g.sb.writeln('#include <sys/stat.h>')
 	g.sb.writeln('#include <sys/wait.h>')
+	g.sb.writeln('#include <sys/time.h>')
+	g.sb.writeln('#include <sys/statvfs.h>')
+	g.sb.writeln('#include <sys/ioctl.h>')
+	g.sb.writeln('#include <sys/utsname.h>')
+	g.sb.writeln('#include <utime.h>')
 	g.sb.writeln('#include <math.h>')
+	g.sb.writeln('#include <termios.h>')
+	g.sb.writeln('#include <signal.h>')
 	g.sb.writeln('#ifndef _WIN32')
 	g.sb.writeln('#include <pthread.h>')
 	g.sb.writeln('#endif')
 	g.sb.writeln('#ifdef __APPLE__')
 	g.sb.writeln('#include <mach/mach_time.h>')
 	g.sb.writeln('#include <libproc.h>')
+	g.sb.writeln('#include <execinfo.h>')
+	g.sb.writeln('#include <sys/ptrace.h>')
 	g.sb.writeln('#endif')
+	g.sb.writeln('')
+	// wyhash implementation (needed for map hash functions)
+	g.gen_wyhash_header()
 	g.sb.writeln('')
 	g.init_global_names()
 	g.init_function_lookups()
@@ -81,6 +93,10 @@ pub fn (mut g Gen) gen() string {
 	g.gen_func_decls()
 
 	for i, func in g.mod.funcs {
+		// Skip SSA-generated stubs for C functions provided by headers
+		if func.name in ['wyhash', 'wyhash64'] {
+			continue
+		}
 		g.current_fn_idx = i
 		g.gen_func(func)
 	}
@@ -93,6 +109,10 @@ fn (mut g Gen) gen_func_decls() {
 	for func in g.mod.funcs {
 		if func.name == 'main' {
 			g.sb.writeln('int main(int argc, char** argv);')
+			continue
+		}
+		// Skip SSA-generated stubs for C functions provided by headers
+		if func.name in ['wyhash', 'wyhash64'] {
 			continue
 		}
 		effective_params := g.signature_params(func)
@@ -146,6 +166,21 @@ fn (mut g Gen) gen_struct_decls() {
 		if t.kind == .struct_t {
 			// Skip builtin string type (already defined)
 			if g.is_string_type(i) {
+				continue
+			}
+			// C interop structs without @[typedef]: typedef to the real C struct
+			// (e.g., struct tm, struct timespec) instead of generating a custom
+			// layout that would have wrong field sizes for C calls.
+			if c_name := g.mod.c_struct_names[i] {
+				if _ := g.mod.c_typedef_structs[i] {
+					// @[typedef] C types (e.g., IError, mach_timebase_info_data_t):
+					// emit our own struct definition with C field names so we don't
+					// depend on the C typedef existing on this platform.
+					struct_ids << i
+					g.sb.writeln('typedef struct Struct_${i} Struct_${i};')
+				} else {
+					g.sb.writeln('typedef struct ${c_name} Struct_${i};')
+				}
 				continue
 			}
 			struct_ids << i
@@ -231,7 +266,10 @@ fn (mut g Gen) gen_globals() {
 		if gvar.linkage == .external {
 			continue
 		}
-		tname := g.type_name(gvar.typ)
+		mut tname := g.type_name(gvar.typ)
+		if tname == 'void' {
+			tname = 'int64_t'
+		}
 		gname := g.global_c_names[i]
 		if gvar.is_constant || gvar.initial_value != 0 {
 			g.sb.writeln('${tname} ${gname} = ${g.global_init_expr(gvar)};')
@@ -516,13 +554,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 			known_raw_c_symbol := g.is_known_c_symbol(raw_c_name)
 			known_mangled_symbol := g.is_known_c_symbol(fn_name)
 			known_c_symbol := known_raw_c_symbol || known_mangled_symbol
+			has_exact_v_impl := g.function_index(fn_raw_name) != none
 			prefer_raw_c_symbol := known_raw_c_symbol
-				&& fn_raw_name in ['getenv', 'setenv', 'unsetenv']
+				&& (!has_exact_v_impl || fn_raw_name in ['getenv', 'setenv', 'unsetenv'])
 			mut expected_param_types := []ssa.TypeID{}
 			mut has_impl := false
 			mut callee_ret_typ_id := ssa.TypeID(0)
 			mut has_callee_ret_typ := false
 			mut prepend_implicit_first_arg := false
+			mut implicit_first_arg_id := ssa.ValueID(0)
 			call_arg_ids := if instr.operands.len > 1 {
 				instr.operands[1..]
 			} else {
@@ -540,6 +580,33 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 					prepend_implicit_first_arg = g.uses_implicit_constructor_receiver_arg(f,
 						call_arg_ids.len)
+				}
+			}
+			// Recovery path: some transformed calls can arrive as `receiver__method(args...)`
+			// without the implicit receiver argument. If the receiver name matches a current
+			// function parameter, prepend it and resolve by method suffix.
+			if !has_impl && !known_c_symbol && fn_raw_name.contains('__') {
+				recv_name := fn_raw_name.all_before('__')
+				method_suffix := fn_raw_name.all_after('__')
+				if recv_name != '' && method_suffix != '' {
+					if self_arg_id := g.current_fn_param_id_by_name(recv_name) {
+						mut augmented_args := []ssa.ValueID{cap: call_arg_ids.len + 1}
+						augmented_args << self_arg_id
+						augmented_args << call_arg_ids
+						if f := g.resolve_function(method_suffix, augmented_args, val.typ) {
+							has_impl = true
+							resolved_fn_name = f.name
+							fn_name = g.mangle_fn_name(resolved_fn_name)
+							callee_ret_typ_id = f.typ
+							has_callee_ret_typ = true
+							expected_param_types.clear()
+							for pid in g.signature_params(f) {
+								expected_param_types << g.mod.values[pid].typ
+							}
+							prepend_implicit_first_arg = true
+							implicit_first_arg_id = self_arg_id
+						}
+					}
 				}
 			}
 			if !has_impl && !known_c_symbol {
@@ -575,7 +642,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			mut args_str := []string{}
 			if has_impl && prepend_implicit_first_arg && expected_param_types.len > 0 {
-				args_str << g.zero_value_expr(expected_param_types[0])
+				if implicit_first_arg_id > 0 && implicit_first_arg_id < g.mod.values.len {
+					mut implicit_expr := g.val_str(implicit_first_arg_id)
+					implicit_actual_typ := g.global_effective_type(implicit_first_arg_id)
+					expected_typ_id := expected_param_types[0]
+					if expected_typ_id > 0 && expected_typ_id < g.mod.type_store.types.len
+						&& implicit_actual_typ > 0
+						&& implicit_actual_typ < g.mod.type_store.types.len {
+						expected := g.mod.type_store.types[expected_typ_id]
+						actual := g.mod.type_store.types[implicit_actual_typ]
+						if expected.kind == .ptr_t && actual.kind != .ptr_t {
+							implicit_expr = g.ref_call_arg_expr(implicit_expr, implicit_actual_typ)
+						} else {
+							implicit_expr = g.coerce_call_arg(implicit_expr, implicit_actual_typ,
+								expected_typ_id)
+						}
+					} else {
+						implicit_expr = g.coerce_call_arg(implicit_expr, implicit_actual_typ,
+							expected_typ_id)
+					}
+					args_str << implicit_expr
+				} else {
+					args_str << g.zero_value_expr(expected_param_types[0])
+				}
 			}
 			expected_param_offset := if prepend_implicit_first_arg { 1 } else { 0 }
 			for i := 1; i < instr.operands.len; i++ {
@@ -586,12 +675,33 @@ fn (mut g Gen) gen_instr(val_id int) {
 				arg_id := instr.operands[i]
 				mut arg_expr := g.val_str(arg_id)
 				if param_idx < expected_param_types.len {
-					actual_typ_id := if arg_id > 0 && arg_id < g.mod.values.len {
-						g.mod.values[arg_id].typ
-					} else {
-						0
+					mut actual_typ_id := g.global_effective_type(arg_id)
+					// Compatibility fallback: if we could not resolve a dedicated
+					// global type, unwrap one SSA pointer level for globals.
+					if arg_id > 0 && arg_id < g.mod.values.len
+						&& g.mod.values[arg_id].kind == .global
+						&& actual_typ_id == g.mod.values[arg_id].typ {
+						if actual_typ_id > 0 && actual_typ_id < g.mod.type_store.types.len {
+							ainfo := g.mod.type_store.types[actual_typ_id]
+							if ainfo.kind == .ptr_t && ainfo.elem_type > 0 {
+								actual_typ_id = ainfo.elem_type
+							}
+						}
 					}
 					expected_typ_id := expected_param_types[param_idx]
+					if expected_typ_id > 0 && expected_typ_id < g.mod.type_store.types.len
+						&& g.mod.type_store.types[expected_typ_id].kind == .int_t {
+						mut is_fn_symbol := false
+						if arg_id > 0 && arg_id < g.mod.values.len
+							&& g.mod.values[arg_id].kind == .func_ref {
+							is_fn_symbol = true
+						} else if _ := g.function_index(arg_expr) {
+							is_fn_symbol = true
+						}
+						if is_fn_symbol {
+							arg_expr = '(int64_t)(uintptr_t)(${arg_expr})'
+						}
+					}
 					if g.should_pass_call_arg_by_ref(resolved_fn_name, param_idx, actual_typ_id,
 						expected_typ_id)
 					{
@@ -647,6 +757,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			} else if needs_result {
 				mut call_expr := '${emit_name}(${args_c})'
+				if emit_name in ['v__malloc', 'malloc_noscan'] && args_str.len == 1 && val.typ > 0
+					&& val.typ < g.mod.type_store.types.len {
+					ret_t := g.mod.type_store.types[val.typ]
+					if ret_t.kind == .ptr_t && ret_t.elem_type > 0
+						&& ret_t.elem_type < g.mod.type_store.types.len {
+						elem_t := g.mod.type_store.types[ret_t.elem_type]
+						if elem_t.kind == .struct_t {
+							call_expr = '${emit_name}(sizeof(${g.type_name(ret_t.elem_type)}))'
+						}
+					}
+				}
 				if has_callee_ret_typ {
 					call_expr = g.coerce_expr_to_type(call_expr, callee_ret_typ_id, val.typ)
 				}
@@ -1375,6 +1496,21 @@ fn (g Gen) value_type_id(id int) int {
 	return g.mod.values[id].typ
 }
 
+// global_effective_type returns the C-declaration type for a value.
+// For globals, the SSA value type may be a pointer (e.g., ptr_t to struct)
+// while the C global is declared as the struct itself. Use the global's
+// declared type to match the actual C representation.
+fn (g Gen) global_effective_type(id int) int {
+	if id <= 0 || id >= g.mod.values.len {
+		return 0
+	}
+	val := g.mod.values[id]
+	if val.kind == .global && val.index >= 0 && val.index < g.mod.globals.len {
+		return g.mod.globals[val.index].typ
+	}
+	return val.typ
+}
+
 fn temp_value_id_from_expr(expr string) ?int {
 	if !expr.starts_with('_v') {
 		return none
@@ -1475,6 +1611,91 @@ fn (g Gen) global_name_by_source(raw_name string) ?string {
 	return none
 }
 
+fn (mut g Gen) gen_wyhash_header() {
+	g.sb.writeln('// wyhash v4.2 - proper hash implementation for maps')
+	g.sb.writeln('#ifndef wyhash_final_version_4_2')
+	g.sb.writeln('#define wyhash_final_version_4_2')
+	g.sb.writeln('#define WYHASH_CONDOM 1')
+	g.sb.writeln('#define WYHASH_32BIT_MUM 0')
+	g.sb.writeln('#ifndef _likely_')
+	g.sb.writeln('#define _likely_(x) __builtin_expect(!!(x),1)')
+	g.sb.writeln('#define _unlikely_(x) __builtin_expect(!!(x),0)')
+	g.sb.writeln('#endif')
+	g.sb.writeln('static inline uint64_t _wyrot(uint64_t x) { return (x>>32)|(x<<32); }')
+	g.sb.writeln('static inline void _wymum(uint64_t *A, uint64_t *B){')
+	g.sb.writeln('#if defined(__SIZEOF_INT128__)')
+	g.sb.writeln('  __uint128_t r=*A; r*=*B;')
+	g.sb.writeln('  *A=(uint64_t)r; *B=(uint64_t)(r>>64);')
+	g.sb.writeln('#else')
+	g.sb.writeln('  uint64_t ha=*A>>32, hb=*B>>32, la=(uint32_t)*A, lb=(uint32_t)*B, hi, lo;')
+	g.sb.writeln('  uint64_t rh=ha*hb, rm0=ha*lb, rm1=hb*la, rl=la*lb, t=rl+(rm0<<32), c=t<rl;')
+	g.sb.writeln('  lo=t+(rm1<<32); c+=lo<t; hi=rh+(rm0>>32)+(rm1>>32)+c;')
+	g.sb.writeln('  *A=lo; *B=hi;')
+	g.sb.writeln('#endif')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }')
+	g.sb.writeln('#ifndef WYHASH_LITTLE_ENDIAN')
+	g.sb.writeln('#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__')
+	g.sb.writeln('#define WYHASH_LITTLE_ENDIAN 1')
+	g.sb.writeln('#else')
+	g.sb.writeln('#define WYHASH_LITTLE_ENDIAN 0')
+	g.sb.writeln('#endif')
+	g.sb.writeln('#endif')
+	g.sb.writeln('#if (WYHASH_LITTLE_ENDIAN)')
+	g.sb.writeln('static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}')
+	g.sb.writeln('static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}')
+	g.sb.writeln('#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)')
+	g.sb.writeln('static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}')
+	g.sb.writeln('static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}')
+	g.sb.writeln('#else')
+	g.sb.writeln('static inline uint64_t _wyr8(const uint8_t *p) {')
+	g.sb.writeln('  uint64_t v; memcpy(&v, p, 8);')
+	g.sb.writeln('  return (((v >> 56) & 0xff)| ((v >> 40) & 0xff00)| ((v >> 24) & 0xff0000)| ((v >>  8) & 0xff000000)| ((v <<  8) & 0xff00000000)| ((v << 24) & 0xff0000000000)| ((v << 40) & 0xff000000000000)| ((v << 56) & 0xff00000000000000));')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline uint64_t _wyr4(const uint8_t *p) {')
+	g.sb.writeln('  uint32_t v; memcpy(&v, p, 4);')
+	g.sb.writeln('  return (((v >> 24) & 0xff)| ((v >>  8) & 0xff00)| ((v <<  8) & 0xff0000)| ((v << 24) & 0xff000000));')
+	g.sb.writeln('}')
+	g.sb.writeln('#endif')
+	g.sb.writeln('static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}')
+	g.sb.writeln('static const uint64_t _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
+	g.sb.writeln('static inline uint64_t _wyhash_impl(const void *key, size_t len, uint64_t seed, const uint64_t *secret){')
+	g.sb.writeln('  if (!secret) secret = _wyp;')
+	g.sb.writeln('  const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0],secret[1]); uint64_t a, b;')
+	g.sb.writeln('  if (_likely_(len<=16)) {')
+	g.sb.writeln('    if (_likely_(len>=4)) { a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }')
+	g.sb.writeln('    else if (_likely_(len>0)) { a=_wyr3(p,len); b=0; }')
+	g.sb.writeln('    else a=b=0;')
+	g.sb.writeln('  } else {')
+	g.sb.writeln('    size_t i=len;')
+	g.sb.writeln('    if (_unlikely_(i>=48)) {')
+	g.sb.writeln('      uint64_t see1=seed, see2=seed;')
+	g.sb.writeln('      do {')
+	g.sb.writeln('        seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);')
+	g.sb.writeln('        see1=_wymix(_wyr8(p+16)^secret[2],_wyr8(p+24)^see1);')
+	g.sb.writeln('        see2=_wymix(_wyr8(p+32)^secret[3],_wyr8(p+40)^see2);')
+	g.sb.writeln('        p+=48; i-=48;')
+	g.sb.writeln('      } while(_likely_(i>=48));')
+	g.sb.writeln('      seed^=see1^see2;')
+	g.sb.writeln('    }')
+	g.sb.writeln('    while(_unlikely_(i>16)) { seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed); i-=16; p+=16; }')
+	g.sb.writeln('    a=_wyr8(p+i-16); b=_wyr8(p+i-8);')
+	g.sb.writeln('  }')
+	g.sb.writeln('  a^=secret[1]; b^=seed; _wymum(&a,&b);')
+	g.sb.writeln('  return _wymix(a^secret[0]^len,b^secret[1]);')
+	g.sb.writeln('}')
+	// Wrapper with int64_t params to match SSA-generated calling convention
+	g.sb.writeln('static inline int64_t wyhash(int64_t key, int64_t len, int64_t seed, int64_t secret) {')
+	g.sb.writeln('  return (int64_t)_wyhash_impl((const void*)(uintptr_t)key, (size_t)len, (uint64_t)seed, secret ? (const uint64_t*)(uintptr_t)secret : _wyp);')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline int64_t wyhash64(int64_t a, int64_t b) {')
+	g.sb.writeln('  uint64_t A=(uint64_t)a, B=(uint64_t)b;')
+	g.sb.writeln('  A^=0x2d358dccaa6c78a5ull; B^=0x8bb84b93962eacc9ull; _wymum(&A,&B);')
+	g.sb.writeln('  return (int64_t)_wymix(A^0x2d358dccaa6c78a5ull,B^0x8bb84b93962eacc9ull);')
+	g.sb.writeln('}')
+	g.sb.writeln('#endif')
+}
+
 fn (mut g Gen) gen_runtime_stubs() {
 	// Minimal builtin stubs for standalone/small programs.
 	g.sb.writeln('// Minimal builtin stubs')
@@ -1537,16 +1758,16 @@ fn (g Gen) is_known_c_symbol(name string) bool {
 	return match name {
 		'malloc', 'calloc', 'realloc', 'free', 'strlen', 'strcmp', 'strncmp', 'strcpy', 'strncpy',
 		'strcat', 'memcpy', 'memset', 'memmove', 'memcmp', 'puts', 'putchar', 'printf', 'fprintf',
-		'sprintf', 'snprintf', 'asprintf', 'fwrite', 'fflush', 'write', 'read', 'open', 'close',
-		'fopen', 'fclose', 'fseek', 'ftell', 'feof', 'ferror', 'rewind', 'getline', 'remove',
-		'popen', 'pclose', 'ftruncate', 'getcwd', 'getenv', 'setenv', 'unsetenv', 'realpath',
-		'access', 'stat', 'lstat', 'opendir', 'readdir', 'closedir', 'getpid', 'wait', 'isatty',
-		'clock_gettime', 'localtime_r', 'timegm', 'strerror', 'proc_pidpath', 'atexit',
-		'WIFEXITED', 'WEXITSTATUS', 'WIFSIGNALED', 'WTERMSIG', 'mach_absolute_time',
-		'mach_timebase_info', 'pthread_self', 'exit', 'abort', 'fmod', 'fabs', 'floor', 'ceil',
-		'sqrt', 'println', 'print', 'eprintln', 'malloc_noscan', 'v__malloc', 'vcalloc',
-		'vcalloc_noscan', '__at_least_one', 'vmemcpy', 'vmemset', 'vmemmove', 'v__puts',
-		'v__sprintf', 'v_realloc', 'realloc_data' {
+		'sprintf', 'snprintf', 'asprintf', 'fread', 'fwrite', 'fflush', 'write', 'read', 'open',
+		'close', 'fopen', 'fclose', 'fileno', '_fileno', 'fseek', 'ftell', 'feof', 'ferror',
+		'rewind', 'getline', 'remove', 'popen', 'pclose', 'ftruncate', 'getcwd', 'getenv',
+		'setenv', 'unsetenv', 'realpath', 'access', 'stat', 'lstat', 'opendir', 'readdir',
+		'closedir', 'getpid', 'wait', 'isatty', 'clock_gettime', 'localtime_r', 'timegm',
+		'strerror', 'proc_pidpath', 'atexit', 'WIFEXITED', 'WEXITSTATUS', 'WIFSIGNALED',
+		'WTERMSIG', 'mach_absolute_time', 'mach_timebase_info', 'pthread_self', 'exit', 'abort',
+		'fmod', 'fabs', 'floor', 'ceil', 'sqrt', 'println', 'print', 'eprintln', 'malloc_noscan',
+		'v__malloc', 'vcalloc', 'vcalloc_noscan', '__at_least_one', 'vmemcpy', 'vmemset',
+		'vmemmove', 'v__puts', 'v__sprintf', 'v_realloc', 'realloc_data' {
 			true
 		}
 		else {
@@ -1588,6 +1809,40 @@ fn (g Gen) coerce_known_c_symbol_arg(name string, arg_index int, arg_expr string
 		'open' {
 			if arg_index == 1 || arg_index == 2 {
 				'(int)(${arg_expr})'
+			} else {
+				arg_expr
+			}
+		}
+		'fileno', '_fileno' {
+			if arg_index == 0 {
+				'(void*)(uintptr_t)(${arg_expr})'
+			} else {
+				arg_expr
+			}
+		}
+		'memcpy', 'memmove' {
+			if arg_index == 0 || arg_index == 1 {
+				'(void*)(uintptr_t)(${arg_expr})'
+			} else if arg_index == 2 {
+				'(size_t)(uintptr_t)(${arg_expr})'
+			} else {
+				arg_expr
+			}
+		}
+		'memset' {
+			if arg_index == 0 {
+				'(void*)(uintptr_t)(${arg_expr})'
+			} else if arg_index == 1 {
+				'(int)(${arg_expr})'
+			} else if arg_index == 2 {
+				'(size_t)(uintptr_t)(${arg_expr})'
+			} else {
+				arg_expr
+			}
+		}
+		'atexit' {
+			if arg_index == 0 {
+				'(void(*)(void))(uintptr_t)(${arg_expr})'
 			} else {
 				arg_expr
 			}
@@ -1709,8 +1964,22 @@ fn (g Gen) has_constructor_receiver_shape(func ssa.Function) bool {
 		return false
 	}
 	first_typ := g.mod.type_store.types[first_typ_id]
-	if first_typ.kind != .ptr_t || first_typ.elem_type <= 0
-		|| first_typ.elem_type >= g.mod.type_store.types.len {
+	mut recv_struct_typ_id := 0
+	if first_typ.kind == .ptr_t {
+		if first_typ.elem_type <= 0 || first_typ.elem_type >= g.mod.type_store.types.len {
+			return false
+		}
+		recv_struct_typ_id = first_typ.elem_type
+	} else if first_typ.kind == .struct_t {
+		// V2 can lower constructor receivers by value: `Type.new(...)`.
+		recv_struct_typ_id = first_typ_id
+	} else {
+		return false
+	}
+	if recv_struct_typ_id <= 0 || recv_struct_typ_id >= g.mod.type_store.types.len {
+		return false
+	}
+	if g.mod.type_store.types[recv_struct_typ_id].kind != .struct_t {
 		return false
 	}
 	ret_typ_id := func.typ
@@ -1719,14 +1988,35 @@ fn (g Gen) has_constructor_receiver_shape(func ssa.Function) bool {
 	}
 	ret_typ := g.mod.type_store.types[ret_typ_id]
 	if ret_typ.kind == .ptr_t {
-		return ret_typ.elem_type == first_typ.elem_type
+		return ret_typ.elem_type == recv_struct_typ_id
 	}
-	return ret_typ.kind == .struct_t && ret_typ_id == first_typ.elem_type
+	return ret_typ.kind == .struct_t && ret_typ_id == recv_struct_typ_id
 }
 
 fn (g Gen) uses_implicit_constructor_receiver_arg(func ssa.Function, arg_count int) bool {
 	params := g.signature_params(func)
-	return params.len == arg_count + 1 && g.has_constructor_receiver_shape(func)
+	if params.len != arg_count + 1 {
+		return false
+	}
+	if g.has_constructor_receiver_shape(func) {
+		return true
+	}
+	// Also handle static type methods like Token.from_string_tinyv where the
+	// transformer adds a phantom first argument for the type. These have the
+	// pattern Type__method with an int first parameter.
+	if func.name.contains('__') && params.len > 0 {
+		first_param := params[0]
+		if first_param > 0 && first_param < g.mod.values.len {
+			first_typ_id := g.mod.values[first_param].typ
+			if first_typ_id > 0 && first_typ_id < g.mod.type_store.types.len {
+				first_typ := g.mod.type_store.types[first_typ_id]
+				if first_typ.kind == .int_t {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (g Gen) has_matching_call_arity(func_idx int, arg_count int) bool {
@@ -1954,6 +2244,23 @@ fn (g Gen) signature_params(func ssa.Function) []ssa.ValueID {
 	return g.effective_params(func)
 }
 
+fn (g Gen) current_fn_param_id_by_name(name string) ?ssa.ValueID {
+	if name == '' || g.current_fn_idx < 0 || g.current_fn_idx >= g.mod.funcs.len {
+		return none
+	}
+	func := g.mod.funcs[g.current_fn_idx]
+	for pid in g.signature_params(func) {
+		if pid <= 0 || pid >= g.mod.values.len {
+			continue
+		}
+		pname := g.mod.values[pid].name
+		if pname == name || pname.ends_with('_${name}') || pname.ends_with('__${name}') {
+			return pid
+		}
+	}
+	return none
+}
+
 fn (mut g Gen) init_function_lookups() {
 	g.fn_lookup.clear()
 	g.fn_exact_lookup.clear()
@@ -2021,12 +2328,15 @@ fn (g Gen) value_is_used(val_id int) bool {
 }
 
 fn (g Gen) should_skip_loop_header_zero_assign(block_id int, dest_val int, assigned_expr string, dest_typ_id int) bool {
+	// Never skip .assign instructions. They are explicitly placed by phi
+	// elimination at predecessor edges and must always execute — even for
+	// zero values — so inner-loop variables are re-initialized correctly
+	// when the loop is re-entered from an outer loop.
 	_ = block_id
-	zero_expr := if dest_typ_id > 0 { g.zero_value_expr(dest_typ_id) } else { '0' }
-	if assigned_expr != zero_expr {
-		return false
-	}
-	return g.has_nonconstant_assign_to_dest(dest_val)
+	_ = dest_val
+	_ = assigned_expr
+	_ = dest_typ_id
+	return false
 }
 
 fn (mut g Gen) init_assign_lookups(func ssa.Function) {
@@ -2105,18 +2415,11 @@ fn (g Gen) edge_has_zero_inits(pred_blk_id int, dest_blk_id int) bool {
 }
 
 fn (mut g Gen) emit_edge_zero_inits(pred_blk_id int, dest_blk_id int) {
-	if pred_blk_id < 0 || dest_blk_id < 0 {
-		return
-	}
-	key := edge_key(pred_blk_id, dest_blk_id)
-	vals := g.edge_zero_inits[key] or { return }
-	for val_id in vals {
-		if val_id <= 0 || val_id >= g.mod.values.len {
-			continue
-		}
-		typ_id := g.mod.values[val_id].typ
-		g.sb.writeln('\t\t_v${val_id} = ${g.zero_value_expr(typ_id)};')
-	}
+	// Temporary safety: disabling speculative edge zeroing avoids type-mismatched
+	// zero assignments on values whose inferred SSA type diverges across branches.
+	_ = pred_blk_id
+	_ = dest_blk_id
+	return
 }
 
 fn (g Gen) block_has_assign_to_dest(block_id int, dest_val int) bool {
@@ -2246,9 +2549,20 @@ fn (g Gen) coerce_expr_to_type(expr string, actual_typ_id int, expected_typ_id i
 	}
 	actual := g.mod.type_store.types[actual_typ_id]
 	expected := g.mod.type_store.types[expected_typ_id]
+	if expected.kind == .int_t && expr.starts_with('(string){') {
+		return '(int64_t)(uintptr_t)((${expr}).str)'
+	}
 	if expected.kind == .struct_t {
 		if actual.kind == .ptr_t && actual.elem_type == expected_typ_id {
 			return '*${expr}'
+		}
+		if actual.kind == .ptr_t && actual.elem_type > 0
+			&& actual.elem_type < g.mod.type_store.types.len {
+			elem := g.mod.type_store.types[actual.elem_type]
+			if elem.kind == .struct_t {
+				expected_name := g.type_name(expected_typ_id)
+				return '*(${expected_name}*)(${expr})'
+			}
 		}
 		if actual.kind == .struct_t {
 			if actual_typ_id != expected_typ_id {
@@ -2263,9 +2577,19 @@ fn (g Gen) coerce_expr_to_type(expr string, actual_typ_id int, expected_typ_id i
 	}
 	if actual.kind == .struct_t && expected.kind != .struct_t {
 		if expected.kind == .ptr_t && expected.elem_type == actual_typ_id {
+			if expr.contains('(') && expr.ends_with(')') {
+				return g.struct_to_ptr_expr(expr, actual_typ_id, expected_typ_id)
+			}
 			return '&(${expr})'
 		}
 		if expected.kind == .ptr_t {
+			if expected.elem_type > 0 && expected.elem_type < g.mod.type_store.types.len {
+				elem := g.mod.type_store.types[expected.elem_type]
+				if elem.kind == .struct_t
+					&& g.type_name(expected.elem_type) == g.type_name(actual_typ_id) {
+					return '&(${expr})'
+				}
+			}
 			return g.struct_to_ptr_expr(expr, actual_typ_id, expected_typ_id)
 		}
 		if expected.kind == .int_t {
@@ -2274,6 +2598,9 @@ fn (g Gen) coerce_expr_to_type(expr string, actual_typ_id int, expected_typ_id i
 		return g.zero_value_expr(expected_typ_id)
 	}
 	if expected.kind == .ptr_t && actual.kind == .struct_t && expected.elem_type == actual_typ_id {
+		if expr.contains('(') && expr.ends_with(')') {
+			return g.struct_to_ptr_expr(expr, actual_typ_id, expected_typ_id)
+		}
 		return '&(${expr})'
 	}
 	if expected.kind == .ptr_t && g.is_string_type(expected.elem_type)
@@ -2400,6 +2727,10 @@ fn (g Gen) struct_field_name(t ssa.Type, idx int) string {
 	} else {
 		'field_${idx}'
 	}
+	// C interop structs: use raw field names to match the real C struct layout.
+	if t.is_c_struct {
+		return sanitize_c_ident(raw, 'field')
+	}
 	if t.kind == .struct_t && t.field_names.len == 3 && t.field_names[0] == 'str'
 		&& t.field_names[1] == 'len' && t.field_names[2] == 'is_lit' {
 		return sanitize_c_ident(raw, 'field')
@@ -2486,6 +2817,10 @@ fn (g Gen) struct_to_ptr_expr(expr string, struct_typ_id int, dst_ptr_typ_id int
 			field0 := g.struct_field_name(t, 0)
 			return '(${dst_name})(uintptr_t)(${expr}.${field0})'
 		}
+	}
+	src_name := g.type_name(struct_typ_id)
+	if expr.contains('(') && expr.ends_with(')') {
+		return '(${dst_name})(uintptr_t)(&(((${src_name}[]){${expr}})[0]))'
 	}
 	return '(${dst_name})(uintptr_t)(&(${expr}))'
 }

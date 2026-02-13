@@ -28,6 +28,7 @@ pub:
 	field_names []string // Field names for Structs
 	params      []TypeID // For Funcs
 	ret_type    TypeID
+	is_c_struct bool // True for C interop structs (use raw field names, typedef to C struct)
 }
 
 pub struct TypeStore {

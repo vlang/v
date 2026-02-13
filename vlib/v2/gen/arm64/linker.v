@@ -810,11 +810,19 @@ fn (mut l Linker) generate_bind_info() []u8 {
 	data_seg_idx := u8(2)
 
 	for i, sym_name in l.extern_syms {
+		// Internal runtime callback names can appear as unresolved function refs in
+		// bootstrap builds. Bind them as weak imports so dyld does not abort load
+		// when they are absent from libSystem; unresolved weak symbols become NULL.
+		mut bind_flags := u8(0)
+		if sym_name.contains('__') && sym_name !in force_external_syms {
+			bind_flags = bind_symbol_flags_weak_import
+		}
+
 		// Set dylib ordinal (1 = first dylib = libSystem)
 		info << (bind_opcode_set_dylib_ordinal_imm | 1)
 
 		// Set symbol name
-		info << (bind_opcode_set_symbol_flags_imm | 0)
+		info << (bind_opcode_set_symbol_flags_imm | bind_flags)
 		info << sym_name.bytes()
 		info << 0 // null terminator
 
