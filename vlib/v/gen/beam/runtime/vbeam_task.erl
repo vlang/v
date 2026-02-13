@@ -33,6 +33,7 @@ Provides asynchronous task helpers for V runtime execution.
 -export([
     async/1,
     async/2,
+    async_supervised/1,
     await/1, await/2,
     async_stream/1, async_stream/2,
     yield/1, yield/2
@@ -125,6 +126,35 @@ async(Fun, Opts) when is_function(Fun, 0), is_map(Opts) ->
         ref => MonRef,
         result_ref => ResultRef
     }.
+
+%% Spawn an async task under the dynamic runtime supervisor.
+%% Returns {Pid, Ref}; the task sends `{task_result, Ref, Result}` to caller.
+-doc """
+async_supervised/1 is a public runtime entrypoint in `vbeam_task`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec async_supervised(fun(() -> term())) -> {pid(), reference()}.
+async_supervised(Fun) when is_function(Fun, 0) ->
+    Ref = make_ref(),
+    Parent = self(),
+    Runner = fun() ->
+        Result = try Fun() of
+            Val ->
+                {ok, Val}
+        catch
+            Class:Reason:Stack ->
+                {error, {Class, Reason, Stack}}
+        end,
+        Parent ! {task_result, Ref, Result}
+    end,
+    case vbeam_supervisor:spawn_supervised(Runner, #{restart => temporary}) of
+        {ok, Pid} ->
+            {Pid, Ref};
+        {error, _Reason} ->
+            {spawn(Runner), Ref}
+    end.
 
 %% Wait for a task result with default timeout (5 seconds).
 %% Raises an error if the task fails or times out.
@@ -253,7 +283,6 @@ yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout)
     after Timeout ->
         timeout
     end.
-
 
 
 
