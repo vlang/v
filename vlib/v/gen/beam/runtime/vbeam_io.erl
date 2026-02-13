@@ -6,6 +6,7 @@
 
 %% Print with newline to stdout
 %% Accepts binary (Erlang representation of V string)
+-spec println(binary() | term()) -> ok.
 println(Bin) when is_binary(Bin) ->
     io:format("~s~n", [Bin]),
     ok;
@@ -15,6 +16,7 @@ println(Term) ->
     ok.
 
 %% Print without newline to stdout
+-spec print(binary() | term()) -> ok.
 print(Bin) when is_binary(Bin) ->
     io:format("~s", [Bin]),
     ok;
@@ -23,6 +25,7 @@ print(Term) ->
     ok.
 
 %% Print with newline to stderr
+-spec eprintln(binary() | term()) -> ok.
 eprintln(Bin) when is_binary(Bin) ->
     io:format(standard_error, "~s~n", [Bin]),
     ok;
@@ -31,6 +34,7 @@ eprintln(Term) ->
     ok.
 
 %% Print without newline to stderr
+-spec eprint(binary() | term()) -> ok.
 eprint(Bin) when is_binary(Bin) ->
     io:format(standard_error, "~s", [Bin]),
     ok;
@@ -40,6 +44,7 @@ eprint(Term) ->
 
 %% Read a line from stdin
 %% Returns binary (without trailing newline)
+-spec read_line() -> binary().
 read_line() ->
     case io:get_line("") of
         eof -> <<>>;
@@ -52,6 +57,7 @@ read_line() ->
 
 %% Print prompt and read line (like Python's input())
 %% Returns binary (without trailing newline)
+-spec input(binary() | string()) -> binary().
 input(Prompt) when is_binary(Prompt) ->
     case io:get_line(binary_to_list(Prompt)) of
         eof -> <<>>;
