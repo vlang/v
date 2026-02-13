@@ -41,7 +41,9 @@
 %% Erlang: spawn(fun() -> worker(1) end)
 -spec spawn_process(fun(() -> any())) -> pid().
 spawn_process(Fun) when is_function(Fun, 0) ->
-    spawn(Fun).
+    Pid = spawn(Fun),
+    true = is_pid(Pid),
+    Pid.
 
 %% Spawn with monitor for wait() support
 %% Returns {Pid, MonitorRef, ResultRef} for later waiting
@@ -59,17 +61,22 @@ spawn_monitored(Fun) when is_function(Fun, 0) ->
         end,
         Parent ! {ResultRef, Result}
     end),
+    true = is_pid(Pid),
+    true = is_reference(MonRef) andalso is_reference(ResultRef),
     {Pid, MonRef, ResultRef}.
 
 %% Wait for a spawned task's result (blocking)
 %% V: result := t.wait()
 -spec wait_for_result({pid(), reference(), reference()}) -> any().
-wait_for_result({Pid, MonRef, ResultRef}) ->
+wait_for_result({Pid, MonRef, ResultRef})
+  when is_pid(Pid), is_reference(MonRef), is_reference(ResultRef) ->
     wait_for_result({Pid, MonRef, ResultRef}, infinity).
 
 %% Wait for a spawned task's result with timeout
 -spec wait_for_result({pid(), reference(), reference()}, timeout()) -> any() | {error, timeout}.
-wait_for_result({Pid, MonRef, ResultRef}, Timeout) ->
+wait_for_result({Pid, MonRef, ResultRef}, Timeout)
+  when is_pid(Pid), is_reference(MonRef), is_reference(ResultRef),
+       (Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0)) ->
     receive
         {ResultRef, {ok, Value}} ->
             demonitor(MonRef, [flush]),
@@ -91,7 +98,8 @@ wait_for_result({Pid, MonRef, ResultRef}, Timeout) ->
 
 %% Send a message to a process
 -spec send_message(pid(), any()) -> any().
-send_message(Pid, Msg) ->
+send_message(Pid, Msg) when is_pid(Pid) ->
+    true = is_process_alive(Pid),
     Pid ! Msg.
 
 %% Receive a message (blocking, infinite timeout)
@@ -104,7 +112,8 @@ receive_message() ->
 %% Receive a message with timeout (milliseconds)
 %% Returns {ok, Msg} | timeout
 -spec receive_message(timeout()) -> {ok, any()} | timeout.
-receive_message(Timeout) ->
+receive_message(Timeout)
+  when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
         Msg -> {ok, Msg}
     after Timeout ->
@@ -264,7 +273,8 @@ check_channel_mailbox(State) ->
 %% Send a value to a channel (blocking)
 %% V: ch <- 42
 -spec channel_send(pid(), any()) -> ok | closed.
-channel_send(Ch, Value) ->
+channel_send(Ch, Value) when is_pid(Ch) ->
+    true = is_process_alive(Ch),
     Ref = make_ref(),
     Ch ! {send, self(), Ref, Value},
     receive
@@ -276,7 +286,8 @@ channel_send(Ch, Value) ->
 %% Receive a value from a channel (blocking)
 %% V: value := <-ch
 -spec channel_receive(pid()) -> {ok, any()} | closed.
-channel_receive(Ch) ->
+channel_receive(Ch) when is_pid(Ch) ->
+    true = is_process_alive(Ch),
     Ref = make_ref(),
     Ch ! {recv, self(), Ref},
     receive
@@ -288,7 +299,8 @@ channel_receive(Ch) ->
 %% Try to receive (non-blocking)
 %% V: select { x := <-ch { ... } else { ... } }
 -spec channel_try_receive(pid()) -> {ok, any()} | empty | closed.
-channel_try_receive(Ch) ->
+channel_try_receive(Ch) when is_pid(Ch) ->
+    true = is_process_alive(Ch),
     Ref = make_ref(),
     Ch ! {try_recv, self(), Ref},
     receive
@@ -300,7 +312,8 @@ channel_try_receive(Ch) ->
 %% Close a channel
 %% V: ch.close()
 -spec channel_close(pid()) -> ok.
-channel_close(Ch) ->
+channel_close(Ch) when is_pid(Ch) ->
+    true = is_process_alive(Ch),
     Ref = make_ref(),
     Ch ! {close, self(), Ref},
     receive
