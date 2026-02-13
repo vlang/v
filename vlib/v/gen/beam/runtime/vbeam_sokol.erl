@@ -280,27 +280,27 @@ commit() ->
 %% @doc Create a GPU buffer. Returns a buffer ID.
 -spec make_buffer(map()) -> integer().
 make_buffer(Desc) ->
-    gen_server:call(?MODULE, {make_buffer, Desc}).
+    gen_server:call(?MODULE, {make_buffer, Desc}, 5000).
 
 %% @doc Create a GPU image (texture). Returns an image ID.
 -spec make_image(map()) -> integer().
 make_image(Desc) ->
-    gen_server:call(?MODULE, {make_image, Desc}).
+    gen_server:call(?MODULE, {make_image, Desc}, 5000).
 
 %% @doc Create a sampler. Returns a sampler ID.
 -spec make_sampler(map()) -> integer().
 make_sampler(Desc) ->
-    gen_server:call(?MODULE, {make_sampler, Desc}).
+    gen_server:call(?MODULE, {make_sampler, Desc}, 5000).
 
 %% @doc Create a shader (compile GLSL). Returns a shader ID.
 -spec make_shader(map()) -> integer().
 make_shader(Desc) ->
-    gen_server:call(?MODULE, {make_shader, Desc}).
+    gen_server:call(?MODULE, {make_shader, Desc}, 5000).
 
 %% @doc Create a pipeline (render state). Returns a pipeline ID.
 -spec make_pipeline(map()) -> integer().
 make_pipeline(Desc) ->
-    gen_server:call(?MODULE, {make_pipeline, Desc}).
+    gen_server:call(?MODULE, {make_pipeline, Desc}, 5000).
 
 %% @doc Apply (bind) a pipeline for rendering.
 -spec apply_pipeline(integer()) -> ok.
@@ -356,7 +356,7 @@ update_buffer(BufId, Data) ->
 
 %% @doc Append data to a buffer. Returns byte offset of appended data.
 append_buffer(BufId, Data) ->
-    gen_server:call(?MODULE, {append_buffer, BufId, Data}).
+    gen_server:call(?MODULE, {append_buffer, BufId, Data}, 5000).
 
 %% @doc Update image data.
 update_image(_ImgId, _Data) ->

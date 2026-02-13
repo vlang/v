@@ -193,40 +193,31 @@ fn (mut g CoreGen) core_module_header(erl_mod string, behaviours []string) {
 	g.emit_module_header(erl_mod, exports, behaviours)
 }
 
-// Detect OTP behaviours: explicit @[beam_behaviour('...')] attributes first,
-// then auto-detect from function signatures as fallback (with warning).
-fn (mut g CoreGen) detect_behaviours(files []&ast.File) []string {
-	// Phase 1: Check for explicit @[beam_behaviour('...')] attributes
-	// on FnDecl or StructDecl nodes in the AST.
+// Collect explicit @[beam_behaviour('...')] attributes from AST
+fn (mut g CoreGen) collect_explicit_behaviours(files []&ast.File) []string {
 	mut explicit := []string{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
 				for attr in stmt.attrs {
-					if attr.name == 'beam_behaviour' && attr.has_arg {
-						if attr.arg !in explicit {
-							explicit << attr.arg
-						}
+					if attr.name == 'beam_behaviour' && attr.has_arg && attr.arg !in explicit {
+						explicit << attr.arg
 					}
 				}
 			} else if stmt is ast.StructDecl {
 				for attr in stmt.attrs {
-					if attr.name == 'beam_behaviour' && attr.has_arg {
-						if attr.arg !in explicit {
-							explicit << attr.arg
-						}
+					if attr.name == 'beam_behaviour' && attr.has_arg && attr.arg !in explicit {
+						explicit << attr.arg
 					}
 				}
 			}
 		}
 	}
+	return explicit
+}
 
-	// If explicit annotations found, use those (no warning needed)
-	if explicit.len > 0 {
-		return explicit
-	}
-
-	// Phase 2: Auto-detect from function signatures (fallback)
+// Auto-detect OTP behaviours from function signatures
+fn (mut g CoreGen) autodetect_behaviours_from_sigs() []string {
 	mut fn_sigs := map[string]bool{}
 	for info in g.fn_infos {
 		fn_sigs['${info.name}/${info.arity}'] = true
@@ -239,9 +230,7 @@ fn (mut g CoreGen) detect_behaviours(files []&ast.File) []string {
 		behaviours << 'gen_server'
 	}
 
-	// supervisor: init/1 (only if we also have child_spec-like functions)
-	// Note: supervisor detection is tricky since init/1 overlaps with gen_server
-	// Only detect if there's no gen_server pattern
+	// supervisor: init/1 (only if no gen_server and has supervisor-specific functions)
 	if 'init/1' in fn_sigs && 'handle_call/3' !in fn_sigs && 'start_link/0' in fn_sigs {
 		if 'child_spec/1' in fn_sigs || 'which_children/0' in fn_sigs {
 			behaviours << 'supervisor'
@@ -253,7 +242,7 @@ fn (mut g CoreGen) detect_behaviours(files []&ast.File) []string {
 		behaviours << 'gen_event'
 	}
 
-	// gen_statem: init/1 + callback_mode/0 + handle_event/4
+	// gen_statem: init/1 + callback_mode/0
 	if 'init/1' in fn_sigs && 'callback_mode/0' in fn_sigs {
 		behaviours << 'gen_statem'
 	}
@@ -263,11 +252,23 @@ fn (mut g CoreGen) detect_behaviours(files []&ast.File) []string {
 		behaviours << 'application'
 	}
 
-	// Emit warnings for auto-detected behaviours
+	return behaviours
+}
+
+// Detect OTP behaviours: explicit @[beam_behaviour('...')] attributes first,
+// then auto-detect from function signatures as fallback (with warning).
+fn (mut g CoreGen) detect_behaviours(files []&ast.File) []string {
+	// Phase 1: Check for explicit attributes
+	explicit := g.collect_explicit_behaviours(files)
+	if explicit.len > 0 {
+		return explicit
+	}
+
+	// Phase 2: Auto-detect from function signatures (with warnings)
+	behaviours := g.autodetect_behaviours_from_sigs()
 	for behaviour in behaviours {
 		eprintln('Warning: Auto-detected ${behaviour} behaviour in module ${g.cur_mod}. Consider adding @[beam_behaviour("${behaviour}")] attribute.')
 	}
-
 	return behaviours
 }
 
@@ -343,6 +344,134 @@ fn (mut g CoreGen) core_behaviour_stubs(behaviours []string) {
 	}
 }
 
+// Generate gen_server callback stubs in ETF mode
+fn (mut g CoreGen) core_gen_server_stubs_etf(name string, arity int) {
+	match name {
+		'code_change' {
+			g.begin_tuple()
+			g.emit_atom('ok')
+			g.write_core(', ')
+			g.emit_var('_1')
+			g.end_tuple()
+		}
+		'terminate' {
+			g.emit_atom('ok')
+		}
+		'handle_info' {
+			if arity == 2 {
+				g.begin_tuple()
+				g.emit_atom('noreply')
+				g.write_core(', ')
+				g.emit_var('_1')
+				g.end_tuple()
+			} else {
+				g.emit_atom('ok')
+			}
+		}
+		'handle_call' {
+			if arity == 3 {
+				g.begin_tuple()
+				g.emit_atom('reply')
+				g.write_core(', ')
+				g.emit_atom('ok')
+				g.write_core(', ')
+				g.emit_var('_2')
+				g.end_tuple()
+			} else if arity == 2 {
+				g.begin_tuple()
+				g.emit_atom('ok')
+				g.write_core(', ')
+				g.emit_atom('ok')
+				g.write_core(', ')
+				g.emit_var('_1')
+				g.end_tuple()
+			} else {
+				g.emit_atom('ok')
+			}
+		}
+		'handle_cast' {
+			g.begin_tuple()
+			g.emit_atom('noreply')
+			g.write_core(', ')
+			g.emit_var('_1')
+			g.end_tuple()
+		}
+		else {
+			g.emit_atom('ok')
+		}
+	}
+}
+
+// Generate gen_event/gen_statem callback stubs in ETF mode
+fn (mut g CoreGen) core_event_statem_stubs_etf(name string, arity int) {
+	if name == 'handle_event' {
+		if arity == 2 {
+			g.begin_tuple()
+			g.emit_atom('ok')
+			g.write_core(', ')
+			g.emit_var('_1')
+			g.end_tuple()
+		} else if arity == 4 {
+			g.emit_atom('keep_state_and_data')
+		} else {
+			g.emit_atom('ok')
+		}
+	} else {
+		g.emit_atom('ok')
+	}
+}
+
+// Generate gen_server callback stubs in text mode
+fn (mut g CoreGen) core_gen_server_stubs_text(name string, arity int) {
+	g.write_indent_core()
+	match name {
+		'code_change' {
+			g.out.writeln("{'ok', _1}")
+		}
+		'terminate' {
+			g.out.writeln("'ok'")
+		}
+		'handle_info' {
+			if arity == 2 {
+				g.out.writeln("{'noreply', _1}")
+			} else {
+				g.out.writeln("'ok'")
+			}
+		}
+		'handle_call' {
+			if arity == 3 {
+				g.out.writeln("{'reply', 'ok', _2}")
+			} else if arity == 2 {
+				g.out.writeln("{'ok', 'ok', _1}")
+			} else {
+				g.out.writeln("'ok'")
+			}
+		}
+		'handle_cast' {
+			g.out.writeln("{'noreply', _1}")
+		}
+		else {
+			g.out.writeln("'ok'")
+		}
+	}
+}
+
+// Generate gen_event/gen_statem callback stubs in text mode
+fn (mut g CoreGen) core_event_statem_stubs_text(name string, arity int) {
+	g.write_indent_core()
+	if name == 'handle_event' {
+		if arity == 2 {
+			g.out.writeln("{'ok', _1}")
+		} else if arity == 4 {
+			g.out.writeln("'keep_state_and_data'")
+		} else {
+			g.out.writeln("'ok'")
+		}
+	} else {
+		g.out.writeln("'ok'")
+	}
+}
+
 // Generate a default Core Erlang stub for a missing OTP callback.
 // Each callback gets a sensible default implementation.
 fn (mut g CoreGen) core_default_callback_stub(name string, arity int) {
@@ -361,73 +490,13 @@ fn (mut g CoreGen) core_default_callback_stub(name string, arity int) {
 		g.begin_fndef(name, arity)
 		g.begin_fun(params)
 
-		// Generate appropriate default body
-		match name {
-			'code_change' {
-				g.begin_tuple()
-				g.emit_atom('ok')
-				g.write_core(', ')
-				g.emit_var('_1')
-				g.end_tuple()
-			}
-			'terminate' {
-				g.emit_atom('ok')
-			}
-			'handle_info' {
-				if arity == 2 {
-					g.begin_tuple()
-					g.emit_atom('noreply')
-					g.write_core(', ')
-					g.emit_var('_1')
-					g.end_tuple()
-				} else {
-					g.emit_atom('ok')
-				}
-			}
-			'handle_event' {
-				if arity == 2 {
-					g.begin_tuple()
-					g.emit_atom('ok')
-					g.write_core(', ')
-					g.emit_var('_1')
-					g.end_tuple()
-				} else if arity == 4 {
-					g.emit_atom('keep_state_and_data')
-				} else {
-					g.emit_atom('ok')
-				}
-			}
-			'handle_call' {
-				if arity == 3 {
-					g.begin_tuple()
-					g.emit_atom('reply')
-					g.write_core(', ')
-					g.emit_atom('ok')
-					g.write_core(', ')
-					g.emit_var('_2')
-					g.end_tuple()
-				} else if arity == 2 {
-					g.begin_tuple()
-					g.emit_atom('ok')
-					g.write_core(', ')
-					g.emit_atom('ok')
-					g.write_core(', ')
-					g.emit_var('_1')
-					g.end_tuple()
-				} else {
-					g.emit_atom('ok')
-				}
-			}
-			'handle_cast' {
-				g.begin_tuple()
-				g.emit_atom('noreply')
-				g.write_core(', ')
-				g.emit_var('_1')
-				g.end_tuple()
-			}
-			else {
-				g.emit_atom('ok')
-			}
+		// Dispatch to appropriate helper based on callback type
+		if name in ['code_change', 'terminate', 'handle_info', 'handle_call', 'handle_cast'] {
+			g.core_gen_server_stubs_etf(name, arity)
+		} else if name == 'handle_event' {
+			g.core_event_statem_stubs_etf(name, arity)
+		} else {
+			g.emit_atom('ok')
 		}
 
 		g.end_fun()
@@ -442,51 +511,14 @@ fn (mut g CoreGen) core_default_callback_stub(name string, arity int) {
 		g.out.writeln(') ->')
 		g.indent++
 
-		match name {
-			'code_change' {
-				g.write_indent_core()
-				g.out.writeln("{'ok', _1}")
-			}
-			'terminate' {
-				g.write_indent_core()
-				g.out.writeln("'ok'")
-			}
-			'handle_info' {
-				g.write_indent_core()
-				if arity == 2 {
-					g.out.writeln("{'noreply', _1}")
-				} else {
-					g.out.writeln("'ok'")
-				}
-			}
-			'handle_event' {
-				g.write_indent_core()
-				if arity == 2 {
-					g.out.writeln("{'ok', _1}")
-				} else if arity == 4 {
-					g.out.writeln("'keep_state_and_data'")
-				} else {
-					g.out.writeln("'ok'")
-				}
-			}
-			'handle_call' {
-				g.write_indent_core()
-				if arity == 3 {
-					g.out.writeln("{'reply', 'ok', _2}")
-				} else if arity == 2 {
-					g.out.writeln("{'ok', 'ok', _1}")
-				} else {
-					g.out.writeln("'ok'")
-				}
-			}
-			'handle_cast' {
-				g.write_indent_core()
-				g.out.writeln("{'noreply', _1}")
-			}
-			else {
-				g.write_indent_core()
-				g.out.writeln("'ok'")
-			}
+		// Dispatch to appropriate helper based on callback type
+		if name in ['code_change', 'terminate', 'handle_info', 'handle_call', 'handle_cast'] {
+			g.core_gen_server_stubs_text(name, arity)
+		} else if name == 'handle_event' {
+			g.core_event_statem_stubs_text(name, arity)
+		} else {
+			g.write_indent_core()
+			g.out.writeln("'ok'")
 		}
 
 		g.indent -= 2
