@@ -63,6 +63,8 @@
 -spec start(InitState :: term(), Options :: map()) ->
     {ok, pid()} | {error, term()}.
 start(InitState, Options) when is_map(Options) ->
+    Name = maps:get(name, Options, undefined),
+    true = (Name =:= undefined) orelse is_atom(Name),
     case maps:get(name, Options, undefined) of
         undefined ->
             gen_server:start(?MODULE, {InitState, Options}, []);
@@ -76,6 +78,8 @@ start(InitState, Options) when is_map(Options) ->
 -spec start_link(InitState :: term(), Options :: map()) ->
     {ok, pid()} | {error, term()}.
 start_link(InitState, Options) when is_map(Options) ->
+    Name = maps:get(name, Options, undefined),
+    true = (Name =:= undefined) orelse is_atom(Name),
     case maps:get(name, Options, undefined) of
         undefined ->
             gen_server:start_link(?MODULE, {InitState, Options}, []);
@@ -92,12 +96,14 @@ start_link(InitState, Options) when is_map(Options) ->
 %% V: lock counter { counter++ }   (returns ok, mutates state)
 %% V: rlock counter { counter }    (returns value, state unchanged)
 -spec call(pid() | atom(), term()) -> term().
-call(Server, Request) ->
+call(Server, Request) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:call(Server, {vbeam_call, Request}, 5000).
 
 %% Synchronous call with explicit timeout (milliseconds or infinity).
 -spec call(pid() | atom(), term(), timeout()) -> term().
-call(Server, Request, Timeout) ->
+call(Server, Request, Timeout)
+  when (is_pid(Server) orelse is_atom(Server)),
+       (Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0)) ->
     gen_server:call(Server, {vbeam_call, Request}, Timeout).
 
 %% Asynchronous cast (fire and forget).
@@ -106,20 +112,20 @@ call(Server, Request, Timeout) ->
 %%
 %% V: spawn fn() { shared_var.update(new_val) }
 -spec cast(pid() | atom(), term()) -> ok.
-cast(Server, Msg) ->
+cast(Server, Msg) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:cast(Server, {vbeam_cast, Msg}).
 
 %% Stop the server gracefully.
 %% V: (end of scope / explicit cleanup)
 -spec stop(pid() | atom()) -> ok.
-stop(Server) ->
+stop(Server) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:stop(Server).
 
 %% Read current state without modification.
 %% V: rlock counter { counter }
 %% This is a convenience for reading shared state atomically.
 -spec get_state(pid() | atom()) -> term().
-get_state(Server) ->
+get_state(Server) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:call(Server, vbeam_get_state, 5000).
 
 %% ============================================================================
@@ -128,9 +134,10 @@ get_state(Server) ->
 
 %% @private
 -spec init({term(), map()}) -> {ok, #state{}}.
-init({InitState, Options}) ->
+init({InitState, Options}) when is_map(Options) ->
     Handler = maps:get(handler, Options, undefined),
     MaxMailboxLen = maps:get(max_mailbox_len, Options, 10000),
+    true = is_integer(MaxMailboxLen) andalso MaxMailboxLen >= 0,
     %% Start periodic mailbox monitoring
     erlang:send_after(5000, self(), check_mailbox),
     {ok, #state{value = InitState, handler = Handler, max_mailbox_len = MaxMailboxLen}}.
