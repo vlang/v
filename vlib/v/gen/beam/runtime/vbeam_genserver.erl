@@ -28,6 +28,9 @@
 
 -module(vbeam_genserver).
 
+-define(VSN, "1.0.0").
+-vsn(?VSN).
+
 -moduledoc """
 Provides GenServer compatibility for V runtime processes.
 """.
@@ -50,7 +53,15 @@ Provides GenServer compatibility for V runtime processes.
 ]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3,
+    format_status/1
+]).
 
 %% Export protocol types for cross-module contracts
 -export_type([
@@ -290,6 +301,15 @@ handle_info(_Info, State) ->
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
+-spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%% @private
+-spec format_status(map()) -> map().
+format_status(Status) ->
+    Status.
 
 
 
