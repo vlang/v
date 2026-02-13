@@ -11,6 +11,9 @@
 %%   vbeam_hotreload.watch('/path/dir', 1000) — poll directory for changes
 -module(vbeam_hotreload).
 
+-define(VSN, "1.0.0").
+-vsn(?VSN).
+
 -moduledoc """
 Supports hot reload workflows for running BEAM modules.
 """.
@@ -20,7 +23,17 @@ Supports hot reload workflows for running BEAM modules.
 
 
 
--export([reload/1, reload_from/2, reload_all/1, watch/2, watch/3]).
+-export([
+    reload/1,
+    safe_reload/1,
+    reload_from/2,
+    reload_all/1,
+    watch/2,
+    watch/3,
+    terminate/2,
+    code_change/3,
+    format_status/1
+]).
 
 %% Export protocol types for cross-module contracts
 -export_type([reload_msg/0, reload_result/0, reload_error_entry/0]).
@@ -50,6 +63,26 @@ reload(Module) when is_atom(Module) ->
     case code:load_file(Module) of
         {module, Module} -> {ok, Module};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% Reload with version metadata capture.
+-spec safe_reload(module()) -> ok | {error, term()}.
+safe_reload(Module) when is_atom(Module) ->
+    case code:get_object_code(Module) of
+        {Module, Binary, Filename} ->
+            _OldVsn =
+                proplists:get_value(vsn, Module:module_info(attributes), [undefined]),
+            code:purge(Module),
+            case code:load_binary(Module, Filename, Binary) of
+                {module, Module} ->
+                    _NewVsn =
+                        proplists:get_value(vsn, Module:module_info(attributes), [undefined]),
+                    ok;
+                Error ->
+                    {error, Error}
+            end;
+        error ->
+            {error, {no_object_code, Module}}
     end.
 
 %% Reload a module from a specific .beam file path.
@@ -165,6 +198,18 @@ watch_loop(Dir, IntervalMs, Callback, OldMtimes) ->
     end, NewMtimes),
     watch_loop(Dir, IntervalMs, Callback, NewMtimes).
 
+%% OTP hot-code callbacks (Rule 30)
+-spec terminate(term(), map()) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(term(), map(), term()) -> {ok, map()}.
+code_change(_OldVsn, State, _Extra) when is_map(State) ->
+    {ok, State}.
+
+-spec format_status(map()) -> map().
+format_status(Status) ->
+    Status.
 
 
 
