@@ -8,10 +8,13 @@ import sync.pool
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+const is_silent = $if silent ? { true } $else { false }
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
-	println('vexecutable: ${vexec}')
+	if !is_silent {
+		println('vexecutable: ${vexec}')
+	}
 	assert vexec != ''
 	vcmd := '${os.quoted_path(vexec)} -version'
 	r := os.execute_or_exit(vcmd)
@@ -93,7 +96,9 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	session.bmark.ok()
 	tls_bench.ok()
 	os.rmdir_all(tfolder) or { panic(err) }
-	println(tls_bench.step_message_ok(fres))
+	if !is_silent {
+		println(tls_bench.step_message_ok(fres))
+	}
 	assert true
 	return pool.no_result
 }

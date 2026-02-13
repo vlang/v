@@ -42,7 +42,7 @@ Get operational from the repo root in three steps:
    * Debug-friendly (recommended): `./v -g -keepc -o ./vnew cmd/v`
 3. Use `./vnew` for everything:
    * Run a file: `./vnew run examples/hello_world.v`
-   * Run tests: `./vnew test vlib/v/`
+   * Run tests: `./vnew -silent test vlib/v/`
    * Format: `./vnew fmt -w path/to/file.v`
 
 Then read Top Rules and Agent Rules before making changes.
@@ -184,7 +184,7 @@ If you read only one section for tests, **read Testing**.
 | Change area | Rebuild? | Minimum tests to run |
 | --- | --- | --- |
 | Docs only (`.md`) | No | `check-md file.md` |
-| Compiler (`vlib/v/`, `cmd/v/`) | Yes | `vlib/v/compiler_errors_test.v`; `test vlib/v/` |
+| Compiler (`vlib/v/`, `cmd/v/`) | Yes | `-silent vlib/v/compiler_errors_test.v`; `test vlib/v/` |
 | Core modules (builtin/strings/os/strconv/time) | Yes | Smallest relevant tests |
 | Parser-only (`vlib/v/parser/`) | Yes | `test vlib/v/parser/` |
 | Checker-only (`vlib/v/checker/`) | Yes | `test vlib/v/checker/` |
@@ -462,7 +462,7 @@ Example: `$if field.typ is $int { ... }`
 ### Comptime changes and testing
 Comptime logic lives in `vlib/v/comptime/` and is exercised by the
 checker, parser, and cgen stages. Changes here require a rebuild of
-`./vnew` and should be tested with `./vnew test vlib/v/tests/` plus
+`./vnew` and should be tested with `./vnew -silent test vlib/v/tests/` plus
 any comptime-specific tests. See the decision table and Testing.
 
 ## Run Programs
@@ -476,11 +476,11 @@ any comptime-specific tests. See the decision table and Testing.
 Run:
 * File (shows test output): `./vnew path/to/file_test.v`.
 * File (test runner report only): `./vnew test path/to/file_test.v`.
-* Dir: `./vnew test path/to/dir/`.
+* Dir: `./vnew -silent test path/to/dir/`.
 * Dir with statistics/metrics: `./vnew -stats test path/to/dir/`.
-* Compiler: `./vnew vlib/v/compiler_errors_test.v`.
+* Compiler: `./vnew -silent vlib/v/compiler_errors_test.v`.
 * Fix outputs (only when intended):
-  `VAUTOFIX=1 ./vnew vlib/v/compiler_errors_test.v`.
+  `VAUTOFIX=1 ./vnew -silent vlib/v/compiler_errors_test.v`.
 * All: `./vnew test-all`.
   Ask before running `./vnew test-all` unless explicitly requested.
 
@@ -494,33 +494,33 @@ When:
 * Run all tests that apply. Start with the smallest targeted tests;
   add slow tests as needed. Order does not matter.
 * Compiler changes (`vlib/v/` or `cmd/v/`):
-  Run `./vnew vlib/v/compiler_errors_test.v`,
-  `./vnew test vlib/v/`.
+  Run `./vnew -silent vlib/v/compiler_errors_test.v`,
+  `./vnew -silent test vlib/v/`.
 * Parser-only changes (`vlib/v/parser/`):
-  Run `./vnew test vlib/v/parser/`.
+  Run `./vnew -silent test vlib/v/parser/`.
 * Checker-only changes (`vlib/v/checker`):
-  Run `./vnew test vlib/v/checker/tests/`.
+  Run `./vnew -silent test vlib/v/checker/`.
 * vlib changes: Run nearest `*_test.v` or
-  `./vnew test vlib/path/`.
+  `./vnew -silent test vlib/path/`.
 * Tool changes (`cmd/tools/`): Run tool-specific tests. If none exist,
   run the smallest relevant `*_test.v` that exercises the tool.
   Note: `cmd/v/` is compiler scope, not tools.
-  Examples: `cmd/tools/vfmt` -> `vlib/v/fmt/fmt_test.v`,
-  `cmd/tools/vdoc` -> `vlib/v/doc/doc_test.v`.
+  Examples: `cmd/tools/vfmt` -> `vlib/v/fmt/fmt_test.v` .
+  `cmd/tools/vdoc` -> `cmd/tools/vdoc/vdoc_test.v`.
 * Diagnostic/output changes:
-  Run `./vnew vlib/v/slow_tests/inout/compiler_test.v`.
-* C codegen changes: Run `./vnew vlib/v/gen/c/coutput_test.v`.
+  Run `./vnew -silent vlib/v/slow_tests/inout/compiler_test.v`.
+* C codegen changes: Run `./vnew -silent vlib/v/gen/c/coutput_test.v`.
   Consider a stricter validation pass:
-  `./vnew -cstrict -cc clang test vlib/v/`.
-* REPL changes: Run `./vnew vlib/v/slow_tests/repl/repl_test.v`.
-* Broad refactors: Run `./vnew test-all`.
+  `./vnew -cstrict -cc clang -silent test vlib/v/`.
+* REPL changes: Run `./vnew -silent vlib/v/slow_tests/repl/repl_test.v`.
+* Broad refactors: Run `./vnew -silent test-all`.
 * Backend-specific changes: run the smallest relevant tests for the
   affected backend. JS/native/WASM backends are incomplete, so avoid
   broad `-b <backend> test vlib/` runs. Prefer targeted `*_test.v`
   files or small test dirs with `-b js|native|wasm`.
 
 If time-constrained, prioritize
-`./vnew vlib/v/compiler_errors_test.v` and the smallest targeted tests.
+`./vnew -silent vlib/v/compiler_errors_test.v` and the smallest targeted tests.
 Run `vlib/v/slow_tests/inout/compiler_test.v`
 and `vlib/v/gen/c/coutput_test.v` when output or codegen changes are
 likely.
@@ -538,9 +538,9 @@ Types:
 * Standard: `*_test.v` files with `test_` functions.
 * Output: `.vv` source + `.out` expected output in
   `vlib/v/slow_tests/inout/`.
-  Example: `./vnew vlib/v/slow_tests/inout/compiler_test.v`.
+  Example: `./vnew -silent vlib/v/slow_tests/inout/compiler_test.v`.
 * `vlib/v/tests/**` may use `.run.out` expectations; run with
-  `./vnew test vlib/v/tests`.
+  `./vnew -silent test vlib/v/tests`.
 
 Docs-only guidance: see Reporting.
 If time-boxed, run at least the smallest relevant test and note
@@ -551,8 +551,7 @@ skipped coverage in the summary.
   Use only when a behavior change is intended.
 * `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
-* `./vnew -progress test path/to/dir/` - Show only the currently
-  running test.
+* `./vnew -silent test path/to/dir/` - Show only failed tests (if any), and a summary report.
 * `-cc tcc` can speed test builds when TCC is available.
 * Output expectations: update `.out` files only when behavior changes
   are intended; note the rationale in the summary.
