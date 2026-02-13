@@ -1,3 +1,25 @@
+## V 0.5.1
+*13 Feb 2026*
+
+#### New features
+- Add HTTP/2 client with TLS + ALPN `h2` negotiation via mbedtls
+- Add HTTP/3 client with QUIC/ngtcp2 integration
+- Add mbedtls ALPN protocol negotiation support for `ssl_connection`
+- Add QUIC callback initialization and ngtcp2 crypto integration
+- Add `examples/http2/02_simple_client.v` HTTP/2 client demo
+- Add `examples/http3/01_simple_client.v` HTTP/3 client demo
+
+#### Bug fixes
+- Fix HPACK static table indexing off-by-one bug in HTTP/2 header compression
+- Fix Huffman decoder overflow in HTTP/2 HPACK decoding
+- Fix mbedtls ALPN memory safety: copy V strings to C heap for stable pointers
+- Fix `quic_stubs.c` global state: use per-connection malloc instead of shared globals
+- Fix `quic_stubs.c` NULL hostname validation before use
+- Fix HTTP/2 PUSH_PROMISE rejection per RFC 7540 §8.2
+- Fix `BufferPool.put()` buffer clearing bug
+- Fix `read_settings()` infinite loop risk by limiting to max 10 frames
+- Add `trace_quic` debug logging for discarded packets
+
 ## V 0.5.0
 *31 Dec 2025*
 
