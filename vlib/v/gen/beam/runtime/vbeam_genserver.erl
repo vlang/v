@@ -45,7 +45,8 @@
 %% Internal state record
 -record(state, {
     value :: term(),          %% The managed V value
-    handler :: module() | undefined  %% Optional callback module
+    handler :: module() | undefined,  %% Optional callback module
+    max_mailbox_len = 10000 :: integer()  %% Mailbox overflow threshold
 }).
 
 %% ============================================================================
@@ -92,7 +93,7 @@ start_link(InitState, Options) when is_map(Options) ->
 %% V: rlock counter { counter }    (returns value, state unchanged)
 -spec call(pid() | atom(), term()) -> term().
 call(Server, Request) ->
-    gen_server:call(Server, {vbeam_call, Request}).
+    gen_server:call(Server, {vbeam_call, Request}, 5000).
 
 %% Synchronous call with explicit timeout (milliseconds or infinity).
 -spec call(pid() | atom(), term(), timeout()) -> term().
@@ -119,7 +120,7 @@ stop(Server) ->
 %% This is a convenience for reading shared state atomically.
 -spec get_state(pid() | atom()) -> term().
 get_state(Server) ->
-    gen_server:call(Server, vbeam_get_state).
+    gen_server:call(Server, vbeam_get_state, 5000).
 
 %% ============================================================================
 %% gen_server Callbacks
@@ -129,7 +130,10 @@ get_state(Server) ->
 -spec init({term(), map()}) -> {ok, #state{}}.
 init({InitState, Options}) ->
     Handler = maps:get(handler, Options, undefined),
-    {ok, #state{value = InitState, handler = Handler}}.
+    MaxMailboxLen = maps:get(max_mailbox_len, Options, 10000),
+    %% Start periodic mailbox monitoring
+    erlang:send_after(5000, self(), check_mailbox),
+    {ok, #state{value = InitState, handler = Handler, max_mailbox_len = MaxMailboxLen}}.
 
 %% @private
 -spec handle_call(term(), {pid(), term()}, #state{}) ->
@@ -181,6 +185,15 @@ handle_cast({vbeam_cast, _Msg}, State) ->
 
 %% @private
 -spec handle_info(term(), #state{}) -> {noreply, #state{}}.
+handle_info(check_mailbox, State = #state{max_mailbox_len = MaxLen}) ->
+    case process_info(self(), message_queue_len) of
+        {message_queue_len, Len} when Len > MaxLen ->
+            error_logger:warning_msg("vbeam: mailbox overflow ~p (~p msgs, limit ~p)~n",
+                                      [self(), Len, MaxLen]);
+        _ -> ok
+    end,
+    erlang:send_after(5000, self(), check_mailbox),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 

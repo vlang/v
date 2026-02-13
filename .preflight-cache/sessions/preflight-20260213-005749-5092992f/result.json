@@ -1,0 +1,14 @@
+{
+  "pass": true,
+  "confidence": 0.3,
+  "issues": [],
+  "summary": "Static analysis passed (reduced confidence - no LLM review)",
+  "fallback": true,
+  "backend_failure": {
+    "backend": "codex",
+    "model": "gpt-5.2-codex",
+    "reason": "single_review_failed",
+    "error": "Broken pipe"
+  },
+  "session_id": "preflight-20260213-005749-5092992f"
+}

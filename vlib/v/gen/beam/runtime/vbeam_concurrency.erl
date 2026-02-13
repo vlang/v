@@ -122,16 +122,24 @@ receive_message(Timeout) ->
 %% V: ch := chan int
 -spec channel_new() -> pid().
 channel_new() ->
-    spawn(fun() -> channel_loop(#{
-        closed => false,
-        waiting_sender => none,
-        waiting_receiver => none
-    }) end).
+    spawn(fun() ->
+        %% Start periodic mailbox monitoring for channel process
+        erlang:send_after(5000, self(), check_mailbox),
+        channel_loop(#{
+            closed => false,
+            waiting_sender => none,
+            waiting_receiver => none,
+            max_mailbox_len => 10000
+        })
+    end).
 
 %% Internal channel process loop
 channel_loop(State = #{closed := true}) ->
     %% Channel is closed, respond to any waiting operations
     receive
+        check_mailbox ->
+            check_channel_mailbox(State),
+            channel_loop(State);
         {recv, From, Ref} ->
             From ! {Ref, closed},
             channel_loop(State);
@@ -151,6 +159,10 @@ channel_loop(State = #{closed := true}) ->
 channel_loop(State = #{waiting_receiver := none, waiting_sender := none}) ->
     %% Neither sender nor receiver waiting
     receive
+        check_mailbox ->
+            check_channel_mailbox(State),
+            channel_loop(State);
+
         {recv, From, Ref} ->
             %% Receiver arrived first, wait for sender
             channel_loop(State#{waiting_receiver := {From, Ref}});
@@ -175,6 +187,10 @@ channel_loop(State = #{waiting_receiver := none, waiting_sender := none}) ->
 channel_loop(State = #{waiting_receiver := {RecvFrom, RecvRef}, waiting_sender := none}) ->
     %% Receiver waiting, looking for sender
     receive
+        check_mailbox ->
+            check_channel_mailbox(State),
+            channel_loop(State);
+
         {send, SendFrom, SendRef, Value} ->
             %% Sender arrived, complete the exchange
             RecvFrom ! {RecvRef, {ok, Value}},
@@ -203,6 +219,10 @@ channel_loop(State = #{waiting_receiver := {RecvFrom, RecvRef}, waiting_sender :
 channel_loop(State = #{waiting_sender := {SendFrom, SendRef, Value}, waiting_receiver := none}) ->
     %% Sender waiting, looking for receiver
     receive
+        check_mailbox ->
+            check_channel_mailbox(State),
+            channel_loop(State);
+
         {recv, RecvFrom, RecvRef} ->
             %% Receiver arrived, complete the exchange
             RecvFrom ! {RecvRef, {ok, Value}},
@@ -229,6 +249,17 @@ channel_loop(State = #{waiting_sender := {SendFrom, SendRef, Value}, waiting_rec
             SendFrom ! {SendRef, closed},
             ok
     end.
+
+%% Helper function for mailbox monitoring in channel process
+check_channel_mailbox(State) ->
+    MaxLen = maps:get(max_mailbox_len, State, 10000),
+    case process_info(self(), message_queue_len) of
+        {message_queue_len, Len} when Len > MaxLen ->
+            error_logger:warning_msg("vbeam: channel mailbox overflow ~p (~p msgs, limit ~p)~n",
+                                      [self(), Len, MaxLen]);
+        _ -> ok
+    end,
+    erlang:send_after(5000, self(), check_mailbox).
 
 %% Send a value to a channel (blocking)
 %% V: ch <- 42
