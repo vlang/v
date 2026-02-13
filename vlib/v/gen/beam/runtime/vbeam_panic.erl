@@ -6,6 +6,7 @@
 
 %% Panic - aborts execution with error message
 %% V's panic() equivalent
+-spec panic(term()) -> no_return().
 panic(Message) when is_binary(Message) ->
     io:format(standard_error, "panic: ~s~n", [Message]),
     %% Get stack trace for debugging using OTP 21+ syntax
@@ -20,12 +21,14 @@ panic(Message) ->
     panic(vbeam_conv:to_binary(Message)).
 
 %% Assert - panic if condition is false
+-spec assert(boolean()) -> ok.
 assert(true) ->
     ok;
 assert(false) ->
     panic(<<"assertion failed">>).
 
 %% Assert with custom message
+-spec assert(boolean(), term()) -> ok.
 assert(true, _Message) ->
     ok;
 assert(false, Message) ->
