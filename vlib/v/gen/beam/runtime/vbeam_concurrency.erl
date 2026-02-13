@@ -10,6 +10,9 @@
 
 -module(vbeam_concurrency).
 
+-define(VSN, "1.0.0").
+-vsn(?VSN).
+
 -moduledoc """
 Provides concurrency primitives and scheduling helpers.
 """.
@@ -41,6 +44,8 @@ Provides concurrency primitives and scheduling helpers.
     %% Utility
     sleep/1
 ]).
+
+-export([terminate/2, code_change/3, format_status/1]).
 
 %% Export protocol types for cross-module contracts
 -export_type([
@@ -429,6 +434,18 @@ sleep(Ms) when is_integer(Ms), Ms >= 0 ->
     timer:sleep(Ms),
     ok.
 
+%% OTP hot-code callbacks (Rule 30)
+-spec terminate(term(), map()) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(term(), map(), term()) -> {ok, map()}.
+code_change(_OldVsn, State, _Extra) when is_map(State) ->
+    {ok, State}.
+
+-spec format_status(map()) -> map().
+format_status(Status) ->
+    Status.
 
 
 
