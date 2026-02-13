@@ -22,6 +22,17 @@ Supports hot reload workflows for running BEAM modules.
 
 -export([reload/1, reload_from/2, reload_all/1, watch/2, watch/3]).
 
+%% Export protocol types for cross-module contracts
+-export_type([reload_msg/0, reload_result/0, reload_error_entry/0]).
+
+%% Hot-reload protocol types
+-type reload_msg() ::
+    {reload, atom()}
+    | {reload_from, atom(), string()}
+    | {reload_all, string()}.
+-type reload_result() :: {ok, atom()} | {error, term()}.
+-type reload_error_entry() :: {atom() | string(), term()}.
+
 %% Reload a module that's already on the code path.
 %% Purges old version, loads new version.
 %% Returns {ok, Module} | {error, Reason}.
@@ -31,7 +42,7 @@ Parameters: `atom()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec reload(atom()) -> {ok, atom()} | {error, term()}.
+-spec reload(atom()) -> reload_result().
 
 reload(Module) when is_atom(Module) ->
     true = atom_to_list(Module) =/= [],
@@ -42,7 +53,7 @@ reload(Module) when is_atom(Module) ->
     end.
 
 %% Reload a module from a specific .beam file path.
--spec reload_from(atom(), string()) -> {ok, atom()} | {error, term()}.
+-spec reload_from(atom(), string()) -> reload_result().
 reload_from(Module, BeamPath) when is_atom(Module), is_list(BeamPath) ->
     true = filename:extension(BeamPath) =:= ".beam",
     case file:read_file(BeamPath) of
@@ -64,7 +75,7 @@ Parameters: `string()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec reload_all(string()) -> {ok, non_neg_integer(), [{atom(), term()}]}.
+-spec reload_all(string()) -> {ok, non_neg_integer(), [reload_error_entry()]}.
 
 reload_all(Dir) when is_list(Dir), Dir =/= [] ->
     case file:list_dir(Dir) of
@@ -107,7 +118,7 @@ watch(Dir, IntervalMs) when is_list(Dir), is_integer(IntervalMs), IntervalMs > 0
     end).
 
 %% Watch with a callback function for each reload.
--spec watch(string(), pos_integer(), fun((atom(), term()) -> any())) -> no_return().
+-spec watch(string(), pos_integer(), fun((atom(), reload_result()) -> any())) -> no_return().
 watch(Dir, IntervalMs, Callback)
   when is_list(Dir), is_integer(IntervalMs), IntervalMs > 0, is_function(Callback, 2) ->
     AbsDir = filename:absname(Dir),
@@ -153,7 +164,6 @@ watch_loop(Dir, IntervalMs, Callback, OldMtimes) ->
         end
     end, NewMtimes),
     watch_loop(Dir, IntervalMs, Callback, NewMtimes).
-
 
 
 
