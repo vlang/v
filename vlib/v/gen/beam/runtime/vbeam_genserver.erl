@@ -27,6 +27,16 @@
 %%   Val = vbeam_genserver:get_state(Pid).
 
 -module(vbeam_genserver).
+
+-moduledoc """
+Provides GenServer compatibility for V runtime processes.
+""".
+
+
+
+
+
+
 -behaviour(gen_server).
 
 %% API - what V codegen calls
@@ -60,8 +70,15 @@
 %%
 %% V: shared counter := 0
 %% Erlang: {ok, Pid} = vbeam_genserver:start(0, #{})
+-doc """
+start/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `InitState :: term()`, `Options :: map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start(InitState :: term(), Options :: map()) ->
     {ok, pid()} | {error, term()}.
+
 start(InitState, Options) when is_map(Options) ->
     Name = maps:get(name, Options, undefined),
     true = (Name =:= undefined) orelse is_atom(Name),
@@ -75,8 +92,15 @@ start(InitState, Options) when is_map(Options) ->
 %% Start a GenServer under a supervisor (linked).
 %% V: spawn_supervised worker(...)
 %% Erlang: {ok, Pid} = vbeam_genserver:start_link(State, Opts)
+-doc """
+start_link/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `InitState :: term()`, `Options :: map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start_link(InitState :: term(), Options :: map()) ->
     {ok, pid()} | {error, term()}.
+
 start_link(InitState, Options) when is_map(Options) ->
     Name = maps:get(name, Options, undefined),
     true = (Name =:= undefined) orelse is_atom(Name),
@@ -95,7 +119,14 @@ start_link(InitState, Options) when is_map(Options) ->
 %%
 %% V: lock counter { counter++ }   (returns ok, mutates state)
 %% V: rlock counter { counter }    (returns value, state unchanged)
+-doc """
+call/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `pid() | atom()`, `term()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec call(pid() | atom(), term()) -> term().
+
 call(Server, Request) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:call(Server, {vbeam_call, Request}, 5000).
 
@@ -111,20 +142,35 @@ call(Server, Request, Timeout)
 %% Functional: cast(Pid, fun(State) -> NewState end)
 %%
 %% V: spawn fn() { shared_var.update(new_val) }
+-doc """
+cast/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `pid() | atom()`, `term()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec cast(pid() | atom(), term()) -> ok.
+
 cast(Server, Msg) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:cast(Server, {vbeam_cast, Msg}).
 
 %% Stop the server gracefully.
 %% V: (end of scope / explicit cleanup)
 -spec stop(pid() | atom()) -> ok.
+
 stop(Server) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:stop(Server).
 
 %% Read current state without modification.
 %% V: rlock counter { counter }
 %% This is a convenience for reading shared state atomically.
+-doc """
+get_state/1 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `pid() | atom()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec get_state(pid() | atom()) -> term().
+
 get_state(Server) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:call(Server, vbeam_get_state, 5000).
 
@@ -134,6 +180,7 @@ get_state(Server) when is_pid(Server) orelse is_atom(Server) ->
 
 %% @private
 -spec init({term(), map()}) -> {ok, #state{}}.
+
 init({InitState, Options}) when is_map(Options) ->
     Handler = maps:get(handler, Options, undefined),
     MaxMailboxLen = maps:get(max_mailbox_len, Options, 10000),
@@ -143,10 +190,17 @@ init({InitState, Options}) when is_map(Options) ->
     {ok, #state{value = InitState, handler = Handler, max_mailbox_len = MaxMailboxLen}}.
 
 %% @private
+-doc """
+handle_call/3 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `term()`, `{pid(), term()}`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_call(term(), {pid(), term()}, #state{}) ->
     {reply, term(), #state{}}.
 
 %% State read - returns current value
+
 handle_call(vbeam_get_state, _From, State = #state{value = Value}) ->
     {reply, Value, State};
 
@@ -172,6 +226,12 @@ handle_call({vbeam_call, _Request}, _From, State) ->
     {reply, {error, no_handler}, State}.
 
 %% @private
+-doc """
+handle_cast/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `term()`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_cast(term(), #state{}) -> {noreply, #state{}}.
 
 %% Functional style: caller passes a fun(State) -> NewState
@@ -191,6 +251,12 @@ handle_cast({vbeam_cast, _Msg}, State) ->
     {noreply, State}.
 
 %% @private
+-doc """
+handle_info/2 is a public runtime entrypoint in `vbeam_genserver`.
+Parameters: `term()`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_info(term(), #state{}) -> {noreply, #state{}}.
 handle_info(check_mailbox, State = #state{max_mailbox_len = MaxLen}) ->
     case process_info(self(), message_queue_len) of
@@ -208,3 +274,9 @@ handle_info(_Info, State) ->
 -spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     ok.
+
+
+
+
+
+

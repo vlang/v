@@ -1,5 +1,15 @@
 -module(vbeam_audio).
 
+-moduledoc """
+Provides audio runtime bridging functions for V-on-BEAM programs.
+""".
+
+
+
+
+
+
+
 %% V sokol.audio runtime support for BEAM.
 %% Provides audio output by piping PCM data to an external audio player via Erlang port.
 %% Uses sox (play command), aplay (Linux), or afplay (macOS) as the audio backend.
@@ -12,7 +22,14 @@
 
 %% Setup audio output.
 %% Desc is a map with optional keys: sample_rate, num_channels, buffer_frames.
+-doc """
+setup/1 is a public runtime entrypoint in `vbeam_audio`.
+Parameters: `map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec setup(map()) -> ok | {error, term()}.
+
 setup(Desc) when is_map(Desc) ->
     SampleRate = maps:get(sample_rate, Desc, 44100),
     NumChannels = maps:get(num_channels, Desc, 1),
@@ -63,7 +80,14 @@ find_audio_cmd(SampleRate, Channels) ->
 
 %% Push audio frames (float32 PCM data as binary).
 %% Returns number of frames actually pushed, or 0 on error.
+-doc """
+push/2 is a public runtime entrypoint in `vbeam_audio`.
+Parameters: `binary()`, `non_neg_integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec push(binary(), non_neg_integer()) -> non_neg_integer().
+
 push(Frames, NumFrames) when is_binary(Frames), is_integer(NumFrames), NumFrames >= 0 ->
     case get(vbeam_audio_port) of
         undefined -> 0;
@@ -77,7 +101,14 @@ push(Frames, NumFrames) when is_binary(Frames), is_integer(NumFrames), NumFrames
 push(_, _) -> 0.
 
 %% Shutdown audio output, close port.
+-doc """
+shutdown/0 is a public runtime entrypoint in `vbeam_audio`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec shutdown() -> ok.
+
 shutdown() ->
     case get(vbeam_audio_port) of
         undefined -> ok;
@@ -93,7 +124,14 @@ shutdown() ->
 is_valid() -> get(vbeam_audio_valid) =:= true.
 
 %% Query: current sample rate.
+-doc """
+sample_rate/0 is a public runtime entrypoint in `vbeam_audio`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sample_rate() -> pos_integer().
+
 sample_rate() ->
     case get(vbeam_audio_sample_rate) of
         undefined -> 44100;
@@ -102,6 +140,7 @@ sample_rate() ->
 
 %% Query: current buffer frames.
 -spec buffer_frames() -> pos_integer().
+
 buffer_frames() ->
     case get(vbeam_audio_buffer_frames) of
         undefined -> 2048;
@@ -109,6 +148,12 @@ buffer_frames() ->
     end.
 
 %% Query: current number of channels.
+-doc """
+channels/0 is a public runtime entrypoint in `vbeam_audio`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec channels() -> pos_integer().
 channels() ->
     case get(vbeam_audio_channels) of
@@ -127,6 +172,12 @@ fclamp(Val, Min, Max)
 
 %% Generate a sine wave tone for testing.
 %% Returns binary of 32-bit float little-endian PCM samples.
+-doc """
+generate_tone/3 is a public runtime entrypoint in `vbeam_audio`.
+Parameters: `number()`, `number()`, `pos_integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec generate_tone(number(), number(), pos_integer()) -> binary().
 generate_tone(Frequency, Duration, SampleRate)
   when is_number(Frequency), Frequency > 0, is_number(Duration), Duration >= 0,
@@ -139,3 +190,9 @@ generate_samples(Freq, SR, N, Max, Acc) ->
     Sample = math:sin(2 * math:pi() * Freq * N / SR) * 0.5,
     Bin = <<Sample:32/float-little>>,
     generate_samples(Freq, SR, N + 1, Max, <<Acc/binary, Bin/binary>>).
+
+
+
+
+
+

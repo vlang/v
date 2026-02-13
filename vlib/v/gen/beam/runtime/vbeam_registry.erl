@@ -20,6 +20,16 @@
 
 -module(vbeam_registry).
 
+-moduledoc """
+Provides registry helpers for name to pid mapping.
+""".
+
+
+
+
+
+
+
 -export([
     start/0,
     register/2,
@@ -39,7 +49,14 @@
 %% Initialize the registry (creates the ETS table).
 %% Should be called once at application startup.
 %% Idempotent - safe to call multiple times.
+-doc """
+start/0 is a public runtime entrypoint in `vbeam_registry`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start() -> ok.
+
 start() ->
     case ets:info(?REG_TABLE) of
         undefined ->
@@ -66,8 +83,15 @@ start() ->
 %% Erlang: vbeam_registry:register(<<"counter">>, Pid)
 %%
 %% Returns ok on success, {error, already_registered} if name is taken.
+-doc """
+register/2 is a public runtime entrypoint in `vbeam_registry`.
+Parameters: `Name :: atom() | binary()`, `Pid :: pid()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec register(Name :: atom() | binary(), Pid :: pid()) ->
     ok | {error, already_registered | not_a_pid}.
+
 register(_Name, Pid) when not is_pid(Pid) ->
     {error, not_a_pid};
 
@@ -106,7 +130,14 @@ register(Name, Pid) when is_binary(Name), byte_size(Name) > 0, is_pid(Pid) ->
 %%
 %% V: registry.unregister("counter")
 %% Erlang: vbeam_registry:unregister(<<"counter">>)
+-doc """
+unregister/1 is a public runtime entrypoint in `vbeam_registry`.
+Parameters: `Name :: atom() | binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec unregister(Name :: atom() | binary()) -> ok.
+
 unregister(Name) when is_atom(Name), Name =/= '' ->
     try
         erlang:unregister(Name),
@@ -135,7 +166,14 @@ unregister(Name) when is_binary(Name), byte_size(Name) > 0 ->
 %%       {ok, Pid} -> ...;
 %%       error -> ...
 %%   end
+-doc """
+lookup/1 is a public runtime entrypoint in `vbeam_registry`.
+Parameters: `Name :: atom() | binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec lookup(Name :: atom() | binary()) -> {ok, pid()} | error.
+
 lookup(Name) when is_atom(Name), Name =/= '' ->
     case erlang:whereis(Name) of
         undefined -> error;
@@ -162,7 +200,14 @@ lookup(Name) when is_binary(Name), byte_size(Name) > 0 ->
 %% Compatible with Erlang's built-in whereis/1 behavior.
 %%
 %% V: pid := registry.whereis("counter")
+-doc """
+whereis/1 is a public runtime entrypoint in `vbeam_registry`.
+Parameters: `Name :: atom() | binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec whereis(Name :: atom() | binary()) -> pid() | undefined.
+
 whereis(Name) when is_atom(Name); is_binary(Name) ->
     true = is_atom(Name) orelse byte_size(Name) > 0,
     case lookup(Name) of
@@ -196,3 +241,9 @@ ensure_table() ->
         undefined -> start();
         _Info -> ok
     end.
+
+
+
+
+
+

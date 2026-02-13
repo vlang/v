@@ -10,12 +10,29 @@
 %%   vbeam_hotreload.reload_all('/path/dir')  — reload all .beam in dir
 %%   vbeam_hotreload.watch('/path/dir', 1000) — poll directory for changes
 -module(vbeam_hotreload).
+
+-moduledoc """
+Supports hot reload workflows for running BEAM modules.
+""".
+
+
+
+
+
+
 -export([reload/1, reload_from/2, reload_all/1, watch/2, watch/3]).
 
 %% Reload a module that's already on the code path.
 %% Purges old version, loads new version.
 %% Returns {ok, Module} | {error, Reason}.
+-doc """
+reload/1 is a public runtime entrypoint in `vbeam_hotreload`.
+Parameters: `atom()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec reload(atom()) -> {ok, atom()} | {error, term()}.
+
 reload(Module) when is_atom(Module) ->
     true = atom_to_list(Module) =/= [],
     code:purge(Module),
@@ -41,7 +58,14 @@ reload_from(Module, BeamPath) when is_atom(Module), is_list(BeamPath) ->
 
 %% Reload all .beam files in a directory.
 %% Returns {ok, Loaded, Errors} with counts.
+-doc """
+reload_all/1 is a public runtime entrypoint in `vbeam_hotreload`.
+Parameters: `string()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec reload_all(string()) -> {ok, non_neg_integer(), [{atom(), term()}]}.
+
 reload_all(Dir) when is_list(Dir), Dir =/= [] ->
     case file:list_dir(Dir) of
         {ok, Files} ->
@@ -68,8 +92,16 @@ reload_all(Dir) when is_list(Dir), Dir =/= [] ->
 
 %% Watch a directory and reload changed .beam files.
 %% Polls every IntervalMs milliseconds. Runs in calling process.
+-doc """
+watch/2 is a public runtime entrypoint in `vbeam_hotreload`.
+Parameters: `string()`, `pos_integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec watch(string(), pos_integer()) -> no_return().
+
 watch(Dir, IntervalMs) when is_list(Dir), is_integer(IntervalMs), IntervalMs > 0 ->
+
     watch(Dir, IntervalMs, fun(Mod, Status) ->
         io:format("~s: ~p~n", [Mod, Status])
     end).
@@ -121,3 +153,9 @@ watch_loop(Dir, IntervalMs, Callback, OldMtimes) ->
         end
     end, NewMtimes),
     watch_loop(Dir, IntervalMs, Callback, NewMtimes).
+
+
+
+
+
+

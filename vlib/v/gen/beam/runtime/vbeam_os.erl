@@ -2,6 +2,16 @@
 %% Provides OS-level functionality
 
 -module(vbeam_os).
+
+-moduledoc """
+Provides operating system and process helpers for runtime support.
+""".
+
+
+
+
+
+
 -export([arguments/0, getenv/1, getenv/2, setenv/2,
          exit/1, system/1,
          getcwd/0, chdir/1,
@@ -11,12 +21,20 @@
          ls/1]).
 
 %% Get command line arguments (returns list of binaries)
+-doc """
+arguments/0 is a public runtime entrypoint in `vbeam_os`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec arguments() -> [binary()].
+
 arguments() ->
     [list_to_binary(Arg) || Arg <- init:get_plain_arguments()].
 
 %% Get environment variable (returns empty binary if not set)
 -spec getenv(binary()) -> binary().
+
 getenv(Name) when is_binary(Name), byte_size(Name) > 0 ->
     case os:getenv(binary_to_list(Name)) of
         false -> <<>>;
@@ -24,7 +42,14 @@ getenv(Name) when is_binary(Name), byte_size(Name) > 0 ->
     end.
 
 %% Get environment variable with default
+-doc """
+getenv/2 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec getenv(binary(), binary()) -> binary().
+
 getenv(Name, Default) when is_binary(Name), is_binary(Default), byte_size(Name) > 0 ->
     case os:getenv(binary_to_list(Name)) of
         false -> Default;
@@ -33,12 +58,20 @@ getenv(Name, Default) when is_binary(Name), is_binary(Default), byte_size(Name) 
 
 %% Set environment variable
 -spec setenv(binary(), binary()) -> ok.
+
 setenv(Name, Value) when is_binary(Name), is_binary(Value), byte_size(Name) > 0 ->
     os:putenv(binary_to_list(Name), binary_to_list(Value)),
     ok.
 
 %% Exit with status code
+-doc """
+exit/1 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec exit(integer()) -> no_return().
+
 exit(0) ->
     halt(0);
 exit(Code) when is_integer(Code) ->
@@ -46,6 +79,7 @@ exit(Code) when is_integer(Code) ->
 
 %% Execute system command (returns {ExitCode, Output})
 -spec system(binary()) -> {integer(), binary()}.
+
 system(Cmd) when is_binary(Cmd), byte_size(Cmd) > 0 ->
     Port = open_port({spawn, binary_to_list(Cmd)}, [exit_status, binary, stderr_to_stdout]),
     collect_port_output(Port, <<>>).
@@ -62,13 +96,21 @@ collect_port_output(Port, Acc) ->
     end.
 
 %% Get current working directory
+-doc """
+getcwd/0 is a public runtime entrypoint in `vbeam_os`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec getcwd() -> binary().
+
 getcwd() ->
     {ok, Dir} = file:get_cwd(),
     list_to_binary(Dir).
 
 %% Change directory
 -spec chdir(binary()) -> ok.
+
 chdir(Path) when is_binary(Path), byte_size(Path) > 0 ->
     case file:set_cwd(binary_to_list(Path)) of
         ok -> ok;
@@ -76,7 +118,14 @@ chdir(Path) when is_binary(Path), byte_size(Path) > 0 ->
     end.
 
 %% Check if path exists
+-doc """
+exists/1 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec exists(binary()) -> boolean().
+
 exists(Path) when is_binary(Path), byte_size(Path) > 0 ->
     filelib:is_file(binary_to_list(Path)) orelse filelib:is_dir(binary_to_list(Path)).
 
@@ -91,6 +140,12 @@ is_file(Path) when is_binary(Path), byte_size(Path) > 0 ->
     filelib:is_regular(binary_to_list(Path)).
 
 %% Read entire file contents
+-doc """
+read_file/1 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec read_file(binary()) -> binary().
 read_file(Path) when is_binary(Path), byte_size(Path) > 0 ->
     case file:read_file(binary_to_list(Path)) of
@@ -107,6 +162,12 @@ write_file(Path, Content) when is_binary(Path), is_binary(Content), byte_size(Pa
     end.
 
 %% Create directory
+-doc """
+mkdir/1 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec mkdir(binary()) -> ok.
 mkdir(Path) when is_binary(Path), byte_size(Path) > 0 ->
     case file:make_dir(binary_to_list(Path)) of
@@ -124,6 +185,12 @@ mkdir_all(Path) when is_binary(Path), byte_size(Path) > 0 ->
     end.
 
 %% Remove directory
+-doc """
+rmdir/1 is a public runtime entrypoint in `vbeam_os`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec rmdir(binary()) -> ok.
 rmdir(Path) when is_binary(Path), byte_size(Path) > 0 ->
     case file:del_dir(binary_to_list(Path)) of
@@ -138,3 +205,9 @@ ls(Path) when is_binary(Path), byte_size(Path) > 0 ->
         {ok, Files} -> [list_to_binary(F) || F <- Files];
         {error, Reason} -> error({ls_failed, Path, Reason})
     end.
+
+
+
+
+
+

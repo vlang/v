@@ -2,11 +2,28 @@
 %% Provides panic and assert functionality
 
 -module(vbeam_panic).
+
+-moduledoc """
+Provides panic and assertion support for fatal runtime failures.
+""".
+
+
+
+
+
+
 -export([panic/1, assert/1, assert/2]).
 
 %% Panic - aborts execution with error message
 %% V's panic() equivalent
+-doc """
+panic/1 is a public runtime entrypoint in `vbeam_panic`.
+Parameters: `term()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec panic(term()) -> no_return().
+
 panic(Message) when is_binary(Message) ->
     io:format(standard_error, "panic: ~s~n", [Message]),
     %% Get stack trace for debugging using OTP 21+ syntax
@@ -23,7 +40,14 @@ panic(Message) ->
     panic(vbeam_conv:to_binary(Message)).
 
 %% Assert - panic if condition is false
+-doc """
+assert/1 is a public runtime entrypoint in `vbeam_panic`.
+Parameters: `boolean()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec assert(boolean()) -> ok.
+
 assert(true) ->
     ok;
 assert(false) ->
@@ -31,6 +55,7 @@ assert(false) ->
 
 %% Assert with custom message
 -spec assert(boolean(), term()) -> ok.
+
 assert(true, _Message) ->
     ok;
 assert(false, Message) ->
@@ -53,3 +78,9 @@ print_stacktrace([{Module, Function, Args, Location}|Rest]) when is_list(Args) -
     print_stacktrace(Rest);
 print_stacktrace([_|Rest]) ->
     print_stacktrace(Rest).
+
+
+
+
+
+

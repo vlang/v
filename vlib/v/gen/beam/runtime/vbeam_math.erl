@@ -2,6 +2,16 @@
 %% Provides mathematical functions matching V's math module
 
 -module(vbeam_math).
+
+-moduledoc """
+Provides math and numeric helper functions in runtime code.
+""".
+
+
+
+
+
+
 -export([abs/1, min/2, max/2, clamp/3,
          floor/1, ceil/1, round/1, trunc/1,
          sqrt/1, pow/2, exp/1, log/1, log10/1, log2/1,
@@ -11,6 +21,12 @@
 
 %% Absolute value
 %% 
+-doc """
+abs/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `integer() | float()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec abs(integer() | float()) -> number().
 abs(X) when is_integer(X) -> erlang:abs(X);
 abs(X) when is_float(X) -> erlang:abs(X).
@@ -29,7 +45,14 @@ max(A, B) when is_number(A), is_number(B), A =< B -> B.
 
 %% Clamp value between min and max
 %% 
+-doc """
+clamp/3 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec clamp(number(), number(), number()) -> number().
+
 clamp(X, Min, Max) when is_number(X), is_number(Min), is_number(Max), Min =< Max ->
     erlang:max(Min, erlang:min(Max, X)).
 
@@ -47,6 +70,12 @@ ceil(X) when is_integer(X) -> X.
 
 %% Round to nearest integer
 %% 
+-doc """
+round/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec round(number()) -> number().
 round(X) when is_float(X), X =:= X -> erlang:round(X);
 round(X) when is_integer(X) -> X.
@@ -60,45 +89,70 @@ trunc(X) when is_integer(X) -> X.
 %% Square root
 %% 
 -spec sqrt(number()) -> float().
+
 sqrt(X) when is_number(X), X >= 0 ->
     math:sqrt(X).
 
 %% Power
 %% 
+-doc """
+pow/2 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec pow(number(), number()) -> float().
+
 pow(Base, Exp) when is_number(Base), is_number(Exp), Base =:= Base, Exp =:= Exp ->
     math:pow(Base, Exp).
 
 %% Exponential (e^x)
 %% 
 -spec exp(number()) -> float().
+
 exp(X) when is_number(X), X =:= X ->
     math:exp(X).
 
 %% Natural logarithm
 %% 
 -spec log(number()) -> float().
+
 log(X) when is_number(X), X =:= X, X > 0 ->
     math:log(X).
 
 %% Base-10 logarithm
 %% 
+-doc """
+log10/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec log10(number()) -> float().
+
 log10(X) when is_number(X), X =:= X, X > 0 ->
     math:log10(X).
 
 %% Base-2 logarithm
 %% 
 -spec log2(number()) -> float().
+
 log2(X) when is_number(X), X =:= X, X > 0 ->
     math:log2(X).
 
 %% Trigonometric functions
 %% 
 -spec sin(number()) -> float().
+
 sin(X) when is_number(X), X =:= X ->
     math:sin(X).
 %% 
+-doc """
+cos/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec cos(number()) -> float().
 cos(X) when is_number(X), X =:= X ->
     math:cos(X).
@@ -115,6 +169,12 @@ asin(X) when is_number(X), X =:= X ->
 acos(X) when is_number(X), X =:= X ->
     math:acos(X).
 %% 
+-doc """
+atan/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec atan(number()) -> float().
 atan(X) when is_number(X), X =:= X ->
     math:atan(X).
@@ -133,6 +193,12 @@ sinh(X) when is_number(X), X =:= X ->
 cosh(X) when is_number(X), X =:= X ->
     math:cosh(X).
 %% 
+-doc """
+tanh/1 is a public runtime entrypoint in `vbeam_math`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec tanh(number()) -> float().
 tanh(X) when is_number(X), X =:= X ->
     math:tanh(X).
@@ -151,7 +217,19 @@ inf() ->
     %% compile-time badarith analysis.
     1.0e308 * float(erlang:system_time(nanosecond)).
 %% 
+-doc """
+nan/0 is a public runtime entrypoint in `vbeam_math`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec nan() -> float().
 nan() ->
     %% NaN (results in badarith, handle specially)
     inf() - inf().
+
+
+
+
+
+

@@ -1,9 +1,25 @@
 -module(vbeam_process).
+
+-moduledoc """
+Provides process, port, and signal helpers for runtime tasks.
+""".
+
+
+
+
+
+
 -export([run/2, wait/1, kill/1, signal_term/1, signal_stop/1, signal_cont/1,
          stdin_write/2, stdout_slurp/1, stdout_read/1]).
 
 %% Run a process: returns {ok, Port} or {error, Reason}
 %% Command and Args are binaries (V strings).
+-doc """
+run/2 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `binary()`, `[binary()]`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec run(binary(), [binary()]) -> {ok, port()} | {error, term()}.
 run(Command, Args)
   when is_binary(Command), is_list(Args) ->
@@ -19,7 +35,14 @@ run(Command, Args)
     end.
 
 %% Wait for process to exit, return exit code
+-doc """
+wait/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `port()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec wait(port()) -> integer().
+
 wait(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     wait_loop(Port).
@@ -33,7 +56,14 @@ wait_loop(Port) ->
     end.
 
 %% Force kill the OS process and close the port
+-doc """
+kill/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `port()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec kill(port()) -> ok.
+
 kill(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
@@ -46,6 +76,7 @@ kill(Port) when is_port(Port) ->
 
 %% Send SIGTERM to the OS process
 -spec signal_term(port()) -> ok | {error, not_running}.
+
 signal_term(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
@@ -56,7 +87,14 @@ signal_term(Port) when is_port(Port) ->
     end.
 
 %% Send SIGSTOP to the OS process
+-doc """
+signal_stop/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `port()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec signal_stop(port()) -> ok | {error, not_running}.
+
 signal_stop(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
@@ -68,6 +106,7 @@ signal_stop(Port) when is_port(Port) ->
 
 %% Send SIGCONT to the OS process
 -spec signal_cont(port()) -> ok | {error, not_running}.
+
 signal_cont(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
@@ -78,6 +117,12 @@ signal_cont(Port) when is_port(Port) ->
     end.
 
 %% Write binary data to the process's stdin
+-doc """
+stdin_write/2 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `port()`, `iodata()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec stdin_write(port(), iodata()) -> ok.
 stdin_write(Port, Data)
   when is_port(Port), (is_binary(Data) orelse is_list(Data)) ->
@@ -99,6 +144,12 @@ stdout_slurp(Port, Acc) ->
     end.
 
 %% Read one chunk of stdout (blocking)
+-doc """
+stdout_read/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `port()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec stdout_read(port()) -> binary().
 stdout_read(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
@@ -106,3 +157,9 @@ stdout_read(Port) when is_port(Port) ->
         {Port, {data, Data}} -> Data;
         {Port, {exit_status, _Code}} -> <<>>
     end.
+
+
+
+
+
+

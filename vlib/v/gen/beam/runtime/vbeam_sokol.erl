@@ -22,6 +22,16 @@
 %%     event_cb => fun(Event) -> ... end
 %%   }).
 -module(vbeam_sokol).
+
+-moduledoc """
+Provides Sokol and graphics runtime wrappers for V applications.
+""".
+
+
+
+
+
+
 -behaviour(gen_server).
 
 -include_lib("wx/include/wx.hrl").
@@ -135,6 +145,7 @@ run(Desc) when is_map(Desc) ->
 
 %% @doc Returns the current window width.
 -spec width() -> integer().
+
 width() ->
     try gen_server:call(?MODULE, width, 1000)
     catch _:_ -> 0
@@ -142,6 +153,7 @@ width() ->
 
 %% @doc Returns the current window height.
 -spec height() -> integer().
+
 height() ->
     try gen_server:call(?MODULE, height, 1000)
     catch _:_ -> 0
@@ -149,11 +161,13 @@ height() ->
 
 %% @doc Request application quit.
 -spec quit() -> ok.
+
 quit() ->
     gen_server:cast(?MODULE, quit).
 
 %% @doc Returns the frame counter.
 -spec frame_count() -> non_neg_integer().
+
 frame_count() ->
     try gen_server:call(?MODULE, frame_count, 1000)
     catch _:_ -> 0
@@ -161,6 +175,7 @@ frame_count() ->
 
 %% @doc Returns the duration of the last frame in seconds.
 -spec frame_duration() -> float().
+
 frame_duration() ->
     try gen_server:call(?MODULE, frame_duration, 1000)
     catch _:_ -> 0.0
@@ -168,6 +183,7 @@ frame_duration() ->
 
 %% @doc Returns true if the application context is valid.
 -spec isvalid() -> boolean().
+
 isvalid() ->
     try gen_server:call(?MODULE, isvalid, 1000)
     catch _:_ -> false
@@ -175,6 +191,7 @@ isvalid() ->
 
 %% @doc Returns DPI scale factor.
 -spec dpi_scale() -> number().
+
 dpi_scale() ->
     try gen_server:call(?MODULE, dpi_scale, 1000)
     catch _:_ -> 1.0
@@ -195,6 +212,12 @@ keyboard_shown() -> false.
 -spec show_mouse(boolean()) -> ok.
 show_mouse(true) -> ok;
 show_mouse(false) -> ok.
+-doc """
+mouse_shown/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec mouse_shown() -> boolean().
 mouse_shown() -> true.
 -spec lock_mouse(boolean()) -> ok.
@@ -209,10 +232,18 @@ set_mouse_cursor(Cursor) when is_integer(Cursor), Cursor >= 0 -> ok.
 high_dpi() -> false.
 
 -spec request_quit() -> ok.
+
 request_quit() ->
     gen_server:cast(?MODULE, request_quit).
 
+-doc """
+cancel_quit/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec cancel_quit() -> ok.
+
 cancel_quit() ->
     gen_server:cast(?MODULE, cancel_quit).
 
@@ -220,10 +251,12 @@ cancel_quit() ->
 consume_event() -> ok.
 
 -spec toggle_fullscreen() -> ok.
+
 toggle_fullscreen() ->
     gen_server:cast(?MODULE, toggle_fullscreen).
 
 -spec is_fullscreen() -> boolean().
+
 is_fullscreen() ->
     try gen_server:call(?MODULE, is_fullscreen, 1000)
     catch _:_ -> false
@@ -235,6 +268,7 @@ is_fullscreen() ->
 
 %% @doc Initialize the graphics subsystem.
 -spec setup(map()) -> ok.
+
 setup(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     %% Graphics setup happens in gen_server init when OpenGL context is created.
@@ -243,16 +277,19 @@ setup(Desc) when is_map(Desc) ->
 
 %% @doc Shut down the graphics subsystem.
 -spec shutdown() -> ok.
+
 shutdown() ->
     ok.
 
 %% @doc Returns true if gfx is initialized.
 -spec is_valid() -> boolean().
+
 is_valid() ->
     isvalid().
 
 %% @doc Reset the internal state cache (for debugging).
 -spec reset_state_cache() -> ok.
+
 reset_state_cache() ->
     ok.
 
@@ -266,6 +303,7 @@ create_clear_pass_action(R, G, B, A)
 
 %% @doc Create a default Pass from a PassAction.
 -spec create_default_pass(map()) -> map().
+
 create_default_pass(Action) when is_map(Action) ->
     true = map_size(Action) >= 0,
     %% If Action already has the 'action' key, it IS a PassAction — wrap it.
@@ -314,41 +352,48 @@ commit() ->
 
 %% @doc Create a GPU buffer. Returns a buffer ID.
 -spec make_buffer(map()) -> integer().
+
 make_buffer(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_buffer, Desc}, 5000).
 
 %% @doc Create a GPU image (texture). Returns an image ID.
 -spec make_image(map()) -> integer().
+
 make_image(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_image, Desc}, 5000).
 
 %% @doc Create a sampler. Returns a sampler ID.
 -spec make_sampler(map()) -> integer().
+
 make_sampler(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_sampler, Desc}, 5000).
 
 %% @doc Create a shader (compile GLSL). Returns a shader ID.
 -spec make_shader(map()) -> integer().
+
 make_shader(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_shader, Desc}, 5000).
 
 %% @doc Create a pipeline (render state). Returns a pipeline ID.
 -spec make_pipeline(map()) -> integer().
+
 make_pipeline(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_pipeline, Desc}, 5000).
 
 %% @doc Apply (bind) a pipeline for rendering.
 -spec apply_pipeline(integer()) -> ok.
+
 apply_pipeline(PipId) when is_integer(PipId), PipId >= 0 ->
     gen_server:cast(?MODULE, {apply_pipeline, PipId}).
 
 %% @doc Apply vertex/index buffer bindings.
 -spec apply_bindings(map()) -> ok.
+
 apply_bindings(Bindings) when is_map(Bindings) ->
     true = map_size(Bindings) >= 0,
     gen_server:cast(?MODULE, {apply_bindings, Bindings}).
@@ -385,26 +430,31 @@ apply_scissor_rect(X, Y, W, H, OriginTopLeft)
 
 %% @doc Destroy a buffer resource.
 -spec destroy_buffer(integer()) -> ok.
+
 destroy_buffer(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_buffer, Id}).
 
 %% @doc Destroy an image resource.
 -spec destroy_image(integer()) -> ok.
+
 destroy_image(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_image, Id}).
 
 %% @doc Destroy a sampler resource.
 -spec destroy_sampler(integer()) -> ok.
+
 destroy_sampler(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_sampler, Id}).
 
 %% @doc Destroy a shader resource.
 -spec destroy_shader(integer()) -> ok.
+
 destroy_shader(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_shader, Id}).
 
 %% @doc Destroy a pipeline resource.
 -spec destroy_pipeline(integer()) -> ok.
+
 destroy_pipeline(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_pipeline, Id}).
 
@@ -442,6 +492,7 @@ query_limits() -> #{}.
 
 %% @doc Setup SGL.
 -spec sgl_setup(map()) -> ok.
+
 sgl_setup(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     ok.
@@ -456,6 +507,7 @@ sgl_error() -> 0. %% no_error
 
 %% Reset SGL state to defaults
 -spec sgl_defaults() -> ok.
+
 sgl_defaults() ->
     gl:matrixMode(?GL_PROJECTION),
     gl:loadIdentity(),
@@ -470,6 +522,12 @@ sgl_viewport(X, Y, W, H, OriginTopLeft)
        (OriginTopLeft =:= undefined orelse is_boolean(OriginTopLeft)) ->
     gl:viewport(X, Y, W, H).
 
+-doc """
+sgl_scissor_rect/5 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `number()`, `term()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_scissor_rect(number(), number(), number(), number(), term()) -> ok.
 sgl_scissor_rect(X, Y, W, H, OriginTopLeft)
   when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(W), ?IS_NUM(H), W >= 0, H >= 0,
@@ -479,13 +537,21 @@ sgl_scissor_rect(X, Y, W, H, OriginTopLeft)
 
 %% Texture control
 -spec sgl_enable_texture() -> ok.
+
 sgl_enable_texture() ->
     gl:enable(?GL_TEXTURE_2D).
 
 -spec sgl_disable_texture() -> ok.
+
 sgl_disable_texture() ->
     gl:disable(?GL_TEXTURE_2D).
 
+-doc """
+sgl_texture/2 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `integer()`, `term()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_texture(integer(), term()) -> ok.
 sgl_texture(ImgId, SamplerId)
   when is_integer(ImgId), ImgId >= 0,
@@ -501,6 +567,12 @@ sgl_texture(ImgId, SamplerId)
 sgl_begin_points() -> gl:'begin'(?GL_POINTS).
 -spec sgl_begin_lines() -> ok.
 sgl_begin_lines() -> gl:'begin'(?GL_LINES).
+-doc """
+sgl_begin_line_strip/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_begin_line_strip() -> ok.
 sgl_begin_line_strip() -> gl:'begin'(?GL_LINE_STRIP).
 -spec sgl_begin_triangles() -> ok.
@@ -516,6 +588,12 @@ sgl_v2f(X, Y) when ?IS_NUM(X), ?IS_NUM(Y) -> gl:vertex2f(X, Y).
 -spec sgl_v3f(number(), number(), number()) -> ok.
 sgl_v3f(X, Y, Z) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) -> gl:vertex3f(X, Y, Z).
 
+-doc """
+sgl_v2f_t2f/4 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_v2f_t2f(number(), number(), number(), number()) -> ok.
 sgl_v2f_t2f(X, Y, U, V) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(U), ?IS_NUM(V) ->
     gl:texCoord2f(U, V),
@@ -532,6 +610,12 @@ sgl_v2f_c3f(X, Y, R, G, B) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(R), ?IS_NUM(G), 
     gl:color3f(R, G, B),
     gl:vertex2f(X, Y).
 
+-doc """
+sgl_v2f_c4f/6 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_v2f_c4f(number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v2f_c4f(X, Y, R, G, B, A)
   when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) ->
@@ -552,7 +636,14 @@ sgl_v2f_c4b(X, Y, R, G, B, A)
     gl:color4ub(R, G, B, A),
     gl:vertex2f(X, Y).
 
+-doc """
+sgl_v2f_c1i/3 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_v2f_c1i(number(), number(), integer()) -> ok.
+
 sgl_v2f_c1i(X, Y, RGBA) when ?IS_NUM(X), ?IS_NUM(Y), is_integer(RGBA), RGBA >= 0 ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
@@ -567,6 +658,12 @@ sgl_v3f_c3f(X, Y, Z, R, G, B)
     gl:color3f(R, G, B),
     gl:vertex3f(X, Y, Z).
 
+-doc """
+sgl_v3f_c4f/7 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `number()`, `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_v3f_c4f(number(), number(), number(), number(), number(), number(), number()) -> ok.
 sgl_v3f_c4f(X, Y, Z, R, G, B, A)
   when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) ->
@@ -588,6 +685,12 @@ sgl_v3f_c4b(X, Y, Z, R, G, B, A)
     gl:color4ub(R, G, B, A),
     gl:vertex3f(X, Y, Z).
 
+-doc """
+sgl_v3f_c1i/4 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_v3f_c1i(number(), number(), number(), integer()) -> ok.
 sgl_v3f_c1i(X, Y, Z, RGBA)
   when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), is_integer(RGBA), RGBA >= 0 ->
@@ -603,6 +706,12 @@ sgl_v3f_c1i(X, Y, Z, RGBA)
 sgl_c3f(R, G, B) when ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B) -> gl:color3f(R, G, B).
 -spec sgl_c4f(number(), number(), number(), number()) -> ok.
 sgl_c4f(R, G, B, A) when ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) -> gl:color4f(R, G, B, A).
+-doc """
+sgl_c3b/3 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `integer()`, `integer()`, `integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_c3b(integer(), integer(), integer()) -> ok.
 sgl_c3b(R, G, B)
   when is_integer(R), is_integer(G), is_integer(B),
@@ -614,6 +723,7 @@ sgl_c4b(R, G, B, A)
        R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255, A >= 0, A =< 255 ->
     gl:color4ub(R, G, B, A).
 -spec sgl_c1i(integer()) -> ok.
+
 sgl_c1i(RGBA) when is_integer(RGBA), RGBA >= 0 ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
@@ -622,6 +732,12 @@ sgl_c1i(RGBA) when is_integer(RGBA), RGBA >= 0 ->
     gl:color4ub(R, G, B, A).
 
 %% Texture coordinate setting
+-doc """
+sgl_t2f/2 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_t2f(number(), number()) -> ok.
 sgl_t2f(U, V) when ?IS_NUM(U), ?IS_NUM(V) -> gl:texCoord2f(U, V).
 
@@ -638,6 +754,12 @@ sgl_draw() -> ok.  %% Actual buffer swap happens in commit()
 sgl_context_draw(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
 
 %% Matrix operations
+-doc """
+sgl_matrix_mode_projection/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_matrix_mode_projection() -> ok.
 sgl_matrix_mode_projection() -> gl:matrixMode(?GL_PROJECTION).
 -spec sgl_matrix_mode_modelview() -> ok.
@@ -653,30 +775,46 @@ sgl_push_matrix() -> gl:pushMatrix().
 sgl_pop_matrix() -> gl:popMatrix().
 
 -spec sgl_load_matrix([number()]) -> ok.
+
 sgl_load_matrix(M) when is_list(M), length(M) >= 16 ->
     %% M is a 16-element list (column-major 4x4 matrix)
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:loadMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_load_matrix(_) -> ok.
 
+-doc """
+sgl_load_transpose_matrix/1 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `[number()]`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_load_transpose_matrix([number()]) -> ok.
+
 sgl_load_transpose_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:loadTransposeMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_load_transpose_matrix(_) -> ok.
 
 -spec sgl_mult_matrix([number()]) -> ok.
+
 sgl_mult_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:multMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_mult_matrix(_) -> ok.
 
 -spec sgl_mult_transpose_matrix([number()]) -> ok.
+
 sgl_mult_transpose_matrix(M) when is_list(M), length(M) >= 16 ->
     [M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15|_] = M,
     gl:multTransposeMatrixf({M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15});
 sgl_mult_transpose_matrix(_) -> ok.
 
+-doc """
+sgl_translate/3 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_translate(number(), number(), number()) -> ok.
 sgl_translate(X, Y, Z) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) -> gl:translatef(X, Y, Z).
 -spec sgl_rotate(number(), number(), number(), number()) -> ok.
@@ -695,6 +833,12 @@ sgl_ortho(L, R, B, T, N, F)
 sgl_frustum(L, R, B, T, N, F)
   when ?IS_NUM(L), ?IS_NUM(R), ?IS_NUM(B), ?IS_NUM(T), ?IS_NUM(N), ?IS_NUM(F) ->
     gl:frustum(L, R, B, T, N, F).
+-doc """
+sgl_perspective/4 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`, `number()`, `number()`, `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_perspective(number(), number(), number(), number()) -> ok.
 sgl_perspective(FovY, Aspect, ZNear, ZFar)
   when ?IS_NUM(FovY), ?IS_NUM(Aspect), ?IS_NUM(ZNear), ?IS_NUM(ZFar) ->
@@ -710,6 +854,12 @@ sgl_lookat(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ)
 sgl_push_pipeline() -> ok.
 -spec sgl_pop_pipeline() -> ok.
 sgl_pop_pipeline() -> ok.
+-doc """
+sgl_load_default_pipeline/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_load_default_pipeline() -> ok.
 sgl_load_default_pipeline() -> ok.
 -spec sgl_load_pipeline(integer()) -> ok.
@@ -717,6 +867,7 @@ sgl_load_pipeline(Pip) when is_integer(Pip), Pip >= 0 -> ok.
 
 %% Context management (single-context for now)
 -spec sgl_make_context(map()) -> integer().
+
 sgl_make_context(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     1.
@@ -724,6 +875,12 @@ sgl_make_context(Desc) when is_map(Desc) ->
 sgl_destroy_context(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
 -spec sgl_set_context(integer()) -> ok.
 sgl_set_context(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
+-doc """
+sgl_get_context/0 is a public runtime entrypoint in `vbeam_sokol`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_get_context() -> integer().
 sgl_get_context() -> 1.
 -spec sgl_default_context() -> integer().
@@ -731,6 +888,7 @@ sgl_default_context() -> 1.
 
 %% Pipeline management for SGL
 -spec sgl_make_pipeline(map()) -> integer().
+
 sgl_make_pipeline(Desc) when is_map(Desc) ->
     true = map_size(Desc) >= 0,
     1.
@@ -738,6 +896,12 @@ sgl_make_pipeline(Desc) when is_map(Desc) ->
 sgl_destroy_pipeline(Pip) when is_integer(Pip), Pip >= 0 -> ok.
 
 %% Utility
+-doc """
+sgl_rad/1 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `number()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sgl_rad(number()) -> float().
 sgl_rad(Deg) when ?IS_NUM(Deg), Deg =:= Deg -> Deg * 0.01745329252.
  -spec sgl_deg(number()) -> float().
@@ -749,6 +913,7 @@ sgl_deg(Rad) when ?IS_NUM(Rad), Rad =:= Rad -> Rad * 57.2957795131.
 
 %% @doc Initialize sokol gen_server process.
 -spec init([map()]) -> {ok, #state{}}.
+
 init([Desc]) when is_map(Desc) ->
     Wx = wx:new(),
     Title = maps:get(window_title, Desc, "V Application"),
@@ -828,8 +993,15 @@ init([Desc]) when is_map(Desc) ->
 
 %% --- Synchronous calls ---
 
+-doc """
+handle_call/3 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `term()`, `{pid(), term()}`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_call(term(), {pid(), term()}, #state{}) ->
     {reply, term(), #state{}}.
+
 handle_call(width, _From, State) ->
     {reply, State#state.width, State};
 
@@ -949,8 +1121,15 @@ handle_call(_Request, _From, State) ->
 
 %% --- Asynchronous casts ---
 
+-doc """
+handle_cast/2 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `term()`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_cast(term(), #state{}) ->
     {noreply, #state{}} | {stop, term(), #state{}}.
+
 handle_cast(quit, State) ->
     {stop, normal, State};
 
@@ -1128,6 +1307,12 @@ handle_cast(_Msg, State) ->
 %% --- Info messages (events, render timer) ---
 
 %% Render frame timer
+-doc """
+handle_info/2 is a public runtime entrypoint in `vbeam_sokol`.
+Parameters: `term()`, `#state{}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec handle_info(term(), #state{}) ->
     {noreply, #state{}} | {stop, term(), #state{}}.
 handle_info(render_frame, #state{canvas = Canvas, gl_ctx = Ctx,
@@ -1151,6 +1336,7 @@ handle_info(render_frame, #state{canvas = Canvas, gl_ctx = Ctx,
     }};
 
 %% --- Window close ---
+
 handle_info(#wx{event = #wxClose{}}, State) ->
     safe_callback(State#state.cleanup_cb),
     {stop, normal, State};
@@ -1534,3 +1720,9 @@ wx_keycode_to_sokol(Key) ->
         K when K >= 32, K =< 126 -> K; %% printable ASCII
         _ -> 0  %% invalid
     end.
+
+
+
+
+
+

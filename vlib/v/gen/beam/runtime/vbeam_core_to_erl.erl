@@ -11,10 +11,21 @@
 %%   transpile/1       - Core Erlang source string -> Erlang source string
 %%   transpile_file/2  - Read .core file, write .erl file
 -module(vbeam_core_to_erl).
+
+-moduledoc """
+Transpiles V core representations to Erlang syntax trees.
+""".
+
+
+
+
+
+
 -export([transpile/1, transpile_file/2]).
 
 %% @doc Transpile Core Erlang source text to Erlang source text.
 -spec transpile(string()) -> string().
+
 transpile(CoreText) when is_list(CoreText) ->
     true = CoreText =/= [],
     {ok, Tokens, _} = core_scan:string(CoreText),
@@ -686,3 +697,9 @@ wrap_body(Expr) ->
 %% the single expression if there's only one.
 make_block([Single]) -> Single;
 make_block(Exprs) -> erl_syntax:block_expr(Exprs).
+
+
+
+
+
+

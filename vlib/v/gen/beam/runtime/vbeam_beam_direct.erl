@@ -13,6 +13,16 @@
 %%   compile/1,2    - Core Erlang AST -> {ok, Mod, Binary} | {error, ...}
 %%   compile_to_asm/1 - Core Erlang AST -> BEAM assembly 5-tuple
 -module(vbeam_beam_direct).
+
+-moduledoc """
+Provides direct BEAM compiler entry points used by the runtime.
+""".
+
+
+
+
+
+
 -export([compile/1, compile/2, compile_to_asm/1]).
 
 %% Sentinel value for provisional stack size during compilation.
@@ -37,7 +47,14 @@
 %% Entry points
 %% ---------------------------------------------------------------------------
 
+-doc """
+compile/1 is a public runtime entrypoint in `vbeam_beam_direct`.
+Parameters: `tuple()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec compile(tuple()) -> {ok, atom(), binary()} | {error, term()}.
+
 compile(CoreMod) when is_tuple(CoreMod), tuple_size(CoreMod) > 0 ->
     compile(CoreMod, []).
 
@@ -1706,3 +1723,9 @@ const_value(Node) ->
         _ ->
             error({not_const, cerl:type(Node)})
     end.
+
+
+
+
+
+

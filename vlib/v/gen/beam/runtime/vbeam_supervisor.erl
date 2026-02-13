@@ -23,6 +23,16 @@
 %%   }
 
 -module(vbeam_supervisor).
+
+-moduledoc """
+Provides supervisor-compatible utilities for V runtime services.
+""".
+
+
+
+
+
+
 -behaviour(supervisor).
 
 %% API
@@ -57,7 +67,14 @@
 %%   }
 %%
 %% V: sup := supervisor.new(#{strategy: .one_for_one, children: [...]})
+-doc """
+start_link/1 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `SupSpec :: map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start_link(SupSpec :: map()) -> {ok, pid()} | {error, term()}.
+
 start_link(SupSpec) when is_map(SupSpec) ->
     Strategy = maps:get(strategy, SupSpec, one_for_one),
     true = lists:member(Strategy, [one_for_one, one_for_all, rest_for_one]),
@@ -81,6 +98,12 @@ start_link(Name, SupSpec) when is_atom(Name), is_map(SupSpec) ->
 %%   }
 %%
 %% V: sup.start_child(#{id: :worker1, start: fn() { ... }})
+-doc """
+start_child/2 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `Sup :: pid() | atom()`, `ChildSpec :: map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start_child(Sup :: pid() | atom(), ChildSpec :: map()) ->
     {ok, pid()} | {error, term()}.
 start_child(Sup, ChildSpec)
@@ -102,6 +125,12 @@ stop_child(Sup, ChildId) when (is_pid(Sup) orelse is_atom(Sup)), is_atom(ChildId
 
 %% Restart a child by its id.
 %% V: sup.restart_child(:worker1)
+-doc """
+restart_child/2 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `Sup :: pid() | atom()`, `ChildId :: atom()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec restart_child(Sup :: pid() | atom(), ChildId :: atom()) ->
     {ok, pid()} | {error, term()}.
 restart_child(Sup, ChildId) when (is_pid(Sup) orelse is_atom(Sup)), is_atom(ChildId) ->
@@ -112,6 +141,7 @@ restart_child(Sup, ChildId) when (is_pid(Sup) orelse is_atom(Sup)), is_atom(Chil
 %%
 %% V: children := sup.which_children()
 -spec which_children(Sup :: pid() | atom()) -> [map()].
+
 which_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
     Children = supervisor:which_children(Sup),
     lists:map(fun({Id, Pid, Type, _Modules}) ->
@@ -122,7 +152,14 @@ which_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
 %% Returns #{specs => N, active => N, supervisors => N, workers => N}
 %%
 %% V: counts := sup.count_children()
+-doc """
+count_children/1 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `Sup :: pid() | atom()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec count_children(Sup :: pid() | atom()) -> map().
+
 count_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
     Counts = supervisor:count_children(Sup),
     maps:from_list(Counts).
@@ -133,6 +170,7 @@ count_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
 
 %% @private
 -spec init(map()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
+
 init(SupSpec) when is_map(SupSpec) ->
     Strategy = maps:get(strategy, SupSpec, one_for_one),
     Intensity = maps:get(intensity, SupSpec, 3),
@@ -196,6 +234,12 @@ normalize_start(Fun) when is_function(Fun, 0) ->
 %% Start a child from a fun.
 %% Used internally when child spec has a fun() instead of MFA tuple.
 %% Exported so supervisors can call it, but not part of the public API.
+-doc """
+start_fun_child/1 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec start_fun_child(fun(() -> term())) -> {ok, pid()}.
 start_fun_child(Fun) when is_function(Fun, 0) ->
     Pid = proc_lib:spawn_link(fun() ->
@@ -203,3 +247,9 @@ start_fun_child(Fun) when is_function(Fun, 0) ->
     end),
     true = is_pid(Pid),
     {ok, Pid}.
+
+
+
+
+
+

@@ -2,6 +2,16 @@
 %% Provides string manipulation functions matching V's string type methods
 
 -module(vbeam_string).
+
+-moduledoc """
+Provides string helpers for V runtime operations on BEAM.
+""".
+
+
+
+
+
+
 -export([contains/2, starts_with/2, ends_with/2,
          split/2, trim/1, trim/2, trim_left/1, trim_right/1,
          to_lower/1, to_upper/1,
@@ -12,7 +22,14 @@
          repeat/2, reverse/1]).
 
 %% Check if string contains substring
+-doc """
+contains/2 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec contains(binary(), binary()) -> boolean().
+
 contains(Haystack, <<>>) when is_binary(Haystack) ->
     true;  % Empty string is contained in any string
 contains(Haystack, Needle) when is_binary(Haystack), is_binary(Needle) ->
@@ -28,6 +45,12 @@ starts_with(Str, Prefix) when is_binary(Str), is_binary(Prefix) ->
     end.
 
 %% Check if string ends with suffix
+-doc """
+ends_with/2 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec ends_with(binary(), binary()) -> boolean().
 ends_with(Str, Suffix) when is_binary(Str), is_binary(Suffix) ->
     StrLen = byte_size(Str),
@@ -47,7 +70,14 @@ split(Str, Delim) when is_binary(Str), is_binary(Delim) ->
     binary:split(Str, Delim, [global]).
 
 %% Trim whitespace from both ends
+-doc """
+trim/1 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec trim(binary()) -> binary().
+
 trim(<<>>) ->
     <<>>;
 trim(Str) when is_binary(Str) ->
@@ -81,7 +111,14 @@ trim_chars_right_impl(Str, Len, CharList) ->
     end.
 
 %% Trim whitespace from left
+-doc """
+trim_left/1 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec trim_left(binary()) -> binary().
+
 trim_left(<<C, Rest/binary>>) when C =:= $\s; C =:= $\t; C =:= $\n; C =:= $\r ->
     trim_left(Rest);
 trim_left(Str) when is_binary(Str) ->
@@ -89,6 +126,7 @@ trim_left(Str) when is_binary(Str) ->
 
 %% Trim whitespace from right
 -spec trim_right(binary()) -> binary().
+
 trim_right(<<>>) ->
     <<>>;
 trim_right(Str) when is_binary(Str) ->
@@ -105,7 +143,14 @@ trim_right_impl(Str, Len) ->
     end.
 
 %% Convert to lowercase
+-doc """
+to_lower/1 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec to_lower(binary()) -> binary().
+
 to_lower(Str) when is_binary(Str) ->
     Lower = string:lowercase(Str),
     true = byte_size(Lower) =:= byte_size(Str),
@@ -113,12 +158,19 @@ to_lower(Str) when is_binary(Str) ->
 
 %% Convert to uppercase
 -spec to_upper(binary()) -> binary().
+
 to_upper(Str) when is_binary(Str) ->
     Upper = string:uppercase(Str),
     true = byte_size(Upper) =:= byte_size(Str),
     Upper.
 
 %% Replace first occurrence
+-doc """
+replace/3 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec replace(binary(), binary(), binary()) -> binary().
 replace(Str, Old, New) when is_binary(Str), is_binary(Old), is_binary(New) ->
     case binary:match(Str, Old) of
@@ -135,7 +187,14 @@ replace_all(Str, Old, New) when is_binary(Str), is_binary(Old), is_binary(New) -
     binary:replace(Str, Old, New, [global]).
 
 %% Find index of first occurrence (-1 if not found)
+-doc """
+index/2 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec index(binary(), binary()) -> integer().
+
 index(Str, <<>>) when is_binary(Str) ->
     0;  % Empty string is found at position 0
 index(Str, Needle) when is_binary(Str), is_binary(Needle) ->
@@ -150,6 +209,12 @@ index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     index(Str, Needle).
 
 %% Find index of last occurrence (-1 if not found)
+-doc """
+last_index_of/2 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec last_index_of(binary(), binary()) -> integer().
 last_index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     case binary:matches(Str, Needle) of
@@ -170,6 +235,12 @@ substr(Str, Start, End) when is_binary(Str), is_integer(Start), is_integer(End) 
     end.
 
 %% Get substring from start position to end
+-doc """
+substr/2 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`, `integer()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec substr(binary(), integer()) -> binary().
 substr(Str, Start) when is_binary(Str), is_integer(Start) ->
     StrLen = byte_size(Str),
@@ -194,6 +265,12 @@ len(Str) when is_binary(Str) ->
     Int.
 
 %% Parse string to float (V's string.f64())
+-doc """
+f64/1 is a public runtime entrypoint in `vbeam_string`.
+Parameters: `binary()`.
+Returns the result value of this runtime operation.
+Side effects: No external side effects are introduced by this function.
+""".
 -spec f64(binary()) -> float().
 f64(Str) when is_binary(Str) ->
     Float = vbeam_conv:string_to_float(Str),
@@ -211,3 +288,9 @@ reverse(Str) when is_binary(Str) ->
     Reversed = list_to_binary(lists:reverse(binary_to_list(Str))),
     true = byte_size(Reversed) =:= byte_size(Str),
     Reversed.
+
+
+
+
+
+

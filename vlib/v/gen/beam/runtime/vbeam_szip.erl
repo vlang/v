@@ -15,6 +15,16 @@
 %%   read_entry(Handle) -> {ok, Data, Handle} | eof
 %%   close(Handle) -> ok
 -module(vbeam_szip).
+
+-moduledoc """
+Provides ZIP archive helpers for runtime packaging tasks.
+""".
+
+
+
+
+
+
 -export([extract_zip_to_dir/2, zip_files/2, zip_folder/2, list_entries/1]).
 -export([open/2, read_entry/1, close/1]).
 
@@ -121,6 +131,7 @@ read_entry(#{entries := []}) ->
 
 %% @doc Close a zip handle (no-op, for API symmetry).
 -spec close(map()) -> ok.
+
 close(Handle) when is_map(Handle) ->
     true = maps:is_key(entries, Handle) orelse maps:is_key(path, Handle),
     ok.
@@ -131,3 +142,9 @@ close(Handle) when is_map(Handle) ->
 -spec to_list(binary() | string()) -> string().
 to_list(Bin) when is_binary(Bin) -> binary_to_list(Bin);
 to_list(List) when is_list(List) -> List.
+
+
+
+
+
+

@@ -20,6 +20,16 @@
 
 -module(vbeam_task).
 
+-moduledoc """
+Provides asynchronous task helpers for V runtime execution.
+""".
+
+
+
+
+
+
+
 -export([
     async/1,
     async/2,
@@ -43,7 +53,14 @@
 %% Erlang: TaskRef = vbeam_task:async(fun() -> compute(5) end)
 %%
 %% Returns a task reference map for use with await/yield.
+-doc """
+async/1 is a public runtime entrypoint in `vbeam_task`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec async(fun(() -> term())) -> map().
+
 async(Fun) when is_function(Fun, 0) ->
     TaskRef = async(Fun, #{}),
     true = maps:is_key(pid, TaskRef) andalso maps:is_key(ref, TaskRef)
@@ -96,7 +113,14 @@ async(Fun, Opts) when is_function(Fun, 0), is_map(Opts) ->
 %%
 %% V: result := t.wait()
 %% Erlang: Result = vbeam_task:await(TaskRef)
+-doc """
+await/1 is a public runtime entrypoint in `vbeam_task`.
+Parameters: `map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec await(map()) -> term().
+
 await(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     await(TaskRef, ?DEFAULT_TIMEOUT).
 
@@ -140,7 +164,14 @@ await(#{ref := MonRef, result_ref := ResultRef, pid := Pid} = _TaskRef, Timeout)
 %% Erlang: Results = vbeam_task:async_stream([Fun1, Fun2, Fun3])
 %%
 %% Uses default timeout (5 seconds per task).
+-doc """
+async_stream/1 is a public runtime entrypoint in `vbeam_task`.
+Parameters: `[fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec async_stream([fun(() -> term())]) -> [term()].
+
 async_stream(Funs) when is_list(Funs) ->
     true = lists:all(fun(F) -> is_function(F, 0) end, Funs),
     async_stream(Funs, #{}).
@@ -171,7 +202,14 @@ async_stream(Funs, Opts) when is_list(Funs), is_map(Opts) ->
 %%       {ok, Result} -> ...;
 %%       timeout -> ...
 %%   end
+-doc """
+yield/1 is a public runtime entrypoint in `vbeam_task`.
+Parameters: `map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec yield(map()) -> {ok, term()} | timeout.
+
 yield(TaskRef) when is_map(TaskRef), map_size(TaskRef) > 0 ->
     yield(TaskRef, 0).
 
@@ -197,3 +235,9 @@ yield(#{ref := MonRef, result_ref := ResultRef, pid := Pid}, Timeout)
     after Timeout ->
         timeout
     end.
+
+
+
+
+
+

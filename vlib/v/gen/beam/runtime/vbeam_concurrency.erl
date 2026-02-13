@@ -9,6 +9,16 @@
 %%   lock/rlock     -> gen_server calls
 
 -module(vbeam_concurrency).
+
+-moduledoc """
+Provides concurrency primitives and scheduling helpers.
+""".
+
+
+
+
+
+
 -export([
     %% Process spawning
     spawn_process/1,
@@ -39,7 +49,14 @@
 %% Spawn an Erlang process (fire and forget)
 %% V: spawn worker(1)
 %% Erlang: spawn(fun() -> worker(1) end)
+-doc """
+spawn_process/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec spawn_process(fun(() -> any())) -> pid().
+
 spawn_process(Fun) when is_function(Fun, 0) ->
     Pid = spawn(Fun),
     true = is_pid(Pid),
@@ -49,6 +66,7 @@ spawn_process(Fun) when is_function(Fun, 0) ->
 %% Returns {Pid, MonitorRef, ResultRef} for later waiting
 %% V: t := spawn compute(5)
 -spec spawn_monitored(fun(() -> any())) -> {pid(), reference(), reference()}.
+
 spawn_monitored(Fun) when is_function(Fun, 0) ->
     Parent = self(),
     ResultRef = make_ref(),
@@ -67,6 +85,12 @@ spawn_monitored(Fun) when is_function(Fun, 0) ->
 
 %% Wait for a spawned task's result (blocking)
 %% V: result := t.wait()
+-doc """
+wait_for_result/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `{pid(), reference(), reference()}`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec wait_for_result({pid(), reference(), reference()}) -> any().
 wait_for_result({Pid, MonRef, ResultRef})
   when is_pid(Pid), is_reference(MonRef), is_reference(ResultRef) ->
@@ -97,13 +121,21 @@ wait_for_result({Pid, MonRef, ResultRef}, Timeout)
 %% ============================================================================
 
 %% Send a message to a process
+-doc """
+send_message/2 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `pid()`, `any()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec send_message(pid(), any()) -> any().
+
 send_message(Pid, Msg) when is_pid(Pid) ->
     true = is_process_alive(Pid),
     Pid ! Msg.
 
 %% Receive a message (blocking, infinite timeout)
 -spec receive_message() -> any().
+
 receive_message() ->
     receive
         Msg -> Msg
@@ -111,6 +143,12 @@ receive_message() ->
 
 %% Receive a message with timeout (milliseconds)
 %% Returns {ok, Msg} | timeout
+-doc """
+receive_message/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `timeout()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec receive_message(timeout()) -> {ok, any()} | timeout.
 receive_message(Timeout)
   when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
@@ -129,7 +167,14 @@ receive_message(Timeout)
 
 %% Create a new unbuffered channel
 %% V: ch := chan int
+-doc """
+channel_new/0 is a public runtime entrypoint in `vbeam_concurrency`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec channel_new() -> pid().
+
 channel_new() ->
     spawn(fun() ->
         %% Start periodic mailbox monitoring for channel process
@@ -272,7 +317,14 @@ check_channel_mailbox(State) ->
 
 %% Send a value to a channel (blocking)
 %% V: ch <- 42
+-doc """
+channel_send/2 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `pid()`, `any()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec channel_send(pid(), any()) -> ok | closed.
+
 channel_send(Ch, Value) when is_pid(Ch) ->
     true = is_process_alive(Ch),
     Ref = make_ref(),
@@ -286,6 +338,7 @@ channel_send(Ch, Value) when is_pid(Ch) ->
 %% Receive a value from a channel (blocking)
 %% V: value := <-ch
 -spec channel_receive(pid()) -> {ok, any()} | closed.
+
 channel_receive(Ch) when is_pid(Ch) ->
     true = is_process_alive(Ch),
     Ref = make_ref(),
@@ -298,6 +351,12 @@ channel_receive(Ch) when is_pid(Ch) ->
 
 %% Try to receive (non-blocking)
 %% V: select { x := <-ch { ... } else { ... } }
+-doc """
+channel_try_receive/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `pid()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec channel_try_receive(pid()) -> {ok, any()} | empty | closed.
 channel_try_receive(Ch) when is_pid(Ch) ->
     true = is_process_alive(Ch),
@@ -330,7 +389,19 @@ channel_close(Ch) when is_pid(Ch) ->
 
 %% Sleep for given milliseconds
 %% V: time.sleep(100 * time.millisecond)
+-doc """
+sleep/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `non_neg_integer()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec sleep(non_neg_integer()) -> ok.
 sleep(Ms) when is_integer(Ms), Ms >= 0 ->
     timer:sleep(Ms),
     ok.
+
+
+
+
+
+

@@ -21,6 +21,16 @@
 %%   decompress_stream_write(Port, Data) -> Acc
 %%   decompress_stream_end(Port) -> Acc
 -module(vbeam_zstd).
+
+-moduledoc """
+Provides runtime compression helpers using zstd and stream operations.
+""".
+
+
+
+
+
+
 -export([compress/1, compress/2, decompress/1, decompress/2]).
 -export([compress_stream_start/0, compress_stream_start/1,
          compress_stream_write/2, compress_stream_end/1]).
@@ -30,6 +40,7 @@
 
 %% @doc Check if the zstd CLI tool is available on $PATH.
 -spec is_available() -> boolean().
+
 is_available() ->
     case os:find_executable("zstd") of
         false -> false;
@@ -38,6 +49,7 @@ is_available() ->
 
 %% @doc Compress data with default level (3).
 -spec compress(binary()) -> {ok, binary()} | {error, term()}.
+
 compress(Data) when is_binary(Data) ->
     compress(Data, 3);
 compress(Data) when is_list(Data) ->
@@ -45,6 +57,7 @@ compress(Data) when is_list(Data) ->
 
 %% @doc Compress data with specified compression level (1-22).
 -spec compress(binary(), integer()) -> {ok, binary()} | {error, term()}.
+
 compress(Data, Level) when is_binary(Data), is_integer(Level), Level >= 1, Level =< 22 ->
     case is_available() of
         false ->
@@ -72,6 +85,7 @@ compress(Data, Level) when is_list(Data), is_integer(Level), Level >= 1, Level =
 
 %% @doc Decompress zstd-compressed data.
 -spec decompress(binary()) -> {ok, binary()} | {error, term()}.
+
 decompress(Data) when is_binary(Data) ->
     decompress(Data, #{});
 decompress(Data) when is_list(Data) ->
@@ -108,11 +122,13 @@ decompress(Data, Opts) when is_list(Data), is_map(Opts) ->
 
 %% @doc Start a streaming compression port with default level (3).
 -spec compress_stream_start() -> {ok, port()} | {error, term()}.
+
 compress_stream_start() ->
     compress_stream_start(3).
 
 %% @doc Start a streaming compression port with specified level.
 -spec compress_stream_start(integer()) -> {ok, port()} | {error, term()}.
+
 compress_stream_start(Level) when is_integer(Level), Level >= 1, Level =< 22 ->
     case is_available() of
         false ->
@@ -136,6 +152,7 @@ compress_stream_write(Port, Data) when is_port(Port), is_list(Data) ->
 
 %% @doc Close a streaming compression port and collect remaining output.
 -spec compress_stream_end(port()) -> binary().
+
 compress_stream_end(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     port_close(Port),
@@ -143,6 +160,7 @@ compress_stream_end(Port) when is_port(Port) ->
 
 %% @doc Start a streaming decompression port.
 -spec decompress_stream_start() -> {ok, port()} | {error, term()}.
+
 decompress_stream_start() ->
     case is_available() of
         false ->
@@ -197,3 +215,9 @@ collect_final_data(Acc) ->
     after 100 ->
         Acc
     end.
+
+
+
+
+
+

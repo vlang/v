@@ -14,11 +14,28 @@
 %%   escript vbeam_compiler.erl --pipe <outdir>        Read Core Erlang from stdin
 %%   escript vbeam_compiler.erl --batch-etf <file> <outdir>  Compile ETF terms
 -module(vbeam_compiler).
+
+-moduledoc """
+Implements V compiler command dispatch and file batching.
+""".
+
+
+
+
+
+
 -export([main/1, compile_core_file/2, compile_core_text/2, compile_core_forms/2,
          compile_dir/1]).
 
 %% escript entry point
+-doc """
+main/1 is a public runtime entrypoint in `vbeam_compiler`.
+Parameters: `[string()]`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec main([string()]) -> ok | no_return().
+
 main(["--dir", Dir]) ->
     {OkCount, ErrCount, Errors} = compile_dir(Dir),
     case Errors of
@@ -170,6 +187,12 @@ compile_one(CoreFile, OutDir) ->
     end.
 
 %% Compile a .core file to .beam using in-memory compilation
+-doc """
+compile_core_file/2 is a public runtime entrypoint in `vbeam_compiler`.
+Parameters: `string()`, `string()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec compile_core_file(string(), string()) -> {ok, atom(), string()} | {error, term()}.
 compile_core_file(CoreFile, OutDir) when is_list(CoreFile), is_list(OutDir) ->
     true = filename:extension(CoreFile) =:= ".core",
@@ -200,6 +223,12 @@ compile_core_text(Text, OutDir) when is_list(Text), is_list(OutDir) ->
 %% Compile Core Erlang AST forms directly to .beam
 %% Used by both text mode (after core_parse) and ETF mode (after erl_parse).
 %% Uses noenv_forms to prevent ERL_COMPILER_OPTIONS pollution.
+-doc """
+compile_core_forms/2 is a public runtime entrypoint in `vbeam_compiler`.
+Parameters: `term()`, `string()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec compile_core_forms(term(), string()) -> {ok, atom(), string()} | {error, term()}.
 compile_core_forms(Forms, OutDir)
   when (is_tuple(Forms) orelse is_list(Forms)), is_list(OutDir) ->
@@ -228,7 +257,14 @@ write_beam(ModName, Binary, OutDir) ->
 
 %% Compile all .core and .erl files in a directory
 %% Returns {OkCount, ErrCount, Errors} — continues on failure
+-doc """
+compile_dir/1 is a public runtime entrypoint in `vbeam_compiler`.
+Parameters: `string()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
 -spec compile_dir(string()) -> {non_neg_integer(), non_neg_integer(), [{term(), term()}]}.
+
 compile_dir(Dir) when is_list(Dir), Dir =/= [] ->
     case file:list_dir(Dir) of
         {ok, Files} ->
@@ -390,3 +426,9 @@ read_all_stdin(Acc) ->
         {error, _} -> lists:flatten(lists:reverse(Acc));
         Line -> read_all_stdin([Line | Acc])
     end.
+
+
+
+
+
+
