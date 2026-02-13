@@ -173,4 +173,3 @@ issue*
 # ignore cmd2/v stuff
 cmd/v2/*.txt
 cmd/v2/*.json
-vnew2
