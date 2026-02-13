@@ -20,6 +20,9 @@
 
 -module(vbeam_registry).
 
+-define(VSN, "1.0.0").
+-vsn(?VSN).
+
 -moduledoc """
 Provides registry helpers for name to pid mapping.
 """.
@@ -38,6 +41,8 @@ Provides registry helpers for name to pid mapping.
     whereis/1,
     registered/0
 ]).
+
+-export([terminate/2, code_change/3, format_status/1]).
 
 %% Export protocol types for cross-module contracts
 -export_type([registry_name/0, registry_msg/0]).
@@ -252,6 +257,18 @@ ensure_table() ->
         _Info -> ok
     end.
 
+%% OTP hot-code callbacks (Rule 30)
+-spec terminate(term(), map()) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(term(), map(), term()) -> {ok, map()}.
+code_change(_OldVsn, State, _Extra) when is_map(State) ->
+    {ok, State}.
+
+-spec format_status(map()) -> map().
+format_status(Status) ->
+    Status.
 
 
 
