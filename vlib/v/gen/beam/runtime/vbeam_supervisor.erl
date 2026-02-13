@@ -39,6 +39,9 @@ Provides supervisor-compatible utilities for V runtime services.
 -export([
     start_link/1,
     start_link/2,
+    start_dynamic/0,
+    spawn_supervised/1,
+    spawn_supervised/2,
     start_child/2,
     stop_child/2,
     restart_child/2,
@@ -102,6 +105,68 @@ start_link(SupSpec) when is_map(SupSpec) ->
 -spec start_link(Name :: atom(), SupSpec :: map()) -> {ok, pid()} | {error, term()}.
 start_link(Name, SupSpec) when is_atom(Name), is_map(SupSpec) ->
     supervisor:start_link({local, Name}, ?MODULE, SupSpec).
+
+%% Start (or fetch) the dynamic supervisor used for runtime-spawned processes.
+-doc """
+start_dynamic/0 is a public runtime entrypoint in `vbeam_supervisor`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec start_dynamic() -> {ok, pid()} | {error, term()}.
+start_dynamic() ->
+    case whereis(vbeam_dynamic_sup) of
+        Pid when is_pid(Pid) ->
+            {ok, Pid};
+        _ ->
+            do_start_dynamic()
+    end.
+
+%% Spawn a function under the dynamic supervisor (default temporary restart).
+-doc """
+spawn_supervised/1 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_supervised(fun(() -> term())) -> {ok, pid()} | {error, term()}.
+spawn_supervised(Fun) when is_function(Fun, 0) ->
+    spawn_supervised(Fun, #{restart => temporary}).
+
+%% Spawn a function under the dynamic supervisor with explicit child options.
+-doc """
+spawn_supervised/2 is a public runtime entrypoint in `vbeam_supervisor`.
+Parameters: `fun((`, `map()`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_supervised(fun(() -> term()), map()) -> {ok, pid()} | {error, term()}.
+spawn_supervised(Fun, Opts) when is_function(Fun, 0), is_map(Opts) ->
+    Restart = maps:get(restart, Opts, temporary),
+    true = lists:member(Restart, [permanent, transient, temporary]),
+    Shutdown = maps:get(shutdown, Opts, 5000),
+    true = Shutdown =:= brutal_kill orelse Shutdown =:= infinity
+           orelse (is_integer(Shutdown) andalso Shutdown >= 0),
+    case start_dynamic() of
+        {ok, _DynSupPid} ->
+            ChildSpec = #{
+                id => make_ref(),
+                start => {?MODULE, start_fun_child, [Fun]},
+                restart => Restart,
+                shutdown => Shutdown,
+                type => worker
+            },
+            case supervisor:start_child(vbeam_dynamic_sup, ChildSpec) of
+                {ok, Pid} ->
+                    {ok, Pid};
+                {ok, Pid, _Info} ->
+                    {ok, Pid};
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end.
 
 %% Dynamically add a child to a running supervisor.
 %%
@@ -186,7 +251,15 @@ count_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
 %% ============================================================================
 
 %% @private
--spec init(map()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
+-spec init(map() | [dynamic]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}.
+
+init([dynamic]) ->
+    DynamicSupFlags = #{
+        strategy => one_for_one,
+        intensity => 10,
+        period => 10
+    },
+    {ok, {DynamicSupFlags, []}};
 
 init(SupSpec) when is_map(SupSpec) ->
     Strategy = maps:get(strategy, SupSpec, one_for_one),
@@ -265,6 +338,51 @@ start_fun_child(Fun) when is_function(Fun, 0) ->
     true = is_pid(Pid),
     {ok, Pid}.
 
+-spec do_start_dynamic() -> {ok, pid()} | {error, term()}.
+do_start_dynamic() ->
+    case root_supervisor_name() of
+        undefined ->
+            {error, {supervisor_not_found, [vbeam_sup, vbeam_app_sup]}};
+        SupName ->
+            ChildSpec = #{
+                id => vbeam_dynamic_sup,
+                start => {supervisor, start_link, [{local, vbeam_dynamic_sup}, ?MODULE, [dynamic]]},
+                type => supervisor,
+                restart => permanent,
+                shutdown => infinity
+            },
+            case supervisor:start_child(SupName, ChildSpec) of
+                {ok, Pid} ->
+                    {ok, Pid};
+                {ok, Pid, _Info} ->
+                    {ok, Pid};
+                {error, {already_started, Pid}} ->
+                    {ok, Pid};
+                {error, already_present} ->
+                    case whereis(vbeam_dynamic_sup) of
+                        ExistingPid when is_pid(ExistingPid) ->
+                            {ok, ExistingPid};
+                        _ ->
+                            {error, already_present}
+                    end;
+                Error ->
+                    Error
+            end
+    end.
+
+-spec root_supervisor_name() -> atom() | undefined.
+root_supervisor_name() ->
+    case whereis(vbeam_sup) of
+        Pid when is_pid(Pid) ->
+            vbeam_sup;
+        _ ->
+            case whereis(vbeam_app_sup) of
+                Pid when is_pid(Pid) ->
+                    vbeam_app_sup;
+                _ ->
+                    undefined
+            end
+    end.
 
 
 
