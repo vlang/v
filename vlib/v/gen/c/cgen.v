@@ -2363,14 +2363,17 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
 					}
-					// Check if this is an if expression
-					// If so, pass the tmp_var to it and don't write the assignment here
+					// Check if this is an if expression that needs special handling
+					// Only set outer_tmp_var if the if expression is not already being
+					// handled correctly (i.e., it needs a tmp var but is not marked as is_expr)
 					if stmt.expr is ast.IfExpr {
-						// Pass the tmp_var to the if expression so it can use it
-						// This handles cases where the if expression might not be correctly
-						// marked as needing a tmp var but is being assigned to one
-						is_if_expr_with_tmp = true
-						g.outer_tmp_var = tmp_var
+						// Only apply this fix if autofree is enabled and the if needs special handling
+						// Don't apply it if we're already inside an if expression context
+						if g.is_autofree && g.need_tmp_var_in_if(stmt.expr) && !g.inside_if_option
+							&& !g.inside_if_result {
+							is_if_expr_with_tmp = true
+							g.outer_tmp_var = tmp_var
+						}
 					}
 				}
 				if !is_noreturn && !is_if_expr_with_tmp {
