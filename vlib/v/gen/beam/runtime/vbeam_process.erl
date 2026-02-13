@@ -9,7 +9,8 @@ Provides process, port, and signal helpers for runtime tasks.
 
 
 
--export([run/2, wait/1, kill/1, signal_term/1, signal_stop/1, signal_cont/1,
+-export([spawn_supervised/1, spawn_link_supervised/1,
+         run/2, wait/1, kill/1, signal_term/1, signal_stop/1, signal_cont/1,
          stdin_write/2, stdout_slurp/1, stdout_read/1]).
 
 %% Export protocol types for cross-module contracts
@@ -17,6 +18,39 @@ Provides process, port, and signal helpers for runtime tasks.
 
 %% Port/process message protocol consumed by this module
 -type process_msg() :: {port(), {exit_status, integer()}} | {port(), {data, binary()}}.
+
+%% Spawn a function under the dynamic runtime supervisor.
+-doc """
+spawn_supervised/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_supervised(fun(() -> term())) -> pid().
+spawn_supervised(Fun) when is_function(Fun, 0) ->
+    case vbeam_supervisor:spawn_supervised(Fun) of
+        {ok, Pid} ->
+            Pid;
+        {error, _Reason} ->
+            spawn(Fun)
+    end.
+
+%% Spawn and link a function under the dynamic runtime supervisor.
+-doc """
+spawn_link_supervised/1 is a public runtime entrypoint in `vbeam_process`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_link_supervised(fun(() -> term())) -> pid().
+spawn_link_supervised(Fun) when is_function(Fun, 0) ->
+    case vbeam_supervisor:spawn_supervised(Fun, #{restart => temporary}) of
+        {ok, Pid} ->
+            link(Pid),
+            Pid;
+        {error, _Reason} ->
+            spawn_link(Fun)
+    end.
 
 %% Run a process: returns {ok, Port} or {error, Reason}
 %% Command and Args are binaries (V strings).
@@ -165,7 +199,6 @@ stdout_read(Port) when is_port(Port) ->
         {Port, {data, Data}} -> Data;
         {Port, {exit_status, _Code}} -> <<>>
     end.
-
 
 
 
