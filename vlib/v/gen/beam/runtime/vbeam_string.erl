@@ -13,7 +13,7 @@
 
 %% Check if string contains substring
 -spec contains(binary(), binary()) -> boolean().
-contains(_Haystack, <<>>) ->
+contains(Haystack, <<>>) when is_binary(Haystack) ->
     true;  % Empty string is contained in any string
 contains(Haystack, Needle) when is_binary(Haystack), is_binary(Needle) ->
     binary:match(Haystack, Needle) =/= nomatch.
@@ -48,6 +48,8 @@ split(Str, Delim) when is_binary(Str), is_binary(Delim) ->
 
 %% Trim whitespace from both ends
 -spec trim(binary()) -> binary().
+trim(<<>>) ->
+    <<>>;
 trim(Str) when is_binary(Str) ->
     trim_right(trim_left(Str)).
 
@@ -82,11 +84,13 @@ trim_chars_right_impl(Str, Len, CharList) ->
 -spec trim_left(binary()) -> binary().
 trim_left(<<C, Rest/binary>>) when C =:= $\s; C =:= $\t; C =:= $\n; C =:= $\r ->
     trim_left(Rest);
-trim_left(Str) ->
+trim_left(Str) when is_binary(Str) ->
     Str.
 
 %% Trim whitespace from right
 -spec trim_right(binary()) -> binary().
+trim_right(<<>>) ->
+    <<>>;
 trim_right(Str) when is_binary(Str) ->
     trim_right_impl(Str, byte_size(Str)).
 
@@ -103,12 +107,16 @@ trim_right_impl(Str, Len) ->
 %% Convert to lowercase
 -spec to_lower(binary()) -> binary().
 to_lower(Str) when is_binary(Str) ->
-    string:lowercase(Str).
+    Lower = string:lowercase(Str),
+    true = byte_size(Lower) =:= byte_size(Str),
+    Lower.
 
 %% Convert to uppercase
 -spec to_upper(binary()) -> binary().
 to_upper(Str) when is_binary(Str) ->
-    string:uppercase(Str).
+    Upper = string:uppercase(Str),
+    true = byte_size(Upper) =:= byte_size(Str),
+    Upper.
 
 %% Replace first occurrence
 -spec replace(binary(), binary(), binary()) -> binary().
@@ -128,7 +136,7 @@ replace_all(Str, Old, New) when is_binary(Str), is_binary(Old), is_binary(New) -
 
 %% Find index of first occurrence (-1 if not found)
 -spec index(binary(), binary()) -> integer().
-index(_Str, <<>>) ->
+index(Str, <<>>) when is_binary(Str) ->
     0;  % Empty string is found at position 0
 index(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     case binary:match(Str, Needle) of
@@ -138,7 +146,7 @@ index(Str, Needle) when is_binary(Str), is_binary(Needle) ->
 
 %% Alias for compatibility
 -spec index_of(binary(), binary()) -> integer().
-index_of(Str, Needle) ->
+index_of(Str, Needle) when is_binary(Str), is_binary(Needle) ->
     index(Str, Needle).
 
 %% Find index of last occurrence (-1 if not found)
@@ -174,17 +182,23 @@ substr(Str, Start) when is_binary(Str), is_integer(Start) ->
 %% Get string length
 -spec len(binary()) -> non_neg_integer().
 len(Str) when is_binary(Str) ->
-    byte_size(Str).
+    Size = byte_size(Str),
+    true = Size >= 0,
+    Size.
 
 %% Parse string to integer (V's string.int())
 -spec 'int'(binary()) -> integer().
 'int'(Str) when is_binary(Str) ->
-    vbeam_conv:string_to_int(Str).
+    Int = vbeam_conv:string_to_int(Str),
+    true = is_integer(Int),
+    Int.
 
 %% Parse string to float (V's string.f64())
 -spec f64(binary()) -> float().
 f64(Str) when is_binary(Str) ->
-    vbeam_conv:string_to_float(Str).
+    Float = vbeam_conv:string_to_float(Str),
+    true = is_float(Float),
+    Float.
 
 %% Repeat string N times
 -spec repeat(binary(), integer()) -> binary().
@@ -194,4 +208,6 @@ repeat(Str, N) when is_binary(Str), is_integer(N), N >= 0 ->
 %% Reverse string
 -spec reverse(binary()) -> binary().
 reverse(Str) when is_binary(Str) ->
-    list_to_binary(lists:reverse(binary_to_list(Str))).
+    Reversed = list_to_binary(lists:reverse(binary_to_list(Str))),
+    true = byte_size(Reversed) =:= byte_size(Str),
+    Reversed.
