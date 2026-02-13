@@ -1,0 +1,15 @@
+{
+  "session_id": "session-preflight-20260213-070336-3ce789ba",
+  "review_session_id": "preflight-20260213-070336-3ce789ba",
+  "started": "2026-02-13T12:03:46Z",
+  "last_updated": "2026-02-13T12:03:46Z",
+  "code_context_hash": "d41d8cd98f00b204e9800998ecf8427e",
+  "participants": [
+    "03-logic-verifier",
+    "01-security-sentinel",
+    "04-code-craftsman"
+  ],
+  "turn_count": 3,
+  "source": "parallel_review",
+  "feedback_dir": "thoughts/preflight/preflight-20260213-070336-3ce789ba"
+}
