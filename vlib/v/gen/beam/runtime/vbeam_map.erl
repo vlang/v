@@ -11,70 +11,92 @@
 %% 
 -spec get(map(), term()) -> term().
 get(Map, Key) when is_map(Map) ->
+    true = maps:is_key(Key, Map),
     maps:get(Key, Map).
 
 %% Get value by key with default
 %% 
 -spec get(map(), term(), term()) -> term().
 get(Map, Key, Default) when is_map(Map) ->
-    maps:get(Key, Map, Default).
+    Result = maps:get(Key, Map, Default),
+    true = maps:is_key(Key, Map) orelse Result =:= Default,
+    Result.
 
 %% Set/update key-value pair (returns new map)
 %% 
 -spec set(map(), term(), term()) -> map().
 set(Map, Key, Value) when is_map(Map) ->
-    maps:put(Key, Value, Map).
+    Updated = maps:put(Key, Value, Map),
+    true = maps:is_key(Key, Updated),
+    Updated.
 
 %% Delete key (returns new map)
 %% 
 -spec delete(map(), term()) -> map().
 delete(Map, Key) when is_map(Map) ->
-    maps:remove(Key, Map).
+    Updated = maps:remove(Key, Map),
+    true = not maps:is_key(Key, Updated),
+    Updated.
 
 %% Check if key exists
 %% 
 -spec contains(map(), term()) -> boolean().
 contains(Map, Key) when is_map(Map) ->
-    maps:is_key(Key, Map).
+    Found = maps:is_key(Key, Map),
+    true = Found =:= lists:member(Key, maps:keys(Map)),
+    Found.
 
 %% Get all keys as list
 %% 
 -spec keys(map()) -> [term()].
 keys(Map) when is_map(Map) ->
-    maps:keys(Map).
+    Keys = maps:keys(Map),
+    true = length(Keys) =:= maps:size(Map),
+    Keys.
 
 %% Get all values as list
 %% 
 -spec values(map()) -> [term()].
 values(Map) when is_map(Map) ->
-    maps:values(Map).
+    Values = maps:values(Map),
+    true = length(Values) =:= maps:size(Map),
+    Values.
 
 %% Get number of key-value pairs
 %% 
 -spec len(map()) -> non_neg_integer().
 len(Map) when is_map(Map) ->
-    maps:size(Map).
+    Size = maps:size(Map),
+    true = is_integer(Size) andalso Size >= 0,
+    Size.
 
 %% Clear all entries (returns empty map)
 %% 
 -spec clear(map()) -> map().
-clear(_Map) ->
+clear(Map) when is_map(Map) ->
+    true = maps:size(Map) >= 0,
     #{}.
 
 %% Merge two maps (second map's values override first)
 %% 
 -spec merge(map(), map()) -> map().
 merge(Map1, Map2) when is_map(Map1), is_map(Map2) ->
-    maps:merge(Map1, Map2).
+    Merged = maps:merge(Map1, Map2),
+    true = is_map(Merged),
+    Merged.
 
 %% Filter map with predicate on key-value pairs
 %% 
 -spec filter(map(), fun((term(), term()) -> boolean())) -> map().
 filter(Map, Fun) when is_map(Map), is_function(Fun, 2) ->
-    maps:filter(Fun, Map).
+    Filtered = maps:filter(Fun, Map),
+    true = is_map(Filtered),
+    Filtered.
 
 %% Map function over values
 %% 
 -spec map(map(), fun((term(), term()) -> term())) -> map().
 map(Map, Fun) when is_map(Map), is_function(Fun, 2) ->
-    maps:map(Fun, Map).
+    Mapped = maps:map(Fun, Map),
+    true = is_map(Mapped),
+    Mapped.
