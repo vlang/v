@@ -13,7 +13,9 @@
 
 %% Get array length
 -spec len([term()]) -> non_neg_integer().
-len(List) when is_list(List) ->
+len([]) ->
+    0;
+len([_|_] = List) when is_list(List) ->
     length(List).
 
 %% Get first element (or none if empty)
@@ -30,7 +32,9 @@ last([]) -> error(empty_array).
 %% Append element to end (returns new list)
 -spec push([term()], term()) -> [term()].
 push(List, Elem) when is_list(List) ->
-    List ++ [Elem].
+    NewList = List ++ [Elem],
+    true = length(NewList) =:= length(List) + 1,
+    NewList.
 
 %% Remove and return last element (returns {Element, NewList})
 -spec pop([term()]) -> {term(), [term()]}.
@@ -61,8 +65,12 @@ index(List, Index) when is_list(List), is_integer(Index), Index >= 0 ->
 
 %% Check if array contains element
 -spec contains([term()], term()) -> boolean().
-contains(List, Elem) when is_list(List) ->
-    lists:member(Elem, List).
+contains([], _Elem) ->
+    false;
+contains([Elem|_], Elem) ->
+    true;
+contains([_|T], Elem) when is_list(T) ->
+    contains(T, Elem).
 
 %% Get slice from Start to End (exclusive), 0-indexed
 -spec slice([term()], integer(), integer()) -> [term()].
@@ -80,7 +88,9 @@ slice(List, Start, End) when is_list(List), is_integer(Start), is_integer(End) -
 %% Reverse array
 -spec reverse([term()]) -> [term()].
 reverse(List) when is_list(List) ->
-    lists:reverse(List).
+    Reversed = lists:reverse(List),
+    true = length(Reversed) =:= length(List),
+    Reversed.
 
 %% Filter array with predicate function
 -spec filter([term()], fun((term()) -> boolean())) -> [term()].
@@ -100,7 +110,9 @@ reduce(List, Init, Fun) when is_list(List), is_function(Fun, 2) ->
 %% Sort array (ascending)
 -spec sort([term()]) -> [term()].
 sort(List) when is_list(List) ->
-    lists:sort(List).
+    Sorted = lists:sort(List),
+    true = length(Sorted) =:= length(List),
+    Sorted.
 
 %% Sort array with comparison function
 -spec sort([term()], fun((term(), term()) -> boolean())) -> [term()].
