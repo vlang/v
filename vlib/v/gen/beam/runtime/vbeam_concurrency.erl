@@ -25,7 +25,9 @@ Provides concurrency primitives and scheduling helpers.
 -export([
     %% Process spawning
     spawn_process/1,
+    spawn_process_supervised/1,
     spawn_monitored/1,
+    spawn_monitored_supervised/1,
     wait_for_result/1,
     wait_for_result/2,
 
@@ -36,6 +38,7 @@ Provides concurrency primitives and scheduling helpers.
 
     %% Simple channels (unbuffered, using process mailbox)
     channel_new/0,
+    channel_new_supervised/0,
     channel_send/2,
     channel_receive/1,
     channel_try_receive/1,
@@ -96,6 +99,23 @@ spawn_process(Fun) when is_function(Fun, 0) ->
     true = is_pid(Pid),
     Pid.
 
+%% Spawn an Erlang process under the dynamic runtime supervisor.
+-doc """
+spawn_process_supervised/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_process_supervised(fun(() -> any())) -> pid().
+spawn_process_supervised(Fun) when is_function(Fun, 0) ->
+    case vbeam_supervisor:spawn_supervised(Fun, #{restart => temporary}) of
+        {ok, Pid} ->
+            true = is_pid(Pid),
+            Pid;
+        {error, _Reason} ->
+            spawn_process(Fun)
+    end.
+
 %% Spawn with monitor for wait() support
 %% Returns {Pid, MonitorRef, ResultRef} for later waiting
 %% V: t := spawn compute(5)
@@ -113,6 +133,37 @@ spawn_monitored(Fun) when is_function(Fun, 0) ->
         end,
         Parent ! {ResultRef, Result}
     end),
+    true = is_pid(Pid),
+    true = is_reference(MonRef) andalso is_reference(ResultRef),
+    {Pid, MonRef, ResultRef}.
+
+%% Spawn with monitor under the dynamic runtime supervisor.
+-doc """
+spawn_monitored_supervised/1 is a public runtime entrypoint in `vbeam_concurrency`.
+Parameters: `fun((`.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec spawn_monitored_supervised(fun(() -> any())) -> monitored_task().
+spawn_monitored_supervised(Fun) when is_function(Fun, 0) ->
+    Parent = self(),
+    ResultRef = make_ref(),
+    Runner = fun() ->
+        Result = try
+            {ok, Fun()}
+        catch
+            Class:Reason:Stack ->
+                {error, {Class, Reason, Stack}}
+        end,
+        Parent ! {ResultRef, Result}
+    end,
+    Pid = case vbeam_supervisor:spawn_supervised(Runner, #{restart => temporary}) of
+        {ok, SupervisedPid} ->
+            SupervisedPid;
+        {error, _Reason} ->
+            spawn(Runner)
+    end,
+    MonRef = monitor(process, Pid),
     true = is_pid(Pid),
     true = is_reference(MonRef) andalso is_reference(ResultRef),
     {Pid, MonRef, ResultRef}.
@@ -210,16 +261,34 @@ Side effects: May perform runtime side effects such as I/O, process interaction,
 -spec channel_new() -> pid().
 
 channel_new() ->
-    spawn(fun() ->
-        %% Start periodic mailbox monitoring for channel process
-        erlang:send_after(5000, self(), check_mailbox),
-        channel_loop(#{
-            closed => false,
-            waiting_sender => none,
-            waiting_receiver => none,
-            max_mailbox_len => 10000
-        })
-    end).
+    spawn(fun start_channel_process/0).
+
+%% Create a new unbuffered channel under dynamic supervision.
+-doc """
+channel_new_supervised/0 is a public runtime entrypoint in `vbeam_concurrency`.
+No parameters.
+Returns the result value of this runtime operation.
+Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
+""".
+-spec channel_new_supervised() -> pid().
+channel_new_supervised() ->
+    case vbeam_supervisor:spawn_supervised(fun start_channel_process/0, #{restart => temporary}) of
+        {ok, Pid} ->
+            Pid;
+        {error, _Reason} ->
+            channel_new()
+    end.
+
+-spec start_channel_process() -> ok.
+start_channel_process() ->
+    %% Start periodic mailbox monitoring for channel process
+    erlang:send_after(5000, self(), check_mailbox),
+    channel_loop(#{
+        closed => false,
+        waiting_sender => none,
+        waiting_receiver => none,
+        max_mailbox_len => 10000
+    }).
 
 %% Internal channel process loop
 channel_loop(State = #{closed := true}) ->
@@ -446,6 +515,5 @@ code_change(_OldVsn, State, _Extra) when is_map(State) ->
 -spec format_status(map()) -> map().
 format_status(Status) ->
     Status.
-
 
 
