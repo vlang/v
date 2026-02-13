@@ -87,7 +87,7 @@ pub fn (mut b Builder) build(files []string) {
 
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
-	mut trans := transformer.Transformer.new(b.files, b.env)
+	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
 	b.files = trans.transform_files(b.files)
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
@@ -223,8 +223,13 @@ fn (b &Builder) is_cmd_v2_self_build() bool {
 	if b.user_files.len != 1 {
 		return false
 	}
+	// Avoid path normalization here: during bootstraps, some intermediate
+	// compilers can still have unstable path helpers.
 	path := b.user_files[0].replace('\\', '/')
-	return path.ends_with('/cmd/v2/v2.v') || path.ends_with('cmd/v2/v2.v') || path == 'v2.v'
+	if path == 'v2.v' || path.ends_with('/v2.v') {
+		return true
+	}
+	return path.ends_with('/cmd/v2/v2.v') || path.ends_with('cmd/v2/v2.v')
 }
 
 fn (mut b Builder) gen_ssa_c() {
@@ -247,7 +252,11 @@ fn (mut b Builder) gen_ssa_c() {
 	print_time('SSA Build', time.Duration(sw.elapsed() - stage_start))
 
 	stage_start = sw.elapsed()
-	if os.getenv('V2_SSA_OPT') != '0' {
+	mut use_ssa_opt := os.getenv('V2_SSA_OPT') != '0'
+	if b.is_cmd_v2_self_build() {
+		use_ssa_opt = false
+	}
+	if use_ssa_opt {
 		optimize.optimize(mut mod)
 	}
 	print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
@@ -299,54 +308,13 @@ fn (mut b Builder) gen_ssa_c() {
 	}
 	cc_res := os.execute(cc_cmd)
 	if cc_res.exit_code != 0 {
-		eprintln('warning: ssa c backend compilation failed, falling back to cleanc backend')
-		ssa_snapshot := output_name + '.ssa.c'
-		os.cp(c_file, ssa_snapshot) or {}
+		eprintln('error: ssa c backend compilation failed')
 		lines := cc_res.output.split_into_lines()
 		limit := if lines.len < 20 { lines.len } else { 20 }
 		for line in lines[..limit] {
 			eprintln(line)
 		}
-		mut fallback_args := []string{}
-		fallback_args << os.quoted_path(os.args[0])
-		fallback_args << '-backend cleanc'
-		fallback_args << '-nomarkused'
-		fallback_args << '-nocache'
-		if b.pref.show_cc {
-			fallback_args << '-showcc'
-		}
-		if b.pref.stats {
-			fallback_args << '-stats'
-		}
-		if b.pref.print_parsed_files {
-			fallback_args << '-print-parsed-files'
-		}
-		if b.pref.skip_builtin {
-			fallback_args << '--skip-builtin'
-		}
-		if b.pref.skip_imports {
-			fallback_args << '--skip-imports'
-		}
-		if b.pref.skip_type_check {
-			fallback_args << '--skip-type-check'
-		}
-		if output_name.len > 0 {
-			fallback_args << '-o ${os.quoted_path(output_name)}'
-		}
-		for user_file in b.user_files {
-			fallback_args << os.quoted_path(user_file)
-		}
-		fallback_cmd := fallback_args.join(' ')
-		fallback_res := os.execute(fallback_cmd)
-		if fallback_res.exit_code != 0 {
-			eprintln('error: cleanc fallback failed')
-			eprintln(fallback_res.output)
-			exit(1)
-		}
-		if fallback_res.output.len > 0 {
-			println(fallback_res.output)
-		}
-		return
+		exit(1)
 	}
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 

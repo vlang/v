@@ -49,6 +49,30 @@ fn rune_type() types.Type {
 	}
 }
 
+fn test_transform_ident_vmodroot_to_string_literal() {
+	mut t := create_test_transformer()
+	t.comptime_vmodroot = '/tmp/v'
+	result := t.transform_expr(ast.Ident{
+		name: '@VMODROOT'
+	})
+	assert result is ast.StringLiteral, 'expected StringLiteral, got ${result.type_name()}'
+	lit := result as ast.StringLiteral
+	assert lit.kind == .v
+	assert lit.value == "'/tmp/v'"
+}
+
+fn test_transform_ident_vmodroot_empty_root() {
+	mut t := create_test_transformer()
+	t.comptime_vmodroot = ''
+	result := t.transform_expr(ast.Ident{
+		name: '@VMODROOT'
+	})
+	assert result is ast.StringLiteral, 'expected StringLiteral, got ${result.type_name()}'
+	lit := result as ast.StringLiteral
+	assert lit.kind == .v
+	assert lit.value == "''"
+}
+
 fn test_array_comparison_eq() {
 	// Set up variable types so infer_array_type can detect them
 	mut t := create_transformer_with_vars({

@@ -1116,6 +1116,12 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		ast.RangeExpr {
 			start_type := c.expr(expr.start)
 			c.expr(expr.end)
+			// Use the start expression type if it's a concrete type (e.g., u8(0) .. 255)
+			elem := if start_type is Primitive && !start_type.props.has(.untyped) {
+				start_type
+			} else {
+				int_
+			}
 			return Type(Array{
 				elem_type: start_type
 			})
@@ -1447,6 +1453,13 @@ fn (mut c Checker) process_pending_interface_decls() {
 fn (mut c Checker) process_pending_struct_decls() {
 	for pending in c.pending_struct_decls {
 		c.scope = pending.scope
+		// Insert generic type parameters into scope so field types can reference them
+		for gp in pending.decl.generic_params {
+			gp_name := if gp is ast.Ident { gp.name } else { '' }
+			if gp_name != '' {
+				c.scope.insert(gp_name, Type(NamedType(gp_name)))
+			}
+		}
 		mut fields := []Field{}
 		for field in pending.decl.fields {
 			fields << Field{
@@ -1623,9 +1636,6 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		// or some method to use modifiers
 		lx_unwrapped := c.unwrap_expr(lx)
 		if lx_unwrapped is ast.Ident {
-			$if debug ? {
-				eprintln('DEBUG: assign_stmt inserting var "${lx_unwrapped.name}" type=${expr_type.name()} into scope')
-			}
 			c.scope.insert(lx_unwrapped.name, object_from_type(expr_type))
 			// Also insert into function root scope for transformer type lookups
 			// This flattens nested scope variables into the function scope
@@ -2485,7 +2495,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		// compiler magic, call_expr & selector expr both end up needing information which
 		// the other one has
 		if lhs_expr is ast.SelectorExpr {
-			if lhs_expr.rhs.name in ['filter', 'map'] {
+			if lhs_expr.rhs.name in ['filter', 'map', 'any', 'all'] {
 				if rt := fn_.return_type {
 					// c.log('#### it variable inserted')
 					// fn_.scope.insert('it', rt)
@@ -2816,6 +2826,14 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			if name == 'str' || name == 'hex' {
 				return fn_with_return_type(FnType{}, Type(string_))
 			}
+			// Compiler-magic array methods (any, all, contains, index)
+			// Return FnType with array as return_type so 'it' gets the element type
+			if name in ['any', 'all', 'contains'] {
+				return fn_with_return_type(FnType{}, Type(arr_type))
+			}
+			if name == 'index' {
+				return fn_with_return_type(FnType{}, Type(arr_type))
+			}
 			// TODO: has to be a better way
 			// there is probably no reason to look these up, and just do what we do above
 			mut builtin_scope := c.get_module_scope('builtin', universe)
@@ -2843,12 +2861,18 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 		ArrayFixed {
 			arr_fixed_type := t as ArrayFixed
-			if name in ['clone', 'map', 'filter'] {
+			if name in ['clone', 'map', 'filter', 'reverse', 'sorted', 'sorted_with_compare'] {
 				return fn_with_return_type(FnType{}, Type(arr_fixed_type))
 			} else if name in ['first', 'last'] {
 				return fn_with_return_type(FnType{}, arr_fixed_type.elem_type)
 			} else if name == 'len' {
 				return int_
+			} else if name in ['any', 'all', 'contains'] {
+				return fn_with_return_type(FnType{}, bool_)
+			} else if name == 'index' {
+				return fn_with_return_type(FnType{}, int_)
+			} else if name in ['sort', 'sort_with_compare', 'reverse_in_place'] {
+				return fn_with_return_type(FnType{}, Type(void_))
 			}
 		}
 		Channel {
@@ -3034,6 +3058,22 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 	// c.log('returning none for ${t.type_name()} - ${name}')
 	if method := c.find_method(t, name) {
 		return method
+	}
+	// Char and Rune share methods: look up 'rune' methods, then 'u8' methods
+	if t is Char || t is Rune {
+		for alias_name in ['rune', 'char', 'u8'] {
+			mut methods := []&Fn{}
+			rlock c.env.methods {
+				if alias_name in c.env.methods {
+					methods = unsafe { c.env.methods[alias_name] }
+				}
+			}
+			for method in methods {
+				if method.name == name {
+					return method.typ
+				}
+			}
+		}
 	}
 	if t is Struct {
 		// dump(t.fields)

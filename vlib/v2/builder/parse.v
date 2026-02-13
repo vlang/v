@@ -12,23 +12,27 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	skip_builtin := b.pref.skip_builtin
 	mut use_core_headers := false
 	if !skip_builtin {
-		use_core_headers = b.can_use_cached_core_headers()
+		use_core_headers = false
 		// SSA/C and native backends need full core module bodies (not .vh summaries),
 		// otherwise runtime helpers can be lowered to stubs.
 		if b.pref.backend in [.c, .cleanc, .x64, .arm64] {
 			use_core_headers = false
 		}
 		if use_core_headers {
-			ast_files << parser_reused.parse_files(b.core_cached_parse_paths(), mut b.file_set)
+			core_files := b.core_cached_parse_paths()
+			parsed_core_files := parser_reused.parse_files(core_files, mut b.file_set)
+			ast_files << parsed_core_files
 		} else {
 			for module_path in core_cached_module_paths {
-				ast_files << parser_reused.parse_files(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path)), mut
-					b.file_set)
+				module_files := get_v_files_from_dir(b.pref.get_vlib_module_path(module_path))
+				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
+				ast_files << parsed_module_files
 			}
 		}
 	}
 	// parse user files
-	ast_files << parser_reused.parse_files(files, mut b.file_set)
+	parsed_user_files := parser_reused.parse_files(files, mut b.file_set)
+	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
 	if skip_imports {
 		return ast_files
@@ -45,8 +49,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				continue
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
-			ast_files << parser_reused.parse_files(get_v_files_from_dir(mod_path), mut
-				b.file_set)
+			module_files := get_v_files_from_dir(mod_path)
+			parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
+			ast_files << parsed_module_files
 			parsed_imports << mod.name
 		}
 	}

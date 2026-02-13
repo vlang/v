@@ -3,7 +3,9 @@
 // that can be found in the LICENSE file.
 module transformer
 
+import os
 import v2.ast
+import v2.pref
 import v2.token
 import v2.types
 
@@ -12,7 +14,8 @@ import v2.types
 // transformation logic across multiple backends (SSA, cleanc, etc.)
 pub struct Transformer {
 mut:
-	env &types.Environment
+	pref &pref.Preferences = unsafe { nil }
+	env  &types.Environment
 	// Current scope for type lookups (walks up scope chain)
 	scope &types.Scope = unsafe { nil }
 	// Function root scope for registering transformer-created temp variables
@@ -43,6 +46,8 @@ mut:
 	runtime_const_inits_by_mod map[string][]RuntimeConstInit
 	runtime_const_modules      []string
 	runtime_const_init_fn_name map[string]string
+	// Resolved replacement for compile-time pseudo variable @VMODROOT.
+	comptime_vmodroot string
 }
 
 // SmartcastContext holds info about a single smartcast
@@ -66,7 +71,12 @@ struct RuntimeConstInit {
 }
 
 pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
+	return Transformer.new_with_pref(files, env, unsafe { nil })
+}
+
+pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := &Transformer{
+		pref:                        unsafe { p }
 		env:                         unsafe { env }
 		needed_str_fns:              map[string]string{}
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
@@ -75,7 +85,65 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
+	t.comptime_vmodroot = resolve_comptime_vmodroot(files, p)
 	return t
+}
+
+fn resolve_comptime_vmodroot(files []ast.File, p &pref.Preferences) string {
+	if p != unsafe { nil } && p.vroot.len > 0 {
+		return p.vroot
+	}
+	for file in files {
+		if root := detect_vmodroot_from_path(file.name) {
+			return root
+		}
+	}
+	cwd := os.getwd()
+	if root := detect_vmodroot_from_path(cwd) {
+		return root
+	}
+	return ''
+}
+
+fn detect_vmodroot_from_path(path string) ?string {
+	if path.len == 0 {
+		return none
+	}
+	mut dir := path
+	if !os.is_abs_path(dir) {
+		cwd := os.getwd()
+		if cwd.len > 0 {
+			dir = os.join_path(cwd, dir)
+		}
+	}
+	if !os.is_dir(dir) {
+		dir = os.dir(dir)
+	}
+	for _ in 0 .. 16 {
+		if os.is_file(os.join_path(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
+fn quote_v_string_literal(raw string) string {
+	mut escaped := raw.replace('\\', '\\\\')
+	escaped = escaped.replace("'", "\\'")
+	return "'${escaped}'"
+}
+
+fn (t &Transformer) vmodroot_string_literal(pos token.Pos) ast.StringLiteral {
+	return ast.StringLiteral{
+		kind:  .v
+		value: quote_v_string_literal(t.comptime_vmodroot)
+		pos:   pos
+	}
 }
 
 // push_smartcast adds a new smartcast context to the stack
@@ -326,26 +394,9 @@ fn (t &Transformer) lookup_type(name string) ?types.Type {
 
 // is_flag_enum checks if a type name is a flag enum
 fn (t &Transformer) is_flag_enum(type_name string) bool {
-	typ := t.lookup_type(type_name) or {
-		$if debug ? {
-			if type_name == 'ArrayFlags' {
-				eprintln('DEBUG: is_flag_enum(${type_name}) lookup failed')
-			}
-		}
-		return false
-	}
+	typ := t.lookup_type(type_name) or { return false }
 	if typ is types.Enum {
-		$if debug ? {
-			if type_name == 'ArrayFlags' {
-				eprintln('DEBUG: is_flag_enum(${type_name}) is_flag=${typ.is_flag}')
-			}
-		}
 		return typ.is_flag
-	}
-	$if debug ? {
-		if type_name == 'ArrayFlags' {
-			eprintln('DEBUG: is_flag_enum(${type_name}) not an Enum')
-		}
 	}
 	return false
 }
@@ -521,19 +572,117 @@ fn (t &Transformer) get_method_return_type(expr ast.Expr) ?types.Type {
 	}
 	if has_sel {
 		method_name := sel_expr.rhs.name
+		mut lookup_type_names := []string{}
 		// Get the receiver type from the checker's stored types
 		if receiver_type := t.resolve_expr_type(sel_expr.lhs) {
-			// Get the type name for method lookup
-			type_name := receiver_type.name()
-			// Strip pointer prefix if present
-			clean_name := if type_name.starts_with('&') {
-				type_name[1..]
-			} else {
-				type_name
+			t.append_method_lookup_type_name(mut lookup_type_names, receiver_type.name())
+			base_type := t.unwrap_alias_and_pointer_type(receiver_type)
+			t.append_method_lookup_type_name(mut lookup_type_names, base_type.name())
+		}
+		if sel_expr.lhs is ast.SelectorExpr {
+			selector_type_name := t.get_selector_type_name(sel_expr.lhs as ast.SelectorExpr)
+			if selector_type_name != '' {
+				t.append_method_lookup_type_name(mut lookup_type_names, selector_type_name)
 			}
-			// Look up the method using the environment's lookup_method
-			if fn_type := t.env.lookup_method(clean_name, method_name) {
-				return fn_type.get_return_type()
+		} else if sel_expr.lhs is ast.Ident {
+			var_type_name := t.get_var_type_name(sel_expr.lhs.name)
+			t.append_method_lookup_type_name(mut lookup_type_names, var_type_name)
+		}
+		if ret_type := t.lookup_method_return_type(lookup_type_names, method_name) {
+			return ret_type
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) append_method_lookup_type_name(mut names []string, raw_name string) {
+	if raw_name == '' {
+		return
+	}
+	mut normalized := raw_name.replace('.', '__')
+	if normalized.starts_with('&') {
+		normalized = normalized[1..]
+	}
+	if normalized.ends_with('*') {
+		normalized = normalized[..normalized.len - 1]
+	}
+	if normalized == '' {
+		return
+	}
+	names << normalized
+	if normalized.contains('__') {
+		names << normalized.all_after_last('__')
+	}
+}
+
+fn (t &Transformer) method_key_matches_type_name(method_key string, type_name string) bool {
+	if method_key == '' || type_name == '' {
+		return false
+	}
+	if method_key == type_name {
+		return true
+	}
+	short_type := if type_name.contains('__') {
+		type_name.all_after_last('__')
+	} else {
+		type_name
+	}
+	short_key := if method_key.contains('__') {
+		method_key.all_after_last('__')
+	} else {
+		method_key
+	}
+	if short_key == short_type {
+		return true
+	}
+	if method_key.ends_with('__${short_type}') {
+		return true
+	}
+	if type_name.ends_with('__${short_key}') {
+		return true
+	}
+	return false
+}
+
+fn (t &Transformer) lookup_method_return_type(type_names []string, method_name string) ?types.Type {
+	if method_name == '' {
+		return none
+	}
+	mut seen := map[string]bool{}
+	for raw_name in type_names {
+		if raw_name == '' {
+			continue
+		}
+		if raw_name in seen {
+			continue
+		}
+		seen[raw_name] = true
+		if fn_type := t.env.lookup_method(raw_name, method_name) {
+			return fn_type.get_return_type()
+		}
+	}
+	lock t.env.methods {
+		method_keys := t.env.methods.keys()
+		for key in method_keys {
+			mut matches_receiver := false
+			for type_name in seen.keys() {
+				if t.method_key_matches_type_name(key, type_name) {
+					matches_receiver = true
+					break
+				}
+			}
+			if !matches_receiver {
+				continue
+			}
+			methods_for_type := t.env.methods[key] or { continue }
+			for method in methods_for_type {
+				if method.get_name() != method_name {
+					continue
+				}
+				method_typ := method.get_typ()
+				if method_typ is types.FnType {
+					return method_typ.get_return_type()
+				}
 			}
 		}
 	}
@@ -727,19 +876,28 @@ fn (t &Transformer) qualify_type_name(type_name string) string {
 	if type_name.starts_with('Array_') || type_name.starts_with('Map_') {
 		return type_name
 	}
-	// Search all module scopes to find which module defines this type
+	// Search all module scopes to find which module defines this type.
+	// Check main and builtin first to avoid ambiguity when the same type
+	// name exists in multiple modules (e.g. Coord in main and term).
 	lock t.env.scopes {
+		for priority_mod in ['main', 'builtin', ''] {
+			if scope := t.env.scopes[priority_mod] {
+				if obj := scope.objects[type_name] {
+					if obj is types.Type {
+						return type_name
+					}
+				}
+			}
+		}
 		scope_names := t.env.scopes.keys()
 		for mod_name in scope_names {
+			if mod_name in ['main', 'builtin', ''] {
+				continue
+			}
 			scope := t.env.scopes[mod_name] or { continue }
 			if obj := scope.objects[type_name] {
 				if obj is types.Type {
-					// Found it - qualify with module name (except builtin and main)
-					// main module types don't get a prefix in generated C code
-					if mod_name != 'builtin' && mod_name != 'main' && mod_name != '' {
-						return '${mod_name}__${type_name}'
-					}
-					return type_name
+					return '${mod_name}__${type_name}'
 				}
 			}
 		}
@@ -794,7 +952,10 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 			if file.mod != 'builtin' {
 				continue
 			}
-			mut new_stmts := file.stmts.clone()
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len}
+			for stmt in file.stmts {
+				new_stmts << stmt
+			}
 			for fn_decl in generated_fns {
 				new_stmts << fn_decl
 			}
@@ -970,7 +1131,10 @@ fn (mut t Transformer) inject_runtime_const_init_fns(mut files []ast.File) {
 			if file.mod != mod {
 				continue
 			}
-			mut new_stmts := file.stmts.clone()
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len}
+			for stmt in file.stmts {
+				new_stmts << stmt
+			}
 			new_stmts << fn_stmt
 			files[i] = ast.File{
 				attributes: file.attributes
@@ -1352,7 +1516,8 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 		}
 	}
 	is_tuple_lhs := stmt.lhs.len > 1 || (stmt.lhs.len == 1 && stmt.lhs[0] is ast.Tuple)
-	mut rhs_src := stmt.rhs.clone()
+	// Keep a shallow view of RHS expressions; deep clone can crash on malformed AST payloads.
+	mut rhs_src := unsafe { stmt.rhs }
 	if is_tuple_lhs && stmt.rhs.len == 1 && stmt.rhs[0] is ast.PostfixExpr {
 		postfix := stmt.rhs[0] as ast.PostfixExpr
 		if postfix.op in [.not, .question] {
@@ -2231,9 +2396,6 @@ fn (mut t Transformer) gen_temp_name() string {
 fn (mut t Transformer) register_temp_var(name string, typ types.Type) {
 	if t.fn_root_scope != unsafe { nil } {
 		t.fn_root_scope.insert(name, typ)
-		$if debug ? {
-			eprintln('DEBUG: transformer registered temp var "${name}" type=${typ.name()} into fn_root_scope')
-		}
 	}
 }
 
@@ -4318,13 +4480,6 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		t.scope = fn_scope
 		// Set fn_root_scope so temp variables can be registered here
 		t.fn_root_scope = fn_scope
-		$if debug ? {
-			mut obj_names := []string{}
-			for name, _ in fn_scope.objects {
-				obj_names << name
-			}
-			eprintln('DEBUG: get_fn_scope(${t.cur_module}, ${scope_fn_name}) FOUND: ${obj_names}')
-		}
 	} else {
 		// Fallback: create a new scope if function scope not found
 		t.open_scope()
@@ -4524,9 +4679,21 @@ fn (mut t Transformer) append_defer_bodies(mut out []ast.Stmt, defer_bodies [][]
 	}
 }
 
+fn (t &Transformer) copy_defer_stack(active_defers [][]ast.Stmt) [][]ast.Stmt {
+	mut copied := [][]ast.Stmt{cap: active_defers.len}
+	for defer_body in active_defers {
+		mut body_copy := []ast.Stmt{cap: defer_body.len}
+		for stmt in defer_body {
+			body_copy << stmt
+		}
+		copied << body_copy
+	}
+	return copied
+}
+
 fn (mut t Transformer) lower_defer_else(else_expr ast.Expr, active_defers [][]ast.Stmt, has_return_type bool) ast.Expr {
 	if else_expr is ast.IfExpr {
-		mut branch_defers := active_defers.clone()
+		mut branch_defers := t.copy_defer_stack(active_defers)
 		return ast.IfExpr{
 			cond:      else_expr.cond
 			stmts:     t.lower_defer_block(else_expr.stmts, mut branch_defers, has_return_type)
@@ -4573,7 +4740,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 			}
 			ast.ExprStmt {
 				if stmt.expr is ast.IfExpr {
-					mut then_defers := active_defers.clone()
+					mut then_defers := t.copy_defer_stack(active_defers)
 					result << ast.Stmt(ast.ExprStmt{
 						expr: ast.IfExpr{
 							cond:      stmt.expr.cond
@@ -4584,7 +4751,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 						}
 					})
 				} else if stmt.expr is ast.UnsafeExpr {
-					mut unsafe_defers := active_defers.clone()
+					mut unsafe_defers := t.copy_defer_stack(active_defers)
 					result << ast.Stmt(ast.ExprStmt{
 						expr: ast.UnsafeExpr{
 							stmts: t.lower_defer_block(stmt.expr.stmts, mut unsafe_defers,
@@ -4596,7 +4763,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 				}
 			}
 			ast.ForStmt {
-				mut loop_defers := active_defers.clone()
+				mut loop_defers := t.copy_defer_stack(active_defers)
 				result << ast.Stmt(ast.ForStmt{
 					init:  stmt.init
 					cond:  stmt.cond
@@ -4605,7 +4772,7 @@ fn (mut t Transformer) lower_defer_block(stmts []ast.Stmt, mut active_defers [][
 				})
 			}
 			ast.BlockStmt {
-				mut block_defers := active_defers.clone()
+				mut block_defers := t.copy_defer_stack(active_defers)
 				result << ast.Stmt(ast.BlockStmt{
 					stmts: t.lower_defer_block(stmt.stmts, mut block_defers, has_return_type)
 				})
@@ -5531,6 +5698,9 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			t.transform_selector_expr(expr)
 		}
 		ast.Ident {
+			if expr.name == '@VMODROOT' {
+				return ast.Expr(t.vmodroot_string_literal(expr.pos))
+			}
 			// Check for smart cast on simple identifiers (e.g., if x is Type { x })
 			if ctx := t.find_smartcast_for_expr(expr.name) {
 				return t.apply_smartcast_direct_ctx(expr, ctx)
@@ -6558,7 +6728,12 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 		first := exprs[0]
 		if first is ast.BasicLiteral {
 			if first.kind == .number {
-				elem_type_name = 'int'
+				if first.value.contains('.') || first.value.contains('e')
+					|| first.value.contains('E') {
+					elem_type_name = 'f64'
+				} else {
+					elem_type_name = 'int'
+				}
 			} else if first.kind == .string {
 				elem_type_name = 'string'
 			}
@@ -7284,10 +7459,30 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 					}
 					new_exprs << transformed
 				}
+				// For empty arrays (b: []), set elem type from struct field so
+				// transform_array_init_with_exprs doesn't default to int
+				mut arr_with_type := field.value
+				if new_exprs.len == 0 && arr_with_type.typ is ast.EmptyExpr {
+					elem_c_name := t.get_field_array_elem_c_name(struct_type_name, field.name)
+					if elem_c_name != '' {
+						arr_with_type = ast.ArrayInitExpr{
+							typ:   ast.Expr(ast.Type(ast.ArrayType{
+								elem_type: ast.Ident{
+									name: elem_c_name
+								}
+							}))
+							exprs: arr_with_type.exprs
+							init:  arr_with_type.init
+							cap:   arr_with_type.cap
+							len:   arr_with_type.len
+							pos:   arr_with_type.pos
+						}
+					}
+				}
 				// Use transform_array_init_with_exprs which handles both fixed and dynamic:
 				// - Fixed arrays stay as ArrayInitExpr for cleanc
 				// - Dynamic arrays are lowered to builtin__new_array_from_c_array_noscan
-				t.transform_array_init_with_exprs(field.value, new_exprs)
+				t.transform_array_init_with_exprs(arr_with_type, new_exprs)
 			}
 		} else {
 			t.transform_expr(field.value)
@@ -7457,7 +7652,10 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 	for field in fields {
 		existing[field.name] = true
 	}
-	mut out := fields.clone()
+	mut out := []ast.FieldInit{cap: fields.len}
+	for field in fields {
+		out << field
+	}
 	for struct_field in struct_info.fields {
 		if struct_field.name in existing {
 			continue
@@ -9057,6 +9255,18 @@ fn (t &Transformer) infer_variant_type(value ast.Expr, variants []string) string
 			''
 		}
 		if fn_name != '' {
+			// Check if fn_name is directly a variant name (type alias cast
+			// like EmptyExpr(0) where EmptyExpr is a variant of the sumtype)
+			if fn_name in variants {
+				return fn_name
+			}
+			// Also check with module prefix (variants may be qualified like ast__EmptyExpr)
+			for v in variants {
+				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+				if v_short == fn_name {
+					return v
+				}
+			}
 			if ret_type_obj := t.get_fn_return_type(fn_name) {
 				ret_type := ret_type_obj.name()
 				if ret_type in variants {
@@ -9273,6 +9483,53 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					}
 				}
 				return exists_call
+			}
+		}
+		// For inline array literals, expand to a chain of equality checks
+		// instead of a contains() call — simpler and works for all backends.
+		if expr.rhs is ast.ArrayInitExpr {
+			arr := expr.rhs as ast.ArrayInitExpr
+			if arr.exprs.len > 0 {
+				lhs_trans := t.transform_expr(expr.lhs)
+				// Get enum type from LHS for resolving shorthand in array elements
+				enum_type := t.get_enum_type_name(expr.lhs)
+				// Build: lhs == arr[0] || lhs == arr[1] || ...
+				mut chain := ast.Expr(ast.InfixExpr{
+					op:  .eq
+					lhs: lhs_trans
+					rhs: if enum_type != '' {
+						t.resolve_enum_shorthand(t.transform_expr(arr.exprs[0]), enum_type)
+					} else {
+						t.transform_expr(arr.exprs[0])
+					}
+					pos: expr.pos
+				})
+				for i := 1; i < arr.exprs.len; i++ {
+					elem := if enum_type != '' {
+						t.resolve_enum_shorthand(t.transform_expr(arr.exprs[i]), enum_type)
+					} else {
+						t.transform_expr(arr.exprs[i])
+					}
+					chain = ast.Expr(ast.InfixExpr{
+						op:  .logical_or
+						lhs: chain
+						rhs: ast.Expr(ast.InfixExpr{
+							op:  .eq
+							lhs: lhs_trans
+							rhs: elem
+							pos: expr.pos
+						})
+						pos: expr.pos
+					})
+				}
+				if expr.op == .not_in {
+					return ast.PrefixExpr{
+						op:   .not
+						expr: chain
+						pos:  expr.pos
+					}
+				}
+				return chain
 			}
 		}
 		// Array membership: elem in arr -> Array_T_contains(arr, elem)
@@ -10034,13 +10291,16 @@ fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
 fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
 	param_types := t.lookup_call_param_types(lhs)
 	if param_types.len == 0 {
-		return args.clone()
+		return args
 	}
 	// Named arg calls are represented with FieldInit entries and lowered in codegen.
 	if args.len > 0 && args[0] is ast.FieldInit {
 		return args
 	}
-	mut out := args.clone()
+	mut out := []ast.Expr{cap: args.len}
+	for arg in args {
+		out << arg
+	}
 	for i in 0 .. out.len {
 		if i >= param_types.len {
 			break
@@ -10268,6 +10528,24 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 						pos:  expr.pos
 					}
 				}
+				// Fallback: try get_str_fn_name_for_expr for non-array types (int, bool, etc.)
+				if str_fn_name := t.get_str_fn_name_for_expr(arg) {
+					mut str_call_args := []ast.Expr{cap: 1}
+					str_call_args << t.transform_expr(arg)
+					return ast.CallExpr{
+						lhs:  ast.Expr(expr.lhs)
+						args: [
+							ast.Expr(ast.CallExpr{
+								lhs:  ast.Ident{
+									name: str_fn_name
+								}
+								args: str_call_args
+								pos:  expr.pos
+							}),
+						]
+						pos:  expr.pos
+					}
+				}
 			}
 		}
 	}
@@ -10397,11 +10675,6 @@ fn (t &Transformer) resolve_field_type(var_name string, field_name string) strin
 
 	// Look up variable type from scope
 	var_type_name := t.get_var_type_name(var_name)
-	$if debug ? {
-		if field_name == 'flags' {
-			eprintln('DEBUG: resolve_field_type(${var_name}, ${field_name}) var_type_name=${var_type_name}')
-		}
-	}
 	if var_type_name != '' {
 		// Strip pointer prefix/suffix for struct lookup
 		mut clean_type := var_type_name
@@ -11061,13 +11334,13 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 			// Unwrap pointer if needed
 			base_type := typ.base_type()
 			if base_type is types.Array {
-				// Use alias-resolving version for array_contains function naming
-				// This resolves ValueID -> int, BlockID -> int, etc.
-				elem_name := t.type_to_c_name_resolve_alias(base_type.elem_type)
+				// Use array_elem_type_name_for_helpers which handles Alias types safely
+				// (type_to_c_name_resolve_alias accesses .base_type which is malformed in self-host mode)
+				elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
 				return t.normalize_literal_type(elem_name)
 			}
 			if base_type is types.ArrayFixed {
-				elem_name := t.type_to_c_name_resolve_alias(base_type.elem_type)
+				elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
 				return t.normalize_literal_type(elem_name)
 			}
 			// Handle strings.Builder alias
@@ -11545,6 +11818,19 @@ fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
 	}
 	// Check for function calls that return array types
 	if expr is ast.CallExpr || expr is ast.CallOrCastExpr {
+		// Skip methods known to return non-array types (int, bool)
+		if expr is ast.CallOrCastExpr && expr.lhs is ast.SelectorExpr {
+			sel := expr.lhs as ast.SelectorExpr
+			if sel.rhs.name in ['index', 'last_index', 'contains', 'len', 'cap'] {
+				return none
+			}
+		}
+		if expr is ast.CallExpr && expr.lhs is ast.SelectorExpr {
+			sel := expr.lhs as ast.SelectorExpr
+			if sel.rhs.name in ['index', 'last_index', 'contains', 'len', 'cap'] {
+				return none
+			}
+		}
 		ret_type := t.get_call_return_type(expr)
 		if ret_type.starts_with('Array_') {
 			return ret_type
@@ -11660,10 +11946,13 @@ fn (t &Transformer) array_elem_type_name_for_helpers(elem_type types.Type) strin
 		return 'voidptr'
 	}
 	if elem_type is types.Alias {
-		// Avoid dereferencing malformed alias payloads in self-host mode.
-		return ''
+		// Use type_to_c_name which uses the safe .name field
+		// (type_to_c_name_resolve_alias accesses .base_type which is malformed in self-host mode)
+		result := t.type_to_c_name(elem_type)
+		return result
 	}
-	return t.type_to_c_name(elem_type)
+	result := t.type_to_c_name(elem_type)
+	return result
 }
 
 fn (t &Transformer) get_array_method_info(expr ast.Expr) ?ArrayMethodInfo {
@@ -12007,6 +12296,13 @@ fn (t &Transformer) type_to_c_name(typ types.Type) string {
 			if typ.props.has(.boolean) {
 				return 'bool'
 			}
+			if typ.props.has(.float) {
+				match typ.size {
+					32 { return 'f32' }
+					64 { return 'f64' }
+					else { return 'f64' } // default float is f64
+				}
+			}
 			if typ.props.has(.unsigned) {
 				match typ.size {
 					8 { return 'u8' }
@@ -12104,16 +12400,23 @@ fn (t &Transformer) type_to_c_name(typ types.Type) string {
 fn (t &Transformer) type_to_c_name_resolve_alias(typ types.Type) string {
 	// If it's an alias, try to resolve to underlying type
 	if typ is types.Alias {
+		primitives := ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool', 'f32',
+			'f64', 'rune']
+		// First check if the alias name itself is already a primitive
+		// (in self-host mode, 'int' is stored as Alias with malformed .base_type)
+		alias_name := t.type_to_c_name(typ)
+		if alias_name in primitives {
+			return alias_name
+		}
 		// Resolve to the underlying type
 		base := typ.base_type
 		// If base is a primitive int type, use that
 		base_name := t.type_to_c_name(base)
-		if base_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool', 'f32',
-			'f64', 'rune'] {
+		if base_name in primitives {
 			return base_name
 		}
 		// Otherwise keep the alias name
-		return t.type_to_c_name(typ)
+		return alias_name
 	}
 	// For non-alias types, use normal type_to_c_name
 	return t.type_to_c_name(typ)
@@ -12360,7 +12663,12 @@ fn (mut t Transformer) transform_array_init_with_exprs(arr ast.ArrayInitExpr, ex
 		first := exprs[0]
 		if first is ast.BasicLiteral {
 			if first.kind == .number {
-				elem_type_name = 'int'
+				if first.value.contains('.') || first.value.contains('e')
+					|| first.value.contains('E') {
+					elem_type_name = 'f64'
+				} else {
+					elem_type_name = 'int'
+				}
 			} else if first.kind == .string {
 				elem_type_name = 'string'
 			}
@@ -12460,7 +12768,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		// Check for comptime string identifiers like @FN, @FILE, @MOD
 		if expr.name.starts_with('@') {
 			return expr.name in ['@FN', '@FILE', '@MOD', '@STRUCT', '@METHOD', '@LOCATION',
-				'@FUNCTION']
+				'@FUNCTION', '@VMODROOT']
 		}
 		// Check if variable type is string via scope lookup
 		var_type_name := t.get_var_type_name(expr.name)
@@ -12471,9 +12779,6 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		if mut scope := t.get_current_scope() {
 			if obj := scope.lookup_parent(expr.name, 0) {
 				typ := obj.typ()
-				$if debug ? {
-					eprintln('DEBUG: is_string_expr Ident ${expr.name} scope lookup typ=${typ.name()}')
-				}
 				if typ is types.String {
 					return true
 				}
@@ -12559,9 +12864,6 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		}
 		// Use get_expr_type which handles IndexExpr and returns the element type
 		if elem_type := t.get_expr_type(expr) {
-			$if debug ? {
-				eprintln('DEBUG: is_string_expr IndexExpr elem_type=${elem_type.name()}')
-			}
 			if elem_type is types.String {
 				return true
 			}
@@ -12971,6 +13273,11 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 	if inner is ast.IfExpr {
 		return t.eval_comptime_if(inner)
 	}
+	if inner is ast.Ident {
+		if inner.name in ['VMODROOT', '@VMODROOT'] {
+			return ast.Expr(t.vmodroot_string_literal(expr.pos))
+		}
+	}
 	// For other comptime expressions, just return them transformed
 	return ast.ComptimeExpr{
 		expr: t.transform_expr(inner)
@@ -13231,36 +13538,36 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 			return 'Map_${key_name}_${val_name}_str'
 		}
 		types.Struct {
-			return '${typ.name}_str'
+			return '${typ.name}__str'
 		}
 		types.Enum {
-			return '${typ.name}_str'
+			return '${typ.name}__str'
 		}
 		types.Primitive {
 			if typ.props.has(.boolean) {
-				return 'bool_str'
+				return 'bool__str'
 			}
 			if typ.props.has(.float) {
 				if typ.size == 4 {
-					return 'f32_str'
+					return 'f32__str'
 				}
-				return 'f64_str'
+				return 'f64__str'
 			}
 			if typ.props.has(.unsigned) {
 				match typ.size {
-					1 { return 'u8_str' }
-					2 { return 'u16_str' }
-					4 { return 'u32_str' }
-					8 { return 'u64_str' }
-					else { return 'int_str' }
+					1 { return 'u8__str' }
+					2 { return 'u16__str' }
+					4 { return 'u32__str' }
+					8 { return 'u64__str' }
+					else { return 'int__str' }
 				}
 			}
 			match typ.size {
-				1 { return 'i8_str' }
-				2 { return 'i16_str' }
-				4 { return 'int_str' }
-				8 { return 'i64_str' }
-				else { return 'int_str' }
+				1 { return 'i8__str' }
+				2 { return 'i16__str' }
+				4 { return 'int__str' }
+				8 { return 'i64__str' }
+				else { return 'int__str' }
 			}
 		}
 		types.Pointer {
@@ -13268,7 +13575,7 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 			return t.get_str_fn_name_for_type(typ.base_type)
 		}
 		types.Alias {
-			return '${typ.name}_str'
+			return '${typ.name}__str'
 		}
 		else {
 			return none
@@ -13307,8 +13614,8 @@ fn (t &Transformer) get_array_init_elem_type(expr ast.ArrayInitExpr) string {
 fn (t &Transformer) generate_str_functions() []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_str_fns.len}
 	for fn_name, elem_type in t.needed_str_fns {
-		// Generate array str function
-		if fn_name.starts_with('Array_') {
+		// Generate array str function (skip fixed arrays - they need different handling)
+		if fn_name.starts_with('Array_') && !fn_name.starts_with('Array_fixed_') {
 			result << t.generate_array_str_fn(fn_name, elem_type)
 		}
 	}
@@ -13524,8 +13831,8 @@ fn (t &Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInf
 	})
 	cond_expr := t.generate_array_method_match_expr(info, idx_expr)
 	match_ret := if kind == .contains {
-		ast.Expr(ast.Ident{
-			name: 'true'
+		ast.Expr(ast.Keyword{
+			tok: .key_true
 		})
 	} else {
 		idx_expr
@@ -13544,8 +13851,8 @@ fn (t &Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInf
 	mut body_stmts := []ast.Stmt{}
 	body_stmts << t.generate_array_method_loop_stmt(info, kind, loop_body)
 	fallback_ret := if kind == .contains {
-		ast.Expr(ast.Ident{
-			name: 'false'
+		ast.Expr(ast.Keyword{
+			tok: .key_false
 		})
 	} else {
 		ast.Expr(ast.BasicLiteral{
@@ -13595,8 +13902,14 @@ fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.
 		}
 	}
 
-	// Get element str function name (use double underscore for method)
-	elem_str_fn := '${elem_type}__str'
+	// Get element str function name.
+	// Auto-generated helper functions (Array_, Map_) use single underscore _str suffix.
+	// Real type methods use double underscore __str suffix.
+	elem_str_fn := if elem_type.starts_with('Array_') || elem_type.starts_with('Map_') {
+		'${elem_type}_str'
+	} else {
+		'${elem_type}__str'
+	}
 
 	// Build the function body statements
 	mut body_stmts := []ast.Stmt{}

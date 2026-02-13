@@ -65,7 +65,7 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	}
 	skip_builtin := b.pref.skip_builtin
 	if !skip_builtin {
-		use_core_headers := b.can_use_cached_core_headers()
+		use_core_headers := false
 		// SSA/C and native backends need full core module bodies (not .vh summaries),
 		// otherwise runtime helpers can be lowered to stubs.
 		use_core_headers2 := if b.pref.backend in [.c, .cleanc, .x64, .arm64] {

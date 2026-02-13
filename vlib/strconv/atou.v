@@ -38,7 +38,7 @@ fn atou_common_check(s string) !int {
 // s is string to parse, max is respective types max value.
 @[direct_array_access]
 fn atou_common(s string, type_max u64) !u64 {
-	mut start_idx := atou_common_check(s)!
+	mut start_idx := int(atou_common_check(s)!)
 	mut x := u64(0)
 	mut underscored := false
 	for i in start_idx .. s.len {

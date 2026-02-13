@@ -29,6 +29,13 @@ pub mut:
 	funcs   []Function
 	globals []GlobalVar
 
+	// C struct names: TypeID -> C struct name (e.g., 114 -> "stat" for struct stat)
+	// Used by the C gen to emit `typedef struct <name> Struct_N;` instead of
+	// generating a custom struct definition that would have the wrong memory layout.
+	c_struct_names map[int]string
+	// C structs marked with @[typedef] – already a C typedef, not a struct tag.
+	c_typedef_structs map[int]bool
+
 	// Constant cache: (type, name) -> ValueID for deduplication
 	const_cache map[string]ValueID
 }

@@ -19,9 +19,9 @@ pub struct Scanner {
 	skip_interpolation bool
 mut:
 	file        &token.File = &token.File{}
-	src         string
 	insert_semi bool
 pub mut:
+	src    string
 	offset int // current char offset
 	pos    int // token offset (start of current token)
 	lit    string
@@ -59,6 +59,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
+	// integrity check: detect source buffer corruption
 	// before whitespace call to keep whitespaces in string
 	// NOTE: before start: simply for a little more efficiency
 	// if !s.skip_interpolation && s.in_str_incomplete {
