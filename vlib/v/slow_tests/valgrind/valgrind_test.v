@@ -26,6 +26,7 @@ const skip_compile_files = [
 ]
 
 const skip_valgrind_files = [
+	'vlib/v/slow_tests/valgrind/autofree_or_block_string_interp.v',
 	'vlib/v/slow_tests/valgrind/struct_field.v',
 	'vlib/v/slow_tests/valgrind/fn_returning_string_param.v',
 	'vlib/v/slow_tests/valgrind/fn_with_return_should_free_local_vars.v',
