@@ -37,12 +37,12 @@ check(MaxLen) ->
 %% The monitor checks mailbox size periodically and logs warnings
 %% Returns reference to monitoring process
 %% V: vbeam_mailbox.monitor_start(pid)
--spec monitor_start(pid()) -> reference().
+-spec monitor_start(pid()) -> pid().
 monitor_start(Pid) -> monitor_start(Pid, 5000).
 
 %% Start a monitoring process with custom interval (milliseconds)
 %% V: vbeam_mailbox.monitor_start(pid, 10000)  // 10 second checks
--spec monitor_start(pid(), Interval :: integer()) -> reference().
+-spec monitor_start(pid(), Interval :: integer()) -> pid().
 monitor_start(Pid, Interval) ->
     spawn_link(fun() -> monitor_loop(Pid, Interval, 10000) end),
     ok.
