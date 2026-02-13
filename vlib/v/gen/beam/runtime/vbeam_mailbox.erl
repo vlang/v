@@ -24,7 +24,7 @@ check() -> check(10000).
 %% Logs warning to error_logger when threshold exceeded
 %% V: vbeam_mailbox.check(5000)
 -spec check(MaxLen :: integer()) -> ok | {warning, integer()}.
-check(MaxLen) ->
+check(MaxLen) when is_integer(MaxLen), MaxLen >= 0 ->
     case process_info(self(), message_queue_len) of
         {message_queue_len, Len} when Len > MaxLen ->
             error_logger:warning_msg("vbeam: mailbox overflow ~p (~p msgs, limit ~p)~n",
@@ -38,12 +38,15 @@ check(MaxLen) ->
 %% Returns reference to monitoring process
 %% V: vbeam_mailbox.monitor_start(pid)
 -spec monitor_start(pid()) -> pid().
-monitor_start(Pid) -> monitor_start(Pid, 5000).
+monitor_start(Pid) when is_pid(Pid) ->
+    true = is_process_alive(Pid),
+    monitor_start(Pid, 5000).
 
 %% Start a monitoring process with custom interval (milliseconds)
 %% V: vbeam_mailbox.monitor_start(pid, 10000)  // 10 second checks
 -spec monitor_start(pid(), Interval :: integer()) -> pid().
-monitor_start(Pid, Interval) ->
+monitor_start(Pid, Interval) when is_pid(Pid), is_integer(Interval), Interval > 0 ->
+    true = is_process_alive(Pid),
     spawn_link(fun() -> monitor_loop(Pid, Interval, 10000) end),
     ok.
 
