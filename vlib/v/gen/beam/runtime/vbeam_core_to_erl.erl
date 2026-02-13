@@ -15,7 +15,8 @@
 
 %% @doc Transpile Core Erlang source text to Erlang source text.
 -spec transpile(string()) -> string().
-transpile(CoreText) ->
+transpile(CoreText) when is_list(CoreText) ->
+    true = CoreText =/= [],
     {ok, Tokens, _} = core_scan:string(CoreText),
     {ok, CoreMod} = core_parse:parse(Tokens),
     ErlForms = transform_module(CoreMod),
@@ -23,7 +24,9 @@ transpile(CoreText) ->
 
 %% @doc Read a .core file, transpile to Erlang, write a .erl file.
 -spec transpile_file(string(), string()) -> ok | {error, term()}.
-transpile_file(CoreFile, ErlFile) ->
+transpile_file(CoreFile, ErlFile) when is_list(CoreFile), is_list(ErlFile) ->
+    true = filename:extension(CoreFile) =:= ".core",
+    true = filename:extension(ErlFile) =:= ".erl",
     case file:read_file(CoreFile) of
         {ok, Bin} ->
             ErlText = transpile(binary_to_list(Bin)),
