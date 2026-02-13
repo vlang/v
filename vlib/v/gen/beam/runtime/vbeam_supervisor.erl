@@ -59,6 +59,8 @@
 %% V: sup := supervisor.new(#{strategy: .one_for_one, children: [...]})
 -spec start_link(SupSpec :: map()) -> {ok, pid()} | {error, term()}.
 start_link(SupSpec) when is_map(SupSpec) ->
+    Strategy = maps:get(strategy, SupSpec, one_for_one),
+    true = lists:member(Strategy, [one_for_one, one_for_all, rest_for_one]),
     supervisor:start_link(?MODULE, SupSpec).
 
 %% Start a named supervisor.
@@ -81,14 +83,16 @@ start_link(Name, SupSpec) when is_atom(Name), is_map(SupSpec) ->
 %% V: sup.start_child(#{id: :worker1, start: fn() { ... }})
 -spec start_child(Sup :: pid() | atom(), ChildSpec :: map()) ->
     {ok, pid()} | {error, term()}.
-start_child(Sup, ChildSpec) when is_map(ChildSpec) ->
+start_child(Sup, ChildSpec)
+  when (is_pid(Sup) orelse is_atom(Sup)), is_map(ChildSpec) ->
+    true = maps:is_key(id, ChildSpec) andalso maps:is_key(start, ChildSpec),
     OtpSpec = to_otp_child_spec(ChildSpec),
     supervisor:start_child(Sup, OtpSpec).
 
 %% Stop (terminate and delete) a child by its id.
 %% V: sup.stop_child(:worker1)
 -spec stop_child(Sup :: pid() | atom(), ChildId :: atom()) -> ok | {error, term()}.
-stop_child(Sup, ChildId) when is_atom(ChildId) ->
+stop_child(Sup, ChildId) when (is_pid(Sup) orelse is_atom(Sup)), is_atom(ChildId) ->
     case supervisor:terminate_child(Sup, ChildId) of
         ok ->
             supervisor:delete_child(Sup, ChildId);
@@ -100,7 +104,7 @@ stop_child(Sup, ChildId) when is_atom(ChildId) ->
 %% V: sup.restart_child(:worker1)
 -spec restart_child(Sup :: pid() | atom(), ChildId :: atom()) ->
     {ok, pid()} | {error, term()}.
-restart_child(Sup, ChildId) when is_atom(ChildId) ->
+restart_child(Sup, ChildId) when (is_pid(Sup) orelse is_atom(Sup)), is_atom(ChildId) ->
     supervisor:restart_child(Sup, ChildId).
 
 %% List all children of a supervisor.
@@ -108,7 +112,7 @@ restart_child(Sup, ChildId) when is_atom(ChildId) ->
 %%
 %% V: children := sup.which_children()
 -spec which_children(Sup :: pid() | atom()) -> [map()].
-which_children(Sup) ->
+which_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
     Children = supervisor:which_children(Sup),
     lists:map(fun({Id, Pid, Type, _Modules}) ->
         #{id => Id, pid => Pid, type => Type}
@@ -119,7 +123,7 @@ which_children(Sup) ->
 %%
 %% V: counts := sup.count_children()
 -spec count_children(Sup :: pid() | atom()) -> map().
-count_children(Sup) ->
+count_children(Sup) when is_pid(Sup) orelse is_atom(Sup) ->
     Counts = supervisor:count_children(Sup),
     maps:from_list(Counts).
 
@@ -133,6 +137,9 @@ init(SupSpec) when is_map(SupSpec) ->
     Strategy = maps:get(strategy, SupSpec, one_for_one),
     Intensity = maps:get(intensity, SupSpec, 3),
     Period = maps:get(period, SupSpec, 5),
+    true = lists:member(Strategy, [one_for_one, one_for_all, rest_for_one]),
+    true = is_integer(Intensity) andalso Intensity >= 0,
+    true = is_integer(Period) andalso Period > 0,
 
     SupFlags = #{
         strategy => Strategy,
@@ -194,4 +201,5 @@ start_fun_child(Fun) when is_function(Fun, 0) ->
     Pid = proc_lib:spawn_link(fun() ->
         Fun()
     end),
+    true = is_pid(Pid),
     {ok, Pid}.
