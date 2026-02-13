@@ -5,7 +5,9 @@
 %% Run a process: returns {ok, Port} or {error, Reason}
 %% Command and Args are binaries (V strings).
 -spec run(binary(), [binary()]) -> {ok, port()} | {error, term()}.
-run(Command, Args) ->
+run(Command, Args)
+  when is_binary(Command), is_list(Args) ->
+    true = lists:all(fun is_binary/1, Args),
     Cmd = binary_to_list(Command),
     ArgsList = [binary_to_list(A) || A <- Args],
     try
@@ -18,7 +20,8 @@ run(Command, Args) ->
 
 %% Wait for process to exit, return exit code
 -spec wait(port()) -> integer().
-wait(Port) ->
+wait(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     wait_loop(Port).
 
 wait_loop(Port) ->
@@ -31,7 +34,8 @@ wait_loop(Port) ->
 
 %% Force kill the OS process and close the port
 -spec kill(port()) -> ok.
-kill(Port) ->
+kill(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
         {os_pid, OsPid} ->
             os:cmd("kill -9 " ++ integer_to_list(OsPid));
@@ -42,7 +46,8 @@ kill(Port) ->
 
 %% Send SIGTERM to the OS process
 -spec signal_term(port()) -> ok | {error, not_running}.
-signal_term(Port) ->
+signal_term(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
         {os_pid, OsPid} ->
             os:cmd("kill -TERM " ++ integer_to_list(OsPid)),
@@ -52,7 +57,8 @@ signal_term(Port) ->
 
 %% Send SIGSTOP to the OS process
 -spec signal_stop(port()) -> ok | {error, not_running}.
-signal_stop(Port) ->
+signal_stop(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
         {os_pid, OsPid} ->
             os:cmd("kill -STOP " ++ integer_to_list(OsPid)),
@@ -62,7 +68,8 @@ signal_stop(Port) ->
 
 %% Send SIGCONT to the OS process
 -spec signal_cont(port()) -> ok | {error, not_running}.
-signal_cont(Port) ->
+signal_cont(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     case erlang:port_info(Port, os_pid) of
         {os_pid, OsPid} ->
             os:cmd("kill -CONT " ++ integer_to_list(OsPid)),
@@ -72,13 +79,16 @@ signal_cont(Port) ->
 
 %% Write binary data to the process's stdin
 -spec stdin_write(port(), iodata()) -> ok.
-stdin_write(Port, Data) ->
+stdin_write(Port, Data)
+  when is_port(Port), (is_binary(Data) orelse is_list(Data)) ->
+    true = erlang:port_info(Port) =/= undefined,
     port_command(Port, Data),
     ok.
 
 %% Read all available stdout data (non-blocking collect)
 -spec stdout_slurp(port()) -> binary().
-stdout_slurp(Port) ->
+stdout_slurp(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     stdout_slurp(Port, <<>>).
 
 stdout_slurp(Port, Acc) ->
@@ -90,7 +100,8 @@ stdout_slurp(Port, Acc) ->
 
 %% Read one chunk of stdout (blocking)
 -spec stdout_read(port()) -> binary().
-stdout_read(Port) ->
+stdout_read(Port) when is_port(Port) ->
+    true = erlang:port_info(Port) =/= undefined,
     receive
         {Port, {data, Data}} -> Data;
         {Port, {exit_status, _Code}} -> <<>>
