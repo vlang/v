@@ -23,6 +23,13 @@ Provides mailbox and monitor utilities for V runtime processes.
 
 -export([check/0, check/1, monitor_start/1, monitor_start/2]).
 
+%% Export protocol types for cross-module contracts
+-export_type([mailbox_msg/0, mailbox_warning/0]).
+
+%% Mailbox monitoring protocol types
+-type mailbox_msg() :: {message_queue_len, non_neg_integer()}.
+-type mailbox_warning() :: {warning, non_neg_integer()}.
+
 %% Quick mailbox check with default limit (10000 messages)
 %% Returns ok | {warning, CurrentLen}
 %% V: vbeam_mailbox.check()
@@ -32,17 +39,17 @@ No parameters.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec check() -> ok | {warning, integer()}.
+-spec check() -> ok | mailbox_warning().
 check() -> check(10000).
 
 %% Quick mailbox check with custom limit
 %% Returns ok | {warning, CurrentLen}
 %% Logs warning to error_logger when threshold exceeded
 %% V: vbeam_mailbox.check(5000)
--spec check(MaxLen :: integer()) -> ok | {warning, integer()}.
+-spec check(MaxLen :: integer()) -> ok | mailbox_warning().
 
 check(MaxLen) when is_integer(MaxLen), MaxLen >= 0 ->
-    case process_info(self(), message_queue_len) of
+    case mailbox_info(self()) of
         {message_queue_len, Len} when Len > MaxLen ->
             error_logger:warning_msg("vbeam: mailbox overflow ~p (~p msgs, limit ~p)~n",
                                       [self(), Len, MaxLen]),
@@ -82,7 +89,7 @@ monitor_loop(Pid, Interval, MaxLen) ->
     case is_process_alive(Pid) of
         false -> ok;
         true ->
-            case process_info(Pid, message_queue_len) of
+            case mailbox_info(Pid) of
                 {message_queue_len, Len} when Len > MaxLen ->
                     error_logger:warning_msg("vbeam: mailbox overflow ~p (~p msgs, limit ~p)~n",
                                               [Pid, Len, MaxLen]);
@@ -92,6 +99,10 @@ monitor_loop(Pid, Interval, MaxLen) ->
             monitor_loop(Pid, Interval, MaxLen)
     end.
 
+%% Internal helper to keep the mailbox tuple shape typed in one place.
+-spec mailbox_info(pid()) -> mailbox_msg().
+mailbox_info(Pid) when is_pid(Pid) ->
+    process_info(Pid, message_queue_len).
 
 
 
