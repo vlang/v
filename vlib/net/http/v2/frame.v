@@ -82,7 +82,7 @@ pub fn parse_frame_header(data []u8) !FrameHeader {
 	length := (u32(data[0]) << 16) | (u32(data[1]) << 8) | u32(data[2])
 
 	// Parse 8-bit frame type and flags
-	frame_type := unsafe { FrameType(data[3]) }
+	frame_type := frame_type_from_byte(data[3])!
 	flags := data[4]
 
 	// Parse 31-bit stream ID (mask out reserved bit)
@@ -153,8 +153,8 @@ pub mut:
 	settings map[u16]u32
 }
 
-// SettingsId represents setting identifiers per RFC 7540 Section 6.5.2
-pub enum SettingsId as u16 {
+// SettingId represents setting identifiers per RFC 7540 Section 6.5.2
+pub enum SettingId as u16 {
 	header_table_size      = 0x1
 	enable_push            = 0x2
 	max_concurrent_streams = 0x3
@@ -269,10 +269,40 @@ pub fn encode_frame_to_buffer(frame Frame, mut buf []u8) []u8 {
 
 	// Copy payload using bulk copy
 	if frame.payload.len > 0 {
-		unsafe {
-			vmemcpy(&buf[frame_header_size], frame.payload.data, frame.payload.len)
-		}
+		copy(mut buf[frame_header_size..], frame.payload)
 	}
 
 	return buf[..required_size]
+}
+
+// frame_type_from_byte validates and converts a byte to a FrameType enum value.
+// Returns an error for unrecognized frame type values.
+pub fn frame_type_from_byte(b u8) !FrameType {
+	return match b {
+		0x0 { .data }
+		0x1 { .headers }
+		0x2 { .priority }
+		0x3 { .rst_stream }
+		0x4 { .settings }
+		0x5 { .push_promise }
+		0x6 { .ping }
+		0x7 { .goaway }
+		0x8 { .window_update }
+		0x9 { .continuation }
+		else { error('unknown frame type: 0x${b:02x}') }
+	}
+}
+
+// setting_id_from_u16 validates and converts a u16 to a SettingId enum value.
+// Returns an error for unrecognized setting identifiers.
+pub fn setting_id_from_u16(id u16) !SettingId {
+	return match id {
+		0x1 { .header_table_size }
+		0x2 { .enable_push }
+		0x3 { .max_concurrent_streams }
+		0x4 { .initial_window_size }
+		0x5 { .max_frame_size }
+		0x6 { .max_header_list_size }
+		else { error('unknown settings id: 0x${id:04x}') }
+	}
 }

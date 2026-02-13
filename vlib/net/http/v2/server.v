@@ -44,7 +44,7 @@ pub type Handler = fn (ServerRequest) ServerResponse
 pub struct Server {
 mut:
 	config   ServerConfig
-	handler  Handler = unsafe { nil }
+	handler  ?Handler
 	listener net.TcpListener
 	running  bool
 }
@@ -106,7 +106,7 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	println('[HTTP/2] Preface received')
 
 	// Send SETTINGS frame
-	s.send_settings(mut conn) or {
+	s.write_settings(mut conn) or {
 		eprintln('[HTTP/2] Failed to send settings: ${err}')
 		return
 	}
@@ -153,8 +153,8 @@ fn (mut s Server) handle_connection(mut conn net.TcpConn) {
 	println('[HTTP/2] Connection closed')
 }
 
-// send_settings sends initial SETTINGS frame with pre-allocated buffer
-fn (mut s Server) send_settings(mut conn net.TcpConn) ! {
+// write_settings sends initial SETTINGS frame with pre-allocated buffer
+fn (mut s Server) write_settings(mut conn net.TcpConn) ! {
 	// Pre-allocate payload with exact size (3 settings * 6 bytes = 18 bytes)
 	mut payload := []u8{cap: 18}
 
@@ -247,7 +247,21 @@ fn (mut s Server) handle_headers(mut conn net.TcpConn, frame Frame, mut decoder 
 	println('[HTTP/2] Request: ${method} ${path}')
 
 	// Call handler
-	response := s.handler(request)
+	h := s.handler or {
+		error_response := ServerResponse{
+			status_code: 500
+			headers:     {
+				'content-type': 'text/plain'
+			}
+			body:        'no handler configured'.bytes()
+		}
+		s.send_response(mut conn, stream_id, error_response, mut encoder) or {
+			eprintln('[HTTP/2] Failed to send error response: ${err}')
+		}
+		return
+	}
+
+	response := h(request)
 
 	// Send response
 	s.send_response(mut conn, stream_id, response, mut encoder)!

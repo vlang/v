@@ -67,12 +67,12 @@ fn test_frame_serialization() {
 	mut settings_frame := SettingsFrame{
 		ack:      false
 		settings: {
-			u16(SettingsId.max_concurrent_streams): u32(100)
-			u16(SettingsId.initial_window_size):    u32(65535)
+			u16(SettingId.max_concurrent_streams): u32(100)
+			u16(SettingId.initial_window_size):    u32(65535)
 		}
 	}
 	assert settings_frame.ack == false
-	assert settings_frame.settings[u16(SettingsId.max_concurrent_streams)] == 100
+	assert settings_frame.settings[u16(SettingId.max_concurrent_streams)] == 100
 
 	println('Testing PING frame...')
 	mut ping_frame := PingFrame{

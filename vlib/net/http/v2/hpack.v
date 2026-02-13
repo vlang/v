@@ -85,7 +85,7 @@ fn build_exact_map() map[string]int {
 		if entry.name != '' {
 			key := '${entry.name}:${entry.value}'
 			if key !in m {
-				m[key] = i + 1 // HPACK indices are 1-based
+				m[key] = i // static_table[0] is a dummy; real entries start at index 1
 			}
 		}
 	}
@@ -100,7 +100,7 @@ fn build_name_map() map[string][]int {
 			if entry.name !in m {
 				m[entry.name] = []int{}
 			}
-			m[entry.name] << (i + 1) // HPACK indices are 1-based
+			m[entry.name] << i // static_table[0] is a dummy; real entries start at index 1
 		}
 	}
 	return m
@@ -190,18 +190,18 @@ fn get_indexed(dynamic_table &DynamicTable, index int) ?HeaderField {
 		return none
 	}
 
-	// Static table
-	if index <= static_table.len {
-		return static_table[index - 1]
+	// Static table (index directly corresponds to array position since static_table[0] is dummy)
+	if index < static_table.len {
+		return static_table[index]
 	}
 
 	// Dynamic table
-	dynamic_index := index - static_table.len
+	dynamic_index := index - static_table.len + 1
 	return dynamic_table.get(dynamic_index)
 }
 
-// encode_integer encodes an integer using HPACK integer representation
-fn encode_integer(value int, prefix_bits int) []u8 {
+// encode_hpack_integer encodes an integer using HPACK integer representation
+fn encode_hpack_integer(value int, prefix_bits int) []u8 {
 	// Pre-allocate with capacity for worst case (5 bytes for 32-bit int)
 	mut result := []u8{cap: 5}
 	max_prefix := (1 << prefix_bits) - 1
@@ -263,7 +263,7 @@ fn decode_integer(data []u8, prefix_bits int) !(int, int) {
 fn encode_string(s string, huffman bool) []u8 {
 	if huffman {
 		huffman_encoded := encode_huffman(s.bytes())
-		encoded_len := encode_integer(huffman_encoded.len, 7)
+		encoded_len := encode_hpack_integer(huffman_encoded.len, 7)
 		mut result := []u8{cap: encoded_len.len + huffman_encoded.len}
 		result << (encoded_len[0] | 0x80)
 		if encoded_len.len > 1 {
@@ -272,7 +272,7 @@ fn encode_string(s string, huffman bool) []u8 {
 		result << huffman_encoded
 		return result
 	} else {
-		encoded := encode_integer(s.len, 7)
+		encoded := encode_hpack_integer(s.len, 7)
 		mut result := []u8{cap: encoded.len + s.len}
 		result << encoded
 		result << s.bytes()
@@ -336,10 +336,10 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 				entry := e.dynamic_table.entries[i]
 				if entry.name == header.name {
 					if entry.value == header.value {
-						found_index = static_table.len + i + 1
+						found_index = static_table.len + i
 						break
 					} else if found_name_index == 0 {
-						found_name_index = static_table.len + i + 1
+						found_name_index = static_table.len + i
 					}
 				}
 			}
@@ -347,7 +347,7 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 
 		if found_index > 0 {
 			// Indexed header field (RFC 7541 Section 6.1)
-			encoded := encode_integer(found_index, 7)
+			encoded := encode_hpack_integer(found_index, 7)
 			result << (encoded[0] | 0x80)
 			if encoded.len > 1 {
 				result << encoded[1..]
@@ -355,7 +355,7 @@ pub fn (mut e Encoder) encode(headers []HeaderField) []u8 {
 		} else {
 			// Literal header field with incremental indexing (RFC 7541 Section 6.2.1)
 			if found_name_index > 0 {
-				encoded := encode_integer(found_name_index, 6)
+				encoded := encode_hpack_integer(found_name_index, 6)
 				result << (encoded[0] | 0x40)
 				if encoded.len > 1 {
 					result << encoded[1..]

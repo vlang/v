@@ -90,8 +90,8 @@ pub fn new_server(config ServerConfig) !Server {
 	}
 }
 
-// start starts the HTTP/3 server and begins accepting QUIC connections
-pub fn (mut s Server) start() ! {
+// listen_and_serve starts the HTTP/3 server and begins accepting QUIC connections
+pub fn (mut s Server) listen_and_serve() ! {
 	s.running = true
 	println('HTTP/3 server listening on ${s.config.addr}')
 	println('Using QUIC over UDP')
@@ -219,7 +219,10 @@ fn (mut s Server) handle_packet(mut conn ServerConnection, packet []u8) {
 		payload := decrypted[idx..idx + int(frame_length)]
 		idx += int(frame_length)
 
-		frame_type := unsafe { FrameType(frame_type_val) }
+		frame_type := frame_type_from_u64(frame_type_val) or {
+			// Ignore unknown frame types per RFC 9114
+			continue
+		}
 
 		// Extract stream_id from QUIC context
 		// In a proper implementation, this would be provided by the QUIC layer

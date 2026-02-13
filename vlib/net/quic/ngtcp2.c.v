@@ -95,13 +95,19 @@ pub mut:
 	stateless_reset_token [16]u8
 }
 
-// Path structure
+// Address structure (matches ngtcp2_addr: pointer + socklen_t)
+pub struct Ngtcp2Addr {
+pub mut:
+	addr    voidptr // ngtcp2_sockaddr*
+	addrlen u32     // ngtcp2_socklen
+}
+
+// Path structure (matches ngtcp2_path: local + remote + user_data)
 pub struct Ngtcp2PathStruct {
 pub mut:
-	local_addr_len  u32
-	local_addr      voidptr
-	remote_addr_len u32
-	remote_addr     voidptr
+	local     Ngtcp2Addr
+	remote    Ngtcp2Addr
+	user_data voidptr
 }
 
 // Packet info
@@ -240,7 +246,7 @@ pub mut:
 }
 
 // C function declarations
-fn C.ngtcp2_conn_client_new(pconn &&voidptr, dcid &Ngtcp2CidStruct, scid &Ngtcp2CidStruct, path &Ngtcp2PathStruct, version u32, callbacks &Ngtcp2CallbacksStruct, settings &Ngtcp2SettingsStruct, params &Ngtcp2TransportParamsStruct, mem voidptr, user_data voidptr) int
+fn C.ngtcp2_conn_client_new(pconn &voidptr, dcid &Ngtcp2CidStruct, scid &Ngtcp2CidStruct, path &Ngtcp2PathStruct, version u32, callbacks &Ngtcp2CallbacksStruct, settings &Ngtcp2SettingsStruct, params &Ngtcp2TransportParamsStruct, mem voidptr, user_data voidptr) int
 
 fn C.ngtcp2_conn_del(conn voidptr)
 
@@ -305,13 +311,50 @@ fn C.ngtcp2_crypto_derive_and_install_rx_key(conn voidptr, key voidptr, iv voidp
 
 fn C.ngtcp2_crypto_derive_and_install_tx_key(conn voidptr, key voidptr, iv voidptr, hp_key voidptr, crypto_level u32, secret voidptr, secretlen u64) int
 
+// ngtcp2_crypto callback helpers (from libngtcp2_crypto_ossl)
+// These can be directly assigned to ngtcp2_callbacks fields.
+fn C.ngtcp2_crypto_client_initial_cb(conn voidptr, user_data voidptr) int
+fn C.ngtcp2_crypto_recv_crypto_data_cb(conn voidptr, encryption_level int, offset u64, data &u8, datalen usize, user_data voidptr) int
+fn C.ngtcp2_crypto_encrypt_cb(dest &u8, aead voidptr, aead_ctx voidptr, plaintext &u8, plaintextlen usize, nonce &u8, noncelen usize, aad &u8, aadlen usize) int
+fn C.ngtcp2_crypto_decrypt_cb(dest &u8, aead voidptr, aead_ctx voidptr, ciphertext &u8, ciphertextlen usize, nonce &u8, noncelen usize, aad &u8, aadlen usize) int
+fn C.ngtcp2_crypto_hp_mask_cb(dest &u8, hp voidptr, hp_ctx voidptr, sample &u8) int
+fn C.ngtcp2_crypto_recv_retry_cb(conn voidptr, hd voidptr, user_data voidptr) int
+fn C.ngtcp2_crypto_update_key_cb(conn voidptr, rx_secret &u8, tx_secret &u8, rx_aead_ctx voidptr, rx_iv &u8, tx_aead_ctx voidptr, tx_iv &u8, current_rx_secret &u8, current_tx_secret &u8, secretlen usize, user_data voidptr) int
+fn C.ngtcp2_crypto_delete_crypto_aead_ctx_cb(conn voidptr, aead_ctx voidptr, user_data voidptr)
+fn C.ngtcp2_crypto_delete_crypto_cipher_ctx_cb(conn voidptr, cipher_ctx voidptr, user_data voidptr)
+fn C.ngtcp2_crypto_get_path_challenge_data_cb(conn voidptr, data &u8, user_data voidptr) int
+fn C.ngtcp2_crypto_version_negotiation_cb(conn voidptr, version u32, client_dcid voidptr, user_data voidptr) int
+
+// ngtcp2_crypto_ossl context management
+fn C.ngtcp2_crypto_ossl_init() int
+fn C.ngtcp2_crypto_ossl_ctx_new(pctx &voidptr, ssl voidptr) int
+fn C.ngtcp2_crypto_ossl_ctx_del(ctx voidptr)
+fn C.ngtcp2_crypto_ossl_ctx_set_ssl(ctx voidptr, ssl voidptr)
+fn C.ngtcp2_crypto_ossl_configure_client_session(ssl voidptr) int
+
+// TLS native handle
+fn C.ngtcp2_conn_set_tls_native_handle(conn voidptr, tls_native_handle voidptr)
+
+// Custom C callbacks (defined in quic_stubs.c)
+fn C.quic_rand_cb(dest &u8, destlen usize, rand_ctx voidptr)
+fn C.quic_get_new_connection_id_cb(conn voidptr, cid voidptr, token &u8, cidlen usize, user_data voidptr) int
+fn C.quic_init_callbacks(cb &Ngtcp2CallbacksStruct)
+fn C.quic_setup_crypto(conn voidptr, ssl voidptr, hostname &char) int
+fn C.quic_cleanup_crypto(ssl voidptr)
+fn C.quic_resolve_and_set_path(path &Ngtcp2PathStruct, hostname &char, port int) int
+
+// OpenSSL helpers
+fn C.SSL_set_tlsext_host_name(ssl voidptr, name &char) int
+
+// Timestamp helper
+fn C.ngtcp2_timestamp() u64
+
 // V wrapper functions
 
 // conn_client_new creates a new QUIC client connection
 pub fn conn_client_new(dcid &Ngtcp2CidStruct, scid &Ngtcp2CidStruct, path &Ngtcp2PathStruct, version u32, callbacks &Ngtcp2CallbacksStruct, settings &Ngtcp2SettingsStruct, params &Ngtcp2TransportParamsStruct, user_data voidptr) !voidptr {
 	mut conn := unsafe { nil }
-	mut conn_ptr := &conn
-	rv := C.ngtcp2_conn_client_new(&conn_ptr, dcid, scid, path, version, callbacks, settings,
+	rv := C.ngtcp2_conn_client_new(&conn, dcid, scid, path, version, callbacks, settings,
 		params, unsafe { nil }, user_data)
 	if rv != 0 {
 		return error('ngtcp2_conn_client_new failed: ${strerror(rv)}')
@@ -426,6 +469,14 @@ pub fn is_bidi_stream(stream_id i64) bool {
 // is_uni_stream checks if stream ID is unidirectional
 pub fn is_uni_stream(stream_id i64) bool {
 	return C.ngtcp2_is_bidi_stream(stream_id) == 0
+}
+
+// setup_crypto configures TLS/crypto for a client connection
+pub fn setup_crypto(conn voidptr, ssl voidptr, hostname string) ! {
+	rv := C.quic_setup_crypto(conn, ssl, &char(hostname.str))
+	if rv != 0 {
+		return error('failed to setup crypto for QUIC connection (code: ${rv})')
+	}
 }
 
 // get_version returns ngtcp2 version information

@@ -42,8 +42,8 @@ fn test_frame_header_flags() {
 
 fn test_settings_frame() {
 	mut settings := map[u16]u32{}
-	settings[u16(SettingsId.header_table_size)] = 4096
-	settings[u16(SettingsId.max_concurrent_streams)] = 100
+	settings[u16(SettingId.header_table_size)] = 4096
+	settings[u16(SettingId.max_concurrent_streams)] = 100
 
 	mut payload := []u8{}
 	for id, value in settings {

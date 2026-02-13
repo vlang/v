@@ -26,6 +26,10 @@ pub mut:
 	// Packet buffer
 	send_buf []u8
 	recv_buf []u8
+	// TLS/crypto context
+	crypto_ctx CryptoContext
+	// Network path (persistent for the connection lifetime)
+	path Ngtcp2PathStruct
 }
 
 // Stream represents a QUIC stream
@@ -54,12 +58,6 @@ pub:
 
 // new_connection creates a new QUIC connection using ngtcp2 library
 pub fn new_connection(config ConnectionConfig) !Connection {
-	// Version info
-	// version := get_version()
-	// $if debug {
-	// 	eprintln('ngtcp2 version: ${version.chosen_version}')
-	// }
-
 	// Parse remote address
 	addr_parts := config.remote_addr.split(':')
 	if addr_parts.len != 2 {
@@ -73,26 +71,27 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		return error('failed to create UDP socket: ${err}')
 	}
 
-	// Generate connection IDs
+	// Generate connection IDs using crypto-quality random
 	mut dcid := Ngtcp2CidStruct{
 		datalen: 18
 	}
 	mut scid := Ngtcp2CidStruct{
 		datalen: 18
 	}
+	C.RAND_bytes(&dcid.data[0], 18)
+	C.RAND_bytes(&scid.data[0], 18)
 
-	// Fill with random data (simplified - should use crypto random)
-	for i in 0 .. 18 {
-		dcid.data[i] = u8(time.now().unix() % 256)
-		scid.data[i] = u8((time.now().unix() + i64(i)) % 256)
+	// Setup path with resolved remote address
+	mut path := Ngtcp2PathStruct{}
+	rv := C.quic_resolve_and_set_path(&path, &char(host.str), port)
+	if rv != 0 {
+		udp_socket.close() or {}
+		return error('failed to resolve remote address: ${host}:${port}')
 	}
 
-	// Setup path
-	mut path := Ngtcp2PathStruct{}
-
-	// Setup callbacks (simplified - would need proper callback implementations)
+	// Setup callbacks with ngtcp2_crypto helper implementations
 	mut callbacks := Ngtcp2CallbacksStruct{}
-
+	C.quic_init_callbacks(&callbacks)
 	// Setup settings
 	mut settings := Ngtcp2SettingsStruct{
 		qlog_write:         unsafe { nil }
@@ -104,6 +103,7 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		pmtud_probes:       unsafe { nil }
 	}
 	settings_default(&settings)
+	settings.initial_ts = u64(time.now().unix_milli()) * 1000000 // ms to ns
 
 	// Setup transport parameters
 	mut params := Ngtcp2TransportParamsStruct{
@@ -118,16 +118,30 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 	params.initial_max_data = config.max_data
 	params.initial_max_streams_bidi = config.max_streams_bidi
 	params.initial_max_streams_uni = config.max_streams_uni
-	params.max_idle_timeout = config.max_idle_timeout * 1000 * 1000 // ms to ns
+	params.max_idle_timeout = config.max_idle_timeout * 1000000 // ms to ns
 
-	// Create ngtcp2 connection
-	// QUIC version 1 (RFC 9000)
+	// Create ngtcp2 connection (QUIC version 1, RFC 9000)
 	quic_version := u32(0x00000001)
 
 	ngtcp2_conn := conn_client_new(&dcid, &scid, &path, quic_version, &callbacks, &settings,
 		&params, unsafe { nil }) or {
 		udp_socket.close() or {}
 		return error('failed to create ngtcp2 connection: ${err}')
+	}
+
+	// Create crypto context for TLS 1.3
+	mut crypto_ctx := new_crypto_context_client(config.alpn) or {
+		conn_del(ngtcp2_conn)
+		udp_socket.close() or {}
+		return error('failed to create crypto context: ${err}')
+	}
+
+	// Setup crypto integration (ossl_ctx, conn_ref, configure SSL)
+	setup_crypto(ngtcp2_conn, voidptr(crypto_ctx.ssl), host) or {
+		crypto_ctx.free()
+		conn_del(ngtcp2_conn)
+		udp_socket.close() or {}
+		return error('failed to setup crypto: ${err}')
 	}
 
 	return Connection{
@@ -137,6 +151,8 @@ pub fn new_connection(config ConnectionConfig) !Connection {
 		udp_socket:  udp_socket
 		send_buf:    []u8{len: 65536} // 64KB buffer
 		recv_buf:    []u8{len: 65536}
+		crypto_ctx:  crypto_ctx
+		path:        path
 	}
 }
 
@@ -165,11 +181,10 @@ pub fn (mut c Connection) send(stream_id u64, data []u8) ! {
 	}
 
 	// Write stream data using ngtcp2
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
+	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
-	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &path, &pi, c.send_buf, i64(stream_id),
+	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &c.path, &pi, c.send_buf, i64(stream_id),
 		data, ts) or { return error('failed to write stream data: ${err}') }
 
 	// Send packet via UDP
@@ -204,11 +219,10 @@ pub fn (mut c Connection) recv(stream_id u64) ![]u8 {
 	}
 
 	// Process packet with ngtcp2
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
+	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
-	conn_read_pkt(c.ngtcp2_conn, &path, &pi, c.recv_buf[..n], ts) or {
+	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
 		// Non-fatal errors can be ignored
 		if !err_is_fatal(ngtcp2_err_invalid_argument) {
 			return []u8{}
@@ -280,6 +294,9 @@ pub fn (mut c Connection) close() {
 		c.ngtcp2_conn = unsafe { nil }
 	}
 
+	// Free crypto context
+	c.crypto_ctx.free()
+
 	// Close UDP socket
 	c.udp_socket.close() or {}
 }
@@ -288,7 +305,6 @@ pub fn (mut c Connection) close() {
 pub fn (c Connection) is_0rtt_available() bool {
 	// 0-RTT requires session resumption data
 	// This would check if we have valid session tickets
-	// For now, return false until we implement session resumption
 	return false
 }
 
@@ -306,5 +322,4 @@ pub fn (mut c Connection) migrate_connection(new_addr string) ! {
 	// 1. Send PATH_CHALLENGE frame
 	// 2. Wait for PATH_RESPONSE
 	// 3. Update connection state
-	// For now, just update the address
 }

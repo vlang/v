@@ -333,48 +333,55 @@ pub fn encode_huffman(data []u8) []u8 {
 	return result
 }
 
-// decode_huffman decodes Huffman encoded data
+// decode_huffman decodes Huffman encoded data using bit-by-bit matching
 pub fn decode_huffman(data []u8) ![]u8 {
 	if data.len == 0 {
 		return []u8{}
 	}
 
 	mut result := []u8{cap: data.len * 2}
-	mut bits := u32(0)
-	mut n_bits := 0
+	mut code := u32(0)
+	mut code_len := u8(0)
 
 	for b in data {
-		bits = (bits << 8) | u32(b)
-		n_bits += 8
+		for bit_pos := 7; bit_pos >= 0; bit_pos-- {
+			code = (code << 1) | u32((b >> bit_pos) & 1)
+			code_len++
 
-		for n_bits >= 5 {
+			// Match against the Huffman table; min code length is 5 bits
+			if code_len < 5 {
+				continue
+			}
+
 			mut found := false
-			for i := 0; i < 256; i++ {
-				entry := huffman_table[i]
-				if n_bits >= int(entry.bit_length) {
-					shift := n_bits - int(entry.bit_length)
-					mask := (u32(1) << entry.bit_length) - 1
-					if ((bits >> shift) & mask) == entry.code {
-						result << u8(i)
-						bits &= (u32(1) << shift) - 1
-						n_bits = shift
-						found = true
-						break
-					}
+			for sym := 0; sym < 256; sym++ {
+				entry := huffman_table[sym]
+				if entry.bit_length == code_len && entry.code == code {
+					result << u8(sym)
+					code = 0
+					code_len = 0
+					found = true
+					break
 				}
 			}
-			if !found {
-				if n_bits >= 8 {
-					return error('invalid Huffman code')
-				}
-				break
+			if found {
+				continue
+			}
+
+			// Maximum Huffman code length is 30 bits
+			if code_len > 30 {
+				return error('invalid Huffman code: no match at ${code_len} bits')
 			}
 		}
 	}
 
-	if n_bits > 0 {
-		padding_mask := (u32(1) << n_bits) - 1
-		if (bits & padding_mask) != padding_mask {
+	// Remaining bits should be padding (all 1s) and at most 7 bits
+	if code_len > 7 {
+		return error('invalid Huffman padding: ${code_len} bits remaining')
+	}
+	if code_len > 0 {
+		padding_mask := (u32(1) << code_len) - 1
+		if (code & padding_mask) != padding_mask {
 			return error('invalid Huffman padding')
 		}
 	}

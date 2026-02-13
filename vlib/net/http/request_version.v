@@ -48,7 +48,7 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 		client.close()
 	}
 
-	// Convert HTTP request to v2.SimpleRequest
+	// Convert HTTP request to v2.Request
 	mut v2_method := v2.Method.get
 	match req.method {
 		.get { v2_method = .get }
@@ -83,7 +83,7 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 	p := url.escaped_path().trim_left('/')
 	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 
-	v2_req := v2.SimpleRequest{
+	v2_req := v2.Request{
 		method:  v2_method
 		url:     path
 		host:    host_name
@@ -94,7 +94,7 @@ fn (req &Request) do_http2(url urllib.URL) !Response {
 	// Send request
 	v2_resp := client.request(v2_req) or { return error('HTTP/2 request failed: ${err}') }
 
-	// Convert v2.SimpleResponse to http.Response
+	// Convert v2.Response to http.Response
 	mut resp_header := new_header()
 	for key, value in v2_resp.headers {
 		resp_header.add_custom(key, value) or {}
@@ -124,7 +124,7 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 		client.close()
 	}
 
-	// Convert HTTP request to v3.SimpleRequest
+	// Convert HTTP request to v3.Request
 	mut v3_method := v3.Method.get
 	match req.method {
 		.get { v3_method = .get }
@@ -159,7 +159,7 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 	p := url.escaped_path().trim_left('/')
 	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 
-	v3_req := v3.SimpleRequest{
+	v3_req := v3.Request{
 		method:  v3_method
 		url:     path
 		host:    host_name
@@ -170,7 +170,7 @@ fn (req &Request) do_http3(url urllib.URL) !Response {
 	// Send request
 	v3_resp := client.request(v3_req) or { return error('HTTP/3 request failed: ${err}') }
 
-	// Convert v3.SimpleResponse to http.Response
+	// Convert v3.Response to http.Response
 	mut resp_header := new_header()
 	for key, value in v3_resp.headers {
 		resp_header.add_custom(key, value) or {}

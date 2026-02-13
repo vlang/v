@@ -7,7 +7,7 @@ module v2
 
 fn test_encode_decode_integer() {
 	// Test small integer (< max_prefix)
-	encoded := encode_integer(10, 5)
+	encoded := encode_hpack_integer(10, 5)
 	decoded, bytes_read := decode_integer(encoded, 5) or {
 		assert false, 'Failed to decode integer'
 		return
@@ -16,7 +16,7 @@ fn test_encode_decode_integer() {
 	assert bytes_read == 1
 
 	// Test large integer (>= max_prefix)
-	encoded2 := encode_integer(1337, 5)
+	encoded2 := encode_hpack_integer(1337, 5)
 	decoded2, bytes_read2 := decode_integer(encoded2, 5) or {
 		assert false, 'Failed to decode large integer'
 		return

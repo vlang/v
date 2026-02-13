@@ -1,93 +1,79 @@
 // Simple HTTP/3 Client Example
 // Demonstrates basic HTTP/3 client usage with QUIC
 //
-// Note: This example requires QUIC protocol support:
-// 1. QUIC library (ngtcp2, quiche, or msquic)
-// 2. TLS 1.3 support
-// 3. UDP socket handling
-//
-// Install dependencies (macOS): brew install openssl ngtcp2
+// Install dependencies (macOS): brew install openssl@3 libngtcp2
 // Install dependencies (Linux): apt-get install libssl-dev libngtcp2-dev
 //
-// Current status: QUIC implementation is in progress.
-// The client will gracefully handle connection failures.
+// Build and run: ./v run examples/http3/01_simple_client.v
 import net.http.v3
+import net.quic
 
 fn main() {
 	println('=== HTTP/3 Client Example ===\n')
 
-	// Create HTTP/3 client
-	// The address format is "host:port"
-	mut client := v3.new_client('www.cloudflare.com:443') or {
-		eprintln('Failed to create HTTP/3 client: ${err}')
-		eprintln('\nThis is expected - HTTP/3 requires full QUIC implementation.')
-		eprintln('The error message provides details about what is needed.')
-		return
-	}
+	// Example 1: Demonstrate QUIC connection
+	println('--- Example 1: QUIC Connection ---')
+	quic_connection_example()
 
-	println('HTTP/3 client created successfully')
+	// Example 2: Building requests
+	println('\n--- Example 2: Request Building ---')
+	build_request_example()
 
-	// Example 1: Simple GET request
-	println('\n--- Example 1: GET Request ---')
-	get_example(mut client)
-
-	// Example 2: POST request with JSON
-	println('\n--- Example 2: POST Request ---')
-	post_example(mut client)
-
-	// Example 3: Multiple requests
-	println('\n--- Example 3: Multiple Requests ---')
-	multiple_requests_example(mut client)
-
-	// Close client connection
-	client.close()
+	// Example 3: HTTP methods
+	println('\n--- Example 3: HTTP Methods ---')
+	methods_example()
 
 	println('\n=== HTTP/3 Client Example Complete ===')
 }
 
-fn get_example(mut client v3.Client) {
-	// Build a GET request using the SimpleRequest structure
-	request := v3.SimpleRequest{
+fn quic_connection_example() {
+	// Create a QUIC connection to a public HTTP/3 server
+	println('Creating QUIC connection to cloudflare-quic.com:443...')
+
+	mut conn := quic.new_connection(
+		remote_addr: 'cloudflare-quic.com:443'
+		alpn:        ['h3']
+	) or {
+		println('Connection creation: ${err}')
+		println('  (This may fail if DNS resolution or UDP is blocked)')
+		return
+	}
+	println('QUIC connection created successfully')
+
+	// Attempt the TLS 1.3 / QUIC handshake
+	println('Performing QUIC/TLS handshake...')
+	conn.perform_handshake() or {
+		println('Handshake result: ${err}')
+		println('  (Handshake requires network connectivity to the server)')
+		conn.close()
+		return
+	}
+
+	println('QUIC connection established!')
+	conn.close()
+	println('Connection closed')
+}
+
+fn build_request_example() {
+	// Build a GET request
+	get_request := v3.Request{
 		method:  .get
 		url:     '/'
-		host:    'www.cloudflare.com'
+		host:    'example.com'
 		data:    ''
 		headers: {
 			'user-agent': 'V-HTTP3-Client/1.0'
 			'accept':     'text/html'
 		}
 	}
+	println('GET request built: ${get_request.method} ${get_request.url}')
 
-	// Send the request
-	response := client.request(request) or {
-		eprintln('GET request failed: ${err}')
-		return
-	}
-
-	println('Status: ${response.status_code}')
-	println('Body length: ${response.body.len} bytes')
-	println('Protocol: HTTP/3 (QUIC)')
-
-	// Print first 100 characters of body
-	if response.body.len > 0 {
-		body_preview := if response.body.len > 100 {
-			response.body[..100] + '...'
-		} else {
-			response.body
-		}
-		println('Body preview: ${body_preview}')
-	}
-}
-
-fn post_example(mut client v3.Client) {
-	// Prepare JSON data
-	json_data := '{"message":"Hello from HTTP/3","protocol":"h3"}'
-
-	// Build POST request
-	request := v3.SimpleRequest{
+	// Build a POST request with JSON body
+	json_data := '{"name":"test","value":123}'
+	post_request := v3.Request{
 		method:  .post
-		url:     '/post'
-		host:    'httpbin.org'
+		url:     '/api/data'
+		host:    'example.com'
 		data:    json_data
 		headers: {
 			'content-type':   'application/json'
@@ -95,53 +81,29 @@ fn post_example(mut client v3.Client) {
 			'user-agent':     'V-HTTP3-Client/1.0'
 		}
 	}
-
-	// Send the request
-	response := client.request(request) or {
-		eprintln('POST request failed: ${err}')
-		return
-	}
-
-	println('Status: ${response.status_code}')
-
-	// Print response body (truncated)
-	body_preview := if response.body.len > 100 {
-		response.body[..100] + '...'
-	} else {
-		response.body
-	}
-	println('Response: ${body_preview}')
+	println('POST request built: ${post_request.method} ${post_request.url}')
 }
 
-fn multiple_requests_example(mut client v3.Client) {
-	// HTTP/3 supports multiplexing - multiple requests on same connection
-	// This demonstrates sending multiple requests sequentially
-	urls := [
-		'/',
-		'/cdn-cgi/trace',
-		'/robots.txt',
-	]
+fn methods_example() {
+	// HTTP methods available
+	methods := ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']
 
-	println('Sending ${urls.len} requests...')
-
-	for i, url in urls {
-		request := v3.SimpleRequest{
-			method:  .get
-			url:     url
-			host:    'www.cloudflare.com'
-			data:    ''
-			headers: {
-				'user-agent': 'V-HTTP3-Client/1.0'
+	for method in methods {
+		request := v3.Request{
+			method: match method {
+				'get' { .get }
+				'post' { .post }
+				'put' { .put }
+				'delete' { .delete }
+				'patch' { .patch }
+				'head' { .head }
+				'options' { .options }
+				else { .get }
 			}
+			url:    '/${method}'
+			host:   'example.com'
 		}
-
-		response := client.request(request) or {
-			eprintln('Request ${i + 1} failed: ${err}')
-			continue
-		}
-
-		println('Request ${i + 1} (${url}): ${response.status_code} (${response.body.len} bytes)')
+		println('  - ${method.to_upper()}: ${request.method}')
 	}
-
-	println('All requests completed')
+	println('All HTTP methods supported')
 }

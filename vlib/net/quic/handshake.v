@@ -6,7 +6,8 @@ module quic
 import time
 
 // QUIC Handshake Implementation
-// Implements the QUIC handshake process using TLS 1.3
+// Uses ngtcp2's built-in TLS 1.3 handshake via crypto callbacks.
+// The ngtcp2_crypto_ossl callbacks handle the actual TLS operations.
 
 // HandshakeState represents the state of the QUIC handshake
 pub enum HandshakeState {
@@ -16,7 +17,10 @@ pub enum HandshakeState {
 	failed
 }
 
-// perform_handshake performs the complete QUIC handshake
+// perform_handshake performs the QUIC handshake using ngtcp2 callbacks.
+// The crypto callbacks (client_initial, recv_crypto_data, etc.) drive
+// the TLS 1.3 handshake automatically through ngtcp2_conn_write_pkt
+// and ngtcp2_conn_read_pkt.
 pub fn (mut c Connection) perform_handshake() ! {
 	if c.closed {
 		return error('connection closed')
@@ -28,124 +32,64 @@ pub fn (mut c Connection) perform_handshake() ! {
 
 	println('Starting QUIC handshake...')
 
-	// Create crypto context
-	mut crypto_ctx := new_crypto_context_client(['h3']) or {
-		return error('failed to create crypto context: ${err}')
-	}
-	defer {
-		crypto_ctx.free()
-	}
+	// Handshake loop: write initial packet, then read/write until complete
+	max_attempts := 50
+	for attempt := 0; attempt < max_attempts; attempt++ {
+		ts := u64(time.now().unix_milli()) * 1000000 // nanoseconds
+		mut pi := Ngtcp2PktInfo{}
 
-	// Derive initial secrets
-	tx_secret, rx_secret := derive_initial_secrets(c.conn_id, false) or {
-		return error('failed to derive initial secrets: ${err}')
-	}
-
-	crypto_ctx.tx_secret = tx_secret
-	crypto_ctx.rx_secret = rx_secret
-
-	println('Initial secrets derived')
-
-	// Send Initial packet
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
-	mut pi := Ngtcp2PktInfo{}
-
-	// Write initial packet
-	nwritten := conn_write_pkt(c.ngtcp2_conn, &path, &pi, c.send_buf, ts) or {
-		return error('failed to write initial packet: ${err}')
-	}
-
-	if nwritten > 0 {
-		println('Sending Initial packet (${nwritten} bytes)')
-
-		// Encrypt packet
-		encrypted := crypto_ctx.encrypt_packet(c.send_buf[..nwritten], []u8{}) or {
-			return error('failed to encrypt initial packet: ${err}')
+		// Write packets (drives the TLS handshake via crypto callbacks)
+		nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or {
+			return error('failed to write handshake packet: ${err}')
 		}
 
-		// Send via UDP
-		c.udp_socket.write(encrypted) or { return error('failed to send initial packet: ${err}') }
-	}
+		if nwritten > 0 {
+			// Send raw QUIC packet via UDP (already encrypted by ngtcp2)
+			c.udp_socket.write(c.send_buf[..nwritten]) or {
+				return error('failed to send handshake packet: ${err}')
+			}
+		}
 
-	// Handshake loop
-	max_attempts := 20
-	for attempt := 0; attempt < max_attempts; attempt++ {
-		println('Handshake attempt ${attempt + 1}/${max_attempts}')
+		// Check if handshake completed
+		if conn_get_handshake_completed(c.ngtcp2_conn) {
+			c.handshake_done = true
+			println('Handshake complete!')
+			return
+		}
 
-		// Read response with timeout
-		c.udp_socket.set_read_timeout(500 * time.millisecond)
+		// Read response from server
+		c.udp_socket.set_read_timeout(2 * time.second)
 		n, _ := c.udp_socket.read(mut c.recv_buf) or {
-			if err.msg().contains('timeout') {
-				println('  Timeout waiting for response')
-				time.sleep(100 * time.millisecond)
+			if err.msg().contains('timed out') || err.msg().contains('timeout') {
+				// Timeout: retry writing
 				continue
 			}
 			return error('failed to read packet: ${err}')
 		}
 
 		if n == 0 {
-			println('  No data received')
-			time.sleep(100 * time.millisecond)
 			continue
 		}
 
-		println('  Received packet (${n} bytes)')
-
-		// Decrypt packet
-		decrypted := crypto_ctx.decrypt_packet(c.recv_buf[..n], []u8{}) or {
-			println('  Failed to decrypt: ${err}')
-			continue
-		}
-
-		// Process packet with ngtcp2
-		conn_read_pkt(c.ngtcp2_conn, &path, &pi, decrypted, ts) or {
-			if err_is_fatal(ngtcp2_err_invalid_argument) {
-				return error('handshake failed: ${err}')
+		// Process received packet (ngtcp2 handles decryption via callbacks)
+		conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
+			err_str := err.msg()
+			// Ignore non-fatal errors during handshake
+			if err_str.contains('DISCARD_PKT') || err_str.contains('discard') {
+				$if trace_quic ? {
+					eprintln('[QUIC] discarded packet during client handshake: ${err_str}')
+				}
+				continue
 			}
-			println('  Packet processing error (non-fatal): ${err}')
+			return error('handshake read error: ${err}')
 		}
 
-		// Provide crypto data to TLS
-		crypto_ctx.provide_data(.initial, decrypted) or {
-			println('  Failed to provide crypto data: ${err}')
-		}
-
-		// Perform TLS handshake step
-		handshake_done := crypto_ctx.do_handshake() or {
-			println('  TLS handshake error: ${err}')
-			continue
-		}
-
-		// Check if handshake is complete
-		if handshake_done || conn_get_handshake_completed(c.ngtcp2_conn) {
+		// Check again after processing
+		if conn_get_handshake_completed(c.ngtcp2_conn) {
 			c.handshake_done = true
-			println('✓ Handshake complete!')
+			println('Handshake complete!')
 			return
 		}
-
-		// Generate response packet
-		nwritten2 := conn_write_pkt(c.ngtcp2_conn, &path, &pi, c.send_buf, ts) or {
-			println('  Failed to write response: ${err}')
-			continue
-		}
-
-		if nwritten2 > 0 {
-			println('  Sending response packet (${nwritten2} bytes)')
-
-			// Encrypt and send
-			encrypted2 := crypto_ctx.encrypt_packet(c.send_buf[..nwritten2], []u8{}) or {
-				println('  Failed to encrypt response: ${err}')
-				continue
-			}
-
-			c.udp_socket.write(encrypted2) or {
-				println('  Failed to send response: ${err}')
-				continue
-			}
-		}
-
-		time.sleep(100 * time.millisecond)
 	}
 
 	return error('handshake timeout after ${max_attempts} attempts')
@@ -163,119 +107,56 @@ pub fn (mut c Connection) perform_handshake_server(cert_file string, key_file st
 
 	println('Starting server QUIC handshake...')
 
-	// Create crypto context for server
-	mut crypto_ctx := new_crypto_context_server(cert_file, key_file, ['h3']) or {
-		return error('failed to create crypto context: ${err}')
-	}
-	defer {
-		crypto_ctx.free()
-	}
-
-	// Derive initial secrets (server side)
-	tx_secret, rx_secret := derive_initial_secrets(c.conn_id, true) or {
-		return error('failed to derive initial secrets: ${err}')
-	}
-
-	crypto_ctx.tx_secret = tx_secret
-	crypto_ctx.rx_secret = rx_secret
-
-	println('Server initial secrets derived')
-
-	// Wait for Initial packet from client
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
-	mut pi := Ngtcp2PktInfo{}
-
-	// Read initial packet
-	n, _ := c.udp_socket.read(mut c.recv_buf) or {
-		return error('failed to read initial packet: ${err}')
-	}
-
-	if n == 0 {
-		return error('no initial packet received')
-	}
-
-	println('Received Initial packet from client (${n} bytes)')
-
-	// Decrypt packet
-	decrypted := crypto_ctx.decrypt_packet(c.recv_buf[..n], []u8{}) or {
-		return error('failed to decrypt initial packet: ${err}')
-	}
-
-	// Process packet
-	conn_read_pkt(c.ngtcp2_conn, &path, &pi, decrypted, ts) or {
-		return error('failed to process initial packet: ${err}')
-	}
-
-	// Provide crypto data to TLS
-	crypto_ctx.provide_data(.initial, decrypted) or {
-		return error('failed to provide crypto data: ${err}')
-	}
-
-	// Perform TLS handshake
-	crypto_ctx.do_handshake() or { return error('TLS handshake failed: ${err}') }
-
-	// Send Handshake packet
-	nwritten := conn_write_pkt(c.ngtcp2_conn, &path, &pi, c.send_buf, ts) or {
-		return error('failed to write handshake packet: ${err}')
-	}
-
-	if nwritten > 0 {
-		println('Sending Handshake packet (${nwritten} bytes)')
-
-		// Encrypt and send
-		encrypted := crypto_ctx.encrypt_packet(c.send_buf[..nwritten], []u8{}) or {
-			return error('failed to encrypt handshake packet: ${err}')
-		}
-
-		c.udp_socket.write(encrypted) or { return error('failed to send handshake packet: ${err}') }
-	}
-
-	// Wait for handshake completion
-	max_attempts := 10
+	// Server handshake loop
+	max_attempts := 50
 	for attempt := 0; attempt < max_attempts; attempt++ {
-		// Check if handshake is complete
-		if crypto_ctx.is_handshake_complete() && conn_get_handshake_completed(c.ngtcp2_conn) {
-			c.handshake_done = true
-			println('✓ Server handshake complete!')
-			return
+		ts := u64(time.now().unix_milli()) * 1000000
+		mut pi := Ngtcp2PktInfo{}
+
+		// Read packet from client
+		c.udp_socket.set_read_timeout(2 * time.second)
+		n, _ := c.udp_socket.read(mut c.recv_buf) or {
+			if err.msg().contains('timed out') || err.msg().contains('timeout') {
+				continue
+			}
+			return error('failed to read packet: ${err}')
 		}
 
-		// Read more packets
-		n2, _ := c.udp_socket.read(mut c.recv_buf) or {
-			time.sleep(100 * time.millisecond)
-			continue
-		}
-
-		if n2 > 0 {
-			// Decrypt and process
-			decrypted2 := crypto_ctx.decrypt_packet(c.recv_buf[..n2], []u8{}) or { continue }
-
-			conn_read_pkt(c.ngtcp2_conn, &path, &pi, decrypted2, ts) or { continue }
-
-			crypto_ctx.provide_data(.handshake, decrypted2) or { continue }
-
-			crypto_ctx.do_handshake() or { continue }
-
-			// Send response if needed
-			nwritten2 := conn_write_pkt(c.ngtcp2_conn, &path, &pi, c.send_buf, ts) or { continue }
-
-			if nwritten2 > 0 {
-				encrypted2 := crypto_ctx.encrypt_packet(c.send_buf[..nwritten2], []u8{}) or {
+		if n > 0 {
+			// Process packet
+			conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
+				err_str := err.msg()
+				if err_str.contains('DISCARD_PKT') || err_str.contains('discard') {
+					$if trace_quic ? {
+						eprintln('[QUIC] discarded packet during server handshake: ${err_str}')
+					}
 					continue
 				}
-
-				c.udp_socket.write(encrypted2) or { continue }
+				return error('server handshake read error: ${err}')
 			}
 		}
 
-		time.sleep(100 * time.millisecond)
+		// Write response packets
+		nwritten := conn_write_pkt(c.ngtcp2_conn, &c.path, &pi, c.send_buf, ts) or { continue }
+
+		if nwritten > 0 {
+			c.udp_socket.write(c.send_buf[..nwritten]) or {
+				return error('failed to send handshake packet: ${err}')
+			}
+		}
+
+		// Check if handshake completed
+		if conn_get_handshake_completed(c.ngtcp2_conn) {
+			c.handshake_done = true
+			println('Server handshake complete!')
+			return
+		}
 	}
 
 	return error('server handshake timeout')
 }
 
-// send_with_crypto sends data with encryption
+// send_with_crypto sends data with encryption via ngtcp2 callbacks
 pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx &CryptoContext) ! {
 	if c.closed {
 		return error('connection closed')
@@ -285,23 +166,17 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 		return error('handshake not completed')
 	}
 
-	// Write stream data
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
+	// Write stream data (ngtcp2 handles encryption via callbacks)
+	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
-	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &path, &pi, c.send_buf, i64(stream_id),
+	nwritten, _ := conn_writev_stream(c.ngtcp2_conn, &c.path, &pi, c.send_buf, i64(stream_id),
 		data, ts) or { return error('failed to write stream data: ${err}') }
 
 	if nwritten > 0 {
-		// Encrypt packet
-		mut crypto_ctx_mut := unsafe { &CryptoContext(crypto_ctx) }
-		encrypted := crypto_ctx_mut.encrypt_packet(c.send_buf[..nwritten], []u8{}) or {
-			return error('failed to encrypt packet: ${err}')
+		c.udp_socket.write(c.send_buf[..nwritten]) or {
+			return error('failed to send packet: ${err}')
 		}
-
-		// Send via UDP
-		c.udp_socket.write(encrypted) or { return error('failed to send packet: ${err}') }
 	}
 
 	// Update stream data
@@ -309,7 +184,7 @@ pub fn (mut c Connection) send_with_crypto(stream_id u64, data []u8, crypto_ctx 
 	stream.data << data
 }
 
-// recv_with_crypto receives data with decryption
+// recv_with_crypto receives data with decryption via ngtcp2 callbacks
 pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoContext) ![]u8 {
 	if c.closed {
 		return error('connection closed')
@@ -326,18 +201,11 @@ pub fn (mut c Connection) recv_with_crypto(stream_id u64, crypto_ctx &CryptoCont
 		return []u8{}
 	}
 
-	// Decrypt packet
-	mut crypto_ctx_mut := unsafe { &CryptoContext(crypto_ctx) }
-	decrypted := crypto_ctx_mut.decrypt_packet(c.recv_buf[..n], []u8{}) or {
-		return error('failed to decrypt packet: ${err}')
-	}
-
-	// Process packet with ngtcp2
-	ts := u64(time.now().unix_milli())
-	mut path := Ngtcp2PathStruct{}
+	// Process packet with ngtcp2 (handles decryption via callbacks)
+	ts := u64(time.now().unix_milli()) * 1000000
 	mut pi := Ngtcp2PktInfo{}
 
-	conn_read_pkt(c.ngtcp2_conn, &path, &pi, decrypted, ts) or {
+	conn_read_pkt(c.ngtcp2_conn, &c.path, &pi, c.recv_buf[..n], ts) or {
 		if !err_is_fatal(ngtcp2_err_invalid_argument) {
 			return []u8{}
 		}

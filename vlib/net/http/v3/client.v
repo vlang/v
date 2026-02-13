@@ -59,8 +59,8 @@ pub fn (m Method) str() string {
 	}
 }
 
-// SimpleRequest represents a simplified HTTP request for v3
-pub struct SimpleRequest {
+// Request represents a simplified HTTP request for v3
+pub struct Request {
 pub:
 	method  Method
 	url     string
@@ -69,8 +69,8 @@ pub:
 	headers map[string]string
 }
 
-// SimpleResponse represents a simplified HTTP response
-pub struct SimpleResponse {
+// Response represents a simplified HTTP response
+pub struct Response {
 pub:
 	status_code int
 	headers     map[string]string
@@ -127,7 +127,7 @@ To enable HTTP/3:
 }
 
 // request sends an HTTP/3 request and returns the response from the server
-pub fn (mut c Client) request(req SimpleRequest) !SimpleResponse {
+pub fn (mut c Client) request(req Request) !Response {
 	// Allocate stream ID (client uses odd IDs)
 	stream_id := c.next_stream_id
 	c.next_stream_id += 4 // HTTP/3 uses bidirectional streams
@@ -201,7 +201,7 @@ fn (mut c Client) send_frame(stream_id u64, frame Frame) ! {
 }
 
 // read_response reads the HTTP/3 response
-fn (mut c Client) read_response(stream_id u64) !SimpleResponse {
+fn (mut c Client) read_response(stream_id u64) !Response {
 	// Read frames from QUIC stream
 	data := c.quic_conn.recv(stream_id)!
 
@@ -227,7 +227,10 @@ fn (mut c Client) read_response(stream_id u64) !SimpleResponse {
 		payload := data[idx..idx + int(frame_length)]
 		idx += int(frame_length)
 
-		frame_type := unsafe { FrameType(frame_type_val) }
+		frame_type := frame_type_from_u64(frame_type_val) or {
+			// Ignore unknown frame types per RFC 9114
+			continue
+		}
 
 		match frame_type {
 			.headers {
@@ -254,7 +257,7 @@ fn (mut c Client) read_response(stream_id u64) !SimpleResponse {
 		}
 	}
 
-	return SimpleResponse{
+	return Response{
 		body:        body.bytestr()
 		status_code: status_code
 		headers:     response_headers
@@ -316,4 +319,19 @@ fn decode_headers(data []u8) ![]HeaderField {
 	}
 
 	return headers
+}
+
+// frame_type_from_u64 validates and converts a u64 to a FrameType enum value.
+// Returns an error for unrecognized frame type values.
+pub fn frame_type_from_u64(val u64) !FrameType {
+	return match val {
+		0x0 { .data }
+		0x1 { .headers }
+		0x3 { .cancel_push }
+		0x4 { .settings }
+		0x5 { .push_promise }
+		0x7 { .goaway }
+		0xd { .max_push_id }
+		else { error('unknown HTTP/3 frame type: 0x${val:x}') }
+	}
 }

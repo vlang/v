@@ -37,15 +37,16 @@ pub fn (mut p BufferPool) get() []u8 {
 // put returns a buffer to the pool for reuse after clearing it
 pub fn (mut p BufferPool) put(buf []u8) {
 	if buf.cap == p.size {
-		// Clear buffer before returning to pool
-		mut cleared := unsafe { buf[..0] }
-		p.buffers << cleared
+		// Reuse the buffer's backing memory by trimming length to zero
+		mut b := unsafe { buf }
+		b.trim(0)
+		p.buffers << b
 	}
 }
 
 // encode_frame_optimized encodes a frame into a pre-allocated buffer for improved performance.
 // Returns the number of bytes written, or 0 if the buffer is too small.
-pub fn encode_frame_optimized(frame Frame, mut buf []u8) int {
+fn encode_frame_optimized(frame Frame, mut buf []u8) int {
 	// Ensure buffer is large enough
 	required_size := 9 + frame.payload.len
 	if buf.len < required_size {
@@ -66,9 +67,7 @@ pub fn encode_frame_optimized(frame Frame, mut buf []u8) int {
 
 	// Copy payload using bulk copy
 	if frame.payload.len > 0 {
-		unsafe {
-			vmemcpy(&buf[9], frame.payload.data, frame.payload.len)
-		}
+		copy(mut buf[9..], frame.payload)
 	}
 
 	return required_size
@@ -146,9 +145,9 @@ pub fn (mut e Encoder) encode_optimized(headers []HeaderField, mut buf []u8) int
 	return offset
 }
 
-// encode_int_fast encodes a variable-length integer using fast encoding.
+// encode_integer encodes a variable-length integer using fast encoding.
 // Returns the number of bytes written to the buffer.
-pub fn encode_int_fast(value u64, prefix_bits u8, mut buf []u8, offset int) int {
+pub fn encode_integer(value u64, prefix_bits u8, mut buf []u8, offset int) int {
 	max_prefix := (u64(1) << prefix_bits) - 1
 
 	if value < max_prefix {
@@ -172,27 +171,13 @@ pub fn encode_int_fast(value u64, prefix_bits u8, mut buf []u8, offset int) int 
 
 // Fast string comparison for header matching
 @[inline]
-pub fn fast_string_equal(a string, b string) bool {
-	if a.len != b.len {
-		return false
-	}
-
-	// Use unsafe pointer comparison for speed
-	unsafe {
-		a_ptr := a.str
-		b_ptr := b.str
-		for i in 0 .. a.len {
-			if a_ptr[i] != b_ptr[i] {
-				return false
-			}
-		}
-	}
-	return true
+fn fast_string_equal(a string, b string) bool {
+	return a == b
 }
 
 // lookup_static_table_fast performs a fast lookup of header fields in the static table.
 // Returns the index of the header field, or 0 if not found.
-pub fn lookup_static_table_fast(name string, value string) int {
+fn lookup_static_table_fast(name string, value string) int {
 	// Use binary search for common headers
 	match name {
 		':authority' {
@@ -282,9 +267,7 @@ pub fn (mut fb FrameBuffer) write(data []u8) bool {
 	}
 
 	if data.len > 0 {
-		unsafe {
-			vmemcpy(&fb.data[fb.offset], data.data, data.len)
-		}
+		copy(mut fb.data[fb.offset..], data)
 	}
 	fb.offset += data.len
 	return true
@@ -338,7 +321,7 @@ pub fn (mut cp ConnectionPool) put(addr string, conn &PooledConnection) {
 }
 
 // Statistics for performance monitoring
-pub struct PerformanceStats {
+pub struct Stats {
 pub mut:
 	total_requests       u64
 	successful_requests  u64
@@ -351,7 +334,7 @@ pub mut:
 }
 
 // record_request records statistics for a single request.
-pub fn (mut s PerformanceStats) record_request(success bool, bytes_sent int, bytes_received int, time_ms u64) {
+pub fn (mut s Stats) record_request(success bool, bytes_sent int, bytes_received int, time_ms u64) {
 	s.total_requests++
 	if success {
 		s.successful_requests++
@@ -371,7 +354,7 @@ pub fn (mut s PerformanceStats) record_request(success bool, bytes_sent int, byt
 }
 
 // avg_time_ms calculates and returns the average request time in milliseconds.
-pub fn (s PerformanceStats) avg_time_ms() f64 {
+pub fn (s Stats) avg_time_ms() f64 {
 	if s.total_requests == 0 {
 		return 0.0
 	}
@@ -379,7 +362,7 @@ pub fn (s PerformanceStats) avg_time_ms() f64 {
 }
 
 // success_rate calculates and returns the request success rate as a percentage.
-pub fn (s PerformanceStats) success_rate() f64 {
+pub fn (s Stats) success_rate() f64 {
 	if s.total_requests == 0 {
 		return 0.0
 	}
@@ -387,7 +370,7 @@ pub fn (s PerformanceStats) success_rate() f64 {
 }
 
 // print displays the performance statistics to stdout.
-pub fn (s PerformanceStats) print() {
+pub fn (s Stats) print() {
 	println('Performance Statistics:')
 	println('  Total requests: ${s.total_requests}')
 	println('  Successful: ${s.successful_requests}')

@@ -27,6 +27,8 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	alpn_protocols []string // ALPN protocol names to negotiate (e.g. ['h2', 'http/1.1'])
 }
 
 // new_ssl_conn instance an new SSLCon struct

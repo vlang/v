@@ -223,6 +223,8 @@ pub fn (mut ctx CryptoContext) free() {
 		C.EVP_CIPHER_CTX_free(ctx.rx_cipher_ctx)
 	}
 	if ctx.ssl != unsafe { nil } {
+		// Free the per-connection conn_ref before freeing the SSL object
+		C.quic_cleanup_crypto(ctx.ssl)
 		C.SSL_free(ctx.ssl)
 	}
 	if ctx.ssl_ctx != unsafe { nil } {
