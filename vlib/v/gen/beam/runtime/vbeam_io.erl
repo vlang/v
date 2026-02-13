@@ -10,7 +10,7 @@
 println(Bin) when is_binary(Bin) ->
     io:format("~s~n", [Bin]),
     ok;
-println(Term) ->
+println(Term) when not is_binary(Term) ->
     %% For non-binary terms, convert to string representation
     io:format("~p~n", [Term]),
     ok.
@@ -20,7 +20,7 @@ println(Term) ->
 print(Bin) when is_binary(Bin) ->
     io:format("~s", [Bin]),
     ok;
-print(Term) ->
+print(Term) when not is_binary(Term) ->
     io:format("~p", [Term]),
     ok.
 
@@ -29,7 +29,7 @@ print(Term) ->
 eprintln(Bin) when is_binary(Bin) ->
     io:format(standard_error, "~s~n", [Bin]),
     ok;
-eprintln(Term) ->
+eprintln(Term) when not is_binary(Term) ->
     io:format(standard_error, "~p~n", [Term]),
     ok.
 
@@ -38,7 +38,7 @@ eprintln(Term) ->
 eprint(Bin) when is_binary(Bin) ->
     io:format(standard_error, "~s", [Bin]),
     ok;
-eprint(Term) ->
+eprint(Term) when not is_binary(Term) ->
     io:format(standard_error, "~p", [Term]),
     ok.
 
