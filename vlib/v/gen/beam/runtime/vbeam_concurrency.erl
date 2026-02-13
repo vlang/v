@@ -42,6 +42,35 @@ Provides concurrency primitives and scheduling helpers.
     sleep/1
 ]).
 
+%% Export protocol types for cross-module contracts
+-export_type([
+    monitored_task/0,
+    task_result/0,
+    task_msg/0,
+    monitor_down_msg/0,
+    wait_result_msg/0,
+    channel_msg/0,
+    channel_reply/0,
+    runtime_msg/0
+]).
+
+%% Inter-process message protocol types
+-type monitored_task() :: {pid(), reference(), reference()}.
+-type task_result() :: {ok, term()} | {error, {atom(), term(), list()}}.
+-type task_msg() :: {reference(), task_result()}.
+-type monitor_down_msg() :: {'DOWN', reference(), process, pid(), term()}.
+-type wait_result_msg() :: task_msg() | monitor_down_msg().
+-type channel_msg() ::
+    check_mailbox
+    | {recv, pid(), reference()}
+    | {send, pid(), reference(), term()}
+    | {try_recv, pid(), reference()}
+    | {close, pid(), reference()}
+    | stop.
+-type channel_reply() ::
+    {reference(), ok | closed | empty | {ok, term()} | {error, term()}}.
+-type runtime_msg() :: wait_result_msg() | channel_msg() | channel_reply() | term().
+
 %% ============================================================================
 %% Process Spawning
 %% ============================================================================
@@ -65,7 +94,7 @@ spawn_process(Fun) when is_function(Fun, 0) ->
 %% Spawn with monitor for wait() support
 %% Returns {Pid, MonitorRef, ResultRef} for later waiting
 %% V: t := spawn compute(5)
--spec spawn_monitored(fun(() -> any())) -> {pid(), reference(), reference()}.
+-spec spawn_monitored(fun(() -> any())) -> monitored_task().
 
 spawn_monitored(Fun) when is_function(Fun, 0) ->
     Parent = self(),
@@ -91,13 +120,13 @@ Parameters: `{pid(), reference(), reference()}`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec wait_for_result({pid(), reference(), reference()}) -> any().
-wait_for_result({Pid, MonRef, ResultRef})
+-spec wait_for_result(monitored_task()) -> any().
+wait_for_result(Task = {Pid, MonRef, ResultRef})
   when is_pid(Pid), is_reference(MonRef), is_reference(ResultRef) ->
-    wait_for_result({Pid, MonRef, ResultRef}, infinity).
+    wait_for_result(Task, infinity).
 
 %% Wait for a spawned task's result with timeout
--spec wait_for_result({pid(), reference(), reference()}, timeout()) -> any() | {error, timeout}.
+-spec wait_for_result(monitored_task(), timeout()) -> any() | {error, timeout}.
 wait_for_result({Pid, MonRef, ResultRef}, Timeout)
   when is_pid(Pid), is_reference(MonRef), is_reference(ResultRef),
        (Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0)) ->
@@ -127,14 +156,14 @@ Parameters: `pid()`, `any()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec send_message(pid(), any()) -> any().
+-spec send_message(pid(), runtime_msg()) -> runtime_msg().
 
 send_message(Pid, Msg) when is_pid(Pid) ->
     true = is_process_alive(Pid),
     Pid ! Msg.
 
 %% Receive a message (blocking, infinite timeout)
--spec receive_message() -> any().
+-spec receive_message() -> runtime_msg().
 
 receive_message() ->
     receive
@@ -149,7 +178,7 @@ Parameters: `timeout()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec receive_message(timeout()) -> {ok, any()} | timeout.
+-spec receive_message(timeout()) -> {ok, runtime_msg()} | timeout.
 receive_message(Timeout)
   when Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0) ->
     receive
@@ -399,8 +428,6 @@ Side effects: May perform runtime side effects such as I/O, process interaction,
 sleep(Ms) when is_integer(Ms), Ms >= 0 ->
     timer:sleep(Ms),
     ok.
-
-
 
 
 
