@@ -37,23 +37,27 @@ to_binary(Term) ->
 %% V's string.int() equivalent
 -spec string_to_int(binary() | string()) -> integer().
 string_to_int(Bin) when is_binary(Bin) ->
-    try
+    Int = try
         binary_to_integer(Bin)
     catch
         _:_ -> 0
-    end;
+    end,
+    true = is_integer(Int),
+    Int;
 string_to_int(List) when is_list(List) ->
-    try
+    Int = try
         list_to_integer(List)
     catch
         _:_ -> 0
-    end.
+    end,
+    true = is_integer(Int),
+    Int.
 
 %% String to float conversion
 %% V's string.f64() equivalent
 -spec string_to_float(binary() | string()) -> float().
 string_to_float(Bin) when is_binary(Bin) ->
-    try
+    Float = try
         binary_to_float(Bin)
     catch
         error:badarg ->
@@ -63,9 +67,11 @@ string_to_float(Bin) when is_binary(Bin) ->
             catch
                 _:_ -> 0.0
             end
-    end;
+    end,
+    true = is_float(Float),
+    Float;
 string_to_float(List) when is_list(List) ->
-    try
+    Float = try
         list_to_float(List)
     catch
         error:badarg ->
@@ -74,17 +80,23 @@ string_to_float(List) when is_list(List) ->
             catch
                 _:_ -> 0.0
             end
-    end.
+    end,
+    true = is_float(Float),
+    Float.
 
 %% Integer to string (binary)
 -spec int_to_string(integer()) -> binary().
 int_to_string(Int) when is_integer(Int) ->
-    integer_to_binary(Int).
+    Bin = integer_to_binary(Int),
+    true = is_binary(Bin),
+    Bin.
 
 %% Float to string (binary) with 6 decimal places, compact output
 -spec float_to_string(float()) -> binary().
-float_to_string(Float) when is_float(Float) ->
-    float_to_binary(Float, [{decimals, 6}, compact]).
+float_to_string(Float) when is_float(Float), Float =:= Float ->
+    Bin = float_to_binary(Float, [{decimals, 6}, compact]),
+    true = is_binary(Bin),
+    Bin.
 
 %% Bool to string (binary)
 -spec bool_to_string(boolean()) -> binary().
@@ -94,12 +106,16 @@ bool_to_string(false) -> <<"false">>.
 %% Integer to hexadecimal string
 -spec int_to_hex(integer()) -> binary().
 int_to_hex(Int) when is_integer(Int) ->
-    integer_to_binary(Int, 16).
+    Hex = integer_to_binary(Int, 16),
+    true = is_binary(Hex),
+    Hex.
 
 %% Parse hexadecimal string to integer
 -spec hex_to_int(binary()) -> integer().
-hex_to_int(Bin) when is_binary(Bin) ->
-    binary_to_integer(Bin, 16).
+hex_to_int(Bin) when is_binary(Bin), byte_size(Bin) > 0 ->
+    Int = binary_to_integer(Bin, 16),
+    true = is_integer(Int),
+    Int.
 
 %% Format integer in given base (2-36)
 -spec format_int(integer(), integer()) -> binary().
@@ -112,4 +128,5 @@ format_int(Int, Base) when is_integer(Int), is_integer(Base), Base >= 2, Base =<
 -spec interpolate([term()]) -> binary().
 interpolate(Parts) when is_list(Parts) ->
     Bins = [to_binary(Part) || Part <- Parts],
+    true = lists:all(fun is_binary/1, Bins),
     iolist_to_binary(Bins).
