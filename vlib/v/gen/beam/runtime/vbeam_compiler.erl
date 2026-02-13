@@ -18,6 +18,7 @@
          compile_dir/1]).
 
 %% escript entry point
+-spec main([string()]) -> ok | no_return().
 main(["--dir", Dir]) ->
     {OkCount, ErrCount, Errors} = compile_dir(Dir),
     case Errors of
@@ -169,6 +170,7 @@ compile_one(CoreFile, OutDir) ->
     end.
 
 %% Compile a .core file to .beam using in-memory compilation
+-spec compile_core_file(string(), string()) -> {ok, atom(), string()} | {error, term()}.
 compile_core_file(CoreFile, OutDir) ->
     case file:read_file(CoreFile) of
         {ok, Bin} ->
@@ -179,6 +181,7 @@ compile_core_file(CoreFile, OutDir) ->
 
 %% Compile Core Erlang text directly to .beam (the Tier 3 core)
 %% Flow: text -> core_scan -> core_parse -> compile:noenv_forms -> .beam binary
+-spec compile_core_text(string(), string()) -> {ok, atom(), string()} | {error, term()}.
 compile_core_text(Text, OutDir) ->
     case core_scan:string(Text) of
         {ok, Tokens, _} ->
@@ -195,6 +198,7 @@ compile_core_text(Text, OutDir) ->
 %% Compile Core Erlang AST forms directly to .beam
 %% Used by both text mode (after core_parse) and ETF mode (after erl_parse).
 %% Uses noenv_forms to prevent ERL_COMPILER_OPTIONS pollution.
+-spec compile_core_forms(term(), string()) -> {ok, atom(), string()} | {error, term()}.
 compile_core_forms(Forms, OutDir) ->
     CompileOpts = [from_core, binary, debug_info, return_errors,
                    {compile_info, [{source, <<"vbeam">>},
@@ -220,6 +224,7 @@ write_beam(ModName, Binary, OutDir) ->
 
 %% Compile all .core and .erl files in a directory
 %% Returns {OkCount, ErrCount, Errors} — continues on failure
+-spec compile_dir(string()) -> {non_neg_integer(), non_neg_integer(), [{term(), term()}]}.
 compile_dir(Dir) ->
     case file:list_dir(Dir) of
         {ok, Files} ->
