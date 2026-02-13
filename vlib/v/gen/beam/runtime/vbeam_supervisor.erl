@@ -52,6 +52,23 @@ Provides supervisor-compatible utilities for V runtime services.
 %% supervisor callback
 -export([init/1]).
 
+%% Export protocol types for cross-module contracts
+-export_type([child_spec/0, sup_msg/0]).
+
+%% Supervisor message protocol types
+-type child_start() :: {module(), atom(), [term()]} | fun(() -> term()).
+-type child_spec() :: #{
+    id := term(),
+    start := child_start(),
+    restart => permanent | transient | temporary,
+    shutdown => brutal_kill | infinity | timeout(),
+    type => worker | supervisor
+}.
+-type sup_msg() ::
+    {start_child, child_spec()}
+    | {stop_child, atom()}
+    | {restart_child, atom()}.
+
 %% ============================================================================
 %% API Functions
 %% ============================================================================
@@ -104,7 +121,7 @@ Parameters: `Sup :: pid() | atom()`, `ChildSpec :: map()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec start_child(Sup :: pid() | atom(), ChildSpec :: map()) ->
+-spec start_child(Sup :: pid() | atom(), ChildSpec :: child_spec()) ->
     {ok, pid()} | {error, term()}.
 start_child(Sup, ChildSpec)
   when (is_pid(Sup) orelse is_atom(Sup)), is_map(ChildSpec) ->
@@ -202,7 +219,7 @@ init(SupSpec) when is_map(SupSpec) ->
 %%
 %% Output (OTP):
 %%   #{id => worker1, start => {Mod, Fun, Args}, ...}
--spec to_otp_child_spec(map()) -> supervisor:child_spec().
+-spec to_otp_child_spec(child_spec()) -> supervisor:child_spec().
 to_otp_child_spec(Spec) when is_map(Spec) ->
     Id = maps:get(id, Spec),
     Start = normalize_start(maps:get(start, Spec)),
@@ -247,7 +264,6 @@ start_fun_child(Fun) when is_function(Fun, 0) ->
     end),
     true = is_pid(Pid),
     {ok, Pid}.
-
 
 
 
