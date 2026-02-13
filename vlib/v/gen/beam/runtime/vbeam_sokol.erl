@@ -81,6 +81,7 @@
 
 %% Frame interval in ms (~60fps)
 -define(FRAME_INTERVAL_MS, 16).
+-define(IS_NUM(X), (is_integer(X) orelse is_float(X))).
 
 -record(state, {
     wx           :: term(),          %% wx object
@@ -122,7 +123,11 @@
 %% @doc Run the application. Creates window and starts event loop.
 %% This call blocks until the window is closed (matching sokol_app behavior).
 -spec run(map()) -> ok.
-run(Desc) ->
+run(Desc) when is_map(Desc) ->
+    InitCb = maps:get(init_cb, Desc, undefined),
+    FrameCb = maps:get(frame_cb, Desc, undefined),
+    true = (InitCb =:= undefined) orelse is_function(InitCb, 0),
+    true = (FrameCb =:= undefined) orelse is_function(FrameCb, 0),
     {ok, Pid} = gen_server:start_link({local, ?MODULE}, ?MODULE, [Desc], []),
     %% Block until window closes (sokol sapp.run() blocks)
     MonRef = monitor(process, Pid),
@@ -183,19 +188,23 @@ color_format() -> 1. %% RGBA8
 depth_format() -> 2. %% DEPTH
 
 -spec show_keyboard(boolean()) -> ok.
-show_keyboard(_Visible) -> ok.
+show_keyboard(true) -> ok;
+show_keyboard(false) -> ok.
 -spec keyboard_shown() -> boolean().
 keyboard_shown() -> false.
 -spec show_mouse(boolean()) -> ok.
-show_mouse(_Visible) -> ok.
+show_mouse(true) -> ok;
+show_mouse(false) -> ok.
 -spec mouse_shown() -> boolean().
 mouse_shown() -> true.
 -spec lock_mouse(boolean()) -> ok.
-lock_mouse(_Locked) -> ok.
+lock_mouse(true) -> ok;
+lock_mouse(false) -> ok.
 -spec mouse_locked() -> boolean().
 mouse_locked() -> false.
 -spec set_mouse_cursor(atom() | integer()) -> ok.
-set_mouse_cursor(_Cursor) -> ok.
+set_mouse_cursor(Cursor) when is_atom(Cursor) -> ok;
+set_mouse_cursor(Cursor) when is_integer(Cursor), Cursor >= 0 -> ok.
 -spec high_dpi() -> boolean().
 high_dpi() -> false.
 
@@ -226,7 +235,8 @@ is_fullscreen() ->
 
 %% @doc Initialize the graphics subsystem.
 -spec setup(map()) -> ok.
-setup(_Desc) ->
+setup(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     %% Graphics setup happens in gen_server init when OpenGL context is created.
     %% This is called by V code after the window exists, so it's a no-op here.
     ok.
@@ -249,13 +259,15 @@ reset_state_cache() ->
 %% @doc Create a PassAction that clears to RGBA color.
 %% Produces a map in the exact format begin_pass/1 expects.
 -spec create_clear_pass_action(float(), float(), float(), float()) -> map().
-create_clear_pass_action(R, G, B, A) ->
+create_clear_pass_action(R, G, B, A)
+  when ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A), A >= 0.0, A =< 1.0 ->
     #{action => #{colors => [#{clear_value => #{r => to_float(R), g => to_float(G),
                                                  b => to_float(B), a => to_float(A)}}]}}.
 
 %% @doc Create a default Pass from a PassAction.
 -spec create_default_pass(map()) -> map().
-create_default_pass(Action) ->
+create_default_pass(Action) when is_map(Action) ->
+    true = map_size(Action) >= 0,
     %% If Action already has the 'action' key, it IS a PassAction — wrap it.
     %% If it has 'colors' directly, it's the inner action map — wrap in pass.
     case maps:is_key(action, Action) of
@@ -266,8 +278,9 @@ create_default_pass(Action) ->
 %% @doc Begin a render pass with the given pass action.
 %% Direct GL call — frame callback runs inside gen_server where GL context is current.
 -spec begin_pass(map()) -> ok.
-begin_pass(Pass) ->
+begin_pass(Pass) when is_map(Pass) ->
     Action = maps:get(action, Pass, #{}),
+    true = is_map(Action),
     Colors = maps:get(colors, Action, []),
     case Colors of
         [First | _] when is_map(First) ->
@@ -301,97 +314,113 @@ commit() ->
 
 %% @doc Create a GPU buffer. Returns a buffer ID.
 -spec make_buffer(map()) -> integer().
-make_buffer(Desc) ->
+make_buffer(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_buffer, Desc}, 5000).
 
 %% @doc Create a GPU image (texture). Returns an image ID.
 -spec make_image(map()) -> integer().
-make_image(Desc) ->
+make_image(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_image, Desc}, 5000).
 
 %% @doc Create a sampler. Returns a sampler ID.
 -spec make_sampler(map()) -> integer().
-make_sampler(Desc) ->
+make_sampler(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_sampler, Desc}, 5000).
 
 %% @doc Create a shader (compile GLSL). Returns a shader ID.
 -spec make_shader(map()) -> integer().
-make_shader(Desc) ->
+make_shader(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_shader, Desc}, 5000).
 
 %% @doc Create a pipeline (render state). Returns a pipeline ID.
 -spec make_pipeline(map()) -> integer().
-make_pipeline(Desc) ->
+make_pipeline(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
     gen_server:call(?MODULE, {make_pipeline, Desc}, 5000).
 
 %% @doc Apply (bind) a pipeline for rendering.
 -spec apply_pipeline(integer()) -> ok.
-apply_pipeline(PipId) ->
+apply_pipeline(PipId) when is_integer(PipId), PipId >= 0 ->
     gen_server:cast(?MODULE, {apply_pipeline, PipId}).
 
 %% @doc Apply vertex/index buffer bindings.
 -spec apply_bindings(map()) -> ok.
-apply_bindings(Bindings) ->
+apply_bindings(Bindings) when is_map(Bindings) ->
+    true = map_size(Bindings) >= 0,
     gen_server:cast(?MODULE, {apply_bindings, Bindings}).
 
 %% @doc Apply uniform data to a shader stage.
 -spec apply_uniforms(atom(), integer(), binary() | map()) -> ok.
-apply_uniforms(Stage, UbIndex, Data) ->
+apply_uniforms(Stage, UbIndex, Data)
+  when is_atom(Stage), is_integer(UbIndex), UbIndex >= 0,
+       (is_binary(Data) orelse is_map(Data)) ->
     gen_server:cast(?MODULE, {apply_uniforms, Stage, UbIndex, Data}).
 
 %% @doc Issue a draw call.
 -spec draw(integer(), integer(), integer(), integer()) -> ok.
-draw(BaseElement, NumElements, NumInstances, _Reserved) ->
+draw(BaseElement, NumElements, NumInstances, Reserved)
+  when is_integer(BaseElement), BaseElement >= 0,
+       is_integer(NumElements), NumElements >= 0,
+       is_integer(NumInstances), NumInstances >= 0,
+       is_integer(Reserved) ->
     gen_server:cast(?MODULE, {draw, BaseElement, NumElements, NumInstances}).
 
 %% @doc Set the viewport rectangle.
 -spec apply_viewport(number(), number(), number(), number(), number() | undefined) -> ok.
-apply_viewport(X, Y, W, H, _OriginTopLeft) ->
+apply_viewport(X, Y, W, H, OriginTopLeft)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(W), ?IS_NUM(H), W >= 0, H >= 0,
+       (OriginTopLeft =:= undefined orelse is_boolean(OriginTopLeft)) ->
     gen_server:cast(?MODULE, {apply_viewport, X, Y, W, H}).
 
 %% @doc Set the scissor rectangle.
 -spec apply_scissor_rect(number(), number(), number(), number(), number() | undefined) -> ok.
-apply_scissor_rect(X, Y, W, H, _OriginTopLeft) ->
+apply_scissor_rect(X, Y, W, H, OriginTopLeft)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(W), ?IS_NUM(H), W >= 0, H >= 0,
+       (OriginTopLeft =:= undefined orelse is_boolean(OriginTopLeft)) ->
     gen_server:cast(?MODULE, {apply_scissor_rect, X, Y, W, H}).
 
 %% @doc Destroy a buffer resource.
 -spec destroy_buffer(integer()) -> ok.
-destroy_buffer(Id) ->
+destroy_buffer(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_buffer, Id}).
 
 %% @doc Destroy an image resource.
 -spec destroy_image(integer()) -> ok.
-destroy_image(Id) ->
+destroy_image(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_image, Id}).
 
 %% @doc Destroy a sampler resource.
 -spec destroy_sampler(integer()) -> ok.
-destroy_sampler(Id) ->
+destroy_sampler(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_sampler, Id}).
 
 %% @doc Destroy a shader resource.
 -spec destroy_shader(integer()) -> ok.
-destroy_shader(Id) ->
+destroy_shader(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_shader, Id}).
 
 %% @doc Destroy a pipeline resource.
 -spec destroy_pipeline(integer()) -> ok.
-destroy_pipeline(Id) ->
+destroy_pipeline(Id) when is_integer(Id), Id >= 0 ->
     gen_server:cast(?MODULE, {destroy_pipeline, Id}).
 
 %% @doc Update buffer data.
 -spec update_buffer(integer(), binary()) -> ok.
-update_buffer(BufId, Data) ->
+update_buffer(BufId, Data) when is_integer(BufId), BufId >= 0, is_binary(Data) ->
     gen_server:cast(?MODULE, {update_buffer, BufId, Data}).
 
 %% @doc Append data to a buffer. Returns byte offset of appended data.
 -spec append_buffer(integer(), binary()) -> integer().
-append_buffer(BufId, Data) ->
+append_buffer(BufId, Data) when is_integer(BufId), BufId >= 0, is_binary(Data) ->
     gen_server:call(?MODULE, {append_buffer, BufId, Data}, 5000).
 
 %% @doc Update image data.
 -spec update_image(integer(), binary()) -> ok.
-update_image(_ImgId, _Data) ->
+update_image(ImgId, Data) when is_integer(ImgId), ImgId >= 0, is_binary(Data) ->
     ok.
 
 %% @doc Query the rendering backend (always OpenGL for wx).
@@ -413,7 +442,9 @@ query_limits() -> #{}.
 
 %% @doc Setup SGL.
 -spec sgl_setup(map()) -> ok.
-sgl_setup(_Desc) -> ok.
+sgl_setup(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
+    ok.
 
 %% @doc Shutdown SGL.
 -spec sgl_shutdown() -> ok.
@@ -434,11 +465,15 @@ sgl_defaults() ->
 
 %% Viewport and scissor
 -spec sgl_viewport(number(), number(), number(), number(), term()) -> ok.
-sgl_viewport(X, Y, W, H, _OriginTopLeft) ->
+sgl_viewport(X, Y, W, H, OriginTopLeft)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(W), ?IS_NUM(H), W >= 0, H >= 0,
+       (OriginTopLeft =:= undefined orelse is_boolean(OriginTopLeft)) ->
     gl:viewport(X, Y, W, H).
 
 -spec sgl_scissor_rect(number(), number(), number(), number(), term()) -> ok.
-sgl_scissor_rect(X, Y, W, H, _OriginTopLeft) ->
+sgl_scissor_rect(X, Y, W, H, OriginTopLeft)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(W), ?IS_NUM(H), W >= 0, H >= 0,
+       (OriginTopLeft =:= undefined orelse is_boolean(OriginTopLeft)) ->
     gl:enable(?GL_SCISSOR_TEST),
     gl:scissor(X, Y, W, H).
 
@@ -452,7 +487,9 @@ sgl_disable_texture() ->
     gl:disable(?GL_TEXTURE_2D).
 
 -spec sgl_texture(integer(), term()) -> ok.
-sgl_texture(ImgId, _SamplerId) ->
+sgl_texture(ImgId, SamplerId)
+  when is_integer(ImgId), ImgId >= 0,
+       (SamplerId =:= undefined orelse (is_integer(SamplerId) andalso SamplerId >= 0)) ->
     %% Bind the GL texture associated with this image ID
     case get({sokol_image, ImgId}) of
         undefined -> ok;
@@ -475,42 +512,48 @@ sgl_begin_quads() -> gl:'begin'(?GL_QUADS).
 
 %% Vertex submission
 -spec sgl_v2f(number(), number()) -> ok.
-sgl_v2f(X, Y) -> gl:vertex2f(X, Y).
+sgl_v2f(X, Y) when ?IS_NUM(X), ?IS_NUM(Y) -> gl:vertex2f(X, Y).
 -spec sgl_v3f(number(), number(), number()) -> ok.
-sgl_v3f(X, Y, Z) -> gl:vertex3f(X, Y, Z).
+sgl_v3f(X, Y, Z) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) -> gl:vertex3f(X, Y, Z).
 
 -spec sgl_v2f_t2f(number(), number(), number(), number()) -> ok.
-sgl_v2f_t2f(X, Y, U, V) ->
+sgl_v2f_t2f(X, Y, U, V) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(U), ?IS_NUM(V) ->
     gl:texCoord2f(U, V),
     gl:vertex2f(X, Y).
 
 -spec sgl_v3f_t2f(number(), number(), number(), number(), number()) -> ok.
-sgl_v3f_t2f(X, Y, Z, U, V) ->
+sgl_v3f_t2f(X, Y, Z, U, V)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), ?IS_NUM(U), ?IS_NUM(V) ->
     gl:texCoord2f(U, V),
     gl:vertex3f(X, Y, Z).
 
 -spec sgl_v2f_c3f(number(), number(), number(), number(), number()) -> ok.
-sgl_v2f_c3f(X, Y, R, G, B) ->
+sgl_v2f_c3f(X, Y, R, G, B) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B) ->
     gl:color3f(R, G, B),
     gl:vertex2f(X, Y).
 
 -spec sgl_v2f_c4f(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v2f_c4f(X, Y, R, G, B, A) ->
+sgl_v2f_c4f(X, Y, R, G, B, A)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) ->
     gl:color4f(R, G, B, A),
     gl:vertex2f(X, Y).
 
 -spec sgl_v2f_c3b(number(), number(), number(), number(), number()) -> ok.
-sgl_v2f_c3b(X, Y, R, G, B) ->
+sgl_v2f_c3b(X, Y, R, G, B)
+  when ?IS_NUM(X), ?IS_NUM(Y), is_integer(R), is_integer(G), is_integer(B),
+       R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255 ->
     gl:color3ub(R, G, B),
     gl:vertex2f(X, Y).
 
 -spec sgl_v2f_c4b(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v2f_c4b(X, Y, R, G, B, A) ->
+sgl_v2f_c4b(X, Y, R, G, B, A)
+  when ?IS_NUM(X), ?IS_NUM(Y), is_integer(R), is_integer(G), is_integer(B), is_integer(A),
+       R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255, A >= 0, A =< 255 ->
     gl:color4ub(R, G, B, A),
     gl:vertex2f(X, Y).
 
 -spec sgl_v2f_c1i(number(), number(), integer()) -> ok.
-sgl_v2f_c1i(X, Y, RGBA) ->
+sgl_v2f_c1i(X, Y, RGBA) when ?IS_NUM(X), ?IS_NUM(Y), is_integer(RGBA), RGBA >= 0 ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
     B = (RGBA bsr 8) band 16#FF,
@@ -519,27 +562,35 @@ sgl_v2f_c1i(X, Y, RGBA) ->
     gl:vertex2f(X, Y).
 
 -spec sgl_v3f_c3f(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v3f_c3f(X, Y, Z, R, G, B) ->
+sgl_v3f_c3f(X, Y, Z, R, G, B)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B) ->
     gl:color3f(R, G, B),
     gl:vertex3f(X, Y, Z).
 
 -spec sgl_v3f_c4f(number(), number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v3f_c4f(X, Y, Z, R, G, B, A) ->
+sgl_v3f_c4f(X, Y, Z, R, G, B, A)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) ->
     gl:color4f(R, G, B, A),
     gl:vertex3f(X, Y, Z).
 
 -spec sgl_v3f_c3b(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v3f_c3b(X, Y, Z, R, G, B) ->
+sgl_v3f_c3b(X, Y, Z, R, G, B)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), is_integer(R), is_integer(G), is_integer(B),
+       R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255 ->
     gl:color3ub(R, G, B),
     gl:vertex3f(X, Y, Z).
 
 -spec sgl_v3f_c4b(number(), number(), number(), number(), number(), number(), number()) -> ok.
-sgl_v3f_c4b(X, Y, Z, R, G, B, A) ->
+sgl_v3f_c4b(X, Y, Z, R, G, B, A)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), is_integer(R), is_integer(G),
+       is_integer(B), is_integer(A), R >= 0, R =< 255, G >= 0, G =< 255,
+       B >= 0, B =< 255, A >= 0, A =< 255 ->
     gl:color4ub(R, G, B, A),
     gl:vertex3f(X, Y, Z).
 
 -spec sgl_v3f_c1i(number(), number(), number(), integer()) -> ok.
-sgl_v3f_c1i(X, Y, Z, RGBA) ->
+sgl_v3f_c1i(X, Y, Z, RGBA)
+  when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z), is_integer(RGBA), RGBA >= 0 ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
     B = (RGBA bsr 8) band 16#FF,
@@ -549,15 +600,21 @@ sgl_v3f_c1i(X, Y, Z, RGBA) ->
 
 %% Color setting
 -spec sgl_c3f(number(), number(), number()) -> ok.
-sgl_c3f(R, G, B) -> gl:color3f(R, G, B).
+sgl_c3f(R, G, B) when ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B) -> gl:color3f(R, G, B).
 -spec sgl_c4f(number(), number(), number(), number()) -> ok.
-sgl_c4f(R, G, B, A) -> gl:color4f(R, G, B, A).
+sgl_c4f(R, G, B, A) when ?IS_NUM(R), ?IS_NUM(G), ?IS_NUM(B), ?IS_NUM(A) -> gl:color4f(R, G, B, A).
 -spec sgl_c3b(integer(), integer(), integer()) -> ok.
-sgl_c3b(R, G, B) -> gl:color3ub(R, G, B).
+sgl_c3b(R, G, B)
+  when is_integer(R), is_integer(G), is_integer(B),
+       R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255 ->
+    gl:color3ub(R, G, B).
 -spec sgl_c4b(integer(), integer(), integer(), integer()) -> ok.
-sgl_c4b(R, G, B, A) -> gl:color4ub(R, G, B, A).
+sgl_c4b(R, G, B, A)
+  when is_integer(R), is_integer(G), is_integer(B), is_integer(A),
+       R >= 0, R =< 255, G >= 0, G =< 255, B >= 0, B =< 255, A >= 0, A =< 255 ->
+    gl:color4ub(R, G, B, A).
 -spec sgl_c1i(integer()) -> ok.
-sgl_c1i(RGBA) ->
+sgl_c1i(RGBA) when is_integer(RGBA), RGBA >= 0 ->
     R = (RGBA bsr 24) band 16#FF,
     G = (RGBA bsr 16) band 16#FF,
     B = (RGBA bsr 8) band 16#FF,
@@ -566,11 +623,11 @@ sgl_c1i(RGBA) ->
 
 %% Texture coordinate setting
 -spec sgl_t2f(number(), number()) -> ok.
-sgl_t2f(U, V) -> gl:texCoord2f(U, V).
+sgl_t2f(U, V) when ?IS_NUM(U), ?IS_NUM(V) -> gl:texCoord2f(U, V).
 
 %% Point size
 -spec sgl_point_size(number()) -> ok.
-sgl_point_size(S) -> gl:pointSize(S).
+sgl_point_size(S) when ?IS_NUM(S), S >= 0 -> gl:pointSize(S).
 
 %% End primitive and draw
 -spec sgl_end() -> ok.
@@ -578,7 +635,7 @@ sgl_end() -> gl:'end'().
 -spec sgl_draw() -> ok.
 sgl_draw() -> ok.  %% Actual buffer swap happens in commit()
 -spec sgl_context_draw(integer()) -> ok.
-sgl_context_draw(_Ctx) -> ok.
+sgl_context_draw(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
 
 %% Matrix operations
 -spec sgl_matrix_mode_projection() -> ok.
@@ -621,23 +678,31 @@ sgl_mult_transpose_matrix(M) when is_list(M), length(M) >= 16 ->
 sgl_mult_transpose_matrix(_) -> ok.
 
 -spec sgl_translate(number(), number(), number()) -> ok.
-sgl_translate(X, Y, Z) -> gl:translatef(X, Y, Z).
+sgl_translate(X, Y, Z) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) -> gl:translatef(X, Y, Z).
 -spec sgl_rotate(number(), number(), number(), number()) -> ok.
-sgl_rotate(AngleRad, X, Y, Z) ->
+sgl_rotate(AngleRad, X, Y, Z)
+  when ?IS_NUM(AngleRad), ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) ->
     %% sokol_gl uses radians, OpenGL uses degrees
     gl:rotatef(AngleRad * 57.2957795131, X, Y, Z).
 -spec sgl_scale(number(), number(), number()) -> ok.
-sgl_scale(X, Y, Z) -> gl:scalef(X, Y, Z).
+sgl_scale(X, Y, Z) when ?IS_NUM(X), ?IS_NUM(Y), ?IS_NUM(Z) -> gl:scalef(X, Y, Z).
 
 -spec sgl_ortho(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_ortho(L, R, B, T, N, F) -> gl:ortho(L, R, B, T, N, F).
+sgl_ortho(L, R, B, T, N, F)
+  when ?IS_NUM(L), ?IS_NUM(R), ?IS_NUM(B), ?IS_NUM(T), ?IS_NUM(N), ?IS_NUM(F) ->
+    gl:ortho(L, R, B, T, N, F).
 -spec sgl_frustum(number(), number(), number(), number(), number(), number()) -> ok.
-sgl_frustum(L, R, B, T, N, F) -> gl:frustum(L, R, B, T, N, F).
+sgl_frustum(L, R, B, T, N, F)
+  when ?IS_NUM(L), ?IS_NUM(R), ?IS_NUM(B), ?IS_NUM(T), ?IS_NUM(N), ?IS_NUM(F) ->
+    gl:frustum(L, R, B, T, N, F).
 -spec sgl_perspective(number(), number(), number(), number()) -> ok.
-sgl_perspective(FovY, Aspect, ZNear, ZFar) ->
+sgl_perspective(FovY, Aspect, ZNear, ZFar)
+  when ?IS_NUM(FovY), ?IS_NUM(Aspect), ?IS_NUM(ZNear), ?IS_NUM(ZFar) ->
     glu:perspective(FovY * 57.2957795131, Aspect, ZNear, ZFar).
 -spec sgl_lookat(number(), number(), number(), number(), number(), number(), number(), number(), number()) -> ok.
-sgl_lookat(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ) ->
+sgl_lookat(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ)
+  when ?IS_NUM(EyeX), ?IS_NUM(EyeY), ?IS_NUM(EyeZ), ?IS_NUM(CenterX), ?IS_NUM(CenterY),
+       ?IS_NUM(CenterZ), ?IS_NUM(UpX), ?IS_NUM(UpY), ?IS_NUM(UpZ) ->
     glu:lookAt(EyeX, EyeY, EyeZ, CenterX, CenterY, CenterZ, UpX, UpY, UpZ).
 
 %% Pipeline stack (no-ops for immediate mode, pipeline state managed via GL directly)
@@ -648,15 +713,17 @@ sgl_pop_pipeline() -> ok.
 -spec sgl_load_default_pipeline() -> ok.
 sgl_load_default_pipeline() -> ok.
 -spec sgl_load_pipeline(integer()) -> ok.
-sgl_load_pipeline(_Pip) -> ok.
+sgl_load_pipeline(Pip) when is_integer(Pip), Pip >= 0 -> ok.
 
 %% Context management (single-context for now)
 -spec sgl_make_context(map()) -> integer().
-sgl_make_context(_Desc) -> 1.
+sgl_make_context(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
+    1.
 -spec sgl_destroy_context(integer()) -> ok.
-sgl_destroy_context(_Ctx) -> ok.
+sgl_destroy_context(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
 -spec sgl_set_context(integer()) -> ok.
-sgl_set_context(_Ctx) -> ok.
+sgl_set_context(Ctx) when is_integer(Ctx), Ctx >= 0 -> ok.
 -spec sgl_get_context() -> integer().
 sgl_get_context() -> 1.
 -spec sgl_default_context() -> integer().
@@ -664,15 +731,17 @@ sgl_default_context() -> 1.
 
 %% Pipeline management for SGL
 -spec sgl_make_pipeline(map()) -> integer().
-sgl_make_pipeline(_Desc) -> 1.
+sgl_make_pipeline(Desc) when is_map(Desc) ->
+    true = map_size(Desc) >= 0,
+    1.
 -spec sgl_destroy_pipeline(integer()) -> ok.
-sgl_destroy_pipeline(_Pip) -> ok.
+sgl_destroy_pipeline(Pip) when is_integer(Pip), Pip >= 0 -> ok.
 
 %% Utility
 -spec sgl_rad(number()) -> float().
-sgl_rad(Deg) -> Deg * 0.01745329252.
+sgl_rad(Deg) when ?IS_NUM(Deg), Deg =:= Deg -> Deg * 0.01745329252.
  -spec sgl_deg(number()) -> float().
-sgl_deg(Rad) -> Rad * 57.2957795131.
+sgl_deg(Rad) when ?IS_NUM(Rad), Rad =:= Rad -> Rad * 57.2957795131.
 
 %% ============================================================================
 %% gen_server callbacks
@@ -680,11 +749,13 @@ sgl_deg(Rad) -> Rad * 57.2957795131.
 
 %% @doc Initialize sokol gen_server process.
 -spec init([map()]) -> {ok, #state{}}.
-init([Desc]) ->
+init([Desc]) when is_map(Desc) ->
     Wx = wx:new(),
     Title = maps:get(window_title, Desc, "V Application"),
     W = maps:get(width, Desc, 800),
     H = maps:get(height, Desc, 600),
+    true = is_integer(W) andalso W > 0,
+    true = is_integer(H) andalso H > 0,
 
     Frame = wxFrame:new(Wx, -1, Title, [{size, {W, H}}]),
 
@@ -726,6 +797,13 @@ init([Desc]) ->
 
     %% Call V's init callback
     InitCb = maps:get(init_cb, Desc, undefined),
+    true = (InitCb =:= undefined) orelse is_function(InitCb, 0),
+    FrameCb = maps:get(frame_cb, Desc, undefined),
+    true = (FrameCb =:= undefined) orelse is_function(FrameCb, 0),
+    CleanupCb = maps:get(cleanup_cb, Desc, undefined),
+    true = (CleanupCb =:= undefined) orelse is_function(CleanupCb, 0),
+    EventCb = maps:get(event_cb, Desc, undefined),
+    true = (EventCb =:= undefined) orelse is_function(EventCb, 1),
     safe_callback(InitCb),
 
     %% Start render timer (~60fps)
@@ -740,9 +818,9 @@ init([Desc]) ->
         height = H,
         title = Title,
         init_cb = InitCb,
-        frame_cb = maps:get(frame_cb, Desc, undefined),
-        cleanup_cb = maps:get(cleanup_cb, Desc, undefined),
-        event_cb = maps:get(event_cb, Desc, undefined),
+        frame_cb = FrameCb,
+        cleanup_cb = CleanupCb,
+        event_cb = EventCb,
         timer_ref = Timer,
         frame_start = erlang:monotonic_time(microsecond)
     },
