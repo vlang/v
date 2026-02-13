@@ -12,6 +12,12 @@ Provides process, port, and signal helpers for runtime tasks.
 -export([run/2, wait/1, kill/1, signal_term/1, signal_stop/1, signal_cont/1,
          stdin_write/2, stdout_slurp/1, stdout_read/1]).
 
+%% Export protocol types for cross-module contracts
+-export_type([process_msg/0]).
+
+%% Port/process message protocol consumed by this module
+-type process_msg() :: {port(), {exit_status, integer()}} | {port(), {data, binary()}}.
+
 %% Run a process: returns {ok, Port} or {error, Reason}
 %% Command and Args are binaries (V strings).
 -doc """
@@ -47,6 +53,7 @@ wait(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     wait_loop(Port).
 
+-spec wait_loop(port()) -> integer().
 wait_loop(Port) ->
     receive
         {Port, {exit_status, Code}} -> Code;
@@ -136,6 +143,7 @@ stdout_slurp(Port) when is_port(Port) ->
     true = erlang:port_info(Port) =/= undefined,
     stdout_slurp(Port, <<>>).
 
+-spec stdout_slurp(port(), binary()) -> binary().
 stdout_slurp(Port, Acc) ->
     receive
         {Port, {data, Data}} -> stdout_slurp(Port, <<Acc/binary, Data/binary>>);
@@ -157,7 +165,6 @@ stdout_read(Port) when is_port(Port) ->
         {Port, {data, Data}} -> Data;
         {Port, {exit_status, _Code}} -> <<>>
     end.
-
 
 
 
