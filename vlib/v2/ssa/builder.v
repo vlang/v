@@ -613,7 +613,7 @@ fn (b &Builder) is_module_call_receiver(name string) bool {
 	}
 	if b.env != unsafe { nil } {
 		if scope_ref := b.env.get_scope(b.cur_module) {
-			mut scope := scope_ref
+			mut scope := unsafe { scope_ref }
 			if obj := scope.lookup_parent(name, 0) {
 				if obj is types.Module {
 					return true
@@ -621,7 +621,7 @@ fn (b &Builder) is_module_call_receiver(name string) bool {
 			}
 		}
 		if scope_ref := b.env.get_scope('builtin') {
-			mut scope := scope_ref
+			mut scope := unsafe { scope_ref }
 			if obj := scope.lookup_parent(name, 0) {
 				if obj is types.Module {
 					return true
@@ -645,7 +645,7 @@ fn (b &Builder) is_known_c_symbol_name(name string) bool {
 	}
 	if b.env != unsafe { nil } {
 		if scope_ref := b.env.get_scope('C') {
-			mut scope := scope_ref
+			mut scope := unsafe { scope_ref }
 			if _ := scope.lookup_parent(name, 0) {
 				return true
 			}
@@ -3460,9 +3460,9 @@ fn (b &Builder) lookup_type_in_scope(name string, module_name string) ?types.Typ
 	}
 	mut scope := &types.Scope(unsafe { nil })
 	if s := b.env.get_scope(module_name) {
-		scope = s
+		scope = unsafe { s }
 	} else if s := b.env.get_scope('builtin') {
-		scope = s
+		scope = unsafe { s }
 	} else {
 		return none
 	}
@@ -3506,23 +3506,23 @@ fn (b &Builder) lookup_var_type_from_env(name string) ?types.Type {
 		mut fn_scope := &types.Scope(unsafe { nil })
 		mut found_fn_scope := false
 		if s := b.env.get_fn_scope_by_key(fn_name) {
-			fn_scope = s
+			fn_scope = unsafe { s }
 			found_fn_scope = true
 		} else if s := b.env.get_fn_scope(b.cur_module, fn_name) {
-			fn_scope = s
+			fn_scope = unsafe { s }
 			found_fn_scope = true
 		} else if sep := fn_name.index('__') {
 			module_name := fn_name[..sep]
 			base_name := fn_name[sep + 2..]
 			if s := b.env.get_fn_scope(module_name, base_name) {
-				fn_scope = s
+				fn_scope = unsafe { s }
 				found_fn_scope = true
 			} else if module_name != b.cur_module {
 				// Method names may use a different module prefix than the
 				// checker's scope key (e.g. strings__Builder__method vs
 				// main__Builder__method). Retry with the current module.
 				if s2 := b.env.get_fn_scope(b.cur_module, base_name) {
-					fn_scope = s2
+					fn_scope = unsafe { s2 }
 					found_fn_scope = true
 				}
 			}
@@ -3535,9 +3535,9 @@ fn (b &Builder) lookup_var_type_from_env(name string) ?types.Type {
 	}
 	mut scope := &types.Scope(unsafe { nil })
 	if s := b.env.get_scope(b.cur_module) {
-		scope = s
+		scope = unsafe { s }
 	} else if s := b.env.get_scope('builtin') {
-		scope = s
+		scope = unsafe { s }
 	} else {
 		return none
 	}
@@ -3641,7 +3641,7 @@ fn (mut b Builder) infer_expr_raw_type(expr ast.Expr) ?types.Type {
 				}
 				if b.env != unsafe { nil } {
 					if scope_ref := b.env.get_scope(lhs_ident.name) {
-						mut scope := scope_ref
+						mut scope := unsafe { scope_ref }
 						if obj := scope.lookup_parent(base.rhs.name, 0) {
 							return obj.typ()
 						}
@@ -4910,7 +4910,7 @@ fn (mut b Builder) try_eval_const_expr_i64(expr ast.Expr) ?i64 {
 					}
 				}
 				.left_shift {
-					lhs << rhs
+					unsafe { lhs << rhs }
 				}
 				.right_shift {
 					lhs >> rhs
@@ -5277,7 +5277,7 @@ fn (mut b Builder) infer_array_elem_type_from_base_expr(expr ast.Expr) ?TypeID {
 				// Module-qualified globals/constants (e.g. os.args).
 				if b.env != unsafe { nil } {
 					if scope_ref := b.env.get_scope(lhs_ident.name) {
-						mut scope := scope_ref
+						mut scope := unsafe { scope_ref }
 						if obj := scope.lookup_parent(base.rhs.name, 0) {
 							if elem_t := b.array_elem_type_from_types_type(obj.typ()) {
 								return elem_t
@@ -12991,7 +12991,7 @@ fn (mut b Builder) eval_const_expr(expr ast.Expr) i64 {
 					}
 				}
 				.left_shift {
-					lhs << rhs
+					unsafe { lhs << rhs }
 				}
 				.right_shift {
 					lhs >> rhs

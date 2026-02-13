@@ -1116,12 +1116,6 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		ast.RangeExpr {
 			start_type := c.expr(expr.start)
 			c.expr(expr.end)
-			// Use the start expression type if it's a concrete type (e.g., u8(0) .. 255)
-			elem := if start_type is Primitive && !start_type.props.has(.untyped) {
-				start_type
-			} else {
-				int_
-			}
 			return Type(Array{
 				elem_type: start_type
 			})
