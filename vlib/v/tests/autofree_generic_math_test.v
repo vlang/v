@@ -1,3 +1,5 @@
+// vtest vflags: -autofree
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 // Test for memory leak fix when using generics with math.min/max and autofree
 module main
 
