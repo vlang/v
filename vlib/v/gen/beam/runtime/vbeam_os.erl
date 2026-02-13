@@ -11,10 +11,12 @@
          ls/1]).
 
 %% Get command line arguments (returns list of binaries)
+-spec arguments() -> [binary()].
 arguments() ->
     [list_to_binary(Arg) || Arg <- init:get_plain_arguments()].
 
 %% Get environment variable (returns empty binary if not set)
+-spec getenv(binary()) -> binary().
 getenv(Name) when is_binary(Name) ->
     case os:getenv(binary_to_list(Name)) of
         false -> <<>>;
@@ -22,6 +24,7 @@ getenv(Name) when is_binary(Name) ->
     end.
 
 %% Get environment variable with default
+-spec getenv(binary(), binary()) -> binary().
 getenv(Name, Default) when is_binary(Name), is_binary(Default) ->
     case os:getenv(binary_to_list(Name)) of
         false -> Default;
@@ -29,15 +32,18 @@ getenv(Name, Default) when is_binary(Name), is_binary(Default) ->
     end.
 
 %% Set environment variable
+-spec setenv(binary(), binary()) -> ok.
 setenv(Name, Value) when is_binary(Name), is_binary(Value) ->
     os:putenv(binary_to_list(Name), binary_to_list(Value)),
     ok.
 
 %% Exit with status code
+-spec exit(integer()) -> no_return().
 exit(Code) when is_integer(Code) ->
     halt(Code).
 
 %% Execute system command (returns {ExitCode, Output})
+-spec system(binary()) -> {integer(), binary()}.
 system(Cmd) when is_binary(Cmd) ->
     Port = open_port({spawn, binary_to_list(Cmd)}, [exit_status, binary, stderr_to_stdout]),
     collect_port_output(Port, <<>>).
@@ -54,11 +60,13 @@ collect_port_output(Port, Acc) ->
     end.
 
 %% Get current working directory
+-spec getcwd() -> binary().
 getcwd() ->
     {ok, Dir} = file:get_cwd(),
     list_to_binary(Dir).
 
 %% Change directory
+-spec chdir(binary()) -> ok.
 chdir(Path) when is_binary(Path) ->
     case file:set_cwd(binary_to_list(Path)) of
         ok -> ok;
@@ -66,18 +74,22 @@ chdir(Path) when is_binary(Path) ->
     end.
 
 %% Check if path exists
+-spec exists(binary()) -> boolean().
 exists(Path) when is_binary(Path) ->
     filelib:is_file(binary_to_list(Path)) orelse filelib:is_dir(binary_to_list(Path)).
 
 %% Check if path is a directory
+-spec is_dir(binary()) -> boolean().
 is_dir(Path) when is_binary(Path) ->
     filelib:is_dir(binary_to_list(Path)).
 
 %% Check if path is a regular file
+-spec is_file(binary()) -> boolean().
 is_file(Path) when is_binary(Path) ->
     filelib:is_regular(binary_to_list(Path)).
 
 %% Read entire file contents
+-spec read_file(binary()) -> binary().
 read_file(Path) when is_binary(Path) ->
     case file:read_file(binary_to_list(Path)) of
         {ok, Content} -> Content;
@@ -85,6 +97,7 @@ read_file(Path) when is_binary(Path) ->
     end.
 
 %% Write content to file
+-spec write_file(binary(), binary()) -> ok.
 write_file(Path, Content) when is_binary(Path), is_binary(Content) ->
     case file:write_file(binary_to_list(Path), Content) of
         ok -> ok;
@@ -92,6 +105,7 @@ write_file(Path, Content) when is_binary(Path), is_binary(Content) ->
     end.
 
 %% Create directory
+-spec mkdir(binary()) -> ok.
 mkdir(Path) when is_binary(Path) ->
     case file:make_dir(binary_to_list(Path)) of
         ok -> ok;
@@ -100,6 +114,7 @@ mkdir(Path) when is_binary(Path) ->
     end.
 
 %% Create directory and all parents
+-spec mkdir_all(binary()) -> ok.
 mkdir_all(Path) when is_binary(Path) ->
     case filelib:ensure_dir(binary_to_list(Path) ++ "/") of
         ok -> mkdir(Path);
@@ -107,6 +122,7 @@ mkdir_all(Path) when is_binary(Path) ->
     end.
 
 %% Remove directory
+-spec rmdir(binary()) -> ok.
 rmdir(Path) when is_binary(Path) ->
     case file:del_dir(binary_to_list(Path)) of
         ok -> ok;
@@ -114,6 +130,7 @@ rmdir(Path) when is_binary(Path) ->
     end.
 
 %% List directory contents
+-spec ls(binary()) -> [binary()].
 ls(Path) when is_binary(Path) ->
     case file:list_dir(binary_to_list(Path)) of
         {ok, Files} -> [list_to_binary(F) || F <- Files];
