@@ -39,8 +39,18 @@ Provides registry helpers for name to pid mapping.
     registered/0
 ]).
 
+%% Export protocol types for cross-module contracts
+-export_type([registry_name/0, registry_msg/0]).
+
 %% ETS table name for binary-name registry
 -define(REG_TABLE, vbeam_registry_table).
+
+%% Registry operation protocol types
+-type registry_name() :: atom() | binary().
+-type registry_msg() ::
+    {register, registry_name(), pid()}
+    | {unregister, registry_name()}
+    | {lookup, registry_name()}.
 
 %% ============================================================================
 %% API Functions
@@ -89,7 +99,7 @@ Parameters: `Name :: atom() | binary()`, `Pid :: pid()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec register(Name :: atom() | binary(), Pid :: pid()) ->
+-spec register(Name :: registry_name(), Pid :: pid()) ->
     ok | {error, already_registered | not_a_pid}.
 
 register(_Name, Pid) when not is_pid(Pid) ->
@@ -136,7 +146,7 @@ Parameters: `Name :: atom() | binary()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec unregister(Name :: atom() | binary()) -> ok.
+-spec unregister(Name :: registry_name()) -> ok.
 
 unregister(Name) when is_atom(Name), Name =/= '' ->
     try
@@ -172,7 +182,7 @@ Parameters: `Name :: atom() | binary()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec lookup(Name :: atom() | binary()) -> {ok, pid()} | error.
+-spec lookup(Name :: registry_name()) -> {ok, pid()} | error.
 
 lookup(Name) when is_atom(Name), Name =/= '' ->
     case erlang:whereis(Name) of
@@ -206,7 +216,7 @@ Parameters: `Name :: atom() | binary()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec whereis(Name :: atom() | binary()) -> pid() | undefined.
+-spec whereis(Name :: registry_name()) -> pid() | undefined.
 
 whereis(Name) when is_atom(Name); is_binary(Name) ->
     true = is_atom(Name) orelse byte_size(Name) > 0,
@@ -241,7 +251,6 @@ ensure_table() ->
         undefined -> start();
         _Info -> ok
     end.
-
 
 
 
