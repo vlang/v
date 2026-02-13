@@ -52,12 +52,28 @@ Provides GenServer compatibility for V runtime processes.
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
+%% Export protocol types for cross-module contracts
+-export_type([
+    call_request/0,
+    call_reply/0,
+    cast_request/0,
+    info_message/0
+]).
+
 %% Internal state record
 -record(state, {
     value :: term(),          %% The managed V value
     handler :: module() | undefined,  %% Optional callback module
     max_mailbox_len = 10000 :: integer()  %% Mailbox overflow threshold
 }).
+
+%% Inter-process message protocol types
+-type call_payload() :: fun((term()) -> {term(), term()}) | term().
+-type call_request() :: vbeam_get_state | {vbeam_call, call_payload()}.
+-type call_reply() :: {reply, term(), #state{}}.
+-type cast_payload() :: fun((term()) -> term()) | term().
+-type cast_request() :: {vbeam_cast, cast_payload()}.
+-type info_message() :: check_mailbox | term().
 
 %% ============================================================================
 %% API Functions
@@ -125,13 +141,13 @@ Parameters: `pid() | atom()`, `term()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec call(pid() | atom(), term()) -> term().
+-spec call(pid() | atom(), call_payload()) -> term().
 
 call(Server, Request) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:call(Server, {vbeam_call, Request}, 5000).
 
 %% Synchronous call with explicit timeout (milliseconds or infinity).
--spec call(pid() | atom(), term(), timeout()) -> term().
+-spec call(pid() | atom(), call_payload(), timeout()) -> term().
 call(Server, Request, Timeout)
   when (is_pid(Server) orelse is_atom(Server)),
        (Timeout =:= infinity orelse (is_integer(Timeout) andalso Timeout >= 0)) ->
@@ -148,7 +164,7 @@ Parameters: `pid() | atom()`, `term()`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec cast(pid() | atom(), term()) -> ok.
+-spec cast(pid() | atom(), cast_payload()) -> ok.
 
 cast(Server, Msg) when is_pid(Server) orelse is_atom(Server) ->
     gen_server:cast(Server, {vbeam_cast, Msg}).
@@ -196,8 +212,7 @@ Parameters: `term()`, `{pid(), term()}`, `#state{}`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec handle_call(term(), {pid(), term()}, #state{}) ->
-    {reply, term(), #state{}}.
+-spec handle_call(call_request(), {pid(), term()}, #state{}) -> call_reply().
 
 %% State read - returns current value
 
@@ -232,7 +247,7 @@ Parameters: `term()`, `#state{}`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec handle_cast(term(), #state{}) -> {noreply, #state{}}.
+-spec handle_cast(cast_request(), #state{}) -> {noreply, #state{}}.
 
 %% Functional style: caller passes a fun(State) -> NewState
 handle_cast({vbeam_cast, Fun}, State = #state{})
@@ -257,7 +272,7 @@ Parameters: `term()`, `#state{}`.
 Returns the result value of this runtime operation.
 Side effects: May perform runtime side effects such as I/O, process interaction, or external state updates.
 """.
--spec handle_info(term(), #state{}) -> {noreply, #state{}}.
+-spec handle_info(info_message(), #state{}) -> {noreply, #state{}}.
 handle_info(check_mailbox, State = #state{max_mailbox_len = MaxLen}) ->
     case process_info(self(), message_queue_len) of
         {message_queue_len, Len} when Len > MaxLen ->
@@ -274,7 +289,6 @@ handle_info(_Info, State) ->
 -spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     ok.
-
 
 
 
