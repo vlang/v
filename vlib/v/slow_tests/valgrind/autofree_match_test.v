@@ -1,3 +1,5 @@
+// vtest vflags: -autofree
+
 type Tree[T] = Empty | Node[T]
 
 struct Empty {}
@@ -30,7 +32,8 @@ fn (tree Tree[T]) delete[T](x T) Tree[T] {
 	}
 }
 
-fn main() {
+fn test_autofree_match() {
 	mut tree := Tree[int](Empty{})
 	tree = tree.delete(5)
+	assert tree is Empty
 }

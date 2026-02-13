@@ -1,3 +1,5 @@
+// vtest vflags: -autofree
+
 type Result = Success | Failure
 
 struct Success {
