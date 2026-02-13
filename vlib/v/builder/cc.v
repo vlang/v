@@ -302,7 +302,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// don't warn for vlib tests
 		if ccoptions.cc == .tcc && !(v.parsed_files.len > 0
 			&& v.parsed_files.last().path.contains('vlib')) {
-			eprintln('Note: tcc is not recommended for -prod builds')
+			if !v.pref.is_quiet {
+				eprintln('Note: tcc is not recommended for -prod builds')
+			}
 		}
 		if !v.pref.no_prod_options {
 			ccoptions.args << optimization_options
