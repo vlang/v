@@ -22,8 +22,11 @@
 %% Returns {ok, FileList} with extracted file paths, or {error, Reason}.
 -spec extract_zip_to_dir(binary() | string(), binary() | string()) ->
     {ok, [binary()]} | {error, term()}.
-extract_zip_to_dir(ZipPath, Dir) ->
+extract_zip_to_dir(ZipPath, Dir)
+  when (is_binary(ZipPath) orelse is_list(ZipPath)),
+       (is_binary(Dir) orelse is_list(Dir)) ->
     ZipStr = to_list(ZipPath),
+    true = filename:extension(ZipStr) =:= ".zip",
     DirStr = to_list(Dir),
     case zip:unzip(ZipStr, [{cwd, DirStr}]) of
         {ok, Files} ->
@@ -36,8 +39,11 @@ extract_zip_to_dir(ZipPath, Dir) ->
 %% The files must exist on disk. Returns ok or {error, Reason}.
 -spec zip_files(binary() | string(), [binary() | string()]) ->
     ok | {error, term()}.
-zip_files(ZipPath, Files) ->
+zip_files(ZipPath, Files)
+  when (is_binary(ZipPath) orelse is_list(ZipPath)), is_list(Files) ->
+    true = lists:all(fun(F) -> is_binary(F) orelse is_list(F) end, Files),
     ZipStr = to_list(ZipPath),
+    true = filename:extension(ZipStr) =:= ".zip",
     FilesList = [to_list(F) || F <- Files],
     case zip:zip(ZipStr, FilesList) of
         {ok, _} -> ok;
@@ -48,12 +54,15 @@ zip_files(ZipPath, Files) ->
 %% Filters out directories (only regular files are included).
 -spec zip_folder(binary() | string(), binary() | string()) ->
     ok | {error, term()}.
-zip_folder(ZipPath, FolderPath) ->
+zip_folder(ZipPath, FolderPath)
+  when (is_binary(ZipPath) orelse is_list(ZipPath)),
+       (is_binary(FolderPath) orelse is_list(FolderPath)) ->
     FolderStr = to_list(FolderPath),
     Pattern = FolderStr ++ "/**",
     AllFiles = filelib:wildcard(Pattern),
     RegularFiles = [F || F <- AllFiles, not filelib:is_dir(F)],
     ZipStr = to_list(ZipPath),
+    true = filename:extension(ZipStr) =:= ".zip",
     case zip:zip(ZipStr, RegularFiles) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -62,8 +71,9 @@ zip_folder(ZipPath, FolderPath) ->
 %% @doc List all entries (file names) in a zip archive.
 -spec list_entries(binary() | string()) ->
     {ok, [binary()]} | {error, term()}.
-list_entries(ZipPath) ->
+list_entries(ZipPath) when is_binary(ZipPath) orelse is_list(ZipPath) ->
     ZipStr = to_list(ZipPath),
+    true = filename:extension(ZipStr) =:= ".zip",
     case zip:list_dir(ZipStr) of
         {ok, Entries} ->
             Names = [list_to_binary(element(2, E))
@@ -79,8 +89,9 @@ list_entries(ZipPath) ->
 %% Returns a handle that can be used with read_entry/1.
 -spec open(binary() | string(), term()) ->
     {ok, map()} | {error, term()}.
-open(ZipPath, _Mode) ->
+open(ZipPath, _Mode) when is_binary(ZipPath) orelse is_list(ZipPath) ->
     ZipStr = to_list(ZipPath),
+    true = filename:extension(ZipStr) =:= ".zip",
     case file:read_file_info(ZipStr) of
         {ok, _} ->
             %% Pre-populate entries list for sequential reading
@@ -110,7 +121,8 @@ read_entry(#{entries := []}) ->
 
 %% @doc Close a zip handle (no-op, for API symmetry).
 -spec close(map()) -> ok.
-close(_Handle) ->
+close(Handle) when is_map(Handle) ->
+    true = maps:is_key(entries, Handle) orelse maps:is_key(path, Handle),
     ok.
 
 %% --- Internal helpers ---
