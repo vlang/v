@@ -71,7 +71,7 @@ start() ->
 register(_Name, Pid) when not is_pid(Pid) ->
     {error, not_a_pid};
 
-register(Name, Pid) when is_atom(Name) ->
+register(Name, Pid) when is_atom(Name), Name =/= '', is_pid(Pid) ->
     try
         erlang:register(Name, Pid),
         ok
@@ -80,7 +80,7 @@ register(Name, Pid) when is_atom(Name) ->
             {error, already_registered}
     end;
 
-register(Name, Pid) when is_binary(Name) ->
+register(Name, Pid) when is_binary(Name), byte_size(Name) > 0, is_pid(Pid) ->
     ensure_table(),
     %% Monitor the process to auto-unregister on death
     case ets:lookup(?REG_TABLE, Name) of
@@ -107,7 +107,7 @@ register(Name, Pid) when is_binary(Name) ->
 %% V: registry.unregister("counter")
 %% Erlang: vbeam_registry:unregister(<<"counter">>)
 -spec unregister(Name :: atom() | binary()) -> ok.
-unregister(Name) when is_atom(Name) ->
+unregister(Name) when is_atom(Name), Name =/= '' ->
     try
         erlang:unregister(Name),
         ok
@@ -115,7 +115,7 @@ unregister(Name) when is_atom(Name) ->
         error:badarg -> ok  %% Not registered, that's fine
     end;
 
-unregister(Name) when is_binary(Name) ->
+unregister(Name) when is_binary(Name), byte_size(Name) > 0 ->
     ensure_table(),
     case ets:lookup(?REG_TABLE, Name) of
         [{Name, _Pid, MonRef}] ->
@@ -136,13 +136,13 @@ unregister(Name) when is_binary(Name) ->
 %%       error -> ...
 %%   end
 -spec lookup(Name :: atom() | binary()) -> {ok, pid()} | error.
-lookup(Name) when is_atom(Name) ->
+lookup(Name) when is_atom(Name), Name =/= '' ->
     case erlang:whereis(Name) of
         undefined -> error;
         Pid -> {ok, Pid}
     end;
 
-lookup(Name) when is_binary(Name) ->
+lookup(Name) when is_binary(Name), byte_size(Name) > 0 ->
     ensure_table(),
     case ets:lookup(?REG_TABLE, Name) of
         [{Name, Pid, _MonRef}] ->
@@ -163,7 +163,8 @@ lookup(Name) when is_binary(Name) ->
 %%
 %% V: pid := registry.whereis("counter")
 -spec whereis(Name :: atom() | binary()) -> pid() | undefined.
-whereis(Name) ->
+whereis(Name) when is_atom(Name); is_binary(Name) ->
+    true = is_atom(Name) orelse byte_size(Name) > 0,
     case lookup(Name) of
         {ok, Pid} -> Pid;
         error -> undefined
