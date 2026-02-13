@@ -17,6 +17,8 @@ panic(Message) when is_binary(Message) ->
             print_stacktrace(Stacktrace)
     end,
     halt(1);
+panic(Message) when is_list(Message) ->
+    panic(list_to_binary(Message));
 panic(Message) ->
     panic(vbeam_conv:to_binary(Message)).
 
