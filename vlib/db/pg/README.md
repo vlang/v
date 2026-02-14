@@ -68,6 +68,7 @@ The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like t
             libpq.lib
 ```
 
+Installation instructions are as follows
 ```
 Download the latest PostgreSQL version from the official website (currently https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)
 
