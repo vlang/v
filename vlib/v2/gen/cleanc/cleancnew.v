@@ -3786,8 +3786,8 @@ fn (mut g Gen) gen_stmt_inline(node ast.Stmt) {
 const c_keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 'double',
 	'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long', 'register',
 	'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch', 'typedef',
-	'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary',
-	'unix', 'linux']
+	'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary', 'unix',
+	'linux']
 
 const c_stdlib_fns = ['malloc', 'calloc', 'realloc', 'free', 'atoi', 'atof', 'atol', 'memcpy',
 	'memset', 'memmove', 'strlen', 'strcpy', 'strcat', 'strcmp', 'memcmp', 'exit']
@@ -8478,8 +8478,8 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 						'pthread_cond_t', 'pthread_rwlock_t', 'pthread_attr_t', 'jmp_buf',
 						'sigjmp_buf', 'sigset_t', 'size_t', 'ssize_t', 'off_t', 'mode_t', 'pid_t',
 						'uid_t', 'gid_t', 'time_t', 'clock_t', 'socklen_t', 'dev_t', 'ino_t',
-						'nlink_t', 'blksize_t', 'blkcnt_t', 'cc_t', 'speed_t', 'tcflag_t',
-						'fd_set', 'mach_timebase_info_data_t'] {
+						'nlink_t', 'blksize_t', 'blkcnt_t', 'cc_t', 'speed_t', 'tcflag_t', 'fd_set',
+						'mach_timebase_info_data_t'] {
 						return name
 					}
 					return 'struct ' + name
@@ -8566,8 +8566,8 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 fn (g &Gen) is_c_type_name(name string) bool {
 	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
 		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
-		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un',
-		'fd_set', 'mach_timebase_info_data_t']
+		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un', 'fd_set',
+		'mach_timebase_info_data_t']
 }
 
 fn (g &Gen) env_scope(module_name string) ?&types.Scope {

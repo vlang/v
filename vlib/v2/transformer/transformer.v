@@ -12089,7 +12089,6 @@ fn (t &Transformer) get_call_return_type(expr ast.Expr) string {
 	return ''
 }
 
-
 // get_struct_field_type returns the type of a struct field from a SelectorExpr
 fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 	// Try to get the struct type from scope (for local variables and receivers)
@@ -12353,7 +12352,6 @@ fn (t &Transformer) infer_map_type(expr ast.Expr) ?string {
 	}
 	return none
 }
-
 
 // is_map_lookup_returning_array checks if an expression is a map lookup that returns an array type
 fn (t &Transformer) is_map_lookup_returning_array(expr ast.Expr) bool {
