@@ -161,6 +161,15 @@ pub fn (f &FnType) get_param_types() []Type {
 	return param_types
 }
 
+// get_param_names returns function parameter names in declaration order.
+pub fn (f &FnType) get_param_names() []string {
+	mut names := []string{cap: f.params.len}
+	for param in f.params {
+		names << param.name
+	}
+	return names
+}
+
 // is_variadic_fn reports whether this function type was declared variadic.
 pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
