@@ -42,7 +42,7 @@ pub fn new_scope(parent &Scope) &Scope {
 
 // TODO: try implement the alternate method I was experimenting with (SmartCastSelector)
 // i'm not sure if it is actually possible though. need to explore it.
-pub fn (mut s Scope) lookup_field_smartcast(name string) ?Type {
+pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
 	mut scope := unsafe { s }
 	for ; scope != unsafe { nil }; scope = scope.parent {
 		if field_smartcast := scope.field_smartcasts[name] {
@@ -52,14 +52,14 @@ pub fn (mut s Scope) lookup_field_smartcast(name string) ?Type {
 	return none
 }
 
-pub fn (mut s Scope) lookup(name string) ?Object {
+pub fn (s &Scope) lookup(name string) ?Object {
 	if obj := s.objects[name] {
 		return obj
 	}
 	return none
 }
 
-pub fn (mut s Scope) lookup_parent(name string, pos token.Pos) ?Object {
+pub fn (s &Scope) lookup_parent(name string, pos token.Pos) ?Object {
 	mut scope := unsafe { s }
 	for ; scope != unsafe { nil }; scope = scope.parent {
 		if obj := scope.lookup(name) {
@@ -75,14 +75,14 @@ pub fn (mut s Scope) lookup_parent(name string, pos token.Pos) ?Object {
 
 // lookup_var_type looks up a variable by name and returns its type.
 // Walks up the scope chain to find the variable.
-pub fn (mut s Scope) lookup_var_type(name string) ?Type {
+pub fn (s &Scope) lookup_var_type(name string) ?Type {
 	if obj := s.lookup_parent(name, 0) {
 		return obj.typ()
 	}
 	return none
 }
 
-pub fn (mut s Scope) lookup_parent_with_scope(name string, pos token.Pos) ?(&Scope, Object) {
+pub fn (s &Scope) lookup_parent_with_scope(name string, pos token.Pos) ?(&Scope, Object) {
 	mut scope := unsafe { s }
 	for ; scope != unsafe { nil }; scope = scope.parent {
 		if obj := scope.lookup(name) {

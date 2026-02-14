@@ -21,14 +21,23 @@ fn main() {
 		return
 	}
 
-	// Determine backend from command line args
-	mut backend := 'arm64' // default
+	// Determine backends from command line args.
+	// If none are provided, run the default backend set.
+	mut backends := []string{}
+	if os.args.contains('cleanc') {
+		backends << 'cleanc'
+	}
+	if os.args.contains('c') {
+		backends << 'c'
+	}
+	if os.args.contains('arm64') {
+		backends << 'arm64'
+	}
 	if os.args.contains('x64') {
-		backend = 'x64'
-	} else if os.args.contains('c') {
-		backend = 'c'
-	} else if os.args.contains('cleanc') {
-		backend = 'cleanc'
+		backends << 'x64'
+	}
+	if backends.len == 0 {
+		backends = ['cleanc', 'c', 'arm64']
 	}
 
 	// Parse test file from args or default to test.v
@@ -49,36 +58,6 @@ fn main() {
 	base_name := os.file_name(input_file).replace('.v', '')
 	ref_output_path := './.${base_name}_ref.out.tmp'
 	gen_output_path := './.${base_name}_gen.out.tmp'
-
-	// Run v2 with selected backend
-	println('[*] Running v2 -backend ${backend} ${input_file}...')
-	mut backend_flags := '-gc none -backend ${backend}'
-	if backend == 'cleanc' {
-		// cleanc needs full per-run codegen for this suite right now.
-		backend_flags += ' -nomarkused -nocache'
-	}
-	if os.args.contains('--skip-builtin') && !backend_flags.contains('--skip-builtin') {
-		backend_flags += ' --skip-builtin'
-	}
-	v2_cmd := '${v2_binary} ${backend_flags} ${input_file} -o ${base_name}'
-	v2_res := os.execute(v2_cmd)
-	if v2_res.exit_code != 0 {
-		eprintln('Error: v2 compilation failed')
-		eprintln(v2_res.output)
-		return
-	}
-	println(v2_res.output)
-	println('compilation took ${time.since(t0)}')
-
-	// Save the v2-produced binary before running reference (which would overwrite it)
-	os.rm('./${base_name}_v2') or {}
-	if os.user_os() == 'windows' {
-		os.rm('./${base_name}_v2.exe') or {}
-	}
-	os.cp('./${base_name}', './${base_name}_v2') or {
-		eprintln('Error: Failed to save v2 binary')
-		return
-	}
 
 	// Get expected output: use .out file if --skip-builtin, otherwise run reference compiler
 	mut expected_out := ''
@@ -103,38 +82,80 @@ fn main() {
 		expected_out = ref_out.trim_space().replace('\r\n', '\n')
 	}
 
-	// Run Generated Binary (the v2-produced one we saved earlier)
-	println('[*] Running generated binary...')
-	mut cmd := './${base_name}_v2'
-	if os.user_os() == 'windows' {
-		cmd = '${base_name}_v2.exe'
-	}
-	os.rm(gen_output_path) or {}
-	gen_cmd := '${cmd} > ${gen_output_path} 2>&1'
-	gen_res := os.execute(gen_cmd)
-	gen_out := os.read_file(gen_output_path) or { '' }
-	os.rm(gen_output_path) or {}
-	if gen_res.exit_code != 0 {
-		if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
-			eprintln('Error: Execution timed out (infinite loop detected)')
-			return
+	mut had_failures := false
+	for backend in backends {
+		backend_t0 := time.now()
+
+		// Run v2 with selected backend
+		println('[*] Running v2 -backend ${backend} ${input_file}...')
+		mut backend_flags := '-gc none -backend ${backend}'
+		if backend == 'cleanc' {
+			// cleanc needs full per-run codegen for this suite right now.
+			backend_flags += ' -nomarkused -nocache'
 		}
-		println('Warning: Binary exited with code ${gen_res.exit_code}')
-	}
+		if os.args.contains('--skip-builtin') && !backend_flags.contains('--skip-builtin') {
+			backend_flags += ' --skip-builtin'
+		}
+		v2_cmd := '${v2_binary} ${backend_flags} ${input_file} -o ${base_name}'
+		v2_res := os.execute(v2_cmd)
+		if v2_res.exit_code != 0 {
+			eprintln('Error: v2 compilation failed for backend ${backend}')
+			eprintln(v2_res.output)
+			had_failures = true
+			continue
+		}
+		println(v2_res.output)
+		println('compilation took ${time.since(backend_t0)}')
 
-	// Strip terminal control characters that script command may prepend
-	mut cleaned := gen_out.replace('\r\n', '\n').replace('\x04', '').replace('\x08', '')
-	// Remove "^D" literal string that macOS script may add
-	if cleaned.starts_with('^D') {
-		cleaned = cleaned[2..]
-	}
-	actual_out := cleaned.trim_space()
+		// Save the v2-produced binary before running another backend (which would overwrite it)
+		saved_binary := './${base_name}_${backend}_v2'
+		os.rm(saved_binary) or {}
+		if os.user_os() == 'windows' {
+			os.rm('${saved_binary}.exe') or {}
+		}
+		os.cp('./${base_name}', saved_binary) or {
+			eprintln('Error: Failed to save v2 binary for backend ${backend}')
+			had_failures = true
+			continue
+		}
 
-	// Compare
-	if expected_out == actual_out {
-		println('\n[SUCCESS] Outputs match!')
-	} else {
-		println('\n[FAILURE] Outputs differ')
+		// Run generated binary
+		println('[*] Running generated binary (${backend})...')
+		mut cmd := saved_binary
+		if os.user_os() == 'windows' {
+			cmd = '${saved_binary}.exe'
+		}
+		os.rm(gen_output_path) or {}
+		gen_cmd := '${cmd} > ${gen_output_path} 2>&1'
+		gen_res := os.execute(gen_cmd)
+		gen_out := os.read_file(gen_output_path) or { '' }
+		os.rm(gen_output_path) or {}
+		if gen_res.exit_code != 0 {
+			if gen_res.exit_code == 142 || gen_res.exit_code == 14 {
+				eprintln('Error: Execution timed out (infinite loop detected) for backend ${backend}')
+				had_failures = true
+				continue
+			}
+			println('Warning: Binary exited with code ${gen_res.exit_code}')
+		}
+
+		// Strip terminal control characters that script command may prepend
+		mut cleaned := gen_out.replace('\r\n', '\n').replace('\x04', '').replace('\x08',
+			'')
+		// Remove "^D" literal string that macOS script may add
+		if cleaned.starts_with('^D') {
+			cleaned = cleaned[2..]
+		}
+		actual_out := cleaned.trim_space()
+
+		// Compare
+		if expected_out == actual_out {
+			println('\n[SUCCESS] Backend ${backend}: outputs match!')
+			continue
+		}
+
+		had_failures = true
+		println('\n[FAILURE] Backend ${backend}: outputs differ')
 		expected_lines := expected_out.split('\n')
 		actual_lines := actual_out.split('\n')
 
@@ -176,4 +197,11 @@ fn main() {
 			}
 		}
 	}
+
+	if had_failures {
+		println('\n[FAILURE] One or more backends failed')
+	} else {
+		println('\n[SUCCESS] All requested backends passed')
+	}
+	println('total time ${time.since(t0)}')
 }

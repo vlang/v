@@ -367,6 +367,93 @@ fn test_transform_map_init_expr_non_empty_lowers_to_runtime_ctor() {
 	assert call.args[8] is ast.ArrayInitExpr, 'expected value array arg'
 }
 
+fn test_transform_map_init_expr_empty_lowers_to_new_map() {
+	mut t := create_test_transformer()
+
+	expr := ast.MapInitExpr{
+		typ: ast.Expr(ast.Type(ast.MapType{
+			key_type:   ast.Ident{
+				name: 'string'
+			}
+			value_type: ast.Ident{
+				name: 'int'
+			}
+		}))
+	}
+
+	result := t.transform_map_init_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'new_map'
+	assert call.args.len == 6
+	assert call.args[2] is ast.PrefixExpr
+	assert (call.args[2] as ast.PrefixExpr).op == .amp
+	assert (call.args[2] as ast.PrefixExpr).expr is ast.Ident
+	assert ((call.args[2] as ast.PrefixExpr).expr as ast.Ident).name == 'map_hash_string'
+}
+
+fn test_transform_index_expr_map_read_lowers_to_map_get() {
+	mut t := create_transformer_with_vars({
+		'm': types.Type(types.Map{
+			key_type:   string_type()
+			value_type: types.int_
+		})
+	})
+
+	expr := ast.IndexExpr{
+		lhs:  ast.Ident{
+			name: 'm'
+		}
+		expr: ast.StringLiteral{
+			kind:  .v
+			value: "'foo'"
+		}
+	}
+
+	result := t.transform_index_expr(expr)
+	assert result is ast.UnsafeExpr, 'expected UnsafeExpr, got ${result.type_name()}'
+	unsafe_expr := result as ast.UnsafeExpr
+	assert unsafe_expr.stmts.len > 0
+	last := unsafe_expr.stmts[unsafe_expr.stmts.len - 1]
+	assert last is ast.ExprStmt
+	last_expr := (last as ast.ExprStmt).expr
+	assert last_expr is ast.ParenExpr
+	paren := last_expr as ast.ParenExpr
+	assert paren.expr is ast.PrefixExpr
+	pref := paren.expr as ast.PrefixExpr
+	assert pref.op == .mul
+	assert pref.expr is ast.CastExpr
+	cast := pref.expr as ast.CastExpr
+	assert cast.expr is ast.CallExpr
+	call := cast.expr as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'map__get'
+	assert call.args.len == 3
+}
+
+fn test_transform_init_expr_empty_typed_map_lowers_to_new_map() {
+	mut t := create_test_transformer()
+
+	expr := ast.InitExpr{
+		typ: ast.Expr(ast.Type(ast.MapType{
+			key_type:   ast.Ident{
+				name: 'string'
+			}
+			value_type: ast.Ident{
+				name: 'int'
+			}
+		}))
+	}
+
+	result := t.transform_init_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'new_map'
+	assert call.args.len == 6
+}
+
 fn test_is_string_expr_string_literal() {
 	mut t := create_test_transformer()
 
