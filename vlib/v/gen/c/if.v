@@ -181,17 +181,25 @@ fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
+	// Check if there's an outer_tmp_var set for this if expression
+	use_outer_tmp := g.outer_tmp_var != ''
+	saved_outer_tmp_var := g.outer_tmp_var
+	// Clear it immediately so nested contexts don't see it
+	if use_outer_tmp {
+		g.outer_tmp_var = ''
+	}
+	
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	needs_tmp_var := g.inside_if_option || g.need_tmp_var_in_if(node) || g.outer_tmp_var != ''
+	needs_tmp_var := g.inside_if_option || g.need_tmp_var_in_if(node) || use_outer_tmp
 	needs_conds_order := g.needs_conds_order(node)
-	tmp := if g.outer_tmp_var != '' {
+	tmp := if use_outer_tmp {
 		// Use the tmp var from outer context (e.g. from stmts_with_tmp_var)
-		g.outer_tmp_var
+		saved_outer_tmp_var
 	} else if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
 		g.new_tmp_var()
 	} else {
@@ -270,7 +278,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
-		if tmp != '' && g.outer_tmp_var == '' {
+		if tmp != '' && !use_outer_tmp {
 			// Only declare the tmp var if it's not from outer context
 			if node.typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
