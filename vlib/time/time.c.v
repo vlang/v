@@ -25,35 +25,26 @@ fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usiz
 pub fn now() Time {
 	$if macos {
 		return darwin_now()
-	}
-	$if windows {
+	} $else $if windows {
 		return win_now()
-	}
-	$if solaris {
+	} $else $if solaris {
 		return solaris_now()
+	} $else {
+		return linux_now()
 	}
-	return linux_now()
-	/*
-	// defaults to most common feature, the microsecond precision is not available
-	// in this API call
-	t := C.time(0)
-	now := C.localtime(&t)
-	return convert_ctime(*now, 0)
-	*/
 }
 
 // utc returns the current UTC time.
 pub fn utc() Time {
 	$if macos {
 		return darwin_utc()
-	}
-	$if windows {
+	} $else $if windows {
 		return win_utc()
-	}
-	$if solaris {
+	} $else $if solaris {
 		return solaris_utc()
+	} $else {
+		return linux_utc()
 	}
-	return linux_utc()
 }
 
 fn time_with_unix(t Time) Time {
