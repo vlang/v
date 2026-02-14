@@ -11788,148 +11788,18 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 
 // infer_array_type returns the Array_T type string for an array expression
 fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
-	// Check for variable references with known array types
-	if expr is ast.Ident {
-		if typ := t.lookup_var_type(expr.name) {
-			match typ {
-				types.Array {
-					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
-					if elem_type != '' && elem_type != 'void' {
-						return 'Array_${elem_type}'
-					}
-				}
-				types.ArrayFixed {
-					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
-					if elem_type != '' && elem_type != 'void' {
-						return 'Array_fixed_${elem_type}_${typ.len}'
-					}
-				}
-				else {}
+	if recv_type := t.get_expr_type(expr) {
+		base := t.unwrap_alias_and_pointer_type(recv_type)
+		if base is types.Array {
+			elem_type := t.array_elem_type_name_for_helpers(base.elem_type)
+			if elem_type != '' && elem_type != 'void' {
+				return 'Array_${elem_type}'
 			}
 		}
-		var_type := t.get_var_type_name(expr.name)
-		if var_type != '' {
-			// Convert V-style type name to C-style
-			c_type := t.v_type_name_to_c_name(var_type)
-			if c_type.starts_with('Array_') {
-				// Normalize literal types to concrete types
-				return t.normalize_array_type(c_type)
-			}
-		}
-	}
-	// Check for slice expressions (arr[a..b] or arr#[a..b]) - returns same array type
-	if expr is ast.IndexExpr {
-		if expr.expr is ast.RangeExpr {
-			// Slicing an array returns the same array type
-			return t.infer_array_type(expr.lhs)
-		}
-	}
-	// Check for function calls that return array types
-	if expr is ast.CallExpr || expr is ast.CallOrCastExpr {
-		// Skip methods known to return non-array types (int, bool)
-		if expr is ast.CallOrCastExpr && expr.lhs is ast.SelectorExpr {
-			sel := expr.lhs as ast.SelectorExpr
-			if sel.rhs.name in ['index', 'last_index', 'contains', 'len', 'cap'] {
-				return none
-			}
-		}
-		if expr is ast.CallExpr && expr.lhs is ast.SelectorExpr {
-			sel := expr.lhs as ast.SelectorExpr
-			if sel.rhs.name in ['index', 'last_index', 'contains', 'len', 'cap'] {
-				return none
-			}
-		}
-		ret_type := t.get_call_return_type(expr)
-		if ret_type.starts_with('Array_') {
-			return ret_type
-		}
-	}
-	// Check for field access on modules/structs (e.g., os.args)
-	if expr is ast.SelectorExpr {
-		if field_type := t.get_expr_type(expr) {
-			if field_type is types.Array {
-				elem_type_name := t.get_type_name(field_type.elem_type)
-				if elem_type_name != '' {
-					return 'Array_${elem_type_name}'
-				}
-			}
-		}
-	}
-	// Handle InitExpr with ArrayType (e.g., []voidptr{})
-	if expr is ast.InitExpr {
-		match expr.typ {
-			ast.Type {
-				if expr.typ is ast.ArrayType {
-					elem_type := t.expr_to_type_name(expr.typ.elem_type)
-					if elem_type != '' {
-						return 'Array_${elem_type}'
-					}
-				}
-			}
-			else {}
-		}
-	}
-	if expr is ast.ArrayInitExpr {
-		// Check if array has explicit type
-		if expr.typ is ast.Type {
-			if expr.typ is ast.ArrayType {
-				elem_type := t.expr_to_type_name(expr.typ.elem_type)
-				if elem_type != '' {
-					return 'Array_${elem_type}'
-				}
-			}
-		}
-		// Infer from first element
-		if expr.exprs.len > 0 {
-			first := expr.exprs[0]
-			if first is ast.ArrayInitExpr {
-				if nested_arr_type := t.infer_array_type(first) {
-					return 'Array_${nested_arr_type}'
-				}
-			}
-			if first is ast.BasicLiteral {
-				if first.kind == .number {
-					return 'Array_int'
-				}
-				if first.kind == .string {
-					return 'Array_string'
-				}
-			}
-			if first is ast.StringLiteral {
-				return 'Array_string'
-			}
-			// Check for enum values (SelectorExpr like .trim_left)
-			if first is ast.SelectorExpr {
-				// Try to get type from environment
-				if elem_type := t.get_expr_type(first) {
-					type_name := t.type_to_c_name(elem_type)
-					if type_name != '' {
-						return 'Array_${type_name}'
-					}
-				}
-				// Default to int for enum values
-				return 'Array_int'
-			}
-			// Check for idents (could be enum values or variables)
-			if first is ast.Ident {
-				// Check scope for local variables
-				var_type := t.get_var_type_name(first.name)
-				if var_type != '' {
-					return 'Array_${var_type}'
-				}
-				// Then try environment for constants/globals
-				if elem_type := t.get_expr_type(first) {
-					type_name := t.type_to_c_name(elem_type)
-					if type_name != '' {
-						return 'Array_${type_name}'
-					}
-				}
-			}
-			// Check for IfExpr (ternary) - infer from branches
-			if first is ast.IfExpr {
-				if t.is_string_expr(first) {
-					return 'Array_string'
-				}
+		if base is types.ArrayFixed {
+			elem_type := t.array_elem_type_name_for_helpers(base.elem_type)
+			if elem_type != '' && elem_type != 'void' {
+				return 'Array_fixed_${elem_type}_${base.len}'
 			}
 		}
 	}
