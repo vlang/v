@@ -28,7 +28,8 @@ pub fn get_v_files_from_dir(dir string) []string {
 				continue
 			}
 		} $else $if linux {
-			if file.contains('_windows.') || file.contains('_macos.') || file.contains('_android') {
+			if file.contains('_windows.') || file.contains('_macos.') || file.contains('_darwin.')
+				|| file.contains('_android') {
 				continue
 			}
 		} $else $if windows {
