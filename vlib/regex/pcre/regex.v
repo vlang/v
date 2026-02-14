@@ -50,7 +50,7 @@ import strings
 
 // max_stack_depth defines the limit for the backtracking stack.
 // This prevents excessive memory use while allowing complex pattern matching.
-const max_stack_depth = 1024
+// const max_stack_depth = 1024
 
 /******************************************************************************
 *
@@ -111,7 +111,8 @@ pub:
 	prefix_lit   string         // Literal prefix used for fast-skip optimization.
 	has_prefix   bool           // True if the pattern starts with a literal.
 mut:
-	machine Machine // Pre-allocated workspace for the VM.
+	max_stack_depth int = 1024 // max stack depth possible during VM run
+	machine         Machine // Pre-allocated workspace for the VM.
 }
 
 // Match contains the results of a successful regex search.
@@ -272,17 +273,24 @@ pub fn compile(pattern string) !Regex {
 	// Pre-allocate the Machine workspace based on pattern requirements.
 	cap_count := final_group_count * 2
 	return Regex{
-		pattern:      pattern
-		prog:         optimized_prog
-		total_groups: final_group_count
-		group_map:    group_map
-		prefix_lit:   prefix
-		has_prefix:   has_prefix
-		machine:      Machine{
-			stack:    []int{len: max_stack_depth}
+		max_stack_depth: 1024
+		pattern:         pattern
+		prog:            optimized_prog
+		total_groups:    final_group_count
+		group_map:       group_map
+		prefix_lit:      prefix
+		has_prefix:      has_prefix
+		machine:         Machine{
+			stack:    []int{len: 1024}
 			captures: []int{len: cap_count}
 		}
 	}
+}
+
+// change_stack_depth let to change the stack dept of the VM, Regex strunct r MUST be Mutable
+pub fn (mut r Regex) change_stack_depth(depth int) {
+	r.max_stack_depth = depth
+	r.machine.stack = []int{len: depth}
 }
 
 // Compiler handles the transformation of AST nodes into VM instructions.
@@ -706,41 +714,63 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 				esc, el := read_rune_at(pattern.str, pattern.len, pos)
 				pos += el
 				match esc {
-					`w` { parsed_nodes << Node{
+					`w` {
+						parsed_nodes << Node{
 							typ: .word_char
-						} }
-					`W` { parsed_nodes << Node{
+						}
+					}
+					`W` {
+						parsed_nodes << Node{
 							typ: .non_word_char
-						} }
-					`d` { parsed_nodes << Node{
+						}
+					}
+					`d` {
+						parsed_nodes << Node{
 							typ: .digit
-						} }
-					`D` { parsed_nodes << Node{
+						}
+					}
+					`D` {
+						parsed_nodes << Node{
 							typ: .non_digit
-						} }
-					`s` { parsed_nodes << Node{
+						}
+					}
+					`s` {
+						parsed_nodes << Node{
 							typ: .whitespace
-						} }
-					`S` { parsed_nodes << Node{
+						}
+					}
+					`S` {
+						parsed_nodes << Node{
 							typ: .non_whitespace
-						} }
-					`b` { parsed_nodes << Node{
+						}
+					}
+					`b` {
+						parsed_nodes << Node{
 							typ: .word_boundary
-						} }
-					`B` { parsed_nodes << Node{
+						}
+					}
+					`B` {
+						parsed_nodes << Node{
 							typ: .non_word_boundary
-						} }
-					`a` { parsed_nodes << Node{
+						}
+					}
+					`a` {
+						parsed_nodes << Node{
 							typ: .lowercase_char
-						} }
-					`A` { parsed_nodes << Node{
+						}
+					}
+					`A` {
+						parsed_nodes << Node{
 							typ: .uppercase_char
-						} }
-					else { parsed_nodes << Node{
+						}
+					}
+					else {
+						parsed_nodes << Node{
 							typ:         .chr
 							chr:         esc
 							ignore_case: current_flags.ignore_case
-						} }
+						}
+					}
 				}
 			}
 			else {
@@ -974,7 +1004,7 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 				}
 				.split {
 					// Save state to stack for backtracking.
-					if stack_ptr + frame_size >= max_stack_depth {
+					if stack_ptr + frame_size >= r.max_stack_depth {
 						goto backtrack
 					}
 					for i in 0 .. cap_size {
