@@ -137,7 +137,7 @@ fn (mut p Parser) try_type() ast.Expr {
 				// TODO: is there a better solution than this. maybe it should be the
 				// concern of p.fn_parameters() & p.struct_decl() rather than this?
 				// `fn(param_a []type)` | `struct { field_a []type }`
-				if name is ast.Ident && name.name.len + pos < p.pos {
+				if name is ast.Ident && name.name.len + pos.offset < p.pos.offset {
 					return name
 				}
 				// TODO: using ast.GenericArgs here may not be correct,

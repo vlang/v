@@ -2547,8 +2547,8 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 			// the alias and uses the underlying type name. Try env-based resolution.
 			receiver_pos := node.receiver.typ.pos()
 			mut found := false
-			if receiver_pos != 0 {
-				if recv_type := g.env.get_expr_type(receiver_pos) {
+			if receiver_pos.is_valid() {
+				if recv_type := g.env.get_expr_type(receiver_pos.id) {
 					base_type := recv_type.base_type()
 					alt_scope_name := '${base_type.name()}__${node.name}'
 					if fn_scope2 := g.env.get_fn_scope(g.cur_module, alt_scope_name) {
@@ -8046,8 +8046,8 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 		return none
 	}
 	pos := e.pos()
-	if pos != 0 {
-		if typ := g.env.get_expr_type(pos) {
+	if pos.is_valid() {
+		if typ := g.env.get_expr_type(pos.id) {
 			// Self-hosting can leave malformed alias payloads in env expr cache.
 			// Skip those entries and fall back to AST/scope-based inference.
 			if typ is types.Alias {
@@ -8896,8 +8896,8 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	}
 	// Try environment lookup by position
 	pos := node.pos()
-	if pos != 0 {
-		return g.env.get_expr_type(pos)
+	if pos.is_valid() {
+		return g.env.get_expr_type(pos.id)
 	}
 	return none
 }

@@ -3551,10 +3551,10 @@ fn (mut b Builder) lookup_expr_type_from_env(pos token.Pos) ?TypeID {
 	if b.env == unsafe { nil } {
 		return none
 	}
-	if int(pos) <= 0 {
+	if !pos.is_valid() {
 		return none
 	}
-	if typ := b.env.get_expr_type(int(pos)) {
+	if typ := b.env.get_expr_type(pos.id) {
 		return b.type_to_ssa(typ)
 	}
 	return none
@@ -3564,10 +3564,10 @@ fn (b &Builder) lookup_expr_raw_type_from_env(pos token.Pos) ?types.Type {
 	if b.env == unsafe { nil } {
 		return none
 	}
-	if int(pos) <= 0 {
+	if !pos.is_valid() {
 		return none
 	}
-	if typ := b.env.get_expr_type(int(pos)) {
+	if typ := b.env.get_expr_type(pos.id) {
 		return typ
 	}
 	return none
@@ -3683,7 +3683,7 @@ fn (mut b Builder) infer_expr_raw_type(expr ast.Expr) ?types.Type {
 
 fn (mut b Builder) enum_context_type_name(expr ast.Expr) string {
 	pos := expr.pos()
-	if int(pos) > 0 {
+	if pos.is_valid() {
 		if raw_typ := b.lookup_expr_raw_type_from_env(pos) {
 			type_name := b.extract_type_name(raw_typ)
 			if type_name != '' {
@@ -9481,7 +9481,7 @@ fn (mut b Builder) expr_type_hint(expr ast.Expr) ?TypeID {
 		else {}
 	}
 	pos := b.expr_pos(expr)
-	if int(pos) > 0 {
+	if pos.is_valid() {
 		if t := b.lookup_expr_type_from_env(pos) {
 			return t
 		}
@@ -9570,13 +9570,13 @@ fn (b Builder) expr_pos(expr ast.Expr) token.Pos {
 			return expr.pos
 		}
 		ast.EmptyExpr {
-			return token.Pos(0)
+			return token.Pos{}
 		}
 		ast.Type {
-			return token.Pos(0)
+			return token.Pos{}
 		}
 		ast.Keyword {
-			return token.Pos(0)
+			return token.Pos{}
 		}
 		ast.LockExpr {
 			return expr.pos
@@ -9600,7 +9600,7 @@ fn (b Builder) expr_pos(expr ast.Expr) token.Pos {
 			return expr.pos
 		}
 		else {
-			return token.Pos(0)
+			return token.Pos{}
 		}
 	}
 }

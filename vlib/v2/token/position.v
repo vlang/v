@@ -5,8 +5,18 @@ module token
 
 // TODO: finish fileset / file / base pos etc
 
-// compact encoding of a source position within a file set
-pub type Pos = int
+// Pos encodes a source position with a unique ID for use as a map key.
+// offset: file-set global byte offset (for error messages, file lookup)
+// id: unique sequential ID (for expr_types map key — avoids collisions)
+pub struct Pos {
+pub:
+	offset int
+	id     int
+}
+
+pub fn (p Pos) is_valid() bool {
+	return p.id > 0
+}
 
 pub struct Position {
 pub:
@@ -26,12 +36,14 @@ pub:
 	base int
 	size int
 mut:
-	line_offsets []int = [0] // start of each line
+	line_offsets []int = [0]            // start of each line
+	id_counter   &int  = unsafe { nil } // shared global counter for unique expression IDs
 }
 
 pub struct FileSet {
 mut:
-	base int = 1 // reserve 0 for no position
+	base       int = 1 // reserve 0 for no position
+	id_counter int // global counter for unique expression IDs across all files
 	// files shared []&File
 	files []&File
 }
@@ -51,9 +63,10 @@ pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
 		panic('invalid base ${base} (should be >= ${fs.base}')
 	}
 	file := &File{
-		name: filename
-		base: base
-		size: size
+		name:       filename
+		base:       base
+		size:       size
+		id_counter: &fs.id_counter
 	}
 	if size < 0 {
 		panic('invalid size ${size} (should be >= 0)')
@@ -112,10 +125,10 @@ pub fn (mut fs FileSet) file(pos Pos) &File {
 	// 	}
 	// }
 	// i := search_files(lock fs.files { fs.files }, pos)
-	i := search_files(fs.files, pos)
+	i := search_files(fs.files, pos.offset)
 	if i >= 0 {
 		file := fs.files[i]
-		if int(pos) <= file.base + file.size {
+		if pos.offset <= file.base + file.size {
 			// we could store last and retrieve and try above
 			return file
 		}
@@ -150,18 +163,24 @@ pub fn (f &File) line_start(line int) int {
 }
 
 pub fn (f &File) line(pos Pos) int {
-	return f.find_line(pos)
+	return f.find_line(pos.offset - f.base)
 }
 
-pub fn (f &File) pos(offset int) Pos {
+pub fn (mut f File) pos(offset int) Pos {
 	if offset > f.size {
 		panic('invalid offset')
 	}
-	return Pos(f.base + offset)
+	unsafe {
+		*f.id_counter = *f.id_counter + 1
+	}
+	return Pos{
+		offset: f.base + offset
+		id:     unsafe { *f.id_counter }
+	}
 }
 
 pub fn (f &File) position(pos Pos) Position {
-	offset := int(pos) - f.base
+	offset := pos.offset - f.base
 	line, column := f.find_line_and_column(offset)
 	return Position{
 		filename: f.name

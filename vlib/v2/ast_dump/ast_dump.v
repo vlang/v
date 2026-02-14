@@ -2362,5 +2362,5 @@ fn (mut jb JsonBuilder) write_fn_decls(decls []ast.FnDecl) {
 }
 
 fn (mut jb JsonBuilder) write_pos(pos token.Pos) {
-	jb.sb.write_string('${int(pos)}')
+	jb.sb.write_string('${pos.offset}')
 }

@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module types
 
-import v2.token
-
 pub type Object = Const | Fn | Global | Module | SmartCastSelector | Type
 
 // pub type Object = Const | Fn | Global | Module |
@@ -59,7 +57,7 @@ pub fn (s &Scope) lookup(name string) ?Object {
 	return none
 }
 
-pub fn (s &Scope) lookup_parent(name string, pos token.Pos) ?Object {
+pub fn (s &Scope) lookup_parent(name string, pos int) ?Object {
 	mut scope := unsafe { s }
 	for ; scope != unsafe { nil }; scope = scope.parent {
 		if obj := scope.lookup(name) {
@@ -82,7 +80,7 @@ pub fn (s &Scope) lookup_var_type(name string) ?Type {
 	return none
 }
 
-pub fn (s &Scope) lookup_parent_with_scope(name string, pos token.Pos) ?(&Scope, Object) {
+pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Object) {
 	mut scope := unsafe { s }
 	for ; scope != unsafe { nil }; scope = scope.parent {
 		if obj := scope.lookup(name) {

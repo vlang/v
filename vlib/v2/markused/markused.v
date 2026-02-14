@@ -286,8 +286,8 @@ fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environ
 		else {}
 	}
 	pos := decl.receiver.typ.pos()
-	if env != unsafe { nil } && pos != 0 {
-		if receiver_type := env.get_expr_type(pos) {
+	if env != unsafe { nil } && pos.is_valid() {
+		if receiver_type := env.get_expr_type(pos.id) {
 			for name in type_name_candidates_from_type(mod_name, receiver_type) {
 				add_unique_string(mut out, name)
 			}
@@ -709,8 +709,8 @@ fn (mut w Walker) mark_interface_conversion_methods(target_expr ast.Expr, value_
 fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []string {
 	mut out := []string{}
 	pos := expr.pos()
-	if w.env != unsafe { nil } && pos != 0 {
-		if receiver_type := w.env.get_expr_type(pos) {
+	if w.env != unsafe { nil } && pos.is_valid() {
+		if receiver_type := w.env.get_expr_type(pos.id) {
 			for name in type_name_candidates_from_type(mod_name, receiver_type) {
 				add_unique_string(mut out, name)
 			}
