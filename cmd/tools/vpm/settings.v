@@ -3,6 +3,7 @@ module main
 import os
 import os.cmdline
 import log
+import v.vmod
 
 struct VpmSettings {
 mut:
@@ -10,6 +11,7 @@ mut:
 	is_once               bool
 	is_verbose            bool
 	is_force              bool
+	is_local              bool
 	server_urls           []string
 	vmodules_path         string
 	tmp_path              string
@@ -28,7 +30,23 @@ fn init_settings() VpmSettings {
 	opts := cmdline.only_options(args)
 	cmds := cmdline.only_non_options(args)
 
-	vmodules_path := os.vmodules_dir()
+	global_vmodules_path := os.vmodules_dir()
+	mut vmodules_path := global_vmodules_path.clone()
+	is_local := '-l' in opts || '--local' in opts
+	if is_local {
+		wrkdir := os.getwd()
+		mut mcache := vmod.get_cache()
+		vmod_file_location := mcache.get_by_folder(wrkdir)
+		project_root_dir := if vmod_file_location.vmod_file.len == 0 {
+			wrkdir
+		} else {
+			vmod_file_location.vmod_folder
+		}
+		vmodules_path = os.join_path(project_root_dir, 'modules')
+		verbose_println('init_settings, local installation, wrkdir: ${wrkdir} | project_root_dir: ${project_root_dir} | vmodules_path: ${vmodules_path}')
+	}
+	verbose_println('init_settings, final is_local: ${is_local} | vmodules_path: `${vmodules_path}`')
+
 	is_no_inc := os.getenv('VPM_NO_INCREMENT') != ''
 	is_dbg := os.getenv('VPM_DEBUG') != ''
 	is_ci := os.getenv('CI') != ''
@@ -39,8 +57,8 @@ fn init_settings() VpmSettings {
 		logger.set_level(.debug)
 	}
 	if !is_ci && !is_dbg {
-		// Log by default:
-		cache_path := os.join_path(vmodules_path, '.cache')
+		// Log by default, but only in the global location, no matter if --local was passed:
+		cache_path := os.join_path(global_vmodules_path, '.cache')
 		os.mkdir_all(cache_path, mode: 0o700) or { panic(err) }
 		logger.set_output_path(os.join_path(cache_path, 'vpm.log'))
 	}
@@ -50,6 +68,7 @@ fn init_settings() VpmSettings {
 		is_once:               '--once' in opts
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
+		is_local:              is_local
 		server_urls:           cmdline.options(args, '--server-urls')
 		vcs:                   if '--hg' in opts { .hg } else { .git }
 		vmodules_path:         vmodules_path

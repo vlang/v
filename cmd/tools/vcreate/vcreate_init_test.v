@@ -82,6 +82,9 @@ fn init_and_check() ! {
 		'*.db',
 		'*.js',
 		'',
+		'# Ignore installed modules through `v install --local`:',
+		'modules/',
+		'',
 	].join_lines()
 
 	assert os.read_file('.gitattributes')! == [
