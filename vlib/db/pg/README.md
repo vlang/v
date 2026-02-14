@@ -55,36 +55,58 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 
 **Windows**:
 
+The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like the following
+after following all instructions. Create the `pg` folder yourself if it does not exist yet.
 ```
-1. Download PostgreSQL SDK from official site
-2. Extract archive to postgres-master folder
-3. Copy folder postgres-master/src/interfaces/libpq to v/thirdparty/pg
-4. Copy file postgres-master/src/include/postgres_ext.h to v/thirdparty/pg/libpq
+@VEXEROOT/thirdparty/pg
+├───libpq
+│       libpq-fe.h
+│       pg_config.h
+│       postgres_ext.h
+│
+└───win64
+    └───msvc
+            libpq.lib
+```
 
-If you build PostgreSQL from source pg_config_ext.h and pg_config.h will be created automatically:
-5. Copy file postgres-master/src/include/pg_config_ext.h to v/thirdparty/pg/libpq
-6. Copy file postgres-master/src/include/pg_config.h to v/thirdparty/pg/libpq
+Installation instructions are as follows
+```
+Download the latest PostgreSQL version from the official website
+(currently https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)
 
-If you do not build PostgreSQL from source code:
-5. Copy file postgres-master/src/include/pg_config_ext.h.in to v/thirdparty/pg/libpq
-- rename pg_config_ext.h.in to pg_config_ext.h
-- in pg_config_ext.h change line **#undef PG_INT64_TYPE** to **#define PG_INT64_TYPE long int**
-6. Copy file postgres-master/src/include/pg_config.h.in to v/thirdparty/pg/libpq
-- rename pg_config.h.in to pg_config.h
-- in pg_config.h change line **#undef PG_VERSION_NUM** to **#define PG_VERSION_NUM X0Y0Z**
-where X is major db version, Y is minor version, Z is patch version. So if your version is 17.1.2
-PG_VERSION_NUM will be 170102, PG_VERSION_NUM should be number, dot sign is changing to 0,
-format *PG_VERSION_NUM 17* without 0 also should work
+In one of the steps in the installer, tick the following boxes:
+[X] PostgreSQL Server
+[ ] pgAdmin 4
+[ ] Stack Builder
+[X] Command Line Tools
 
-7. Add libpq.dll to v/thirdparty/pg/win64
+We need PostgreSQL Server because it brings with it the C header files
+needed for building programs that link to `libpq.dll`.
 
-If you are going to use the msvc compiler:
-7. Add libpq.lib(C:\Program Files\PostgreSQL\{version}\lib) to v/thirdparty/pg/win64/msvc
+After finishing installation, add the folder `C:/Program Files/PostgreSQL/<version>/bin` to PATH.
+Any program that wants to use postgres client functionality require these DLLs found in `/bin`:
+- libcrypto-3-x64.dll
+- libiconv-2.dll
+- libintl-9.dll
+- libpq.dll
+- libssl-3-x64.dll
+- libwinpthread-1.dll
 
-8. Add libpq.dll, libcrypto-3-x64.dll, libssl-3-x64.dll to where your executable is.
+If you want to compile with MSVC, you will need to copy `C:/Program Files/PostgreSQL/<version>/bin/libpq.lib`
+into the `@VEXEROOT/thirdparty/pg/win64/msvc` directory.
 
-To get the libpq.dll file, you can install the PostgreSQL database,
-and get this dll from its bin/ folder, or compile DB from source code.
+Navigate to `C:/Program Files/PostgreSQL/<version>/include`. There you will find the files:
+- `libpq-fe.h`
+- `pg_config.h`
+- `postgres_ext.h`
+
+Copy the header files into `@VEXEROOT/thirdparty/pg/libpq`. You can now compile programs using the `db.pg` module.
+
+---
+
+After building an executable that uses `db.pg`, you may want to distribute it to others
+who might not have the postgres DLLs installed on their machine. All you need to do is to
+make sure a copy of all the required DLLs are in the same folder as your executable.
 ```
 
 ## Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
