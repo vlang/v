@@ -129,7 +129,7 @@ fn FnTypeAttribute.from_ast_attributes(ast_attrs []ast.Attribute) FnTypeAttribut
 	return attrs
 }
 
-struct FnType {
+pub struct FnType {
 	// generic_params []NamedType // T  ,Y
 	generic_params []string // T  ,Y
 	// TODO: save in checker.env? or gere?
@@ -159,6 +159,15 @@ pub fn (f &FnType) get_param_types() []Type {
 		param_types << param.typ
 	}
 	return param_types
+}
+
+// get_param_names returns function parameter names in declaration order.
+pub fn (f &FnType) get_param_names() []string {
+	mut names := []string{cap: f.params.len}
+	for param in f.params {
+		names << param.name
+	}
+	return names
 }
 
 // is_variadic_fn reports whether this function type was declared variadic.

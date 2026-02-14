@@ -306,6 +306,9 @@ bin/
 # vweb and database
 *.db
 *.js
+
+# Ignore installed modules through `v install --local`:
+modules/
 '
 	os.write_file(ignore_path, ignore_content) or {}
 }

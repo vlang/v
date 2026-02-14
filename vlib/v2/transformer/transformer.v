@@ -872,6 +872,12 @@ fn (t &Transformer) is_interface_var(name string) bool {
 // get_var_type_name returns the type name of a variable from scope lookup
 fn (t &Transformer) get_var_type_name(name string) string {
 	typ := t.lookup_var_type(name) or { return '' }
+	if typ is types.Alias {
+		if typ.name != '' {
+			return typ.name
+		}
+		return t.type_to_name(typ.base_type)
+	}
 	if typ is types.String {
 		return 'string'
 	}
@@ -1362,6 +1368,9 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 		ast.ConstDecl {
 			t.transform_const_decl(stmt)
 		}
+		ast.GlobalDecl {
+			t.transform_global_decl(stmt)
+		}
 		ast.AssertStmt {
 			ast.AssertStmt{
 				expr:  t.transform_expr(stmt.expr)
@@ -1508,6 +1517,22 @@ fn (mut t Transformer) transform_const_decl(decl ast.ConstDecl) ast.ConstDecl {
 	return ast.ConstDecl{
 		is_public: decl.is_public
 		fields:    fields
+	}
+}
+
+fn (mut t Transformer) transform_global_decl(decl ast.GlobalDecl) ast.GlobalDecl {
+	mut fields := []ast.FieldDecl{cap: decl.fields.len}
+	for field in decl.fields {
+		fields << ast.FieldDecl{
+			name:       field.name
+			typ:        t.transform_expr(field.typ)
+			value:      t.transform_expr(field.value)
+			attributes: field.attributes
+		}
+	}
+	return ast.GlobalDecl{
+		attributes: decl.attributes
+		fields:     fields
 	}
 }
 
@@ -5585,6 +5610,14 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			}
 		}
 		ast.CastExpr {
+			// Casts to sum types must be lowered to explicit sum type initialization,
+			// since C does not allow casting a variant struct to the sum type struct.
+			sumtype_name := t.type_expr_name_full(expr.typ)
+			if sumtype_name != '' && t.is_sum_type(sumtype_name) {
+				if wrapped := t.wrap_sumtype_value(expr.expr, sumtype_name) {
+					return wrapped
+				}
+			}
 			ast.Expr(ast.CastExpr{
 				typ:  expr.typ
 				expr: t.transform_expr(expr.expr)
@@ -6153,7 +6186,11 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 
 	// Lower map reads `m[key]` to `map__get(&m, &key, &zero)` in transformer so backends
 	// do not need map-specific IndexExpr logic.
-	if map_expr_typ := t.get_expr_type(expr.lhs) {
+	mut map_expr_type_opt := t.get_expr_type(expr.lhs)
+	if map_expr_type_opt == none && expr.lhs is ast.Ident {
+		map_expr_type_opt = t.lookup_var_type((expr.lhs as ast.Ident).name)
+	}
+	if map_expr_typ := map_expr_type_opt {
 		if map_type := t.unwrap_map_type(map_expr_typ) {
 			synth_pos := t.next_synth_pos()
 
@@ -9208,8 +9245,23 @@ fn (t &Transformer) type_variant_name(typ ast.Type) string {
 		val_name := t.type_expr_name_full(typ.value_type)
 		return 'Map_${key_name}_${val_name}'
 	}
-	// Generic Type wrapper - extract inner type name
-	return t.type_expr_name(typ)
+	if typ is ast.GenericType {
+		// Foo[Bar] -> Foo (used for sumtype matching)
+		return t.type_expr_name(typ.name)
+	}
+	// Other `ast.Type` variants are matched by their variant struct names.
+	return match typ {
+		ast.AnonStructType { 'AnonStructType' }
+		ast.ChannelType { 'ChannelType' }
+		ast.FnType { 'FnType' }
+		ast.NilType { 'NilType' }
+		ast.NoneType { 'NoneType' }
+		ast.OptionType { 'OptionType' }
+		ast.ResultType { 'ResultType' }
+		ast.ThreadType { 'ThreadType' }
+		ast.TupleType { 'TupleType' }
+		else { 'Type' }
+	}
 }
 
 // type_variant_name_full extracts full variant name for type casts (with module prefix)
@@ -10424,31 +10476,31 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	}
 }
 
-fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
+fn (t &Transformer) lookup_call_fn_type(lhs ast.Expr) ?types.FnType {
 	// Prefer checker-resolved callable type for this exact call target.
-	// This is the most reliable source for method parameter types.
+	// This is the most reliable source for method parameter info (names + types).
 	if lhs_type := t.get_expr_type(lhs) {
 		callable := t.unwrap_alias_and_pointer_type(lhs_type)
 		if callable is types.FnType {
-			return callable.get_param_types()
+			return callable
 		}
 	}
 	if lhs is ast.Ident {
 		if t.cur_module != '' {
 			if fn_type := t.env.lookup_fn(t.cur_module, lhs.name) {
-				return fn_type.get_param_types()
+				return fn_type
 			}
 		}
 		if fn_type := t.env.lookup_fn('builtin', lhs.name) {
-			return fn_type.get_param_types()
+			return fn_type
 		}
-		return []types.Type{}
+		return none
 	}
 	if lhs is ast.SelectorExpr {
 		if lhs.lhs is ast.Ident {
 			mod_name := (lhs.lhs as ast.Ident).name
 			if fn_type := t.env.lookup_fn(mod_name, lhs.rhs.name) {
-				return fn_type.get_param_types()
+				return fn_type
 			}
 		}
 		if recv_type := t.get_expr_type(lhs.lhs) {
@@ -10463,10 +10515,17 @@ fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
 			}
 			for name in lookup_names {
 				if fn_type := t.env.lookup_method(name, lhs.rhs.name) {
-					return fn_type.get_param_types()
+					return fn_type
 				}
 			}
 		}
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
+	if fn_type := t.lookup_call_fn_type(lhs) {
+		return fn_type.get_param_types()
 	}
 	return []types.Type{}
 }
@@ -10630,17 +10689,19 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 }
 
 fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
-	param_types := t.lookup_call_param_types(lhs)
+	fn_type := t.lookup_call_fn_type(lhs) or { return args }
+	param_types := fn_type.get_param_types()
 	if param_types.len == 0 {
 		return args
 	}
-	// Named arg calls are represented with FieldInit entries and lowered in codegen.
-	if args.len > 0 && args[0] is ast.FieldInit {
-		return args
-	}
+	param_names := fn_type.get_param_names()
+
 	mut out := []ast.Expr{cap: args.len}
 	for arg in args {
 		out << arg
+	}
+	if call_args_have_field_init(out) {
+		out = t.lower_field_init_call_args(out, param_names, param_types)
 	}
 	for i in 0 .. out.len {
 		if i >= param_types.len {
@@ -10652,15 +10713,224 @@ fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []
 		typ := t.unwrap_alias_and_pointer_type(param_types[i])
 		match typ {
 			types.Struct {
-				out << ast.Expr(ast.InitExpr{
-					typ: t.type_to_ast_type_expr(param_types[i])
-				})
+				out << t.empty_struct_arg_expr(param_types[i])
 			}
 			else {
 				break
 			}
 		}
 	}
+	return out
+}
+
+fn call_args_have_field_init(args []ast.Expr) bool {
+	for arg in args {
+		if arg is ast.FieldInit {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) empty_struct_arg_expr(param_type types.Type) ast.Expr {
+	base := t.unwrap_alias_and_pointer_type(param_type)
+	if base !is types.Struct {
+		return ast.empty_expr
+	}
+	// For pointer parameters, use `&Type{}` which cleanc lowers to heap allocation.
+	if t.is_pointer_type(param_type) {
+		mut cur := param_type
+		for cur is types.Alias {
+			cur = cur.base_type()
+		}
+		if cur is types.Pointer {
+			ptr := cur as types.Pointer
+			init_pos := t.next_synth_pos()
+			ptr_pos := t.next_synth_pos()
+			t.register_synth_type(init_pos, ptr.base_type)
+			t.register_synth_type(ptr_pos, param_type)
+			init_expr := ast.Expr(ast.InitExpr{
+				typ: t.type_to_ast_type_expr(ptr.base_type)
+				pos: init_pos
+			})
+			return ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: init_expr
+				pos:  ptr_pos
+			})
+		}
+		// Fallback: nil pointer.
+		return ast.Expr(ast.Ident{
+			name: 'nil'
+		})
+	}
+	init_pos := t.next_synth_pos()
+	t.register_synth_type(init_pos, param_type)
+	return ast.Expr(ast.InitExpr{
+		typ: t.type_to_ast_type_expr(param_type)
+		pos: init_pos
+	})
+}
+
+fn (mut t Transformer) lower_field_init_call_args(args []ast.Expr, param_names []string, param_types []types.Type) []ast.Expr {
+	if args.len == 0 {
+		return args
+	}
+	if param_names.len != param_types.len {
+		// Keep call args intact when signature info is incomplete.
+		return args
+	}
+	mut name_to_idx := map[string]int{}
+	for i, name in param_names {
+		if name.len > 0 {
+			name_to_idx[name] = i
+		}
+	}
+	// Decide whether this is a named-argument call (FieldInit names match param names),
+	// or a struct-shorthand literal for the next struct parameter.
+	mut is_named_args := false
+	for arg in args {
+		if arg is ast.FieldInit {
+			if arg.name in name_to_idx {
+				is_named_args = true
+				break
+			}
+		}
+	}
+	if is_named_args {
+		return t.lower_named_args_call(args, name_to_idx, param_types)
+	}
+	return t.lower_struct_shorthand_call(args, param_types)
+}
+
+fn (mut t Transformer) lower_named_args_call(args []ast.Expr, name_to_idx map[string]int, param_types []types.Type) []ast.Expr {
+	mut positional := []ast.Expr{}
+	mut named := map[int]ast.Expr{}
+	mut seen_named := false
+	for arg in args {
+		if arg is ast.FieldInit {
+			seen_named = true
+			idx := name_to_idx[arg.name] or {
+				panic('bug in v2 compiler: unknown named argument `${arg.name}`')
+			}
+			if idx < positional.len {
+				panic('bug in v2 compiler: named argument `${arg.name}` overlaps positional args')
+			}
+			if idx in named {
+				panic('bug in v2 compiler: named argument `${arg.name}` specified more than once')
+			}
+			named[idx] = arg.value
+			continue
+		}
+		if seen_named {
+			panic('bug in v2 compiler: positional arguments after named arguments are not supported')
+		}
+		positional << arg
+	}
+	if positional.len > param_types.len {
+		panic('bug in v2 compiler: too many positional arguments (${positional.len})')
+	}
+	mut out := []ast.Expr{len: param_types.len, init: ast.empty_expr}
+	for i, arg in positional {
+		out[i] = arg
+	}
+	for idx, val in named {
+		if idx >= out.len {
+			panic('bug in v2 compiler: named argument index out of range (${idx})')
+		}
+		if out[idx] !is ast.EmptyExpr {
+			panic('bug in v2 compiler: named argument overlaps positional argument at index ${idx}')
+		}
+		out[idx] = val
+	}
+	mut last := -1
+	for i, val in out {
+		if val !is ast.EmptyExpr {
+			last = i
+		}
+	}
+	if last < 0 {
+		return []ast.Expr{}
+	}
+	// Fill gaps up to `last` for struct parameters (default empty init). Other gaps
+	// indicate missing support for non-struct default arguments.
+	for i in 0 .. last + 1 {
+		if out[i] !is ast.EmptyExpr {
+			continue
+		}
+		base := t.unwrap_alias_and_pointer_type(param_types[i])
+		match base {
+			types.Struct {
+				out[i] = t.empty_struct_arg_expr(param_types[i])
+			}
+			else {
+				panic('bug in v2 compiler: missing named argument for parameter ${i}')
+			}
+		}
+	}
+	return out[..last + 1]
+}
+
+fn (mut t Transformer) lower_struct_shorthand_call(args []ast.Expr, param_types []types.Type) []ast.Expr {
+	mut positional := []ast.Expr{}
+	mut fields := []ast.FieldInit{}
+	mut seen_fields := false
+	for arg in args {
+		if arg is ast.FieldInit {
+			seen_fields = true
+			fields << ast.FieldInit{
+				name:  arg.name
+				value: arg.value
+			}
+			continue
+		}
+		if seen_fields {
+			panic('bug in v2 compiler: positional arguments after struct-shorthand fields are not supported')
+		}
+		positional << arg
+	}
+	if fields.len == 0 {
+		return args
+	}
+	param_idx := positional.len
+	if param_idx >= param_types.len {
+		panic('bug in v2 compiler: struct-shorthand call has more args than params')
+	}
+	param_type := param_types[param_idx]
+	base := t.unwrap_alias_and_pointer_type(param_type)
+	if base !is types.Struct {
+		panic('bug in v2 compiler: FieldInit call args must be lowered in v2.transformer (param ${param_idx} is not a struct)')
+	}
+	mut init_typ := param_type
+	if t.is_pointer_type(param_type) {
+		mut cur := param_type
+		for cur is types.Alias {
+			cur = cur.base_type()
+		}
+		if cur is types.Pointer {
+			ptr := cur as types.Pointer
+			init_typ = ptr.base_type
+		}
+	}
+	init_pos := t.next_synth_pos()
+	t.register_synth_type(init_pos, init_typ)
+	mut init_expr := ast.Expr(ast.InitExpr{
+		typ:    t.type_to_ast_type_expr(init_typ)
+		fields: fields
+		pos:    init_pos
+	})
+	if t.is_pointer_type(param_type) {
+		ptr_pos := t.next_synth_pos()
+		t.register_synth_type(ptr_pos, param_type)
+		init_expr = ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: init_expr
+			pos:  ptr_pos
+		})
+	}
+	mut out := []ast.Expr{cap: positional.len + 1}
+	out << positional
+	out << init_expr
 	return out
 }
 
@@ -10812,17 +11082,23 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		if t.has_active_smartcast() {
 			receiver_str := t.expr_to_string(sel.lhs)
 			if ctx := t.find_smartcast_for_expr(receiver_str) {
-				// Transform receiver with smart cast and keep the method call structure
+				// Transform receiver with smart cast and keep the call semantics.
 				casted_receiver := t.apply_smartcast_receiver_ctx(sel.lhs, ctx)
-				return ast.CallOrCastExpr{
-					lhs:  ast.SelectorExpr{
+				mut args := []ast.Expr{cap: 1}
+				if expr.expr !is ast.EmptyExpr {
+					args << t.transform_expr(expr.expr)
+				}
+				// Route through transform_call_expr so method resolution stays in transformer,
+				// not in the backend.
+				return t.transform_call_expr(ast.CallExpr{
+					lhs:  ast.Expr(ast.SelectorExpr{
 						lhs: casted_receiver
 						rhs: sel.rhs
 						pos: sel.pos
-					}
-					expr: t.transform_expr(expr.expr)
+					})
+					args: args
 					pos:  expr.pos
-				}
+				})
 			}
 		}
 		// Check for interface method call: iface.method(arg)
@@ -10889,23 +11165,32 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			}
 		}
 	}
-	// Check for explicit sum type cast: SumType(value) -> proper wrapping
-	if expr.lhs is ast.Ident && t.is_sum_type(expr.lhs.name) {
-		transformed_value := t.transform_expr(expr.expr)
-		if wrapped := t.wrap_sumtype_value(transformed_value, expr.lhs.name) {
+	// Check for explicit sum type cast: SumType(value) -> proper wrapping.
+	// Important: do not transform `value` before variant inference, otherwise casts like
+	// `Expr(EmptyExpr(0))` turn into `CastExpr` and `infer_variant_type` can no longer
+	// recover the variant.
+	sumtype_name := t.type_expr_name_full(expr.lhs)
+	if sumtype_name != '' && t.call_or_cast_lhs_is_type(expr.lhs) && t.is_sum_type(sumtype_name) {
+		if wrapped := t.wrap_sumtype_value(expr.expr, sumtype_name) {
 			return wrapped
 		}
 	}
 	// If lhs is not a type name, this is a function call - convert to CallExpr
 	// This ensures downstream code (cleanc) sees a function call, not a cast
 	if expr.lhs is ast.Ident {
-		name := expr.lhs.name
-		if name.len > 0 && !t.is_cast_type_name(name) {
-			mut call_args := []ast.Expr{cap: 1}
-			call_args << t.transform_expr(expr.expr)
+		if !t.call_or_cast_lhs_is_type(expr.lhs) {
+			mut call_args := []ast.Expr{}
+			if expr.expr !is ast.EmptyExpr {
+				call_args << expr.expr
+			}
+			call_args = t.lower_missing_call_args(expr.lhs, call_args)
+			mut args := []ast.Expr{cap: call_args.len}
+			for arg in call_args {
+				args << t.transform_expr(arg)
+			}
 			return ast.CallExpr{
 				lhs:  ast.Expr(expr.lhs)
-				args: call_args
+				args: args
 				pos:  expr.pos
 			}
 		}
@@ -10918,12 +11203,17 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				is_static := t.is_static_method_call(sel.lhs)
-				mut args := []ast.Expr{cap: 2}
+				mut call_args := []ast.Expr{}
+				if expr.expr !is ast.EmptyExpr {
+					call_args << expr.expr
+				}
+				call_args = t.lower_missing_call_args(expr.lhs, call_args)
+				mut args := []ast.Expr{cap: call_args.len + 1}
 				if !is_static {
 					args << t.transform_expr(sel.lhs)
 				}
-				if expr.expr !is ast.EmptyExpr {
-					args << t.transform_expr(expr.expr)
+				for arg in call_args {
+					args << t.transform_expr(arg)
 				}
 				return ast.CallExpr{
 					lhs:  ast.Ident{
@@ -10937,11 +11227,9 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	}
 	// Default: transform lhs and expression recursively
 	// This is important for smart cast propagation through method chains
-	return ast.CallOrCastExpr{
-		lhs:  t.transform_expr(expr.lhs)
-		expr: t.transform_expr(expr.expr)
-		pos:  expr.pos
-	}
+	transformed_lhs := t.transform_expr(expr.lhs)
+	transformed_arg := t.transform_expr(expr.expr)
+	return t.lower_call_or_cast_expr(transformed_lhs, transformed_arg, expr.pos)
 }
 
 // infer_enum_type tries to infer the enum type name from an expression
@@ -11296,6 +11584,81 @@ fn (t &Transformer) is_cast_type_name(name string) bool {
 		return true
 	}
 	return false
+}
+
+fn is_c_type_name_for_cast(name string) bool {
+	// Keep in sync with cleanc `is_c_type_name`.
+	// This list is only used to disambiguate `C.TYPE(x)` casts from `C.fn(x)` calls
+	// in `CallOrCastExpr` lowering.
+	return name in ['FILE', 'DIR', 'va_list', 'pthread_t', 'pthread_mutex_t', 'pthread_cond_t',
+		'pthread_rwlock_t', 'pthread_attr_t', 'stat', 'tm', 'timespec', 'timeval', 'dirent',
+		'termios', 'sockaddr', 'sockaddr_in', 'sockaddr_in6', 'sockaddr_un',
+		'mach_timebase_info_data_t']
+}
+
+fn (t &Transformer) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
+	match lhs {
+		ast.Type {
+			return true
+		}
+		ast.Ident {
+			// Prefer functions when names clash (even if uppercase).
+			if _ := t.get_fn_return_type(lhs.name) {
+				return false
+			}
+			if _ := t.lookup_type(lhs.name) {
+				return true
+			}
+			return t.is_cast_type_name(lhs.name)
+		}
+		ast.SelectorExpr {
+			if lhs.lhs is ast.Ident {
+				mod := (lhs.lhs as ast.Ident).name
+				typ_name := lhs.rhs.name
+				if mod == 'C' {
+					return is_c_type_name_for_cast(typ_name)
+				}
+				qualified := '${mod}__${typ_name}'
+				return t.lookup_type(qualified) != none
+			}
+			return false
+		}
+		ast.ParenExpr {
+			return t.call_or_cast_lhs_is_type(lhs.expr)
+		}
+		ast.ModifierExpr {
+			return t.call_or_cast_lhs_is_type(lhs.expr)
+		}
+		ast.PrefixExpr {
+			return t.call_or_cast_lhs_is_type(lhs.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) lower_call_or_cast_expr(lhs ast.Expr, arg ast.Expr, pos token.Pos) ast.Expr {
+	// `CallOrCastExpr` with no argument is always a call (`foo()`), never a cast.
+	if arg is ast.EmptyExpr {
+		return ast.CallExpr{
+			lhs:  lhs
+			args: []ast.Expr{}
+			pos:  pos
+		}
+	}
+	if t.call_or_cast_lhs_is_type(lhs) {
+		return ast.CastExpr{
+			typ:  lhs
+			expr: arg
+			pos:  pos
+		}
+	}
+	return ast.CallExpr{
+		lhs:  lhs
+		args: [arg]
+		pos:  pos
+	}
 }
 
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
@@ -11800,6 +12163,32 @@ fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
 			elem_type := t.array_elem_type_name_for_helpers(base.elem_type)
 			if elem_type != '' && elem_type != 'void' {
 				return 'Array_fixed_${elem_type}_${base.len}'
+			}
+		}
+	}
+	// Slicing an array returns the same array type
+	if expr is ast.IndexExpr {
+		if expr.expr is ast.RangeExpr {
+			return t.infer_array_type(expr.lhs)
+		}
+	}
+	// Fallback: scope-based variable type lookup for identifiers
+	if expr is ast.Ident {
+		if typ := t.lookup_var_type(expr.name) {
+			match typ {
+				types.Array {
+					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
+					if elem_type != '' && elem_type != 'void' {
+						return 'Array_${elem_type}'
+					}
+				}
+				types.ArrayFixed {
+					elem_type := t.array_elem_type_name_for_helpers(typ.elem_type)
+					if elem_type != '' && elem_type != 'void' {
+						return 'Array_fixed_${elem_type}_${typ.len}'
+					}
+				}
+				else {}
 			}
 		}
 	}

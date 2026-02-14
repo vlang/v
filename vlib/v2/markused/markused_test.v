@@ -1,7 +1,15 @@
 module markused
 
 import v2.ast
+import v2.token
 import v2.types
+
+fn pos(id int) token.Pos {
+	return token.Pos{
+		offset: id
+		id:     id
+	}
+}
 
 fn test_mark_used_tracks_transitive_function_calls() {
 	mut env := types.Environment.new()
@@ -13,15 +21,15 @@ fn test_mark_used_tracks_transitive_function_calls() {
 				ast.Stmt(ast.FnDecl{
 					name:  'main'
 					typ:   ast.FnType{}
-					pos:   1
+					pos:   pos(1)
 					stmts: [
 						ast.Stmt(ast.ExprStmt{
 							expr: ast.CallExpr{
 								lhs: ast.Ident{
 									name: 'foo'
-									pos:  2
+									pos:  pos(2)
 								}
-								pos: 2
+								pos: pos(2)
 							}
 						}),
 					]
@@ -29,15 +37,15 @@ fn test_mark_used_tracks_transitive_function_calls() {
 				ast.Stmt(ast.FnDecl{
 					name:  'foo'
 					typ:   ast.FnType{}
-					pos:   3
+					pos:   pos(3)
 					stmts: [
 						ast.Stmt(ast.ExprStmt{
 							expr: ast.CallExpr{
 								lhs: ast.Ident{
 									name: 'bar'
-									pos:  4
+									pos:  pos(4)
 								}
-								pos: 4
+								pos: pos(4)
 							}
 						}),
 					]
@@ -45,12 +53,12 @@ fn test_mark_used_tracks_transitive_function_calls() {
 				ast.Stmt(ast.FnDecl{
 					name: 'bar'
 					typ:  ast.FnType{}
-					pos:  5
+					pos:  pos(5)
 				}),
 				ast.Stmt(ast.FnDecl{
 					name: 'dead'
 					typ:  ast.FnType{}
-					pos:  6
+					pos:  pos(6)
 				}),
 			]
 		},
@@ -79,22 +87,22 @@ fn test_mark_used_tracks_method_calls_with_env_types() {
 				ast.Stmt(ast.FnDecl{
 					name:  'main'
 					typ:   ast.FnType{}
-					pos:   10
+					pos:   pos(10)
 					stmts: [
 						ast.Stmt(ast.ExprStmt{
 							expr: ast.CallExpr{
 								lhs: ast.SelectorExpr{
 									lhs: ast.Ident{
 										name: 'w'
-										pos:  12
+										pos:  pos(12)
 									}
 									rhs: ast.Ident{
 										name: 'ping'
-										pos:  13
+										pos:  pos(13)
 									}
-									pos: 13
+									pos: pos(13)
 								}
-								pos: 13
+								pos: pos(13)
 							}
 						}),
 					]
@@ -105,13 +113,13 @@ fn test_mark_used_tracks_method_calls_with_env_types() {
 						name: 'w'
 						typ:  ast.Ident{
 							name: 'Widget'
-							pos:  14
+							pos:  pos(14)
 						}
-						pos:  14
+						pos:  pos(14)
 					}
 					name:      'ping'
 					typ:       ast.FnType{}
-					pos:       15
+					pos:       pos(15)
 				}),
 				ast.Stmt(ast.FnDecl{
 					is_method: true
@@ -119,13 +127,13 @@ fn test_mark_used_tracks_method_calls_with_env_types() {
 						name: 'w'
 						typ:  ast.Ident{
 							name: 'Widget'
-							pos:  16
+							pos:  pos(16)
 						}
-						pos:  16
+						pos:  pos(16)
 					}
 					name:      'unused'
 					typ:       ast.FnType{}
-					pos:       17
+					pos:       pos(17)
 				}),
 			]
 		},
@@ -149,12 +157,12 @@ fn test_mark_used_keeps_all_functions_when_no_entry_root_exists() {
 				ast.Stmt(ast.FnDecl{
 					name: 'a'
 					typ:  ast.FnType{}
-					pos:  21
+					pos:  pos(21)
 				}),
 				ast.Stmt(ast.FnDecl{
 					name: 'b'
 					typ:  ast.FnType{}
-					pos:  22
+					pos:  pos(22)
 				}),
 			]
 		},

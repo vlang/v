@@ -5554,46 +5554,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_call_expr(node.lhs, node.args)
 		}
 		ast.CallOrCastExpr {
-			// Check if this is a type cast: int(x), MyInt(42), etc.
-			if node.lhs is ast.Ident && g.is_type_name(node.lhs.name) {
-				type_name := g.expr_type_to_c(node.lhs)
-				g.gen_type_cast_expr(type_name, node.expr)
-			} else if node.lhs is ast.Type {
-				type_name := g.expr_type_to_c(node.lhs)
-				g.gen_type_cast_expr(type_name, node.expr)
-			} else if node.lhs is ast.SelectorExpr {
-				sel := node.lhs as ast.SelectorExpr
-				if sel.lhs is ast.Ident && sel.lhs.name == 'C' && g.is_c_type_name(sel.rhs.name) {
-					// C.TYPE(expr) is a type cast to a C type
-					type_name := g.expr_type_to_c(node.lhs)
-					g.gen_type_cast_expr(type_name, node.expr)
-				} else if sel.lhs is ast.Ident {
-					// module.Type(expr) - check if this is a type cast
-					type_name := g.expr_type_to_c(node.lhs)
-					if g.is_type_name(type_name) {
-						g.gen_type_cast_expr(type_name, node.expr)
-					} else {
-						mut call_args := []ast.Expr{cap: 1}
-						if node.expr !is ast.EmptyExpr {
-							call_args << node.expr
-						}
-						g.gen_call_expr(node.lhs, call_args)
-					}
-				} else {
-					mut call_args := []ast.Expr{cap: 1}
-					if node.expr !is ast.EmptyExpr {
-						call_args << node.expr
-					}
-					g.gen_call_expr(node.lhs, call_args)
-				}
-			} else {
-				// Single-arg call: println(x) is parsed as CallOrCastExpr
-				mut call_args := []ast.Expr{cap: 1}
-				if node.expr !is ast.EmptyExpr {
-					call_args << node.expr
-				}
-				g.gen_call_expr(node.lhs, call_args)
-			}
+			panic('bug in v2 compiler: CallOrCastExpr should have been lowered in v2.transformer')
 		}
 		ast.SelectorExpr {
 			// typeof(x).name -> just emit the typeof string directly (already a string)
@@ -5863,7 +5824,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_keyword_operator(node)
 		}
 		ast.RangeExpr {
-			g.gen_range_expr(node)
+			panic('bug in v2 compiler: RangeExpr should have been lowered in v2.transformer')
 		}
 		ast.SelectExpr {
 			g.sb.write_string('/* [TODO] SelectExpr */ 0')
@@ -5890,9 +5851,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string('})')
 		}
 		ast.FieldInit {
-			// FieldInit should be grouped into InitExpr by call argument lowering.
-			// Fallback to value expression to keep C output valid.
-			g.gen_expr(node.value)
+			panic('bug in v2 compiler: FieldInit in expression position should have been lowered in v2.transformer')
 		}
 		ast.IfGuardExpr {
 			panic('bug in v2 compiler: IfGuardExpr should have been expanded in v2.transformer')
@@ -6764,76 +6723,6 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, arg_count int) ?string {
 	return none
 }
 
-fn (mut g Gen) normalize_named_call_args(fn_name string, call_args []ast.Expr) []ast.Expr {
-	_ = fn_name
-	mut out := []ast.Expr{cap: call_args.len}
-	out << call_args
-	return out
-}
-
-fn call_args_have_field_init(call_args []ast.Expr) bool {
-	for arg in call_args {
-		if arg is ast.FieldInit {
-			return true
-		}
-	}
-	return false
-}
-
-fn (mut g Gen) gen_named_struct_call_arg(fn_name string, param_idx int, call_args []ast.Expr, arg_idx int) int {
-	if arg_idx >= call_args.len || call_args[arg_idx] !is ast.FieldInit {
-		return -1
-	}
-	param_types := g.fn_param_types[fn_name] or { return -1 }
-	if param_idx >= param_types.len {
-		return -1
-	}
-	raw_param_type := unmangle_c_ptr_type(param_types[param_idx])
-	param_type := raw_param_type.trim_right('*')
-	if param_type == '' || param_type in primitive_types || param_type.starts_with('Array_')
-		|| param_type.starts_with('Map_') || param_type.starts_with('_option_')
-		|| param_type.starts_with('_result_') {
-		return -1
-	}
-	mut fields := []ast.FieldInit{}
-	mut j := arg_idx
-	for j < call_args.len {
-		arg := call_args[j]
-		if arg is ast.FieldInit {
-			fields << arg
-			j++
-			continue
-		}
-		break
-	}
-	if fields.len == 0 {
-		return -1
-	}
-	is_ptr_param := if ptrs := g.fn_param_is_ptr[fn_name] {
-		param_idx < ptrs.len && ptrs[param_idx]
-	} else {
-		raw_param_type.ends_with('*')
-	}
-	if is_ptr_param {
-		g.sb.write_string('&')
-	}
-	g.sb.write_string('((${param_type}){')
-	for i, field in fields {
-		if i > 0 {
-			g.sb.write_string(', ')
-		}
-		field_name := if field.name.contains('.') {
-			field.name
-		} else {
-			escape_c_keyword(field.name)
-		}
-		g.sb.write_string('.${field_name} = ')
-		g.gen_expr(field.value)
-	}
-	g.sb.write_string('})')
-	return j
-}
-
 fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 	expr_type := g.get_expr_type(expr)
 	if expr_type.starts_with('_result_') && g.result_value_type(expr_type) != '' {
@@ -7466,7 +7355,11 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 			}
 		}
 	}
-	call_args = g.normalize_named_call_args(name, call_args)
+	for arg in call_args {
+		if arg is ast.FieldInit {
+			panic('bug in v2 compiler: FieldInit call args should have been lowered in v2.transformer')
+		}
+	}
 	if name != '' {
 		g.called_fn_names[name] = true
 	}
@@ -7780,7 +7673,6 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 	if c_name in ['os__exit', 'builder__exit'] {
 		c_name = 'exit'
 	}
-	call_args = g.normalize_named_call_args(c_name, call_args)
 	if c_name == 'array__push_many' && call_args.len == 3 && call_args[1] is ast.SelectorExpr
 		&& call_args[2] is ast.SelectorExpr {
 		data_sel := call_args[1] as ast.SelectorExpr
@@ -7886,36 +7778,23 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		if param_types.len > total_args {
 			total_args = param_types.len
 		}
-		// Named call arguments are lowered as repeated FieldInit entries.
-		// Use the declared parameter count so grouped fields map to one arg.
-		if call_args_have_field_init(call_args) && param_types.len > 0 {
-			total_args = param_types.len
-		}
 	} else if params := g.fn_param_is_ptr[c_name] {
 		if params.len > total_args {
 			total_args = params.len
 		}
 	}
-	mut arg_idx := 0
 	for i in 0 .. total_args {
 		if i > 0 {
 			g.sb.write_string(', ')
 		}
-		if arg_idx < call_args.len {
-			next_idx := g.gen_named_struct_call_arg(c_name, i, call_args, arg_idx)
-			if next_idx >= 0 {
-				arg_idx = next_idx
-				continue
-			}
+		if i < call_args.len {
 			if c_name == 'signal' && i == 1 {
 				g.sb.write_string('((void (*)(int))')
-				g.gen_expr(call_args[arg_idx])
+				g.gen_expr(call_args[i])
 				g.sb.write_string(')')
-				arg_idx++
 				continue
 			}
-			g.gen_call_arg(c_name, i, call_args[arg_idx])
-			arg_idx++
+			g.gen_call_arg(c_name, i, call_args[i])
 		} else {
 			// Default arguments should be lowered by transformer; keep C generation moving.
 			if param_types := g.fn_param_types[c_name] {

@@ -159,7 +159,9 @@ fn (mut p Parser) parse_module(m string) {
 		manifest := get_manifest(tmp_path) or {
 			// Add link with issue template requesting to add a manifest.
 			mut details := ''
-			if resp := http.head('${info.url}/issues/new') {
+			new_issue_url := '${info.url}/issues/new'
+			verbose_println_more(@FILE_LINE, @FN, 'making a HEAD request to: ${new_issue_url} ...')
+			if resp := http.head(new_issue_url) {
 				if resp.status_code == 200 {
 					issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadata.'
 					details = 'Please help us ensure future-compatibility, by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
