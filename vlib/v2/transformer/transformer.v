@@ -9312,13 +9312,13 @@ fn (mut t Transformer) wrap_sumtype_value(value ast.Expr, sumtype_name string) ?
 	if variants.len == 0 {
 		return none
 	}
-
-	// Determine the variant type from the value
-	variant_name := t.infer_variant_type(value, variants)
-	if variant_name == '' {
+	// Determine the variant type from the checker's type info
+	typ := t.get_expr_type(value) or { return none }
+	c_name := t.type_to_c_name(typ)
+	if c_name == '' || c_name == 'void' {
 		return none
 	}
-
+	variant_name := t.match_variant(c_name, variants) or { return none }
 	// Transform the value then wrap
 	transformed_value := t.transform_expr(value)
 	return t.build_sumtype_init(transformed_value, variant_name, sumtype_name)
@@ -9330,12 +9330,29 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 	if variants.len == 0 {
 		return none
 	}
-	variant_name := t.infer_variant_type(value, variants)
-	if variant_name == '' {
+	typ := t.get_expr_type(value) or { return none }
+	c_name := t.type_to_c_name(typ)
+	if c_name == '' || c_name == 'void' {
 		return none
 	}
+	variant_name := t.match_variant(c_name, variants) or { return none }
 	// Value is already transformed, just wrap it
 	return t.build_sumtype_init(value, variant_name, sumtype_name)
+}
+
+// match_variant finds the variant in variants that matches c_name (exact or short name match)
+fn (t &Transformer) match_variant(c_name string, variants []string) ?string {
+	if c_name in variants {
+		return c_name
+	}
+	c_short := if c_name.contains('__') { c_name.all_after_last('__') } else { c_name }
+	for v in variants {
+		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+		if c_short == v_short || c_short == v {
+			return v
+		}
+	}
+	return none
 }
 
 // build_sumtype_init creates a sum type initialization expression
@@ -9426,153 +9443,6 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 			},
 		]
 	}
-}
-
-// infer_variant_type determines which variant of a sum type a value belongs to
-fn (t &Transformer) infer_variant_type(value ast.Expr, variants []string) string {
-	// Check based on expression type
-	if value is ast.BasicLiteral {
-		if value.kind == .number {
-			// Could be int or float - check for decimal point
-			if value.value.contains('.') {
-				if 'f64' in variants {
-					return 'f64'
-				}
-				if 'f32' in variants {
-					return 'f32'
-				}
-			}
-			if 'int' in variants {
-				return 'int'
-			}
-			if 'i64' in variants {
-				return 'i64'
-			}
-		}
-		if value.kind == .string {
-			if 'string' in variants {
-				return 'string'
-			}
-		}
-	}
-	if value is ast.StringLiteral || value is ast.StringInterLiteral {
-		if 'string' in variants {
-			return 'string'
-		}
-	}
-	if value is ast.InitExpr {
-		// Struct initialization - get the struct type name
-		type_name := t.get_init_expr_type_name(value.typ)
-		if type_name in variants {
-			return type_name
-		}
-		// Check with current module prefix (e.g., "InfixExpr" -> "ast__InfixExpr")
-		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			mangled := '${t.cur_module}__${type_name}'
-			if mangled in variants {
-				return mangled
-			}
-		}
-		// Check if any variant ends with __type_name (for imported types)
-		for v in variants {
-			if v.ends_with('__${type_name}') {
-				return v
-			}
-		}
-	}
-	if value is ast.Ident {
-		// Check scope for the variable type
-		var_type := t.get_var_type_name(value.name)
-		if var_type != '' {
-			if var_type in variants {
-				return var_type
-			}
-			var_type_short := if var_type.contains('__') {
-				var_type.all_after_last('__')
-			} else {
-				var_type
-			}
-			for v in variants {
-				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
-				if var_type_short == v_short || var_type_short == v {
-					return v
-				}
-			}
-		}
-		// Fallback for constants/type aliases that are not tracked as variables.
-		inferred_ident_type := t.infer_expr_type(value)
-		if inferred_ident_type != '' {
-			if inferred_ident_type in variants {
-				return inferred_ident_type
-			}
-			ident_short := if inferred_ident_type.contains('__') {
-				inferred_ident_type.all_after_last('__')
-			} else {
-				inferred_ident_type
-			}
-			for v in variants {
-				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
-				if ident_short == v_short || ident_short == v {
-					return v
-				}
-			}
-		}
-	}
-	if value is ast.SelectorExpr {
-		// Field access - resolve struct field type
-		if value.lhs is ast.Ident {
-			field_type := t.get_struct_field_type_name(t.get_var_type_name(value.lhs.name),
-				value.rhs.name)
-			if field_type != '' && field_type in variants {
-				return field_type
-			}
-		}
-	}
-	if value is ast.CallExpr {
-		// Check function return type using scope lookup
-		fn_name := if value.lhs is ast.Ident {
-			(value.lhs as ast.Ident).name
-		} else {
-			''
-		}
-		if fn_name != '' {
-			if ret_type_obj := t.get_fn_return_type(fn_name) {
-				ret_type := ret_type_obj.name()
-				if ret_type in variants {
-					return ret_type
-				}
-			}
-		}
-	}
-	if value is ast.CallOrCastExpr {
-		// Single-arg function call: fn_name(expr) parsed as CallOrCastExpr
-		fn_name := if value.lhs is ast.Ident {
-			(value.lhs as ast.Ident).name
-		} else {
-			''
-		}
-		if fn_name != '' {
-			// Check if fn_name is directly a variant name (type alias cast
-			// like EmptyExpr(0) where EmptyExpr is a variant of the sumtype)
-			if fn_name in variants {
-				return fn_name
-			}
-			// Also check with module prefix (variants may be qualified like ast__EmptyExpr)
-			for v in variants {
-				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
-				if v_short == fn_name {
-					return v
-				}
-			}
-			if ret_type_obj := t.get_fn_return_type(fn_name) {
-				ret_type := ret_type_obj.name()
-				if ret_type in variants {
-					return ret_type
-				}
-			}
-		}
-	}
-	return ''
 }
 
 fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
@@ -11027,7 +10897,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		}
 	}
 	// If lhs is not a type name, this is a function call - convert to CallExpr
-	// This ensures downstream code (cleanc, infer_variant_type) sees a function call, not a cast
+	// This ensures downstream code (cleanc) sees a function call, not a cast
 	if expr.lhs is ast.Ident {
 		name := expr.lhs.name
 		if name.len > 0 && !t.is_cast_type_name(name) {
