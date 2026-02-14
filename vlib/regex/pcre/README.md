@@ -1,6 +1,6 @@
-# pcre Module Documentation
+# regex.pcre Module Documentation
 
-The `pcre` module is a high-performance **Virtual Machine (VM)** 
+The `regex.pcre` module is a high-performance **Virtual Machine (VM)** 
 based regular expression engine for V. 
 
 ### Key Features
