@@ -2541,59 +2541,6 @@ fn (mut t Transformer) gen_filter_temp_name() string {
 	return '_filter_t${t.temp_counter}'
 }
 
-// infer_map_result_type determines the result element type for a .map() body expression.
-// Returns '' to keep the source array's element type as the result type.
-fn (mut t Transformer) infer_map_result_type(body ast.Expr, elem_type string) string {
-	match body {
-		ast.StringLiteral, ast.StringInterLiteral {
-			return 'string'
-		}
-		ast.BasicLiteral {
-			if body.value == 'true' || body.value == 'false' {
-				return 'bool'
-			}
-			return ''
-		}
-		ast.CastExpr {
-			// Use the cast target type
-			if body.typ is ast.Ident {
-				return body.typ.name
-			}
-			return ''
-		}
-		ast.InfixExpr {
-			// Comparison operators always return bool
-			if body.op in [.eq, .ne, .lt, .gt, .le, .ge] {
-				return 'bool'
-			}
-			return ''
-		}
-		ast.CallExpr, ast.CallOrCastExpr {
-			ret := t.get_call_return_type(body)
-			if ret != '' && ret != 'int_literal' {
-				return ret
-			}
-		}
-		ast.SelectorExpr {
-			if typ := t.get_expr_type(body) {
-				c_name := t.type_to_c_name(typ)
-				if c_name != '' && c_name != 'void' {
-					return c_name
-				}
-			}
-		}
-		else {
-			if typ := t.get_expr_type(body) {
-				c_name := t.type_to_c_name(typ)
-				if c_name != '' && c_name != 'void' && c_name != 'int_literal' {
-					return c_name
-				}
-			}
-		}
-	}
-	return ''
-}
-
 // try_expand_filter_or_map_expr expands array.filter(cond) or array.map(body) calls
 // in any expression context. Generates temp array + for loop statements, appends them
 // to t.pending_stmts, and returns the temp variable ident as the replacement expression.
@@ -2602,18 +2549,17 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	// Get the array type from the receiver
 	array_type := t.infer_array_type(receiver_expr) or { return none }
 	elem_type := array_type['Array_'.len..]
-
 	is_filter := method_name == 'filter'
-
-	// For map, determine result element type
+	// For map, determine result element type from the checker's type info
 	mut result_elem := elem_type
 	if !is_filter {
-		inferred := t.infer_map_result_type(body_expr, elem_type)
-		if inferred != '' {
-			result_elem = inferred
+		if typ := t.get_expr_type(body_expr) {
+			c_name := t.type_to_c_name(typ)
+			if c_name != '' && c_name != 'void' && c_name != 'int_literal' {
+				result_elem = c_name
+			}
 		}
 	}
-
 	// Generate temp variable name
 	temp_name := t.gen_filter_temp_name()
 	temp_ident := ast.Ident{
@@ -2622,7 +2568,6 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	it_ident := ast.Ident{
 		name: '_filter_it'
 	}
-
 	// 1. mut _filter_t1 := []ResultType{cap: 0}
 	init_stmt := ast.Stmt(ast.AssignStmt{
 		op:  .decl_assign
@@ -4433,77 +4378,6 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 	}
 
 	return stmts
-}
-
-// infer_enum_type_from_expr tries to infer enum type from an expression
-// Handles: Permissions.read, Permissions.read | Permissions.write, StrIntpType(x), unsafe { EnumType(...) }
-fn (t &Transformer) infer_enum_type_from_expr(expr ast.Expr) string {
-	if expr is ast.SelectorExpr {
-		sel := expr as ast.SelectorExpr
-		if sel.lhs is ast.Ident {
-			// Check if it's actually an enum type before returning
-			// This prevents incorrectly treating _or_t.data as an enum expression
-			name := sel.lhs.name
-			// If name starts with underscore, it's likely a temp variable, not an enum
-			if name.starts_with('_') {
-				return ''
-			}
-			// Verify it's a known type by checking the scope
-			if mut scope := t.get_current_scope() {
-				if obj := scope.lookup_parent(name, 0) {
-					typ := obj.typ()
-					if typ is types.Enum {
-						return name
-					}
-					// Also return if it looks like an enum type (first char is uppercase for V enums)
-					if typ is types.Struct {
-						return '' // Structs shouldn't be treated as enums
-					}
-				}
-			}
-			// Fallback: assume it's an enum if name starts with uppercase (V enum convention)
-			if name.len > 0 && name[0] >= `A` && name[0] <= `Z` {
-				return name
-			}
-		}
-	}
-	// For binary expressions like Permissions.read | Permissions.write,
-	// check the LHS
-	if expr is ast.InfixExpr {
-		infix := expr as ast.InfixExpr
-		return t.infer_enum_type_from_expr(infix.lhs)
-	}
-	if expr is ast.ParenExpr {
-		paren := expr as ast.ParenExpr
-		return t.infer_enum_type_from_expr(paren.expr)
-	}
-	// Handle cast expressions like StrIntpType(x & 0x1F)
-	if expr is ast.CastExpr {
-		cast := expr as ast.CastExpr
-		if cast.typ is ast.Ident {
-			return cast.typ.name
-		}
-	}
-	// Handle CallOrCastExpr which might be a cast
-	if expr is ast.CallOrCastExpr {
-		call_or_cast := expr as ast.CallOrCastExpr
-		// If it looks like EnumType(value), treat it as a cast to enum type
-		if call_or_cast.lhs is ast.Ident {
-			return (call_or_cast.lhs as ast.Ident).name
-		}
-	}
-	// Handle unsafe { expr } - look inside
-	if expr is ast.UnsafeExpr {
-		unsafe_expr := expr as ast.UnsafeExpr
-		// Look at the last statement in the unsafe block for the return value
-		if unsafe_expr.stmts.len > 0 {
-			last_stmt := unsafe_expr.stmts[unsafe_expr.stmts.len - 1]
-			if last_stmt is ast.ExprStmt {
-				return t.infer_enum_type_from_expr(last_stmt.expr)
-			}
-		}
-	}
-	return ''
 }
 
 fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
