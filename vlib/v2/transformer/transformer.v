@@ -11476,12 +11476,6 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 				return t.type_to_c_name_resolve_alias(field_type.elem_type)
 			}
 		}
-		// Check if this is a method call that returns an array
-		method_name := expr.rhs.name
-		if method_name in ['bytes', 'runes', 'split', 'split_any', 'fields', 'keys', 'values'] {
-			// Common array-returning methods
-			return t.infer_method_array_elem_type(expr)
-		}
 	}
 	// Handle IndexExpr - map lookup that returns an array (e.g., g.pending_labels[blk])
 	if expr is ast.IndexExpr {
@@ -11728,42 +11722,10 @@ fn (t &Transformer) get_call_return_type(expr ast.Expr) string {
 				}
 			}
 		}
-		// For method calls, check for known array-returning methods as fallback
-		if is_method {
-			if elem_type := t.infer_method_array_elem_type(selector_expr) {
-				return 'Array_${elem_type}'
-			}
-		}
 	}
 	return ''
 }
 
-// infer_method_array_elem_type infers the element type for array-returning methods
-fn (t &Transformer) infer_method_array_elem_type(expr ast.SelectorExpr) ?string {
-	method_name := expr.rhs.name
-	match method_name {
-		'bytes' {
-			return 'u8'
-		}
-		'runes' {
-			return 'rune'
-		}
-		'split', 'split_any', 'fields' {
-			return 'string'
-		}
-		'keys' {
-			// For map.keys(), need to infer key type from map
-			return none
-		}
-		'values' {
-			// For map.values(), need to infer value type from map
-			return none
-		}
-		else {
-			return none
-		}
-	}
-}
 
 // get_struct_field_type returns the type of a struct field from a SelectorExpr
 fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
@@ -11882,13 +11844,8 @@ fn (t &Transformer) infer_array_type(expr ast.Expr) ?string {
 			return ret_type
 		}
 	}
-	// Check for method calls like .bytes(), .split()
+	// Check for field access on modules/structs (e.g., os.args)
 	if expr is ast.SelectorExpr {
-		// Check if this is part of a call (method call)
-		if elem_type := t.infer_method_array_elem_type(expr) {
-			return 'Array_${elem_type}'
-		}
-		// Check for field access on modules/structs (e.g., os.args)
 		if field_type := t.get_expr_type(expr) {
 			if field_type is types.Array {
 				elem_type_name := t.get_type_name(field_type.elem_type)
