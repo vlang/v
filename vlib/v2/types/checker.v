@@ -499,13 +499,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				}
 			}
 			// as_type := decl.as_type !is ast.EmptyExpr { c.expr(decl.as_type) } else { Type(int_) }
-			mut is_flag := false
-			for attr in decl.attributes {
-				if attr.name == 'flag' {
-					is_flag = true
-					break
-				}
-			}
+			mut is_flag := decl.attributes.has('flag')
 			obj := Enum{
 				is_flag: is_flag
 				name:    c.qualify_type_name(decl.name)
@@ -775,6 +769,70 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					panic('invalid ast.BasicLiteral kind: ${expr.kind}')
 				}
 			}
+		}
+		ast.AssocExpr {
+			typ := c.expr(expr.typ)
+
+			expected_type_prev := c.expected_type
+			c.expected_type = to_optional_type(typ)
+			base_type := c.expr(expr.expr)
+			c.expected_type = expected_type_prev
+
+			// Base expression should match the assoc target type (allow pointers and sum types).
+			mut base_check := base_type
+			for base_check is Alias {
+				base_check = (base_check as Alias).base_type
+			}
+			if base_check is Pointer {
+				base_check = (base_check as Pointer).base_type
+			}
+			for base_check is Alias {
+				base_check = (base_check as Alias).base_type
+			}
+			// Smart-casting does not apply to mutable variables. Use an immutable copy.
+			final_base := base_check
+			if final_base is SumType {
+				sum_t := final_base as SumType
+				if typ !in sum_t.variants {
+					c.error_with_pos('expected base of type: ${typ.name()}, got ${base_type.name()}',
+						expr.pos)
+				}
+			} else if !c.check_types(typ, final_base) {
+				c.error_with_pos('expected base of type: ${typ.name()}, got ${base_type.name()}',
+					expr.pos)
+			}
+
+			if typ is Struct {
+				for field in expr.fields {
+					expected_type_prev2 := c.expected_type
+					mut field_type := Type(void_)
+					mut found := false
+					for sf in typ.fields {
+						if sf.name == field.name {
+							field_type = sf.typ
+							found = true
+							break
+						}
+					}
+					if !found {
+						c.error_with_pos('unknown field `${field.name}` for type `${typ.name()}`',
+							expr.pos)
+					}
+					c.expected_type = to_optional_type(field_type)
+					got_type := c.expr(field.value)
+					c.expected_type = expected_type_prev2
+					if !c.check_types(field_type, got_type) {
+						c.error_with_pos('expected field `${field.name}` of type: ${field_type.name()}, got ${got_type.name()}',
+							expr.pos)
+					}
+				}
+			} else {
+				// Still visit values to populate env types for later passes.
+				for field in expr.fields {
+					c.expr(field.value)
+				}
+			}
+			return typ
 		}
 		ast.CallOrCastExpr {
 			// c.log('CallOrCastExpr: ${lhs_type.name()}')
@@ -1425,11 +1483,21 @@ fn (mut c Checker) process_pending_interface_decls() {
 	for pending in c.pending_interface_decls {
 		c.scope = pending.scope
 		mut fields := []Field{}
+		mut has_type_name := false
 		for field in pending.decl.fields {
+			if field.name == 'type_name' {
+				has_type_name = true
+			}
 			fields << Field{
 				name:         field.name
 				typ:          c.expr(field.typ)
 				default_expr: field.value
+			}
+		}
+		if !has_type_name {
+			fields << Field{
+				name: 'type_name'
+				typ:  Type(fn_with_return_type(FnType{}, String(0)))
 			}
 		}
 		mut scope := pending.scope
@@ -2915,6 +2983,16 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			map_type := t as Map
 			if name == 'str' {
 				return fn_with_return_type(FnType{}, Type(string_))
+			}
+			// clone/move return the same map type
+			if name in ['clone', 'move'] {
+				return fn_with_return_type(FnType{}, Type(map_type))
+			}
+			// values returns an array of the value type
+			if name == 'values' {
+				return fn_with_return_type(FnType{}, Type(Array{
+					elem_type: map_type.value_type
+				}))
 			}
 			mut builtin_scope := c.get_module_scope('builtin', universe)
 			at := builtin_scope.lookup_parent('map', 0) or { panic('missing builtin map type') }
