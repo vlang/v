@@ -29,14 +29,8 @@ pub fn now() Time {
 		return win_now()
 	} $else $if solaris {
 		return solaris_now()
-	} $else $if linux {
-		return linux_now()
 	} $else {
-		// defaults to most common feature, the microsecond precision is not available
-		// in this API call
-		t := C.time(0)
-		now := C.localtime(&t)
-		return convert_ctime(now, 0)
+		return linux_now()
 	}
 }
 
@@ -48,12 +42,8 @@ pub fn utc() Time {
 		return win_utc()
 	} $else $if solaris {
 		return solaris_utc()
-	} $else $if linux {
-		return linux_utc()
 	} $else {
-		now := C.time(C.NULL)
-		utc := C.gmtime(&now)
-		return convert_ctime(utc, 0)
+		return linux_utc()
 	}
 }
 
