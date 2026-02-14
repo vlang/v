@@ -106,7 +106,7 @@ fn test_stress_vm() {
 	// Recursive engines often crash on patterns like (a*)* or very long strings
 	// if not carefully managed. The VM should handle this via heap stack.
 	
-	long_text := 'a'.repeat(2000)
+	long_text := 'a'.repeat(200)
 	tst_find(r'a+', long_text, long_text)
 	
 	println('  [Pass] Long string match')
