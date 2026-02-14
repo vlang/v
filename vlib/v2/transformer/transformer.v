@@ -10946,52 +10946,6 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 
 // infer_enum_type tries to infer the enum type name from an expression
 fn (t &Transformer) infer_enum_type(expr ast.Expr) string {
-	// For SelectorExpr like Permissions.read or a.flags
-	if expr is ast.SelectorExpr {
-		sel := expr as ast.SelectorExpr
-		if sel.lhs is ast.Ident {
-			lhs_name := sel.lhs.name
-			// Check if lhs is directly a flag enum name (e.g., Permissions.read)
-			if t.is_flag_enum(lhs_name) {
-				return lhs_name
-			}
-			// Check if lhs is a variable and rhs is a field (e.g., a.flags)
-			// Look up the variable type and find the field type
-			field_type := t.resolve_field_type(lhs_name, sel.rhs.name)
-			if t.is_flag_enum(field_type) {
-				return field_type
-			}
-		}
-		// Handle nested selectors (a.b.flags) by recursing on lhs
-		if sel.lhs is ast.SelectorExpr {
-			// For a.b.flags, we need to resolve a.b first, then .flags
-			// This is more complex - for now, try to get type from the innermost
-			inner_type := t.infer_expr_type(sel.lhs)
-			if inner_type != '' {
-				field_type := t.resolve_struct_field_type(inner_type, sel.rhs.name)
-				if t.is_flag_enum(field_type) {
-					return field_type
-				}
-			}
-		}
-	}
-	// For Ident (variable), check if it's an enum type via scope lookup
-	if expr is ast.Ident {
-		ident := expr as ast.Ident
-		if enum_type := t.is_var_enum(ident.name) {
-			return enum_type
-		}
-	}
-	// For binary expressions, check LHS
-	if expr is ast.InfixExpr {
-		infix := expr as ast.InfixExpr
-		return t.infer_enum_type(infix.lhs)
-	}
-	if expr is ast.ParenExpr {
-		paren := expr as ast.ParenExpr
-		return t.infer_enum_type(paren.expr)
-	}
-	// Fallback: use checker-annotated type to get the enum name
 	if recv_type := t.get_expr_type(expr) {
 		base := t.unwrap_alias_and_pointer_type(recv_type)
 		if base is types.Enum {
