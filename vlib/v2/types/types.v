@@ -129,7 +129,7 @@ fn FnTypeAttribute.from_ast_attributes(ast_attrs []ast.Attribute) FnTypeAttribut
 	return attrs
 }
 
-struct FnType {
+pub struct FnType {
 	// generic_params []NamedType // T  ,Y
 	generic_params []string // T  ,Y
 	// TODO: save in checker.env? or gere?

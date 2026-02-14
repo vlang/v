@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-// vtest build: false
 module types
 
 import os
@@ -80,7 +79,7 @@ fn test_basic_literal_bool_false() {
 
 fn test_basic_literal_char() {
 	env := check_code('fn main() { x := `a` }')
-	assert has_type(env, 'char'), 'char literal should have char type'
+	assert has_type(env, 'rune'), 'char literal should have rune type'
 }
 
 fn test_basic_literal_string() {
