@@ -129,7 +129,7 @@ Installed: False
 ')
 			continue
 		}
-		path := os.join_path(os.vmodules_dir(), m.replace('.', os.path_separator))
+		path := os.join_path(settings.vmodules_path, m.replace('.', os.path_separator))
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
 		print('Name: ${mod.name}
 Version: ${mod.version}
