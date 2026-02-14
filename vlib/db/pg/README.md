@@ -55,7 +55,8 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 
 **Windows**:
 
-The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like the following after following all instructions. Create the `pg` folder yourself if it does not exist yet.
+The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like the following
+after following all instructions. Create the `pg` folder yourself if it does not exist yet.
 ```
 @VEXEROOT/thirdparty/pg
 ├───libpq
@@ -70,7 +71,8 @@ The directory structure of the `@VEXEROOT/thirdparty/pg` folder will look like t
 
 Installation instructions are as follows
 ```
-Download the latest PostgreSQL version from the official website (currently https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)
+Download the latest PostgreSQL version from the official website
+(currently https://www.enterprisedb.com/downloads/postgres-postgresql-downloads)
 
 In one of the steps in the installer, tick the following boxes:
 [X] PostgreSQL Server
@@ -78,9 +80,11 @@ In one of the steps in the installer, tick the following boxes:
 [ ] Stack Builder
 [X] Command Line Tools
 
-We need PostgreSQL Server because it brings with it the C header files needed for building programs that link to `libpq.dll`.
+We need PostgreSQL Server because it brings with it the C header files
+needed for building programs that link to `libpq.dll`.
 
-After finishing installation, add the folder `C:/Program Files/PostgreSQL/<version>/bin` to PATH. Any program that wants to use postgres client functionality require these DLLs found in `/bin`:
+After finishing installation, add the folder `C:/Program Files/PostgreSQL/<version>/bin` to PATH.
+Any program that wants to use postgres client functionality require these DLLs found in `/bin`:
 - libcrypto-3-x64.dll
 - libiconv-2.dll
 - libintl-9.dll
@@ -88,7 +92,8 @@ After finishing installation, add the folder `C:/Program Files/PostgreSQL/<versi
 - libssl-3-x64.dll
 - libwinpthread-1.dll
 
-If you want to compile with MSVC, you will need to copy `C:/Program Files/PostgreSQL/<version>/bin/libpq.lib` into the `@VEXEROOT/thirdparty/pg/win64/msvc` directory.
+If you want to compile with MSVC, you will need to copy `C:/Program Files/PostgreSQL/<version>/bin/libpq.lib`
+into the `@VEXEROOT/thirdparty/pg/win64/msvc` directory.
 
 Navigate to `C:/Program Files/PostgreSQL/<version>/include`. There you will find the files:
 - `libpq-fe.h`
@@ -99,7 +104,9 @@ Copy the header files into `@VEXEROOT/thirdparty/pg/libpq`. You can now compile 
 
 ---
 
-After building an executable that uses `db.pg`, you may want to distribute it to others who might not have the postgres DLLs installed on their machine. All you need to do is to make sure a copy of all the required DLLs are in the same folder as your executable.
+After building an executable that uses `db.pg`, you may want to distribute it to others
+who might not have the postgres DLLs installed on their machine. All you need to do is to
+make sure a copy of all the required DLLs are in the same folder as your executable.
 ```
 
 ## Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
