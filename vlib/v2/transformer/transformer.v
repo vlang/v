@@ -872,6 +872,12 @@ fn (t &Transformer) is_interface_var(name string) bool {
 // get_var_type_name returns the type name of a variable from scope lookup
 fn (t &Transformer) get_var_type_name(name string) string {
 	typ := t.lookup_var_type(name) or { return '' }
+	if typ is types.Alias {
+		if typ.name != '' {
+			return typ.name
+		}
+		return t.type_to_name(typ.base_type)
+	}
 	if typ is types.String {
 		return 'string'
 	}
@@ -6180,7 +6186,11 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 
 	// Lower map reads `m[key]` to `map__get(&m, &key, &zero)` in transformer so backends
 	// do not need map-specific IndexExpr logic.
-	if map_expr_typ := t.get_expr_type(expr.lhs) {
+	mut map_expr_type_opt := t.get_expr_type(expr.lhs)
+	if map_expr_type_opt == none && expr.lhs is ast.Ident {
+		map_expr_type_opt = t.lookup_var_type((expr.lhs as ast.Ident).name)
+	}
+	if map_expr_typ := map_expr_type_opt {
 		if map_type := t.unwrap_map_type(map_expr_typ) {
 			synth_pos := t.next_synth_pos()
 
@@ -9543,8 +9553,8 @@ fn (t &Transformer) infer_variant_type(value ast.Expr, variants []string) string
 			}
 		}
 		// Prefer checker-provided types for match/smartcast narrowing.
-		if value.pos > 0 {
-			if typ := t.env.get_expr_type(value.pos) {
+		if value.pos.is_valid() {
+			if typ := t.env.get_expr_type(value.pos.id) {
 				matched2 := match_sumtype_variant_name(t.type_to_c_name(typ), variants)
 				if matched2 != '' {
 					return matched2
@@ -10873,15 +10883,16 @@ fn (mut t Transformer) empty_struct_arg_expr(param_type types.Type) ast.Expr {
 	if t.is_pointer_type(param_type) {
 		mut cur := param_type
 		for cur is types.Alias {
-			cur = cur.base_type
+			cur = cur.base_type()
 		}
 		if cur is types.Pointer {
+			ptr := cur as types.Pointer
 			init_pos := t.next_synth_pos()
 			ptr_pos := t.next_synth_pos()
-			t.register_synth_type(init_pos, cur.base_type)
+			t.register_synth_type(init_pos, ptr.base_type)
 			t.register_synth_type(ptr_pos, param_type)
 			init_expr := ast.Expr(ast.InitExpr{
-				typ: t.type_to_ast_type_expr(cur.base_type)
+				typ: t.type_to_ast_type_expr(ptr.base_type)
 				pos: init_pos
 			})
 			return ast.Expr(ast.PrefixExpr{
@@ -11036,10 +11047,11 @@ fn (mut t Transformer) lower_struct_shorthand_call(args []ast.Expr, param_types 
 	if t.is_pointer_type(param_type) {
 		mut cur := param_type
 		for cur is types.Alias {
-			cur = cur.base_type
+			cur = cur.base_type()
 		}
 		if cur is types.Pointer {
-			init_typ = cur.base_type
+			ptr := cur as types.Pointer
+			init_typ = ptr.base_type
 		}
 	}
 	init_pos := t.next_synth_pos()
