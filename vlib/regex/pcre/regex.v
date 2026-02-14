@@ -50,7 +50,7 @@ import strings
 
 // max_stack_depth defines the limit for the backtracking stack.
 // This prevents excessive memory use while allowing complex pattern matching.
-// const max_stack_depth = 1024
+const deafault_max_stack_depth = 1024 // default value
 
 /******************************************************************************
 *
@@ -111,7 +111,7 @@ pub:
 	prefix_lit   string         // Literal prefix used for fast-skip optimization.
 	has_prefix   bool           // True if the pattern starts with a literal.
 mut:
-	max_stack_depth int = 1024 // max stack depth possible during VM run
+	max_stack_depth int     // max stack depth possible during VM run
 	machine         Machine // Pre-allocated workspace for the VM.
 }
 
@@ -273,7 +273,7 @@ pub fn compile(pattern string) !Regex {
 	// Pre-allocate the Machine workspace based on pattern requirements.
 	cap_count := final_group_count * 2
 	return Regex{
-		max_stack_depth: 1024
+		max_stack_depth: deafault_max_stack_depth
 		pattern:         pattern
 		prog:            optimized_prog
 		total_groups:    final_group_count
@@ -281,13 +281,13 @@ pub fn compile(pattern string) !Regex {
 		prefix_lit:      prefix
 		has_prefix:      has_prefix
 		machine:         Machine{
-			stack:    []int{len: 1024}
+			stack:    []int{len: deafault_max_stack_depth}
 			captures: []int{len: cap_count}
 		}
 	}
 }
 
-// change_stack_depth let to change the stack dept of the VM, Regex strunct r MUST be Mutable
+// change_stack_depth let to change the stack depth of the VM, Regex strunct r MUST be Mutable
 pub fn (mut r Regex) change_stack_depth(depth int) {
 	r.max_stack_depth = depth
 	r.machine.stack = []int{len: depth}

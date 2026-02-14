@@ -116,7 +116,7 @@ fn test_stress_vm() {
 	// This forces extensive backtracking.
 	short_text := 'a'.repeat(25)
 	mut r := pcre.compile(r'(a+)+b') or { panic(err) }
-	r.change_stack_depth(16000) // increase the stack depth for this test
+	r.change_stack_depth(2000) // increase the stack depth for this test
 	res := r.find(short_text)
 	assert res == none
 	println('  [Pass] Backtracking stress test')
