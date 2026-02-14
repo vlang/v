@@ -1,0 +1,7 @@
+vlib/v/checker/tests/infix_is_unknown_module_no_panic.vv:7:13: error: unknown module `io`
+    5 | fn main() {
+    6 |     _ := sample() or {
+    7 |         if err is io.Eof {
+      |                   ~~
+    8 |             return
+    9 |         }
