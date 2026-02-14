@@ -11219,18 +11219,8 @@ fn (t &Transformer) type_to_name(typ types.Type) string {
 
 // infer_expr_type tries to infer the type name of an expression
 fn (t &Transformer) infer_expr_type(expr ast.Expr) string {
-	if expr is ast.Ident {
-		// Look up variable type
-		mut scope := t.get_current_scope() or { return '' }
-		obj := scope.lookup_parent(expr.name, 0) or { return '' }
-		return t.type_to_name(obj.typ())
-	}
-	if expr is ast.SelectorExpr {
-		sel := expr as ast.SelectorExpr
-		if sel.lhs is ast.Ident {
-			field_type := t.resolve_field_type(sel.lhs.name, sel.rhs.name)
-			return field_type
-		}
+	if recv_type := t.get_expr_type(expr) {
+		return t.type_to_name(recv_type)
 	}
 	return ''
 }
