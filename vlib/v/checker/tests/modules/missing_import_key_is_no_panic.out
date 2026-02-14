@@ -1,7 +1,0 @@
-vlib/v/checker/tests/modules/missing_import_key_is_no_panic/read.v:9:14: error: unknown module `io`
-    7 |         mut buf := []u8{len: c.buf_size, cap: c.buf_size}
-    8 |         n := c.stream.read(mut buf) or {
-    9 |             if err is io.Eof {
-      |                       ~~
-   10 |                 break
-   11 |             } else {
