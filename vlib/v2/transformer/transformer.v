@@ -11952,59 +11952,14 @@ fn (t &Transformer) normalize_array_type(array_type string) string {
 
 // infer_map_type returns the Map_K_V type string for a map expression
 fn (t &Transformer) infer_map_type(expr ast.Expr) ?string {
-	// Handle InitExpr with MapType (e.g., map[int]int{})
-	if expr is ast.InitExpr {
-		match expr.typ {
-			ast.Type {
-				if expr.typ is ast.MapType {
-					mt := expr.typ as ast.MapType
-					key_type := t.expr_to_type_name(mt.key_type)
-					value_type := t.expr_to_type_name(mt.value_type)
-					if key_type != '' && value_type != '' {
-						return 'Map_${key_type}_${value_type}'
-					}
-				}
+	if recv_type := t.get_expr_type(expr) {
+		base := t.unwrap_alias_and_pointer_type(recv_type)
+		if base is types.Map {
+			key_name := t.type_to_name(base.key_type)
+			val_name := t.type_to_name(base.value_type)
+			if key_name != '' && val_name != '' {
+				return 'Map_${key_name}_${val_name}'
 			}
-			else {}
-		}
-	}
-	// Handle MapInitExpr (for literal maps like {'a': 1, 'b': 2})
-	if expr is ast.MapInitExpr {
-		// Check if map has explicit type
-		match expr.typ {
-			ast.Type {
-				if expr.typ is ast.MapType {
-					mt := expr.typ as ast.MapType
-					key_type := t.expr_to_type_name(mt.key_type)
-					value_type := t.expr_to_type_name(mt.value_type)
-					if key_type != '' && value_type != '' {
-						return 'Map_${key_type}_${value_type}'
-					}
-				}
-			}
-			else {}
-		}
-		// Infer from first key/value (for literal maps like {'a': 1})
-		if expr.keys.len > 0 {
-			mut key_type := 'int'
-			mut val_type := 'int'
-			first_key := expr.keys[0]
-			first_val := expr.vals[0]
-			if first_key is ast.StringLiteral {
-				key_type = 'string'
-			} else if first_key is ast.BasicLiteral {
-				if first_key.kind == .string {
-					key_type = 'string'
-				}
-			}
-			if first_val is ast.StringLiteral {
-				val_type = 'string'
-			} else if first_val is ast.BasicLiteral {
-				if first_val.kind == .string {
-					val_type = 'string'
-				}
-			}
-			return 'Map_${key_type}_${val_type}'
 		}
 	}
 	return none
