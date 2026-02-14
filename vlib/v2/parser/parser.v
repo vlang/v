@@ -40,7 +40,7 @@ fn (mut p Parser) init(filename string, src string, mut file_set token.FileSet) 
 	// reset since parser instance may be reused
 	p.line = 0
 	p.lit = ''
-	p.pos = 0
+	p.pos = token.Pos{}
 	p.tok = .unknown
 	p.tok_next_ = .unknown
 	// init
@@ -1184,6 +1184,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		}
 		// SelectorExpr
 		else if p.tok == .dot {
+			dot_pos := p.pos
 			p.next()
 			// p.log('ast.SelectorExpr')
 			// Allow keywords after `.` for:
@@ -1201,14 +1202,14 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						name: '__comptime_selector__'
 						pos:  p.pos
 					}
-					pos: p.pos
+					pos: dot_pos
 				})
 			} else {
 				lhs = ast.Expr(ast.SelectorExpr{
 					lhs: lhs
 					// rhs: p.expr(.lowest)
 					rhs: p.ident_or_keyword()
-					pos: p.pos
+					pos: dot_pos
 				})
 			}
 		}
@@ -2594,6 +2595,7 @@ fn (mut p Parser) ident_or_keyword() ast.Ident {
 fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 	ident := p.ident()
 	if p.tok == .dot {
+		dot_pos := p.pos
 		p.next()
 		// TODO: remove this / come up with a good solution
 		if p.tok == .dollar {
@@ -2604,7 +2606,7 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 				rhs: ast.Ident{
 					name: 'TODO: comptime selector'
 				}
-				pos: p.pos
+				pos: dot_pos
 			}
 		}
 		// Allow keywords as names for:
@@ -2615,7 +2617,7 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		return ast.SelectorExpr{
 			lhs: ident
 			rhs: rhs
-			pos: p.pos
+			pos: dot_pos
 		}
 	}
 	return ident
@@ -2631,12 +2633,12 @@ fn (mut p Parser) log(msg string) {
 // I was only using this since it skips the binary search and is slightly
 // faster, howevrer if only used in error conditions this is irrelevant.
 fn (mut p Parser) current_position() token.Position {
-	pos := p.pos - p.file.base
+	offset := p.pos.offset - p.file.base
 	return token.Position{
 		filename: p.file.name
 		line:     p.line
-		offset:   pos
-		column:   pos - p.file.line_start(p.line) + 1
+		offset:   offset
+		column:   offset - p.file.line_start(p.line) + 1
 	}
 }
 

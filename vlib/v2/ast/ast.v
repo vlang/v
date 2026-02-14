@@ -292,7 +292,7 @@ pub fn (expr Expr) pos() token.Pos {
 		}
 		else {
 			// Default for expressions without pos field (EmptyExpr, FieldInit, Keyword, Type)
-			0
+			token.Pos{}
 		}
 	}
 }

@@ -321,15 +321,32 @@ fn (t &Transformer) cur_smartcast_variant() string {
 }
 
 // next_synth_pos returns a unique negative position for synthesized AST nodes
-fn (mut t Transformer) next_synth_pos() int {
-	pos := t.synth_pos_counter
+fn (mut t Transformer) next_synth_pos() token.Pos {
+	id := t.synth_pos_counter
 	t.synth_pos_counter -= 1
-	return pos
+	return token.Pos{
+		id:     id
+		offset: 0
+	}
 }
 
 // register_synth_type registers a type for a synthesized node position
-fn (mut t Transformer) register_synth_type(pos int, typ types.Type) {
-	t.env.set_expr_type(pos, typ)
+fn (mut t Transformer) register_synth_type(pos token.Pos, typ types.Type) {
+	t.env.set_expr_type(pos.id, typ)
+}
+
+// synth_selector creates a typed SelectorExpr with a unique synthesized position
+// and registers its type in the environment so downstream passes can resolve it.
+fn (mut t Transformer) synth_selector(lhs ast.Expr, field_name string, typ types.Type) ast.Expr {
+	pos := t.next_synth_pos()
+	t.register_synth_type(pos, typ)
+	return ast.Expr(ast.SelectorExpr{
+		lhs: lhs
+		rhs: ast.Ident{
+			name: field_name
+		}
+		pos: pos
+	})
 }
 
 // open_scope creates a new nested scope
@@ -439,12 +456,7 @@ fn (mut t Transformer) transform_sumtype_type_name(receiver ast.Expr) ?ast.Expr 
 	}
 
 	transformed_receiver := t.transform_expr(receiver)
-	tag_access := ast.Expr(ast.SelectorExpr{
-		lhs: transformed_receiver
-		rhs: ast.Ident{
-			name: '_tag'
-		}
-	})
+	tag_access := t.synth_selector(transformed_receiver, '_tag', types.Type(types.int_))
 
 	mut branches := []ast.MatchBranch{cap: variants.len + 1}
 	for i, variant in variants {
@@ -762,8 +774,8 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 fn (t &Transformer) resolve_expr_type(expr ast.Expr) ?types.Type {
 	// First try the environment (checker stored type)
 	pos := expr.pos()
-	if pos > 0 {
-		if typ := t.env.get_expr_type(pos) {
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
 			return typ
 		}
 	}
@@ -784,8 +796,8 @@ fn (t &Transformer) resolve_expr_type(expr ast.Expr) ?types.Type {
 // its type from the checker's environment. Works for both function and method calls.
 fn (t &Transformer) expr_returns_option(expr ast.Expr) bool {
 	pos := expr.pos()
-	if pos > 0 {
-		if typ := t.env.get_expr_type(pos) {
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
 			if typ is types.OptionType {
 				return true
 			}
@@ -802,8 +814,8 @@ fn (t &Transformer) expr_returns_option(expr ast.Expr) bool {
 // its type from the checker's environment. Works for both function and method calls.
 fn (t &Transformer) expr_returns_result(expr ast.Expr) bool {
 	pos := expr.pos()
-	if pos > 0 {
-		if typ := t.env.get_expr_type(pos) {
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
 			if typ is types.ResultType {
 				return true
 			}
@@ -819,8 +831,8 @@ fn (t &Transformer) expr_returns_result(expr ast.Expr) bool {
 // get_expr_base_type gets the base type name for an expression returning Result/Option
 fn (t &Transformer) get_expr_base_type(expr ast.Expr) string {
 	pos := expr.pos()
-	if pos > 0 {
-		if typ := t.env.get_expr_type(pos) {
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
 			match typ {
 				types.ResultType {
 					return typ.base_type.name()
@@ -2079,22 +2091,12 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		success_cond := if is_result {
 			ast.Expr(ast.PrefixExpr{
 				op:   .not
-				expr: ast.SelectorExpr{
-					lhs: temp_ident
-					rhs: ast.Ident{
-						name: 'is_error'
-					}
-				}
+				expr: t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
 			})
 		} else {
 			ast.Expr(ast.InfixExpr{
 				op:  .eq
-				lhs: ast.SelectorExpr{
-					lhs: temp_ident
-					rhs: ast.Ident{
-						name: 'state'
-					}
-				}
+				lhs: t.synth_selector(temp_ident, 'state', types.Type(types.int_))
 				rhs: ast.BasicLiteral{
 					kind:  .number
 					value: '0'
@@ -2224,12 +2226,7 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		bounds_check := ast.InfixExpr{
 			op:  .lt
 			lhs: t.transform_expr(rhs.expr) // the index
-			rhs: ast.SelectorExpr{
-				lhs: t.transform_expr(rhs.lhs) // the array
-				rhs: ast.Ident{
-					name: 'len'
-				}
-			}
+			rhs: t.synth_selector(t.transform_expr(rhs.lhs), 'len', types.Type(types.int_))
 			pos: rhs.pos
 		}
 
@@ -2434,22 +2431,12 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
 	error_cond := if is_result {
 		// _t1.is_error
-		ast.Expr(ast.SelectorExpr{
-			lhs: temp_ident
-			rhs: ast.Ident{
-				name: 'is_error'
-			}
-		})
+		t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
 	} else {
 		// _t1.state != 0
 		ast.Expr(ast.InfixExpr{
 			op:  .ne
-			lhs: ast.SelectorExpr{
-				lhs: temp_ident
-				rhs: ast.Ident{
-					name: 'state'
-				}
-			}
+			lhs: t.synth_selector(temp_ident, 'state', types.Type(types.int_))
 			rhs: ast.BasicLiteral{
 				kind:  .number
 				value: '0'
@@ -3017,12 +3004,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 	}
 
 	// key_values.len selector: map_expr.key_values.len
-	key_values_len_expr := ast.SelectorExpr{
-		lhs: key_values_expr
-		rhs: ast.Ident{
-			name: 'len'
-		}
-	}
+	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len', types.Type(types.int_))
 
 	mut stmts := []ast.Stmt{}
 
@@ -4020,22 +4002,12 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
 	error_cond := if is_result {
 		// _t1.is_error
-		ast.Expr(ast.SelectorExpr{
-			lhs: temp_ident
-			rhs: ast.Ident{
-				name: 'is_error'
-			}
-		})
+		t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
 	} else {
 		// _t1.state != 0
 		ast.Expr(ast.InfixExpr{
 			op:  .ne
-			lhs: ast.SelectorExpr{
-				lhs: temp_ident
-				rhs: ast.Ident{
-					name: 'state'
-				}
-			}
+			lhs: t.synth_selector(temp_ident, 'state', types.Type(types.int_))
 			rhs: ast.BasicLiteral{
 				kind:  .number
 				value: '0'
@@ -4627,7 +4599,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 // shared_mtx_expr creates the mutex access expression for a shared variable.
 // For struct field access (e.g., e.scores), use the parent object's .mtx => e.mtx
 // For standalone variables (e.g., data), use data.mtx
-fn (t &Transformer) shared_mtx_expr(locked_expr ast.Expr) ast.Expr {
+fn (mut t Transformer) shared_mtx_expr(locked_expr ast.Expr) ast.Expr {
 	if locked_expr is ast.SelectorExpr {
 		// Struct field: e.scores => e.mtx
 		return ast.SelectorExpr{
@@ -5293,12 +5265,7 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 			lhs: ast.Ident{
 				name: key_name
 			}
-			rhs: ast.SelectorExpr{
-				lhs: transformed_expr
-				rhs: ast.Ident{
-					name: 'len'
-				}
-			}
+			rhs: t.synth_selector(transformed_expr, 'len', types.Type(types.int_))
 		}
 		post:  ast.AssignStmt{
 			op:  .plus_assign
@@ -5405,12 +5372,7 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 			lhs: ast.Ident{
 				name: key_name
 			}
-			rhs: ast.SelectorExpr{
-				lhs: transformed_expr
-				rhs: ast.Ident{
-					name: 'len'
-				}
-			}
+			rhs: t.synth_selector(transformed_expr, 'len', types.Type(types.int_))
 		}
 		post:  ast.AssignStmt{
 			op:  .plus_assign
@@ -6256,7 +6218,7 @@ fn (t &Transformer) unwrap_array_or_string_type(typ types.Type) ?types.Type {
 	return none
 }
 
-fn (t &Transformer) lower_wrapper_payload_access(wrapper_expr ast.Expr, base_type_name string) ast.Expr {
+fn (mut t Transformer) lower_wrapper_payload_access(wrapper_expr ast.Expr, base_type_name string) ast.Expr {
 	err_selector := ast.SelectorExpr{
 		lhs: wrapper_expr
 		rhs: ast.Ident{
@@ -6453,12 +6415,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 	// `a..b` -> b, `a...b` -> b + 1, `a..` -> lhs.len.
 	mut end_expr := ast.Expr(ast.empty_expr)
 	if range.end is ast.EmptyExpr {
-		end_expr = ast.Expr(ast.SelectorExpr{
-			lhs: lhs
-			rhs: ast.Ident{
-				name: 'len'
-			}
-		})
+		end_expr = t.synth_selector(lhs, 'len', types.Type(types.int_))
 	} else {
 		end_expr = t.transform_expr(range.end)
 		if range.op == .ellipsis {
@@ -6761,18 +6718,8 @@ fn (mut t Transformer) apply_smartcast_direct_ctx(original_expr ast.Expr, ctx Sm
 		return transformed_base
 	}
 	// Create: transformed_base._data._variant (using simple name for accessor)
-	data_access := ast.SelectorExpr{
-		lhs: transformed_base
-		rhs: ast.Ident{
-			name: '_data'
-		}
-	}
-	variant_access := ast.SelectorExpr{
-		lhs: data_access
-		rhs: ast.Ident{
-			name: '_${variant_simple}'
-		}
-	}
+	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
+	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
 
 	// For primitives, cast from pointer space back to value type
 	if variant_simple in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
@@ -6855,18 +6802,8 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 		return transformed_base
 	}
 	// Create: transformed_base._data._variant (using simple name for accessor)
-	data_access := ast.SelectorExpr{
-		lhs: transformed_base
-		rhs: ast.Ident{
-			name: '_data'
-		}
-	}
-	variant_access := ast.SelectorExpr{
-		lhs: data_access
-		rhs: ast.Ident{
-			name: '_${variant_simple}'
-		}
-	}
+	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
+	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{
@@ -6935,18 +6872,8 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 		}
 	}
 	// Create: transformed_base._data._variant (using simple name for accessor)
-	data_access := ast.SelectorExpr{
-		lhs: transformed_base
-		rhs: ast.Ident{
-			name: '_data'
-		}
-	}
-	variant_access := ast.SelectorExpr{
-		lhs: data_access
-		rhs: ast.Ident{
-			name: '_${variant_simple}'
-		}
-	}
+	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
+	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{
@@ -7077,7 +7004,7 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	mut elem_type_name := 'int'
 	mut elem_type_expr_resolved := elem_type_expr
 	if elem_type_expr_resolved is ast.EmptyExpr && exprs.len > 0 {
-		if arr_type := t.env.get_expr_type(expr.pos) {
+		if arr_type := t.env.get_expr_type(expr.pos.id) {
 			match arr_type {
 				types.Array {
 					tn := t.type_to_c_name(arr_type.elem_type)
@@ -7772,12 +7699,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 			ctx := removed_contexts[i]
 			t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
 		}
-		tag_access := ast.SelectorExpr{
-			lhs: transformed_match_expr
-			rhs: ast.Ident{
-				name: '_tag'
-			}
-		}
+		tag_access := t.synth_selector(transformed_match_expr, '_tag', types.Type(types.int_))
 
 		return t.lower_match_expr_to_if(tag_access, branches)
 	}
@@ -7808,7 +7730,6 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 				cond:      ast.empty_expr
 				stmts:     branch.stmts
 				else_expr: current
-				pos:       branch.pos
 			})
 			continue
 		}
@@ -7819,7 +7740,6 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 			cond:      branch_cond
 			stmts:     branch.stmts
 			else_expr: current
-			pos:       branch.pos
 		})
 	}
 	return current
@@ -7991,24 +7911,24 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 					}
 					new_exprs << transformed
 				}
-				// For empty arrays (b: []), set elem type from struct field so
-				// transform_array_init_with_exprs doesn't default to int
+				// Set elem type from struct field so
+				// transform_array_init_with_exprs uses the correct element type.
+				// This is critical when elements were wrapped in a sum type above,
+				// as the C array type must match the wrapped (sum type) elements.
 				mut arr_with_type := field.value
-				if new_exprs.len == 0 && arr_with_type.typ is ast.EmptyExpr {
-					elem_c_name := t.get_field_array_elem_c_name(struct_type_name, field.name)
-					if elem_c_name != '' {
-						arr_with_type = ast.ArrayInitExpr{
-							typ:   ast.Expr(ast.Type(ast.ArrayType{
-								elem_type: ast.Ident{
-									name: elem_c_name
-								}
-							}))
-							exprs: arr_with_type.exprs
-							init:  arr_with_type.init
-							cap:   arr_with_type.cap
-							len:   arr_with_type.len
-							pos:   arr_with_type.pos
-						}
+				elem_c_name := t.get_field_array_elem_c_name(struct_type_name, field.name)
+				if elem_c_name != '' {
+					arr_with_type = ast.ArrayInitExpr{
+						typ:   ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Ident{
+								name: elem_c_name
+							}
+						}))
+						exprs: arr_with_type.exprs
+						init:  arr_with_type.init
+						cap:   arr_with_type.cap
+						len:   arr_with_type.len
+						pos:   arr_with_type.pos
 					}
 				}
 				// Use transform_array_init_with_exprs which handles both fixed and dynamic:
@@ -8769,12 +8689,8 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 												transformed_inner_lhs := t.transform_expr(orig_inner.lhs)
 												inner_tag_check = ast.Expr(ast.InfixExpr{
 													op:  token.Token.eq
-													lhs: ast.SelectorExpr{
-														lhs: transformed_inner_lhs
-														rhs: ast.Ident{
-															name: '_tag'
-														}
-													}
+													lhs: t.synth_selector(transformed_inner_lhs,
+														'_tag', types.Type(types.int_))
 													rhs: ast.BasicLiteral{
 														kind:  token.Token.number
 														value: '${inner_tag}'
@@ -8823,12 +8739,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								// Build tag check
 								tag_check := ast.InfixExpr{
 									op:  token.Token.eq
-									lhs: ast.SelectorExpr{
-										lhs: transformed_lhs
-										rhs: ast.Ident{
-											name: '_tag'
-										}
-									}
+									lhs: t.synth_selector(transformed_lhs, '_tag', types.Type(types.int_))
 									rhs: ast.BasicLiteral{
 										kind:  token.Token.number
 										value: '${tag_value}'
@@ -9049,12 +8960,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						// Use transformed_lhs to apply outer smartcasts to the tag check
 						tag_check := ast.InfixExpr{
 							op:  token.Token.eq
-							lhs: ast.SelectorExpr{
-								lhs: transformed_lhs
-								rhs: ast.Ident{
-									name: '_tag'
-								}
-							}
+							lhs: t.synth_selector(transformed_lhs, '_tag', types.Type(types.int_))
 							rhs: ast.BasicLiteral{
 								kind:  token.Token.number
 								value: '${tag_value}'
@@ -9125,12 +9031,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				// 2. Condition: !_tmp.is_error
 				success_cond := ast.PrefixExpr{
 					op:   .not
-					expr: ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'is_error'
-						}
-					}
+					expr: t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
 				}
 
 				// 3. Body: var := _tmp.data; original_body
@@ -9197,12 +9098,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 
 				opt_success_cond := ast.InfixExpr{
 					op:  .eq
-					lhs: ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'state'
-						}
-					}
+					lhs: t.synth_selector(temp_ident, 'state', types.Type(types.int_))
 					rhs: ast.BasicLiteral{
 						kind:  .number
 						value: '0'
@@ -9273,12 +9169,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					cond_expr = ast.Expr(ast.InfixExpr{
 						op:  .lt
 						lhs: t.transform_expr(rhs.expr) // the index expression
-						rhs: ast.SelectorExpr{
-							lhs: t.transform_expr(rhs.lhs) // the array expression
-							rhs: ast.Ident{
-								name: 'len'
-							}
-						}
+						rhs: t.synth_selector(t.transform_expr(rhs.lhs), 'len', types.Type(types.int_))
 						pos: rhs.pos
 					})
 				}
@@ -9378,7 +9269,7 @@ fn (t &Transformer) get_sumtype_name_for_expr(expr ast.Expr) string {
 	// If scope lookup failed, try to get the type from the expression's position
 	// This handles loop variables and other cases where the scope doesn't have the type
 	if type_name == '' {
-		if typ := t.env.get_expr_type(unwrapped_expr.pos()) {
+		if typ := t.env.get_expr_type(unwrapped_expr.pos().id) {
 			type_name = typ.name()
 		}
 	}
@@ -9885,12 +9776,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					}
 					return ast.InfixExpr{
 						op:  cmp_op
-						lhs: ast.SelectorExpr{
-							lhs: transformed_lhs
-							rhs: ast.Ident{
-								name: '_tag'
-							}
-						}
+						lhs: t.synth_selector(transformed_lhs, '_tag', types.Type(types.int_))
 						rhs: ast.BasicLiteral{
 							kind:  token.Token.number
 							value: '${tag_value}'
@@ -10240,18 +10126,8 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					}
 					args: [
 						arr_ptr_expr,
-						ast.SelectorExpr{
-							lhs: rhs_for_selector
-							rhs: ast.Ident{
-								name: 'data'
-							}
-						},
-						ast.SelectorExpr{
-							lhs: rhs_for_selector
-							rhs: ast.Ident{
-								name: 'len'
-							}
-						},
+						t.synth_selector(rhs_for_selector, 'data', types.Type(types.voidptr_)),
+						t.synth_selector(rhs_for_selector, 'len', types.Type(types.int_)),
 					]
 					pos:  expr.pos
 				}
@@ -10723,12 +10599,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			// Transform interface method call to vtable dispatch
 			// Prepend iface._object to the args list
 			mut new_args := []ast.Expr{cap: expr.args.len + 1}
-			new_args << ast.SelectorExpr{
-				lhs: sel.lhs
-				rhs: ast.Ident{
-					name: '_object'
-				}
-			}
+			new_args << t.synth_selector(sel.lhs, '_object', types.Type(types.voidptr_))
 			for arg in expr.args {
 				new_args << t.transform_expr(arg)
 			}
@@ -11217,12 +11088,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			return ast.CallExpr{
 				lhs:  ast.Expr(expr.lhs) // Keep the selector: iface.method
 				args: [
-					ast.Expr(ast.SelectorExpr{
-						lhs: sel.lhs
-						rhs: ast.Ident{
-							name: '_object'
-						}
-					}),
+					t.synth_selector(sel.lhs, '_object', types.Type(types.voidptr_)),
 					t.transform_expr(expr.expr),
 				]
 				pos:  expr.pos
@@ -11747,28 +11613,9 @@ fn (t &Transformer) is_cast_type_name(name string) bool {
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
 fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	pos := expr.pos()
-	if pos > 0 {
-		if typ := t.env.get_expr_type(pos) {
-			// Some cached env entries in self-host cleanc mode can hold malformed
-			// alias payloads. Ignore them and fall through to scope-based lookup.
-			if typ !is types.Alias {
-				// For SelectorExpr, the env type may be overwritten by a parent IndexExpr
-				// that shares the same position. Always fall through to struct field lookup
-				// which is more reliable for field access.
-				// For Ident, prefer scope-based lookup first. Position-based types for idents
-				// are often clobbered by parent expressions that start at the same token.
-				// For CallExpr/CallOrCastExpr, position types may also be clobbered by
-				// parent expressions like slices. Prefer explicit call return lookup below.
-				if expr !is ast.SelectorExpr && expr !is ast.Ident && expr !is ast.CallExpr
-					&& expr !is ast.CallOrCastExpr {
-					return typ
-				}
-				// For enum shorthand selectors like `.assign`, there is no lhs to inspect,
-				// so the checker-provided expected type is the only reliable source.
-				if expr is ast.SelectorExpr && expr.lhs is ast.EmptyExpr {
-					return typ
-				}
-			}
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
+			return typ
 		}
 	}
 	// Handle literal types by looking up their type in the scope
@@ -11813,47 +11660,12 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		// Fallback to the checker's position-based cache when scope lookup fails.
 		// This is needed for locals that live only in nested scopes (the transformer does
 		// not have those checker scopes), and for synthesized scopes during lowering.
-		if pos > 0 {
-			if typ := t.env.get_expr_type(pos) {
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
 				return typ
 			}
 		}
 		return none
-	}
-	if expr is ast.SelectorExpr {
-		// Check for module-qualified variables (e.g., os.args)
-		if expr.lhs is ast.Ident {
-			mod_name := (expr.lhs as ast.Ident).name
-			var_name := expr.rhs.name
-			// Try to look up the variable in the module's scope
-			if mut mod_scope := t.get_module_scope(mod_name) {
-				if obj := mod_scope.lookup_parent(var_name, 0) {
-					return obj.typ()
-				}
-			}
-		}
-		// For field access, get the type of the LHS and look up the field
-		lhs_type := t.get_expr_type(expr.lhs) or { return none }
-		base_type := if lhs_type is types.Pointer {
-			lhs_type.base_type
-		} else {
-			lhs_type
-		}
-		if base_type is types.Struct {
-			for field in base_type.fields {
-				if field.name == expr.rhs.name {
-					return field.typ
-				}
-			}
-		}
-		// Fallback: use position-based type annotation from the checker.
-		// This handles field access on non-Struct types (e.g., Array.flags)
-		// where the type system represents the type abstractly.
-		if expr.pos > 0 {
-			if typ := t.env.get_expr_type(expr.pos) {
-				return typ
-			}
-		}
 	}
 	if expr is ast.IndexExpr {
 		// For slicing (a[i..j]), the result type is the same as the source
@@ -13492,7 +13304,7 @@ fn (mut t Transformer) transform_array_init_with_exprs(arr ast.ArrayInitExpr, ex
 	mut elem_type_name := 'int'
 	mut elem_type_expr2 := elem_type_expr
 	if elem_type_expr2 is ast.EmptyExpr && exprs.len > 0 {
-		if arr_type := t.env.get_expr_type(arr.pos) {
+		if arr_type := t.env.get_expr_type(arr.pos.id) {
 			if arr_type is types.Array {
 				tn := t.type_to_c_name(arr_type.elem_type)
 				if tn != '' {
@@ -14383,6 +14195,15 @@ fn (mut t Transformer) get_str_fn_info_for_expr(expr ast.Expr) StrFnInfo {
 			elem_type:   'int'
 		}
 	}
+	// Handle enum, struct, and primitive types via type lookup
+	if typ := t.get_expr_type(expr) {
+		if str_fn_name := t.get_str_fn_name_for_type(typ) {
+			return StrFnInfo{
+				str_fn_name: str_fn_name
+				elem_type:   typ.name()
+			}
+		}
+	}
 	return StrFnInfo{}
 }
 
@@ -14472,7 +14293,7 @@ fn (t &Transformer) get_array_init_elem_type(expr ast.ArrayInitExpr) string {
 
 // generate_str_functions generates FnDecl AST nodes for needed auto str functions.
 // For arrays: generates a function that iterates over elements and calls their str methods.
-fn (t &Transformer) generate_str_functions() []ast.Stmt {
+fn (mut t Transformer) generate_str_functions() []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_str_fns.len}
 	for fn_name, elem_type in t.needed_str_fns {
 		// Generate array str function (skip fixed arrays - they need different handling)
@@ -14489,7 +14310,7 @@ enum ArrayMethodKind {
 	last_index
 }
 
-fn (t &Transformer) generate_array_method_functions() []ast.Stmt {
+fn (mut t Transformer) generate_array_method_functions() []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_array_contains_fns.len + t.needed_array_index_fns.len +
 		t.needed_array_last_index_fns.len}
 	mut contains_names := t.needed_array_contains_fns.keys()
@@ -14513,24 +14334,17 @@ fn (t &Transformer) generate_array_method_functions() []ast.Stmt {
 	return result
 }
 
-fn (t &Transformer) generate_array_method_len_expr(info ArrayMethodInfo) ast.Expr {
+fn (mut t Transformer) generate_array_method_len_expr(info ArrayMethodInfo) ast.Expr {
 	if info.is_fixed {
 		return ast.Expr(ast.BasicLiteral{
 			kind:  .number
 			value: info.fixed_len.str()
 		})
 	}
-	return ast.Expr(ast.SelectorExpr{
-		lhs: ast.Ident{
-			name: 'a'
-		}
-		rhs: ast.Ident{
-			name: 'len'
-		}
-	})
+	return t.synth_selector(ast.Ident{ name: 'a' }, 'len', types.Type(types.int_))
 }
 
-fn (t &Transformer) generate_array_method_elem_expr(info ArrayMethodInfo, idx_expr ast.Expr) ast.Expr {
+fn (mut t Transformer) generate_array_method_elem_expr(info ArrayMethodInfo, idx_expr ast.Expr) ast.Expr {
 	if info.is_fixed {
 		return ast.Expr(ast.IndexExpr{
 			lhs:  ast.Ident{
@@ -14563,7 +14377,7 @@ fn (t &Transformer) generate_array_method_elem_expr(info ArrayMethodInfo, idx_ex
 	})
 }
 
-fn (t &Transformer) generate_array_method_match_expr(info ArrayMethodInfo, idx_expr ast.Expr) ast.Expr {
+fn (mut t Transformer) generate_array_method_match_expr(info ArrayMethodInfo, idx_expr ast.Expr) ast.Expr {
 	elem_expr := t.generate_array_method_elem_expr(info, idx_expr)
 	if info.elem_type == 'string' {
 		return ast.Expr(ast.CallExpr{
@@ -14602,7 +14416,7 @@ fn (t &Transformer) generate_array_method_match_expr(info ArrayMethodInfo, idx_e
 	})
 }
 
-fn (t &Transformer) generate_array_method_loop_stmt(info ArrayMethodInfo, kind ArrayMethodKind, loop_body []ast.Stmt) ast.Stmt {
+fn (mut t Transformer) generate_array_method_loop_stmt(info ArrayMethodInfo, kind ArrayMethodKind, loop_body []ast.Stmt) ast.Stmt {
 	mut init_rhs := ast.Expr(ast.BasicLiteral{
 		kind:  .number
 		value: '0'
@@ -14623,14 +14437,7 @@ fn (t &Transformer) generate_array_method_loop_stmt(info ArrayMethodInfo, kind A
 		} else {
 			ast.Expr(ast.InfixExpr{
 				op:  .minus
-				lhs: ast.SelectorExpr{
-					lhs: ast.Ident{
-						name: 'a'
-					}
-					rhs: ast.Ident{
-						name: 'len'
-					}
-				}
+				lhs: t.synth_selector(ast.Ident{ name: 'a' }, 'len', types.Type(types.int_))
 				rhs: ast.BasicLiteral{
 					kind:  .number
 					value: '1'
@@ -14674,7 +14481,7 @@ fn (t &Transformer) generate_array_method_loop_stmt(info ArrayMethodInfo, kind A
 	})
 }
 
-fn (t &Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInfo, kind ArrayMethodKind) ast.Stmt {
+fn (mut t Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInfo, kind ArrayMethodKind) ast.Stmt {
 	param_a := ast.Parameter{
 		name: 'a'
 		typ:  ast.Ident{
@@ -14753,7 +14560,7 @@ fn (t &Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInf
 //       strings__Builder__write_string(&sb, "]")
 //       return strings__Builder__str(&sb)
 //   }
-fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.Stmt {
+fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.Stmt {
 	// Create parameter: a Array_int
 	array_type_name := fn_name[..fn_name.len - 4] // Remove '_str' suffix: 'Array_int_str' -> 'Array_int'
 	param_a := ast.Parameter{
@@ -14800,14 +14607,7 @@ fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.
 						}
 						rhs: ast.InfixExpr{
 							op:  .mul
-							lhs: ast.SelectorExpr{
-								lhs: ast.Ident{
-									name: 'a'
-								}
-								rhs: ast.Ident{
-									name: 'len'
-								}
-							}
+							lhs: t.synth_selector(ast.Ident{ name: 'a' }, 'len', types.Type(types.int_))
 							rhs: ast.BasicLiteral{
 								kind:  .number
 								value: '10'
@@ -14895,34 +14695,36 @@ fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.
 					}
 				}),
 				// elem_str(*(elem_type*)array__get(a, i))
-				ast.Expr(ast.CallOrCastExpr{
+				ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: elem_str_fn
 					}
-					expr: ast.PrefixExpr{
-						op:   .mul
-						expr: ast.CastExpr{
-							typ:  ast.PrefixExpr{
-								op:   .amp
-								expr: ast.Ident{
-									name: elem_type
+					args: [
+						ast.Expr(ast.PrefixExpr{
+							op:   .mul
+							expr: ast.CastExpr{
+								typ:  ast.PrefixExpr{
+									op:   .amp
+									expr: ast.Ident{
+										name: elem_type
+									}
+								}
+								expr: ast.CallExpr{
+									lhs:  ast.Ident{
+										name: 'array__get'
+									}
+									args: [
+										ast.Expr(ast.Ident{
+											name: 'a'
+										}),
+										ast.Expr(ast.Ident{
+											name: 'i'
+										}),
+									]
 								}
 							}
-							expr: ast.CallExpr{
-								lhs:  ast.Ident{
-									name: 'array__get'
-								}
-								args: [
-									ast.Expr(ast.Ident{
-										name: 'a'
-									}),
-									ast.Expr(ast.Ident{
-										name: 'i'
-									}),
-								]
-							}
-						}
-					}
+						}),
+					]
 				}),
 			]
 		}
@@ -14945,14 +14747,7 @@ fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.
 			lhs: ast.Ident{
 				name: 'i'
 			}
-			rhs: ast.SelectorExpr{
-				lhs: ast.Ident{
-					name: 'a'
-				}
-				rhs: ast.Ident{
-					name: 'len'
-				}
-			}
+			rhs: t.synth_selector(ast.Ident{ name: 'a' }, 'len', types.Type(types.int_))
 		}
 		post:  ast.AssignStmt{
 			op:  .plus_assign
@@ -14991,16 +14786,18 @@ fn (t &Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.
 	// return strings__Builder__str(&sb)
 	body_stmts << ast.ReturnStmt{
 		exprs: [
-			ast.Expr(ast.CallOrCastExpr{
+			ast.Expr(ast.CallExpr{
 				lhs:  ast.Ident{
 					name: 'strings__Builder__str'
 				}
-				expr: ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: 'sb'
-					}
-				}
+				args: [
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Ident{
+							name: 'sb'
+						}
+					}),
+				]
 			}),
 		]
 	}
