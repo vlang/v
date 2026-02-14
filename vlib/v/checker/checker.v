@@ -309,7 +309,37 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] {
+		if stmt is ast.StructDecl || stmt is ast.InterfaceDecl || stmt is ast.EnumDecl
+			|| stmt is ast.TypeDecl {
+			c.expr_level = 0
+			c.stmt(mut stmt)
+		}
+		if c.should_abort {
+			return
+		}
+	}
+
+	c.stmt_level = 0
+	for mut stmt in ast_file.stmts {
+		if mut stmt is ast.FnDecl {
+			return_sym := c.table.sym(stmt.return_type)
+			if return_sym.info is ast.ArrayFixed
+				&& c.array_fixed_has_unresolved_size(return_sym.info) {
+				unsafe {
+					c.unresolved_fixed_sizes << &stmt
+				}
+			}
+		}
+	}
+
+	if c.unresolved_fixed_sizes.len > 0 {
+		c.update_unresolved_fixed_sizes()
+	}
+
+	c.stmt_level = 0
+	for mut stmt in ast_file.stmts {
+		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] && stmt !is ast.StructDecl
+			&& stmt !is ast.InterfaceDecl && stmt !is ast.EnumDecl && stmt !is ast.TypeDecl {
 			c.expr_level = 0
 			c.stmt(mut stmt)
 		}
