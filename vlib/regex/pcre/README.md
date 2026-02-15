@@ -1,57 +1,54 @@
 # regex.pcre Module Documentation
 
-The `regex.pcre` module provides a **Virtual Machine (VM)** based regular expression engine with 
-UTF-8 support.
-Unlike recursive engines, this implementation uses an explicit heap stack, 
-making it safe for complex patterns and long strings without risking stack overflows.
+The `regex.pcre` module is a high-performance **Virtual Machine (VM)** 
+based regular expression engine for V. 
 
-It supports compilation of patterns, searching, full matching, global replacement, named groups,
-and iterative searching.
+### Key Features
+- **Non-recursive VM**: Safe execution that avoids stack overflows on complex patterns.
+- **Zero-Allocation Search**: Uses a pre-allocated `Machine` workspace for search operations.
+- **Fast ASCII Path**: Optimized path for characters < 128 to bypass heavy UTF-8 decoding.
+- **Bitmap Lookups**: ASCII character classes use a 128-bit bitset for $O(1)$ matching.
+- **Instruction Merging**: Consecutive character matches are merged
+into string blocks for faster execution.
 
 ## Supported Syntax
 
 | Feature | Syntax | Description |
 | :--- | :--- | :--- |
-| **Literals** | `abc` | Matches exact characters. |
+| **Literals** | `abc` | Matches exact characters (UTF-8 supported). |
 | **Wildcard** | `.` | Matches any character (excluding `\n` unless `(?s)` flag is used). |
 | **Alternation** | `|` | Matches the left OR right expression (e.g., `cat|dog`). |
-| **Quantifiers** | `*` | Matches 0 or more times. |
-| **Non-greedy quantifiers** | `*?`, `+?`, `??` | Avoid to consume as much as possible. |
-| | `+` | Matches 1 or more times. |
-| | `?` | Matches 0 or 1 time. |
-| | `{m}` | Matches exactly `m` times. |
-| | `{m,n}` | Matches between `m` and `n` times. |
+| **Quantifiers** | `*`, `+`, `?` | Matches 0+, 1+, or 0-1 times. |
+| **Lazy** | `*?`, `+?`, `??` | Non-greedy versions of the above. |
+| **Repetition** | `{m,n}` | Matches between `m` and `n` times. `{m,}` for m or more. |
 | **Groups** | `(...)` | Capturing group. |
 | | `(?:...)` | Non-capturing group. |
 | | `(?P<name>...)` | Named capturing group. |
-| **Anchors** | `^` | Matches start of string (or line start with `(?m)`). |
-| | `$` | Matches end of string (or line end with `(?m)`). |
-| | `\b` | Matches a word boundary (start/end of word). |
-| | `\B` | Matches a non-word boundary. |
-| **Classes** | `[abc]` | Matches any character in the set. |
-| | `[^abc]` | Matches any character NOT in the set. |
-| | `[a-z]` | Matches a range of characters. |
-| | `\w`, `\W` | Word / Non-word character (`[a-zA-Z0-9_]`). |
+| **Anchors** | `^`, `$` | Start/End of string (or line with `(?m)`). |
+| | `\b`, `\B` | Word boundary and Non-word boundary. |
+| **Classes** | `[abc]`, `[^abc]` | Character set and Negated character set. |
+| | `[a-z]` | Range of characters. |
+| | `\w`, `\W` | Word / Non-word (`[a-zA-Z0-9_]`). |
 | | `\d`, `\D` | Digit / Non-digit. |
-| | `\s`, `\S` | Whitespace / Non-whitespace. |
-| | `\a` | Lowercase character (`[a-z]`). |
-| | `\A` | Uppercase character (`[A-Z]`). |
-| **Escapes** | `\xHH` | Matches 1-byte hex value. |
-| | `\XHHHH` | Matches 2-byte hex value. |
+| | `\s`, `\S` | Whitespace / Non-whitespace (` \t\n\r\v\f`). |
+| | `\a`, `\A` | Lowercase / Uppercase ASCII character class. |
 | **Flags** | `(?i)` | Case-insensitive matching. |
 | | `(?m)` | Multiline mode (`^` and `$` match start/end of lines). |
-| | `(?s)` | Dot-all mode (`.` matches `\n`). |
+| | `(?s)` | Dot-all mode (`.` matches newlines). |
+
+---
 
 ## Structs
 
 ### Regex
-The compiled regular expression object containing the VM bytecode.
+The compiled regular expression object.
 ```v ignore
 pub struct Regex {
 pub:
-    pattern      string
-    total_groups int
-    // Internal VM bytecode...
+    pattern      string         // The original pattern
+    prog         []Inst         // Compiled VM bytecode
+    total_groups int            // Number of capture groups
+    group_map    map[string]int // Map for named groups
 }
 ```
 
@@ -61,9 +58,9 @@ Represents the result of a successful search.
 pub struct Match {
 pub:
     text   string   // The full substring that matched
-    start  int      // Start index in the source text
-    end    int      // End index in the source text
-    groups []string // List of captured groups
+    start  int      // Byte index where match starts
+    end    int      // Byte index where match ends
+    groups []string // Text captured by each group
 }
 ```
 
@@ -72,229 +69,82 @@ pub:
 ## Core Functions
 
 ### `compile`
-
-Compiles a regular expression pattern string into a `Regex` object. Returns an error if the syntax
-is invalid (e.g., unclosed groups).
-
+Compiles a pattern into a `Regex` object.
 ```v ignore
 fn compile(pattern string) !Regex
 ```
 
-**Example:**
-```v ignore
-import regex.pcre
-
-fn main() {
-    // Compile a pattern to match a word followed by digits
-    // The '?' after pcre.compile handles the result option
-    r := pcre.compile(r'\w+\d+') or { panic(err) }
-}
-```
-
----
-
 ### `find`
-
-Scans the text for the **first** occurrence of the pattern. Returns a `Match` object if found,
-or `none` if not.
-
+Finds the first match in the text. Returns `none` if no match is found.
 ```v ignore
 fn (r Regex) find(text string) ?Match
 ```
 
-**Example:**
-```v ignore
-r := pcre.compile(r'(\d+)')!
-text := "item 123, item 456"
-
-if m := r.find(text) {
-    println('Found: ${m.text}')   // Output: 123
-    println('Index: ${m.start}')  // Output: 5
-    println('Group 1: ${m.groups[0]}') // Output: 123
-}
-```
-
-> **Note:** This function stops immediately after finding the leftmost match.
-
----
-
 ### `find_all`
-
-Returns a list of **all non-overlapping** matches in the string. This is useful for extracting
-multiple tokens.
-
+Returns all non-overlapping matches in a string.
 ```v ignore
 fn (r Regex) find_all(text string) []Match
 ```
 
-**Example:**
-```v ignore
-r := pcre.compile(r'\d+')!
-text := "10, 20, 30"
-
-matches := r.find_all(text)
-for m in matches {
-    println(m.text)
-}
-// Output:
-// 10
-// 20
-// 30
-```
-
-> **Note:** If a pattern matches an empty string (e.g., `a*` on `"b"`), the engine automatically
-advances the cursor by 1 to prevent infinite loops.
-
----
-
-### `find_from`
-
-Behaves like `find`, but starts scanning from a specific byte index. Useful for building lexers or
-parsing text iteratively.
-
-```v ignore
-fn (r Regex) find_from(text string, start_index int) ?Match
-```
-
-**Example:**
-```v 
-import regex.pcre
-
-r := pcre.compile(r'test')!
-text := 'test test test'
-
-// Skip the first 5 characters
-if m := r.find_from(text, 5) {
-	println('Found at: ${m.start}') // Output: Found at: 5
-}
-```
-
-> **Note:** If `start_index` is out of bounds (< 0 or > len), it returns `none`.
-
----
-
-### `fullmatch`
-
-Checks if the **entire** string matches the pattern from start to end.
-
-```v ignore
-fn (r Regex) fullmatch(text string) ?Match
-```
-
-**Example:**
-```v ignore
-r := pcre.compile(r'\d{3}')!
-
-println(r.fullmatch('123'))   // Match
-println(r.fullmatch('1234'))  // none (too long)
-println(r.fullmatch('a123'))  // none (starts with char)
-```
-
----
-
 ### `replace`
-
-Finds the **first** occurrence of the pattern and replaces it with the replacement string.
-
-Supported backreferences:
-*   `$1`, `$2`, etc. refer to captured groups.
-*   `$0` is currently not supported.
-
+Replaces the first match in `text` with `repl`.
+Supports backreferences like `$1`, `$2`.
 ```v ignore
 fn (r Regex) replace(text string, repl string) string
 ```
 
-**Example:**
-```v
-import regex.pcre
-
-r := pcre.compile(r'(\w+), (\w+)')!
-text := 'Doe, John'
-
-// Swap groups
-result := r.replace(text, '$2 $1')
-println(result) // Output: "John Doe"
-```
-
-> **Note:** This function currently replaces only the *first* match found. 
-To replace all occurrences,
-you would need to loop using `replace` or reconstruct the string using `find_all` ranges.
-
----
-
-### `group_by_name`
-
-Retrieves the captured text for a specific named group defined with `(?P<name>...)`.
-
+### `change_stack_depth`
+Updates the maximum backtracking depth for the VM.
+Default is 1024.
+Use this if your pattern is extremely complex and returns `none` prematurely.
 ```v ignore
-fn (r Regex) group_by_name(m Match, name string) string
-```
-
-**Example:**
-```v ignore
-import regex.pcre
-
-r := pcre.compile(r'(?P<year>\d{4})-(?P<month>\d{2})')!
-m := r.find('Date: 2025-01') or {pcre.Match{}}
-
-year := r.group_by_name(m, 'year')
-println(year) // Output: 2025
+fn (mut r Regex) change_stack_depth(depth int)
 ```
 
 ---
 
-## Advanced Usage
+## Named Groups Example
 
-### Non-greedy Matching
-By default, quantifiers like `*` and `+` are **greedy**, meaning they match
-as much text as possible. Adding a `?` makes them **non-greedy** (or lazy), 
-matching the shortest possible string.
+```v
+import regex.pcre
+
+fn main() {
+	r := pcre.compile(r'(?P<year>\d{4})-(?P<month>\d{2})')!
+	m := r.find('Date: 2026-02') or { return }
+
+	year := r.group_by_name(m, 'year')
+	month := r.group_by_name(m, 'month')
+	println('Year: ${year}, Month: ${month}') // Year: 2026, Month: 02
+}
+```
+
+---
+
+## PCRE Compatibility Layer
+
+To facilitate easier migration from other engines, a compatibility layer is provided:
+
+| Function | Equivalent To |
+| :--- | :--- |
+| `new_regex(pattern, flags)` | `compile(pattern)` |
+| `r.match_str(text, start, flags)` | `r.find_from(text, start)` |
+| `m.get(idx)` | Retrieves match text (`0`) or capture group (`1+`). |
+| `m.get_all()` | Returns `[full_match, group1, group2, ...]` |
 
 **Example:**
 ```v
 import regex.pcre
 
-text := '<div>content</div>'
-
-// Greedy: Matches everything from the first '<' to the last '>'
-r_greedy := pcre.compile(r'<.*>')!
-println(r_greedy.find(text)?.text) // Output: <div>content</div>
-
-// Non-greedy: Matches only until the first '>'
-r_lazy := pcre.compile(r'<.*?>')!
-println(r_lazy.find(text)?.text) // Output: <div>
+r := pcre.new_regex(r'(\w+) (\w+)', 0)!
+if m := r.match_str('hello world', 0, 0) {
+	println(m.get(0)?) // "hello world"
+	println(m.get(1)?) // "hello"
+	println(m.get(2)?) // "world"
+}
 ```
 
-### VM Stability (No Stack Overflow)
-Because this engine uses a VM with a heap-allocated stack, it can handle patterns that typically
-crash recursive engines due to stack overflow.
-
-**Example:**
-```v
-import regex.pcre
-// A pattern that causes catastrophic backtracking in some recursive engines
-// or deep recursion depth.
-
-r := pcre.compile(r'(a+)+b')!
-text := 'a'.repeat(5000) // Very long string of 'a's
-
-// This will safely return 'none' without crashing the program
-r.find(text)
-```
-
-### Using Flags
-Flags can be embedded to change matching behavior locally.
-
-**Example:**
-```v
-import regex.pcre
-// (?i) Case insensitive
-
-r := pcre.compile(r'(?i)apple')!
-println(r.find('APPLE')) // Matches
-
-// (?m) Multiline: ^ matches start of line, $ matches end of line
-r_multi := pcre.compile(r'(?m)^Log:')!
-text := 'Error: 1\nLog: Something happened'
-println(r_multi.find(text)) // Matches 'Log:' on the second line
-```
+## Performance Note
+The engine automatically detects literal prefixes (e.g., in `abc.*`) and uses
+a fast-skip optimization to bypass the VM until the prefix is found in the 
+input string. 
+This makes it extremely fast for searching specific patterns in large files.
