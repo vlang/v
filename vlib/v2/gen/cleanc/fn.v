@@ -621,14 +621,14 @@ fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	if g.can_take_address(base_arg) {
 		g.sb.write_string('&')
-		g.gen_expr(base_arg)
+		g.expr(base_arg)
 		return
 	}
 	// StringLiteral already generates a compound literal string with `.is_lit = 1`
 	// so just take its address directly to avoid double-wrapping
 	if base_arg is ast.StringLiteral {
 		g.sb.write_string('&')
-		g.gen_expr(base_arg)
+		g.expr(base_arg)
 		return
 	}
 	// InitExpr: check if it generates a compound literal or a function call
@@ -638,19 +638,19 @@ fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 			// Map init lowers to a function call; wrap it in an array compound literal
 			// so the produced pointer stays valid for the whole surrounding block.
 			g.sb.write_string('&((${init_type}[1]){')
-			g.gen_expr(base_arg)
+			g.expr(base_arg)
 			g.sb.write_string('}[0])')
 			return
 		}
 		// Non-map InitExpr generates a compound literal - just take address
 		g.sb.write_string('&')
-		g.gen_expr(base_arg)
+		g.expr(base_arg)
 		return
 	}
 	// ArrayInitExpr already generates a compound literal
 	if base_arg is ast.ArrayInitExpr {
 		g.sb.write_string('&')
-		g.gen_expr(base_arg)
+		g.expr(base_arg)
 		return
 	}
 	raw_addr := if typ == '' { 'int' } else { typ }
@@ -668,12 +668,12 @@ fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 		|| addr_type.starts_with('Map_') || addr_type.starts_with('_option_')
 		|| addr_type.starts_with('_result_') || is_nonprimitive_value {
 		g.sb.write_string('&((${addr_type}[1]){')
-		g.gen_expr(base_arg)
+		g.expr(base_arg)
 		g.sb.write_string('}[0])')
 		return
 	}
 	g.sb.write_string('&(${addr_type}){')
-	g.gen_expr(base_arg)
+	g.expr(base_arg)
 	g.sb.write_string('}')
 }
 
@@ -740,9 +740,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 		// Lowered dynamic arrays arrive as `array` values; pass their `.data`.
 		// Raw fixed array literals should be emitted directly and decay to pointers.
 		if base_arg is ast.ArrayInitExpr {
-			g.gen_expr(base_arg)
+			g.expr(base_arg)
 		} else {
-			g.gen_expr(base_arg)
+			g.expr(base_arg)
 			g.sb.write_string('.data')
 		}
 		return
@@ -753,7 +753,7 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			if want_ptr && base_arg is ast.PrefixExpr && base_arg.op == .amp {
 				inner := base_arg.expr
 				if g.expr_is_pointer(inner) || g.expr_produces_pointer(inner) {
-					g.gen_expr(inner)
+					g.expr(inner)
 					return
 				}
 			}
@@ -761,12 +761,12 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			// Also check for pointer-producing expressions (casts, pointer arithmetic)
 			// that expr_is_pointer misses but that produce pointer values in C.
 			if want_ptr && !got_ptr && g.expr_produces_pointer(base_arg) {
-				g.gen_expr(base_arg)
+				g.expr(base_arg)
 				return
 			}
 			if want_ptr && !got_ptr && g.can_take_address(base_arg) {
 				g.sb.write_string('&')
-				g.gen_expr(base_arg)
+				g.expr(base_arg)
 				return
 			}
 			if want_ptr && !got_ptr && !g.can_take_address(base_arg) {
@@ -775,7 +775,7 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				if raw := g.get_raw_type(base_arg) {
 					if raw is types.Pointer {
 						// Already a pointer at the type level, just emit
-						g.gen_expr(base_arg)
+						g.expr(base_arg)
 						return
 					}
 					c_type := g.types_type_to_c(raw)
@@ -810,12 +810,12 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				// Don't auto-deref when the param type is a pointer alias (e.g. Coordptr = Coord*)
 				if param_types := g.fn_param_types[fn_name] {
 					if idx < param_types.len && param_types[idx].ends_with('ptr') {
-						g.gen_expr(base_arg)
+						g.expr(base_arg)
 						return
 					}
 				}
 				g.sb.write_string('(*')
-				g.gen_expr(base_arg)
+				g.expr(base_arg)
 				g.sb.write_string(')')
 				return
 			}
@@ -826,6 +826,16 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 		if idx < param_types.len {
 			param_type := param_types[idx]
 			if variants := g.sum_type_variants[param_type] {
+				// Selector/index expressions can be smartcast-narrowed in the checker env,
+				// while still evaluating to the original sum value representation.
+				// If the raw (declared) type already matches the sum param type, pass it through.
+				if raw := g.get_raw_type(base_arg) {
+					raw_c := g.types_type_to_c(raw)
+					if raw_c == param_type {
+						g.expr(base_arg)
+						return
+					}
+				}
 				mut arg_type := g.get_expr_type(base_arg)
 				// For smartcast dereference patterns (*(Type*)(expr._data._Type)),
 				// extract the actual type from the cast
@@ -868,7 +878,7 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			}
 		}
 	}
-	g.gen_expr(base_arg)
+	g.expr(base_arg)
 }
 
 fn (mut g Gen) resolve_container_method_name(receiver ast.Expr, method_name string, expected_params int) string {
@@ -1101,14 +1111,14 @@ fn (mut g Gen) gen_array_contains_call(name string, call_args []ast.Expr) bool {
 	}
 	elem_type := g.infer_array_contains_elem_type(name, call_args)
 	g.sb.write_string('array__contains(')
-	g.gen_expr(call_args[0])
+	g.expr(call_args[0])
 	g.sb.write_string(', ')
 	g.gen_addr_of_expr(call_args[1], elem_type)
 	g.sb.write_string(')')
 	return true
 }
 
-fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
+fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	if lhs is ast.SelectorExpr {
 		if lhs.lhs is ast.Ident {
 			lhs_ident := lhs.lhs as ast.Ident
@@ -1118,7 +1128,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 					if i > 0 {
 						g.sb.write_string(', ')
 					}
-					g.gen_expr(arg)
+					g.expr(arg)
 				}
 				g.sb.write_string(')')
 				return
@@ -1137,13 +1147,13 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 			ret_type := g.fn_pointer_return_type(lhs)
 			c_ret := if ret_type == '' { 'void' } else { ret_type }
 			g.sb.write_string('((${c_ret}(*)())')
-			g.gen_expr(lhs)
+			g.expr(lhs)
 			g.sb.write_string(')(')
 			for i, arg in args {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				g.gen_expr(arg)
+				g.expr(arg)
 			}
 			g.sb.write_string(')')
 			return
@@ -1158,13 +1168,13 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		if lhs.rhs.name in ['hash_fn', 'key_eq_fn', 'clone_fn', 'free_fn'] {
 			base_type := g.method_receiver_base_type(lhs.lhs)
 			if base_type == 'map' || base_type.starts_with('Map_') {
-				g.gen_expr(lhs)
+				g.expr(lhs)
 				g.sb.write_string('(')
 				for i, arg in args {
 					if i > 0 {
 						g.sb.write_string(', ')
 					}
-					g.gen_expr(arg)
+					g.expr(arg)
 				}
 				g.sb.write_string(')')
 				return
@@ -1178,7 +1188,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				g.gen_expr(arg)
+				g.expr(arg)
 			}
 			g.sb.write_string(')')
 			return
@@ -1306,7 +1316,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		arg_type := g.get_expr_type(arg)
 		if arg_type == 'IError' || (arg is ast.Ident && arg.name == 'err') {
 			g.sb.write_string('panic(IError__str(')
-			g.gen_expr(arg)
+			g.expr(arg)
 			g.sb.write_string('))')
 			return
 		}
@@ -1322,7 +1332,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				g.gen_expr(arg)
+				g.expr(arg)
 			}
 			g.sb.write_string(')')
 			return
@@ -1348,13 +1358,13 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 			g.sb.write_string(at)
 		}
 		g.sb.write_string('))')
-		g.gen_expr(lhs)
+		g.expr(lhs)
 		g.sb.write_string(')(')
 		for i, arg in call_args {
 			if i > 0 {
 				g.sb.write_string(', ')
 			}
-			g.gen_expr(arg)
+			g.expr(arg)
 		}
 		g.sb.write_string(')')
 		return
@@ -1383,22 +1393,22 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		if g.expr_is_pointer(call_args[0]) {
 			g.sb.write_string('*')
 		}
-		g.gen_expr(call_args[0])
+		g.expr(call_args[0])
 		g.sb.write_string(', ')
 		if g.expr_is_pointer(call_args[1]) {
 			g.sb.write_string('*')
 		}
-		g.gen_expr(call_args[1])
+		g.expr(call_args[1])
 		g.sb.write_string(')')
 		return
 	}
 	if name.starts_with('Array_') && name.ends_with('__sort') && call_args.len == 1 {
 		g.sb.write_string('array__sort((array*)')
 		if g.expr_is_pointer(call_args[0]) {
-			g.gen_expr(call_args[0])
+			g.expr(call_args[0])
 		} else {
 			g.sb.write_string('&')
-			g.gen_expr(call_args[0])
+			g.expr(call_args[0])
 		}
 		g.sb.write_string(', NULL)')
 		return
@@ -1433,7 +1443,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		g.tmp_counter++
 		arr_rhs_type := g.expr_array_runtime_type(call_args[2])
 		g.sb.write_string('({ ${arr_rhs_type} ${rhs_tmp} = ')
-		g.gen_expr(call_args[2])
+		g.expr(call_args[2])
 		g.sb.write_string('; array__insert_many(')
 		g.gen_call_arg(name, 0, call_args[0])
 		g.sb.write_string(', ')
@@ -1447,7 +1457,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		g.tmp_counter++
 		arr_rhs_type := g.expr_array_runtime_type(call_args[1])
 		g.sb.write_string('({ ${arr_rhs_type} ${rhs_tmp} = ')
-		g.gen_expr(call_args[1])
+		g.expr(call_args[1])
 		g.sb.write_string('; array__prepend_many(')
 		g.gen_call_arg(name, 0, call_args[0])
 		g.sb.write_string(', ${rhs_tmp}.data, ${rhs_tmp}.len); })')
@@ -1476,9 +1486,9 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	if name == 'signal' && call_args.len == 2 {
 		g.sb.write_string('signal(')
-		g.gen_expr(call_args[0])
+		g.expr(call_args[0])
 		g.sb.write_string(', ((void (*)(int))')
-		g.gen_expr(call_args[1])
+		g.expr(call_args[1])
 		g.sb.write_string('))')
 		return
 	}
@@ -1509,36 +1519,36 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 
 			if arg_type == 'string' {
 				g.sb.write_string('${c_name}(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string(')')
 			} else if arg is ast.Ident && arg.name == 'err' {
 				g.sb.write_string('${c_name}(IError__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else if arg_type == 'IError' {
 				g.sb.write_string('${c_name}(IError__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else if arg_type in ['int', 'i8', 'i16', 'i32'] {
 				g.sb.write_string('${c_name}(int__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else if arg_type == 'i64' {
 				g.sb.write_string('${c_name}(i64__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else if arg_type == 'u64' {
 				g.sb.write_string('${c_name}(u64__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else if arg_type == 'bool' {
 				g.sb.write_string('${c_name}(bool__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			} else {
 				// Fallback
 				g.sb.write_string('${c_name}(/* ${arg_type} */ int__str(')
-				g.gen_expr(arg)
+				g.expr(arg)
 				g.sb.write_string('))')
 			}
 			return
@@ -1578,89 +1588,11 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 			tmp_name := '_push_many_tmp_${g.tmp_counter}'
 			g.tmp_counter++
 			g.sb.write_string('({ ${tmp_type} ${tmp_name} = ')
-			g.gen_expr(data_sel.lhs)
+			g.expr(data_sel.lhs)
 			g.sb.write_string('; ${c_name}(')
 			g.gen_call_arg(c_name, 0, call_args[0])
 			g.sb.write_string(', ${tmp_name}.data, ${tmp_name}.len); })')
 			return
-		}
-	}
-	// Handle variadic calls: if more args than params and last param is an Array type,
-	// wrap the extra args into an array literal.
-	if param_types := g.fn_param_types[c_name] {
-		if param_types.len > 0 && call_args.len > param_types.len {
-			last_param_type := param_types[param_types.len - 1]
-			if last_param_type.starts_with('Array_') {
-				elem_type := last_param_type['Array_'.len..]
-				g.sb.write_string('${c_name}(')
-				// Emit non-variadic args
-				for i in 0 .. param_types.len - 1 {
-					if i > 0 {
-						g.sb.write_string(', ')
-					}
-					if i < call_args.len {
-						g.gen_call_arg(c_name, i, call_args[i])
-					}
-				}
-				if param_types.len > 1 {
-					g.sb.write_string(', ')
-				}
-				// Wrap remaining args in a C array → Array struct
-				variadic_count := call_args.len - (param_types.len - 1)
-				g.sb.write_string('new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), (${elem_type}[${variadic_count}]){')
-				for i in param_types.len - 1 .. call_args.len {
-					if i > param_types.len - 1 {
-						g.sb.write_string(', ')
-					}
-					g.gen_expr(call_args[i])
-				}
-				g.sb.write_string('}))')
-				return
-			}
-		}
-	}
-	// Inline expansion of __new_array_with_default_noscan when init uses `index`.
-	// V's `[]T{len: N, init: expr_with_index}` uses `index` as the loop counter.
-	// In C, `index` clashes with string.h's index(). Expand to a for-loop.
-	if c_name == '__new_array_with_default_noscan' && call_args.len == 4 {
-		if g.expr_contains_ident(call_args[3], 'index') {
-			g.gen_array_init_with_index(call_args)
-			return
-		}
-	}
-	// Resolve Array_T__sorted to array__sorted with pointer arg and NULL callback
-	if c_name.contains('__sorted') && c_name.starts_with('Array_') {
-		g.sb.write_string('array__sorted(')
-		if call_args.len > 0 {
-			g.sb.write_string('({ array _addr_sorted = ')
-			g.gen_expr(call_args[0])
-			g.sb.write_string('; &_addr_sorted; })')
-		}
-		g.sb.write_string(', 0)')
-		return
-	}
-	// Fix function pointer arrays: when new_array_from_c_array has function
-	// identifiers as elements, use voidptr as the element type
-	if c_name == 'new_array_from_c_array' && call_args.len >= 4 {
-		if arr := extract_array_init_arg(call_args[3]) {
-			if arr.exprs.len > 0 && arr.exprs[0] is ast.Ident {
-				fn_ident := arr.exprs[0] as ast.Ident
-				if fn_ident.name in g.fn_return_types || fn_ident.name in g.fn_param_is_ptr {
-					g.sb.write_string('${c_name}(')
-					g.gen_expr(call_args[0])
-					g.sb.write_string(', ')
-					g.gen_expr(call_args[1])
-					g.sb.write_string(', sizeof(voidptr), &(voidptr[${arr.exprs.len}]){')
-					for i, e in arr.exprs {
-						if i > 0 {
-							g.sb.write_string(', ')
-						}
-						g.gen_expr(e)
-					}
-					g.sb.write_string('})')
-					return
-				}
-			}
 		}
 	}
 	g.sb.write_string('${c_name}(')
@@ -1681,7 +1613,7 @@ fn (mut g Gen) gen_call_expr(lhs ast.Expr, args []ast.Expr) {
 		if i < call_args.len {
 			if c_name == 'signal' && i == 1 {
 				g.sb.write_string('((void (*)(int))')
-				g.gen_expr(call_args[i])
+				g.expr(call_args[i])
 				g.sb.write_string(')')
 				continue
 			}
@@ -1753,15 +1685,15 @@ fn (mut g Gen) gen_array_init_with_index(call_args []ast.Expr) {
 		}
 	}
 	g.sb.write_string('({ array ${arr_name} = __new_array_with_default_noscan(')
-	g.gen_expr(call_args[0])
+	g.expr(call_args[0])
 	g.sb.write_string(', ')
-	g.gen_expr(call_args[1])
+	g.expr(call_args[1])
 	g.sb.write_string(', sizeof(${elem_type}), NULL); ')
 	g.sb.write_string('for (int _v_index = 0; _v_index < ${arr_name}.len; _v_index++) { ')
 	g.sb.write_string('((${elem_type}*)${arr_name}.data)[_v_index] = ')
 	// Generate init expression with `index` → `_v_index` rename active
 	g.in_array_init_index = true
-	g.gen_expr(call_args[3])
+	g.expr(call_args[3])
 	g.in_array_init_index = false
 	g.sb.write_string('; } ${arr_name}; })')
 }

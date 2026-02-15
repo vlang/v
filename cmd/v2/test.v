@@ -1619,6 +1619,46 @@ fn test_array_type_resolution() {
 	print_str('array type resolution (fn arg): ok')
 }
 
+// Helper: variadic function returning sum of all args
+fn variadic_sum(vals ...int) int {
+	mut s := 0
+	for v in vals {
+		s += v
+	}
+	return s
+}
+
+// Helper: variadic function with a fixed first param
+fn variadic_with_fixed(base int, extras ...int) int {
+	mut s := base
+	for v in extras {
+		s += v
+	}
+	return s
+}
+
+fn test_variadic_call_lowering() {
+	// 98.1 Basic variadic call with multiple args
+	r1 := variadic_sum(1, 2, 3)
+	assert r1 == 6
+	print_str('variadic call lowering (basic sum): ok')
+
+	// 98.2 Variadic call with two args
+	r2 := variadic_sum(10, 20)
+	assert r2 == 30
+	print_str('variadic call lowering (two args): ok')
+
+	// 98.3 Variadic call with single arg
+	r3 := variadic_sum(42)
+	assert r3 == 42
+	print_str('variadic call lowering (single arg): ok')
+
+	// 98.4 Variadic with fixed + variadic params
+	r4 := variadic_with_fixed(100, 10, 20, 30)
+	assert r4 == 160
+	print_str('variadic call lowering (fixed + variadic): ok')
+}
+
 // ===================== MAIN TEST FUNCTION =====================
 
 fn main() {
@@ -5183,6 +5223,12 @@ fn main() {
 	// array comparisons, filter/map, string interpolation of arrays, and slicing.
 	print_str('--- Test 97: Array type resolution ---')
 	test_array_type_resolution()
+
+	// ==================== 98. VARIADIC CALL LOWERING ====================
+	// Tests that variadic function calls are lowered in the transformer:
+	// extra args beyond declared params are wrapped into an array literal.
+	print_str('--- Test 98: Variadic call lowering ---')
+	test_variadic_call_lowering()
 
 	print_str('=== All tests completed ===')
 }

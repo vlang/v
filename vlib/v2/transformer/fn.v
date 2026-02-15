@@ -802,13 +802,16 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
 				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 				is_static := t.is_static_method_call(sel.lhs)
-				mut args := []ast.Expr{cap: call_args.len + 1}
+				mut transformed_call_args := []ast.Expr{cap: call_args.len}
+				for arg in call_args {
+					transformed_call_args << t.transform_expr(arg)
+				}
+				transformed_call_args = t.lower_variadic_args(expr.lhs, transformed_call_args)
+				mut args := []ast.Expr{cap: transformed_call_args.len + 1}
 				if !is_static {
 					args << t.transform_expr(sel.lhs)
 				}
-				for arg in call_args {
-					args << t.transform_expr(arg)
-				}
+				args << transformed_call_args
 				return ast.CallExpr{
 					lhs:  ast.Ident{
 						name: resolved
@@ -827,6 +830,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	for arg in call_args {
 		args << t.transform_expr(arg)
 	}
+	args = t.lower_variadic_args(expr.lhs, args)
 	return ast.CallExpr{
 		lhs:  t.transform_expr(expr.lhs)
 		args: args
@@ -837,6 +841,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 struct CallFnInfo {
 	param_types []types.Type
 	param_names []string
+	is_variadic bool
 }
 
 fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
@@ -848,6 +853,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 			return CallFnInfo{
 				param_types: callable.get_param_types()
 				param_names: callable.get_param_names()
+				is_variadic: callable.is_variadic_fn()
 			}
 		}
 	}
@@ -857,6 +863,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 				return CallFnInfo{
 					param_types: fn_type.get_param_types()
 					param_names: fn_type.get_param_names()
+					is_variadic: fn_type.is_variadic_fn()
 				}
 			}
 		}
@@ -864,6 +871,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 			return CallFnInfo{
 				param_types: fn_type.get_param_types()
 				param_names: fn_type.get_param_names()
+				is_variadic: fn_type.is_variadic_fn()
 			}
 		}
 		return none
@@ -875,6 +883,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 				return CallFnInfo{
 					param_types: fn_type.get_param_types()
 					param_names: fn_type.get_param_names()
+					is_variadic: fn_type.is_variadic_fn()
 				}
 			}
 		}
@@ -893,6 +902,7 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 					return CallFnInfo{
 						param_types: fn_type.get_param_types()
 						param_names: fn_type.get_param_names()
+						is_variadic: fn_type.is_variadic_fn()
 					}
 				}
 			}
@@ -1099,6 +1109,92 @@ fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []
 		}
 	}
 	return out
+}
+
+// lower_variadic_args wraps already-transformed trailing args into an array
+// literal when a variadic function receives more args than declared params.
+// Must be called AFTER transform_expr has been applied to all args.
+fn (t &Transformer) lower_variadic_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
+	// Skip C function calls — C variadic functions use native C varargs, not V arrays.
+	if lhs is ast.SelectorExpr {
+		if lhs.lhs is ast.Ident && lhs.lhs.name == 'C' {
+			return args
+		}
+	}
+	info := t.lookup_call_fn_info(lhs) or { return args }
+	if !info.is_variadic || info.param_types.len == 0 || args.len < info.param_types.len {
+		return args
+	}
+	last_param_type := t.unwrap_alias_and_pointer_type(info.param_types[info.param_types.len - 1])
+	// When args.len == param_types.len, check if the last arg is already an array
+	// (e.g., passing []Signal to ...Signal, or using spread ...args). If so, don't wrap.
+	// If we can't determine the arg type, be conservative and don't wrap.
+	if args.len == info.param_types.len {
+		if last_param_type is types.Array {
+			last_arg := args[args.len - 1]
+			// Spread operator (...args) passes an array directly, no wrapping needed
+			if last_arg is ast.PrefixExpr && last_arg.op == .ellipsis {
+				return args
+			}
+			arg_type := t.get_expr_type(last_arg) or { return args }
+			unwrapped := t.unwrap_alias_and_pointer_type(arg_type)
+			if unwrapped is types.Array {
+				return args
+			}
+			// arg is not an array type, proceed to wrap it
+		} else {
+			return args
+		}
+	}
+	if last_param_type is types.Array {
+		elem_type_name := t.type_to_c_name(last_param_type.elem_type)
+		if elem_type_name == '' {
+			return args
+		}
+		variadic_start := info.param_types.len - 1
+		variadic_count := args.len - variadic_start
+		mut variadic_exprs := []ast.Expr{cap: variadic_count}
+		for i in variadic_start .. args.len {
+			variadic_exprs << args[i]
+		}
+		inner_array_typ := ast.Type(ast.ArrayType{
+			elem_type: ast.Ident{
+				name: elem_type_name
+			}
+		})
+		array_arg := ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'builtin__new_array_from_c_array_noscan'
+			}
+			args: [
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '${variadic_count}'
+				}),
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '${variadic_count}'
+				}),
+				ast.Expr(ast.KeywordOperator{
+					op:    .key_sizeof
+					exprs: [ast.Expr(ast.Ident{
+						name: elem_type_name
+					})]
+				}),
+				ast.Expr(ast.ArrayInitExpr{
+					typ:   ast.Expr(inner_array_typ)
+					exprs: variadic_exprs
+				}),
+			]
+		})
+		mut new_out := []ast.Expr{cap: variadic_start + 1}
+		for i in 0 .. variadic_start {
+			new_out << args[i]
+		}
+		new_out << array_arg
+		return new_out
+	}
+	return args
 }
 
 fn call_args_have_field_init(args []ast.Expr) bool {
@@ -1584,6 +1680,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			for arg in call_args {
 				args << t.transform_expr(arg)
 			}
+			args = t.lower_variadic_args(expr.lhs, args)
 			return ast.CallExpr{
 				lhs:  ast.Expr(expr.lhs)
 				args: args
@@ -1604,13 +1701,16 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 					call_args << expr.expr
 				}
 				call_args = t.lower_missing_call_args(expr.lhs, call_args)
-				mut args := []ast.Expr{cap: call_args.len + 1}
+				mut transformed_call_args := []ast.Expr{cap: call_args.len}
+				for arg in call_args {
+					transformed_call_args << t.transform_expr(arg)
+				}
+				transformed_call_args = t.lower_variadic_args(expr.lhs, transformed_call_args)
+				mut args := []ast.Expr{cap: transformed_call_args.len + 1}
 				if !is_static {
 					args << t.transform_expr(sel.lhs)
 				}
-				for arg in call_args {
-					args << t.transform_expr(arg)
-				}
+				args << transformed_call_args
 				return ast.CallExpr{
 					lhs:  ast.Ident{
 						name: resolved
