@@ -4429,6 +4429,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	if node.expr_type == 0 {
+		// Handle comptime type selector T.name when inside comptime context
+		if node.field_name == 'name' && node.expr is ast.Ident {
+			ident := node.expr as ast.Ident
+			if g.table.cur_fn != unsafe { nil } && g.table.cur_fn.generic_names.len > 0 {
+				for i, gname in g.table.cur_fn.generic_names {
+					if gname == ident.name {
+						if i < g.table.cur_concrete_types.len {
+							g.type_name(g.table.cur_concrete_types[i])
+						} else {
+							g.write('_S("${ident.name}")')
+						}
+						return
+					}
+				}
+			}
+		}
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
