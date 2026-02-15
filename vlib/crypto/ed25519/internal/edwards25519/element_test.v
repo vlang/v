@@ -356,8 +356,8 @@ fn test_consistency_between_mult_and_square() {
 
 // to_big_integer returns v as a big.Integer.
 fn (mut v Element) to_big_integer() big.Integer {
-	buf := v.bytes()
-	return big.integer_from_bytes(buf)
+	mut buf := v.bytes()
+	return big.integer_from_bytes(swap_endianness(mut buf))
 }
 
 // from_big_integer sets v = n, and returns v. The bit length of n must not exceed 256.
@@ -366,8 +366,10 @@ fn (mut v Element) from_big_integer(n big.Integer) !Element {
 		return error('invalid edwards25519 element input size')
 	}
 	mut bytes, _ := n.bytes()
-	swap_endianness(mut bytes) // SHOULD I SWAP IT?
-	v.set_bytes(bytes)!
+	mut padded := []u8{len: 32}
+	copy(mut padded[32 - bytes.len..], bytes)
+	swap_endianness(mut padded) // convert big-endian integer bytes to little-endian element bytes
+	v.set_bytes(padded)!
 
 	return v
 }
@@ -396,7 +398,8 @@ fn test_bytes_big_equivalence() {
 	mut buf := []u8{len: 32} // pad with zeroes
 	fedtobig := fe1.to_big_integer()
 	mut fedbig_bytes, _ := fedtobig.bytes()
-	copy(mut buf, fedbig_bytes) // does not need to do swap_endianness
+	copy(mut buf[32 - fedbig_bytes.len..], fedbig_bytes)
+	swap_endianness(mut buf)
 
 	assert fe.bytes() == buf && is_in_bounds(fe) && is_in_bounds(fe1)
 	// assert big_equivalence(inp, fe, fe1) == true
