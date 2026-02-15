@@ -48,26 +48,6 @@ Key Architectural Features and Optimizations:
 
 */
 
-/*
-pcre 0.9.5 beta (VM Edition) - Thread-Safe & Performance Optimized
-
-Copyright (c) 2026 Dario Deledda. All rights reserved.
-Use of this source code is governed by an MIT license
-that can be found in the LICENSE file.
-
-This module provides a Virtual Machine (VM) based regular expression engine.
-This implementation is thread-safe: a single compiled Regex can be used
-concurrently across multiple threads.
-
-Key Architectural Features:
- - **NFA Virtual Machine**: Executes bytecode instructions to simulate pattern matching.
- - **Thread-Safe**: matching state is stack-allocated per call to prevent data races.
- - **Dynamic Stack Growth**: Automatically expands the backtracking stack to prevent false negatives.
- - **Fast ASCII Path**: Optimized execution for ASCII characters to bypass UTF-8 decoding.
- - **Instruction Merging**: Combines consecutive literal matches into single string instructions.
- - **Bitmap Lookup**: ASCII character classes use bitsets for O(1) matching.
-*/
-
 module pcre
 
 import strings
