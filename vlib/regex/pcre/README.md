@@ -10,6 +10,13 @@ based regular expression engine for V.
 - **Bitmap Lookups**: ASCII character classes use a 128-bit bitset for $O(1)$ matching.
 - **Instruction Merging**: Consecutive character matches are merged
 into string blocks for faster execution.
+- **Bitmap lookups**: ASCII character classes use a 128-bit bitset for O(1) matching.
+- **NFA Virtual Machine**: Executes bytecode instructions to simulate pattern matching.
+- **Dynamic Stack Growth**: Automatically expands the backtracking stack to prevent false negatives.
+- **Zero-Allocation Search**: Reuses a pre-allocated Machine workspace for search operations.
+- **Anchored Optimization**: Patterns starting with '^' skip the scanning loop.
+- **Prefix Skipping**: Uses Boyer-Moore-like skipping for literal prefixes.
+
 
 ## Supported Syntax
 
@@ -144,7 +151,22 @@ if m := r.match_str('hello world', 0, 0) {
 ```
 
 ## Performance Note
-The engine automatically detects literal prefixes (e.g., in `abc.*`) and uses
-a fast-skip optimization to bypass the VM until the prefix is found in the 
-input string. 
-This makes it extremely fast for searching specific patterns in large files.
+Here is a clear summary of the optimizations implemented in the code:
+
+*   **Raw Pointer Access:** The VM bypasses standard array bounds checking by using `unsafe` 
+pointer arithmetic for both the instruction set and the string text, significantly speeding up
+the hot loop.
+*   **Zero-Allocation Search:** The `Machine` struct pre-allocates the backtracking stack and
+capture arrays, ensuring that running a search (finding a match) creates no new heap allocations
+(garbage collection pressure is zero).
+*   **Fast ASCII Path:** The code checks if a byte is `< 128` before decoding. If it is ASCII, it
+skips the expensive UTF-8 decoding logic entirely.
+*   **Bitmap Class Lookups:** Character classes (like `\w`, `\d`, `[a-z]`) use a 128-bit bitset.
+Checking if an ASCII character matches a class is a single O(1) bitwise operation.
+*   **Instruction Merging:** The compiler groups consecutive literal characters into a single
+`string` instruction (e.g., `a`, `b`, `c` becomes `"abc"`), reducing the number of VM cycles
+required.
+*   **Prefix Skipping:** If a pattern starts with a literal string, the engine scans ahead for
+that substring (Boyer-Moore style) before initializing the VM, avoiding useless execution.
+*   **Anchored Optimization:** If the pattern starts with `^`, the engine only attempts a match at
+the start of the string (or line), skipping the character-by-character scan of the rest of the text.

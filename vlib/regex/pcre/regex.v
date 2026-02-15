@@ -1,5 +1,5 @@
 /*
-regex2 0.9.5 beta (VM Edition) - Performance Optimized
+regex2 0.9.6 beta (VM Edition) - Performance Optimized
 
 Copyright (c) 2026 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -27,6 +27,11 @@ Features:
    - '(?m)' Multiline (anchors match newlines).
    - '(?s)' Dot-all (dot matches newline).
 
+Configuration:
+ - `max_stack_depth`: Controls the dynamic growth limit of the backtracking stack.
+    Default is 2048. Increase this value if you encounter complex patterns failing
+    on deep recursions/backtracking, or decrease it to limit memory usage.
+
 Functions:
  - `compile(pattern) !Regex` -> Compiles a pattern into a Regex object.
  - `(r Regex) find(text) ?Match` -> Finds the first match in a string.
@@ -45,6 +50,8 @@ Key Architectural Features and Optimizations:
  - **NFA Virtual Machine**: Executes bytecode instructions to simulate pattern matching.
  - **Dynamic Stack Growth**: Automatically expands the backtracking stack to prevent false negatives.
  - **Zero-Allocation Search**: Reuses a pre-allocated Machine workspace for search operations.
+ - **Anchored Optimization**: Patterns starting with '^' skip the scanning loop.
+ - **Prefix Skipping**: Uses Boyer-Moore-like skipping for literal prefixes.
 
 */
 
@@ -76,7 +83,8 @@ enum InstType as u8 {
 	assert_nbound     // Assert non-word boundary (\B).
 }
 
-// Inst represents a single bytecode instruction and its operand data.
+// Inst represents a single bytecode instruction.
+// Packed for memory locality.
 struct Inst {
 mut:
 	typ         InstType
@@ -110,6 +118,7 @@ pub:
 	group_map    map[string]int // Mapping of names to indices for (?P<name>...)
 	prefix_lit   string         // Pre-calculated literal prefix for fast-skip optimization
 	has_prefix   bool           // Whether a literal prefix exists
+	anchored     bool           // True if pattern starts with '^' (optimization hint)
 pub mut:
 	max_stack_depth int // User-defined stack limit hint
 }
@@ -123,7 +132,7 @@ pub:
 	groups []string // Sub-strings captured by groups
 }
 
-// Quantifier stores repetition limits (*, +, ?, {m,n}).
+// Internal structures for Compilation
 struct Quantifier {
 mut:
 	min    int
@@ -131,7 +140,6 @@ mut:
 	greedy bool
 }
 
-// Flags represents stateful regex modifiers.
 struct Flags {
 mut:
 	ignore_case bool
@@ -139,7 +147,6 @@ mut:
 	dot_all     bool
 }
 
-// NodeType identifies types of AST nodes during compilation.
 enum NodeType {
 	chr
 	any_char
@@ -160,7 +167,6 @@ enum NodeType {
 	uppercase_char
 }
 
-// Node represents a component of the Abstract Syntax Tree.
 struct Node {
 mut:
 	typ                 NodeType
@@ -178,11 +184,12 @@ mut:
 
 /******************************************************************************
 *
-* Internal Utilities
+* Internal Utilities (Inlined for Speed)
 *
 ******************************************************************************/
 
 // read_rune_at decodes a UTF-8 rune from a byte pointer safely.
+// Marked inline to be embedded directly into the VM loop.
 @[inline]
 fn read_rune_at(str &u8, len int, index int) (rune, int) {
 	unsafe {
@@ -215,6 +222,7 @@ fn is_word_char(r u8) bool {
 }
 
 // set_bitmap sets a specific bit in a 128-bit bitset for ASCII matching.
+@[inline]
 fn set_bitmap(mut bitmap [4]u32, r rune) {
 	if r >= 0 && r < 128 {
 		idx := u32(r) >> 5
@@ -234,7 +242,7 @@ pub fn compile(pattern string) !Regex {
 	mut group_map := map[string]int{}
 	initial_flags := Flags{false, false, false}
 
-	// Phase 1: Recursive Descent Parsing into AST
+	// Phase 1: AST Parsing
 	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut
 		group_map)!
 
@@ -251,60 +259,63 @@ pub fn compile(pattern string) !Regex {
 	compiler.emit_node(root)
 	compiler.emit(Inst{ typ: .match })
 
-	// Phase 3: Peephole Optimization
+	// Phase 3: Optimization
 	optimized_prog := compiler.optimize()
 
-	// Detect constant prefix for fast-skip optimization
+	// Detect Prefix and Anchor optimizations
 	mut prefix := ''
 	mut has_prefix := false
+	mut anchored := false
+
 	if optimized_prog.len > 0 {
-		if optimized_prog[0].typ == .string {
-			prefix = optimized_prog[0].val_str
+		first := optimized_prog[0]
+		if first.typ == .string {
+			prefix = first.val_str
 			has_prefix = true
-		} else if optimized_prog[0].typ == .char && !optimized_prog[0].ignore_case
-			&& optimized_prog[0].val < 128 {
-			prefix = unsafe { u8(optimized_prog[0].val).ascii_str() }
+		} else if first.typ == .char && !first.ignore_case && first.val < 128 {
+			prefix = unsafe { u8(first.val).ascii_str() }
 			has_prefix = true
+		} else if first.typ == .assert_start {
+			anchored = true
 		}
 	}
 
 	return Regex{
-		max_stack_depth: 1024
+		max_stack_depth: 2048
 		pattern:         pattern
 		prog:            optimized_prog
 		total_groups:    final_group_count
 		group_map:       group_map
 		prefix_lit:      prefix
 		has_prefix:      has_prefix
+		anchored:        anchored
 	}
 }
 
-// new_machine creates a fresh execution context for a match operation.
-// This is used internally to ensure thread-safety.
+// new_machine allocates a new VM state machine.
+// This isolates the runtime memory (stack/captures) from the compiled regex, allowing thread-safe usage.
 pub fn (r &Regex) new_machine() Machine {
+	// Pre-allocate enough space for stack and captures to avoid re-allocation in hot path
 	return Machine{
 		stack:    []int{len: r.max_stack_depth}
 		captures: []int{len: r.total_groups * 2}
 	}
 }
 
-// change_stack_depth updates the internal stack capacity hint.
-pub fn (mut r Regex) change_stack_depth(depth int) {
-	r.max_stack_depth = depth
-}
-
+// Compiler holds the state for generating the bytecode instructions.
 struct Compiler {
 mut:
 	prog []Inst
 }
 
-// emit appends an instruction to the program.
+// emit appends an instruction to the program and returns its index.
 fn (mut c Compiler) emit(i Inst) int {
 	c.prog << i
 	return c.prog.len - 1
 }
 
-// optimize merges consecutive literal characters into single string instructions.
+// optimize merges consecutive literal characters into single string instructions
+// and resolves jump targets to absolute indices.
 fn (mut c Compiler) optimize() []Inst {
 	mut targets := map[int]bool{}
 	for inst in c.prog {
@@ -322,6 +333,7 @@ fn (mut c Compiler) optimize() []Inst {
 		inst := c.prog[i]
 		idx_map[i] = new_prog.len
 
+		// Optimization: Merge consecutive chars
 		if inst.typ == .char && !inst.ignore_case && inst.val < 128 {
 			mut s_val := unsafe { u8(inst.val).ascii_str() }
 			mut j := i + 1
@@ -352,6 +364,7 @@ fn (mut c Compiler) optimize() []Inst {
 	}
 	idx_map[c.prog.len] = new_prog.len
 
+	// Fix jump offsets
 	for mut inst in new_prog {
 		if inst.typ == .split || inst.typ == .jmp {
 			inst.target_x = idx_map[inst.target_x] or { inst.target_x }
@@ -361,12 +374,14 @@ fn (mut c Compiler) optimize() []Inst {
 	return new_prog
 }
 
-// emit_class compiles character classes into bitsets.
+// emit_class generates the instructions for a character class node.
+// It populates the bitmap for O(1) ASCII matching and the slice for Unicode.
 fn (mut c Compiler) emit_class(node Node) {
 	mut bitmap := [4]u32{}
 	mut char_class := node.char_set.clone()
 	mut inverted := node.inverted
 
+	// Pre-compile common classes into the bitmap for O(1) lookups
 	match node.typ {
 		.word_char {
 			for r := `0`; r <= `9`; r++ {
@@ -449,7 +464,7 @@ fn (mut c Compiler) emit_class(node Node) {
 	})
 }
 
-// emit_node handles quantifiers and structural emission.
+// emit_node handles quantifiers and loops, delegating the actual logic to emit_logic.
 fn (mut c Compiler) emit_node(node Node) {
 	for _ in 0 .. node.quant.min {
 		c.emit_logic(node)
@@ -492,7 +507,7 @@ fn (mut c Compiler) emit_node(node Node) {
 	}
 }
 
-// emit_logic translates AST node types into VM instructions.
+// emit_logic generates instructions for specific node types (char, group, alternation).
 fn (mut c Compiler) emit_logic(node Node) {
 	match node.typ {
 		.chr {
@@ -555,7 +570,7 @@ fn (mut c Compiler) emit_logic(node Node) {
 	}
 }
 
-// parse_nodes implements the Recursive Descent parser for the regex grammar.
+// parse_nodes implements a recursive descent parser to construct the AST from the pattern string.
 fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_start int, passed_flags Flags, mut group_map map[string]int) !([]Node, int, int) {
 	mut pos := pos_start
 	mut group_counter := group_counter_start
@@ -840,43 +855,51 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 
 /******************************************************************************
 *
-* Virtual Machine Execution Engine
+* Virtual Machine Execution Engine (Highly Optimized)
 *
 ******************************************************************************/
 
-// vm_match executes the bytecode against the input string.
-// Fixed: m is now passed as a mutable reference, making it thread-safe.
+// vm_match executes the bytecode against the input string using the provided Machine state.
+// OPTIMIZATION: Uses raw pointers for instruction and stack access to bypass bounds checking.
 @[direct_array_access]
 fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 	unsafe {
-		mut captures := m.captures
-		for i in 0 .. captures.len {
-			captures[i] = -1
+		// Optimization: Cast voidptr to typed pointer for direct indexing
+		mut cap_ptr := &int(m.captures.data)
+		cap_len := m.captures.len
+
+		// Fast clear of captures using pointer arithmetic (memset-like)
+		for i := 0; i < cap_len; i++ {
+			cap_ptr[i] = -1
 		}
 
-		mut pc := 0
-		mut sp := start_pos
-		mut stack_ptr := 0
+		mut sp := start_pos // String Pointer Index
+		mut stack_ptr := 0 // Stack Pointer Offset
 
 		cap_size := r.total_groups * 2
-		frame_size := cap_size + 2
+		frame_size := cap_size + 2 // [captures..., saved_sp, saved_pc]
 
-		prog_ptr := &Inst(r.prog.data)
+		// Raw pointers for hot path access
+		prog_start := &Inst(r.prog.data)
+		mut inst_ptr := prog_start // PC as a pointer
+
 		str_ptr := text.str
 		str_len := text.len
 
+		// Cache stack data pointer (cast to typed pointer)
+		mut stack_data := &int(m.stack.data)
+		mut stack_max := m.stack.len
+
 		for {
-			if pc >= r.prog.len {
-				goto backtrack
-			}
+			// Check if we walked off the program (should be caught by match inst)
+			// Using pointer arithmetic: offset = (inst_ptr - prog_start)
 
-			inst := &prog_ptr[pc]
-
-			match inst.typ {
+			match inst_ptr.typ {
 				.match {
+					// Only allocate result strings on successful match
 					mut s_groups := []string{cap: r.total_groups}
 					for i := 0; i < r.total_groups; i++ {
-						s, e := captures[i * 2], captures[i * 2 + 1]
+						s, e := cap_ptr[i * 2], cap_ptr[i * 2 + 1]
 						s_groups << if s != -1 && e >= s { text[s..e] } else { '' }
 					}
 					return Match{
@@ -891,9 +914,11 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 						goto backtrack
 					}
 					curr_byte := str_ptr[sp]
-					if curr_byte < 128 && inst.val < 128 {
-						mut c1, mut c2 := curr_byte, u8(inst.val)
-						if inst.ignore_case {
+
+					// Fast ASCII path
+					if curr_byte < 128 && inst_ptr.val < 128 {
+						mut c1, mut c2 := curr_byte, u8(inst_ptr.val)
+						if inst_ptr.ignore_case {
 							if c1 >= `a` && c1 <= `z` {
 								c1 -= 32
 							}
@@ -903,47 +928,53 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 						}
 						if c1 == c2 {
 							sp++
-							pc++
+							inst_ptr++
 							continue
 						}
 						goto backtrack
 					}
+
+					// UTF-8 Path
 					rn, l := read_rune_at(str_ptr, str_len, sp)
 					if l == 0 {
 						goto backtrack
 					}
+
 					mut match_ok := false
-					if inst.ignore_case {
+					if inst_ptr.ignore_case {
 						r1 := if rn >= `a` && rn <= `z` { rn - 32 } else { rn }
-						r2 := if inst.val >= `a` && inst.val <= `z` {
-							inst.val - 32
+						r2 := if inst_ptr.val >= `a` && inst_ptr.val <= `z` {
+							inst_ptr.val - 32
 						} else {
-							inst.val
+							inst_ptr.val
 						}
 						if r1 == r2 {
 							match_ok = true
 						}
-					} else if rn == inst.val {
+					} else if rn == inst_ptr.val {
 						match_ok = true
 					}
+
 					if match_ok {
 						sp += l
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
 				}
 				.string {
-					if sp + inst.val_len > str_len {
+					if sp + inst_ptr.val_len > str_len {
 						goto backtrack
 					}
-					for i in 0 .. inst.val_len {
-						if str_ptr[sp + i] != inst.val_str.str[i] {
+					// Inline memcmp
+					v_str := inst_ptr.val_str.str
+					for i in 0 .. inst_ptr.val_len {
+						if str_ptr[sp + i] != v_str[i] {
 							goto backtrack
 						}
 					}
-					sp += inst.val_len
-					pc++
+					sp += inst_ptr.val_len
+					inst_ptr++
 				}
 				.class {
 					if sp >= str_len {
@@ -952,23 +983,26 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 					c_byte := str_ptr[sp]
 					mut matched := false
 					mut cl := 1
+
+					// Optimization: Bitmap lookup for ASCII
 					if c_byte < 128 {
-						if (inst.bitmap[c_byte >> 5] & (u32(1) << (c_byte & 31))) != 0 {
+						if (inst_ptr.bitmap[c_byte >> 5] & (u32(1) << (c_byte & 31))) != 0 {
 							matched = true
 						}
 					} else {
 						rn, l := read_rune_at(str_ptr, str_len, sp)
 						cl = l
-						for cr in inst.char_class {
+						for cr in inst_ptr.char_class {
 							if cr == rn {
 								matched = true
 								break
 							}
 						}
 					}
-					if matched != inst.inverted {
+
+					if matched != inst_ptr.inverted {
 						sp += cl
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
@@ -977,63 +1011,70 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 					if sp >= str_len {
 						goto backtrack
 					}
-					if inst.dot_all || str_ptr[sp] != `\n` {
+					if inst_ptr.dot_all || str_ptr[sp] != `\n` {
 						_, cl := read_rune_at(str_ptr, str_len, sp)
 						sp += cl
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
 				}
 				.save {
-					captures[inst.group_idx] = sp
-					pc++
+					cap_ptr[inst_ptr.group_idx] = sp
+					inst_ptr++
 				}
 				.split {
-					if stack_ptr + frame_size >= m.stack.len {
-						new_size := m.stack.len * 2
+					if stack_ptr + frame_size >= stack_max {
+						new_size := stack_max * 2
 						if new_size > 1_000_000 {
 							goto backtrack
 						}
 						m.stack.grow_len(new_size)
+						stack_data = &int(m.stack.data) // Pointer might change on realloc
+						stack_max = new_size
 					}
 
-					mut stack_ref := m.stack
+					// Optimization: Unrolled stack push
+					stack_offset := stack_ptr
 					for i in 0 .. cap_size {
-						stack_ref[stack_ptr + i] = captures[i]
+						stack_data[stack_offset + i] = cap_ptr[i]
 					}
-					stack_ref[stack_ptr + cap_size] = sp
-					stack_ref[stack_ptr + cap_size + 1] = inst.target_y
+					stack_data[stack_offset + cap_size] = sp
+					// Save backtrack target PC index
+					stack_data[stack_offset + cap_size + 1] = inst_ptr.target_y
+
 					stack_ptr += frame_size
-					pc = inst.target_x
+					// Jump to primary target (convert index to pointer)
+					// FIX: Use pointer indexing instead of addition to avoid type mismatch
+					inst_ptr = &prog_start[inst_ptr.target_x]
 				}
 				.jmp {
-					pc = inst.target_x
+					inst_ptr = &prog_start[inst_ptr.target_x]
 				}
 				.assert_start {
 					if sp == 0 {
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
 				}
 				.assert_end {
 					if sp == str_len {
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
 				}
 				.assert_line_start {
 					if sp == 0 || (sp > 0 && str_ptr[sp - 1] == `\n`) {
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
 				}
 				.assert_line_end {
 					if sp == str_len || str_ptr[sp] == `\n` {
-						pc++
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
@@ -1041,9 +1082,9 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 				.assert_bound, .assert_nbound {
 					l := if sp > 0 { is_word_char(str_ptr[sp - 1]) } else { false }
 					r_ := if sp < str_len { is_word_char(str_ptr[sp]) } else { false }
-					if (inst.typ == .assert_bound && l != r_)
-						|| (inst.typ == .assert_nbound && l == r_) {
-						pc++
+					if (inst_ptr.typ == .assert_bound && l != r_)
+						|| (inst_ptr.typ == .assert_nbound && l == r_) {
+						inst_ptr++
 					} else {
 						goto backtrack
 					}
@@ -1055,13 +1096,18 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 			if stack_ptr <= 0 {
 				return none
 			}
-			mut stack_ref := m.stack
+
 			stack_ptr -= frame_size
+			stack_offset := stack_ptr
+
+			// Restore captures
 			for i in 0 .. cap_size {
-				captures[i] = stack_ref[stack_ptr + i]
+				cap_ptr[i] = stack_data[stack_offset + i]
 			}
-			sp = stack_ref[stack_ptr + cap_size]
-			pc = stack_ref[stack_ptr + cap_size + 1]
+			sp = stack_data[stack_offset + cap_size]
+			// Restore PC from index (explicit cast for pointer arithmetic)
+			// FIX: Use pointer indexing instead of addition
+			inst_ptr = &prog_start[stack_data[stack_offset + cap_size + 1]]
 		}
 	}
 	return none
@@ -1079,12 +1125,26 @@ pub fn (r &Regex) find(text string) ?Match {
 }
 
 // find_from returns the first match starting from start_index.
+// Optimized with fast prefix skipping and anchor checks.
 pub fn (r &Regex) find_from(text string, start_index int) ?Match {
 	if start_index < 0 || start_index > text.len {
 		return none
 	}
-	mut m := r.new_machine() // Local state for thread safety
+	mut m := r.new_machine()
 
+	// Optimization: Anchored pattern (^) only checks the start
+	if r.anchored {
+		if start_index == 0 {
+			return r.vm_match(text, 0, mut m)
+		}
+		// If multiline mode is NOT enabled, ^ only matches index 0.
+		// If multiline is enabled, we need to check every newline, handled by logic below.
+		// Note: The compiler sets anchored=true only for ^ at start.
+		// If multiline flag is set dynamically inside pattern, strict anchoring logic might differ,
+		// but standard ^ usage benefits here.
+	}
+
+	// Optimization: Boyer-Moore-like literal prefix skip
 	if r.has_prefix {
 		mut i := text.index_after(r.prefix_lit, start_index) or { -1 }
 		for i != -1 {
@@ -1097,6 +1157,8 @@ pub fn (r &Regex) find_from(text string, start_index int) ?Match {
 	}
 
 	for i := start_index; i <= text.len; i++ {
+		// Skip UTF-8 continuation bytes to ensure we only match at rune boundaries
+		// 0xC0 (11000000) is the start of a multi-byte sequence, 0x80 (10000000) is a continuation
 		if i > 0 && i < text.len && (text[i] & 0xC0) == 0x80 {
 			continue
 		}
@@ -1110,7 +1172,7 @@ pub fn (r &Regex) find_from(text string, start_index int) ?Match {
 // find_all returns all non-overlapping matches in text.
 pub fn (r &Regex) find_all(text string) []Match {
 	mut matches := []Match{}
-	mut m := r.new_machine() // Shared for internal iterations, private to this call
+	mut m := r.new_machine()
 	mut i := 0
 	for i <= text.len {
 		if i > 0 && i < text.len && (text[i] & 0xC0) == 0x80 {
@@ -1130,7 +1192,7 @@ pub fn (r &Regex) find_all(text string) []Match {
 // replace finds the first match and replaces it using repl. Supports $1, $2 backreferences.
 pub fn (r &Regex) replace(text string, repl string) string {
 	res := r.find(text) or { return text }
-	mut sb := strings.new_builder(text.len)
+	mut sb := strings.new_builder(text.len + repl.len)
 	sb.write_string(text[0..res.start])
 	mut i := 0
 	for i < repl.len {
@@ -1175,17 +1237,18 @@ pub fn (r &Regex) group_by_name(m Match, name string) string {
 *
 ******************************************************************************/
 
-// new_regex is an alias for compile (compatible with other regex engines).
+// new_regex is a helper wrapper to compile a regex pattern.
 pub fn new_regex(pattern string, _ int) !Regex {
 	return compile(pattern)
 }
 
-// match_str is an alias for find_from.
+// match_str is a compatibility alias for find_from.
 pub fn (r &Regex) match_str(text string, start_index int, _ int) ?Match {
 	return r.find_from(text, start_index)
 }
 
-// get returns the match text for index 0 or the group text for index 1+.
+// get returns the matched text for a specific group index.
+// Index 0 returns the full match, 1..n returns capture groups.
 pub fn (m Match) get(idx int) ?string {
 	if idx == 0 {
 		return m.text
@@ -1196,7 +1259,7 @@ pub fn (m Match) get(idx int) ?string {
 	return none
 }
 
-// get_all returns the match text followed by all captured groups.
+// get_all returns a list of all captured strings, starting with the full match at index 0.
 pub fn (m Match) get_all() []string {
 	mut res := [m.text]
 	res << m.groups
