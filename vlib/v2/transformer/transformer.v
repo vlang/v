@@ -872,12 +872,6 @@ fn (t &Transformer) is_interface_var(name string) bool {
 // get_var_type_name returns the type name of a variable from scope lookup
 fn (t &Transformer) get_var_type_name(name string) string {
 	typ := t.lookup_var_type(name) or { return '' }
-	if typ is types.Alias {
-		if typ.name != '' {
-			return typ.name
-		}
-		return t.type_to_name(typ.base_type)
-	}
 	if typ is types.String {
 		return 'string'
 	}
@@ -5505,9 +5499,12 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 			}
 		}
 		transformed := t.transform_expr(expr)
-		// Wrap variant values in sum type initialization if needed
+		// Wrap variant values in sum type initialization if needed.
+		// Use wrap_sumtype_value_transformed because the value is already transformed above.
+		// Using wrap_sumtype_value would transform the value a second time, causing
+		// double smartcast dereferences (e.g., ((T*)(((T*)(x._data._T))->_data._T))->field).
 		if t.cur_fn_ret_type_name != '' && t.is_sum_type(t.cur_fn_ret_type_name) {
-			if wrapped := t.wrap_sumtype_value(transformed, t.cur_fn_ret_type_name) {
+			if wrapped := t.wrap_sumtype_value_transformed(transformed, t.cur_fn_ret_type_name) {
 				exprs << wrapped
 				continue
 			}
@@ -7791,6 +7788,38 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			field_type_name = t.get_init_expr_field_type_name(expr.typ, field.name)
 		}
 		if t.is_sum_type(field_type_name) {
+			// If the value is a variable whose declared type is already this sum type
+			// (e.g., `expr: ast.Expr` used in `GenericArgOrIndexExpr{expr: expr}`),
+			// skip wrapping. At the C level, the variable is already a tagged union
+			// of the correct type, so wrapping would produce invalid C.
+			if field.value is ast.Ident {
+				if var_type := t.lookup_var_type(field.value.name) {
+					if var_type is types.SumType {
+						var_st_name := types.sum_type_name(var_type)
+						if var_st_name == field_type_name
+							|| match_sumtype_variant_name(var_st_name, [field_type_name]) != '' {
+							// Variable is already the target sum type. Remove any
+							// smartcast context temporarily so transform_expr returns
+							// the raw variable (tagged union value) without deref.
+							if sc_ctx := t.find_smartcast_for_expr(field.value.name) {
+								removed := t.remove_matching_smartcasts(sc_ctx)
+								transformed_direct := t.transform_expr(field.value)
+								t.restore_smartcasts(removed)
+								fields << ast.FieldInit{
+									name:  field.name
+									value: transformed_direct
+								}
+							} else {
+								fields << ast.FieldInit{
+									name:  field.name
+									value: t.transform_expr(field.value)
+								}
+							}
+							continue
+						}
+					}
+				}
+			}
 			// This is a sum type field - wrap the value in sum type initialization
 			if wrapped := t.wrap_sumtype_value(field.value, field_type_name) {
 				fields << ast.FieldInit{
@@ -9323,8 +9352,24 @@ fn (t &Transformer) type_expr_name_full(expr ast.Expr) string {
 
 // get_struct_field_type_name returns the type name of a field in a struct
 fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name string) string {
-	// Look up the struct type in scopes
+	// Look up the struct type in scopes.
+	// When the struct name is not module-qualified, prefer the current module scope
+	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
 	lock t.env.scopes {
+		// First: try the current module scope for non-qualified names.
+		if !struct_name.contains('__') && t.cur_module != '' && t.cur_module != 'main'
+			&& t.cur_module != 'builtin' {
+			if cur_scope := t.env.scopes[t.cur_module] {
+				if obj := cur_scope.objects[struct_name] {
+					if obj is types.Type {
+						result := t.get_field_type_name(obj, field_name)
+						if result != '' {
+							return result
+						}
+					}
+				}
+			}
+		}
 		scope_names := t.env.scopes.keys()
 		for scope_name in scope_names {
 			scope := t.env.scopes[scope_name] or { continue }
@@ -9382,14 +9427,81 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 	if variants.len == 0 {
 		return none
 	}
-	typ := t.get_expr_type(value) or { return none }
-	c_name := t.type_to_c_name(typ)
-	if c_name == '' || c_name == 'void' {
+	mut variant_name := ''
+	// Try checker-provided type first (works for original expressions with valid pos.id)
+	if typ := t.get_expr_type(value) {
+		c_name := t.type_to_c_name(typ)
+		if c_name != '' && c_name != 'void' {
+			variant_name = t.match_variant(c_name, variants) or { '' }
+		}
+	}
+	// Fallback: infer variant from expression structure (needed for already-transformed
+	// expressions that have lost their position IDs after transformation)
+	if variant_name == '' {
+		variant_name = t.infer_variant_from_expr(value, variants)
+	}
+	if variant_name == '' {
 		return none
 	}
-	variant_name := t.match_variant(c_name, variants) or { return none }
 	// Value is already transformed, just wrap it
 	return t.build_sumtype_init(value, variant_name, sumtype_name)
+}
+
+// infer_variant_from_expr determines which variant of a sum type a value belongs to
+// by examining the expression structure. Used as a fallback when position-based type
+// lookup (get_expr_type) fails for already-transformed expressions.
+fn (t &Transformer) infer_variant_from_expr(value ast.Expr, variants []string) string {
+	if value is ast.InitExpr {
+		type_name := t.get_init_expr_type_name(value.typ)
+		matched := t.match_variant(type_name, variants) or { '' }
+		if matched != '' {
+			return matched
+		}
+		// Try with module prefix
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			mangled := '${t.cur_module}__${type_name}'
+			if m := t.match_variant(mangled, variants) {
+				return m
+			}
+		}
+	}
+	if value is ast.BasicLiteral {
+		if value.kind == .number {
+			if value.value.contains('.') {
+				return match_sumtype_variant_name('f64', variants)
+			}
+			return match_sumtype_variant_name('int', variants)
+		}
+		if value.kind == .string {
+			return match_sumtype_variant_name('string', variants)
+		}
+	}
+	if value is ast.StringLiteral || value is ast.StringInterLiteral {
+		return match_sumtype_variant_name('string', variants)
+	}
+	if value is ast.Ident {
+		var_type := t.get_var_type_name(value.name)
+		if var_type != '' {
+			matched := t.match_variant(var_type, variants) or { '' }
+			if matched != '' {
+				return matched
+			}
+		}
+	}
+	if value is ast.CastExpr {
+		matched := t.match_variant(t.type_expr_name_full(value.typ), variants) or { '' }
+		if matched != '' {
+			return matched
+		}
+	}
+	if value is ast.CallExpr {
+		matched := match_sumtype_variant_name(t.get_call_return_type(ast.Expr(value)),
+			variants)
+		if matched != '' {
+			return matched
+		}
+	}
+	return ''
 }
 
 // match_variant finds the variant in variants that matches c_name (exact or short name match)
@@ -9497,6 +9609,22 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 	}
 }
 
+fn match_sumtype_variant_name(candidate string, variants []string) string {
+	if candidate.len == 0 {
+		return ''
+	}
+	if candidate in variants {
+		return candidate
+	}
+	cand_short := if candidate.contains('__') { candidate.all_after_last('__') } else { candidate }
+	for v in variants {
+		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+		if cand_short == v_short || cand_short == v {
+			return v
+		}
+	}
+	return ''
+}
 fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// Preserve short-circuit semantics while making smartcasts available to all
 	// following terms in `&&` chains (including multiple `is` checks).
@@ -10476,23 +10604,37 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	}
 }
 
-fn (t &Transformer) lookup_call_fn_type(lhs ast.Expr) ?types.FnType {
+struct CallFnInfo {
+	param_types []types.Type
+	param_names []string
+}
+
+fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 	// Prefer checker-resolved callable type for this exact call target.
 	// This is the most reliable source for method parameter info (names + types).
 	if lhs_type := t.get_expr_type(lhs) {
 		callable := t.unwrap_alias_and_pointer_type(lhs_type)
 		if callable is types.FnType {
-			return callable
+			return CallFnInfo{
+				param_types: callable.get_param_types()
+				param_names: callable.get_param_names()
+			}
 		}
 	}
 	if lhs is ast.Ident {
 		if t.cur_module != '' {
 			if fn_type := t.env.lookup_fn(t.cur_module, lhs.name) {
-				return fn_type
+				return CallFnInfo{
+					param_types: fn_type.get_param_types()
+					param_names: fn_type.get_param_names()
+				}
 			}
 		}
 		if fn_type := t.env.lookup_fn('builtin', lhs.name) {
-			return fn_type
+			return CallFnInfo{
+				param_types: fn_type.get_param_types()
+				param_names: fn_type.get_param_names()
+			}
 		}
 		return none
 	}
@@ -10500,7 +10642,10 @@ fn (t &Transformer) lookup_call_fn_type(lhs ast.Expr) ?types.FnType {
 		if lhs.lhs is ast.Ident {
 			mod_name := (lhs.lhs as ast.Ident).name
 			if fn_type := t.env.lookup_fn(mod_name, lhs.rhs.name) {
-				return fn_type
+				return CallFnInfo{
+					param_types: fn_type.get_param_types()
+					param_names: fn_type.get_param_names()
+				}
 			}
 		}
 		if recv_type := t.get_expr_type(lhs.lhs) {
@@ -10515,7 +10660,10 @@ fn (t &Transformer) lookup_call_fn_type(lhs ast.Expr) ?types.FnType {
 			}
 			for name in lookup_names {
 				if fn_type := t.env.lookup_method(name, lhs.rhs.name) {
-					return fn_type
+					return CallFnInfo{
+						param_types: fn_type.get_param_types()
+						param_names: fn_type.get_param_names()
+					}
 				}
 			}
 		}
@@ -10524,8 +10672,8 @@ fn (t &Transformer) lookup_call_fn_type(lhs ast.Expr) ?types.FnType {
 }
 
 fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
-	if fn_type := t.lookup_call_fn_type(lhs) {
-		return fn_type.get_param_types()
+	if info := t.lookup_call_fn_info(lhs) {
+		return info.param_types
 	}
 	return []types.Type{}
 }
@@ -10689,12 +10837,12 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 }
 
 fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
-	fn_type := t.lookup_call_fn_type(lhs) or { return args }
-	param_types := fn_type.get_param_types()
+	info := t.lookup_call_fn_info(lhs) or { return args }
+	param_types := info.param_types
 	if param_types.len == 0 {
 		return args
 	}
-	param_names := fn_type.get_param_names()
+	param_names := info.param_names
 
 	mut out := []ast.Expr{cap: args.len}
 	for arg in args {
@@ -10743,14 +10891,14 @@ fn (mut t Transformer) empty_struct_arg_expr(param_type types.Type) ast.Expr {
 		for cur is types.Alias {
 			cur = cur.base_type()
 		}
+		inner := cur.base_type()
 		if cur is types.Pointer {
-			ptr := cur as types.Pointer
 			init_pos := t.next_synth_pos()
 			ptr_pos := t.next_synth_pos()
-			t.register_synth_type(init_pos, ptr.base_type)
+			t.register_synth_type(init_pos, inner)
 			t.register_synth_type(ptr_pos, param_type)
 			init_expr := ast.Expr(ast.InitExpr{
-				typ: t.type_to_ast_type_expr(ptr.base_type)
+				typ: t.type_to_ast_type_expr(inner)
 				pos: init_pos
 			})
 			return ast.Expr(ast.PrefixExpr{
@@ -10907,9 +11055,9 @@ fn (mut t Transformer) lower_struct_shorthand_call(args []ast.Expr, param_types 
 		for cur is types.Alias {
 			cur = cur.base_type()
 		}
+		inner := cur.base_type()
 		if cur is types.Pointer {
-			ptr := cur as types.Pointer
-			init_typ = ptr.base_type
+			init_typ = inner
 		}
 	}
 	init_pos := t.next_synth_pos()
@@ -11088,9 +11236,27 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				if expr.expr !is ast.EmptyExpr {
 					args << t.transform_expr(expr.expr)
 				}
-				// Route through transform_call_expr so method resolution stays in transformer,
-				// not in the backend.
-				return t.transform_call_expr(ast.CallExpr{
+				// Resolve method name using the ORIGINAL (pre-smartcast) receiver,
+				// then build the result directly. Do NOT route through transform_call_expr
+				// because it would re-transform the already-casted receiver and args,
+				// causing double smartcast dereferences.
+				if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+					is_static := t.is_static_method_call(sel.lhs)
+					mut final_args := []ast.Expr{cap: args.len + 1}
+					if !is_static {
+						final_args << casted_receiver
+					}
+					final_args << args
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved
+						}
+						args: final_args
+						pos:  expr.pos
+					}
+				}
+				// Fallback: keep as method call with casted receiver (let cleanc resolve)
+				return ast.CallExpr{
 					lhs:  ast.Expr(ast.SelectorExpr{
 						lhs: casted_receiver
 						rhs: sel.rhs
@@ -11098,7 +11264,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 					})
 					args: args
 					pos:  expr.pos
-				})
+				}
 			}
 		}
 		// Check for interface method call: iface.method(arg)
@@ -11167,7 +11333,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	}
 	// Check for explicit sum type cast: SumType(value) -> proper wrapping.
 	// Important: do not transform `value` before variant inference, otherwise casts like
-	// `Expr(EmptyExpr(0))` turn into `CastExpr` and `infer_variant_type` can no longer
+	// `Expr(EmptyExpr(0))` turn into `CastExpr` and variant inference can no longer
 	// recover the variant.
 	sumtype_name := t.type_expr_name_full(expr.lhs)
 	if sumtype_name != '' && t.call_or_cast_lhs_is_type(expr.lhs) && t.is_sum_type(sumtype_name) {
@@ -11501,6 +11667,19 @@ fn (t &Transformer) type_to_name(typ types.Type) string {
 	}
 	if typ is types.SumType {
 		return types.sum_type_name(typ)
+	}
+	inner := typ.base_type()
+	if typ is types.OptionType {
+		return '_option_' + t.type_to_name(inner)
+	}
+	if typ is types.ResultType {
+		return '_result_' + t.type_to_name(inner)
+	}
+	if typ is types.Pointer {
+		return t.type_to_name(inner) + '*'
+	}
+	if typ is types.FnType {
+		return 'FnType'
 	}
 	return ''
 }
