@@ -65,21 +65,6 @@ fn (mut g Gen) emit_cached_init_call_decls() {
 	g.sb.writeln('')
 }
 
-fn should_skip_system_fn_decl(name string) bool {
-	return name in ['dprintf', 'sscanf', 'scanf', 'puts', 'fputs', 'fseek', 'fopen', 'fwrite',
-		'open', 'access', 'execve', 'execvp', 'geteuid', 'getuid', 'system', 'setenv', 'unsetenv',
-		'strchr', 'strrchr', 'remove', 'rmdir', 'chdir', 'rewind', 'stat', 'lstat', 'statvfs',
-		'rename', 'fgets', 'fgetpos', 'gettimeofday', 'mkdir', 'mktime', 'opendir', 'strcasecmp',
-		'strdup', 'strncasecmp', 'sigemptyset', 'WIFEXITED', 'WEXITSTATUS', 'WIFSIGNALED', 'WTERMSIG',
-		'syscall', 'setbuf', 'pthread_self', 'pthread_mutex_init', 'pthread_mutex_lock',
-		'pthread_mutex_unlock', 'pthread_mutex_destroy', 'pthread_rwlockattr_init',
-		'pthread_rwlockattr_setpshared', 'pthread_rwlock_init', 'pthread_rwlock_rdlock',
-		'pthread_rwlock_wrlock', 'pthread_rwlock_unlock', 'pthread_condattr_init',
-		'pthread_condattr_setpshared', 'pthread_condattr_destroy', 'pthread_cond_init',
-		'pthread_cond_wait', 'pthread_cond_signal', 'pthread_cond_destroy', 'pthread_cond_timedwait',
-		'read', 'write', 'sysconf', 'readlink', 'utime', 'uname']
-}
-
 fn (mut g Gen) ensure_tuple_alias_for_fn_return(node ast.FnDecl, ret_type string) {
 	tuple_name := tuple_payload_type_name(ret_type)
 	if tuple_name == '' || tuple_name in g.tuple_aliases {
@@ -123,8 +108,7 @@ fn (mut g Gen) collect_fn_signatures() {
 						continue
 					}
 					mut fn_name := ''
-					if stmt.stmts.len == 0
-						&& (stmt.language == .c || should_skip_system_fn_decl(stmt.name)) {
+					if stmt.stmts.len == 0 && stmt.language == .c {
 						// Keep raw symbol names for C / system declaration-only functions.
 						fn_name = sanitize_fn_ident(stmt.name)
 					} else {
@@ -183,9 +167,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	}
 	// Generate V and .c.v function bodies, but skip JS and C extern declarations.
 	if node.language == .js {
-		return
-	}
-	if node.stmts.len == 0 && should_skip_system_fn_decl(node.name) {
 		return
 	}
 	// Header files carry declaration-only function nodes.

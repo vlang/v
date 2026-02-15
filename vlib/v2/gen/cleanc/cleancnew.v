@@ -443,9 +443,6 @@ pub fn (mut g Gen) gen() string {
 				if stmt.language == .js {
 					continue
 				}
-				if stmt.stmts.len == 0 && should_skip_system_fn_decl(stmt.name) {
-					continue
-				}
 				if stmt.language == .c && stmt.stmts.len == 0 {
 					continue
 				}
