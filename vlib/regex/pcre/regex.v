@@ -1,5 +1,5 @@
 /*
-regex2 0.9.4 beta (VM Edition) - Performance Optimized
+regex2 0.9.5 beta (VM Edition) - Performance Optimized
 
 Copyright (c) 2026 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -48,6 +48,26 @@ Key Architectural Features and Optimizations:
 
 */
 
+/*
+pcre 0.9.5 beta (VM Edition) - Thread-Safe & Performance Optimized
+
+Copyright (c) 2026 Dario Deledda. All rights reserved.
+Use of this source code is governed by an MIT license
+that can be found in the LICENSE file.
+
+This module provides a Virtual Machine (VM) based regular expression engine.
+This implementation is thread-safe: a single compiled Regex can be used
+concurrently across multiple threads.
+
+Key Architectural Features:
+ - **NFA Virtual Machine**: Executes bytecode instructions to simulate pattern matching.
+ - **Thread-Safe**: matching state is stack-allocated per call to prevent data races.
+ - **Dynamic Stack Growth**: Automatically expands the backtracking stack to prevent false negatives.
+ - **Fast ASCII Path**: Optimized execution for ASCII characters to bypass UTF-8 decoding.
+ - **Instruction Merging**: Combines consecutive literal matches into single string instructions.
+ - **Bitmap Lookup**: ASCII character classes use bitsets for O(1) matching.
+*/
+
 module pcre
 
 import strings
@@ -93,8 +113,9 @@ mut:
 	dot_all     bool   // Whether '.' matches '\n'
 }
 
-// Machine provides a workspace for VM execution to avoid allocations during search.
-struct Machine {
+// Machine provides a workspace for VM execution.
+// To ensure thread safety, this is created per top-level API call.
+pub struct Machine {
 mut:
 	stack    []int // Backtracking stack stores: [capture_states..., string_ptr, next_pc]
 	captures []int // Flat array of [start, end] byte indices for groups
@@ -109,9 +130,8 @@ pub:
 	group_map    map[string]int // Mapping of names to indices for (?P<name>...)
 	prefix_lit   string         // Pre-calculated literal prefix for fast-skip optimization
 	has_prefix   bool           // Whether a literal prefix exists
-mut:
-	max_stack_depth int = 1024 // User-defined stack limit hint
-	machine         Machine // Internal workspace
+pub mut:
+	max_stack_depth int // User-defined stack limit hint
 }
 
 // Match contains the results of a successful regex match.
@@ -230,7 +250,6 @@ fn set_bitmap(mut bitmap [4]u32, r rune) {
 ******************************************************************************/
 
 // compile transforms a regex pattern string into a Regex object.
-// Returns an error if the pattern syntax is invalid.
 pub fn compile(pattern string) !Regex {
 	mut group_map := map[string]int{}
 	initial_flags := Flags{false, false, false}
@@ -255,7 +274,7 @@ pub fn compile(pattern string) !Regex {
 	// Phase 3: Peephole Optimization
 	optimized_prog := compiler.optimize()
 
-	// Detect constant prefix for Boyer-Moore style skipping
+	// Detect constant prefix for fast-skip optimization
 	mut prefix := ''
 	mut has_prefix := false
 	if optimized_prog.len > 0 {
@@ -277,18 +296,21 @@ pub fn compile(pattern string) !Regex {
 		group_map:       group_map
 		prefix_lit:      prefix
 		has_prefix:      has_prefix
-		machine:         Machine{
-			stack:    []int{len: 1024}
-			captures: []int{len: final_group_count * 2}
-		}
 	}
 }
 
-// change_stack_depth updates the internal stack capacity.
-// Useful for pre-allocating memory for extremely complex patterns.
+// new_machine creates a fresh execution context for a match operation.
+// This is used internally to ensure thread-safety.
+pub fn (r &Regex) new_machine() Machine {
+	return Machine{
+		stack:    []int{len: r.max_stack_depth}
+		captures: []int{len: r.total_groups * 2}
+	}
+}
+
+// change_stack_depth updates the internal stack capacity hint.
 pub fn (mut r Regex) change_stack_depth(depth int) {
 	r.max_stack_depth = depth
-	r.machine.stack = []int{len: depth}
 }
 
 struct Compiler {
@@ -320,7 +342,6 @@ fn (mut c Compiler) optimize() []Inst {
 		inst := c.prog[i]
 		idx_map[i] = new_prog.len
 
-		// Merge logic: consecutive .char instructions that are not jump targets
 		if inst.typ == .char && !inst.ignore_case && inst.val < 128 {
 			mut s_val := unsafe { u8(inst.val).ascii_str() }
 			mut j := i + 1
@@ -351,7 +372,6 @@ fn (mut c Compiler) optimize() []Inst {
 	}
 	idx_map[c.prog.len] = new_prog.len
 
-	// Update jump addresses after program compression
 	for mut inst in new_prog {
 		if inst.typ == .split || inst.typ == .jmp {
 			inst.target_x = idx_map[inst.target_x] or { inst.target_x }
@@ -361,7 +381,7 @@ fn (mut c Compiler) optimize() []Inst {
 	return new_prog
 }
 
-// emit_class compiles built-in and custom character classes into bitsets.
+// emit_class compiles character classes into bitsets.
 fn (mut c Compiler) emit_class(node Node) {
 	mut bitmap := [4]u32{}
 	mut char_class := node.char_set.clone()
@@ -451,12 +471,10 @@ fn (mut c Compiler) emit_class(node Node) {
 
 // emit_node handles quantifiers and structural emission.
 fn (mut c Compiler) emit_node(node Node) {
-	// Emit fixed repetitions
 	for _ in 0 .. node.quant.min {
 		c.emit_logic(node)
 	}
 
-	// Handle infinite repetitions (*)
 	if node.quant.max == -1 {
 		split_idx := c.emit(Inst{ typ: .split })
 		start_pc := c.prog.len
@@ -469,9 +487,7 @@ fn (mut c Compiler) emit_node(node Node) {
 			c.prog[split_idx].target_x = c.prog.len
 			c.prog[split_idx].target_y = start_pc
 		}
-	}
-	// Handle range repetitions {m,n}
-	else if node.quant.max > node.quant.min {
+	} else if node.quant.max > node.quant.min {
 		rem := node.quant.max - node.quant.min
 		mut splits := []int{}
 		for _ in 0 .. rem {
@@ -625,7 +641,6 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 				mut cap := true
 				if pos < pattern.len && pattern[pos] == `?` {
 					pos++
-					// Inline flags (?ims)
 					if pos < pattern.len && pattern[pos] in [`i`, `m`, `s`] {
 						for pos < pattern.len && pattern[pos] != `)` {
 							match pattern[pos] {
@@ -640,14 +655,10 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 							pos++
 						}
 						continue
-					}
-					// Non-capturing group (?:...)
-					else if pos < pattern.len && pattern[pos] == `:` {
+					} else if pos < pattern.len && pattern[pos] == `:` {
 						cap = false
 						pos++
-					}
-					// Named group (?P<name>...)
-					else if pos < pattern.len && pattern[pos] == `P` {
+					} else if pos < pattern.len && pattern[pos] == `P` {
 						pos++
 						if pos >= pattern.len || pattern[pos] != `<` {
 							return error('Invalid named group syntax')
@@ -718,41 +729,63 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 				esc, el := read_rune_at(pattern.str, pattern.len, pos)
 				pos += el
 				match esc {
-					`w` { parsed_nodes << Node{
+					`w` {
+						parsed_nodes << Node{
 							typ: .word_char
-						} }
-					`W` { parsed_nodes << Node{
+						}
+					}
+					`W` {
+						parsed_nodes << Node{
 							typ: .non_word_char
-						} }
-					`d` { parsed_nodes << Node{
+						}
+					}
+					`d` {
+						parsed_nodes << Node{
 							typ: .digit
-						} }
-					`D` { parsed_nodes << Node{
+						}
+					}
+					`D` {
+						parsed_nodes << Node{
 							typ: .non_digit
-						} }
-					`s` { parsed_nodes << Node{
+						}
+					}
+					`s` {
+						parsed_nodes << Node{
 							typ: .whitespace
-						} }
-					`S` { parsed_nodes << Node{
+						}
+					}
+					`S` {
+						parsed_nodes << Node{
 							typ: .non_whitespace
-						} }
-					`b` { parsed_nodes << Node{
+						}
+					}
+					`b` {
+						parsed_nodes << Node{
 							typ: .word_boundary
-						} }
-					`B` { parsed_nodes << Node{
+						}
+					}
+					`B` {
+						parsed_nodes << Node{
 							typ: .non_word_boundary
-						} }
-					`a` { parsed_nodes << Node{
+						}
+					}
+					`a` {
+						parsed_nodes << Node{
 							typ: .lowercase_char
-						} }
-					`A` { parsed_nodes << Node{
+						}
+					}
+					`A` {
+						parsed_nodes << Node{
 							typ: .uppercase_char
-						} }
-					else { parsed_nodes << Node{
+						}
+					}
+					else {
+						parsed_nodes << Node{
 							typ:         .chr
 							chr:         esc
 							ignore_case: current_flags.ignore_case
-						} }
+						}
+					}
 				}
 			}
 			else {
@@ -765,7 +798,6 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 			}
 		}
 
-		// Handle postfix quantifiers
 		if parsed_nodes.len > 0 {
 			mut q := Quantifier{1, 1, true}
 			if pos < pattern.len {
@@ -810,7 +842,6 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 		current_sequence << parsed_nodes
 	}
 
-	// Ensure alternatives are closed
 	if alternatives.len > 0 {
 		if current_sequence.len == 0 {
 			return error('Empty alternative at end of pattern')
@@ -834,15 +865,10 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 ******************************************************************************/
 
 // vm_match executes the bytecode against the input string.
-// This is the core logic of the regex engine.
+// Fixed: m is now passed as a mutable reference, making it thread-safe.
 @[direct_array_access]
-fn (r &Regex) vm_match(text string, start_pos int) ?Match {
+fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 	unsafe {
-		mut m := &r.machine
-		if m.stack.len == 0 {
-			m.stack = []int{len: 1024}
-		}
-
 		mut captures := m.captures
 		for i in 0 .. captures.len {
 			captures[i] = -1
@@ -853,7 +879,7 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 		mut stack_ptr := 0
 
 		cap_size := r.total_groups * 2
-		frame_size := cap_size + 2 // [captures..., string_ptr, next_pc]
+		frame_size := cap_size + 2
 
 		prog_ptr := &Inst(r.prog.data)
 		str_ptr := text.str
@@ -868,7 +894,6 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 
 			match inst.typ {
 				.match {
-					// Successful match: collect groups and return.
 					mut s_groups := []string{cap: r.total_groups}
 					for i := 0; i < r.total_groups; i++ {
 						s, e := captures[i * 2], captures[i * 2 + 1]
@@ -887,7 +912,6 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 					}
 					curr_byte := str_ptr[sp]
 					if curr_byte < 128 && inst.val < 128 {
-						// Fast ASCII branch
 						mut c1, mut c2 := curr_byte, u8(inst.val)
 						if inst.ignore_case {
 							if c1 >= `a` && c1 <= `z` {
@@ -904,7 +928,6 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 						}
 						goto backtrack
 					}
-					// UTF-8 branch
 					rn, l := read_rune_at(str_ptr, str_len, sp)
 					if l == 0 {
 						goto backtrack
@@ -931,7 +954,6 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 					}
 				}
 				.string {
-					// Fast multi-character ASCII match
 					if sp + inst.val_len > str_len {
 						goto backtrack
 					}
@@ -951,7 +973,6 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 					mut matched := false
 					mut cl := 1
 					if c_byte < 128 {
-						// O(1) bitmap lookup
 						if (inst.bitmap[c_byte >> 5] & (u32(1) << (c_byte & 31))) != 0 {
 							matched = true
 						}
@@ -989,10 +1010,8 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 					pc++
 				}
 				.split {
-					// Branch logic with Dynamic Stack Growth
 					if stack_ptr + frame_size >= m.stack.len {
 						new_size := m.stack.len * 2
-						// Limit growth to ~4MB to prevent infinite loops from crashing the OS
 						if new_size > 1_000_000 {
 							goto backtrack
 						}
@@ -1074,22 +1093,22 @@ fn (r &Regex) vm_match(text string, start_pos int) ?Match {
 *
 ******************************************************************************/
 
-// find returns the first match of the regex in the provided text.
+// find returns the first match of the regex in text.
 pub fn (r &Regex) find(text string) ?Match {
 	return r.find_from(text, 0)
 }
 
-// find_from returns the first match of the regex in text starting from start_index.
+// find_from returns the first match starting from start_index.
 pub fn (r &Regex) find_from(text string, start_index int) ?Match {
 	if start_index < 0 || start_index > text.len {
 		return none
 	}
+	mut m := r.new_machine() // Local state for thread safety
 
-	// Literal prefix optimization: skip non-matching chunks quickly.
 	if r.has_prefix {
 		mut i := text.index_after(r.prefix_lit, start_index) or { -1 }
 		for i != -1 {
-			if res := r.vm_match(text, i) {
+			if res := r.vm_match(text, i, mut m) {
 				return res
 			}
 			i = text.index_after(r.prefix_lit, i + 1) or { -1 }
@@ -1097,31 +1116,30 @@ pub fn (r &Regex) find_from(text string, start_index int) ?Match {
 		return none
 	}
 
-	// General search
 	for i := start_index; i <= text.len; i++ {
 		if i > 0 && i < text.len && (text[i] & 0xC0) == 0x80 {
 			continue
 		}
-		if res := r.vm_match(text, i) {
+		if res := r.vm_match(text, i, mut m) {
 			return res
 		}
 	}
 	return none
 }
 
-// find_all returns all non-overlapping matches in the input string.
+// find_all returns all non-overlapping matches in text.
 pub fn (r &Regex) find_all(text string) []Match {
 	mut matches := []Match{}
+	mut m := r.new_machine() // Shared for internal iterations, private to this call
 	mut i := 0
 	for i <= text.len {
 		if i > 0 && i < text.len && (text[i] & 0xC0) == 0x80 {
 			i++
 			continue
 		}
-		if m := r.vm_match(text, i) {
-			matches << m
-			// Move cursor to end of match to ensure no overlap.
-			i = if m.end > i { m.end } else { i + 1 }
+		if res := r.vm_match(text, i, mut m) {
+			matches << res
+			i = if res.end > i { res.end } else { i + 1 }
 		} else {
 			i++
 		}
@@ -1129,8 +1147,7 @@ pub fn (r &Regex) find_all(text string) []Match {
 	return matches
 }
 
-// replace finds the first match and replaces it using the repl string.
-// Supports group backreferences like $1, $2.
+// replace finds the first match and replaces it using repl. Supports $1, $2 backreferences.
 pub fn (r &Regex) replace(text string, repl string) string {
 	res := r.find(text) or { return text }
 	mut sb := strings.new_builder(text.len)
@@ -1155,9 +1172,10 @@ pub fn (r &Regex) replace(text string, repl string) string {
 	return sb.str()
 }
 
-// fullmatch returns a Match only if the pattern matches the string from start to finish.
+// fullmatch returns a Match only if the pattern matches the entire text.
 pub fn (r &Regex) fullmatch(text string) ?Match {
-	if res := r.vm_match(text, 0) {
+	mut m := r.new_machine()
+	if res := r.vm_match(text, 0, mut m) {
 		if res.end == text.len {
 			return res
 		}
@@ -1165,7 +1183,7 @@ pub fn (r &Regex) fullmatch(text string) ?Match {
 	return none
 }
 
-// group_by_name retrieves the text captured by a named group (?P<name>...).
+// group_by_name retrieves text captured by a named group.
 pub fn (r &Regex) group_by_name(m Match, name string) string {
 	idx := r.group_map[name] or { return '' }
 	return if idx < m.groups.len { m.groups[idx] } else { '' }
