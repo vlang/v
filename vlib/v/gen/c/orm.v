@@ -153,7 +153,7 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &ast.Expr) {
 	db_expr_type := g.get_db_expr_type(db_expr) or { verror('ORM: unknown db type for ${db_expr}') }
 
-	mut db_ctype_name := g.styp(db_expr_type)
+	mut db_ctype_name := g.styp(db_expr_type.clear_flag(.shared_f))
 	is_pointer := db_ctype_name.ends_with('*')
 	reference_sign := if is_pointer { '' } else { '&' }
 	db_ctype_name = db_ctype_name.trim_right('*')
@@ -166,7 +166,13 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 		g.writeln(';')
 	} else {
 		g.write('(orm__Connection){._${db_ctype_name} = ${reference_sign}')
+		if db_expr_type.has_flag(.shared_f) {
+			g.write('&')
+		}
 		g.expr(db_expr)
+		if db_expr_type.has_flag(.shared_f) {
+			g.write('->val')
+		}
 		g.writeln(', ._typ = _orm__Connection_${db_ctype_name}_index};')
 	}
 }
