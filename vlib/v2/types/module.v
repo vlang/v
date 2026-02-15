@@ -4,6 +4,7 @@
 module types
 
 pub struct Module {
+pub:
 	name    string
 	path    string
 	imports []Module

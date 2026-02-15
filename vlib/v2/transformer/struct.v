@@ -179,6 +179,11 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 				name: 'nil'
 			})
 		})
+		// If init expression uses `index`, expand to a for-loop that assigns each element.
+		if expr.init !is ast.EmptyExpr && t.expr_contains_ident_named(init_expr, 'index') {
+			return t.expand_array_init_with_index(len_expr, cap_expr, sizeof_expr, init_expr,
+				expr.pos)
+		}
 		return ast.CallExpr{
 			lhs:  ast.Ident{
 				name: '__new_array_with_default_noscan'
@@ -1405,6 +1410,200 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 		else {}
 	}
 	return none
+}
+
+// expand_array_init_with_index expands `[]T{len: n, init: expr_using_index}` into:
+//   mut _awi_tN = __new_array_with_default_noscan(len, cap, sizeof(T), nil)
+//   for (_v_index = 0; _v_index < _awi_tN.len; _v_index++) {
+//       ((T*)_awi_tN.data)[_v_index] = init_expr  (with `index` renamed to `_v_index`)
+//   }
+//   <returns _awi_tN ident>
+fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, pos token.Pos) ast.Expr {
+	t.temp_counter++
+	arr_name := '_awi_t${t.temp_counter}'
+	arr_ident := ast.Ident{
+		name: arr_name
+	}
+	idx_ident := ast.Ident{
+		name: '_v_index'
+	}
+
+	// 1. mut _awi_tN = __new_array_with_default_noscan(len, cap, sizeof(T), nil)
+	init_stmt := ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.ModifierExpr{
+				kind: .key_mut
+				expr: arr_ident
+			}),
+		]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: '__new_array_with_default_noscan'
+				}
+				args: [
+					len_expr,
+					cap_expr,
+					ast.Expr(ast.KeywordOperator{
+						op:    .key_sizeof
+						exprs: [sizeof_expr]
+					}),
+					ast.Expr(ast.Ident{
+						name: 'nil'
+					}),
+				]
+			}),
+		]
+	})
+
+	// 2. Build assignment: ((T*)_awi_tN.data)[_v_index] = init_expr
+	//    with `index` renamed to `_v_index`
+	renamed_init := t.replace_ident_named(init_expr, 'index', '_v_index')
+	elem_assign := ast.Stmt(ast.AssignStmt{
+		op:  .assign
+		lhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.CastExpr{
+					typ:  ast.PrefixExpr{
+						op:   .amp
+						expr: sizeof_expr
+					}
+					expr: ast.SelectorExpr{
+						lhs: arr_ident
+						rhs: ast.Ident{
+							name: 'data'
+						}
+					}
+				}
+				expr: idx_ident
+			}),
+		]
+		rhs: [renamed_init]
+	})
+
+	// 3. for (int _v_index = 0; _v_index < _awi_tN.len; _v_index++) { ... }
+	for_stmt := ast.Stmt(ast.ForStmt{
+		init:  ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			})]
+		}
+		cond:  ast.InfixExpr{
+			op:  .lt
+			lhs: idx_ident
+			rhs: ast.SelectorExpr{
+				lhs: arr_ident
+				rhs: ast.Ident{
+					name: 'len'
+				}
+			}
+		}
+		post:  ast.AssignStmt{
+			op:  .assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [
+				ast.Expr(ast.InfixExpr{
+					op:  .plus
+					lhs: idx_ident
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '1'
+					}
+				}),
+			]
+		}
+		stmts: [elem_assign]
+	})
+
+	// Emit init + for loop as pending statements
+	t.pending_stmts << init_stmt
+	t.pending_stmts << for_stmt
+
+	// Return the temp array ident as the expression value
+	return arr_ident
+}
+
+// replace_ident_named replaces all occurrences of an identifier named `old_name`
+// with a new identifier named `new_name` in an expression tree.
+fn (t &Transformer) replace_ident_named(expr ast.Expr, old_name string, new_name string) ast.Expr {
+	match expr {
+		ast.Ident {
+			if expr.name == old_name {
+				return ast.Ident{
+					name: new_name
+					pos:  expr.pos
+				}
+			}
+			return expr
+		}
+		ast.InfixExpr {
+			return ast.InfixExpr{
+				op:  expr.op
+				lhs: t.replace_ident_named(expr.lhs, old_name, new_name)
+				rhs: t.replace_ident_named(expr.rhs, old_name, new_name)
+				pos: expr.pos
+			}
+		}
+		ast.PrefixExpr {
+			return ast.PrefixExpr{
+				op:   expr.op
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.ParenExpr {
+			return ast.ParenExpr{
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.CallExpr {
+			mut new_args := []ast.Expr{cap: expr.args.len}
+			for arg in expr.args {
+				new_args << t.replace_ident_named(arg, old_name, new_name)
+			}
+			return ast.CallExpr{
+				lhs:  t.replace_ident_named(expr.lhs, old_name, new_name)
+				args: new_args
+				pos:  expr.pos
+			}
+		}
+		ast.CastExpr {
+			return ast.CastExpr{
+				typ:  expr.typ
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.IndexExpr {
+			return ast.IndexExpr{
+				lhs:  t.replace_ident_named(expr.lhs, old_name, new_name)
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.SelectorExpr {
+			return ast.SelectorExpr{
+				lhs: t.replace_ident_named(expr.lhs, old_name, new_name)
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+		ast.ModifierExpr {
+			return ast.ModifierExpr{
+				kind: expr.kind
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		else {
+			return expr
+		}
+	}
 }
 
 // get_array_type_str returns the Array_T type string for an array expression using checker type info.

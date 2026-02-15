@@ -61,11 +61,11 @@ mut:
 	exported_const_seen         map[string]bool
 	exported_const_symbols      []ExportedConstSymbol
 	cur_file_name               string
-	in_array_init_index         bool // true when generating init expr with `index`
-	used_fn_keys                map[string]bool
-	called_fn_names             map[string]bool
-	anon_fn_defs                []string // lifted anonymous function definitions
-	pass5_start_pos             int      // position in sb where pass 5 starts
+
+	used_fn_keys    map[string]bool
+	called_fn_names map[string]bool
+	anon_fn_defs    []string // lifted anonymous function definitions
+	pass5_start_pos int      // position in sb where pass 5 starts
 }
 
 struct ExportedConstSymbol {
@@ -831,13 +831,6 @@ fn (mut g Gen) gen_keyword(node ast.Keyword) {
 		}
 	}
 }
-
-// gen_array_init_with_index generates an inline loop for __new_array_with_default_noscan
-// when the init expression uses `index`. Expands to:
-//   ({ array _arr = __new_array_with_default_noscan(len, cap, sizeof(T), NULL);
-//      for (int _v_index = 0; _v_index < _arr.len; _v_index++) {
-//          ((T*)_arr.data)[_v_index] = init_expr;
-//      } _arr; })
 
 fn strip_expr_wrappers(expr ast.Expr) ast.Expr {
 	return match expr {

@@ -1625,32 +1625,6 @@ fn (g &Gen) env_fn_scope_by_key(key string) ?&types.Scope {
 	return g.env.get_fn_scope_by_key(key)
 }
 
-fn (mut g Gen) gen_array_init_with_index(call_args []ast.Expr) {
-	g.tmp_counter++
-	tmp := g.tmp_counter
-	arr_name := '_awi_t${tmp}'
-	// Extract sizeof type from 3rd arg (KeywordOperator sizeof)
-	sizeof_arg := call_args[2]
-	mut elem_type := 'int'
-	if sizeof_arg is ast.KeywordOperator && sizeof_arg.op == .key_sizeof {
-		if sizeof_arg.exprs.len > 0 {
-			elem_type = g.expr_type_to_c(sizeof_arg.exprs[0])
-		}
-	}
-	g.sb.write_string('({ array ${arr_name} = __new_array_with_default_noscan(')
-	g.expr(call_args[0])
-	g.sb.write_string(', ')
-	g.expr(call_args[1])
-	g.sb.write_string(', sizeof(${elem_type}), NULL); ')
-	g.sb.write_string('for (int _v_index = 0; _v_index < ${arr_name}.len; _v_index++) { ')
-	g.sb.write_string('((${elem_type}*)${arr_name}.data)[_v_index] = ')
-	// Generate init expression with `index` → `_v_index` rename active
-	g.in_array_init_index = true
-	g.expr(call_args[3])
-	g.in_array_init_index = false
-	g.sb.write_string('; } ${arr_name}; })')
-}
-
 fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 	anon_name := '_anon_fn_${g.tmp_counter}'
 	g.tmp_counter++

@@ -265,10 +265,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 								ident_name = ident_name[g.cur_module.len + 2..]
 							}
 						}
-						// Rename `index` to `_v_index` only inside array init loop expansion
-						if ident_name == 'index' && g.in_array_init_index {
-							ident_name = '_v_index'
-						}
 						// Rename V variables that clash with C type names
 						if ident_name == 'array' {
 							ident_name = '_v_array'
