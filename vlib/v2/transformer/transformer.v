@@ -5466,12 +5466,12 @@ fn (t &Transformer) strip_pos(e ast.Expr) ast.Expr {
 	}
 }
 
-fn (mut t Transformer) transform_for_in_stmt(stmt ast.ForInStmt) ast.ForInStmt {
-	return ast.ForInStmt{
-		key:   stmt.key
-		value: stmt.value
-		expr:  t.transform_expr(stmt.expr)
-	}
+fn (mut t Transformer) transform_for_in_stmt(stmt ast.ForInStmt) ast.ForStmt {
+	// ForInStmt is only a ForStmt initializer in v2 AST; lower stray ForInStmt
+	// nodes through the regular for-loop transformer path.
+	return t.transform_for_stmt(ast.ForStmt{
+		init: ast.Stmt(stmt)
+	})
 }
 
 fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt {
@@ -9625,6 +9625,7 @@ fn match_sumtype_variant_name(candidate string, variants []string) string {
 	}
 	return ''
 }
+
 fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// Preserve short-circuit semantics while making smartcasts available to all
 	// following terms in `&&` chains (including multiple `is` checks).

@@ -850,3 +850,18 @@ fn test_transform_if_expr_preserves_else() {
 		assert false, 'expected IfExpr or UnsafeExpr, got ${result.type_name()}'
 	}
 }
+
+fn test_transform_for_in_stmt_lowers_to_for_stmt() {
+	mut t := create_test_transformer()
+	result := t.transform_for_in_stmt(ast.ForInStmt{
+		value: ast.Ident{
+			name: 'v'
+		}
+		expr:  ast.Ident{
+			name: 'items'
+		}
+	})
+
+	// NOTE: transform_for_in_stmt returns `ast.ForStmt` directly.
+	assert result.init is ast.AssignStmt, 'expected lowered init AssignStmt, got ${result.init.type_name()}'
+}
