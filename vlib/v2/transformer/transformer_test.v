@@ -230,7 +230,7 @@ fn test_transform_index_expr_string_slice_lowered() {
 	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
 	call := result as ast.CallExpr
 	assert call.lhs is ast.Ident
-	assert (call.lhs as ast.Ident).name == 'string__substr'
+	assert (call.lhs as ast.Ident).name == 'array__slice'
 	assert call.args.len == 3
 }
 
