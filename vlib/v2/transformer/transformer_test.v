@@ -34,11 +34,9 @@ fn create_transformer_with_vars(vars map[string]types.Type) &Transformer {
 	}
 }
 
-// Create a string-like type that returns 'string' from name()
+// string_type returns the builtin v2 string type.
 fn string_type() types.Type {
-	return types.Alias{
-		name: 'string'
-	}
+	return types.string_
 }
 
 // Create a rune-like type that returns 'rune' from name()
@@ -73,7 +71,7 @@ fn test_transform_ident_vmodroot_empty_root() {
 }
 
 fn test_array_comparison_eq() {
-	// Set up variable types so infer_array_type can detect them
+	// Set up variable types so get_array_type_str can detect them
 	mut t := create_transformer_with_vars({
 		'arr1': types.Type(types.Array{ elem_type: types.int_ })
 		'arr2': types.Type(types.Array{
@@ -156,52 +154,6 @@ fn test_array_comparison_non_array_passthrough() {
 
 	// Should remain as InfixExpr (not transformed)
 	assert result is ast.InfixExpr, 'expected InfixExpr for non-array comparison'
-}
-
-fn test_infer_array_type_from_var() {
-	mut t := create_transformer_with_vars({
-		'my_arr': types.Type(types.Array{ elem_type: string_type() })
-	})
-
-	expr := ast.Ident{
-		name: 'my_arr'
-	}
-
-	result := t.infer_array_type(expr) or {
-		assert false, 'expected array type to be inferred'
-		return
-	}
-	assert result == 'Array_string', 'expected Array_string, got ${result}'
-}
-
-fn test_infer_array_type_from_slice() {
-	mut t := create_transformer_with_vars({
-		'arr': types.Type(types.Array{ elem_type: rune_type() })
-	})
-
-	// Create: arr[0..5] (slice expression)
-	expr := ast.IndexExpr{
-		lhs:  ast.Ident{
-			name: 'arr'
-		}
-		expr: ast.RangeExpr{
-			op:    .dotdot
-			start: ast.BasicLiteral{
-				value: '0'
-				kind:  .number
-			}
-			end:   ast.BasicLiteral{
-				value: '5'
-				kind:  .number
-			}
-		}
-	}
-
-	result := t.infer_array_type(expr) or {
-		assert false, 'expected array type to be inferred for slice'
-		return
-	}
-	assert result == 'Array_rune', 'expected Array_rune, got ${result}'
 }
 
 fn test_transform_index_expr_string_slice_lowered() {

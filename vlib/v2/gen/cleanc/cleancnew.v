@@ -336,18 +336,6 @@ fn (mut g Gen) is_error_call_expr(expr ast.Expr) bool {
 				return true
 			}
 		}
-		ast.CallOrCastExpr {
-			if expr.lhs is ast.Ident && !g.is_type_name(expr.lhs.name) {
-				name := sanitize_fn_ident(expr.lhs.name)
-				if name == 'error' {
-					return true
-				}
-			}
-			ret := g.get_call_return_type(expr.lhs, 1) or { '' }
-			if ret == 'IError' {
-				return true
-			}
-		}
 		else {}
 	}
 	// Also check environment type
@@ -1374,11 +1362,6 @@ fn (mut g Gen) infer_tuple_field_types_from_stmts(stmts []ast.Stmt) ?[]string {
 					return fields
 				}
 			}
-			ast.DeferStmt {
-				if fields := g.infer_tuple_field_types_from_stmts(stmt.stmts) {
-					return fields
-				}
-			}
 			ast.ExprStmt {
 				if stmt.expr is ast.IfExpr {
 					if fields := g.infer_tuple_field_types_from_if_expr(stmt.expr) {
@@ -2220,26 +2203,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				}
 				// `return T(x)` in `!T` functions can be an unlowered propagate path where `x` is already `_result_T`.
 				// In that case return `x` directly, instead of casting to `T` and re-wrapping.
-				if value_type != '' && expr is ast.CallOrCastExpr {
-					if expr.lhs is ast.Ident && g.is_type_name(expr.lhs.name)
-						&& g.expr_type_to_c(expr.lhs) == value_type {
-						inner_type := g.get_expr_type(expr.expr)
-						if inner_type == g.cur_fn_ret_type {
-							g.sb.write_string('return ')
-							g.gen_expr(expr.expr)
-							g.sb.writeln(';')
-							return
-						}
-					} else if expr.lhs is ast.Type && g.expr_type_to_c(expr.lhs) == value_type {
-						inner_type := g.get_expr_type(expr.expr)
-						if inner_type == g.cur_fn_ret_type {
-							g.sb.write_string('return ')
-							g.gen_expr(expr.expr)
-							g.sb.writeln(';')
-							return
-						}
-					}
-				}
 				if value_type != '' && expr is ast.CastExpr
 					&& g.expr_type_to_c(expr.typ) == value_type {
 					inner_type := g.get_expr_type(expr.expr)
@@ -2947,12 +2910,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					tuple_type = ret
 				}
 			}
-		} else if rhs is ast.CallOrCastExpr {
-			if ret := g.get_call_return_type(rhs.lhs, 1) {
-				if ret != '' && ret != 'int' {
-					tuple_type = ret
-				}
-			}
 		} else if rhs is ast.UnsafeExpr {
 			// Handle inline or-block expansion: the transformer wraps or-blocks in
 			// UnsafeExpr (GCC statement expressions) when it can't expand them to
@@ -2965,10 +2922,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					mut inner_ret := ''
 					if inner_rhs is ast.CallExpr {
 						if ret := g.get_call_return_type(inner_rhs.lhs, inner_rhs.args.len) {
-							inner_ret = ret
-						}
-					} else if inner_rhs is ast.CallOrCastExpr {
-						if ret := g.get_call_return_type(inner_rhs.lhs, 1) {
 							inner_ret = ret
 						}
 					}
@@ -3133,23 +3086,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					elem_type_from_array = true
 				}
 			}
-		} else if rhs is ast.CallOrCastExpr {
-			if rhs.lhs is ast.Ident
-				&& rhs.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last'] {
-				pop_elem := g.infer_array_elem_type_from_expr(rhs.expr)
-				if pop_elem != '' {
-					typ = pop_elem
-					elem_type_from_array = true
-				}
-			} else if rhs.lhs is ast.SelectorExpr
-				&& rhs.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
-				arr_expr := if rhs.expr is ast.EmptyExpr { rhs.lhs.lhs } else { rhs.expr }
-				pop_elem := g.infer_array_elem_type_from_expr(arr_expr)
-				if pop_elem != '' {
-					typ = pop_elem
-					elem_type_from_array = true
-				}
-			}
 		}
 		if typ in ['void*', 'voidptr'] {
 			// Handle array__first/array__last/pop/pop_left for element type inference
@@ -3157,20 +3093,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				if rhs.lhs is ast.SelectorExpr {
 					if rhs.lhs.rhs.name in ['first', 'last', 'pop', 'pop_left'] {
 						arr2 := if rhs.args.len > 0 { rhs.args[0] } else { rhs.lhs.lhs }
-						elem := g.infer_array_elem_type_from_expr(arr2)
-						if elem != '' {
-							typ = elem
-						}
-					}
-				}
-			} else if rhs is ast.CallOrCastExpr {
-				if rhs.lhs is ast.SelectorExpr {
-					if rhs.lhs.rhs.name in ['first', 'last', 'pop', 'pop_left'] {
-						arr2 := if rhs.expr !is ast.EmptyExpr {
-							rhs.expr
-						} else {
-							rhs.lhs.lhs
-						}
 						elem := g.infer_array_elem_type_from_expr(arr2)
 						if elem != '' {
 							typ = elem
@@ -3187,16 +3109,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					arr_expr = rhs.args[0]
 					has_arr_expr = true
 				} else if rhs.lhs is ast.SelectorExpr {
-					arr_expr = rhs.lhs.lhs
-					has_arr_expr = true
-				}
-			} else if rhs is ast.CallOrCastExpr {
-				call_name = g.resolve_call_name(rhs.lhs, 1)
-				if rhs.expr !is ast.EmptyExpr {
-					arr_expr = rhs.expr
-					has_arr_expr = true
-				}
-				if !has_arr_expr && rhs.lhs is ast.SelectorExpr {
 					arr_expr = rhs.lhs.lhs
 					has_arr_expr = true
 				}
@@ -3251,16 +3163,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					}
 				}
 			}
-		} else if !elem_type_from_array && rhs is ast.CallOrCastExpr {
-			if ret := g.get_call_return_type(rhs.lhs, 1) {
-				if ret != ''
-					&& (ret != 'int' || typ in ['', 'void*', 'voidptr'] || typ.starts_with('Array_')
-					|| typ.starts_with('Map_')) {
-					if !(ret in ['void*', 'voidptr'] && typ !in ['', 'int', 'void*', 'voidptr']) {
-						typ = ret
-					}
-				}
-			}
 		}
 		if rhs is ast.KeywordOperator && rhs.op in [.key_sizeof, .key_offsetof] {
 			typ = 'usize'
@@ -3269,10 +3171,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if rhs_type == 'int' {
 			if rhs is ast.CallExpr {
 				if ret := g.get_call_return_type(rhs.lhs, rhs.args.len) {
-					rhs_type = ret
-				}
-			} else if rhs is ast.CallOrCastExpr {
-				if ret := g.get_call_return_type(rhs.lhs, 1) {
 					rhs_type = ret
 				}
 			}
@@ -3362,22 +3260,10 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				g.sb.writeln('));')
 				return
 			}
-			if rhs.expr is ast.CallOrCastExpr {
-				g.sb.write_string('${typ} ${name} = ((${typ})(')
-				g.gen_expr(rhs.expr.expr)
-				g.sb.writeln('));')
-				return
-			}
 			if rhs.expr is ast.ParenExpr {
 				if rhs.expr.expr is ast.CallExpr && rhs.expr.expr.args.len == 1 {
 					g.sb.write_string('${typ} ${name} = ((${typ})(')
 					g.gen_expr(rhs.expr.expr.args[0])
-					g.sb.writeln('));')
-					return
-				}
-				if rhs.expr.expr is ast.CallOrCastExpr {
-					g.sb.write_string('${typ} ${name} = ((${typ})(')
-					g.gen_expr(rhs.expr.expr.expr)
 					g.sb.writeln('));')
 					return
 				}
@@ -3524,8 +3410,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						|| rhs_type == 'void*'
 					if !rhs_is_ptr && rhs_type != '' && rhs_type != 'int' {
 						lhs_needs_deref = true
-					} else if !rhs_is_ptr && rhs !is ast.CallExpr && rhs !is ast.CallOrCastExpr
-						&& rhs !is ast.UnsafeExpr {
+					} else if !rhs_is_ptr && rhs !is ast.CallExpr && rhs !is ast.UnsafeExpr {
 						lhs_needs_deref = true
 					}
 				}
@@ -3930,9 +3815,6 @@ fn (g &Gen) contains_call_expr(e ast.Expr) bool {
 		return g.contains_call_expr(e.expr)
 	}
 	if e is ast.ParenExpr {
-		return g.contains_call_expr(e.expr)
-	}
-	if e is ast.CallOrCastExpr {
 		return g.contains_call_expr(e.expr)
 	}
 	return false
@@ -5320,13 +5202,6 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				// Lower it directly to (T**)(x) instead of taking address of a cast rvalue.
 				if node.expr is ast.PrefixExpr && node.expr.op == .amp {
 					inner := node.expr as ast.PrefixExpr
-					if inner.expr is ast.CallOrCastExpr {
-						target_type := g.expr_type_to_c(inner.expr.lhs)
-						g.sb.write_string('((${target_type}**)(')
-						g.gen_expr(inner.expr.expr)
-						g.sb.write_string('))')
-						return
-					}
 					if inner.expr is ast.CastExpr {
 						target_type := g.expr_type_to_c(inner.expr.typ)
 						g.sb.write_string('((${target_type}**)(')
@@ -5423,41 +5298,6 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						g.sb.write_string('))')
 						return
 					}
-					if node.expr.expr is ast.CallOrCastExpr {
-						if node.expr.expr.lhs is ast.Ident
-							&& g.is_type_name(node.expr.expr.lhs.name) {
-							target_type := g.expr_type_to_c(node.expr.expr.lhs)
-							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.expr.expr)
-							g.sb.write_string('))')
-							return
-						}
-					}
-				}
-				if node.expr is ast.CallOrCastExpr {
-					if node.expr.lhs is ast.Ident && g.is_type_name(node.expr.lhs.name) {
-						target_type := g.expr_type_to_c(node.expr.lhs)
-						g.sb.write_string('((${target_type}*)(')
-						g.gen_expr(node.expr.expr)
-						g.sb.write_string('))')
-						return
-					} else if node.expr.lhs is ast.Type {
-						target_type := g.expr_type_to_c(node.expr.lhs)
-						g.sb.write_string('((${target_type}*)(')
-						g.gen_expr(node.expr.expr)
-						g.sb.write_string('))')
-						return
-					} else if node.expr.lhs is ast.SelectorExpr {
-						sel := node.expr.lhs as ast.SelectorExpr
-						if sel.lhs is ast.Ident && sel.lhs.name == 'C'
-							&& g.is_c_type_name(sel.rhs.name) {
-							target_type := g.expr_type_to_c(node.expr.lhs)
-							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.expr)
-							g.sb.write_string('))')
-							return
-						}
-					}
 				}
 				if node.expr is ast.ParenExpr {
 					if node.expr.expr is ast.CastExpr {
@@ -5472,21 +5312,6 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							target_type := g.expr_type_to_c(node.expr.expr.lhs)
 							g.sb.write_string('((${target_type}*)(')
 							g.gen_expr(node.expr.expr.args[0])
-							g.sb.write_string('))')
-							return
-						}
-					}
-					if node.expr.expr is ast.CallOrCastExpr {
-						if node.expr.expr.lhs is ast.Ident {
-							target_type := g.expr_type_to_c(node.expr.expr.lhs)
-							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.expr.expr)
-							g.sb.write_string('))')
-							return
-						} else if node.expr.expr.lhs is ast.Type {
-							target_type := g.expr_type_to_c(node.expr.expr.lhs)
-							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.expr.expr)
 							g.sb.write_string('))')
 							return
 						}
@@ -5787,7 +5612,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_init_expr(node)
 		}
 		ast.MapInitExpr {
-			g.gen_map_init_expr(node)
+			panic('bug in v2 compiler: MapInitExpr should have been lowered in v2.transformer')
 		}
 		ast.MatchExpr {
 			panic('bug in v2 compiler: MatchExpr should have been lowered in v2.transformer')
@@ -5892,10 +5717,6 @@ fn (mut g Gen) gen_keyword(node ast.Keyword) {
 	}
 }
 
-fn (mut g Gen) gen_map_init_expr(node ast.MapInitExpr) {
-	panic('bug in v2 compiler: MapInitExpr should have been lowered in v2.transformer')
-}
-
 fn (g &Gen) should_use_memcmp_eq(lhs_type string, rhs_type string) bool {
 	if lhs_type == '' || rhs_type == '' || lhs_type != rhs_type {
 		return false
@@ -5922,15 +5743,6 @@ fn extract_compare_cast_type(expr ast.Expr) string {
 		}
 	}
 	return ''
-}
-
-fn (mut g Gen) gen_range_expr(node ast.RangeExpr) {
-	// Standalone ranges should be lowered or appear only in IndexExpr slicing.
-	if node.start is ast.EmptyExpr && node.end is ast.EmptyExpr {
-		g.sb.write_string('0')
-		return
-	}
-	g.sb.write_string('0')
 }
 
 fn (mut g Gen) gen_stmts_from_expr(e ast.Expr) {
@@ -6748,13 +6560,6 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 						}
 					}
 				}
-				ast.CallOrCastExpr {
-					if ret := g.get_call_return_type(expr.lhs, 1) {
-						if ret != '' {
-							inner_type = ret
-						}
-					}
-				}
 				ast.InitExpr {
 					inner_type = g.expr_type_to_c(expr.typ)
 				}
@@ -6916,49 +6721,6 @@ fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, 
 			}
 		}
 	}
-	// For CallOrCastExpr that is a type cast to a known sum type variant
-	if expr is ast.CallOrCastExpr {
-		if expr.lhs is ast.Ident {
-			cast_type := g.expr_type_to_c(expr.lhs)
-			if cast_type != '' {
-				cast_short := if cast_type.contains('__') {
-					cast_type.all_after_last('__')
-				} else {
-					cast_type
-				}
-				for i, v in variants {
-					if v == cast_short || v == cast_type || cast_type.ends_with('__${v}') {
-						return SumVariantMatch{
-							tag:          i
-							field_name:   v
-							is_primitive: false
-							inner_type:   cast_type
-						}
-					}
-				}
-			}
-		}
-		if expr.lhs is ast.Type {
-			cast_type := g.expr_type_to_c(expr.lhs)
-			if cast_type != '' {
-				cast_short := if cast_type.contains('__') {
-					cast_type.all_after_last('__')
-				} else {
-					cast_type
-				}
-				for i, v in variants {
-					if v == cast_short || v == cast_type || cast_type.ends_with('__${v}') {
-						return SumVariantMatch{
-							tag:          i
-							field_name:   v
-							is_primitive: false
-							inner_type:   cast_type
-						}
-					}
-				}
-			}
-		}
-	}
 	// Generic fallback: if the expression is already a concrete AST sum variant
 	// (e.g. ast.BasicLiteral being cast to ast.Expr), map it by runtime variant name.
 	expr_variant := expr.type_name()
@@ -7104,14 +6866,6 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 				}
 			}
 		}
-		ast.CallOrCastExpr {
-			if arr_expr.lhs is ast.Ident {
-				fn_name := sanitize_fn_ident(arr_expr.lhs.name)
-				if fn_name in ['array__slice', 'array__slice_ni'] && arr_expr.expr !is ast.EmptyExpr {
-					return g.infer_array_elem_type_from_expr(arr_expr.expr)
-				}
-			}
-		}
 		else {}
 	}
 	if raw_type := g.get_raw_type(arr_expr) {
@@ -7163,17 +6917,6 @@ fn (mut g Gen) infer_array_method_elem_type(expr ast.Expr) string {
 			if expr.lhs is ast.SelectorExpr
 				&& expr.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
 				arr_expr := if expr.args.len > 0 { expr.args[0] } else { expr.lhs.lhs }
-				return g.infer_array_elem_type_from_expr(arr_expr)
-			}
-		}
-		ast.CallOrCastExpr {
-			if expr.lhs is ast.Ident
-				&& expr.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last'] {
-				return g.infer_array_elem_type_from_expr(expr.expr)
-			}
-			if expr.lhs is ast.SelectorExpr
-				&& expr.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
-				arr_expr := if expr.expr is ast.EmptyExpr { expr.lhs.lhs } else { expr.expr }
 				return g.infer_array_elem_type_from_expr(arr_expr)
 			}
 		}
@@ -8087,28 +7830,6 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 					}
 				}
 			}
-			ast.CallOrCastExpr {
-				// For array element-returning methods, prefer element type inference
-				if node.lhs is ast.Ident
-					&& node.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last'] {
-					elem_type := g.infer_array_elem_type_from_expr(node.expr)
-					if elem_type != '' {
-						return elem_type
-					}
-				} else if node.lhs is ast.SelectorExpr
-					&& node.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
-					arr_expr := if node.expr is ast.EmptyExpr { node.lhs.lhs } else { node.expr }
-					elem_type := g.infer_array_elem_type_from_expr(arr_expr)
-					if elem_type != '' {
-						return elem_type
-					}
-				}
-				if ret := g.get_call_return_type(node.lhs, 1) {
-					if ret != '' {
-						return ret
-					}
-				}
-			}
 			ast.IndexExpr, ast.SelectorExpr {
 				// Position-based types for selectors/indexes are frequently overwritten by
 				// parent expressions; prefer structural inference in fallback logic below.
@@ -8195,10 +7916,6 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return g.infer_if_expr_type(node)
 		}
 		ast.IndexExpr {
-			// Slicing returns the same type as the source container.
-			if node.expr is ast.RangeExpr {
-				return g.get_expr_type(node.lhs)
-			}
 			if node.lhs is ast.SelectorExpr {
 				elem_type := g.fixed_array_selector_elem_type(node.lhs)
 				if elem_type != '' {
@@ -8266,22 +7983,6 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				}
 			}
 			return 'int'
-		}
-		ast.MapInitExpr {
-			if node.typ !is ast.EmptyExpr {
-				return g.expr_type_to_c(node.typ)
-			}
-			if raw_type := g.get_raw_type(node) {
-				if raw_type is types.Map {
-					return g.types_type_to_c(raw_type)
-				}
-			}
-			if node.keys.len > 0 && node.vals.len > 0 {
-				key := mangle_alias_component(g.get_expr_type(node.keys[0]))
-				val := mangle_alias_component(g.get_expr_type(node.vals[0]))
-				return 'Map_' + key + '_' + val
-			}
-			return 'map'
 		}
 		ast.InitExpr {
 			return g.expr_type_to_c(node.typ)
@@ -8351,47 +8052,6 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				}
 			}
 			if ret := g.get_call_return_type(node.lhs, node.args.len) {
-				return ret
-			}
-			return 'int'
-		}
-		ast.CallOrCastExpr {
-			if node.lhs is ast.Ident && g.is_type_name(node.lhs.name) {
-				return g.expr_type_to_c(node.lhs)
-			}
-			if node.lhs is ast.Ident {
-				// Try with module-qualified name
-				qualified := g.expr_type_to_c(node.lhs)
-				if g.is_type_name(qualified) {
-					return qualified
-				}
-			}
-			if node.lhs is ast.Type {
-				return g.expr_type_to_c(node.lhs)
-			}
-			if node.lhs is ast.SelectorExpr {
-				// module.Type(expr) - check if this is a type cast
-				qualified := g.expr_type_to_c(node.lhs)
-				if g.is_type_name(qualified) {
-					return qualified
-				}
-			}
-			if node.lhs is ast.Ident
-				&& node.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last'] {
-				elem_type := g.infer_array_elem_type_from_expr(node.expr)
-				if elem_type != '' {
-					return elem_type
-				}
-			}
-			if node.lhs is ast.SelectorExpr
-				&& node.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
-				arr_expr := if node.expr is ast.EmptyExpr { node.lhs.lhs } else { node.expr }
-				elem_type := g.infer_array_elem_type_from_expr(arr_expr)
-				if elem_type != '' {
-					return elem_type
-				}
-			}
-			if ret := g.get_call_return_type(node.lhs, 1) {
 				return ret
 			}
 			return 'int'
@@ -8765,9 +8425,6 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	}
 	// For IndexExpr, resolve through the LHS container type
 	if node is ast.IndexExpr {
-		if node.expr is ast.RangeExpr {
-			return g.get_raw_type(node.lhs)
-		}
 		if lhs_type := g.get_raw_type(node.lhs) {
 			if lhs_type is types.Array {
 				return lhs_type.elem_type
@@ -8881,9 +8538,6 @@ fn (g &Gen) is_sum_payload_expr(node ast.Expr, variant string) bool {
 		ast.SelectorExpr {
 			return node.rhs.name == variant || node.rhs.name == '_${variant}'
 		}
-		ast.CallOrCastExpr {
-			return g.is_sum_payload_expr(node.expr, variant)
-		}
 		ast.CastExpr {
 			return g.is_sum_payload_expr(node.expr, variant)
 		}
@@ -8925,21 +8579,6 @@ fn (g &Gen) contains_as_cast_expr(node ast.Expr) bool {
 
 fn (mut g Gen) expr_cast_target_type(node ast.Expr) string {
 	match node {
-		ast.CallOrCastExpr {
-			if node.lhs is ast.Ident && g.is_type_name(node.lhs.name) {
-				return g.expr_type_to_c(node.lhs)
-			}
-			if node.lhs is ast.Type {
-				return g.expr_type_to_c(node.lhs)
-			}
-			if node.lhs is ast.SelectorExpr {
-				sel := node.lhs as ast.SelectorExpr
-				if sel.lhs is ast.Ident && sel.lhs.name == 'C' && g.is_c_type_name(sel.rhs.name) {
-					return g.expr_type_to_c(node.lhs)
-				}
-			}
-			return g.expr_cast_target_type(node.expr)
-		}
 		ast.CastExpr {
 			return g.expr_type_to_c(node.typ)
 		}
@@ -9407,9 +9046,6 @@ fn (g &Gen) expr_contains_ident(e ast.Expr, name string) bool {
 				}
 			}
 			return false
-		}
-		ast.CallOrCastExpr {
-			return g.expr_contains_ident(e.lhs, name) || g.expr_contains_ident(e.expr, name)
 		}
 		ast.SelectorExpr {
 			return g.expr_contains_ident(e.lhs, name)
@@ -10223,6 +9859,14 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		g.sb.write_string('))')
 		return
 	}
+	// Handle sum type and interface casts
+	if type_name in g.sum_type_variants {
+		g.gen_type_cast_expr(type_name, node.expr)
+		return
+	}
+	if g.gen_interface_cast(type_name, node.expr) {
+		return
+	}
 	// Capture inner expression to check if it's empty
 	mut inner := strings.new_builder(64)
 	saved := g.sb
@@ -10521,11 +10165,6 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 	match unwrapped {
 		ast.CallExpr {
 			if ret := g.get_call_return_type(unwrapped.lhs, unwrapped.args.len) {
-				return ret
-			}
-		}
-		ast.CallOrCastExpr {
-			if ret := g.get_call_return_type(unwrapped.lhs, 1) {
 				return ret
 			}
 		}
