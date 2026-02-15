@@ -632,6 +632,37 @@ fn (mut g Gen) is_module_ident(name string) bool {
 	return false
 }
 
+// resolve_module_name resolves a module alias to its real module name.
+// Returns the input name unchanged if it's not a module or can't be resolved.
+fn (mut g Gen) resolve_module_name(name string) string {
+	if g.cur_fn_scope != unsafe { nil } {
+		if obj := g.cur_fn_scope.lookup_parent(name, 0) {
+			if obj is types.Module {
+				mod := unsafe { &types.Module(&obj) }
+				if mod.name != '' {
+					return mod.name
+				}
+			}
+			return name
+		}
+	}
+	if g.env != unsafe { nil } {
+		mut result := name
+		if mut scope := g.env_scope(g.cur_module) {
+			if obj := scope.lookup_parent(name, 0) {
+				if obj is types.Module {
+					mod := unsafe { &types.Module(&obj) }
+					if mod.name != '' {
+						result = mod.name
+					}
+				}
+			}
+		}
+		return result
+	}
+	return name
+}
+
 fn sanitize_c_number_literal(lit string) string {
 	mut s := lit
 	if s.contains('_') {

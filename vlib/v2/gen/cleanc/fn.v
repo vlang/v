@@ -302,33 +302,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 			g.sb.writeln('${init_call}();')
 		}
 	}
-	if fn_name == 'builder__Builder__gen_v_files' {
-		g.write_indent()
-		g.sb.writeln('v__Gen* gen = v__new_gen(b->pref);')
-		g.write_indent()
-		g.sb.writeln('for (int i = 0; i < b->files.len; i++) {')
-		g.indent++
-		g.write_indent()
-		g.sb.writeln('ast__File file = ((ast__File*)b->files.data)[i];')
-		g.write_indent()
-		g.sb.writeln('v__Gen__gen(gen, file);')
-		g.write_indent()
-		g.sb.writeln('if (b->pref->debug) {')
-		g.indent++
-		g.write_indent()
-		g.sb.writeln('v__Gen__print_output(gen);')
-		g.indent--
-		g.write_indent()
-		g.sb.writeln('}')
-		g.indent--
-		g.write_indent()
-		g.sb.writeln('}')
-		g.indent--
-		g.sb.writeln('}')
-		g.sb.writeln('')
-		return
-	}
-
 	g.gen_stmts(node.stmts)
 
 	// Implicit return 0 for main
@@ -956,7 +929,8 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 			return '${g.get_qualified_name(lhs.lhs.name)}__${sanitize_fn_ident(lhs.rhs.name)}'
 		}
 		if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
-			name = '${lhs.lhs.name}__${sanitize_fn_ident(lhs.rhs.name)}'
+			mod_name := g.resolve_module_name(lhs.lhs.name)
+			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
 		} else {
 			method_name := sanitize_fn_ident(lhs.rhs.name)
 			base_type := g.method_receiver_base_type(lhs.lhs)
@@ -1179,7 +1153,8 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			// Static type method call: Type.method(...)
 			name = '${g.get_qualified_name(lhs.lhs.name)}__${sanitize_fn_ident(lhs.rhs.name)}'
 		} else if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
-			name = '${lhs.lhs.name}__${sanitize_fn_ident(lhs.rhs.name)}'
+			mod_name := g.resolve_module_name(lhs.lhs.name)
+			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
 		} else {
 			// value.method(args...) => ReceiverType__method(value, args...)
 			name = g.resolve_call_name(lhs, args.len)
@@ -1209,9 +1184,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	if name == 'array__bytestr'
 		&& ('Array_u8__bytestr' in g.fn_param_is_ptr || 'Array_u8__bytestr' in g.fn_return_types) {
 		name = 'Array_u8__bytestr'
-	}
-	if name == 'gen_v__new_gen' {
-		name = 'v__new_gen'
 	}
 	if name == 'os__exit' {
 		name = 'exit'

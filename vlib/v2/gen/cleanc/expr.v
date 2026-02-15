@@ -1015,7 +1015,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 				if node.lhs is ast.SelectorExpr {
 					if node.lhs.lhs is ast.Ident && g.is_module_ident(node.lhs.lhs.name) {
-						fixed_name := '${node.lhs.lhs.name}__${node.lhs.rhs.name}'
+						mod_name := g.resolve_module_name(node.lhs.lhs.name)
+						fixed_name := '${mod_name}__${node.lhs.rhs.name}'
 						if fixed_name in g.fixed_array_globals {
 							g.sb.write_string('((int)(sizeof(${fixed_name}) / sizeof(${fixed_name}[0])))')
 							return
@@ -1078,10 +1079,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			// module.const / module.var => module__const / module__var
 			if node.lhs is ast.Ident && g.is_module_ident(node.lhs.name) {
-				if node.rhs.name.starts_with('${node.lhs.name}__') {
+				mod_name := g.resolve_module_name(node.lhs.name)
+				if node.rhs.name.starts_with('${mod_name}__') {
 					g.sb.write_string(node.rhs.name)
 				} else {
-					g.sb.write_string('${node.lhs.name}__${node.rhs.name}')
+					g.sb.write_string('${mod_name}__${node.rhs.name}')
 				}
 				return
 			}

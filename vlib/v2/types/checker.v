@@ -377,14 +377,14 @@ pub fn (mut c Checker) preregister_scopes(file ast.File) {
 	mod_scope := c.get_module_scope(file.mod, builtin_scope)
 	c.scope = mod_scope
 	// add self (own module) for constants. can use own module prefix inside module
-	c.scope.insert(file.mod, Module{ scope: c.get_module_scope(file.mod, builtin_scope) })
+	c.scope.insert(file.mod, Module{ name: file.mod, scope: c.get_module_scope(file.mod, builtin_scope) })
 	// add imports
 	for imp in file.imports {
 		mod := if imp.is_aliased { imp.name.all_after_last('.') } else { imp.alias }
-		c.scope.insert(imp.alias, Module{ scope: c.get_module_scope(mod, builtin_scope) })
+		c.scope.insert(imp.alias, Module{ name: mod, scope: c.get_module_scope(mod, builtin_scope) })
 	}
 	// add C
-	c.scope.insert('C', Module{ scope: c.c_scope })
+	c.scope.insert('C', Module{ name: 'C', scope: c.c_scope })
 }
 
 fn (mut c Checker) preregister_all_scopes(files []ast.File) {
