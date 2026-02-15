@@ -38,7 +38,7 @@ fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 			}
 			g.write_indent()
 			g.sb.write_string('${name} = ')
-			g.gen_expr(stmt.expr)
+			g.expr(stmt.expr)
 			g.sb.writeln(';')
 		} else {
 			g.gen_stmt(stmt)
@@ -53,7 +53,7 @@ fn (mut g Gen) gen_decl_if_expr(name string, if_expr ast.IfExpr) {
 	}
 	g.write_indent()
 	g.sb.write_string('if (')
-	g.gen_expr(if_expr.cond)
+	g.expr(if_expr.cond)
 	g.sb.writeln(') {')
 	g.indent++
 	g.gen_decl_if_expr_branch(name, if_expr.stmts)
@@ -82,7 +82,7 @@ fn (mut g Gen) gen_decl_if_expr(name string, if_expr ast.IfExpr) {
 		g.indent++
 		g.write_indent()
 		g.sb.write_string('${name} = ')
-		g.gen_expr(if_expr.else_expr)
+		g.expr(if_expr.else_expr)
 		g.sb.writeln(';')
 		g.indent--
 		g.write_indent()
@@ -126,7 +126,7 @@ fn (mut g Gen) gen_return_if_expr(if_expr ast.IfExpr, emit_indent bool) {
 		g.write_indent()
 	}
 	g.sb.write_string('if (')
-	g.gen_expr(if_expr.cond)
+	g.expr(if_expr.cond)
 	g.sb.writeln(') {')
 	g.indent++
 	g.gen_return_if_branch(if_expr.stmts)
@@ -218,7 +218,7 @@ fn (mut g Gen) gen_if_expr_stmt(node ast.IfExpr) {
 		return
 	}
 	g.sb.write_string('if (')
-	g.gen_expr(node.cond)
+	g.expr(node.cond)
 	g.sb.writeln(') {')
 	g.indent++
 	g.gen_stmts(node.stmts)
@@ -256,21 +256,21 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 	if node.cond is ast.EmptyExpr {
 		if node.stmts.len == 1 && node.stmts[0] is ast.ExprStmt {
 			stmt := node.stmts[0] as ast.ExprStmt
-			g.gen_expr(stmt.expr)
+			g.expr(stmt.expr)
 		} else {
 			g.sb.write_string('0')
 		}
 		return
 	}
 	g.sb.write_string('(')
-	g.gen_expr(node.cond)
+	g.expr(node.cond)
 	g.sb.write_string(' ? ')
 	if node.stmts.len == 1 && node.stmts[0] is ast.ExprStmt {
 		stmt := node.stmts[0] as ast.ExprStmt
 		if nested := g.extract_if_expr(stmt.expr) {
 			g.gen_if_expr_value(nested)
 		} else {
-			g.gen_expr(stmt.expr)
+			g.expr(stmt.expr)
 		}
 	} else {
 		g.sb.write_string('0')
@@ -285,7 +285,7 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 		if nested := g.extract_if_expr(node.else_expr) {
 			g.gen_if_expr_value(nested)
 		} else {
-			g.gen_expr(node.else_expr)
+			g.expr(node.else_expr)
 		}
 	}
 	g.sb.write_string(')')

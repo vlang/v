@@ -68,11 +68,11 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 	if concrete_type.ends_with('*') {
 		// Value is already a pointer-compatible receiver.
 		g.sb.write_string('(void*)(')
-		g.gen_expr(value_expr)
+		g.expr(value_expr)
 		g.sb.write_string(')')
 	} else {
 		g.sb.write_string('(void*)&(')
-		g.gen_expr(value_expr)
+		g.expr(value_expr)
 		g.sb.write_string(')')
 	}
 	type_short := if base_concrete.contains('__') {
@@ -137,11 +137,11 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 			}
 			if is_addressable {
 				g.sb.write_string('(*(${base}*)(((u8*)(&')
-				g.gen_expr(expr)
+				g.expr(expr)
 				g.sb.write_string('.err)) + sizeof(IError)))')
 			} else {
 				g.sb.write_string('({ ${expr_type} _tmp = ')
-				g.gen_expr(expr)
+				g.expr(expr)
 				g.sb.write_string('; (*(${base}*)(((u8*)(&_tmp.err)) + sizeof(IError))); })')
 			}
 			return true
@@ -160,11 +160,11 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 			}
 			if is_addressable {
 				g.sb.write_string('(*(${base}*)(((u8*)(&')
-				g.gen_expr(expr)
+				g.expr(expr)
 				g.sb.write_string('.err)) + sizeof(IError)))')
 			} else {
 				g.sb.write_string('({ ${expr_type} _tmp = ')
-				g.gen_expr(expr)
+				g.expr(expr)
 				g.sb.write_string('; (*(${base}*)(((u8*)(&_tmp.err)) + sizeof(IError))); })')
 			}
 			return true
@@ -174,7 +174,7 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 }
 
 // Helper to extract FnType from an Expr (handles ast.Type wrapping)
-fn (mut g Gen) gen_expr(node ast.Expr) {
+fn (mut g Gen) expr(node ast.Expr) {
 	match node {
 		ast.BasicLiteral {
 			if node.kind == .key_true {
@@ -280,7 +280,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 		}
 		ast.ParenExpr {
 			g.sb.write_string('(')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(')')
 		}
 		ast.InfixExpr {
@@ -292,7 +292,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					sep := if g.expr_is_pointer(node.lhs) { '->' } else { '.' }
 					cmp := if node.op == .eq { '!=' } else { '==' }
 					g.sb.write_string('(')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('${sep}state ${cmp} 0)')
 					return
 				}
@@ -300,7 +300,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					sep := if g.expr_is_pointer(node.rhs) { '->' } else { '.' }
 					cmp := if node.op == .eq { '!=' } else { '==' }
 					g.sb.write_string('(')
-					g.gen_expr(node.rhs)
+					g.expr(node.rhs)
 					g.sb.write_string('${sep}state ${cmp} 0)')
 					return
 				}
@@ -336,9 +336,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					}
 					type_name := rhs_ident.name
 					g.sb.write_string('string__eq(')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('.type_name(')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('._object), ${c_static_v_string_expr(type_name)})')
 					return
 				}
@@ -365,7 +365,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						}
 						sep := if g.expr_is_pointer(node.lhs) { '->' } else { '.' }
 						g.sb.write_string('(')
-						g.gen_expr(node.lhs)
+						g.expr(node.lhs)
 						op := if node.op in [.key_is, .eq] { '==' } else { '!=' }
 						g.sb.write_string('${sep}_type_id ${op} ${type_id})')
 						return
@@ -458,7 +458,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							sep := if g.expr_is_pointer(node.lhs) { '->' } else { '.' }
 							op := if node.op in [.key_is, .eq] { '==' } else { '!=' }
 							g.sb.write_string('(')
-							g.gen_expr(node.lhs)
+							g.expr(node.lhs)
 							g.sb.write_string('${sep}_tag ${op} ${tag})')
 							return
 						}
@@ -473,23 +473,23 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						g.tmp_counter++
 						arr_rhs_type := g.expr_array_runtime_type(node.rhs)
 						g.sb.write_string('({ ${arr_rhs_type} ${rhs_tmp} = ')
-						g.gen_expr(node.rhs)
+						g.expr(node.rhs)
 						g.sb.write_string('; array__push_many((array*)')
 						if g.expr_is_pointer(node.lhs) {
-							g.gen_expr(node.lhs)
+							g.expr(node.lhs)
 						} else {
 							g.sb.write_string('&')
-							g.gen_expr(node.lhs)
+							g.expr(node.lhs)
 						}
 						g.sb.write_string(', ${rhs_tmp}.data, ${rhs_tmp}.len); })')
 						return
 					}
 					g.sb.write_string('array__push((array*)')
 					if g.expr_is_pointer(node.lhs) {
-						g.gen_expr(node.lhs)
+						g.expr(node.lhs)
 					} else {
 						g.sb.write_string('&')
-						g.gen_expr(node.lhs)
+						g.expr(node.lhs)
 					}
 					g.sb.write_string(', ')
 					g.gen_addr_of_expr(node.rhs, elem_type)
@@ -499,9 +499,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 			if node.op == .plus && lhs_type == 'string' && rhs_type == 'string' {
 				g.sb.write_string('string__plus(')
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string(', ')
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 				g.sb.write_string(')')
 				return
 			}
@@ -521,16 +521,16 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 									g.sb.write_string('!')
 								}
 								g.sb.write_string('string__eq(')
-								g.gen_expr(node.lhs)
+								g.expr(node.lhs)
 								g.sb.write_string(', ')
-								g.gen_expr(elem)
+								g.expr(elem)
 								g.sb.write_string(')')
 							} else {
 								cmp_op := if node.op == .key_in { '==' } else { '!=' }
 								g.sb.write_string('(')
-								g.gen_expr(node.lhs)
+								g.expr(node.lhs)
 								g.sb.write_string(' ${cmp_op} ')
-								g.gen_expr(elem)
+								g.expr(elem)
 								g.sb.write_string(')')
 							}
 						}
@@ -545,7 +545,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					}
 					if node.rhs is ast.Ident || node.rhs is ast.SelectorExpr {
 						g.sb.write_string('map__exists(&')
-						g.gen_expr(node.rhs)
+						g.expr(node.rhs)
 						g.sb.write_string(', ')
 						g.gen_addr_of_expr(node.lhs, key_type)
 						g.sb.write_string(')')
@@ -553,7 +553,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						tmp_name := '_map_in_tmp_${g.tmp_counter}'
 						g.tmp_counter++
 						g.sb.write_string('({ map ${tmp_name} = ')
-						g.gen_expr(node.rhs)
+						g.expr(node.rhs)
 						g.sb.write_string('; map__exists(&${tmp_name}, ')
 						g.gen_addr_of_expr(node.lhs, key_type)
 						g.sb.write_string('); })')
@@ -566,7 +566,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						g.sb.write_string('!')
 					}
 					g.sb.write_string('array__contains(')
-					g.gen_expr(node.rhs)
+					g.expr(node.rhs)
 					g.sb.write_string(', ')
 					g.gen_addr_of_expr(node.lhs, key_type)
 					g.sb.write_string(')')
@@ -574,9 +574,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				}
 				cmp_op := if node.op == .key_in { '==' } else { '!=' }
 				g.sb.write_string('(')
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string(' ${cmp_op} ')
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 				g.sb.write_string(')')
 				return
 			}
@@ -607,12 +607,12 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				if g.expr_is_pointer(node.lhs) {
 					g.sb.write_string('*')
 				}
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string(', ')
 				if g.expr_is_pointer(node.rhs) {
 					g.sb.write_string('*')
 				}
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 				g.sb.write_string(')')
 				return
 			}
@@ -631,9 +631,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					g.sb.write_string('!')
 				}
 				g.sb.write_string('string__eq(')
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string(', ')
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 				g.sb.write_string(')')
 				return
 			}
@@ -647,9 +647,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				cmp_r := '_cmp_r_${g.tmp_counter}'
 				cmp_op := if node.op == .eq { '==' } else { '!=' }
 				g.sb.write_string('({ map ${cmp_l} = ')
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string('; map ${cmp_r} = ')
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 				g.sb.write_string('; memcmp(&${cmp_l}, &${cmp_r}, sizeof(map)) ${cmp_op} 0; })')
 				return
 			}
@@ -678,11 +678,11 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				g.tmp_counter++
 				g.sb.write_string('({ ${cmp_type} ${ltmp} = ')
 				if !g.gen_unwrapped_value_expr(node.lhs) {
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 				}
 				g.sb.write_string('; ${cmp_type} ${rtmp} = ')
 				if !g.gen_unwrapped_value_expr(node.rhs) {
-					g.gen_expr(node.rhs)
+					g.expr(node.rhs)
 				}
 				cmp_op := if node.op == .eq { '== 0' } else { '!= 0' }
 				g.sb.write_string('; memcmp(&${ltmp}, &${rtmp}, sizeof(${cmp_type})) ${cmp_op}; })')
@@ -690,7 +690,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 			g.sb.write_string('(')
 			if !g.gen_unwrapped_value_expr(node.lhs) {
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 			}
 			op := match node.op {
 				.plus { '+' }
@@ -717,7 +717,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			}
 			g.sb.write_string(' ${op} ')
 			if !g.gen_unwrapped_value_expr(node.rhs) {
-				g.gen_expr(node.rhs)
+				g.expr(node.rhs)
 			}
 			g.sb.write_string(')')
 		}
@@ -732,7 +732,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					if inner.expr is ast.CastExpr {
 						target_type := g.expr_type_to_c(inner.expr.typ)
 						g.sb.write_string('((${target_type}**)(')
-						g.gen_expr(inner.expr.expr)
+						g.expr(inner.expr.expr)
 						g.sb.write_string('))')
 						return
 					}
@@ -742,9 +742,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					if idx.lhs is ast.Ident {
 						if idx.lhs.name in g.fixed_array_globals || idx.lhs.name == 'rune_maps' {
 							g.sb.write_string('&')
-							g.gen_expr(idx.lhs)
+							g.expr(idx.lhs)
 							g.sb.write_string('[')
-							g.gen_expr(idx.expr)
+							g.expr(idx.expr)
 							g.sb.write_string(']')
 							return
 						}
@@ -752,9 +752,9 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							if raw_type is types.ArrayFixed {
 								// Fixed arrays: &arr[i]
 								g.sb.write_string('&')
-								g.gen_expr(idx.lhs)
+								g.expr(idx.lhs)
 								g.sb.write_string('[')
-								g.gen_expr(idx.expr)
+								g.expr(idx.expr)
 								g.sb.write_string(']')
 								return
 							}
@@ -777,13 +777,13 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							g.sb.write_string('&((')
 							g.sb.write_string(elem_type)
 							g.sb.write_string('*)')
-							g.gen_expr(idx.lhs)
+							g.expr(idx.lhs)
 							if lhs_type.ends_with('*') {
 								g.sb.write_string('->data)[')
 							} else {
 								g.sb.write_string('.data)[')
 							}
-							g.gen_expr(idx.expr)
+							g.expr(idx.expr)
 							g.sb.write_string(']')
 							return
 						}
@@ -794,7 +794,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						&& g.is_type_name(node.expr.lhs.name) {
 						target_type := g.expr_type_to_c(node.expr.lhs)
 						g.sb.write_string('((${target_type}*)(')
-						g.gen_expr(node.expr.args[0])
+						g.expr(node.expr.args[0])
 						g.sb.write_string('))')
 						return
 					}
@@ -804,7 +804,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							&& g.is_c_type_name(sel.rhs.name) {
 							target_type := g.expr_type_to_c(node.expr.lhs)
 							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.args[0])
+							g.expr(node.expr.args[0])
 							g.sb.write_string('))')
 							return
 						}
@@ -813,7 +813,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				if node.expr is ast.CastExpr {
 					target_type := g.expr_type_to_c(node.expr.typ)
 					g.sb.write_string('((${target_type}*)(')
-					g.gen_expr(node.expr.expr)
+					g.expr(node.expr.expr)
 					g.sb.write_string('))')
 					return
 				}
@@ -821,7 +821,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					if node.expr.expr is ast.CastExpr {
 						target_type := g.expr_type_to_c(node.expr.expr.typ)
 						g.sb.write_string('((${target_type}*)(')
-						g.gen_expr(node.expr.expr.expr)
+						g.expr(node.expr.expr.expr)
 						g.sb.write_string('))')
 						return
 					}
@@ -830,7 +830,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					if node.expr.expr is ast.CastExpr {
 						target_type := g.expr_type_to_c(node.expr.expr.typ)
 						g.sb.write_string('((${target_type}*)(')
-						g.gen_expr(node.expr.expr.expr)
+						g.expr(node.expr.expr.expr)
 						g.sb.write_string('))')
 						return
 					}
@@ -838,7 +838,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						if node.expr.expr.args.len == 1 {
 							target_type := g.expr_type_to_c(node.expr.expr.lhs)
 							g.sb.write_string('((${target_type}*)(')
-							g.gen_expr(node.expr.expr.args[0])
+							g.expr(node.expr.expr.args[0])
 							g.sb.write_string('))')
 							return
 						}
@@ -856,7 +856,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 						tmp_name := '_sumtmp${g.tmp_counter}'
 						g.tmp_counter++
 						g.sb.write_string('({ ${ret_type} ${tmp_name} = ')
-						g.gen_expr(node.expr)
+						g.expr(node.expr)
 						g.sb.write_string('; &${tmp_name}; })')
 						return
 					}
@@ -869,7 +869,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				tmp_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
 				g.sb.write_string('({ ${type_name}* ${tmp_name} = (${type_name}*)malloc(sizeof(${type_name})); *${tmp_name} = ')
-				g.gen_expr(node.expr)
+				g.expr(node.expr)
 				g.sb.write_string('; ${tmp_name}; })')
 				return
 			}
@@ -884,7 +884,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 							g.sb.write_string('(*((')
 							g.sb.write_string(target_type)
 							g.sb.write_string('*)(')
-							g.gen_expr(node.expr)
+							g.expr(node.expr)
 							g.sb.write_string('${sep}_object)))')
 							return
 						}
@@ -900,10 +900,10 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				else { '' }
 			}
 			g.sb.write_string(op)
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 		}
 		ast.CallExpr {
-			g.gen_call_expr(node.lhs, node.args)
+			g.call_expr(node.lhs, node.args)
 		}
 		ast.CallOrCastExpr {
 			panic('bug in v2 compiler: CallOrCastExpr should have been lowered in v2.transformer')
@@ -1024,18 +1024,18 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				}
 				if node.lhs is ast.SelectorExpr && g.is_fixed_array_selector(node.lhs) {
 					g.sb.write_string('((int)(sizeof(')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string(') / sizeof((')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string(')[0])))')
 					return
 				}
 				if raw_type := g.get_raw_type(node.lhs) {
 					if raw_type is types.ArrayFixed {
 						g.sb.write_string('((int)(sizeof(')
-						g.gen_expr(node.lhs)
+						g.expr(node.lhs)
 						g.sb.write_string(') / sizeof((')
-						g.gen_expr(node.lhs)
+						g.expr(node.lhs)
 						g.sb.write_string(')[0])))')
 						return
 					}
@@ -1103,7 +1103,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 				owner := g.embedded_owner_for(lhs_struct, node.rhs.name)
 				field_name := escape_c_keyword(node.rhs.name)
 				selector := if use_ptr { '->' } else { '.' }
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				if owner != '' {
 					g.sb.write_string('${selector}${escape_c_keyword(owner)}.${field_name}')
 				} else {
@@ -1115,7 +1115,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.gen_if_expr_value(node)
 		}
 		ast.PostfixExpr {
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			op := match node.op {
 				.inc { '++' }
 				.dec { '--' }
@@ -1124,7 +1124,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 			g.sb.write_string(op)
 		}
 		ast.ModifierExpr {
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 		}
 		ast.CastExpr {
 			g.gen_cast_expr(node)
@@ -1198,7 +1198,7 @@ fn (mut g Gen) gen_expr(node ast.Expr) {
 					g.sb.write_string(', ')
 				}
 				g.sb.write_string('.arg${i} = ')
-				g.gen_expr(expr)
+				g.expr(expr)
 			}
 			g.sb.write_string('})')
 		}
@@ -1278,7 +1278,7 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 		}
 		// Identity cast: inner type is already the target sum type, no wrapping needed
 		if inner_type == type_name {
-			g.gen_expr(expr)
+			g.expr(expr)
 			return
 		}
 		if inner_type != '' {
@@ -1329,7 +1329,7 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 	}
 	// For non-sum-types, use C cast
 	g.sb.write_string('((${type_name})(')
-	g.gen_expr(expr)
+	g.expr(expr)
 	g.sb.write_string('))')
 }
 
@@ -1456,7 +1456,7 @@ fn (mut g Gen) gen_sum_narrowed_selector(node ast.SelectorExpr) bool {
 	field_name := escape_c_keyword(node.rhs.name)
 	owner := g.embedded_owner_for(narrowed, node.rhs.name)
 	g.sb.write_string('(((${narrowed}*)(((')
-	g.gen_expr(node.lhs)
+	g.expr(node.lhs)
 	g.sb.write_string(')._data._${variant_field})))')
 	if owner != '' {
 		g.sb.write_string('->${escape_c_keyword(owner)}.${field_name}')
@@ -1475,7 +1475,7 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	if node.stmts.len == 1 {
 		stmt := node.stmts[0]
 		if stmt is ast.ExprStmt {
-			g.gen_expr(stmt.expr)
+			g.expr(stmt.expr)
 		} else {
 			// Single non-expression statement (e.g., return) - emit directly
 			g.gen_stmt(stmt)
@@ -1492,7 +1492,7 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	// Last statement - if it's an ExprStmt, its value is the block's value
 	last := node.stmts[node.stmts.len - 1]
 	if last is ast.ExprStmt {
-		g.gen_expr(last.expr)
+		g.expr(last.expr)
 		g.sb.write_string('; ')
 	} else {
 		g.gen_stmt(last)
@@ -1508,18 +1508,18 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	}
 	if node.lhs is ast.Ident {
 		if node.lhs.name in g.fixed_array_globals || node.lhs.name == 'rune_maps' {
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 			return
 		}
 	}
 	// Fixed-size array struct fields are emitted as plain C arrays.
 	if node.lhs is ast.SelectorExpr && g.is_fixed_array_selector(node.lhs) {
-		g.gen_expr(node.lhs)
+		g.expr(node.lhs)
 		g.sb.write_string('[')
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
@@ -1527,9 +1527,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	if raw_type := g.get_raw_type(node.lhs) {
 		if raw_type is types.ArrayFixed {
 			// Fixed arrays are C arrays - direct indexing
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 			return
 		}
@@ -1537,9 +1537,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			// Dynamic arrays: ((elem_type*)arr.data)[idx]
 			elem_type := g.types_type_to_c(raw_type.elem_type)
 			g.sb.write_string('((${elem_type}*)')
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('.data)[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 			return
 		}
@@ -1548,23 +1548,23 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				types.Array {
 					elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
 					g.sb.write_string('((${elem_type}*)')
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('.data)[')
-					g.gen_expr(node.expr)
+					g.expr(node.expr)
 					g.sb.write_string(']')
 					return
 				}
 				types.ArrayFixed {
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('[')
-					g.gen_expr(node.expr)
+					g.expr(node.expr)
 					g.sb.write_string(']')
 					return
 				}
 				types.String {
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('.str[')
-					g.gen_expr(node.expr)
+					g.expr(node.expr)
 					g.sb.write_string(']')
 					return
 				}
@@ -1576,9 +1576,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		}
 		if raw_type is types.String {
 			if node.lhs is ast.SelectorExpr && g.is_fixed_array_selector(node.lhs) {
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string('[')
-				g.gen_expr(node.expr)
+				g.expr(node.expr)
 				g.sb.write_string(']')
 				return
 			}
@@ -1586,16 +1586,16 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			if out_type := g.get_raw_type(node) {
 				out_name := g.types_type_to_c(out_type)
 				if out_name !in ['u8', 'byte', 'char'] {
-					g.gen_expr(node.lhs)
+					g.expr(node.lhs)
 					g.sb.write_string('[')
-					g.gen_expr(node.expr)
+					g.expr(node.expr)
 					g.sb.write_string(']')
 					return
 				}
 			}
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('.str[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 			return
 		}
@@ -1604,9 +1604,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			if raw_type.base_type is types.Array {
 				elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
 				g.sb.write_string('((${elem_type}*)')
-				g.gen_expr(node.lhs)
+				g.expr(node.lhs)
 				g.sb.write_string('->data)[')
-				g.gen_expr(node.expr)
+				g.expr(node.expr)
 				g.sb.write_string(']')
 				return
 			} else if raw_type.base_type is types.Map {
@@ -1617,9 +1617,9 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	if lhs_raw_type := g.get_raw_type(node.lhs) {
 		if lhs_raw_type is types.ArrayFixed {
 			// Fixed arrays are C arrays: direct indexing
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 			return
 		}
@@ -1629,36 +1629,36 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		g.panic_map_index_expr(node)
 	}
 	if lhs_type == 'string' {
-		g.gen_expr(node.lhs)
+		g.expr(node.lhs)
 		g.sb.write_string('.str[')
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
 	if lhs_type == 'string*' {
 		elem_type := g.get_expr_type(node)
 		if elem_type in ['u8', 'byte', 'char'] {
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('->str[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 		} else {
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('[')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string(']')
 		}
 		return
 	}
 	if lhs_type.trim_right('*') in ['strings__Builder', 'Builder'] {
 		g.sb.write_string('((u8*)')
-		g.gen_expr(node.lhs)
+		g.expr(node.lhs)
 		if lhs_type.ends_with('*') {
 			g.sb.write_string('->data)[')
 		} else {
 			g.sb.write_string('.data)[')
 		}
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
@@ -1666,13 +1666,13 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	if lhs_type.trim_right('*').starts_with('Array_fixed_') {
 		if lhs_type.ends_with('*') {
 			g.sb.write_string('(*')
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string(')[')
 		} else {
-			g.gen_expr(node.lhs)
+			g.expr(node.lhs)
 			g.sb.write_string('[')
 		}
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
@@ -1710,29 +1710,29 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			elem_type = 'u8'
 		}
 		g.sb.write_string('((${elem_type}*)')
-		g.gen_expr(node.lhs)
+		g.expr(node.lhs)
 		if lhs_type.ends_with('*') {
 			g.sb.write_string('->data)[')
 		} else {
 			g.sb.write_string('.data)[')
 		}
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
 	// void*/voidptr/byteptr: cast to u8* for indexing (V treats malloc result as &u8)
 	if lhs_type in ['void*', 'voidptr', 'byteptr'] {
 		g.sb.write_string('((u8*)')
-		g.gen_expr(node.lhs)
+		g.expr(node.lhs)
 		g.sb.write_string(')[')
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		g.sb.write_string(']')
 		return
 	}
 	// Fallback: direct C array indexing
-	g.gen_expr(node.lhs)
+	g.expr(node.lhs)
 	g.sb.write_string('[')
-	g.gen_expr(node.expr)
+	g.expr(node.expr)
 	g.sb.write_string(']')
 }
 
@@ -1774,14 +1774,14 @@ fn (mut g Gen) gen_comptime_expr(node ast.ComptimeExpr) {
 		return
 	}
 	// Fallback: emit the inner expression
-	g.gen_expr(node.expr)
+	g.expr(node.expr)
 }
 
 fn (mut g Gen) expr_to_string(expr ast.Expr) string {
 	saved_sb := g.sb
 	mut tmp_sb := strings.new_builder(64)
 	g.sb = tmp_sb
-	g.gen_expr(expr)
+	g.expr(expr)
 	value := g.sb.str()
 	g.sb = saved_sb
 	return value
@@ -1810,7 +1810,7 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		value_type := option_value_type(type_name)
 		if value_type != '' && value_type != 'void' {
 			g.sb.write_string('({ ${type_name} _opt = (${type_name}){ .state = 2 }; ${value_type} _val = ')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; })')
 			return
 		}
@@ -1819,7 +1819,7 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		value_type := g.result_value_type(type_name)
 		if value_type != '' && value_type != 'void' {
 			g.sb.write_string('({ ${type_name} _res = (${type_name}){0}; ${value_type} _val = ')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; })')
 			return
 		}
@@ -1830,7 +1830,7 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		mut inner := strings.new_builder(64)
 		saved := g.sb
 		g.sb = inner
-		g.gen_expr(node.expr)
+		g.expr(node.expr)
 		inner_str := g.sb.str()
 		g.sb = saved
 		if inner_str == '' {
@@ -1865,7 +1865,7 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 	mut inner := strings.new_builder(64)
 	saved := g.sb
 	g.sb = inner
-	g.gen_expr(node.expr)
+	g.expr(node.expr)
 	inner_str := g.sb.str()
 	g.sb = saved
 	if inner_str == '' {
@@ -1890,7 +1890,7 @@ fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
 		if is_iface {
 			sep := if g.expr_is_pointer(node.expr) { '->' } else { '.' }
 			g.sb.write_string('(*((${type_name}*)(')
-			g.gen_expr(node.expr)
+			g.expr(node.expr)
 			g.sb.write_string('${sep}_object)))')
 			return
 		}
@@ -1898,7 +1898,7 @@ fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
 	mut inner := strings.new_builder(64)
 	saved := g.sb
 	g.sb = inner
-	g.gen_expr(node.expr)
+	g.expr(node.expr)
 	inner_str := g.sb.str()
 	g.sb = saved
 	if g.contains_as_cast_expr(node.expr) {

@@ -7,70 +7,6 @@ module cleanc
 import v2.ast
 import v2.types
 
-fn (mut g Gen) infer_tuple_field_types_from_return_stmt(ret ast.ReturnStmt) ?[]string {
-	if ret.exprs.len == 0 {
-		return none
-	}
-	mut tuple_exprs := shallow_copy_exprs(ret.exprs)
-	if ret.exprs.len == 1 && ret.exprs[0] is ast.Tuple {
-		tuple_expr := ret.exprs[0] as ast.Tuple
-		tuple_exprs = shallow_copy_exprs(tuple_expr.exprs)
-	}
-	if tuple_exprs.len == 0 {
-		return none
-	}
-	mut field_types := []string{cap: tuple_exprs.len}
-	for expr in tuple_exprs {
-		mut typ := normalize_inferred_type_name(g.get_expr_type(expr))
-		if typ == '' || typ == 'int' {
-			if expr is ast.CastExpr {
-				typ = normalize_inferred_type_name(g.expr_type_to_c(expr.typ))
-			}
-		}
-		if typ == '' {
-			return none
-		}
-		field_types << typ
-	}
-	return field_types
-}
-
-fn (mut g Gen) infer_tuple_field_types_from_stmts(stmts []ast.Stmt) ?[]string {
-	for stmt in stmts {
-		match stmt {
-			ast.ReturnStmt {
-				if fields := g.infer_tuple_field_types_from_return_stmt(stmt) {
-					return fields
-				}
-			}
-			ast.BlockStmt {
-				if fields := g.infer_tuple_field_types_from_stmts(stmt.stmts) {
-					return fields
-				}
-			}
-			ast.ForStmt {
-				if fields := g.infer_tuple_field_types_from_stmts(stmt.stmts) {
-					return fields
-				}
-			}
-			ast.ExprStmt {
-				if stmt.expr is ast.IfExpr {
-					if fields := g.infer_tuple_field_types_from_if_expr(stmt.expr) {
-						return fields
-					}
-				} else if stmt.expr is ast.UnsafeExpr {
-					unsafe_expr := stmt.expr as ast.UnsafeExpr
-					if fields := g.infer_tuple_field_types_from_stmts(unsafe_expr.stmts) {
-						return fields
-					}
-				}
-			}
-			else {}
-		}
-	}
-	return none
-}
-
 fn (mut g Gen) emit_ready_option_result_structs() bool {
 	mut emitted_any := false
 	mut option_names := g.option_aliases.keys()
@@ -170,47 +106,6 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	return true
 }
 
-fn (g &Gen) field_type_name(e ast.Expr) string {
-	match e {
-		ast.Ident {
-			if g.is_module_local_type(e.name) {
-				return '${g.cur_module}__${e.name}'
-			}
-			return e.name
-		}
-		ast.SelectorExpr {
-			if e.lhs is ast.Ident {
-				return '${e.lhs.name}__${e.rhs.name}'
-			}
-			return ''
-		}
-		ast.PrefixExpr {
-			return g.field_type_name(e.expr)
-		}
-		ast.Type {
-			if e is ast.ArrayType {
-				return g.field_type_name(e.elem_type)
-			}
-			if e is ast.ArrayFixedType {
-				return g.field_type_name(e.elem_type)
-			}
-			if e is ast.MapType {
-				return 'map'
-			}
-			if e is ast.OptionType {
-				return g.field_type_name(e.base_type)
-			}
-			if e is ast.ResultType {
-				return g.field_type_name(e.base_type)
-			}
-			return ''
-		}
-		else {
-			return ''
-		}
-	}
-}
-
 fn (mut g Gen) get_struct_name(node ast.StructDecl) string {
 	if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 		return '${g.cur_module}__${node.name}'
@@ -283,7 +178,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			if resolved_len > 0 {
 				g.sb.write_string('${resolved_len}')
 			} else {
-				g.gen_expr(fixed_typ.len)
+				g.expr(fixed_typ.len)
 			}
 			g.sb.writeln('];')
 			continue
@@ -314,23 +209,6 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
 	}
 	g.sb.writeln('')
-}
-
-fn (mut g Gen) lookup_struct_type(struct_name string) types.Struct {
-	if g.env == unsafe { nil } {
-		return types.Struct{}
-	}
-	mod_name := if g.cur_module != '' { g.cur_module } else { 'main' }
-	mut out := types.Struct{}
-	if scope := g.env_scope(mod_name) {
-		if obj := scope.objects[struct_name] {
-			typ := obj.typ()
-			if typ is types.Struct {
-				out = typ
-			}
-		}
-	}
-	return out
 }
 
 fn (mut g Gen) gen_sum_type_decl(node ast.TypeDecl) {
@@ -523,7 +401,7 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 	if g.is_scalar_sum_payload_type(resolved_type) {
 		// Keep scalar payloads encoded in pointer-size space. Smartcast extraction expects this.
 		g.sb.write_string('((void*)((intptr_t)(')
-		g.gen_expr(expr)
+		g.expr(expr)
 		g.sb.write_string(')))')
 	} else if inner_type == 'void*' {
 		// `&fn_call()` lowers to a statement-expression pointer to a temporary.
@@ -532,11 +410,11 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 			g.tmp_counter++
 			tmp_name := '_st${g.tmp_counter}'
 			g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-			g.gen_expr(inner_expr)
+			g.expr(inner_expr)
 			g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 		} else {
 			g.sb.write_string('((void*)memdup(')
-			g.gen_expr(expr)
+			g.expr(expr)
 			g.sb.write_string(', sizeof(${resolved_type})))')
 		}
 	} else {
@@ -545,7 +423,7 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 		g.tmp_counter++
 		tmp_name := '_st${g.tmp_counter}'
 		g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-		g.gen_expr(expr)
+		g.expr(expr)
 		g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 	}
 	g.sb.write_string('})')
@@ -571,37 +449,6 @@ fn (g &Gen) get_sum_type_variants_for(type_name string) []string {
 		}
 	}
 	return []string{}
-}
-
-// types_type_to_c converts a types.Type to a C type string
-fn selector_struct_field_type_from_type(t types.Type, field_name string) ?types.Type {
-	match t {
-		types.Struct {
-			for field in t.fields {
-				if field.name == field_name {
-					return field.typ
-				}
-			}
-			return none
-		}
-		types.Interface {
-			for field in t.fields {
-				if field.name == field_name {
-					return field.typ
-				}
-			}
-			return none
-		}
-		types.Pointer {
-			return selector_struct_field_type_from_type(t.base_type, field_name)
-		}
-		types.Alias {
-			return selector_struct_field_type_from_type(t.base_type, field_name)
-		}
-		else {
-			return none
-		}
-	}
 }
 
 fn (g &Gen) is_sum_payload_expr(node ast.Expr, variant string) bool {
@@ -703,7 +550,7 @@ fn (mut g Gen) gen_sum_variant_field_selector(node ast.SelectorExpr) bool {
 	owner := g.embedded_owner_for(matched_full, node.rhs.name)
 	sep := if g.expr_is_pointer(node.lhs) { '->' } else { '.' }
 	g.sb.write_string('(((${matched_full}*)(((')
-	g.gen_expr(node.lhs)
+	g.expr(node.lhs)
 	g.sb.write_string(')${sep}_data._${matched_short})))')
 	if owner != '' {
 		g.sb.write_string('->${escape_c_keyword(owner)}.${field_name}')
@@ -712,198 +559,6 @@ fn (mut g Gen) gen_sum_variant_field_selector(node ast.SelectorExpr) bool {
 	}
 	g.sb.write_string(')')
 	return true
-}
-
-fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
-	mut lhs_type := g.get_expr_type(sel.lhs)
-	if lhs_env_type := g.get_expr_type_from_env(sel.lhs) {
-		lhs_type = lhs_env_type
-	}
-	if lhs_type.starts_with('_result_') {
-		if sel.rhs.name == 'is_error' {
-			return 'bool'
-		}
-		if sel.rhs.name == 'err' {
-			return 'IError'
-		}
-		if sel.rhs.name == 'data' {
-			base := g.result_value_type(lhs_type)
-			if base != '' && base != 'void' {
-				return base
-			}
-		}
-	}
-	if lhs_type.starts_with('_option_') {
-		if sel.rhs.name == 'state' {
-			return 'u8'
-		}
-		if sel.rhs.name == 'err' {
-			return 'IError'
-		}
-		if sel.rhs.name == 'data' {
-			base := option_value_type(lhs_type)
-			if base != '' && base != 'void' {
-				return base
-			}
-		}
-	}
-
-	mut struct_name := ''
-	if lhs_env_type := g.get_expr_type_from_env(sel.lhs) {
-		env_struct_name := lhs_env_type.trim_right('*')
-		field_key := env_struct_name + '.' + sel.rhs.name
-		short_key := if env_struct_name.contains('__') {
-			env_struct_name.all_after_last('__') + '.' + sel.rhs.name
-		} else {
-			''
-		}
-		if field_key in g.struct_field_types
-			|| (short_key != '' && short_key in g.struct_field_types) {
-			struct_name = env_struct_name
-		}
-	}
-	if raw_type := g.get_raw_type(sel.lhs) {
-		match raw_type {
-			types.Pointer {
-				if raw_type.base_type is types.Struct {
-					struct_name = raw_type.base_type.name
-				} else if raw_type.base_type is types.Alias {
-					struct_name = raw_type.base_type.name
-				}
-			}
-			types.Struct {
-				struct_name = raw_type.name
-			}
-			types.Alias {
-				struct_name = raw_type.name
-			}
-			else {}
-		}
-	}
-	if struct_name == '' {
-		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
-	}
-	if struct_name != '' {
-		field_key := struct_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[field_key] {
-			return field_type
-		}
-	}
-	if struct_name.contains('__') {
-		short_name := struct_name.all_after_last('__')
-		short_field_key := short_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[short_field_key] {
-			return field_type
-		}
-	}
-	if struct_name.contains('.') {
-		mangled_name := struct_name.replace('.', '__')
-		mangled_field_key := mangled_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[mangled_field_key] {
-			return field_type
-		}
-		short_dot := struct_name.all_after_last('.')
-		short_dot_field_key := short_dot + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[short_dot_field_key] {
-			return field_type
-		}
-	}
-	// Sum type selector with a field that exists on a single variant.
-	mut lhs_sum_type := ''
-	if raw_lhs := g.get_raw_type(sel.lhs) {
-		match raw_lhs {
-			types.SumType {
-				lhs_sum_type = g.types_type_to_c(raw_lhs)
-			}
-			types.Pointer {
-				if raw_lhs.base_type is types.SumType {
-					lhs_sum_type = g.types_type_to_c(raw_lhs.base_type)
-				}
-			}
-			types.Alias {
-				if raw_lhs.base_type is types.SumType {
-					lhs_sum_type = g.types_type_to_c(raw_lhs.base_type)
-				}
-			}
-			else {}
-		}
-	}
-	if lhs_sum_type == '' {
-		lhs_sum_type = g.get_expr_type(sel.lhs).trim_right('*')
-	}
-	mut variants := []string{}
-	if vs := g.sum_type_variants[lhs_sum_type] {
-		variants = vs.clone()
-	} else if lhs_sum_type.contains('__') {
-		short_sum := lhs_sum_type.all_after_last('__')
-		if vs := g.sum_type_variants[short_sum] {
-			variants = vs.clone()
-		}
-	} else {
-		qualified_sum := g.get_qualified_name(lhs_sum_type)
-		if vs := g.sum_type_variants[qualified_sum] {
-			variants = vs.clone()
-			lhs_sum_type = qualified_sum
-		}
-	}
-	if variants.len > 0 {
-		mut matched_type := ''
-		for variant in variants {
-			variant_short := if variant.contains('__') {
-				variant.all_after_last('__')
-			} else {
-				variant
-			}
-			mut variant_full := variant
-			if !variant_full.contains('__') && lhs_sum_type.contains('__') {
-				prefix := lhs_sum_type.all_before_last('__')
-				if prefix != '' {
-					variant_full = '${prefix}__${variant_short}'
-				}
-			}
-			key_full := '${variant_full}.${sel.rhs.name}'
-			key_short := '${variant_short}.${sel.rhs.name}'
-			mut field_typ := ''
-			if ft := g.struct_field_types[key_full] {
-				field_typ = ft
-			} else if ft := g.struct_field_types[key_short] {
-				field_typ = ft
-			}
-			if field_typ != '' {
-				if matched_type != '' && matched_type != field_typ {
-					return ''
-				}
-				matched_type = field_typ
-			}
-		}
-		if matched_type != '' {
-			return matched_type
-		}
-	}
-	return ''
-}
-
-fn (mut g Gen) selector_struct_name(expr ast.Expr) string {
-	if raw_type := g.get_raw_type(expr) {
-		match raw_type {
-			types.Pointer {
-				if raw_type.base_type is types.Struct {
-					return raw_type.base_type.name
-				}
-				if raw_type.base_type is types.Alias {
-					return raw_type.base_type.name
-				}
-			}
-			types.Struct {
-				return raw_type.name
-			}
-			types.Alias {
-				return raw_type.name
-			}
-			else {}
-		}
-	}
-	return g.get_expr_type(expr).trim_right('*')
 }
 
 fn (g &Gen) embedded_owner_for(struct_name string, field_name string) string {
@@ -935,7 +590,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			g.sb.write_string(',')
 		}
 		if field.name == '' {
-			g.gen_expr(field.value)
+			g.expr(field.value)
 			continue
 		}
 		if type_name in g.sum_type_variants && field.name.starts_with('_data._') {
@@ -957,7 +612,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			if g.is_scalar_sum_payload_type(resolved_type) {
 				// Keep scalar payloads encoded in pointer-size space.
 				g.sb.write_string('((void*)((intptr_t)(')
-				g.gen_expr(field.value)
+				g.expr(field.value)
 				g.sb.write_string(')))')
 			} else if inner_type == 'void*' {
 				// `&fn_call()` can point to a temporary; copy by-value from inner expr.
@@ -965,18 +620,18 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 					g.tmp_counter++
 					tmp_name := '_st${g.tmp_counter}'
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-					g.gen_expr(inner_expr)
+					g.expr(inner_expr)
 					g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 				} else {
 					g.sb.write_string('((void*)memdup(')
-					g.gen_expr(field.value)
+					g.expr(field.value)
 					g.sb.write_string(', sizeof(${resolved_type})))')
 				}
 			} else {
 				g.tmp_counter++
 				tmp_name := '_st${g.tmp_counter}'
 				g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-				g.gen_expr(field.value)
+				g.expr(field.value)
 				g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 			}
 			continue
@@ -1008,11 +663,11 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 		}
 		if g.should_deref_init_field_value(type_name, field.name, field.value) {
 			g.sb.write_string('(*(')
-			g.gen_expr(field.value)
+			g.expr(field.value)
 			g.sb.write_string('))')
 			continue
 		}
-		g.gen_expr(field.value)
+		g.expr(field.value)
 	}
 	g.sb.write_string('})')
 }
