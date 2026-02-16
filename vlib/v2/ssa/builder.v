@@ -608,8 +608,8 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 		return
 	}
 
-	// Skip functions without a body (e.g., extern declarations) or non-main-module functions
-	if decl.stmts.len == 0 || b.cur_module != 'main' {
+	// Skip functions without a body (e.g., extern declarations)
+	if decl.stmts.len == 0 {
 		// Emit a minimal function body (entry + ret) so backends have a valid function
 		b.cur_func = func_idx
 		entry := b.mod.add_block(func_idx, 'entry')

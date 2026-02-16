@@ -134,7 +134,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		// This is needed for functions like __v_init_consts that are called but have no body
 		g.curr_offset = g.macho.text_data.len
 		sym_name := '_' + func.name
-		g.macho.add_symbol(sym_name, u64(g.curr_offset), false, 1)
+		g.macho.add_symbol(sym_name, u64(g.curr_offset), true, 1)
 		g.emit(0xd65f03c0) // ret
 		return
 	}

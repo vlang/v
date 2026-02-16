@@ -50,15 +50,61 @@ const bind_opcode_do_bind = 0x90
 const bind_type_pointer = 1
 const bind_symbol_flags_weak_import = 0x01
 
-// Libc symbols that should ALWAYS resolve to the external system library,
-// never to local V wrappers. This prevents infinite recursion where
-// V's malloc() wrapper calls C.malloc() which would otherwise resolve
-// back to the V wrapper.
-const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy',
-	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
-	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
-	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
-	'_getenv', '_strlen']
+// C library symbols that should resolve to the external system library via GOT/stubs.
+// This is the exhaustive whitelist of all C functions referenced by V's builtins.
+// Only symbols in this list are allowed through GOT/stubs — all other undefined
+// symbols are rejected to prevent V-mangled names from leaking into dyld binding.
+const force_external_syms = [
+	// Memory allocation
+	'_malloc', '_free', '_calloc', '_realloc',
+	// Memory operations
+	'_memcpy', '_memmove', '_memset', '_memcmp', '_memchr', '_mprotect',
+	// Memory mapping
+	'_mmap', '_munmap',
+	// String operations
+	'_strlen', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strdup', '_strerror',
+	'_strcpy', '_strncpy', '_strcat', '_strncat', '_strstr',
+	'_strcasecmp', '_strncasecmp', '_strtol', '_strtod', '_strtoul', '_atoi', '_atof',
+	// Character classification
+	'_tolower', '_toupper', '_isdigit', '_isspace',
+	// Standard I/O
+	'_printf', '_fprintf', '_sprintf', '_snprintf', '_sscanf', '_dprintf',
+	'_puts', '_fputs', '_fflush', '_putchar', '_getchar',
+	'_fopen', '_fclose', '_fread', '_fwrite', '_fseek', '_ftell', '_fgets', '_rewind',
+	'_fileno', '_setbuf', '_popen', '_pclose',
+	// File descriptor I/O
+	'_open', '_close', '_read', '_write', '_pipe', '_dup2', '_isatty', '_fcntl', '_ioctl',
+	// File system
+	'_stat', '_lstat', '_mkdir', '_rmdir', '_remove', '_rename', '_chdir', '_getcwd',
+	'_access', '_readlink', '_chmod', '_opendir', '_closedir', '_readdir', '_realpath', '_unlink',
+	// Process management
+	'_exit', '_abort', '__exit', '_fork', '_waitpid', '_execve', '_execvp', '_getpid', '_kill',
+	'_system', '_atexit',
+	// Signal handling
+	'_signal', '_raise', '_sigaction', '_sigemptyset',
+	// Environment
+	'_getenv', '_setenv', '_unsetenv',
+	// Time
+	'_gettimeofday', '_sleep', '_usleep', '_mktime',
+	// System
+	'_sysconf', '_sysctl', '_sysctlbyname', '_qsort', '_rand', '_srand',
+	// Stdio globals
+	'___stdoutp', '___stderrp', '___stdinp',
+	// macOS Grand Central Dispatch
+	'_dispatch_semaphore_create', '_dispatch_semaphore_signal', '_dispatch_semaphore_wait',
+	'_dispatch_time', '_dispatch_release',
+	// POSIX threads
+	'_pthread_self', '_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_unlock',
+	'_pthread_mutex_destroy', '_pthread_rwlock_init', '_pthread_rwlock_rdlock',
+	'_pthread_rwlock_wrlock', '_pthread_rwlock_unlock', '_pthread_rwlockattr_init',
+	'_pthread_rwlockattr_setpshared', '_pthread_condattr_init', '_pthread_condattr_setpshared',
+	'_pthread_condattr_destroy', '_pthread_cond_init', '_pthread_cond_signal',
+	'_pthread_cond_wait', '_pthread_cond_timedwait', '_pthread_cond_destroy',
+	// Backtrace
+	'_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd',
+	// macOS specific
+	'_proc_pidpath',
+]
 
 pub struct Linker {
 	macho &MachOObject
@@ -121,23 +167,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		}
 	}
 
-	// Second pass: collect truly external symbols (undefined and not locally defined)
-	for sym in l.macho.symbols {
-		if sym.type_ == 0x01 { // N_UNDF | N_EXT
-			if sym.name !in defined_syms && sym.name !in l.extern_syms {
-				// Skip internal V symbols (contain '__' = V name mangling)
-				// Only system library symbols (libc) should go through GOT/stubs
-				if sym.name.contains('__') && sym.name !in force_external_syms {
-					continue
-				}
-				l.extern_syms << sym.name
-				l.sym_to_got[sym.name] = l.extern_syms.len - 1
-			}
-		}
-	}
-
-	// Add force_external symbols that are referenced (either as undefined OR defined locally)
-	// These need stubs so that internal calls go to libc, not to local V wrappers
+	// Second pass: collect external symbols — ONLY allow force_external_syms through GOT/stubs.
+	// This prevents V-mangled names from leaking into dyld binding.
 	for sym in l.macho.symbols {
 		if sym.name in force_external_syms && sym.name !in l.extern_syms {
 			l.extern_syms << sym.name
