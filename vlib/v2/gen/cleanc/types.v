@@ -176,11 +176,21 @@ fn (mut g Gen) collect_runtime_aliases() {
 	}
 	// Also use type-checker output so aliases used only in expressions are captured.
 	if g.env != unsafe { nil } {
-		for _, typ in g.env.expr_types {
-			// Some self-host runs leave zero-value Type entries in expr_types.
-			// Those decode as `types.Alias` with an invalid payload.
+		for typ in g.env.expr_type_values {
+			if typ is types.Void {
+				continue
+			}
 			// Skip top-level aliases from env cache; declarations are collected
 			// from the AST path above.
+			if typ is types.Alias {
+				continue
+			}
+			g.collect_aliases_from_type(typ)
+		}
+		for typ in g.env.expr_type_neg_values {
+			if typ is types.Void {
+				continue
+			}
 			if typ is types.Alias {
 				continue
 			}
@@ -824,7 +834,7 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 		return none
 	}
 	pos := e.pos()
-	if pos.is_valid() {
+	if pos.id != 0 {
 		if typ := g.env.get_expr_type(pos.id) {
 			// Self-hosting can leave malformed alias payloads in env expr cache.
 			// Skip those entries and fall back to AST/scope-based inference.

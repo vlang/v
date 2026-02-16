@@ -21,36 +21,73 @@ pub mut:
 	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
-	// Expression types - maps unique expression ID to computed type.
-	// Each expression gets a unique ID from the parser (via token.Pos.id),
-	// so there are no collisions between different expressions.
-	expr_types       map[int]Type
-	expr_type_slots  map[int]int
-	expr_type_values []Type
+	// Expression types - indexed directly by pos.id.
+	// Positive IDs (1-based) come from the parser via token.Pos.id.
+	// Negative IDs come from transformer's synthesized nodes.
+	expr_type_values     []Type // indexed by pos.id for positive IDs
+	expr_type_neg_values []Type // indexed by -pos.id for negative IDs (synth nodes)
 }
 
 pub fn Environment.new() &Environment {
 	return &Environment{
-		expr_types:      map[int]Type{}
-		expr_type_slots: map[int]int{}
+		expr_type_values: []Type{cap: 100_000}
 	}
 }
 
 // set_expr_type stores the computed type for an expression by its unique ID.
 pub fn (mut e Environment) set_expr_type(id int, typ Type) {
-	e.expr_types[id] = typ
-	if slot := e.expr_type_slots[id] {
-		e.expr_type_values[slot] = typ
-		return
+	if id >= 0 {
+		if id >= e.expr_type_values.len {
+			// Grow with 2x strategy to amortize reallocation cost
+			mut new_len := if e.expr_type_values.len < 100_000 {
+				100_000
+			} else {
+				e.expr_type_values.len * 2
+			}
+			if new_len <= id {
+				new_len = id + 1
+			}
+			for e.expr_type_values.len < new_len {
+				e.expr_type_values << Type(Void(0))
+			}
+		}
+		e.expr_type_values[id] = typ
+	} else {
+		idx := -id
+		if idx >= e.expr_type_neg_values.len {
+			mut new_len := if e.expr_type_neg_values.len == 0 {
+				64
+			} else {
+				e.expr_type_neg_values.len * 2
+			}
+			if new_len <= idx {
+				new_len = idx + 1
+			}
+			for e.expr_type_neg_values.len < new_len {
+				e.expr_type_neg_values << Type(Void(0))
+			}
+		}
+		e.expr_type_neg_values[idx] = typ
 	}
-	e.expr_type_values << typ
-	e.expr_type_slots[id] = e.expr_type_values.len - 1
 }
 
 // get_expr_type retrieves the computed type for an expression by its unique ID.
 pub fn (e &Environment) get_expr_type(id int) ?Type {
-	if slot := e.expr_type_slots[id] {
-		return e.expr_type_values[slot]
+	if id > 0 && id < e.expr_type_values.len {
+		typ := e.expr_type_values[id]
+		if typ is Void {
+			return none
+		}
+		return typ
+	} else if id < 0 {
+		idx := -id
+		if idx < e.expr_type_neg_values.len {
+			typ := e.expr_type_neg_values[idx]
+			if typ is Void {
+				return none
+			}
+			return typ
+		}
 	}
 	return none
 }
