@@ -1,3 +1,5 @@
+import strconv
+
 fn test_comptime_match_assign() {
 	os := 'windows'
 	x := $match os {
@@ -59,4 +61,26 @@ fn test_comptime_match_assign_reverse() {
 		$else { 'unknown' }
 	}
 	assert z == 'unknown'
+}
+
+fn decode_number[T](str string) !T {
+	val := $match T.unaliased_typ {
+		i8 { strconv.atoi8(str)! }
+		i16 { strconv.atoi16(str)! }
+		i32 { strconv.atoi32(str)! }
+		i64 { strconv.atoi64(str)! }
+		u8 { strconv.atou8(str)! }
+		u16 { strconv.atou16(str)! }
+		u32 { strconv.atou32(str)! }
+		u64 { strconv.atou64(str)! }
+		int { strconv.atoi(str)! }
+		$float { T(strconv.atof_quick(str)) }
+		$else { return error('`decode_number` can not decode ${T.name} type') }
+	}
+	return val
+}
+
+fn test_comptime_match_assign_generic() {
+	x := decode_number[f32]('1.0')!
+	assert x == 1.0
 }
