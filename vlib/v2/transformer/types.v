@@ -1912,7 +1912,9 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 			return t.get_str_fn_name_for_type(typ.base_type)
 		}
 		types.Alias {
-			return '${typ.name}__str'
+			// Recurse to base type — aliases to primitives (e.g., ValueID = int)
+			// don't have their own str() functions.
+			return t.get_str_fn_name_for_type(typ.base_type)
 		}
 		else {
 			return none

@@ -28,7 +28,12 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 		fmt_str.write_string(escaped)
 		if i < node.inters.len {
 			inter := node.inters[i]
-			fmt_str.write_string(g.get_sprintf_format(inter))
+			if inter.resolved_fmt != '' {
+				// Transformer already resolved the format specifier
+				fmt_str.write_string(inter.resolved_fmt)
+			} else {
+				fmt_str.write_string(g.get_sprintf_format(inter))
+			}
 		}
 	}
 	fmt_lit := c_string_literal_content_to_c(fmt_str.str())
@@ -36,7 +41,12 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 	// Write arguments
 	for inter in node.inters {
 		g.sb.write_string(', ')
-		g.write_sprintf_arg(inter)
+		if inter.resolved_fmt != '' {
+			// Transformer already transformed the arg, emit directly
+			g.expr(inter.expr)
+		} else {
+			g.write_sprintf_arg(inter)
+		}
 	}
 	g.sb.write_string('); ${c_v_string_expr_from_ptr_len('_sip', '_sil', false)}; })')
 }

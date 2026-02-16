@@ -681,7 +681,8 @@ pub:
 	expr      Expr
 	// TEMP: prob removed once individual
 	// fields are set, precision etc
-	format_expr Expr = empty_expr
+	format_expr  Expr = empty_expr
+	resolved_fmt string // resolved sprintf format specifier (e.g. '%d', '%s', '%lld'), set by transformer
 }
 
 pub enum StringInterFormat {

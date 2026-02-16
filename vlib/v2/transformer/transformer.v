@@ -926,8 +926,7 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 	mut rhs := []ast.Expr{cap: stmt.rhs.len}
 	// For decl_assign with IfExpr RHS, skip value-lowering since cleanc
 	// already handles this case efficiently (Type name; if (...) { name = a; } else { ... }).
-	is_decl_with_if_rhs := stmt.op == .decl_assign && rhs_src.len == 1
-		&& rhs_src[0] is ast.IfExpr
+	is_decl_with_if_rhs := stmt.op == .decl_assign && rhs_src.len == 1 && rhs_src[0] is ast.IfExpr
 	saved_skip := t.skip_if_value_lowering
 	if is_decl_with_if_rhs {
 		t.skip_if_value_lowering = true
@@ -3224,15 +3223,217 @@ fn (mut t Transformer) lower_wrapper_payload_access(wrapper_expr ast.Expr, base_
 	}
 }
 
+fn (t &Transformer) get_sprintf_format_for_type(typ types.Type) string {
+	match typ {
+		types.String {
+			return '%s'
+		}
+		types.Primitive {
+			if typ.props.has(types.Properties.boolean) {
+				return '%s'
+			}
+			if typ.props.has(types.Properties.float) {
+				return '%f'
+			}
+			if typ.props.has(types.Properties.unsigned) {
+				if typ.size == 64 {
+					return '%llu'
+				}
+				return '%u'
+			}
+			// signed integers
+			if typ.size == 64 {
+				return '%lld'
+			}
+			return '%d'
+		}
+		types.Rune {
+			return '%c'
+		}
+		types.Char {
+			return '%c'
+		}
+		types.Enum {
+			// Enums use their .str() method, so format is %s
+			if _ := t.get_str_fn_name_for_type(typ) {
+				return '%s'
+			}
+			return '%d'
+		}
+		types.Pointer {
+			return '%p'
+		}
+		types.Alias {
+			// For aliases to primitive types (e.g., ValueID = int),
+			// use the base type's format directly.
+			return t.get_sprintf_format_for_type(typ.base_type)
+		}
+		else {
+			// Custom types (struct, array, map, sumtype) that have .str() methods
+			if _ := t.get_str_fn_name_for_type(typ) {
+				return '%s'
+			}
+			return '%d'
+		}
+	}
+}
+
+fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
+	mut fmt := '%'
+	if inter.width > 0 {
+		fmt += '${inter.width}'
+	}
+	if inter.precision > 0 {
+		fmt += '.${inter.precision}'
+	}
+	if inter.format != .unformatted {
+		match inter.format {
+			.decimal { fmt += 'd' }
+			.float { fmt += 'f' }
+			.hex { fmt += 'x' }
+			.octal { fmt += 'o' }
+			.character { fmt += 'c' }
+			.exponent { fmt += 'e' }
+			.exponent_short { fmt += 'g' }
+			.binary { fmt += 'd' } // binary not supported in printf, fallback to decimal
+			.pointer_address { fmt += 'p' }
+			.string { fmt += 's' }
+			.unformatted { fmt += 'd' }
+		}
+		return fmt
+	}
+	// Infer from expression type
+	if typ := t.get_expr_type(inter.expr) {
+		return t.get_sprintf_format_for_type(typ)
+	}
+	return '%d' // fallback
+}
+
+fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
+	transformed := t.transform_expr(inter.expr)
+	typ := t.get_expr_type(inter.expr) or {
+		return transformed // can't resolve type, pass as-is
+	}
+	// When an explicit format is specified, pass the expression as-is.
+	// The user has explicitly chosen the format, so no wrapping is needed
+	// (e.g., ${ptr:p} should pass the pointer directly, not call .str()).
+	if inter.format != .unformatted {
+		if inter.format == .string {
+			// Explicit :s still needs .str access for V strings
+			if typ is types.String {
+				return t.synth_selector(transformed, 'str', types.Type(types.voidptr_))
+			}
+		}
+		return transformed
+	}
+	match typ {
+		types.String {
+			// string -> expr.str (access C char* pointer for sprintf %s)
+			return t.synth_selector(transformed, 'str', types.Type(types.voidptr_))
+		}
+		types.Primitive {
+			if typ.props.has(types.Properties.boolean) {
+				// bool -> if expr { "true" } else { "false" } (ternary for %s)
+				return ast.Expr(ast.IfExpr{
+					cond:      transformed
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.Expr(ast.StringLiteral{
+								kind:  .c
+								value: '"true"'
+							})
+						}),
+					]
+					else_expr: ast.Expr(ast.StringLiteral{
+						kind:  .c
+						value: '"false"'
+					})
+					pos:       inter.expr.pos()
+				})
+			}
+			// numeric primitives: pass as-is
+			return transformed
+		}
+		types.Rune, types.Char {
+			return transformed
+		}
+		types.Enum {
+			// Enums should call their .str() method for string representation
+			if str_fn_name := t.get_str_fn_name_for_type(typ) {
+				str_call := ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: str_fn_name
+					}
+					args: [transformed]
+					pos:  inter.expr.pos()
+				})
+				return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
+			}
+			return transformed
+		}
+		types.Alias {
+			// For aliases to primitives (e.g., ValueID = int),
+			// handle based on the base type to avoid calling non-existent str() functions.
+			base := typ.base_type
+			match base {
+				types.String {
+					return t.synth_selector(transformed, 'str', types.Type(types.voidptr_))
+				}
+				types.Primitive {
+					if base.props.has(types.Properties.boolean) {
+						return ast.Expr(ast.IfExpr{
+							cond:      transformed
+							stmts:     [
+								ast.Stmt(ast.ExprStmt{
+									expr: ast.Expr(ast.StringLiteral{
+										kind:  .c
+										value: '"true"'
+									})
+								}),
+							]
+							else_expr: ast.Expr(ast.StringLiteral{
+								kind:  .c
+								value: '"false"'
+							})
+							pos:       inter.expr.pos()
+						})
+					}
+					return transformed
+				}
+				else {
+					return transformed
+				}
+			}
+		}
+		else {
+			// For custom types with str() method: Type__str(expr).str
+			str_fn_info := t.get_str_fn_info_for_expr(inter.expr)
+			if str_fn_info.str_fn_name != '' {
+				t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
+				str_call := ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: str_fn_info.str_fn_name
+					}
+					args: [transformed]
+					pos:  inter.expr.pos()
+				})
+				return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
+			}
+			return transformed
+		}
+	}
+}
+
 fn (mut t Transformer) transform_string_inter_literal(expr ast.StringInterLiteral) ast.Expr {
 	mut new_inters := []ast.StringInter{cap: expr.inters.len}
 	for inter in expr.inters {
 		new_inters << ast.StringInter{
-			format:      inter.format
-			width:       inter.width
-			precision:   inter.precision
-			expr:        t.transform_expr(inter.expr)
-			format_expr: inter.format_expr
+			format:       inter.format
+			width:        inter.width
+			precision:    inter.precision
+			expr:         t.transform_sprintf_arg(inter)
+			format_expr:  inter.format_expr
+			resolved_fmt: t.resolve_sprintf_format(inter)
 		}
 	}
 	return ast.StringInterLiteral{
