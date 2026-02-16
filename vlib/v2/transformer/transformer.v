@@ -3034,8 +3034,8 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 		}
 	}
 
-	// Declare tmp with the concrete target type by casting the initializer.
-	stmts << ast.AssignStmt{
+	// Hoist temp declaration and field updates before current statement via pending_stmts.
+	t.pending_stmts << ast.Stmt(ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [ast.Expr(tmp_ident)]
 		rhs: [
@@ -3045,11 +3045,11 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 			}),
 		]
 		pos: node.pos
-	}
+	})
 
 	// Apply field updates.
 	for field in node.fields {
-		stmts << ast.AssignStmt{
+		t.pending_stmts << ast.Stmt(ast.AssignStmt{
 			op:  .assign
 			lhs: [
 				ast.Expr(ast.SelectorExpr{
@@ -3061,26 +3061,17 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 			]
 			rhs: [t.transform_expr(field.value)]
 			pos: node.pos
-		}
+		})
 	}
 
 	// Yield value or address.
 	if take_addr {
-		stmts << ast.ExprStmt{
-			expr: ast.Expr(ast.PrefixExpr{
-				op:   token.Token.amp
-				expr: tmp_ident
-			})
-		}
-	} else {
-		stmts << ast.ExprStmt{
+		return ast.Expr(ast.PrefixExpr{
+			op:   token.Token.amp
 			expr: tmp_ident
-		}
+		})
 	}
-
-	return ast.Expr(ast.UnsafeExpr{
-		stmts: stmts
-	})
+	return ast.Expr(tmp_ident)
 }
 
 fn (t &Transformer) is_nil_expr(expr ast.Expr) bool {

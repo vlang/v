@@ -2015,6 +2015,35 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			if rhs_is_array {
 				// RHS is an array - use array__push_many(array*, val.data, val.len)
 				rhs_transformed := t.transform_expr(expr.rhs)
+				// When RHS contains a call expression, introduce a temporary variable
+				// to avoid evaluating the call twice (once for .data, once for .len).
+				// The VarDecl is hoisted via pending_stmts before the current statement.
+				if t.contains_call_expr(expr.rhs) {
+					t.temp_counter++
+					tmp_name := '_pm_t${t.temp_counter}'
+					tmp_ident := ast.Ident{
+						name: tmp_name
+					}
+					if rhs_type := t.get_expr_type(expr.rhs) {
+						t.register_temp_var(tmp_name, rhs_type)
+					}
+					t.pending_stmts << ast.Stmt(ast.AssignStmt{
+						op:  .decl_assign
+						lhs: [ast.Expr(tmp_ident)]
+						rhs: [rhs_transformed]
+					})
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: 'array__push_many'
+						}
+						args: [
+							arr_ptr_expr,
+							t.synth_selector(ast.Expr(tmp_ident), 'data', types.Type(types.voidptr_)),
+							t.synth_selector(ast.Expr(tmp_ident), 'len', types.Type(types.int_)),
+						]
+						pos:  expr.pos
+					}
+				}
 				// Wrap PrefixExpr in parens to fix operator precedence (*other.data -> (*other).data)
 				rhs_for_selector := if expr.rhs is ast.PrefixExpr {
 					ast.Expr(ast.ParenExpr{

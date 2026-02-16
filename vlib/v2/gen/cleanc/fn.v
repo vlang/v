@@ -1501,27 +1501,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	if c_name in ['os__exit', 'builder__exit'] {
 		c_name = 'exit'
 	}
-	if c_name == 'array__push_many' && call_args.len == 3 && call_args[1] is ast.SelectorExpr
-		&& call_args[2] is ast.SelectorExpr {
-		data_sel := call_args[1] as ast.SelectorExpr
-		len_sel := call_args[2] as ast.SelectorExpr
-		if data_sel.rhs.name == 'data' && len_sel.rhs.name == 'len'
-			&& g.contains_call_expr(data_sel.lhs) {
-			tmp_type := if g.get_expr_type(data_sel.lhs) != '' {
-				g.get_expr_type(data_sel.lhs)
-			} else {
-				'array'
-			}
-			tmp_name := '_push_many_tmp_${g.tmp_counter}'
-			g.tmp_counter++
-			g.sb.write_string('({ ${tmp_type} ${tmp_name} = ')
-			g.expr(data_sel.lhs)
-			g.sb.write_string('; ${c_name}(')
-			g.gen_call_arg(c_name, 0, call_args[0])
-			g.sb.write_string(', ${tmp_name}.data, ${tmp_name}.len); })')
-			return
-		}
-	}
 	g.sb.write_string('${c_name}(')
 	mut total_args := call_args.len
 	if param_types := g.fn_param_types[c_name] {
