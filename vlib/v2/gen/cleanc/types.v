@@ -1747,10 +1747,8 @@ fn selector_struct_field_type_from_type(t types.Type, field_name string) ?types.
 }
 
 fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
-	mut lhs_type := g.get_expr_type(sel.lhs)
-	if lhs_env_type := g.get_expr_type_from_env(sel.lhs) {
-		lhs_type = lhs_env_type
-	}
+	// Handle _result_/_option_ wrapper field access (.data, .err, .is_error, .state)
+	lhs_type := g.get_expr_type(sel.lhs)
 	if lhs_type.starts_with('_result_') {
 		if sel.rhs.name == 'is_error' {
 			return 'bool'
@@ -1779,137 +1777,24 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 			}
 		}
 	}
-
-	mut struct_name := ''
-	if lhs_env_type := g.get_expr_type_from_env(sel.lhs) {
-		env_struct_name := lhs_env_type.trim_right('*')
-		field_key := env_struct_name + '.' + sel.rhs.name
-		short_key := if env_struct_name.contains('__') {
-			env_struct_name.all_after_last('__') + '.' + sel.rhs.name
-		} else {
-			''
-		}
-		if field_key in g.struct_field_types
-			|| (short_key != '' && short_key in g.struct_field_types) {
-			struct_name = env_struct_name
+	if raw_type := g.get_raw_type(sel) {
+		resolved := g.types_type_to_c(raw_type)
+		if resolved != '' {
+			return resolved
 		}
 	}
-	if raw_type := g.get_raw_type(sel.lhs) {
-		match raw_type {
-			types.Pointer {
-				if raw_type.base_type is types.Struct {
-					struct_name = raw_type.base_type.name
-				} else if raw_type.base_type is types.Alias {
-					struct_name = raw_type.base_type.name
-				}
-			}
-			types.Struct {
-				struct_name = raw_type.name
-			}
-			types.Alias {
-				struct_name = raw_type.name
-			}
-			else {}
-		}
-	}
-	if struct_name == '' {
-		struct_name = g.get_expr_type(sel.lhs).trim_right('*')
-	}
+	// Fallback: use struct_field_types map (populated during C gen).
+	struct_name := g.selector_struct_name(sel.lhs)
 	if struct_name != '' {
 		field_key := struct_name + '.' + sel.rhs.name
 		if field_type := g.struct_field_types[field_key] {
 			return field_type
 		}
-	}
-	if struct_name.contains('__') {
-		short_name := struct_name.all_after_last('__')
-		short_field_key := short_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[short_field_key] {
-			return field_type
-		}
-	}
-	if struct_name.contains('.') {
-		mangled_name := struct_name.replace('.', '__')
-		mangled_field_key := mangled_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[mangled_field_key] {
-			return field_type
-		}
-		short_dot := struct_name.all_after_last('.')
-		short_dot_field_key := short_dot + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[short_dot_field_key] {
-			return field_type
-		}
-	}
-	// Sum type selector with a field that exists on a single variant.
-	mut lhs_sum_type := ''
-	if raw_lhs := g.get_raw_type(sel.lhs) {
-		match raw_lhs {
-			types.SumType {
-				lhs_sum_type = g.types_type_to_c(raw_lhs)
+		if struct_name.contains('__') {
+			short_name := struct_name.all_after_last('__')
+			if field_type := g.struct_field_types[short_name + '.' + sel.rhs.name] {
+				return field_type
 			}
-			types.Pointer {
-				if raw_lhs.base_type is types.SumType {
-					lhs_sum_type = g.types_type_to_c(raw_lhs.base_type)
-				}
-			}
-			types.Alias {
-				if raw_lhs.base_type is types.SumType {
-					lhs_sum_type = g.types_type_to_c(raw_lhs.base_type)
-				}
-			}
-			else {}
-		}
-	}
-	if lhs_sum_type == '' {
-		lhs_sum_type = g.get_expr_type(sel.lhs).trim_right('*')
-	}
-	mut variants := []string{}
-	if vs := g.sum_type_variants[lhs_sum_type] {
-		variants = vs.clone()
-	} else if lhs_sum_type.contains('__') {
-		short_sum := lhs_sum_type.all_after_last('__')
-		if vs := g.sum_type_variants[short_sum] {
-			variants = vs.clone()
-		}
-	} else {
-		qualified_sum := g.get_qualified_name(lhs_sum_type)
-		if vs := g.sum_type_variants[qualified_sum] {
-			variants = vs.clone()
-			lhs_sum_type = qualified_sum
-		}
-	}
-	if variants.len > 0 {
-		mut matched_type := ''
-		for variant in variants {
-			variant_short := if variant.contains('__') {
-				variant.all_after_last('__')
-			} else {
-				variant
-			}
-			mut variant_full := variant
-			if !variant_full.contains('__') && lhs_sum_type.contains('__') {
-				prefix := lhs_sum_type.all_before_last('__')
-				if prefix != '' {
-					variant_full = '${prefix}__${variant_short}'
-				}
-			}
-			key_full := '${variant_full}.${sel.rhs.name}'
-			key_short := '${variant_short}.${sel.rhs.name}'
-			mut field_typ := ''
-			if ft := g.struct_field_types[key_full] {
-				field_typ = ft
-			} else if ft := g.struct_field_types[key_short] {
-				field_typ = ft
-			}
-			if field_typ != '' {
-				if matched_type != '' && matched_type != field_typ {
-					return ''
-				}
-				matched_type = field_typ
-			}
-		}
-		if matched_type != '' {
-			return matched_type
 		}
 	}
 	return ''

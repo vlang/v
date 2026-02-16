@@ -3033,7 +3033,6 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 		name: tmp_name
 		pos:  node.pos
 	}
-	mut stmts := []ast.Stmt{}
 
 	// Prepare the base value for the update.
 	mut base_value := t.transform_expr(node.expr)
