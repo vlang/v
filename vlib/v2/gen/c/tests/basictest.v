@@ -1,6 +1,7 @@
 module main
 
 struct Point {
+mut:
 	x int
 	y int
 }
