@@ -55,7 +55,7 @@ pub mut:
 	is_nested_string            bool // '${'abc':-12s}'
 	is_inter_start              bool // for hacky string interpolation TODO simplify
 	is_inter_end                bool
-	str_helper_tokens           []u8 // ', ", 0 (string interpolation with lcbr), { (block)
+	str_helper_tokens           []u8 = []u8{cap: 16} // ', ", 0 (string interpolation with lcbr), { (block)
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_print_line_on_error      bool
@@ -78,11 +78,11 @@ pub mut:
 	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 
 	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without escapes
-	all_pos         []int
-	u16_escapes_pos []int // pos list of \uXXXX
-	u32_escapes_pos []int // pos list of \UXXXXXXXX
-	h_escapes_pos   []int // pos list of \xXX
-	str_segments    []string
+	all_pos         []int    = []int{cap: 30}
+	u16_escapes_pos []int    = []int{cap: 10} // pos list of \uXXXX
+	u32_escapes_pos []int    = []int{cap: 10} // pos list of \UXXXXXXXX
+	h_escapes_pos   []int    = []int{cap: 10} // pos list of \xXX
+	str_segments    []string = []string{cap: 10}
 }
 
 /*
@@ -154,7 +154,13 @@ const internally_generated_v_code = 'internally_generated_v_code'
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
-	mut s := &Scanner{
+	mut s := new_plain_scanner(text, comments_mode, pref_)
+	s.scan_all_tokens_in_buffer()
+	return s
+}
+
+fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
+	return &Scanner{
 		pref:                        pref_
 		text:                        text
 		all_tokens:                  []token.Token{cap: text.len / 3}
@@ -166,8 +172,6 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		file_path:                   internally_generated_v_code
 		file_base:                   internally_generated_v_code
 	}
-	s.scan_all_tokens_in_buffer()
-	return s
 }
 
 @[unsafe]
@@ -832,11 +836,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.rsbr, '', 1)
 			}
 			`{` {
-				// Skip { in `${` in strings
-				if 255 != s.str_quote() {
-					s.str_helper_tokens << 0
-				} else {
-					s.str_helper_tokens << c
+				// Keep interpolation helper state only while scanning string interpolation.
+				if s.str_helper_tokens.len > 0 {
+					// Skip { in `${` in strings
+					if 255 != s.str_quote() {
+						s.str_helper_tokens << 0
+					} else {
+						s.str_helper_tokens << c
+					}
 				}
 				if s.is_inside_string && s.text[s.pos - 1] == `$` {
 					continue
@@ -855,24 +862,23 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				// s = `hello ${name} !`
 				if s.str_helper_tokens.len > 0 {
 					s.str_helper_tokens.delete_last()
-				}
-				quote := s.str_quote()
-				if 255 != quote {
-					if s.pos < s.text.len - 1 {
-						s.pos++
-					} else {
-						s.error('unfinished string literal')
+					quote := s.str_quote()
+					if 255 != quote {
+						if s.pos < s.text.len - 1 {
+							s.pos++
+						} else {
+							s.error('unfinished string literal')
+						}
+						if s.text[s.pos] == quote {
+							s.is_inside_string = false
+							s.str_helper_tokens.delete_last()
+							return s.new_token(.string, '', 1)
+						}
+						ident_string := s.ident_string()
+						return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 					}
-					if s.text[s.pos] == quote {
-						s.is_inside_string = false
-						s.str_helper_tokens.delete_last()
-						return s.new_token(.string, '', 1)
-					}
-					ident_string := s.ident_string()
-					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
-				} else {
-					return s.new_token(.rcbr, '', 1)
 				}
+				return s.new_token(.rcbr, '', 1)
 			}
 			`&` {
 				if nextc == `&` {

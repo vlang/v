@@ -5,10 +5,10 @@ import v.token
 import v.pref
 
 fn scan_kinds(text string) []token.Kind {
-	mut scanner := new_scanner(text, .skip_comments, &pref.Preferences{})
+	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{})
 	mut token_kinds := []token.Kind{}
 	for {
-		tok := scanner.scan()
+		tok := scanner.text_scan()
 		if tok.kind == .eof {
 			break
 		}
@@ -18,10 +18,10 @@ fn scan_kinds(text string) []token.Kind {
 }
 
 fn scan_tokens(text string) []token.Token {
-	mut scanner := new_scanner(text, .parse_comments, &pref.Preferences{})
+	mut scanner := new_plain_scanner(text, .parse_comments, &pref.Preferences{})
 	mut tokens := []token.Token{}
 	for {
-		tok := scanner.scan()
+		tok := scanner.text_scan()
 		if tok.kind == .eof {
 			break
 		}
@@ -311,6 +311,31 @@ fn test_escape_string() {
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
 	// result = scan_tokens(r"'\x'") // should always result in an error
 	// result = scan_tokens(r'`hello`') // should always result in an error
+}
+
+fn assert_str_interpolation_works(mlen int, text string) {
+	mut max_len := 0
+	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{})
+	for {
+		tok := scanner.text_scan()
+		if scanner.str_helper_tokens.len > max_len {
+			max_len = scanner.str_helper_tokens.len
+		}
+		if tok.kind == .eof {
+			break
+		}
+	}
+	assert max_len == mlen
+	assert scanner.errors.len == 0
+	assert scanner.str_helper_tokens.len == 0
+}
+
+fn test_string_interpolation_with_nested_string_does_not_grow_str_helper_tokens_too_much() {
+	sinterpolation := " s := 'x \${if true { '{' } else { '}' }} y' "
+	assert_str_interpolation_works(3, sinterpolation)
+	assert_str_interpolation_works(3, sinterpolation + sinterpolation + sinterpolation)
+	assert_str_interpolation_works(3, '{'.repeat(100) + sinterpolation + '}'.repeat(100))
+	assert_str_interpolation_works(0, '{'.repeat(100) + '}'.repeat(100))
 }
 
 fn test_comment_string() {
