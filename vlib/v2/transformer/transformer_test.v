@@ -817,3 +817,120 @@ fn test_transform_for_in_stmt_lowers_to_for_stmt() {
 	// NOTE: transform_for_in_stmt returns `ast.ForStmt` directly.
 	assert result.init is ast.AssignStmt, 'expected lowered init AssignStmt, got ${result.init.type_name()}'
 }
+
+// --- Inline array `in` optimization tests ---
+
+fn test_transform_in_inline_array_expands_to_eq_chain() {
+	// x in [1, 2, 3] => (x == 1 || x == 2 || x == 3)
+	mut t := create_transformer_with_vars({
+		'x': types.Type(types.int_)
+	})
+
+	expr := ast.InfixExpr{
+		op:  .key_in
+		lhs: ast.Ident{
+			name: 'x'
+		}
+		rhs: ast.ArrayInitExpr{
+			exprs: [
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '1'
+				}),
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}),
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '3'
+				}),
+			]
+		}
+	}
+
+	result := t.transform_infix_expr(expr)
+
+	// Should be: (x == 1 || x == 2 || x == 3)
+	// Top level: (x == 1 || x == 2) || (x == 3)
+	assert result is ast.InfixExpr, 'expected InfixExpr (||), got ${result.type_name()}'
+	top := result as ast.InfixExpr
+	assert top.op == .logical_or, 'expected || at top, got ${top.op}'
+	// RHS should be x == 3
+	assert top.rhs is ast.InfixExpr
+	rhs := top.rhs as ast.InfixExpr
+	assert rhs.op == .eq
+	assert rhs.lhs is ast.Ident
+	assert (rhs.lhs as ast.Ident).name == 'x'
+	assert rhs.rhs is ast.BasicLiteral
+	assert (rhs.rhs as ast.BasicLiteral).value == '3'
+}
+
+fn test_transform_in_inline_array_single_element() {
+	// x in [5] => x == 5
+	mut t := create_transformer_with_vars({
+		'x': types.Type(types.int_)
+	})
+
+	expr := ast.InfixExpr{
+		op:  .key_in
+		lhs: ast.Ident{
+			name: 'x'
+		}
+		rhs: ast.ArrayInitExpr{
+			exprs: [
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '5'
+				}),
+			]
+		}
+	}
+
+	result := t.transform_infix_expr(expr)
+
+	// Single element: x == 5
+	assert result is ast.InfixExpr, 'expected InfixExpr (==), got ${result.type_name()}'
+	eq := result as ast.InfixExpr
+	assert eq.op == .eq
+	assert eq.lhs is ast.Ident
+	assert (eq.lhs as ast.Ident).name == 'x'
+	assert eq.rhs is ast.BasicLiteral
+	assert (eq.rhs as ast.BasicLiteral).value == '5'
+}
+
+fn test_transform_not_in_inline_array_wraps_with_not() {
+	// x !in [1, 2] => !(x == 1 || x == 2)
+	mut t := create_transformer_with_vars({
+		'x': types.Type(types.int_)
+	})
+
+	expr := ast.InfixExpr{
+		op:  .not_in
+		lhs: ast.Ident{
+			name: 'x'
+		}
+		rhs: ast.ArrayInitExpr{
+			exprs: [
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '1'
+				}),
+				ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}),
+			]
+		}
+	}
+
+	result := t.transform_infix_expr(expr)
+
+	// Should be: !(x == 1 || x == 2)
+	assert result is ast.PrefixExpr, 'expected PrefixExpr (!), got ${result.type_name()}'
+	prefix := result as ast.PrefixExpr
+	assert prefix.op == .not
+	assert prefix.expr is ast.InfixExpr
+	inner := prefix.expr as ast.InfixExpr
+	assert inner.op == .logical_or
+}

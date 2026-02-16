@@ -1034,32 +1034,6 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, arg_count int) ?string {
 	return none
 }
 
-fn (mut g Gen) infer_array_contains_elem_type(name string, call_args []ast.Expr) string {
-	arr_type := if call_args.len > 0 { g.get_expr_type(call_args[0]) } else { '' }
-	if arr_type.starts_with('Array_fixed_') {
-		if finfo := g.collected_fixed_array_types[arr_type] {
-			return finfo.elem_type
-		}
-	} else if arr_type.starts_with('Array_') {
-		return arr_type['Array_'.len..]
-	}
-	mut suffix := ''
-	if name.starts_with('array__contains_') {
-		suffix = name['array__contains_'.len..]
-	}
-	if suffix != '' && suffix != 'void' {
-		return suffix
-	}
-	if call_args.len > 1 {
-		rhs_type := g.get_expr_type(call_args[1])
-		if rhs_type != '' && rhs_type != 'int_literal' && rhs_type != 'float_literal'
-			&& rhs_type != 'void' {
-			return rhs_type.trim_right('*')
-		}
-	}
-	return 'int'
-}
-
 fn (mut g Gen) gen_array_contains_call(name string, call_args []ast.Expr) bool {
 	if !name.starts_with('array__contains_') || call_args.len != 2 {
 		return false
