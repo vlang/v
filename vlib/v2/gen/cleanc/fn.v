@@ -447,6 +447,7 @@ fn (g Gen) get_fn_type_from_expr(e ast.Expr) ?ast.FnType {
 	return none
 }
 
+// Needed for self
 fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	if base_arg is ast.Ident {

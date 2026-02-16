@@ -1593,12 +1593,23 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	for _ in body_smartcasts {
 		t.pop_smartcast()
 	}
-	return ast.IfExpr{
+	transformed_if := ast.IfExpr{
 		cond:      t.transform_expr(expr.cond)
 		stmts:     transformed_stmts
 		else_expr: t.transform_expr(expr.else_expr)
 		pos:       expr.pos
 	}
+	// Lower value-position IfExpr: hoist to a temp variable assignment.
+	// This eliminates expression-valued IfExpr so backends don't need statement-expressions.
+	// A value-position if has an else branch and its body ends with an ExprStmt (producing a value).
+	// Skip lowering when:
+	// - The IfExpr is directly inside an ExprStmt (statement position, not value)
+	// - The IfExpr is already the RHS of a decl_assign (cleanc handles this efficiently)
+	if !t.skip_if_value_lowering && transformed_if.else_expr !is ast.EmptyExpr
+		&& t.if_expr_is_value(transformed_if) {
+		return t.lower_if_expr_value(transformed_if)
+	}
+	return transformed_if
 }
 
 // get_sumtype_name_for_expr returns the sum type name for an expression, or empty string if not a sum type

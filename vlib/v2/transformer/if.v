@@ -655,6 +655,56 @@ fn (mut t Transformer) expand_assign_if_expr(lhs ast.Expr, ie ast.IfExpr) []ast.
 	})]
 }
 
+// if_expr_is_value returns true if the IfExpr produces a value (i.e., the body's
+// last statement is an ExprStmt whose expression has a non-void type).
+// This distinguishes value-position ifs from statement-position ifs that happen
+// to have an else branch.
+fn (t &Transformer) if_expr_is_value(ie ast.IfExpr) bool {
+	if ie.stmts.len == 0 {
+		return false
+	}
+	last := ie.stmts[ie.stmts.len - 1]
+	if last !is ast.ExprStmt {
+		return false
+	}
+	// Check that the expression actually produces a non-void value.
+	// Statement-form ifs may end with void function calls or postfix ops
+	// used for side effects (i++, println(...), etc).
+	last_expr := (last as ast.ExprStmt).expr
+	if typ := t.get_expr_type(last_expr) {
+		type_name := t.type_to_c_name(typ)
+		if type_name == '' || type_name == 'void' {
+			return false
+		}
+	}
+	return true
+}
+
+// lower_if_expr_value lowers a value-position IfExpr into a temp variable + statement-form if.
+// Generates: _if_t<N> := if cond { a } else { b }
+// Hoists the decl_assign via pending_stmts and returns the temp ident as replacement.
+fn (mut t Transformer) lower_if_expr_value(ie ast.IfExpr) ast.Expr {
+	t.temp_counter++
+	tmp_name := '_if_t${t.temp_counter}'
+	tmp_ident := ast.Ident{
+		name: tmp_name
+	}
+	// Register temp variable type so cleanc can resolve it from scope
+	if typ := t.get_expr_type(ast.Expr(ie)) {
+		t.register_temp_var(tmp_name, typ)
+	}
+	// Hoist the decl_assign with the IfExpr as RHS.
+	// cleanc's gen_assign_stmt already handles decl_assign + IfExpr RHS
+	// by emitting: Type tmp; if (cond) { tmp = a; } else { tmp = b; }
+	t.pending_stmts << ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(tmp_ident)]
+		rhs: [ast.Expr(ie)]
+		pos: ie.pos
+	})
+	return ast.Expr(tmp_ident)
+}
+
 fn (mut t Transformer) collect_defers_in_if(node ast.IfExpr, mut defer_bodies [][]ast.Stmt) ast.Expr {
 	new_else := t.collect_defers_in_else(node.else_expr, mut defer_bodies)
 	return ast.IfExpr{
