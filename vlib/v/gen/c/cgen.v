@@ -164,7 +164,6 @@ mut:
 	inside_global_decl        bool
 	inside_interface_deref    bool
 	inside_assign_fn_var      bool
-	outer_tmp_var             string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
 	last_tmp_call_var         []string
 	last_if_option_type       ast.Type // stores the expected if type on nested if expr
 	loop_depth                int
@@ -2357,7 +2356,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
-				mut is_if_expr_with_tmp := false
 				if stmt in [ast.Return, ast.BranchStmt] {
 					is_noreturn = true
 				} else if stmt is ast.ExprStmt {
@@ -2366,13 +2364,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
 					}
-					if stmt.expr is ast.IfExpr && g.is_autofree && !g.inside_if_option
-						&& !g.inside_if_result {
-						is_if_expr_with_tmp = true
-						g.outer_tmp_var = tmp_var
-					}
 				}
-				if !is_noreturn && !is_if_expr_with_tmp {
+				if !is_noreturn {
 					if is_array_fixed_init {
 						g.write('memcpy(${tmp_var}, (${g.styp(ret_type)})')
 					} else {
@@ -2380,10 +2373,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					}
 				}
 				g.stmt(stmt)
-				// Reset outer_tmp_var after processing
-				if is_if_expr_with_tmp {
-					g.outer_tmp_var = ''
-				}
 				if is_array_fixed_init {
 					lines := g.go_before_last_stmt().trim_right('; \n')
 					g.writeln('${lines}, sizeof(${tmp_var}));')
@@ -4440,22 +4429,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	if node.expr_type == 0 {
-		// Handle comptime type selector T.name when inside comptime context
-		if node.field_name == 'name' && node.expr is ast.Ident {
-			ident := node.expr as ast.Ident
-			if g.table.cur_fn != unsafe { nil } && g.table.cur_fn.generic_names.len > 0 {
-				for i, gname in g.table.cur_fn.generic_names {
-					if gname == ident.name {
-						if i < g.table.cur_concrete_types.len {
-							g.type_name(g.table.cur_concrete_types[i])
-						} else {
-							g.write('_S("${ident.name}")')
-						}
-						return
-					}
-				}
-			}
-		}
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 

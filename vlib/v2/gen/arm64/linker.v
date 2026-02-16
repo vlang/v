@@ -55,7 +55,10 @@ const bind_symbol_flags_weak_import = 0x01
 // V's malloc() wrapper calls C.malloc() which would otherwise resolve
 // back to the V wrapper.
 const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy',
-	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp']
+	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
+	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
+	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
+	'_getenv', '_strlen']
 
 pub struct Linker {
 	macho &MachOObject
@@ -121,8 +124,12 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Second pass: collect truly external symbols (undefined and not locally defined)
 	for sym in l.macho.symbols {
 		if sym.type_ == 0x01 { // N_UNDF | N_EXT
-			// Only treat as external if not defined locally
 			if sym.name !in defined_syms && sym.name !in l.extern_syms {
+				// Skip internal V symbols (contain '__' = V name mangling)
+				// Only system library symbols (libc) should go through GOT/stubs
+				if sym.name.contains('__') && sym.name !in force_external_syms {
+					continue
+				}
 				l.extern_syms << sym.name
 				l.sym_to_got[sym.name] = l.extern_syms.len - 1
 			}
@@ -388,11 +395,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 }
 
 fn (l Linker) codesign_output(output_path string) {
-	$if macos {
-		codesign_path := os.find_abs_path_of_executable('codesign') or { return }
-		sign_cmd := '${os.quoted_path(codesign_path)} -s - -f ${os.quoted_path(output_path)}'
-		_ := os.execute(sign_cmd)
-	}
+	// Skip external codesign — our built-in ad-hoc signature is sufficient
+	// and codesign -s - -f can rewrite the binary layout, breaking stub→GOT references
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {

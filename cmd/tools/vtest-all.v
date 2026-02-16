@@ -105,7 +105,7 @@ fn get_all_commands() []Command {
 		rmfile: 'hhww.c'
 	}
 	res << Command{
-		line:  '${vexe} -silent test vlib/builtin'
+		line:  '${vexe} test vlib/builtin'
 		okmsg: 'V can test vlib/builtin'
 	}
 	res << Command{

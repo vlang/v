@@ -77,6 +77,7 @@ pub enum OpCode {
 	// Aggregate (struct/tuple) operations
 	extractvalue // Extract element from struct/tuple: extractvalue %tuple, index
 	insertvalue  // Insert element into struct/tuple: insertvalue %tuple, %val, index
+	struct_init  // Create struct: operands are field values in order
 }
 
 pub enum AtomicOrdering {

@@ -314,6 +314,7 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 			lhs:      t.transform_expr(expr.lhs)
 			expr:     t.transform_expr(expr.expr)
 			is_gated: expr.is_gated
+			pos:      expr.pos
 		}
 	}
 
@@ -442,6 +443,7 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 		lhs:      t.transform_expr(expr.lhs)
 		expr:     t.transform_expr(expr.expr)
 		is_gated: expr.is_gated
+		pos:      expr.pos
 	}
 }
 

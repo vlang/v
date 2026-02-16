@@ -541,7 +541,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark.step()
 	tls_bench.step()
-	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
+	if !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !hide_skips {

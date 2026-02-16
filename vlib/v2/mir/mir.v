@@ -15,6 +15,7 @@ pub enum ValueKind {
 	instruction
 	basic_block
 	string_literal
+	c_string_literal
 	func_ref
 }
 
@@ -231,6 +232,7 @@ fn value_kind_from_ssa(kind ssa.ValueKind) ValueKind {
 		.instruction { .instruction }
 		.basic_block { .basic_block }
 		.string_literal { .string_literal }
+		.c_string_literal { .c_string_literal }
 		.func_ref { .func_ref }
 	}
 }

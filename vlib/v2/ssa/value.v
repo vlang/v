@@ -13,8 +13,9 @@ pub enum ValueKind {
 	global
 	instruction
 	basic_block
-	string_literal // V string struct literal (by value)
-	func_ref       // Function pointer reference (for map hash/eq/clone/free functions)
+	string_literal   // V string struct literal (by value)
+	c_string_literal // C string literal (raw char pointer)
+	func_ref         // Function pointer reference (for map hash/eq/clone/free functions)
 }
 
 pub struct Value {

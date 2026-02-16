@@ -129,6 +129,15 @@ pub fn (mut g Gen) gen() {
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
+	if func.blocks.len == 0 {
+		// Emit a minimal stub: just a ret instruction
+		// This is needed for functions like __v_init_consts that are called but have no body
+		g.curr_offset = g.macho.text_data.len
+		sym_name := '_' + func.name
+		g.macho.add_symbol(sym_name, u64(g.curr_offset), false, 1)
+		g.emit(0xd65f03c0) // ret
+		return
+	}
 	g.curr_offset = g.macho.text_data.len
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
@@ -249,9 +258,15 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				// Calculate allocation size based on the type
 				// The alloca result type is ptr(T), so get the element type
 				ptr_type := g.mod.type_store.types[val.typ]
-				mut alloc_size := g.type_size(ptr_type.elem_type)
-				if alloc_size <= 0 {
-					alloc_size = 8
+				elem_size := g.type_size(ptr_type.elem_type)
+				mut alloc_size := if elem_size > 0 { elem_size } else { 8 }
+				// Check for array alloca: operand[0] is element count
+				if instr.operands.len > 0 {
+					count_val := g.mod.values[instr.operands[0]]
+					count := count_val.name.int()
+					if count > 1 {
+						alloc_size = elem_size * count
+					}
 				}
 
 				// Align to 16 bytes.
@@ -275,7 +290,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				continue
 			}
 
-			if instr.op == .insertvalue {
+			if instr.op == .insertvalue || instr.op == .struct_init {
 				// Tuple/struct needs full ABI size, not just fields.len * 8.
 				tuple_typ := g.mod.type_store.types[instr.typ]
 				mut tuple_size := g.type_size(instr.typ)
@@ -1547,7 +1562,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit(asm_b(0))
 			}
 		}
-		.bitcast {
+		.bitcast, .trunc, .sext, .zext {
+			// For arm64: all registers are 64-bit, so integer type conversions
+			// are mostly just copies. Truncation uses the lower bits naturally.
+			// Sign/zero extension would matter for 8/16 bit values but we
+			// operate on full 64-bit registers throughout.
 			if instr.operands.len > 0 {
 				g.load_val_to_reg(8, instr.operands[0])
 				g.store_reg_to_val(8, val_id)
@@ -1795,6 +1814,68 @@ fn (mut g Gen) gen_instr(val_id int) {
 				// Tuple not in stack_map or reg_map - fallback
 				g.load_val_to_reg(8, tuple_id)
 				g.store_reg_to_val(8, val_id)
+			}
+		}
+		.struct_init {
+			// Create struct from field values: operands are field values in order
+			result_offset := g.stack_map[val_id]
+			struct_typ := g.mod.type_store.types[instr.typ]
+			struct_size := g.type_size(instr.typ)
+			num_chunks := if struct_size > 0 { (struct_size + 7) / 8 } else { 1 }
+
+			// Zero-initialize the entire struct first
+			g.emit_mov_reg(9, 31) // xzr
+			for i in 0 .. num_chunks {
+				g.emit_str_reg_offset(9, 29, result_offset + i * 8)
+			}
+
+			// Store each field value at its proper offset
+			for fi, field_id in instr.operands {
+				mut field_off := fi * 8
+				if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
+					field_off = g.struct_field_offset_bytes(instr.typ, fi)
+				}
+
+				mut field_typ_id := ssa.TypeID(0)
+				if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
+					field_typ_id = struct_typ.fields[fi]
+				} else if field_id > 0 && field_id < g.mod.values.len {
+					field_typ_id = g.mod.values[field_id].typ
+				}
+				mut field_size := if field_typ_id > 0 { g.type_size(field_typ_id) } else { 8 }
+				if field_size <= 0 {
+					field_size = 8
+				}
+
+				// Skip zero constants (already zeroed above)
+				field_val := g.mod.values[field_id]
+				if field_val.kind == .constant && field_val.name == '0' {
+					continue
+				}
+
+				if field_size <= 8 {
+					g.load_val_to_reg(8, field_id)
+					g.emit_str_reg_offset(8, 29, result_offset + field_off)
+				} else {
+					// Multi-word field (nested struct)
+					field_chunks := (field_size + 7) / 8
+					if field_offset := g.stack_map[field_id] {
+						mut src_ptr_reg := 12
+						if field_size > 16 && g.large_aggregate_stack_value_is_pointer(field_id) {
+							g.emit_ldr_reg_offset(src_ptr_reg, 29, field_offset)
+						} else {
+							g.emit_add_fp_imm(src_ptr_reg, field_offset)
+						}
+						for w in 0 .. field_chunks {
+							g.emit(asm_ldr_imm(Reg(10), Reg(src_ptr_reg), u32(w)))
+							g.emit_str_reg_offset(10, 29, result_offset + field_off + w * 8)
+						}
+					} else {
+						// Fallback: store first word
+						g.load_val_to_reg(8, field_id)
+						g.emit_str_reg_offset(8, 29, result_offset + field_off)
+					}
+				}
 			}
 		}
 		.insertvalue {
@@ -2280,6 +2361,37 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			// Load pointer to string struct into reg
 			g.emit_add_fp_imm(reg, base_offset)
 		}
+	} else if val.kind == .c_string_literal {
+		// C string literal: just a raw char* pointer to string data
+		// Process C escape sequences (\n, \t, etc.) into actual bytes
+		raw_bytes := val.name.bytes()
+		str_offset2 := g.macho.str_data.len
+		mut i2 := 0
+		for i2 < raw_bytes.len {
+			if raw_bytes[i2] == `\\` && i2 + 1 < raw_bytes.len {
+				match raw_bytes[i2 + 1] {
+					`n` { g.macho.str_data << 0x0A } // newline
+					`t` { g.macho.str_data << 0x09 } // tab
+					`r` { g.macho.str_data << 0x0D } // carriage return
+					`0` { g.macho.str_data << 0x00 } // null
+					`\\` { g.macho.str_data << 0x5C } // backslash
+					`'` { g.macho.str_data << 0x27 } // single quote
+					`"` { g.macho.str_data << 0x22 } // double quote
+					else { g.macho.str_data << raw_bytes[i2 + 1] }
+				}
+				i2 += 2
+			} else {
+				g.macho.str_data << raw_bytes[i2]
+				i2++
+			}
+		}
+		g.macho.str_data << 0 // null terminator
+		sym_idx := g.macho.add_symbol('L_cstr_${str_offset2}', u64(str_offset2), false,
+			2)
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
+		g.emit(asm_adrp(Reg(reg)))
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
+		g.emit(asm_add_pageoff(Reg(reg)))
 	} else if val.kind == .func_ref {
 		// Function pointer reference - load address of the function
 		// Add symbol and use ADRP + ADD to get the address
@@ -2704,8 +2816,8 @@ fn (g &Gen) large_struct_stack_value_is_pointer(val_id int) bool {
 	if val.kind == .instruction {
 		instr := g.mod.instrs[val.index]
 		op := g.selected_opcode(instr)
-		return op !in [.call, .call_sret, .inline_string_init, .insertvalue, .extractvalue, .assign,
-			.phi, .bitcast, .load]
+		return op !in [.call, .call_sret, .inline_string_init, .insertvalue, .struct_init,
+			.extractvalue, .assign, .phi, .bitcast, .load]
 	}
 	// Arguments and globals are treated as by-value stack storage.
 	return false

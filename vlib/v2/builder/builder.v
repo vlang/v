@@ -243,29 +243,41 @@ fn (mut b Builder) gen_ssa_c() {
 		return
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
-	if b.used_fn_keys.len > 0 {
-		ssa_builder.set_used_fn_keys(b.used_fn_keys)
-	}
 
 	mut stage_start := sw.elapsed()
 	ssa_builder.build_all(b.files)
 	print_time('SSA Build', time.Duration(sw.elapsed() - stage_start))
 
-	stage_start = sw.elapsed()
-	mut use_ssa_opt := os.getenv('V2_SSA_OPT') != '0'
-	if b.is_cmd_v2_self_build() {
-		use_ssa_opt = false
+	// TODO: re-enable SSA optimization once the new builder is mature
+	// stage_start = sw.elapsed()
+	// optimize.optimize(mut mod)
+	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
+
+	cc := os.getenv_opt('V2CC') or { 'cc' }
+	cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
+	version_res := os.execute('${cc} --version')
+	mut error_limit_flag := ''
+	if version_res.exit_code == 0 && version_res.output.contains('clang') {
+		error_limit_flag = ' -ferror-limit=0'
 	}
-	if use_ssa_opt {
-		optimize.optimize(mut mod)
-	}
-	print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
-	$if debug {
-		optimize.verify_and_panic(mod, 'full optimization')
+
+	// Try to get pre-compiled builtin.o and vlib.o from the cleanc cache
+	mut builtin_obj := ''
+	mut vlib_obj := ''
+	if !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv') {
+		cache_dir := b.core_cache_dir()
+		os.mkdir_all(cache_dir) or {}
+		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
+			builtin_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+		if builtin_obj.len > 0 && vlib_cached_module_paths.len > 0 {
+			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
+				vlib_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+		}
 	}
 
 	stage_start = sw.elapsed()
 	mut gen := c.Gen.new(mod)
+	gen.link_builtin = builtin_obj.len > 0
 	c_source := gen.gen()
 	print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
 	if c_source == '' {
@@ -291,30 +303,62 @@ fn (mut b Builder) gen_ssa_c() {
 	os.write_file(c_file, c_source) or { panic(err) }
 	println('[*] Wrote ${c_file}')
 
-	cc := os.getenv_opt('V2CC') or { 'cc' }
-	cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
-	version_res := os.execute('${cc} --version')
-	mut error_limit_flag := ''
-	if version_res.exit_code == 0 && version_res.output.contains('clang') {
-		error_limit_flag = ' -ferror-limit=0'
-	}
-
 	cc_start := sw.elapsed()
-	cc_cmd := '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}"${error_limit_flag}'
-	if b.pref.show_cc {
-		println(cc_cmd)
-	} else if os.getenv('V2VERBOSE') != '' {
-		dump(cc_cmd)
-	}
-	cc_res := os.execute(cc_cmd)
-	if cc_res.exit_code != 0 {
-		eprintln('error: ssa c backend compilation failed')
-		lines := cc_res.output.split_into_lines()
-		limit := if lines.len < 20 { lines.len } else { 20 }
-		for line in lines[..limit] {
-			eprintln(line)
+	mut cc_cmd := ''
+	if builtin_obj.len > 0 {
+		// Compile SSA main.c and link against pre-compiled builtin.o
+		main_obj := output_name + '.main.o'
+		compile_cmd := '${cc} ${cc_flags} -w -c "${c_file}" -o "${main_obj}"${error_limit_flag}'
+		if b.pref.show_cc {
+			println(compile_cmd)
 		}
-		exit(1)
+		compile_res := os.execute(compile_cmd)
+		if compile_res.exit_code != 0 {
+			eprintln('error: ssa c backend compilation failed')
+			lines := compile_res.output.split_into_lines()
+			limit := if lines.len < 20 { lines.len } else { 20 }
+			for line in lines[..limit] {
+				eprintln(line)
+			}
+			exit(1)
+		}
+		mut link_objects := '"${main_obj}" "${builtin_obj}"'
+		if vlib_obj.len > 0 {
+			link_objects += ' "${vlib_obj}"'
+		}
+		cc_cmd = '${cc} ${cc_flags} -w ${link_objects} -o "${output_name}"'
+		if b.pref.show_cc {
+			println(cc_cmd)
+		}
+		cc_res := os.execute(cc_cmd)
+		if cc_res.exit_code != 0 {
+			eprintln('error: ssa c backend linking failed')
+			lines := cc_res.output.split_into_lines()
+			limit := if lines.len < 20 { lines.len } else { 20 }
+			for line in lines[..limit] {
+				eprintln(line)
+			}
+			exit(1)
+		}
+		os.rm(main_obj) or {}
+	} else {
+		// Single-file compilation (no builtin linking)
+		cc_cmd = '${cc} ${cc_flags} -w "${c_file}" -o "${output_name}"${error_limit_flag}'
+		if b.pref.show_cc {
+			println(cc_cmd)
+		} else if os.getenv('V2VERBOSE') != '' {
+			dump(cc_cmd)
+		}
+		cc_res := os.execute(cc_cmd)
+		if cc_res.exit_code != 0 {
+			eprintln('error: ssa c backend compilation failed')
+			lines := cc_res.output.split_into_lines()
+			limit := if lines.len < 20 { lines.len } else { 20 }
+			for line in lines[..limit] {
+				eprintln(line)
+			}
+			exit(1)
+		}
 	}
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
 
@@ -513,9 +557,6 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		return
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
-	if b.used_fn_keys.len > 0 {
-		ssa_builder.set_used_fn_keys(b.used_fn_keys)
-	}
 	mut native_sw := time.new_stopwatch()
 
 	// Build all files together with proper multi-file ordering
