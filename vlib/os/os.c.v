@@ -5,10 +5,6 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
-$if macos {
-	#include <libproc.h>
-}
-
 $if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
@@ -765,14 +761,7 @@ pub fn executable() string {
 		return res
 	}
 	$if macos {
-		pid := C.getpid()
-		ret := C.proc_pidpath(pid, &result[0], max_path_len)
-		if ret <= 0 {
-			eprintln('os.executable() failed at calling proc_pidpath with pid: ${pid} . proc_pidpath returned ${ret} ')
-			return executable_fallback()
-		}
-		res := unsafe { tos_clone(&result[0]) }
-		return res
+		return executable_fallback()
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
