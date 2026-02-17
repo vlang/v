@@ -20,6 +20,26 @@ const num_sep = `_`
 const b_lf = 10
 const b_cr = 13
 const backslash = `\\`
+const digit_table = get_digit_table()
+const letter_table = get_letter_table()
+
+@[direct_array_access]
+fn get_digit_table() [256]bool {
+	mut res := [256]bool{}
+	for c in 0 .. 256 {
+		res[c] = u8(c).is_digit()
+	}
+	return res
+}
+
+@[direct_array_access]
+fn get_letter_table() [256]bool {
+	mut res := [256]bool{}
+	for c in 0 .. 256 {
+		res[c] = u8(c).is_letter()
+	}
+	return res
+}
 
 @[minify]
 pub struct Scanner {
@@ -273,6 +293,7 @@ fn (s &Scanner) num_lit(start int, end int) string {
 	}
 }
 
+@[direct_array_access]
 fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -288,7 +309,7 @@ fn (mut s Scanner) ident_bin_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_bin_digit() && c != num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
+			if (!digit_table[c] && !letter_table[c]) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -332,7 +353,7 @@ fn (mut s Scanner) ident_hex_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_hex_digit() && c != num_sep {
-			if !c.is_letter() || s.is_inside_string || s.is_nested_string {
+			if !letter_table[c] || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -357,6 +378,7 @@ fn (mut s Scanner) ident_hex_number() string {
 	return number
 }
 
+@[direct_array_access]
 fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -372,7 +394,7 @@ fn (mut s Scanner) ident_oct_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_oct_digit() && c != num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
+			if (!digit_table[c] && !letter_table[c]) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -409,8 +431,8 @@ fn (mut s Scanner) ident_dec_number() string {
 		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_digit() && c != num_sep {
-			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string || s.is_nested_string {
+		if !digit_table[c] && c != num_sep {
+			if !letter_table[c] || c in [`e`, `E`] || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -431,14 +453,14 @@ fn (mut s Scanner) ident_dec_number() string {
 		s.pos++
 		if s.pos < s.text.len {
 			// 5.5, 5.5.str()
-			if s.text[s.pos].is_digit() {
+			if digit_table[s.text[s.pos]] {
 				for s.pos < s.text.len {
 					c := s.text[s.pos]
-					if !c.is_digit() {
-						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string
+					if !digit_table[c] {
+						if !letter_table[c] || c in [`e`, `E`] || s.is_inside_string
 							|| s.is_nested_string {
 							// 5.5.str()
-							if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
+							if c == `.` && s.pos + 1 < s.text.len && letter_table[s.text[s.pos + 1]] {
 								call_method = true
 							}
 							break
@@ -456,14 +478,14 @@ fn (mut s Scanner) ident_dec_number() string {
 				s.pos--
 			} else if s.text[s.pos] in [`e`, `E`] {
 				// 5.e5
-			} else if s.text[s.pos].is_letter() {
+			} else if letter_table[s.text[s.pos]] {
 				// 5.str()
 				call_method = true
 				s.pos--
 			} else {
 				// 5.
 				mut symbol_length := 0
-				for i := s.pos - 2; i > 0 && s.text[i - 1].is_digit(); i-- {
+				for i := s.pos - 2; i > 0 && digit_table[s.text[i - 1]]; i-- {
 					symbol_length++
 				}
 				float_symbol := s.text[s.pos - 2 - symbol_length..s.pos - 1]
@@ -481,10 +503,10 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		for s.pos < s.text.len {
 			c := s.text[s.pos]
-			if !c.is_digit() {
-				if !c.is_letter() || s.is_inside_string || s.is_nested_string {
+			if !digit_table[c] {
+				if !letter_table[c] || s.is_inside_string || s.is_nested_string {
 					// 5e5.str()
-					if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
+					if c == `.` && s.pos + 1 < s.text.len && letter_table[s.text[s.pos + 1]] {
 						call_method = true
 					}
 					break
@@ -713,7 +735,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				s.is_inter_start = false
 			}
 			return s.new_token(.name, name, name.len)
-		} else if c.is_digit() || (c == `.` && nextc.is_digit()) {
+		} else if digit_table[c] || (c == `.` && digit_table[nextc]) {
 			// `123`, `.123`
 			if !s.is_inside_string {
 				// In C ints with `0` prefix are octal (in V they're decimal), so discarding heading zeros is needed.
@@ -723,7 +745,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				}
 				mut prefix_zero_num := start_pos - s.pos // how many prefix zeros should be jumped
 				// for 0b, 0o, 0x the heading zero shouldn't be jumped
-				if start_pos == s.text.len || (c == `0` && !s.text[start_pos].is_digit()) {
+				if start_pos == s.text.len || (c == `0` && !digit_table[s.text[start_pos]]) {
 					prefix_zero_num--
 				}
 				s.pos += prefix_zero_num // jump these zeros
@@ -1265,7 +1287,7 @@ pub fn (mut s Scanner) ident_string() string {
 				s.u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !util.is_escape_sequence(c) && !c.is_digit() && c != `\n` {
+			if !util.is_escape_sequence(c) && !digit_table[c] && c != `\n` {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1609,7 +1631,7 @@ pub fn (mut s Scanner) ident_char() string {
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]
-		if !util.is_escape_sequence(ch) && !ch.is_digit() {
+		if !util.is_escape_sequence(ch) && !digit_table[ch] {
 			s.error('`${ch.ascii_str()}` unknown escape sequence')
 		}
 	}
