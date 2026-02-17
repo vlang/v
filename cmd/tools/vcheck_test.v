@@ -38,6 +38,7 @@ fn test_check_md_respects_vcheckignore() {
 	assert root_res.output.contains('from .vcheckignore: docs/skip.md'), root_res.output
 	assert root_res.output.contains('from .vcheckignore: docs/sub/*.md'), root_res.output
 	assert root_res.output.contains('> Found: 2 .md files.'), root_res.output
+	assert root_res.output.contains('Skipped by .vcheckignore: 3.'), root_res.output
 	assert root_res.output.contains('Checked .md files: 2 |'), root_res.output
 	root_non_verbose_res := run_in_dir(repo_dir, check_cmd, false)!
 	assert root_non_verbose_res.exit_code == 0, root_non_verbose_res.output
@@ -50,6 +51,7 @@ fn test_check_md_respects_vcheckignore() {
 	assert docs_res.output.contains('SKIP: docs/sub/skip2.md'), docs_res.output
 	assert docs_res.output.contains('from docs/.vcheckignore: cwd_skip.md'), docs_res.output
 	assert docs_res.output.contains('> Found: 0 .md files.'), docs_res.output
+	assert docs_res.output.contains('Skipped by .vcheckignore: 3.'), docs_res.output
 	assert docs_res.output.contains('Checked .md files: 0 |'), docs_res.output
 
 	sub_res := run_in_dir(os.join_path(repo_dir, 'docs', 'sub'), check_cmd, true)!
@@ -58,6 +60,7 @@ fn test_check_md_respects_vcheckignore() {
 	assert !sub_res.output.contains('SKIP: docs/cwd_skip.md'), sub_res.output
 	assert sub_res.output.contains('from .vcheckignore: docs/sub/*.md'), sub_res.output
 	assert sub_res.output.contains('> Found: 0 .md files.'), sub_res.output
+	assert sub_res.output.contains('Skipped by .vcheckignore: 1.'), sub_res.output
 	assert sub_res.output.contains('Checked .md files: 0 |'), sub_res.output
 }
 
@@ -92,6 +95,7 @@ fn test_check_md_respects_vcheckignore_glob_in_scanned_dir() {
 	assert res.output.contains('SKIP: doc/plans/ignored3.md'), res.output
 	assert res.output.contains('from doc/plans/.vcheckignore: ignored*.md'), res.output
 	assert res.output.contains('> Found: 3 .md files.'), res.output
+	assert res.output.contains('Skipped by .vcheckignore: 3.'), res.output
 	assert res.output.contains('Checked .md files: 3 |'), res.output
 }
 
@@ -122,6 +126,7 @@ fn test_check_md_respects_vcheckignore_anchored_pattern() {
 	assert res.output.contains('from docs/.vcheckignore: /root_only.md'), res.output
 	assert !res.output.contains('SKIP: docs/sub/root_only.md'), res.output
 	assert res.output.contains('> Found: 2 .md files.'), res.output
+	assert res.output.contains('Skipped by .vcheckignore: 1.'), res.output
 	assert res.output.contains('Checked .md files: 2 |'), res.output
 }
 
@@ -154,6 +159,7 @@ fn test_check_md_respects_vcheckignore_comments_and_blank_lines() {
 	assert res.output.contains('from docs/.vcheckignore: ignored2.md'), res.output
 	assert !res.output.contains('SKIP: docs/keep.md'), res.output
 	assert res.output.contains('> Found: 1 .md files.'), res.output
+	assert res.output.contains('Skipped by .vcheckignore: 2.'), res.output
 	assert res.output.contains('Checked .md files: 1 |'), res.output
 }
 

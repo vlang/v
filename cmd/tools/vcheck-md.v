@@ -49,6 +49,11 @@ struct VCheckIgnoreMatch {
 	pattern     string
 }
 
+struct MDPathScanResult {
+	files   []string
+	skipped int
+}
+
 fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 	return CheckResult{
 		files:    v1.files + v2.files
@@ -82,10 +87,13 @@ fn main() {
 	}
 	vcheckignore := collect_vcheckignore_context(os.getwd())
 	mut all_mdfiles := []MDFile{}
+	mut skipped_mdfiles := 0
 	for i := 0; i < files_paths.len; i++ {
 		file_path := files_paths[i]
 		if os.is_dir(file_path) {
-			files_paths << md_file_paths(file_path, vcheckignore)
+			scan_result := md_file_paths(file_path, vcheckignore)
+			files_paths << scan_result.files
+			skipped_mdfiles += scan_result.skipped
 			continue
 		}
 		real_path := os.real_path(file_path)
@@ -100,7 +108,7 @@ fn main() {
 			lines:                  lines
 		}
 	}
-	println('> Found: ${all_mdfiles.len} .md files.')
+	println('> Found: ${all_mdfiles.len} .md files. Skipped by .vcheckignore: ${skipped_mdfiles}.')
 	if is_verbose {
 		for idx, mdfile in all_mdfiles {
 			println('> file ${idx + 1} is ${mdfile.path}')
@@ -130,8 +138,9 @@ fn main() {
 	}
 }
 
-fn md_file_paths(dir string, vcheckignore VCheckIgnoreContext) []string {
+fn md_file_paths(dir string, vcheckignore VCheckIgnoreContext) MDPathScanResult {
 	mut files_to_check := []string{}
+	mut skipped := 0
 	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
 		nfile := file.replace('\\', '/')
@@ -142,11 +151,15 @@ fn md_file_paths(dir string, vcheckignore VCheckIgnoreContext) []string {
 			if is_verbose {
 				println('SKIP: ${vcheckignore.repo_relative_path(file)} (from ${vcheckignore.repo_relative_path(skip_match.ignore_file)}: ${skip_match.pattern})')
 			}
+			skipped++
 			continue
 		}
 		files_to_check << file
 	}
-	return files_to_check
+	return MDPathScanResult{
+		files:   files_to_check
+		skipped: skipped
+	}
 }
 
 fn collect_vcheckignore_context(cwd string) VCheckIgnoreContext {
