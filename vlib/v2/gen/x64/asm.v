@@ -512,6 +512,313 @@ fn asm_call_r10(mut g Gen) {
 	g.emit(0xD2) // ModRM: call *r10
 }
 
+// === Sized Loads ===
+
+// movzx rax, byte [rcx] (load 1 byte, zero-extend to 64-bit)
+fn asm_movzx_rax_byte_mem_rcx(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xB6)
+	g.emit(0x01)
+}
+
+// movzx rax, word [rcx] (load 2 bytes, zero-extend to 64-bit)
+fn asm_movzx_rax_word_mem_rcx(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xB7)
+	g.emit(0x01)
+}
+
+// mov eax, [rcx] (load 4 bytes, zero-extend to 64-bit)
+fn asm_mov_eax_mem_rcx(mut g Gen) {
+	g.emit(0x8B)
+	g.emit(0x01)
+}
+
+// === Load reg from [base + disp] ===
+
+// mov reg, [base + disp] (generic, handles REX for any reg/base pair)
+fn asm_load_reg_base_disp(mut g Gen, reg Reg, base Reg, disp int) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(base))
+	mut rex := u8(0x48)
+	if reg_hw >= 8 {
+		rex |= 4 // REX.R
+	}
+	if base_hw >= 8 {
+		rex |= 1 // REX.B
+	}
+	g.emit(rex)
+	g.emit(0x8B)
+
+	rm := base_hw & 7
+	reg_bits := reg_hw & 7
+	needs_sib := rm == 4
+
+	if disp == 0 && rm != 5 {
+		g.emit(reg_bits << 3 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+	} else if disp >= -128 && disp <= 127 {
+		g.emit(0x40 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x80 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit_u32(u32(disp))
+	}
+}
+
+// mov [base + disp], reg (generic store, handles REX for any reg/base pair)
+fn asm_store_base_disp_reg(mut g Gen, base Reg, disp int, reg Reg) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(base))
+	mut rex := u8(0x48)
+	if reg_hw >= 8 {
+		rex |= 4 // REX.R
+	}
+	if base_hw >= 8 {
+		rex |= 1 // REX.B
+	}
+	g.emit(rex)
+	g.emit(0x89)
+
+	rm := base_hw & 7
+	reg_bits := reg_hw & 7
+	needs_sib := rm == 4
+
+	if disp == 0 && rm != 5 {
+		g.emit(reg_bits << 3 | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+	} else if disp >= -128 && disp <= 127 {
+		g.emit(0x40 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x80 | (reg_bits << 3) | rm)
+		if needs_sib {
+			g.emit(0x24)
+		}
+		g.emit_u32(u32(disp))
+	}
+}
+
+// lea reg, [rbp + disp] (generic, handles REX)
+fn asm_lea_reg_rbp_disp(mut g Gen, reg Reg, disp int) {
+	hw_reg := g.map_reg(int(reg))
+	mut rex := u8(0x48)
+	if hw_reg >= 8 {
+		rex |= 4 // REX.R
+	}
+	g.emit(rex)
+	g.emit(0x8D)
+	if disp >= -128 && disp <= 127 {
+		g.emit(0x45 | ((hw_reg & 7) << 3)) // ModRM 01 = disp8
+		g.emit(u8(disp))
+	} else {
+		g.emit(0x85 | ((hw_reg & 7) << 3)) // ModRM 10 = disp32
+		g.emit_u32(u32(disp))
+	}
+}
+
+// === Shift by immediate ===
+
+// shr rax, imm8
+fn asm_shr_rax_imm8(mut g Gen, imm u8) {
+	g.emit(0x48)
+	g.emit(0xC1)
+	g.emit(0xE8) // /5 for SHR
+	g.emit(imm)
+}
+
+// === Bitwise with immediate ===
+
+// and rax, imm32 (sign-extended)
+fn asm_and_rax_imm32(mut g Gen, imm u32) {
+	g.emit(0x48)
+	g.emit(0x25)
+	g.emit_u32(imm)
+}
+
+// === Sign/Zero Extension ===
+
+// movsx rax, al (sign-extend byte to qword)
+fn asm_movsx_rax_al(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xBE)
+	g.emit(0xC0)
+}
+
+// movsx rax, ax (sign-extend word to qword)
+fn asm_movsx_rax_ax(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xBF)
+	g.emit(0xC0)
+}
+
+// movsxd rax, eax (sign-extend dword to qword)
+fn asm_movsxd_rax_eax(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x63)
+	g.emit(0xC0)
+}
+
+// movzx rax, al (zero-extend byte to qword) - already in setcc, but standalone
+fn asm_movzx_rax_al(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xB6)
+	g.emit(0xC0)
+}
+
+// movzx rax, ax (zero-extend word to qword)
+fn asm_movzx_rax_ax(mut g Gen) {
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0xB7)
+	g.emit(0xC0)
+}
+
+// mov eax, eax (zero-extend dword to qword - implicitly zeros upper 32 bits)
+fn asm_mov_eax_eax(mut g Gen) {
+	g.emit(0x89)
+	g.emit(0xC0)
+}
+
+// === SSE2 Floating-Point ===
+
+// movq xmm0, rax
+fn asm_movq_xmm0_rax(mut g Gen) {
+	g.emit(0x66)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x6E)
+	g.emit(0xC0)
+}
+
+// movq rax, xmm0
+fn asm_movq_rax_xmm0(mut g Gen) {
+	g.emit(0x66)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x7E)
+	g.emit(0xC0)
+}
+
+// movq xmm1, rcx
+fn asm_movq_xmm1_rcx(mut g Gen) {
+	g.emit(0x66)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x6E)
+	g.emit(0xC9)
+}
+
+// addsd xmm0, xmm1
+fn asm_addsd_xmm0_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x58)
+	g.emit(0xC1)
+}
+
+// subsd xmm0, xmm1
+fn asm_subsd_xmm0_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x5C)
+	g.emit(0xC1)
+}
+
+// mulsd xmm0, xmm1
+fn asm_mulsd_xmm0_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x59)
+	g.emit(0xC1)
+}
+
+// divsd xmm0, xmm1
+fn asm_divsd_xmm0_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x5E)
+	g.emit(0xC1)
+}
+
+// movsd xmm2, xmm0
+fn asm_movsd_xmm2_xmm0(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x10)
+	g.emit(0xD0)
+}
+
+// divsd xmm2, xmm1
+fn asm_divsd_xmm2_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x5E)
+	g.emit(0xD1)
+}
+
+// roundsd xmm2, xmm2, 3 (truncate toward zero)
+fn asm_roundsd_xmm2_xmm2_trunc(mut g Gen) {
+	g.emit(0x66)
+	g.emit(0x0F)
+	g.emit(0x3A)
+	g.emit(0x0B)
+	g.emit(0xD2)
+	g.emit(0x03) // truncate mode
+}
+
+// mulsd xmm2, xmm1
+fn asm_mulsd_xmm2_xmm1(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x59)
+	g.emit(0xD1)
+}
+
+// subsd xmm0, xmm2
+fn asm_subsd_xmm0_xmm2(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x0F)
+	g.emit(0x5C)
+	g.emit(0xC2)
+}
+
+// cvttsd2si rax, xmm0 (double to signed int64, truncate)
+fn asm_cvttsd2si_rax_xmm0(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2C)
+	g.emit(0xC0)
+}
+
+// cvtsi2sd xmm0, rax (signed int64 to double)
+fn asm_cvtsi2sd_xmm0_rax(mut g Gen) {
+	g.emit(0xF2)
+	g.emit(0x48)
+	g.emit(0x0F)
+	g.emit(0x2A)
+	g.emit(0xC0)
+}
+
 // === Special ===
 
 // ud2 (undefined instruction - trap)
