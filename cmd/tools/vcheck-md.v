@@ -35,6 +35,20 @@ pub mut:
 	errors   int
 }
 
+struct VCheckIgnoreRule {
+	base_dir string
+	pattern  string
+}
+
+struct VCheckIgnoreContext {
+	repo_root string
+}
+
+struct VCheckIgnoreMatch {
+	ignore_file string
+	pattern     string
+}
+
 fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 	return CheckResult{
 		files:    v1.files + v2.files
@@ -66,11 +80,12 @@ fn main() {
 	defer {
 		os.rmdir_all(vcheckfolder) or {}
 	}
+	vcheckignore := collect_vcheckignore_context(os.getwd())
 	mut all_mdfiles := []MDFile{}
 	for i := 0; i < files_paths.len; i++ {
 		file_path := files_paths[i]
 		if os.is_dir(file_path) {
-			files_paths << md_file_paths(file_path)
+			files_paths << md_file_paths(file_path, vcheckignore)
 			continue
 		}
 		real_path := os.real_path(file_path)
@@ -86,6 +101,11 @@ fn main() {
 		}
 	}
 	println('> Found: ${all_mdfiles.len} .md files.')
+	if is_verbose {
+		for idx, mdfile in all_mdfiles {
+			println('> file ${idx + 1} is ${mdfile.path}')
+		}
+	}
 	if show_progress {
 		// this is intended to be replaced by the progress lines
 		println('')
@@ -110,7 +130,7 @@ fn main() {
 	}
 }
 
-fn md_file_paths(dir string) []string {
+fn md_file_paths(dir string, vcheckignore VCheckIgnoreContext) []string {
 	mut files_to_check := []string{}
 	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
@@ -118,9 +138,119 @@ fn md_file_paths(dir string) []string {
 		if nfile.contains_any_substr(['/thirdparty/', 'CHANGELOG', '/testdata/']) {
 			continue
 		}
+		if skip_match := vcheckignore.skip_match(file) {
+			if is_verbose {
+				println('SKIP: ${vcheckignore.repo_relative_path(file)} (from ${vcheckignore.repo_relative_path(skip_match.ignore_file)}: ${skip_match.pattern})')
+			}
+			continue
+		}
 		files_to_check << file
 	}
 	return files_to_check
+}
+
+fn collect_vcheckignore_context(cwd string) VCheckIgnoreContext {
+	repo_root := find_repo_root(cwd)
+	return VCheckIgnoreContext{
+		repo_root: repo_root
+	}
+}
+
+fn find_repo_root(cwd string) string {
+	mut dir := os.real_path(cwd)
+	for {
+		if os.exists(os.join_path(dir, '.git')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent == '' {
+			return dir
+		}
+		dir = parent
+	}
+	return dir
+}
+
+fn (ctx VCheckIgnoreContext) skip_match(file_path string) ?VCheckIgnoreMatch {
+	file := os.real_path(file_path).replace('\\', '/')
+	mut dir := os.dir(file)
+	repo_root := ctx.repo_root.replace('\\', '/')
+	for {
+		ignore_path := os.join_path(dir, '.vcheckignore')
+		if os.is_file(ignore_path) {
+			lines := os.read_lines(ignore_path) or { []string{} }
+			for line in lines {
+				pattern := normalize_vcheckignore_line(line)
+				if pattern == '' || pattern.starts_with('#') {
+					continue
+				}
+				if matches_vcheckignore_rule(file, VCheckIgnoreRule{
+					base_dir: dir
+					pattern:  pattern
+				})
+				{
+					return VCheckIgnoreMatch{
+						ignore_file: ignore_path
+						pattern:     pattern
+					}
+				}
+			}
+		}
+		if dir.replace('\\', '/') == repo_root {
+			break
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent == '' {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
+fn normalize_vcheckignore_line(line string) string {
+	trimmed := line.trim_space()
+	if trimmed == '' {
+		return ''
+	}
+	if comment_idx := trimmed.index('#') {
+		return trimmed[..comment_idx].trim_space()
+	}
+	return trimmed
+}
+
+fn (ctx VCheckIgnoreContext) repo_relative_path(file_path string) string {
+	file := os.real_path(file_path).replace('\\', '/')
+	root := ctx.repo_root.replace('\\', '/')
+	root_prefix := root + '/'
+	if file.starts_with(root_prefix) {
+		return file.all_after(root_prefix)
+	}
+	return file
+}
+
+fn matches_vcheckignore_rule(file string, rule VCheckIgnoreRule) bool {
+	base := rule.base_dir.replace('\\', '/')
+	base_prefix := base + '/'
+	if !file.starts_with(base_prefix) {
+		return false
+	}
+	relative_file := file.all_after(base_prefix)
+	mut pattern := rule.pattern.replace('\\', '/')
+	if pattern.starts_with('!') {
+		return false
+	}
+	if pattern.ends_with('/') {
+		pattern = pattern.trim_right('/')
+		return relative_file.starts_with(pattern + '/')
+	}
+	if pattern.starts_with('/') {
+		return relative_file.match_glob(pattern.trim_left('/'))
+	}
+	if pattern.contains('/') {
+		return relative_file.match_glob(pattern)
+	}
+	return os.file_name(relative_file).match_glob(pattern)
 }
 
 fn wprintln(s string) {
