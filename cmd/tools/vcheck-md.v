@@ -85,13 +85,12 @@ fn main() {
 	defer {
 		os.rmdir_all(vcheckfolder) or {}
 	}
-	vcheckignore := collect_vcheckignore_context(os.getwd())
 	mut all_mdfiles := []MDFile{}
 	mut skipped_mdfiles := 0
 	for i := 0; i < files_paths.len; i++ {
 		file_path := files_paths[i]
 		if os.is_dir(file_path) {
-			scan_result := md_file_paths(file_path, vcheckignore)
+			scan_result := md_file_paths(file_path)
 			files_paths << scan_result.files
 			skipped_mdfiles += scan_result.skipped
 			continue
@@ -138,9 +137,10 @@ fn main() {
 	}
 }
 
-fn md_file_paths(dir string, vcheckignore VCheckIgnoreContext) MDPathScanResult {
+fn md_file_paths(dir string) MDPathScanResult {
 	mut files_to_check := []string{}
 	mut skipped := 0
+	vcheckignore := collect_vcheckignore_context(dir)
 	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
 		nfile := file.replace('\\', '/')
