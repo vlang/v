@@ -253,12 +253,21 @@ fn matches_vcheckignore_rule(file string, rule VCheckIgnoreRule) bool {
 	if pattern.starts_with('!') {
 		return false
 	}
+	mut anchored := false
+	if pattern.starts_with('/') {
+		anchored = true
+		pattern = pattern.trim_left('/')
+	}
 	if pattern.ends_with('/') {
 		pattern = pattern.trim_right('/')
+		if anchored {
+			return relative_file.starts_with(pattern + '/')
+		}
 		return relative_file.starts_with(pattern + '/')
+			|| relative_file.contains('/' + pattern + '/')
 	}
-	if pattern.starts_with('/') {
-		return relative_file.match_glob(pattern.trim_left('/'))
+	if anchored {
+		return relative_file.match_glob(pattern)
 	}
 	if pattern.contains('/') {
 		return relative_file.match_glob(pattern)

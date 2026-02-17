@@ -130,6 +130,37 @@ fn test_check_md_respects_vcheckignore_anchored_pattern() {
 	assert res.output.contains('Checked .md files: 2 |'), res.output
 }
 
+fn test_check_md_respects_vcheckignore_anchored_directory_pattern() {
+	if git_exe == '' {
+		eprintln('git is required for this test; skipping')
+		return
+	}
+	original_wd := os.getwd()
+	repo_dir := os.join_path(os.vtmp_dir(), 'vcheckignore_anchored_dir_${os.getpid()}')
+	os.rmdir_all(repo_dir) or {}
+	os.mkdir_all(repo_dir)!
+	defer {
+		os.chdir(original_wd) or {}
+		os.rmdir_all(repo_dir) or {}
+	}
+	os.execute_or_exit('${os.quoted_path(git_exe)} init ${os.quoted_path(repo_dir)}')
+
+	write_text_file(os.join_path(repo_dir, 'docs', 'sub', 'ignored.md'), '# ignored by /sub/\n')!
+	write_text_file(os.join_path(repo_dir, 'docs', 'nested', 'sub', 'keep.md'), '# kept\n')!
+	write_text_file(os.join_path(repo_dir, 'docs', 'keep.md'), '# keep\n')!
+	write_text_file(os.join_path(repo_dir, 'docs', '.vcheckignore'), '/sub/\n')!
+
+	res := run_in_dir(repo_dir, '${os.quoted_path(vexe)} check-md -hide-warnings -silent docs',
+		true)!
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('SKIP: docs/sub/ignored.md'), res.output
+	assert res.output.contains('from docs/.vcheckignore: /sub/'), res.output
+	assert !res.output.contains('SKIP: docs/nested/sub/keep.md'), res.output
+	assert res.output.contains('> Found: 2 .md files.'), res.output
+	assert res.output.contains('Skipped by .vcheckignore: 1.'), res.output
+	assert res.output.contains('Checked .md files: 2 |'), res.output
+}
+
 fn test_check_md_respects_vcheckignore_comments_and_blank_lines() {
 	if git_exe == '' {
 		eprintln('git is required for this test; skipping')
