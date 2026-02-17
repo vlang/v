@@ -260,11 +260,7 @@ fn matches_vcheckignore_rule(file string, rule VCheckIgnoreRule) bool {
 	}
 	if pattern.ends_with('/') {
 		pattern = pattern.trim_right('/')
-		if anchored {
-			return relative_file.starts_with(pattern + '/')
-		}
-		return relative_file.starts_with(pattern + '/')
-			|| relative_file.contains('/' + pattern + '/')
+		return matches_vcheckignore_directory_pattern(relative_file, pattern, anchored)
 	}
 	if anchored {
 		return relative_file.match_glob(pattern)
@@ -273,6 +269,28 @@ fn matches_vcheckignore_rule(file string, rule VCheckIgnoreRule) bool {
 		return relative_file.match_glob(pattern)
 	}
 	return os.file_name(relative_file).match_glob(pattern)
+}
+
+fn matches_vcheckignore_directory_pattern(relative_file string, pattern string, anchored bool) bool {
+	mut relative_dir := os.dir(relative_file).replace('\\', '/')
+	if relative_dir == '.' || relative_dir == '' {
+		return false
+	}
+	if anchored {
+		return relative_dir.match_glob(pattern) || relative_dir.match_glob(pattern + '/*')
+	}
+	mut candidate := relative_dir
+	for {
+		if candidate.match_glob(pattern) || candidate.match_glob(pattern + '/*') {
+			return true
+		}
+		if slash_idx := candidate.index('/') {
+			candidate = candidate[slash_idx + 1..]
+			continue
+		}
+		break
+	}
+	return false
 }
 
 fn wprintln(s string) {
