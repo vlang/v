@@ -1401,35 +1401,47 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.emit_ldr_reg_offset(8, 29, g.x8_save_offset)
 					}
 
-					// string_literal values need to be materialized on the stack
-					// before we can copy them to the return pointer.
-					if ret_val.kind == .string_literal {
-						g.load_val_to_reg(9, ret_val_id)
-					}
-
-					// Get the source address of the struct
-					if is_indirect_struct_return {
-						// Return value is a pointer to struct - use it as source
-						g.load_val_to_reg(9, ret_val_id)
-					} else if ret_offset := g.stack_map[ret_val_id] {
-						if g.large_struct_stack_value_is_pointer(ret_val_id) {
-							// Some large-struct temporaries are represented as pointers in stack slots.
-							g.emit_ldr_reg_offset(9, 29, ret_offset)
-						} else {
-							// Struct is materialized by value on stack.
-							g.emit_add_fp_imm(9, ret_offset)
+					// Check if returning a zero/none value (e.g., `return 0` from `return none`).
+					// In this case, zero-fill the return area instead of trying to copy
+					// from address 0 (which would be a null pointer dereference).
+					is_zero_const := ret_val.kind == .constant && ret_val.name == '0'
+					if is_zero_const {
+						num_fields := (fn_ret_size + 7) / 8
+						for i in 0 .. num_fields {
+							// STR xzr, [x8, #i*8]
+							g.emit(asm_str_imm(Reg(31), Reg(8), u32(i)))
 						}
 					} else {
-						// Fallback
-						g.load_val_to_reg(9, ret_val_id)
-					}
-					// Copy struct from [x9] to [x8] (x8 was restored from saved location)
-					num_fields := (fn_ret_size + 7) / 8
-					for i in 0 .. num_fields {
-						// LDR x10, [x9, #i*8]
-						g.emit(asm_ldr_imm(Reg(10), Reg(9), u32(i)))
-						// STR x10, [x8, #i*8]
-						g.emit(asm_str_imm(Reg(10), Reg(8), u32(i)))
+						// string_literal values need to be materialized on the stack
+						// before we can copy them to the return pointer.
+						if ret_val.kind == .string_literal {
+							g.load_val_to_reg(9, ret_val_id)
+						}
+
+						// Get the source address of the struct
+						if is_indirect_struct_return {
+							// Return value is a pointer to struct - use it as source
+							g.load_val_to_reg(9, ret_val_id)
+						} else if ret_offset := g.stack_map[ret_val_id] {
+							if g.large_struct_stack_value_is_pointer(ret_val_id) {
+								// Some large-struct temporaries are represented as pointers in stack slots.
+								g.emit_ldr_reg_offset(9, 29, ret_offset)
+							} else {
+								// Struct is materialized by value on stack.
+								g.emit_add_fp_imm(9, ret_offset)
+							}
+						} else {
+							// Fallback
+							g.load_val_to_reg(9, ret_val_id)
+						}
+						// Copy struct from [x9] to [x8] (x8 was restored from saved location)
+						num_fields := (fn_ret_size + 7) / 8
+						for i in 0 .. num_fields {
+							// LDR x10, [x9, #i*8]
+							g.emit(asm_ldr_imm(Reg(10), Reg(9), u32(i)))
+							// STR x10, [x8, #i*8]
+							g.emit(asm_str_imm(Reg(10), Reg(8), u32(i)))
+						}
 					}
 				} else if (ret_typ.kind == .struct_t && ret_typ.fields.len > 1)
 					|| is_indirect_struct_return {
@@ -1453,6 +1465,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					} else {
 						g.load_val_to_reg(0, ret_val_id)
+					}
+				} else if fn_ret_typ.kind == .struct_t && ret_val.kind == .constant
+					&& ret_val.name == '0' {
+					// Returning zero/none from a function that returns a small struct.
+					// Zero all return registers for the struct to avoid garbage in x1+.
+					for i in 0 .. fn_ret_typ.fields.len {
+						if i < 8 {
+							g.emit_mov_reg(i, 31) // xN = xzr (zero)
+						}
 					}
 				} else {
 					g.load_val_to_reg(0, ret_val_id)
@@ -1502,7 +1523,21 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.br {
-			g.load_val_to_reg(8, instr.operands[0])
+			// Load condition value into x8 for branch.
+			// For large structs (> 16 bytes), load_val_to_reg returns the *address*
+			// (which is always non-zero). For truthiness checks on option struct returns,
+			// we need to load the first word of the struct instead.
+			cond_val := g.mod.values[instr.operands[0]]
+			cond_is_large_struct := cond_val.typ > 0 && cond_val.typ < g.mod.type_store.types.len
+				&& g.mod.type_store.types[cond_val.typ].kind == .struct_t
+				&& g.type_size(cond_val.typ) > 16
+			if cond_is_large_struct {
+				// Large struct: load the address, then dereference first word
+				g.load_val_to_reg(8, instr.operands[0])
+				g.emit(asm_ldr_imm(Reg(8), Reg(8), 0)) // x8 = [x8] (first word)
+			} else {
+				g.load_val_to_reg(8, instr.operands[0])
+			}
 
 			true_blk := g.mod.values[instr.operands[1]].index
 			false_blk := g.mod.values[instr.operands[2]].index
@@ -1512,10 +1547,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if off := g.block_offsets[true_blk] {
 				rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-				g.emit(asm_cbnz(Reg(8), rel))
+				if rel >= -262144 && rel < 262144 {
+					g.emit(asm_cbnz(Reg(8), rel))
+				} else {
+					// Branch target too far for CBNZ (19-bit range).
+					// Use trampoline: CBZ skip; B target; skip:
+					g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
+					g.emit(asm_b(rel - 1)) // adjust for the extra CBZ instruction
+				}
 			} else {
+				// Forward reference: use trampoline pattern to avoid 19-bit overflow.
+				// CBZ x8, skip; B target; skip:
+				g.emit(asm_cbz(Reg(8), 2)) // skip over next B instruction
 				g.record_pending_label(true_blk)
-				g.emit(asm_cbnz(Reg(8), 0))
+				g.emit(asm_b(0))
 			}
 
 			if false_blk == g.next_blk {
@@ -1545,10 +1590,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 				if off := g.block_offsets[target_blk_idx] {
 					rel := (off - (g.macho.text_data.len - g.curr_offset)) / 4
-					g.emit(asm_b_cond(cond_eq, rel))
+					if rel >= -262144 && rel < 262144 {
+						g.emit(asm_b_cond(cond_eq, rel))
+					} else {
+						// Trampoline: b.ne skip; B target; skip:
+						g.emit(asm_b_cond(cond_ne, 2)) // skip over next B
+						g.emit(asm_b(rel - 1))
+					}
 				} else {
+					// Forward reference: use trampoline for safety
+					g.emit(asm_b_cond(cond_ne, 2)) // skip over next B
 					g.record_pending_label(target_blk_idx)
-					g.emit(asm_b_cond(cond_eq, 0))
+					g.emit(asm_b(0))
 				}
 			}
 

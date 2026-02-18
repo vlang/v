@@ -547,11 +547,14 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) {
 	result := os.execute(cmd)
 	if result.exit_code != 0 {
 		// If tcc failed, fall back to cc.
-		if cmd.contains('tcc') {
+		// Check only the compiler binary (before the first space), not the full
+		// command string which contains tcc in include/library flag paths.
+		cc_binary := cmd.all_before(' ')
+		if cc_binary.contains('tcc') {
 			eprintln('Failed to compile with tcc, falling back to cc')
 			eprintln('tcc cmd: ${cmd}')
 			eprintln(result.output)
-			fallback_cmd := cmd.replace_once(cmd.all_before(' '), 'cc')
+			fallback_cmd := cmd.replace_once(cc_binary, 'cc')
 			run_cc_cmd_or_exit(fallback_cmd, stage, show_cc)
 			return
 		}

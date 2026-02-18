@@ -124,9 +124,18 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	if t.expr_is_casted_to_type(transformed_base, mangled_variant) {
 		return t.synth_selector_from_struct(transformed_base, field_name, mangled_variant)
 	}
-	// Create: transformed_base._data._variant (using simple name for accessor)
+	// Create data access.
+	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
+	// No union variant sub-field exists, so just use _data directly.
+	// For C backends: _data is a union, so access _data._variant for the specific member.
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
-	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	variant_access := if is_native_backend {
+		data_access
+	} else {
+		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	}
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{

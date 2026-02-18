@@ -179,6 +179,9 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	mut remaining_bytes := isize(buf_len)
 	mut x := isize(0)
 	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
+		// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
+		// before writing directly via write() syscall to prevent output reordering.
+		C.fflush(unsafe { nil })
 		unsafe {
 			for remaining_bytes > 0 {
 				x = C.write(fd, ptr, remaining_bytes)

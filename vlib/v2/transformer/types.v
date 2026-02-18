@@ -301,6 +301,48 @@ fn (t &Transformer) find_sumtype_for_variant(variant_name string) string {
 			}
 		}
 	}
+	// Fallback: search sum types in the current module scope for user-defined types.
+	// Only search the current module to avoid cross-module matches that would
+	// incorrectly trigger smartcasting (e.g., types.Type containing Alias).
+	cur_mod := t.cur_module
+	scope := t.get_module_scope(cur_mod) or { return '' }
+	for obj_name, obj in scope.objects {
+		if obj is types.Type {
+			if obj is types.SumType {
+				st_name := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
+					'${cur_mod}__${obj_name}'
+				} else {
+					obj_name
+				}
+				variants := t.get_sum_type_variants(st_name)
+				if variants.len == 0 {
+					// Try short name if qualified name didn't work
+					inner_variants := t.get_sum_type_variants(obj_name)
+					for v in inner_variants {
+						v_short := if v.contains('__') {
+							v.all_after_last('__')
+						} else {
+							v
+						}
+						if v == variant_name || v_short == short_variant || v_short == variant_name {
+							return obj_name
+						}
+					}
+					continue
+				}
+				for v in variants {
+					v_short := if v.contains('__') {
+						v.all_after_last('__')
+					} else {
+						v
+					}
+					if v == variant_name || v_short == short_variant || v_short == variant_name {
+						return st_name
+					}
+				}
+			}
+		}
+	}
 	return ''
 }
 
@@ -349,6 +391,9 @@ fn (t &Transformer) get_var_type_name(name string) string {
 	}
 	// Some malformed/self-host transitional types can carry incomplete payloads.
 	// Avoid forcing `Type.name()` on those values here.
+	// Note: SumType is intentionally not handled here to avoid triggering
+	// incorrect smartcasting for variables of sum type (e.g. types.Type).
+	// Use get_sumtype_name_for_expr() for sum type name resolution.
 	return ''
 }
 

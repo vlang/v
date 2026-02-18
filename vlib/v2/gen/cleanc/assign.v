@@ -221,6 +221,14 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		mut typ := g.get_expr_type(rhs)
+		// Fix: &T(x) pattern - the checker may assign only the inner type T instead of T*.
+		// Derive the pointer type directly from the expression structure.
+		if rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.CastExpr {
+			target_type := g.expr_type_to_c(rhs.expr.typ)
+			if target_type != '' {
+				typ = target_type + '*'
+			}
+		}
 		mut elem_type_from_array := false
 		if rhs is ast.CallExpr {
 			if rhs.lhs is ast.Ident

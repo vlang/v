@@ -1412,11 +1412,13 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		g.sb.write_string(', 3)')
 		return
 	}
-	// array__clone → array__clone_to_depth with automatic depth for deep clone
+	// array__clone → array__clone_to_depth with depth 0 (shallow memcpy clone).
+	// Depth > 0 uses element_size heuristics that misidentify non-string types
+	// of the same size (e.g. tagged unions like ast.Expr are 16 bytes == sizeof(string)).
 	if name == 'array__clone' && call_args.len == 1 {
 		g.sb.write_string('array__clone_to_depth(')
 		g.gen_call_arg(name, 0, call_args[0])
-		g.sb.write_string(', 3)')
+		g.sb.write_string(', 0)')
 		return
 	}
 	// array__insert with array arg → array__insert_many

@@ -186,6 +186,12 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			}
 			return b.mod.type_store.get_tuple(elem_types)
 		}
+		types.SumType {
+			if t.name in b.struct_types {
+				return b.struct_types[t.name]
+			}
+			return b.mod.type_store.get_int(64) // fallback
+		}
 		else {
 			return b.mod.type_store.get_int(64) // fallback for unhandled
 		}
@@ -300,7 +306,9 @@ fn (mut b Builder) register_types(file ast.File) {
 			ast.EnumDecl {
 				b.register_enum(stmt)
 			}
-			ast.TypeDecl {}
+			ast.TypeDecl {
+				b.register_sumtype(stmt)
+			}
 			else {}
 		}
 	}
@@ -357,6 +365,30 @@ fn (mut b Builder) register_enum(decl ast.EnumDecl) {
 			b.enum_values[key] = i
 		}
 	}
+}
+
+fn (mut b Builder) register_sumtype(decl ast.TypeDecl) {
+	if decl.variants.len == 0 {
+		return
+	}
+	name := if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${decl.name}'
+	} else {
+		decl.name
+	}
+
+	if name in b.struct_types {
+		return
+	}
+
+	i64_t := b.mod.type_store.get_int(64)
+	type_id := b.mod.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [i64_t, i64_t]
+		field_names: ['_tag', '_data']
+	})
+	b.struct_types[name] = type_id
+	b.mod.c_struct_names[type_id] = name
 }
 
 fn (mut b Builder) register_consts_and_globals(file ast.File) {
@@ -624,10 +656,21 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 			return b.mod.type_store.get_ptr(i8_t) // fn pointers
 		}
 		ast.OptionType {
-			return b.mod.type_store.get_int(64) // TODO
+			// Native backend: Option types are just the base type (no wrapper struct).
+			// The value itself indicates presence (non-zero) or absence (zero/none).
+			base := b.ast_type_to_ssa(typ.base_type)
+			if base != 0 {
+				return base
+			}
+			return b.mod.type_store.get_int(64)
 		}
 		ast.ResultType {
-			return b.mod.type_store.get_int(64) // TODO
+			// Native backend: Result types are just the base type (no wrapper struct).
+			base := b.ast_type_to_ssa(typ.base_type)
+			if base != 0 {
+				return base
+			}
+			return b.mod.type_store.get_int(64)
 		}
 		ast.TupleType {
 			mut elem_types := []TypeID{cap: typ.types.len}
@@ -694,6 +737,12 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 			b.mod.type_store.get_int(8)
 		}
 		else {
+			// Check for pointer types (e.g., 'StructType*', 'int*')
+			if name.ends_with('*') {
+				base_name := name[..name.len - 1]
+				base_type := b.ident_type_to_ssa(base_name)
+				return b.mod.type_store.get_ptr(base_type)
+			}
 			// Check struct types
 			if name in b.struct_types {
 				b.struct_types[name]
@@ -1954,10 +2003,12 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			return b.mod.add_instr(.sub, b.cur_block, b.mod.values[val].typ, [zero, val])
 		}
 		.not {
-			one := b.mod.get_or_add_const(b.mod.type_store.get_int(1), '1')
-			return b.mod.add_instr(.xor, b.cur_block, b.mod.type_store.get_int(1), [
+			// Logical NOT: !x → (x == 0)
+			// Returns 1 if x is 0, 0 if x is non-zero
+			zero := b.mod.get_or_add_const(b.mod.values[val].typ, '0')
+			return b.mod.add_instr(.eq, b.cur_block, b.mod.type_store.get_int(1), [
 				val,
-				one,
+				zero,
 			])
 		}
 		.amp {
@@ -1965,6 +2016,15 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			addr := b.build_addr(expr.expr)
 			if addr != 0 {
 				return addr
+			}
+			// No addressable location (e.g. function call return value) –
+			// spill the value into a stack alloca so we can take its address.
+			val_type := b.mod.values[val].typ
+			if val_type != 0 {
+				ptr_type := b.mod.type_store.get_ptr(val_type)
+				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+				b.mod.add_instr(.store, b.cur_block, 0, [val, alloca])
+				return alloca
 			}
 			return val
 		}
@@ -2432,17 +2492,20 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		}
 	}
 	field_idx := b.field_index(expr, base)
-	// Determine result type: prefer type environment, fall back to SSA struct field type
-	mut result_type := b.expr_type(ast.Expr(expr))
-	if result_type == b.mod.type_store.get_int(64) {
-		// expr_type returned i64 fallback — try to get actual field type from SSA struct
-		actual_base_type := b.mod.values[base].typ
-		if actual_base_type < b.mod.type_store.types.len {
-			typ := b.mod.type_store.types[actual_base_type]
-			if typ.kind == .struct_t && field_idx < typ.fields.len {
-				result_type = typ.fields[field_idx]
-			}
+	// Determine result type: prefer SSA struct field type for struct bases,
+	// fall back to type environment.
+	// The type environment may have the smartcast variant type (e.g., int) for a
+	// sumtype field access, while the SSA struct has the correct field type.
+	mut result_type := TypeID(0)
+	actual_base_type := b.mod.values[base].typ
+	if actual_base_type < b.mod.type_store.types.len {
+		typ := b.mod.type_store.types[actual_base_type]
+		if typ.kind == .struct_t && field_idx < typ.fields.len {
+			result_type = typ.fields[field_idx]
 		}
+	}
+	if result_type == 0 {
+		result_type = b.expr_type(ast.Expr(expr))
 	}
 	return b.mod.add_instr(.extractvalue, b.cur_block, result_type, [base,
 		b.mod.get_or_add_const(b.mod.type_store.get_int(32), field_idx.str())])
@@ -2760,8 +2823,14 @@ fn (mut b Builder) build_init_expr(expr ast.InitExpr) ValueID {
 	mut initialized_fields := map[string]int{} // field name -> index in expr.fields
 
 	// Map explicit field inits by name
+	// Handle sumtype _data._variant fields by mapping to _data
 	for fi, field in expr.fields {
-		initialized_fields[field.name] = fi
+		fname := if field.name.starts_with('_data.') {
+			'_data'
+		} else {
+			field.name
+		}
+		initialized_fields[fname] = fi
 	}
 
 	for fi in 0 .. num_fields {
@@ -3071,6 +3140,9 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			if expr.name in b.vars {
 				return b.vars[expr.name]
 			}
+			if glob_id := b.find_global(expr.name) {
+				return glob_id
+			}
 			return 0
 		}
 		ast.SelectorExpr {
@@ -3103,7 +3175,59 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 		ast.IndexExpr {
 			base := b.build_expr(expr.lhs)
 			index := b.build_expr(expr.expr)
-			result_type := b.expr_type(ast.Expr(expr))
+			mut result_type := b.expr_type(ast.Expr(expr))
+			// For dynamic arrays, extract .data pointer first (mirrors build_index logic)
+			base_type_id := b.mod.values[base].typ
+			array_type := b.get_array_type()
+			if array_type != 0 && base_type_id == array_type {
+				i64_t := b.mod.type_store.get_int(64)
+				if result_type == i64_t {
+					if b.env != unsafe { nil } {
+						lhs_pos := expr.lhs.pos()
+						if lhs_pos.id != 0 {
+							if arr_typ := b.env.get_expr_type(lhs_pos.id) {
+								if arr_typ is types.Array {
+									inferred := b.type_to_ssa(arr_typ.elem_type)
+									if inferred != 0 {
+										result_type = inferred
+									}
+								}
+							}
+						}
+					}
+				}
+				// Extract .data field (index 0), cast to element pointer, then GEP
+				i8_t := b.mod.type_store.get_int(8)
+				void_ptr := b.mod.type_store.get_ptr(i8_t)
+				data_ptr := b.mod.add_instr(.extractvalue, b.cur_block, void_ptr, [
+					base,
+					b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0'),
+				])
+				elem_ptr_type := b.mod.type_store.get_ptr(result_type)
+				typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr_type, [
+					data_ptr,
+				])
+				return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+					typed_ptr,
+					index,
+				])
+			}
+			// For pointers (fixed-size arrays), GEP directly
+			if base_type_id < b.mod.type_store.types.len {
+				base_typ := b.mod.type_store.types[base_type_id]
+				if base_typ.kind == .ptr_t && base_typ.elem_type != 0 {
+					mut elem_type := base_typ.elem_type
+					if elem_type < b.mod.type_store.types.len {
+						inner_typ := b.mod.type_store.types[elem_type]
+						if inner_typ.kind == .array_t && inner_typ.elem_type != 0 {
+							elem_type = inner_typ.elem_type
+						}
+					}
+					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+					return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
+						[base, index])
+				}
+			}
 			return b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(result_type),
 				[base, index])
 		}
@@ -3158,12 +3282,12 @@ fn (mut b Builder) generate_array_eq_stub() {
 	alloca_b := b.mod.add_instr(.alloca, entry, b.mod.type_store.get_ptr(array_t), []ValueID{})
 	b.mod.add_instr(.store, entry, 0, [param_b, alloca_b])
 
-	// Extract len fields (field index 1 in array struct: data=0, len=1)
+	// Extract len fields (field index 2 in array struct: data=0, offset=1, len=2)
 	val_a := b.mod.add_instr(.load, entry, array_t, [alloca_a])
 	val_b := b.mod.add_instr(.load, entry, array_t, [alloca_b])
-	idx1 := b.mod.get_or_add_const(i32_t, '1')
-	len_a := b.mod.add_instr(.extractvalue, entry, i32_t, [val_a, idx1])
-	len_b := b.mod.add_instr(.extractvalue, entry, i32_t, [val_b, idx1])
+	idx2 := b.mod.get_or_add_const(i32_t, '2')
+	len_a := b.mod.add_instr(.extractvalue, entry, i32_t, [val_a, idx2])
+	len_b := b.mod.add_instr(.extractvalue, entry, i32_t, [val_b, idx2])
 
 	// Compare lengths
 	len_eq := b.mod.add_instr(.eq, entry, i1_t, [len_a, len_b])
@@ -3178,18 +3302,24 @@ fn (mut b Builder) generate_array_eq_stub() {
 	b.mod.add_instr(.ret, ret_false_block, 0, [zero])
 
 	// memcmp block: compare data
-	// Extract data pointers (field index 0)
+	// Extract data pointers (field index 0) and offset (field index 1)
 	val_a2 := b.mod.add_instr(.load, memcmp_block, array_t, [alloca_a])
 	val_b2 := b.mod.add_instr(.load, memcmp_block, array_t, [alloca_b])
 	idx0 := b.mod.get_or_add_const(i32_t, '0')
 	i8_t := b.mod.type_store.get_int(8)
 	ptr_t := b.mod.type_store.get_ptr(i8_t)
-	data_a := b.mod.add_instr(.extractvalue, memcmp_block, ptr_t, [val_a2, idx0])
-	data_b := b.mod.add_instr(.extractvalue, memcmp_block, ptr_t, [val_b2, idx0])
+	raw_data_a := b.mod.add_instr(.extractvalue, memcmp_block, ptr_t, [val_a2, idx0])
+	raw_data_b := b.mod.add_instr(.extractvalue, memcmp_block, ptr_t, [val_b2, idx0])
+	// Add offset to data pointers (offset is in bytes) using get_element_ptr
+	idx1 := b.mod.get_or_add_const(i32_t, '1')
+	offset_a := b.mod.add_instr(.extractvalue, memcmp_block, i32_t, [val_a2, idx1])
+	offset_b := b.mod.add_instr(.extractvalue, memcmp_block, i32_t, [val_b2, idx1])
+	data_a := b.mod.add_instr(.get_element_ptr, memcmp_block, ptr_t, [raw_data_a, offset_a])
+	data_b := b.mod.add_instr(.get_element_ptr, memcmp_block, ptr_t, [raw_data_b, offset_b])
 
-	// Get element_size (field index 4: data=0, len=1, cap=2, flags=3, element_size=4)
-	idx4 := b.mod.get_or_add_const(i32_t, '4')
-	elem_size := b.mod.add_instr(.extractvalue, memcmp_block, i32_t, [val_a2, idx4])
+	// Get element_size (field index 5: data=0, offset=1, len=2, cap=3, flags=4, element_size=5)
+	idx5 := b.mod.get_or_add_const(i32_t, '5')
+	elem_size := b.mod.add_instr(.extractvalue, memcmp_block, i32_t, [val_a2, idx5])
 
 	// Compute total size = len * element_size
 	total_size := b.mod.add_instr(.mul, memcmp_block, i32_t, [len_a, elem_size])

@@ -355,6 +355,8 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 	}
 	c.process_pending_const_fields()
 	c.process_pending_fn_bodies()
+	c.check_struct_field_defaults(files)
+	c.check_enum_field_values(files)
 }
 
 pub fn (mut c Checker) check_file(file ast.File) {
@@ -540,6 +542,10 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// the expr then these will need to get delayed also.
 			mut fields := []Field{}
 			for field in decl.fields {
+				// Type-check enum field value expressions
+				if field.value !is ast.EmptyExpr {
+					c.expr(field.value)
+				}
 				fields << Field{
 					name: field.name
 				}
@@ -1424,6 +1430,9 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 	match stmt {
 		ast.AssertStmt {
 			c.expr(stmt.expr)
+			if stmt.extra !is ast.EmptyExpr {
+				c.expr(stmt.extra)
+			}
 		}
 		ast.AssignStmt {
 			c.assign_stmt(stmt, false)
@@ -1552,6 +1561,12 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 				c.expr(expr)
 			}
 		}
+		ast.ComptimeStmt {
+			c.stmt(stmt.stmt)
+		}
+		ast.LabelStmt {
+			c.stmt(stmt.stmt)
+		}
 		else {}
 	}
 }
@@ -1621,9 +1636,10 @@ fn (mut c Checker) process_pending_struct_decls() {
 		}
 		mut fields := []Field{}
 		for field in pending.decl.fields {
+			field_typ := c.expr(field.typ)
 			fields << Field{
 				name:         field.name
-				typ:          c.expr(field.typ)
+				typ:          field_typ
 				default_expr: field.value
 			}
 		}
@@ -1722,6 +1738,61 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		c.scope = prev_scope
 	}
 	c.env.cur_generic_types = []
+}
+
+// check_struct_field_defaults visits struct field default expressions after all
+// function signatures and bodies are registered, so function calls in defaults resolve.
+fn (mut c Checker) check_struct_field_defaults(files []ast.File) {
+	for file in files {
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if file.mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[file.mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = file.mod
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						field_typ := c.expr(field.typ)
+						prev_expected := c.expected_type
+						c.expected_type = to_optional_type(field_typ)
+						c.expr(field.value)
+						c.expected_type = prev_expected
+					}
+				}
+			}
+		}
+	}
+}
+
+// check_enum_field_values visits enum field value expressions.
+fn (mut c Checker) check_enum_field_values(files []ast.File) {
+	for file in files {
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if file.mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[file.mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = file.mod
+		for stmt in file.stmts {
+			if stmt is ast.EnumDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						c.expr(field.value)
+					}
+				}
+			}
+		}
+	}
 }
 
 // take_deferred is kept for compatibility with parallel type-checking plumbing.
@@ -2128,8 +2199,38 @@ fn (c &Checker) eval_comptime_flag(name string) bool {
 			}
 			return false
 		}
+		'little_endian' {
+			$if little_endian {
+				return true
+			}
+			return false
+		}
+		'big_endian' {
+			$if big_endian {
+				return true
+			}
+			return false
+		}
+		'debug' {
+			$if debug {
+				return true
+			}
+			return false
+		}
+		'native' {
+			return c.pref != unsafe { nil } && (c.pref.backend == .arm64 || c.pref.backend == .x64)
+		}
+		'builtin_write_buf_to_fd_should_use_c_write' {
+			return c.pref != unsafe { nil } && (c.pref.backend == .arm64 || c.pref.backend == .x64)
+		}
+		'new_int', 'gcboehm', 'prealloc', 'autofree' {
+			return false
+		}
 		else {
-			// Unknown flag - return false
+			// Check user-defined comptime flags from -d <name>
+			if c.pref != unsafe { nil } && name in c.pref.user_defines {
+				return true
+			}
 			return false
 		}
 	}
