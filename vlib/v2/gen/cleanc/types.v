@@ -1696,56 +1696,88 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 // Returns none if the name is not a known primitive type.
 fn resolve_primitive_type_name(name string) ?types.Type {
 	return match name {
-		'int' { types.Type(types.int_) }
-		'i8' { types.Type(types.Primitive{
+		'int' {
+			types.Type(types.int_)
+		}
+		'i8' {
+			types.Type(types.Primitive{
 				size:  8
 				props: .integer
-			}) }
-		'i16' { types.Type(types.Primitive{
+			})
+		}
+		'i16' {
+			types.Type(types.Primitive{
 				size:  16
 				props: .integer
-			}) }
-		'i32' { types.Type(types.Primitive{
+			})
+		}
+		'i32' {
+			types.Type(types.Primitive{
 				size:  32
 				props: .integer
-			}) }
-		'i64' { types.Type(types.Primitive{
+			})
+		}
+		'i64' {
+			types.Type(types.Primitive{
 				size:  64
 				props: .integer
-			}) }
-		'u8', 'byte' { types.Type(types.Primitive{
+			})
+		}
+		'u8', 'byte' {
+			types.Type(types.Primitive{
 				size:  8
 				props: .integer | .unsigned
-			}) }
-		'u16' { types.Type(types.Primitive{
+			})
+		}
+		'u16' {
+			types.Type(types.Primitive{
 				size:  16
 				props: .integer | .unsigned
-			}) }
-		'u32' { types.Type(types.Primitive{
+			})
+		}
+		'u32' {
+			types.Type(types.Primitive{
 				size:  32
 				props: .integer | .unsigned
-			}) }
-		'u64' { types.Type(types.Primitive{
+			})
+		}
+		'u64' {
+			types.Type(types.Primitive{
 				size:  64
 				props: .integer | .unsigned
-			}) }
-		'f32' { types.Type(types.Primitive{
+			})
+		}
+		'f32' {
+			types.Type(types.Primitive{
 				size:  32
 				props: .float
-			}) }
-		'f64' { types.Type(types.Primitive{
+			})
+		}
+		'f64' {
+			types.Type(types.Primitive{
 				size:  64
 				props: .float
-			}) }
-		'bool' { types.Type(types.bool_) }
-		'string' { types.Type(types.string_) }
-		'int_literal' { types.Type(types.Primitive{
+			})
+		}
+		'bool' {
+			types.Type(types.bool_)
+		}
+		'string' {
+			types.Type(types.string_)
+		}
+		'int_literal' {
+			types.Type(types.Primitive{
 				props: .untyped | .integer
-			}) }
-		'float_literal' { types.Type(types.Primitive{
+			})
+		}
+		'float_literal' {
+			types.Type(types.Primitive{
 				props: .untyped | .float
-			}) }
-		else { none }
+			})
+		}
+		else {
+			none
+		}
 	}
 }
 

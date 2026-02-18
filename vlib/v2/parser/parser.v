@@ -216,6 +216,47 @@ fn (mut p Parser) stmt() ast.Stmt {
 		.hash {
 			return p.directive()
 		}
+		// Top-level declarations that can appear inside comptime $if blocks.
+		.key_const {
+			return p.const_decl(false)
+		}
+		.key_enum {
+			return p.enum_decl(false, [])
+		}
+		.key_fn {
+			// `fn name(...)` or `fn C.name(...)` is a declaration;
+			// `fn (...)` or `fn [captures](...)` is a literal (handled by else/expr).
+			if p.peek() == .name {
+				return p.fn_decl(false, [])
+			}
+			// fall through to expression (fn literal)
+			expr := p.expr(.lowest)
+			return p.complete_simple_stmt(expr, false)
+		}
+		.key_global {
+			return p.global_decl([])
+		}
+		.key_interface {
+			return p.interface_decl(false, [])
+		}
+		.key_pub {
+			p.next()
+			match p.tok {
+				.key_const { return p.const_decl(true) }
+				.key_enum { return p.enum_decl(true, []) }
+				.key_fn { return p.fn_decl(true, []) }
+				.key_interface { return p.interface_decl(true, []) }
+				.key_struct, .key_union { return p.struct_decl(true, []) }
+				.key_type { return p.type_decl(true) }
+				else { p.error('not implemented: pub ${p.tok}') }
+			}
+		}
+		.key_struct, .key_union {
+			return p.struct_decl(false, [])
+		}
+		.key_type {
+			return p.type_decl(false)
+		}
 		.key_asm {
 			return p.asm_stmt()
 		}
