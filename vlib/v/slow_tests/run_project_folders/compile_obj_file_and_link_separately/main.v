@@ -2,7 +2,7 @@ module main
 
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'vobjfile_${os.getuid()}')
+const tfolder = os.join_path(os.vtmp_dir(), 'vobjfile_${os.getpid()}')
 const vexe = os.quoted_path(@VEXE)
 const gcc = os.quoted_path(os.find_abs_path_of_executable('gcc') or {
 	println('This program needs `gcc` to be present.')
