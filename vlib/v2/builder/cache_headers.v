@@ -117,7 +117,7 @@ fn (b &Builder) module_source_files(modules []string) []string {
 	mut files_set := map[string]bool{}
 	for module_name in modules {
 		module_path := b.pref.get_vlib_module_path(module_name)
-		module_files := get_v_files_from_dir(module_path)
+		module_files := get_v_files_from_dir(module_path, b.pref.user_defines)
 		for file in module_files {
 			files_set[file] = true
 		}
@@ -251,7 +251,7 @@ fn (b &Builder) source_fn_return_types(modules []string) map[string]string {
 	mut fn_returns := map[string]string{}
 	for module_name in modules {
 		module_dir := b.pref.get_vlib_module_path(module_name)
-		for file in get_v_files_from_dir(module_dir) {
+		for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 			lines := os.read_lines(file) or { continue }
 			for raw_line in lines {
 				line := raw_line.trim_space()
@@ -269,7 +269,7 @@ fn (b &Builder) source_fn_decls_for_module(module_name string) map[string]string
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
 	mut decls := map[string]string{}
-	for file in get_v_files_from_dir(module_dir) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		lines := os.read_lines(file) or { continue }
 		mut in_interface := false
 		mut interface_name := ''
@@ -341,7 +341,7 @@ fn (b &Builder) source_struct_field_types_for_module(module_name string) map[str
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
 	mut field_types := map[string]string{}
-	for file in get_v_files_from_dir(module_dir) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		lines := os.read_lines(file) or { continue }
 		mut in_struct := false
 		mut struct_name := ''
@@ -389,7 +389,8 @@ fn (mut b Builder) parse_module_source_files_for_headers(modules []string) []ast
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut source_paths := []string{}
 	for module_name in modules {
-		source_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_name))
+		source_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_name),
+			b.pref.user_defines)
 	}
 	return parser_reused.parse_files(source_paths, mut b.file_set)
 }
@@ -590,7 +591,7 @@ fn (b &Builder) resolved_header_interface_decl(module_name string, stmt ast.Inte
 fn (b &Builder) append_source_type_alias_decls(module_name string, mut type_decl_stmts []ast.Stmt, mut type_decl_seen map[string]bool) {
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -798,7 +799,7 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 fn (b &Builder) lookup_alias_source_type_expr(module_name string, type_name string) ?ast.Expr {
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -923,7 +924,7 @@ fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool
 		'type C.${type_name}',
 		'pub type C.${type_name}',
 	]
-	for file in get_v_files_from_dir(module_dir) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
 		content := os.read_file(file) or { continue }
 		for pattern in patterns {
 			if content.contains(pattern) {

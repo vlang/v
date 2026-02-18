@@ -58,6 +58,9 @@ pub fn (mut g Gen) gen() string {
 	g.sb.writeln('typedef u8 rune;')
 	g.sb.writeln('')
 
+	// wyhash implementation (used by map)
+	g.gen_wyhash()
+
 	// Runtime helpers (only when not linking against builtin.o)
 	if !g.link_builtin {
 		g.gen_runtime_helpers()
@@ -215,14 +218,24 @@ fn (mut g Gen) gen_fn_forward_decls() {
 			g.sb.writeln('int main(int argc, char** argv);')
 			continue
 		}
+		// Skip C extern functions — they conflict with system header declarations.
+		// Non-standard C functions (wyhash, etc.) are provided via inline headers.
+		if func.is_c_extern {
+			continue
+		}
 		c_name := g.fn_c_name(func.name)
 		ret_type := g.type_name(func.typ)
 		mut params := []string{}
-		for pid in func.params {
+		for i, pid in func.params {
 			val := g.mod.values[pid]
 			ptype := g.type_name(val.typ)
-			pname := sanitize_c_ident(val.name)
-			params << '${ptype} ${pname}'
+			if val.name.len == 0 {
+				// C extern functions may have unnamed parameters
+				params << '${ptype} _p${i}'
+			} else {
+				pname := sanitize_c_ident(val.name)
+				params << '${ptype} ${pname}'
+			}
 		}
 		param_str := if params.len > 0 { params.join(', ') } else { 'void' }
 		g.sb.writeln('${ret_type} ${c_name}(${param_str});')
@@ -592,7 +605,24 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 				.sext, .zext, .trunc, .bitcast {
 					if instr.operands.len >= 1 {
 						g.write_indent()
-						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = (${g.type_name(instr.typ)})')
+						target_tn := g.type_name(instr.typ)
+						src_type := g.mod.values[instr.operands[0]].typ
+						src_kind := if src_type < g.mod.type_store.types.len {
+							g.mod.type_store.types[src_type].kind
+						} else {
+							ssa.TypeKind.void_t
+						}
+						dst_kind := if instr.typ < g.mod.type_store.types.len {
+							g.mod.type_store.types[instr.typ].kind
+						} else {
+							ssa.TypeKind.void_t
+						}
+						// Pointer-to-struct cast: dereference through typed pointer
+						if src_kind == .ptr_t && dst_kind == .struct_t {
+							g.sb.write_string('${target_tn} ${val.name} = *(${target_tn}*)')
+						} else {
+							g.sb.write_string('${target_tn} ${val.name} = (${target_tn})')
+						}
 						g.gen_value(instr.operands[0])
 						g.sb.writeln(';')
 					}
@@ -858,4 +888,84 @@ fn escape_c_string(s string) string {
 		}
 	}
 	return sb.str()
+}
+
+fn (mut g Gen) gen_wyhash() {
+	g.sb.writeln('#ifndef wyhash_final_version_4_2')
+	g.sb.writeln('#define wyhash_final_version_4_2')
+	g.sb.writeln('#define WYHASH_CONDOM 1')
+	g.sb.writeln('#define WYHASH_32BIT_MUM 0')
+	g.sb.writeln('#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)')
+	g.sb.writeln('  #define _likely_(x) __builtin_expect(x,1)')
+	g.sb.writeln('  #define _unlikely_(x) __builtin_expect(x,0)')
+	g.sb.writeln('#else')
+	g.sb.writeln('  #define _likely_(x) (x)')
+	g.sb.writeln('  #define _unlikely_(x) (x)')
+	g.sb.writeln('#endif')
+	g.sb.writeln('static inline uint64_t _wyrot(uint64_t x) { return (x>>32)|(x<<32); }')
+	g.sb.writeln('static inline void _wymum(uint64_t *A, uint64_t *B){')
+	g.sb.writeln('#if defined(__SIZEOF_INT128__)')
+	g.sb.writeln('  __uint128_t r=*A; r*=*B; *A=(uint64_t)r; *B=(uint64_t)(r>>64);')
+	g.sb.writeln('#elif defined(_MSC_VER) && defined(_M_X64)')
+	g.sb.writeln('  *A=_umul128(*A,*B,B);')
+	g.sb.writeln('#else')
+	g.sb.writeln('  uint64_t ha=*A>>32, hb=*B>>32, la=(uint32_t)*A, lb=(uint32_t)*B, hi, lo;')
+	g.sb.writeln('  uint64_t rh=ha*hb, rm0=ha*lb, rm1=hb*la, rl=la*lb, t=rl+(rm0<<32), c=t<rl;')
+	g.sb.writeln('  lo=t+(rm1<<32); c+=lo<t; hi=rh+(rm0>>32)+(rm1>>32)+c;')
+	g.sb.writeln('  *A=lo; *B=hi;')
+	g.sb.writeln('#endif')
+	g.sb.writeln('}')
+	g.sb.writeln('static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }')
+	g.sb.writeln('#ifndef WYHASH_LITTLE_ENDIAN')
+	g.sb.writeln('  #ifdef TARGET_ORDER_IS_LITTLE')
+	g.sb.writeln('    #define WYHASH_LITTLE_ENDIAN 1')
+	g.sb.writeln('  #else')
+	g.sb.writeln('    #define WYHASH_LITTLE_ENDIAN 0')
+	g.sb.writeln('  #endif')
+	g.sb.writeln('#endif')
+	g.sb.writeln('#if (WYHASH_LITTLE_ENDIAN)')
+	g.sb.writeln('  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}')
+	g.sb.writeln('  static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}')
+	g.sb.writeln('#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)')
+	g.sb.writeln('  static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}')
+	g.sb.writeln('  static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}')
+	g.sb.writeln('#else')
+	g.sb.writeln('  static inline uint64_t _wyr8(const uint8_t *p) {')
+	g.sb.writeln('    uint64_t v; memcpy(&v, p, 8);')
+	g.sb.writeln('    return (((v >> 56) & 0xff)| ((v >> 40) & 0xff00)| ((v >> 24) & 0xff0000)| ((v >>  8) & 0xff000000)| ((v <<  8) & 0xff00000000)| ((v << 24) & 0xff0000000000)| ((v << 40) & 0xff000000000000)| ((v << 56) & 0xff00000000000000));')
+	g.sb.writeln('  }')
+	g.sb.writeln('  static inline uint64_t _wyr4(const uint8_t *p) {')
+	g.sb.writeln('    uint32_t v; memcpy(&v, p, 4);')
+	g.sb.writeln('    return (((v >> 24) & 0xff)| ((v >>  8) & 0xff00)| ((v <<  8) & 0xff0000)| ((v << 24) & 0xff000000));')
+	g.sb.writeln('  }')
+	g.sb.writeln('#endif')
+	g.sb.writeln('static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}')
+	g.sb.writeln('static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){')
+	g.sb.writeln('  const uint8_t *p=(const uint8_t *)key; seed^=_wymix(seed^secret[0],secret[1]); uint64_t a, b;')
+	g.sb.writeln('  if(_likely_(len<=16)){')
+	g.sb.writeln('    if(_likely_(len>=4)){ a=(_wyr4(p)<<32)|_wyr4(p+((len>>3)<<2)); b=(_wyr4(p+len-4)<<32)|_wyr4(p+len-4-((len>>3)<<2)); }')
+	g.sb.writeln('    else if(_likely_(len>0)){ a=_wyr3(p,len); b=0; }')
+	g.sb.writeln('    else a=b=0;')
+	g.sb.writeln('  } else {')
+	g.sb.writeln('    size_t i=len;')
+	g.sb.writeln('    if(_unlikely_(i>=48)){')
+	g.sb.writeln('      uint64_t see1=seed, see2=seed;')
+	g.sb.writeln('      do{')
+	g.sb.writeln('        seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed);')
+	g.sb.writeln('        see1=_wymix(_wyr8(p+16)^secret[2],_wyr8(p+24)^see1);')
+	g.sb.writeln('        see2=_wymix(_wyr8(p+32)^secret[3],_wyr8(p+40)^see2);')
+	g.sb.writeln('        p+=48; i-=48;')
+	g.sb.writeln('      }while(_likely_(i>=48));')
+	g.sb.writeln('      seed^=see1^see2;')
+	g.sb.writeln('    }')
+	g.sb.writeln('    while(_unlikely_(i>16)){ seed=_wymix(_wyr8(p)^secret[1],_wyr8(p+8)^seed); i-=16; p+=16; }')
+	g.sb.writeln('    a=_wyr8(p+i-16); b=_wyr8(p+i-8);')
+	g.sb.writeln('  }')
+	g.sb.writeln('  a^=secret[1]; b^=seed; _wymum(&a,&b);')
+	g.sb.writeln('  return _wymix(a^secret[0]^len,b^secret[1]);')
+	g.sb.writeln('}')
+	g.sb.writeln('static const uint64_t _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
+	g.sb.writeln('static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0x2d358dccaa6c78a5ull; B^=0x8bb84b93962eacc9ull; _wymum(&A,&B); return _wymix(A^0x2d358dccaa6c78a5ull,B^0x8bb84b93962eacc9ull);}')
+	g.sb.writeln('#endif')
+	g.sb.writeln('')
 }

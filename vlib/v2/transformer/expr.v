@@ -1376,6 +1376,13 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
 			}
+			// Native backends (arm64/x64) don't use Option/Result structs -
+			// functions return raw values (0 for none). Skip struct-based
+			// expansion and fall through to simple truthiness check.
+			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+				is_result = false
+				is_option = false
+			}
 
 			if is_result {
 				// Handle Result if-guard using temp variable pattern
@@ -1414,16 +1421,11 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				// 3. Body: var := _tmp.data; original_body
 				mut body_stmts := []ast.Stmt{}
 				if !is_blank {
-					data_access := ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'data'
-						}
-					}
+					data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
 					body_stmts << ast.AssignStmt{
 						op:  .decl_assign
 						lhs: guard.stmt.lhs
-						rhs: [ast.Expr(data_access)]
+						rhs: [data_access]
 						pos: guard.stmt.pos
 					}
 				}
@@ -1436,6 +1438,10 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					stmts:     t.transform_stmts(body_stmts)
 					else_expr: t.transform_expr(expr.else_expr)
 					pos:       synth_pos
+				}
+				// Propagate the original IfExpr type to the synthesized node
+				if orig_type := t.get_expr_type(ast.Expr(expr)) {
+					t.register_synth_type(synth_pos, orig_type)
 				}
 
 				// Wrap temp assignment + if in UnsafeExpr (compound expression)
@@ -1484,16 +1490,11 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 
 				mut body_stmts := []ast.Stmt{}
 				if !is_blank {
-					data_access := ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'data'
-						}
-					}
+					data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
 					body_stmts << ast.AssignStmt{
 						op:  .decl_assign
 						lhs: guard.stmt.lhs
-						rhs: [ast.Expr(data_access)]
+						rhs: [data_access]
 						pos: guard.stmt.pos
 					}
 				}
@@ -1506,6 +1507,10 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					stmts:     t.transform_stmts(body_stmts)
 					else_expr: t.transform_expr(expr.else_expr)
 					pos:       synth_pos
+				}
+				// Propagate the original IfExpr type to the synthesized node
+				if orig_type := t.get_expr_type(ast.Expr(expr)) {
+					t.register_synth_type(synth_pos, orig_type)
 				}
 
 				return ast.UnsafeExpr{
@@ -1565,12 +1570,17 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			for s in expr.stmts {
 				new_stmts << s
 			}
-			return ast.IfExpr{
+			result_if := ast.IfExpr{
 				cond:      t.transform_expr(cond_expr)
 				stmts:     t.transform_stmts(new_stmts)
 				else_expr: t.transform_expr(expr.else_expr)
 				pos:       synth_pos
 			}
+			// Propagate the original IfExpr type to the synthesized node
+			if orig_type := t.get_expr_type(ast.Expr(expr)) {
+				t.register_synth_type(synth_pos, orig_type)
+			}
+			return result_if
 		}
 	}
 

@@ -70,12 +70,9 @@ fn (mut g Gen) ensure_tuple_alias_for_fn_return(node ast.FnDecl, ret_type string
 	if tuple_name == '' || tuple_name in g.tuple_aliases {
 		return
 	}
-	old_fn_name := g.cur_fn_name
-	old_fn_scope := g.cur_fn_scope
-	g.cur_fn_name = node.name
-	g.cur_fn_scope = unsafe { nil }
+	// Resolve tuple element types from the Environment's function type metadata.
 	if g.env != unsafe { nil } {
-		scope_fn_name := if node.is_method {
+		fn_name := if node.is_method {
 			v_type_name := g.receiver_type_to_scope_name(node.receiver.typ)
 			if v_type_name != '' {
 				'${v_type_name}__${node.name}'
@@ -85,17 +82,71 @@ fn (mut g Gen) ensure_tuple_alias_for_fn_return(node ast.FnDecl, ret_type string
 		} else {
 			node.name
 		}
-		if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-			g.cur_fn_scope = fn_scope
+		if fields := g.tuple_fields_from_env(fn_name) {
+			if fields.len > 0 {
+				g.tuple_aliases[tuple_name] = fields.clone()
+			}
+			return
 		}
 	}
-	if fields := g.infer_tuple_field_types_from_stmts(node.stmts) {
-		if fields.len > 0 {
-			g.tuple_aliases[tuple_name] = fields.clone()
+}
+
+// tuple_fields_from_env looks up a function in the module scope and extracts
+// tuple element types from its return type.
+fn (mut g Gen) tuple_fields_from_env(fn_name string) ?[]string {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	// Look up the function object in the module scope.
+	if mut mod_scope := g.env_scope(g.cur_module) {
+		if obj := mod_scope.lookup_parent(fn_name, 0) {
+			if obj is types.Fn {
+				fn_obj := obj as types.Fn
+				fn_typ := fn_obj.get_typ()
+				if fn_typ is types.FnType {
+					return g.extract_tuple_fields_from_return_type(fn_typ)
+				}
+			}
 		}
 	}
-	g.cur_fn_name = old_fn_name
-	g.cur_fn_scope = old_fn_scope
+	// Also check builtin scope for builtin functions.
+	if g.cur_module != 'builtin' {
+		if mut builtin_scope := g.env_scope('builtin') {
+			if obj := builtin_scope.lookup_parent(fn_name, 0) {
+				if obj is types.Fn {
+					fn_obj := obj as types.Fn
+					fn_typ := fn_obj.get_typ()
+					if fn_typ is types.FnType {
+						return g.extract_tuple_fields_from_return_type(fn_typ)
+					}
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) extract_tuple_fields_from_return_type(fn_typ types.FnType) ?[]string {
+	ret_type := fn_typ.get_return_type() or { return none }
+	// Unwrap Option/Result wrappers to get the payload type.
+	inner := match ret_type {
+		types.OptionType { ret_type.base_type }
+		types.ResultType { ret_type.base_type }
+		else { ret_type }
+	}
+	if inner is types.Tuple {
+		tuple_types := inner.get_types()
+		mut fields := []string{cap: tuple_types.len}
+		for elem_type in tuple_types {
+			c := g.types_type_to_c(elem_type)
+			if c == '' {
+				return none
+			}
+			fields << c
+		}
+		return fields
+	}
+	return none
 }
 
 fn (mut g Gen) collect_fn_signatures() {
@@ -215,6 +266,9 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	// Set function scope for type lookups
 	g.cur_fn_name = node.name
 	g.runtime_local_types = map[string]string{}
+	g.is_module_ident_cache = map[string]bool{}
+	g.not_local_var_cache = map[string]bool{}
+	g.resolved_module_names = map[string]string{}
 	g.cur_fn_ret_type = if node.name == 'main' {
 		'int'
 	} else if fn_ret := g.fn_return_types[fn_name] {

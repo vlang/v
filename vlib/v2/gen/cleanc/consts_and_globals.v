@@ -298,19 +298,25 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			g.sb.writeln(';')
 		} else if typ in ['bool', 'char', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
 			'u32', 'u64', 'usize', 'isize', 'f32', 'f64', 'float_literal', 'int_literal'] {
+			value_expr := g.expr_to_string(field.value)
+			g.const_exprs[name] = value_expr
 			// Qualified const names are safe as macros and work in C constant-expression
-			// contexts (array sizes, static initializers). Keep unqualified names as
-			// typed globals to avoid macro collisions with local identifiers.
+			// contexts (array sizes, static initializers).
 			if name.contains('__') {
-				value_expr := g.expr_to_string(field.value)
 				g.sb.writeln('#define ${name} ${value_expr}')
 				if g.export_const_symbols {
 					g.queue_exported_const_symbol(name, typ, value_expr)
 				}
 			} else {
-				g.sb.write_string('static const ${typ} ${name} = ')
-				g.expr(field.value)
-				g.sb.writeln(';')
+				// Unqualified names use static const to avoid macro collisions.
+				// If the expression references other constants, inline their values
+				// so that tcc (and strict C) accepts the initializer.
+				resolved := if expr_contains_ident(field.value) {
+					g.resolve_const_expr(value_expr)
+				} else {
+					value_expr
+				}
+				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
 			}
 		} else {
 			// Fallback for aggregate literals and other complex consts.
@@ -319,4 +325,74 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			g.sb.writeln('')
 		}
 	}
+}
+
+fn expr_contains_ident(e ast.Expr) bool {
+	if e is ast.Ident {
+		return true
+	}
+	if e is ast.InfixExpr {
+		return expr_contains_ident(e.lhs) || expr_contains_ident(e.rhs)
+	}
+	if e is ast.CastExpr {
+		return expr_contains_ident(e.expr)
+	}
+	if e is ast.ParenExpr {
+		return expr_contains_ident(e.expr)
+	}
+	if e is ast.PrefixExpr {
+		return expr_contains_ident(e.expr)
+	}
+	return false
+}
+
+// resolve_const_expr replaces references to other constants in a C expression
+// string with their expanded values, so that static const initializers
+// contain only literal values (required by tcc and the C standard).
+fn (g &Gen) resolve_const_expr(expr string) string {
+	mut result := expr
+	for _ in 0 .. 10 {
+		mut changed := false
+		for cname, cval in g.const_exprs {
+			new_result := replace_whole_word(result, cname, cval)
+			if new_result != result {
+				result = new_result
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return result
+}
+
+fn replace_whole_word(s string, word string, replacement string) string {
+	mut result := s
+	mut pos := 0
+	for {
+		idx := result.index_after(word, pos) or { break }
+		// Check word boundary before.
+		if idx > 0 {
+			c := result[idx - 1]
+			if c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) {
+				pos = idx + word.len
+				continue
+			}
+		}
+		// Check word boundary after.
+		end := idx + word.len
+		if end < result.len {
+			c := result[end]
+			if c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) {
+				pos = idx + word.len
+				continue
+			}
+		}
+		result = result[..idx] + replacement + result[end..]
+		pos = idx + replacement.len
+	}
+	return result
 }

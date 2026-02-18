@@ -467,7 +467,8 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		g.emit(asm_bl_reloc())
 	}
 
-	for blk_id in func.blocks {
+	for i, blk_id in func.blocks {
+		g.next_blk = if i + 1 < func.blocks.len { func.blocks[i + 1] } else { -1 }
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
 
@@ -1858,6 +1859,15 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit_str_reg_offset(8, 29, result_offset + field_off)
 				} else {
 					// Multi-word field (nested struct)
+					// Ensure string_literal values are materialized before reading from stack
+					if field_val.kind == .string_literal {
+						if _ := g.string_literal_offsets[field_id] {
+							// already materialized
+						} else {
+							// Force materialization by loading into a scratch register
+							g.load_val_to_reg(10, field_id)
+						}
+					}
 					field_chunks := (field_size + 7) / 8
 					if field_offset := g.stack_map[field_id] {
 						mut src_ptr_reg := 12
@@ -2241,6 +2251,15 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		return
 	}
 	val := g.mod.values[val_id]
+	// Handle func_ref early: function pointers use ADRP+ADD regardless of their declared type
+	if val.kind == .func_ref {
+		sym_idx := g.macho.add_undefined('_' + val.name)
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
+		g.emit(asm_adrp(Reg(reg)))
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
+		g.emit(asm_add_pageoff(Reg(reg)))
+		return
+	}
 	if val.typ < 0 || val.typ >= g.mod.type_store.types.len {
 		g.emit_mov_imm64(reg, 0)
 		return
@@ -2525,8 +2544,17 @@ fn (mut g Gen) emit_add_fp_imm(rd int, imm int) {
 }
 
 fn (mut g Gen) emit_str_reg_offset(rt int, rn int, offset int) {
+	g.emit_str_reg_offset_sized(rt, rn, offset, 8)
+}
+
+fn (mut g Gen) emit_str_reg_offset_sized(rt int, rn int, offset int, size int) {
 	if offset >= -255 && offset <= 255 {
-		g.emit(asm_stur(Reg(rt), Reg(rn), offset))
+		match size {
+			1 { g.emit(asm_stur_b(Reg(rt), Reg(rn), offset)) }
+			2 { g.emit(asm_stur_h(Reg(rt), Reg(rn), offset)) }
+			4 { g.emit(asm_stur_w(Reg(rt), Reg(rn), offset)) }
+			else { g.emit(asm_stur(Reg(rt), Reg(rn), offset)) }
+		}
 	} else {
 		// Large offset: materialize effective address in a non-conflicting scratch register.
 		mut scratch := 11
@@ -2540,13 +2568,27 @@ fn (mut g Gen) emit_str_reg_offset(rt int, rn int, offset int) {
 			g.emit_mov_imm64(scratch, i64(offset))
 			g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
 		}
-		g.emit(asm_str(Reg(rt), Reg(scratch)))
+		match size {
+			1 { g.emit(asm_str_b(Reg(rt), Reg(scratch))) }
+			2 { g.emit(asm_str_h(Reg(rt), Reg(scratch))) }
+			4 { g.emit(asm_str_w(Reg(rt), Reg(scratch))) }
+			else { g.emit(asm_str(Reg(rt), Reg(scratch))) }
+		}
 	}
 }
 
 fn (mut g Gen) emit_ldr_reg_offset(rt int, rn int, offset int) {
+	g.emit_ldr_reg_offset_sized(rt, rn, offset, 8)
+}
+
+fn (mut g Gen) emit_ldr_reg_offset_sized(rt int, rn int, offset int, size int) {
 	if offset >= -255 && offset <= 255 {
-		g.emit(asm_ldur(Reg(rt), Reg(rn), offset))
+		match size {
+			1 { g.emit(asm_ldur_b(Reg(rt), Reg(rn), offset)) }
+			2 { g.emit(asm_ldur_h(Reg(rt), Reg(rn), offset)) }
+			4 { g.emit(asm_ldur_w(Reg(rt), Reg(rn), offset)) }
+			else { g.emit(asm_ldur(Reg(rt), Reg(rn), offset)) }
+		}
 	} else {
 		// Large offset: materialize effective address in a non-conflicting scratch register.
 		mut scratch := 11
@@ -2560,7 +2602,12 @@ fn (mut g Gen) emit_ldr_reg_offset(rt int, rn int, offset int) {
 			g.emit_mov_imm64(scratch, i64(offset))
 			g.emit(asm_add_reg(Reg(scratch), Reg(rn), Reg(scratch)))
 		}
-		g.emit(asm_ldr(Reg(rt), Reg(scratch)))
+		match size {
+			1 { g.emit(asm_ldr_b(Reg(rt), Reg(scratch))) }
+			2 { g.emit(asm_ldr_h(Reg(rt), Reg(scratch))) }
+			4 { g.emit(asm_ldr_w(Reg(rt), Reg(scratch))) }
+			else { g.emit(asm_ldr(Reg(rt), Reg(scratch))) }
+		}
 	}
 }
 
@@ -2728,16 +2775,20 @@ fn (g Gen) type_size(typ_id ssa.TypeID) int {
 		}
 		.struct_t {
 			mut total := 0
+			mut max_align := 1
 			for field_typ in typ.fields {
-				// Align each field to its natural alignment (simplified: 8 bytes)
-				if total % 8 != 0 {
-					total = (total + 7) & ~7
+				align := g.type_align(field_typ)
+				if align > max_align {
+					max_align = align
+				}
+				if align > 1 && total % align != 0 {
+					total = (total + align - 1) & ~(align - 1)
 				}
 				total += g.type_size(field_typ)
 			}
-			// Align struct size to 8 bytes
-			if total % 8 != 0 {
-				total = (total + 7) & ~7
+			// Align struct size to its largest field alignment
+			if max_align > 1 && total % max_align != 0 {
+				total = (total + max_align - 1) & ~(max_align - 1)
 			}
 			return if total > 0 { total } else { 8 }
 		}

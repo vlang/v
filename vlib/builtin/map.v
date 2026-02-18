@@ -216,7 +216,10 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 fn map_clone_string(dest voidptr, pkey voidptr) {
 	unsafe {
 		s := *&string(pkey)
-		(*&string(dest)) = s.clone()
+		cloned := s.clone()
+		// Use memcpy for native backend compatibility
+		// (*&string(dest)) = cloned doesn't reliably store full struct
+		C.memcpy(dest, voidptr(&cloned), sizeof(string))
 	}
 }
 

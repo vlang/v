@@ -1,6 +1,7 @@
 module builtin
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
+@[if !noeprintln ?]
 pub fn eprintln(s string) {
 	if s.str == 0 {
 		eprintln('eprintln(NIL)')
@@ -29,6 +30,7 @@ pub fn eprintln(s string) {
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
+@[if !noeprintln ?]
 pub fn eprint(s string) {
 	if s.str == 0 {
 		eprint('eprint(NIL)')
@@ -61,6 +63,9 @@ pub fn flush_stdout() {
 	$if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if native {
+		// Native backend uses C.write() directly, no libc buffering to flush.
+		// C.stdout data symbol cannot be resolved through GOT.
 	} $else {
 		C.fflush(C.stdout)
 	}
@@ -71,6 +76,8 @@ pub fn flush_stderr() {
 	$if freestanding {
 		not_implemented := 'flush_stderr is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if native {
+		// Native backend uses C.write() directly, no libc buffering to flush.
 	} $else {
 		C.fflush(C.stderr)
 	}
@@ -120,13 +127,10 @@ pub fn print(s string) {
 }
 
 // println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
-@[manualfree]
+@[if !noprintln ?; manualfree]
 pub fn println(s string) {
 	if s.str == 0 {
 		println('println(NIL)')
-		return
-	}
-	$if noprintln ? {
 		return
 	}
 	$if builtin_print_use_fprintf ? {

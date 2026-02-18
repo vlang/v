@@ -48,7 +48,8 @@ pub fn (mut e Environment) set_expr_type(id int, typ Type) {
 				new_len = id + 1
 			}
 			for e.expr_type_values.len < new_len {
-				e.expr_type_values << Type(Void(0))
+				// Void(1) is the sentinel for "unset"; Void(0) is valid void type.
+				e.expr_type_values << Type(Void(1))
 			}
 		}
 		e.expr_type_values[id] = typ
@@ -64,7 +65,7 @@ pub fn (mut e Environment) set_expr_type(id int, typ Type) {
 				new_len = idx + 1
 			}
 			for e.expr_type_neg_values.len < new_len {
-				e.expr_type_neg_values << Type(Void(0))
+				e.expr_type_neg_values << Type(Void(1))
 			}
 		}
 		e.expr_type_neg_values[idx] = typ
@@ -1190,7 +1191,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					// do we need to do promotion here
 
 					// last stmt expr does does not return a type
-					if expr_stmt_type !is Void && !c.check_types(cond_type, expr_stmt_type) {
+					// None is always valid in or-blocks (propagates the error)
+					if expr_stmt_type !is Void && expr_stmt_type !is None
+						&& !c.check_types(cond_type, expr_stmt_type) {
 						c.error_with_pos('or expr expecting ${cond_type.name()}, got ${expr_stmt_type.name()}',
 							expr.pos)
 					}
@@ -1234,6 +1237,14 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					c.error_with_pos('deref on non pointer type `${expr_type.name()}`',
 						expr.pos)
 				}
+			} else if expr.op == .arrow {
+				// Channel receive: <-ch returns the channel's element type
+				if expr_type is Channel {
+					if elem_type := expr_type.elem_type {
+						return elem_type
+					}
+				}
+				return Type(void_)
 			}
 			return c.expr(expr.expr)
 		}
@@ -2609,6 +2620,9 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				// panic('GOT GENERIC CALL')
 				mut generic_types := []Type{}
 				for i, ga in lhs_expr.args {
+					if i >= fn_.generic_params.len {
+						break
+					}
 					generic_param := fn_.generic_params[i]
 					generic_type := c.expr(ga)
 					generic_types << generic_type
@@ -2624,6 +2638,9 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				mut arg_types := []Type{}
 				// eprintln('INFERRED GENERIC TYPES: ${expr.lhs.name()}')
 				for i, arg in expr.args {
+					if i >= fn_.params.len {
+						break
+					}
 					param := fn_.params[i]
 					arg_type := c.expr(arg).typed_default()
 					arg_types << arg_type
@@ -2681,7 +2698,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 					it_obj := object_from_type(it_type)
 					c.scope.objects['it'] = it_obj
 				}
-				if lhs_expr.rhs.name == 'map' {
+				if lhs_expr.rhs.name == 'map' && expr.args.len > 0 {
 					rt := c.expr(expr.args[0])
 					c.log('map: ${rt.name()}')
 					fn_type := fn_ as FnType
@@ -3013,6 +3030,10 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			if name == 'str' || name == 'hex' {
 				return fn_with_return_type(FnType{}, Type(string_))
 			}
+			// Compiler-magic: []thread.wait() waits for all threads to complete
+			if name == 'wait' && arr_type.elem_type is Thread {
+				return fn_with_return_type(FnType{}, Type(void_))
+			}
 			// Compiler-magic array methods (any, all, contains, index)
 			// Return FnType with array as return_type so 'it' gets the element type
 			if name in ['any', 'all', 'contains'] {
@@ -3063,10 +3084,20 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 		}
 		Channel {
-			println('channel . ${name}')
-			// TODO: sync must be imported when channels are used
+			// Handle common channel methods directly
+			if name == 'close' {
+				return fn_with_return_type(FnType{}, Type(void_))
+			} else if name == 'len' || name == 'cap' {
+				return int_
+			} else if name == 'try_push' || name == 'try_pop' {
+				return fn_with_return_type(FnType{}, int_)
+			}
+			// Fallback to sync.Channel scope lookup
 			mut sync_scope := c.get_module_scope('sync', universe)
-			at := sync_scope.lookup_parent('Channel', 0) or { panic('missing builtin chan type') }
+			at := sync_scope.lookup_parent('Channel', 0) or {
+				// sync module not imported; return void for unknown channel methods
+				return fn_with_return_type(FnType{}, Type(void_))
+			}
 			at_type := at.typ()
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
 				return field_or_method_type
@@ -3274,6 +3305,12 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 	}
 	if t is Struct {
 		// dump(t.fields)
+	}
+	// Unresolved generic type parameters (e.g., T, Y) cannot have their
+	// fields or methods resolved until the generic is instantiated.
+	// Return void to allow type checking to continue.
+	if t is NamedType {
+		return Type(void_)
 	}
 	base_type := t.base_type()
 	return error('cannot find field or method: `${name}` for type ${t.name()} - (base: ${base_type.name()})')

@@ -22,8 +22,9 @@ pub:
 	name string
 	typ  TypeID
 pub mut:
-	blocks []BlockID
-	params []ValueID
+	blocks      []BlockID
+	params      []ValueID
+	is_c_extern bool // C-language extern function (no V body, provided by C headers/libraries)
 
 	linkage   Linkage
 	call_conv CallConv
