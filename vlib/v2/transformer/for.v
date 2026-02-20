@@ -96,12 +96,9 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 	}
 
 	// key_values selector: _map_tmp.key_values
-	key_values_expr := ast.SelectorExpr{
-		lhs: map_tmp_ident
-		rhs: ast.Ident{
-			name: 'key_values'
-		}
-	}
+	key_values_expr := t.synth_selector(map_tmp_ident, 'key_values', types.Type(types.Struct{
+		name: 'DenseArray'
+	}))
 
 	// key_values.len selector: map_expr.key_values.len
 	key_values_len_expr := t.synth_selector(ast.Expr(key_values_expr), 'len', types.Type(types.int_))

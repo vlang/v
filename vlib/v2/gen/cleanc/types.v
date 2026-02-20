@@ -227,19 +227,6 @@ fn result_type_value_name(result_type string) string {
 	return unmangle_c_ptr_type(result_type['_result_'.len..])
 }
 
-fn normalize_inferred_type_name(typ string) string {
-	if typ == '' {
-		return ''
-	}
-	if typ == 'int_literal' {
-		return 'int'
-	}
-	if typ == 'float_literal' {
-		return 'f64'
-	}
-	return typ
-}
-
 fn normalize_signature_type_name(typ string, fallback string) string {
 	if typ.trim_space() == '' {
 		return fallback
@@ -560,16 +547,16 @@ fn (g &Gen) normalize_enum_name(name string) string {
 
 fn (g &Gen) enum_has_field(enum_name string, field_name string) bool {
 	if enum_name in g.enum_type_fields {
-		return field_name in g.enum_type_fields[enum_name].clone()
+		return field_name in g.enum_type_fields[enum_name]
 	}
 	normalized := g.normalize_enum_name(enum_name)
 	if normalized in g.enum_type_fields {
-		return field_name in g.enum_type_fields[normalized].clone()
+		return field_name in g.enum_type_fields[normalized]
 	}
 	if enum_name.contains('__') {
 		short_name := enum_name.all_after_last('__')
 		if short_name in g.enum_type_fields {
-			return field_name in g.enum_type_fields[short_name].clone()
+			return field_name in g.enum_type_fields[short_name]
 		}
 	}
 	return false
@@ -691,6 +678,29 @@ fn (mut g Gen) method_receiver_base_type(expr ast.Expr) string {
 			}
 			if base != '' && base != 'int' {
 				return base
+			}
+		}
+	}
+	// Fast path: env pos.id O(1) lookup (covers most non-Ident receivers).
+	if g.env != unsafe { nil } {
+		pos := expr.pos()
+		if pos.is_valid() {
+			if raw_type := g.env.get_expr_type(pos.id) {
+				match raw_type {
+					types.Pointer {
+						return g.types_type_to_c(raw_type.base_type)
+					}
+					types.Alias {
+						// Use the alias name itself (e.g. strings__Builder, ssa__TypeID)
+						return raw_type.name
+					}
+					else {
+						c := g.types_type_to_c(raw_type)
+						if c != '' && c != 'int' {
+							return c
+						}
+					}
+				}
 			}
 		}
 	}
@@ -836,12 +846,32 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	pos := e.pos()
 	if pos.id != 0 {
 		if typ := g.env.get_expr_type(pos.id) {
-			// Self-hosting can leave malformed alias payloads in env expr cache.
-			// Skip those entries and fall back to AST/scope-based inference.
+			// Self-hosting can leave alias payloads (e.g. voidptr, MapHashFn)
+			// that propagate incorrect types to variable declarations.
+			// Skip aliases here; selector_field_type uses get_env_c_type instead.
 			if typ is types.Alias {
 				return none
 			}
 			return g.types_type_to_c(typ)
+		}
+	}
+	return none
+}
+
+// get_env_c_type retrieves the C type string for an expression from the Environment
+// without filtering aliases.  This is safe for selector field types where the alias
+// (e.g. strings__Builder, ssa__TypeID) is the correct type for the field.
+// Pointer-like aliases (voidptr, charptr, byteptr) are unmangled to their C pointer
+// form (void*, char*, u8*) so downstream pointer detection (-> vs .) works correctly.
+fn (g &Gen) get_env_c_type(e ast.Expr) ?string {
+	if g.env == unsafe { nil } {
+		return none
+	}
+	pos := e.pos()
+	if pos.id != 0 {
+		if typ := g.env.get_expr_type(pos.id) {
+			c := g.types_type_to_c(typ)
+			return unmangle_c_ptr_type(c)
 		}
 	}
 	return none
@@ -891,6 +921,10 @@ fn (mut g Gen) remember_runtime_local_type(name string, typ string) {
 		return
 	}
 	g.runtime_local_types[name] = typ
+	// Invalidate negative cache entry if it was previously marked as non-local.
+	if name in g.not_local_var_cache {
+		g.not_local_var_cache.delete(name)
+	}
 }
 
 // get_local_var_c_type looks up a local variable's C type string from the function scope
@@ -898,14 +932,25 @@ fn (mut g Gen) get_local_var_c_type(name string) ?string {
 	if local_typ := g.runtime_local_types[name] {
 		return local_typ
 	}
+	// Negative cache: name was already looked up and is not a local variable.
+	if name in g.not_local_var_cache {
+		return none
+	}
 	if mut fn_scope := g.ensure_cur_fn_scope() {
 		if obj := fn_scope.lookup_parent(name, 0) {
 			if obj is types.Module || obj is types.Const || obj is types.Global || obj is types.Fn {
+				g.not_local_var_cache[name] = true
 				return none
 			}
-			return g.types_type_to_c(obj.typ())
+			c := g.types_type_to_c(obj.typ())
+			// Cache the scope-resolved type for future lookups (avoids repeat scope walks).
+			if c != '' {
+				g.runtime_local_types[name] = c
+			}
+			return c
 		}
 	}
+	g.not_local_var_cache[name] = true
 	return none
 }
 
@@ -916,16 +961,57 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		if node.name == 'err' {
 			return 'IError'
 		}
+		// Fast path: env pos.id O(1) lookup.
+		if t := g.get_expr_type_from_env(node) {
+			return t
+		}
 		if local_type := g.get_local_var_c_type(node.name) {
 			return local_type
 		}
-		// Prefer scope-backed type resolution for identifiers (type names, locals, aliases).
-		if raw_type := g.get_raw_type(node) {
-			// Self-host transitional env values can carry malformed alias payloads.
-			if raw_type !is types.Alias {
-				typ_name := g.types_type_to_c(raw_type)
-				if typ_name != '' {
-					return typ_name
+		// get_local_var_c_type already checked fn scope + runtime_local_types.
+		// Only module and builtin scope fallbacks remain.
+		if g.env != unsafe { nil } {
+			if g.cur_module != '' {
+				if mut mod_scope := g.env_scope(g.cur_module) {
+					if obj := mod_scope.lookup_parent(node.name, 0) {
+						if obj !is types.Module {
+							raw := obj.typ()
+							if raw !is types.Alias {
+								typ_name := g.types_type_to_c(raw)
+								if typ_name != '' {
+									return typ_name
+								}
+							}
+						}
+					}
+				}
+			}
+			if g.cur_module != 'builtin' {
+				if mut builtin_scope := g.env_scope('builtin') {
+					if obj := builtin_scope.lookup_parent(node.name, 0) {
+						if obj !is types.Module {
+							raw := obj.typ()
+							if raw !is types.Alias {
+								typ_name := g.types_type_to_c(raw)
+								if typ_name != '' {
+									return typ_name
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		// Ident already tried env + all scopes above; avoid redundant second lookup below.
+		return 'int'
+	}
+	// For IndexExpr on pointer-to-pointer or pointer-to-string types, prefer raw-type-based
+	// inference over env (env may store the wrong type, e.g. char instead of char*).
+	if node is ast.IndexExpr {
+		if lhs_raw := g.get_raw_type(node.lhs) {
+			if lhs_raw is types.Pointer {
+				if lhs_raw.base_type is types.Pointer || lhs_raw.base_type is types.String {
+					return g.types_type_to_c(lhs_raw.base_type)
 				}
 			}
 		}
@@ -976,14 +1062,6 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			if field_type != '' {
 				return field_type
 			}
-			if raw_type := g.get_raw_type(node) {
-				if raw_type !is types.Alias {
-					resolved := g.types_type_to_c(raw_type)
-					if resolved != '' {
-						return resolved
-					}
-				}
-			}
 			return 'int'
 		}
 		ast.InfixExpr {
@@ -1028,7 +1106,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return 'int'
 		}
 		ast.IfExpr {
-			return g.infer_if_expr_type(node)
+			return g.get_if_expr_type(node)
 		}
 		ast.IndexExpr {
 			if node.lhs is ast.SelectorExpr {
@@ -1349,7 +1427,26 @@ fn (g &Gen) env_scope(module_name string) ?&types.Scope {
 	if g.env == unsafe { nil } {
 		return none
 	}
-	return g.env.get_scope(module_name)
+	// Cache scope pointers to avoid repeated lock acquisition in Environment.get_scope.
+	if cached_ptr := g.cached_env_scopes[module_name] {
+		if cached_ptr == unsafe { nil } {
+			return none
+		}
+		return unsafe { &types.Scope(cached_ptr) }
+	}
+	if scope := g.env.get_scope(module_name) {
+		unsafe {
+			mut self := g
+			self.cached_env_scopes[module_name] = voidptr(scope)
+		}
+		return scope
+	}
+	mut null_ptr := unsafe { nil }
+	unsafe {
+		mut self := g
+		self.cached_env_scopes[module_name] = null_ptr
+	}
+	return none
 }
 
 fn (g &Gen) lookup_module_scope_object(name string) ?types.Object {
@@ -1418,8 +1515,21 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	if g.env == unsafe { nil } {
 		return none
 	}
+	// Fast path: env pos.id O(1) lookup for non-compound expressions.
+	if node !is ast.Ident && node !is ast.SelectorExpr && node !is ast.IndexExpr {
+		pos := node.pos()
+		if pos.is_valid() {
+			return g.env.get_expr_type(pos.id)
+		}
+	}
 	// For identifiers, check function scope first
 	if node is ast.Ident {
+		// Fast path: if is_module_ident_cache already knows this is a module, skip scope walks.
+		if cached := g.is_module_ident_cache[node.name] {
+			if cached {
+				return none
+			}
+		}
 		if mut fn_scope := g.ensure_cur_fn_scope() {
 			if obj := fn_scope.lookup_parent(node.name, 0) {
 				if obj is types.Module {
@@ -1460,24 +1570,29 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	if node is ast.SelectorExpr {
 		// Module selector (e.g. os.args): resolve from module scope first.
 		if node.lhs is ast.Ident {
-			if mut fn_scope := g.ensure_cur_fn_scope() {
-				if obj := fn_scope.lookup_parent(node.lhs.name, 0) {
-					if obj is types.Module {
-						if rhs_obj := obj.lookup(node.rhs.name) {
-							if rhs_obj !is types.Module {
-								return rhs_obj.typ()
-							}
-						}
-					}
-				}
-			}
-			if g.cur_module != '' {
-				if mut mod_scope := g.env_scope(g.cur_module) {
-					if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
+			// Use is_module_ident cache to quickly check if LHS is a module.
+			is_mod := g.is_module_ident(node.lhs.name)
+			if is_mod {
+				// LHS is a module — look up the RHS in the module's scope.
+				if mut fn_scope := g.ensure_cur_fn_scope() {
+					if obj := fn_scope.lookup_parent(node.lhs.name, 0) {
 						if obj is types.Module {
 							if rhs_obj := obj.lookup(node.rhs.name) {
 								if rhs_obj !is types.Module {
 									return rhs_obj.typ()
+								}
+							}
+						}
+					}
+				}
+				if g.cur_module != '' {
+					if mut mod_scope := g.env_scope(g.cur_module) {
+						if obj := mod_scope.lookup_parent(node.lhs.name, 0) {
+							if obj is types.Module {
+								if rhs_obj := obj.lookup(node.rhs.name) {
+									if rhs_obj !is types.Module {
+										return rhs_obj.typ()
+									}
 								}
 							}
 						}
@@ -1488,6 +1603,18 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		if lhs_type := g.get_raw_type(node.lhs) {
 			if field_type := selector_struct_field_type_from_type(lhs_type, node.rhs.name) {
 				return field_type
+			}
+			// Built-in fields on array/map/string types
+			base_lhs := match lhs_type {
+				types.Pointer { lhs_type.base_type }
+				types.Alias { lhs_type.base_type }
+				else { lhs_type }
+			}
+			if base_lhs is types.Array || base_lhs is types.ArrayFixed || base_lhs is types.Map
+				|| base_lhs is types.String {
+				if node.rhs.name == 'len' {
+					return types.int_
+				}
 			}
 			// Interface types stored in variables may have empty fields.
 			// Look up the populated interface declaration from the scope.
@@ -1543,6 +1670,18 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 			if lhs_type is types.Map {
 				return lhs_type.value_type
 			}
+			if lhs_type is types.Pointer {
+				return lhs_type.base_type
+			}
+		}
+	}
+	// For UnsafeExpr, infer type from the last statement in the block.
+	if node is ast.UnsafeExpr {
+		if node.stmts.len > 0 {
+			last := node.stmts[node.stmts.len - 1]
+			if last is ast.ExprStmt {
+				return g.get_raw_type(last.expr)
+			}
 		}
 	}
 	// Try environment lookup by position
@@ -1553,6 +1692,95 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	return none
 }
 
+// resolve_primitive_type_name converts a primitive C type name to a types.Type.
+// Returns none if the name is not a known primitive type.
+fn resolve_primitive_type_name(name string) ?types.Type {
+	return match name {
+		'int' {
+			types.Type(types.int_)
+		}
+		'i8' {
+			types.Type(types.Primitive{
+				size:  8
+				props: .integer
+			})
+		}
+		'i16' {
+			types.Type(types.Primitive{
+				size:  16
+				props: .integer
+			})
+		}
+		'i32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .integer
+			})
+		}
+		'i64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .integer
+			})
+		}
+		'u8', 'byte' {
+			types.Type(types.Primitive{
+				size:  8
+				props: .integer | .unsigned
+			})
+		}
+		'u16' {
+			types.Type(types.Primitive{
+				size:  16
+				props: .integer | .unsigned
+			})
+		}
+		'u32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .integer | .unsigned
+			})
+		}
+		'u64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .integer | .unsigned
+			})
+		}
+		'f32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .float
+			})
+		}
+		'f64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .float
+			})
+		}
+		'bool' {
+			types.Type(types.bool_)
+		}
+		'string' {
+			types.Type(types.string_)
+		}
+		'int_literal' {
+			types.Type(types.Primitive{
+				props: .untyped | .integer
+			})
+		}
+		'float_literal' {
+			types.Type(types.Primitive{
+				props: .untyped | .float
+			})
+		}
+		else {
+			none
+		}
+	}
+}
+
 // resolve_c_type_to_raw converts a C type name (e.g. "types__Deferred") back to a types.Type
 // by looking up the type name in the appropriate module scope.
 fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
@@ -1560,6 +1788,21 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 		return none
 	}
 	mut type_name := c_type.trim_right('*')
+	is_ptr := c_type.ends_with('*')
+	// Handle Array_* → types.Array{elem_type: ...}
+	if type_name.starts_with('Array_') {
+		elem_c := unmangle_c_ptr_type(type_name['Array_'.len..])
+		elem_type := g.resolve_c_type_to_raw(elem_c) or { return none }
+		raw := types.Type(types.Array{
+			elem_type: elem_type
+		})
+		if is_ptr {
+			return types.Pointer{
+				base_type: raw
+			}
+		}
+		return raw
+	}
 	if type_name.starts_with('Map_') {
 		if info := g.ensure_map_type_info(type_name) {
 			key_type := g.resolve_c_type_to_raw(info.key_c_type) or { return none }
@@ -1570,6 +1813,40 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 			}
 		}
 	}
+	// Handle primitive type names (int, string, bool, etc.) directly without scope lookup.
+	if prim_raw := resolve_primitive_type_name(type_name) {
+		if is_ptr {
+			return types.Pointer{
+				base_type: prim_raw
+			}
+		}
+		return prim_raw
+	}
+	// Pointer-like type aliases: voidptr → void*, charptr → char*, byteptr → u8*
+	if type_name in ['void', 'voidptr', 'void*'] {
+		return types.Pointer{
+			base_type: types.void_
+		}
+	}
+	if type_name in ['charptr', 'char*'] {
+		// char is not available outside types module; use a scope lookup fallback.
+		if scope := g.env_scope('builtin') {
+			if obj := scope.objects['char'] {
+				return types.Pointer{
+					base_type: obj.typ()
+				}
+			}
+		}
+		return none
+	}
+	if type_name in ['byteptr', 'u8*'] {
+		return types.Pointer{
+			base_type: types.Primitive{
+				props: .integer | .unsigned
+				size:  8
+			}
+		}
+	}
 	mut mod_name := g.cur_module
 	if type_name.contains('__') {
 		mod_name = type_name.all_before_last('__')
@@ -1577,13 +1854,25 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 	}
 	if scope := g.env_scope(mod_name) {
 		if obj := scope.objects[type_name] {
-			return obj.typ()
+			raw := obj.typ()
+			if is_ptr {
+				return types.Pointer{
+					base_type: raw
+				}
+			}
+			return raw
 		}
 	}
 	if mod_name != 'builtin' {
 		if scope := g.env_scope('builtin') {
 			if obj := scope.objects[type_name] {
-				return obj.typ()
+				raw := obj.typ()
+				if is_ptr {
+					return types.Pointer{
+						base_type: raw
+					}
+				}
+				return raw
 			}
 		}
 	}
@@ -1601,70 +1890,6 @@ fn (mut g Gen) expr_pointer_return_type(expr ast.Expr) string {
 		else {}
 	}
 	return ''
-}
-
-fn (mut g Gen) infer_tuple_field_types_from_return_stmt(ret ast.ReturnStmt) ?[]string {
-	if ret.exprs.len == 0 {
-		return none
-	}
-	mut tuple_exprs := shallow_copy_exprs(ret.exprs)
-	if ret.exprs.len == 1 && ret.exprs[0] is ast.Tuple {
-		tuple_expr := ret.exprs[0] as ast.Tuple
-		tuple_exprs = shallow_copy_exprs(tuple_expr.exprs)
-	}
-	if tuple_exprs.len == 0 {
-		return none
-	}
-	mut field_types := []string{cap: tuple_exprs.len}
-	for expr in tuple_exprs {
-		mut typ := normalize_inferred_type_name(g.get_expr_type(expr))
-		if typ == '' || typ == 'int' {
-			if expr is ast.CastExpr {
-				typ = normalize_inferred_type_name(g.expr_type_to_c(expr.typ))
-			}
-		}
-		if typ == '' {
-			return none
-		}
-		field_types << typ
-	}
-	return field_types
-}
-
-fn (mut g Gen) infer_tuple_field_types_from_stmts(stmts []ast.Stmt) ?[]string {
-	for stmt in stmts {
-		match stmt {
-			ast.ReturnStmt {
-				if fields := g.infer_tuple_field_types_from_return_stmt(stmt) {
-					return fields
-				}
-			}
-			ast.BlockStmt {
-				if fields := g.infer_tuple_field_types_from_stmts(stmt.stmts) {
-					return fields
-				}
-			}
-			ast.ForStmt {
-				if fields := g.infer_tuple_field_types_from_stmts(stmt.stmts) {
-					return fields
-				}
-			}
-			ast.ExprStmt {
-				if stmt.expr is ast.IfExpr {
-					if fields := g.infer_tuple_field_types_from_if_expr(stmt.expr) {
-						return fields
-					}
-				} else if stmt.expr is ast.UnsafeExpr {
-					unsafe_expr := stmt.expr as ast.UnsafeExpr
-					if fields := g.infer_tuple_field_types_from_stmts(unsafe_expr.stmts) {
-						return fields
-					}
-				}
-			}
-			else {}
-		}
-	}
-	return none
 }
 
 fn (g &Gen) field_type_name(e ast.Expr) string {
@@ -1757,33 +1982,46 @@ fn selector_struct_field_type_from_type(t types.Type, field_name string) ?types.
 }
 
 fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
-	// Handle _result_/_option_ wrapper field access (.data, .err, .is_error, .state)
-	lhs_type := g.get_expr_type(sel.lhs)
-	if lhs_type.starts_with('_result_') {
-		if sel.rhs.name == 'is_error' {
-			return 'bool'
-		}
-		if sel.rhs.name == 'err' {
-			return 'IError'
-		}
-		if sel.rhs.name == 'data' {
-			base := g.result_value_type(lhs_type)
-			if base != '' && base != 'void' {
-				return base
-			}
+	// Fast path: use the type checker's env pos.id lookup (O(1) array access).
+	// Uses get_env_c_type (alias-preserving) since alias types like
+	// strings__Builder, ssa__TypeID are correct for struct field types.
+	// Skip _data and _result_/_option_ internal fields (.data, .err, .is_error, .state):
+	// the checker stores incorrect types for these on wrapper structs.
+	rhs := sel.rhs.name
+	if !rhs.starts_with('_') && rhs !in ['data', 'err', 'is_error', 'state'] {
+		if t := g.get_env_c_type(sel) {
+			return t
 		}
 	}
-	if lhs_type.starts_with('_option_') {
-		if sel.rhs.name == 'state' {
-			return 'u8'
+	// Handle _result_/_option_ wrapper field access (.data, .err, .is_error, .state)
+	if rhs in ['data', 'err', 'is_error', 'state'] {
+		lhs_type := g.get_expr_type(sel.lhs)
+		if lhs_type.starts_with('_result_') {
+			if rhs == 'is_error' {
+				return 'bool'
+			}
+			if rhs == 'err' {
+				return 'IError'
+			}
+			if rhs == 'data' {
+				base := g.result_value_type(lhs_type)
+				if base != '' && base != 'void' {
+					return base
+				}
+			}
 		}
-		if sel.rhs.name == 'err' {
-			return 'IError'
-		}
-		if sel.rhs.name == 'data' {
-			base := option_value_type(lhs_type)
-			if base != '' && base != 'void' {
-				return base
+		if lhs_type.starts_with('_option_') {
+			if rhs == 'state' {
+				return 'u8'
+			}
+			if rhs == 'err' {
+				return 'IError'
+			}
+			if rhs == 'data' {
+				base := option_value_type(lhs_type)
+				if base != '' && base != 'void' {
+					return base
+				}
 			}
 		}
 	}
@@ -1791,20 +2029,6 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 		resolved := g.types_type_to_c(raw_type)
 		if resolved != '' {
 			return resolved
-		}
-	}
-	// Fallback: use struct_field_types map (populated during C gen).
-	struct_name := g.selector_struct_name(sel.lhs)
-	if struct_name != '' {
-		field_key := struct_name + '.' + sel.rhs.name
-		if field_type := g.struct_field_types[field_key] {
-			return field_type
-		}
-		if struct_name.contains('__') {
-			short_name := struct_name.all_after_last('__')
-			if field_type := g.struct_field_types[short_name + '.' + sel.rhs.name] {
-				return field_type
-			}
 		}
 	}
 	return ''

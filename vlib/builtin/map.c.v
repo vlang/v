@@ -19,8 +19,18 @@ fn fast_string_eq(a string, b string) bool {
 
 fn map_hash_string(pkey voidptr) u64 {
 	key := *unsafe { &string(pkey) }
-	// XTODO remove voidptr cast once virtual C.consts can be declared
-	return C.wyhash(key.str, u64(key.len), 0, &u64(voidptr(C._wyp)))
+	$if native {
+		// Native backend: use FNV-1a hash instead of C.wyhash
+		// (C.wyhash requires wyhash.h which is C-only)
+		mut hash := u64(14695981039346656037)
+		for i := 0; i < key.len; i++ {
+			hash = (hash ^ u64(unsafe { key.str[i] })) * u64(1099511628211)
+		}
+		return hash
+	} $else {
+		// XTODO remove voidptr cast once virtual C.consts can be declared
+		return C.wyhash(key.str, u64(key.len), 0, &u64(voidptr(C._wyp)))
+	}
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {

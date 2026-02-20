@@ -127,7 +127,7 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('}')
 	g.sb.writeln('static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B; }')
 	g.sb.writeln('#ifndef WYHASH_LITTLE_ENDIAN')
-	g.sb.writeln('  #ifdef TARGET_ORDER_IS_LITTLE')
+	g.sb.writeln('  #if defined(__LITTLE_ENDIAN__) || defined(__aarch64__) || defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86) || defined(TARGET_ORDER_IS_LITTLE)')
 	g.sb.writeln('    #define WYHASH_LITTLE_ENDIAN 1')
 	g.sb.writeln('  #else')
 	g.sb.writeln('    #define WYHASH_LITTLE_ENDIAN 0')

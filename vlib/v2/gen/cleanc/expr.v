@@ -1607,8 +1607,24 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				g.expr(node.expr)
 				g.sb.write_string(']')
 				return
+			} else if raw_type.base_type is types.ArrayFixed {
+				// Pointer to fixed array: dereference then index
+				g.sb.write_string('(*')
+				g.expr(node.lhs)
+				g.sb.write_string(')[')
+				g.expr(node.expr)
+				g.sb.write_string(']')
+				return
 			} else if raw_type.base_type is types.Map {
 				g.panic_map_index_expr(node)
+			} else if raw_type.base_type is types.Pointer || raw_type.base_type is types.String {
+				// Pointer to pointer (e.g. &&char) or pointer to string (e.g. &string used as array):
+				// plain C pointer arithmetic
+				g.expr(node.lhs)
+				g.sb.write_string('[')
+				g.expr(node.expr)
+				g.sb.write_string(']')
+				return
 			}
 		}
 	}

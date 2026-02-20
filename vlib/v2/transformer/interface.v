@@ -42,3 +42,32 @@ fn (t &Transformer) is_interface_cast(expr ast.Expr) bool {
 	}
 	return false
 }
+
+// get_expr_type_name returns the concrete type name for an expression using the type checker env
+fn (t &Transformer) get_expr_type_name(expr ast.Expr) ?string {
+	if typ := t.get_expr_type(expr) {
+		name := t.type_to_c_name(typ)
+		if name != '' {
+			return name
+		}
+	}
+	// For simple identifiers, try scope lookup
+	if expr is ast.Ident {
+		if typ := t.lookup_var_type(expr.name) {
+			name := t.type_to_c_name(typ)
+			if name != '' {
+				return name
+			}
+		}
+	}
+	return none
+}
+
+// get_interface_concrete_type returns the concrete type name for an interface variable
+// if it was tracked during interface cast lowering (native backend only)
+fn (t &Transformer) get_interface_concrete_type(name string) ?string {
+	if concrete := t.interface_concrete_types[name] {
+		return concrete
+	}
+	return none
+}

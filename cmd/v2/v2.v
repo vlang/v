@@ -65,7 +65,7 @@ fn run_ast_command(args []string) {
 
 // get_files extracts source files from args, excluding options and their values
 fn get_files(args []string) []string {
-	options_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc']
+	options_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d']
 	mut files := []string{}
 	mut skip_next := false
 	for arg in args {

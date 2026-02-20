@@ -20,6 +20,72 @@ fn (mut t Transformer) synth_selector(lhs ast.Expr, field_name string, typ types
 	})
 }
 
+// synth_selector_from_struct creates a typed SelectorExpr by looking up the field type
+// from the named struct in the environment. Falls back to a pos-only synth node if
+// the field type cannot be resolved.
+fn (mut t Transformer) synth_selector_from_struct(lhs ast.Expr, field_name string, struct_name string) ast.Expr {
+	pos := t.next_synth_pos()
+	if field_typ := t.lookup_struct_field_type(struct_name, field_name) {
+		t.register_synth_type(pos, field_typ)
+	}
+	return ast.Expr(ast.SelectorExpr{
+		lhs: lhs
+		rhs: ast.Ident{
+			name: field_name
+		}
+		pos: pos
+	})
+}
+
+// lookup_struct_field_type returns the raw types.Type for a struct field.
+fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name string) ?types.Type {
+	mut sname := struct_name
+	mut mod := ''
+	if struct_name.contains('__') {
+		mod = struct_name.all_before_last('__')
+		sname = struct_name.all_after_last('__')
+	}
+	lock t.env.scopes {
+		// Try module scope first if qualified
+		if mod != '' {
+			if scope := t.env.scopes[mod] {
+				if obj := scope.objects[sname] {
+					if obj is types.Type {
+						typ := types.Type(obj)
+						if typ is types.Struct {
+							for field in typ.fields {
+								if field.name == field_name {
+									return field.typ
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		// Fallback: scan all scopes
+		scope_names := t.env.scopes.keys()
+		for scope_name in scope_names {
+			scope := t.env.scopes[scope_name] or { continue }
+			for name in [struct_name, sname] {
+				if obj := scope.objects[name] {
+					if obj is types.Type {
+						typ := types.Type(obj)
+						if typ is types.Struct {
+							for field in typ.fields {
+								if field.name == field_name {
+									return field.typ
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return none
+}
+
 // open_scope creates a new nested scope
 fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, field_name string, ctx SmartcastContext) ast.Expr {
 	// variant (short name) is used for union member access
@@ -52,21 +118,11 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	transformed_base := t.transform_expr(sumtype_expr)
 	t.restore_smartcasts(removed_ctxs)
 	if t.expr_is_casted_to_type(transformed_base, '${mangled_variant}*') {
-		return ast.SelectorExpr{
-			lhs: transformed_base
-			rhs: ast.Ident{
-				name: field_name
-			}
-		}
+		return t.synth_selector_from_struct(transformed_base, field_name, mangled_variant)
 	}
 	// Already concretely casted to this variant by an outer smartcast context.
 	if t.expr_is_casted_to_type(transformed_base, mangled_variant) {
-		return ast.SelectorExpr{
-			lhs: transformed_base
-			rhs: ast.Ident{
-				name: field_name
-			}
-		}
+		return t.synth_selector_from_struct(transformed_base, field_name, mangled_variant)
 	}
 	// Create: transformed_base._data._variant (using simple name for accessor)
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
@@ -79,12 +135,7 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 		expr: variant_access
 	}
 	// Create: cast_expr->field_name (cleanc will handle pointer arrow vs dot)
-	return ast.SelectorExpr{
-		lhs: cast_expr
-		rhs: ast.Ident{
-			name: field_name
-		}
-	}
+	return t.synth_selector_from_struct(ast.Expr(cast_expr), field_name, mangled_variant)
 }
 
 fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
@@ -1460,6 +1511,7 @@ fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr 
 	// 2. Build assignment: ((T*)_awi_tN.data)[_v_index] = init_expr
 	//    with `index` renamed to `_v_index`
 	renamed_init := t.replace_ident_named(init_expr, 'index', '_v_index')
+	arr_data := t.synth_selector(arr_ident, 'data', types.Type(types.voidptr_))
 	elem_assign := ast.Stmt(ast.AssignStmt{
 		op:  .assign
 		lhs: [
@@ -1469,12 +1521,7 @@ fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr 
 						op:   .amp
 						expr: sizeof_expr
 					}
-					expr: ast.SelectorExpr{
-						lhs: arr_ident
-						rhs: ast.Ident{
-							name: 'data'
-						}
-					}
+					expr: arr_data
 				}
 				expr: idx_ident
 			}),
@@ -1495,12 +1542,7 @@ fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr 
 		cond:  ast.InfixExpr{
 			op:  .lt
 			lhs: idx_ident
-			rhs: ast.SelectorExpr{
-				lhs: arr_ident
-				rhs: ast.Ident{
-					name: 'len'
-				}
-			}
+			rhs: t.synth_selector(arr_ident, 'len', types.Type(types.int_))
 		}
 		post:  ast.AssignStmt{
 			op:  .assign

@@ -6,23 +6,6 @@ module cleanc
 
 import v2.ast
 
-fn (mut g Gen) infer_tuple_field_types_from_if_expr(expr ast.IfExpr) ?[]string {
-	if fields := g.infer_tuple_field_types_from_stmts(expr.stmts) {
-		return fields
-	}
-	if expr.else_expr is ast.IfExpr {
-		if fields := g.infer_tuple_field_types_from_if_expr(expr.else_expr) {
-			return fields
-		}
-	} else if expr.else_expr is ast.UnsafeExpr {
-		unsafe_expr := expr.else_expr as ast.UnsafeExpr
-		if fields := g.infer_tuple_field_types_from_stmts(unsafe_expr.stmts) {
-			return fields
-		}
-	}
-	return none
-}
-
 fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		return
@@ -292,7 +275,7 @@ fn (mut g Gen) gen_if_expr_ternary(node ast.IfExpr) {
 }
 
 fn (mut g Gen) gen_if_expr_value(node ast.IfExpr) {
-	mut value_type := g.infer_if_expr_type(node)
+	mut value_type := g.get_if_expr_type(node)
 	if g.if_expr_can_be_ternary(node) && value_type != '' && value_type != 'void' {
 		g.gen_if_expr_ternary(node)
 		return
@@ -313,7 +296,7 @@ fn (mut g Gen) gen_if_expr_value(node ast.IfExpr) {
 	g.sb.write_string(' ${tmp_name}; })')
 }
 
-fn (mut g Gen) infer_if_expr_type(node ast.IfExpr) string {
+fn (mut g Gen) get_if_expr_type(node ast.IfExpr) string {
 	if t := g.get_expr_type_from_env(node) {
 		if t != '' {
 			return t
@@ -327,7 +310,7 @@ fn (mut g Gen) infer_if_expr_type(node ast.IfExpr) string {
 		}
 	}
 	if node.else_expr is ast.IfExpr {
-		t := g.infer_if_expr_type(node.else_expr)
+		t := g.get_if_expr_type(node.else_expr)
 		if t != '' {
 			return t
 		}

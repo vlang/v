@@ -218,9 +218,24 @@ fn asm_str_imm(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0xF9000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
 }
 
-// str rt, [rn, #simm9] (unscaled)
+// stur xt, [xn, #simm9] (unscaled 64-bit store)
 fn asm_stur(rt Reg, rn Reg, simm9 i32) u32 {
 	return 0xF8000000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// stur wt, [xn, #simm9] (unscaled 32-bit store)
+fn asm_stur_w(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0xB8000000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// sturh wt, [xn, #simm9] (unscaled 16-bit store)
+fn asm_stur_h(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0x78000000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// sturb wt, [xn, #simm9] (unscaled 8-bit store)
+fn asm_stur_b(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0x38000000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
 }
 
 // ldr rt, [rn] (load 64-bit)
@@ -249,9 +264,24 @@ fn asm_ldr_imm(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0xF9400000 | ((imm12 & 0xFFF) << 10) | (u32(rn) << 5) | u32(rt)
 }
 
-// ldr rt, [rn, #simm9] (unscaled)
+// ldur xt, [xn, #simm9] (unscaled 64-bit load)
 fn asm_ldur(rt Reg, rn Reg, simm9 i32) u32 {
 	return 0xF8400000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldur wt, [xn, #simm9] (unscaled 32-bit load, zero-extend)
+fn asm_ldur_w(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0xB8400000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldurh wt, [xn, #simm9] (unscaled 16-bit load, zero-extend)
+fn asm_ldur_h(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0x78400000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
+}
+
+// ldurb wt, [xn, #simm9] (unscaled 8-bit load, zero-extend)
+fn asm_ldur_b(rt Reg, rn Reg, simm9 i32) u32 {
+	return 0x38400000 | (u32(simm9 & 0x1FF) << 12) | (u32(rn) << 5) | u32(rt)
 }
 
 // === Branches ===

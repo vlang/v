@@ -748,9 +748,29 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			}
 		}
 		// Check for interface method call: iface.method(args...)
-		// Transform to: iface.method(iface._object, args...)
 		if t.is_interface_receiver(sel.lhs) {
-			// Transform interface method call to vtable dispatch
+			// Native backends (arm64/x64): resolve to direct concrete method call.
+			// `iface.method(args...)` → `ConcreteType__method(iface, args...)`
+			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+				if sel.lhs is ast.Ident {
+					if concrete := t.get_interface_concrete_type(sel.lhs.name) {
+						resolved_method := '${concrete}__${sel.rhs.name}'
+						mut native_args := []ast.Expr{cap: expr.args.len + 1}
+						native_args << t.transform_expr(sel.lhs)
+						for arg in expr.args {
+							native_args << t.transform_expr(arg)
+						}
+						return ast.CallExpr{
+							lhs:  ast.Ident{
+								name: resolved_method
+							}
+							args: native_args
+							pos:  expr.pos
+						}
+					}
+				}
+			}
+			// C/cleanc backends: Transform to vtable dispatch
 			// Prepend iface._object to the args list
 			mut new_args := []ast.Expr{cap: expr.args.len + 1}
 			new_args << t.synth_selector(sel.lhs, '_object', types.Type(types.voidptr_))
@@ -1594,9 +1614,28 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			}
 		}
 		// Check for interface method call: iface.method(arg)
-		// Transform to: iface.method(iface._object, arg) as CallExpr
 		if t.is_interface_receiver(sel.lhs) {
-			// Transform interface method call to vtable dispatch
+			// Native backends (arm64/x64): resolve to direct concrete method call.
+			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+				if sel.lhs is ast.Ident {
+					if concrete := t.get_interface_concrete_type(sel.lhs.name) {
+						resolved_iface_method := '${concrete}__${sel.rhs.name}'
+						mut native_iface_args := []ast.Expr{cap: 2}
+						native_iface_args << t.transform_expr(sel.lhs)
+						if expr.expr !is ast.EmptyExpr {
+							native_iface_args << t.transform_expr(expr.expr)
+						}
+						return ast.CallExpr{
+							lhs:  ast.Ident{
+								name: resolved_iface_method
+							}
+							args: native_iface_args
+							pos:  expr.pos
+						}
+					}
+				}
+			}
+			// C/cleanc backends: Transform to vtable dispatch
 			return ast.CallExpr{
 				lhs:  ast.Expr(expr.lhs) // Keep the selector: iface.method
 				args: [

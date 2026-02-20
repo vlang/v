@@ -656,6 +656,10 @@ fn (t Tuple) name() string {
 	return 'tuple (${names.join(', ')})'
 }
 
+pub fn (t &Tuple) get_types() []Type {
+	return t.types
+}
+
 fn (t ISize) name() string {
 	return 'isize'
 }
