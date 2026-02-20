@@ -243,6 +243,33 @@ fn test_parse_rfc3339_offset() {
 	}
 }
 
+fn test_parse_rfc2616() {
+	mut r := time.parse_rfc2616('Wed, 06 Nov 2024 08:49:37 GMT')!
+	assert r.unix() == 1730882977
+
+	r = time.parse_rfc2616('Wednesday, 06-Nov-24 08:49:37 GMT')!
+	assert r.unix() == 1730882977
+
+	r = time.parse_rfc2616('Wed Nov 6 08:49:37 2024')!
+	assert r.unix() == 1730882977
+
+	r = time.parse_rfc2616('Thu, 19 Feb 2026 11:07:09 GMT')!
+	assert r.unix() == 1771499229
+
+	r = time.parse_rfc2616('Thuesday, 19-Feb-26 11:07:09 GMT')!
+	assert r.unix() == 1771499229
+
+	r = time.parse_rfc2616('Thu Feb 19 11:07:09 2026')!
+	assert r.unix() == 1771499229
+}
+
+fn test_parse_http_header_string() {
+	t := time.now()
+	header := t.http_header_string()
+	back_time := time.parse_http_header_string(header)!
+	assert t.str() == back_time.str()
+}
+
 fn test_ad_second_to_parse_result_in_2001() {
 	now_tm := time.parse('2001-01-01 04:00:00')!
 	future_tm := now_tm.add_seconds(60)
