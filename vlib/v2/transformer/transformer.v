@@ -54,6 +54,10 @@ mut:
 	// When true, skip lowering value-position IfExpr to temp variable.
 	// Set during contexts that already handle IfExpr RHS (e.g. decl_assign).
 	skip_if_value_lowering bool
+	// For native backends: map interface variable names to their concrete type names.
+	// When we see `shape1 := Shape(rect)`, record shape1 → "Rectangle".
+	// Used to rewrite interface method calls to direct concrete calls.
+	interface_concrete_types map[string]string
 }
 
 // SmartcastContext holds info about a single smartcast
@@ -673,9 +677,29 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 
 fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	mut result := []ast.Stmt{cap: stmts.len}
+	is_native_be := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
 	for stmt in stmts {
 		// Check for OrExpr assignment that expands to multiple statements
 		if stmt is ast.AssignStmt {
+			// Native backends (arm64/x64): lower interface casts.
+			// `shape1 := Shape(rect)` → `shape1 := rect` and record concrete type mapping.
+			if is_native_be && stmt.rhs.len == 1 && stmt.lhs.len == 1 && stmt.lhs[0] is ast.Ident
+				&& t.is_interface_cast(stmt.rhs[0]) {
+				rhs_cast := stmt.rhs[0] as ast.CallOrCastExpr
+				lhs_name := (stmt.lhs[0] as ast.Ident).name
+				// Get the concrete type name from the value being cast
+				if concrete := t.get_expr_type_name(rhs_cast.expr) {
+					t.interface_concrete_types[lhs_name] = concrete
+				}
+				// Replace the interface cast with just the inner value
+				result << t.transform_stmt(ast.AssignStmt{
+					op:  stmt.op
+					lhs: stmt.lhs
+					rhs: [rhs_cast.expr]
+					pos: stmt.pos
+				})
+				continue
+			}
 			if expanded_or_assign := t.try_expand_or_expr_assign_stmts(stmt) {
 				// Note: expand_direct_or_expr_assign already transforms expressions internally,
 				// so we don't call transform_stmt again to avoid double transformation
@@ -1259,6 +1283,40 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		return none
 	}
 
+	// Native backends (arm64/x64) don't use Option/Result structs.
+	// Expand `a := fn() or { fallback }` to:
+	//   _t := fn(); a := if _t { _t } else { fallback }
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		temp_name := t.gen_temp_name()
+		temp_ident := ast.Ident{
+			name: temp_name
+		}
+		mut stmts := []ast.Stmt{}
+		// 1. _t := call_expr
+		stmts << ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(temp_ident)]
+			rhs: [t.transform_expr(call_expr)]
+			pos: stmt.pos
+		}
+		// 2. a := if _t { _t } else { or_block_value }
+		_, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		modified_if := ast.IfExpr{
+			cond:      temp_ident
+			stmts:     [ast.Stmt(ast.ExprStmt{
+				expr: temp_ident
+			})]
+			else_expr: or_value
+		}
+		stmts << ast.AssignStmt{
+			op:  stmt.op
+			lhs: stmt.lhs
+			rhs: [ast.Expr(modified_if)]
+			pos: stmt.pos
+		}
+		return stmts
+	}
+
 	// Get base type using expression-based lookup first, then fallback
 	mut base_type := t.get_expr_base_type(call_expr)
 	if base_type == '' && fn_name != '' {
@@ -1325,12 +1383,9 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 			name: 'err'
 		})]
 		rhs: [
-			ast.Expr(ast.SelectorExpr{
-				lhs: temp_ident
-				rhs: ast.Ident{
-					name: 'err'
-				}
-			}),
+			t.synth_selector(temp_ident, 'err', types.Type(types.Struct{
+				name: 'IError'
+			})),
 		]
 	}
 	// Check if or-block contains a return statement (control flow)
@@ -1356,12 +1411,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 			if_stmts << ast.AssignStmt{
 				op:  .assign
 				lhs: [
-					ast.Expr(ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'data'
-						}
-					}),
+					t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_)),
 				]
 				rhs: [or_value]
 			}
@@ -1380,12 +1430,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 			op:  stmt.op
 			lhs: stmt.lhs
 			rhs: [
-				ast.Expr(ast.SelectorExpr{
-					lhs: temp_ident
-					rhs: ast.Ident{
-						name: 'data'
-					}
-				}),
+				t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_)),
 			]
 			pos: stmt.pos
 		}
@@ -2096,6 +2141,28 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		is_result = true
 	}
 
+	// Native backends (arm64/x64) don't use Option/Result structs.
+	// Expand `fn() or { fallback }` to: { _t := fn(); if _t { _t } else { fallback } }
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		temp_name := t.gen_temp_name()
+		temp_ident := ast.Ident{
+			name: temp_name
+		}
+		prefix_stmts << ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(temp_ident)]
+			rhs: [t.transform_expr(call_expr)]
+		}
+		_, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		return ast.IfExpr{
+			cond:      temp_ident
+			stmts:     [ast.Stmt(ast.ExprStmt{
+				expr: temp_ident
+			})]
+			else_expr: or_value
+		}
+	}
+
 	// Get base type using expression-based lookup first, then fallback
 	mut base_type := t.get_expr_base_type(call_expr)
 	if base_type == '' && fn_name != '' {
@@ -2222,12 +2289,9 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			name: 'err'
 		})]
 		rhs: [
-			ast.Expr(ast.SelectorExpr{
-				lhs: temp_ident
-				rhs: ast.Ident{
-					name: 'err'
-				}
-			}),
+			t.synth_selector(temp_ident, 'err', types.Type(types.Struct{
+				name: 'IError'
+			})),
 		]
 	}
 	// Check if or-block contains a return statement (control flow)
@@ -2253,12 +2317,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			if_stmts << ast.AssignStmt{
 				op:  .assign
 				lhs: [
-					ast.Expr(ast.SelectorExpr{
-						lhs: temp_ident
-						rhs: ast.Ident{
-							name: 'data'
-						}
-					}),
+					t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_)),
 				]
 				rhs: [or_value]
 			}
@@ -2275,11 +2334,40 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		// For void results, return an empty expression since there's no value
 		return ast.empty_expr
 	}
-	return ast.SelectorExpr{
-		lhs: temp_ident
-		rhs: ast.Ident{
-			name: 'data'
+	return t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
+}
+
+// typed_deref generates a typed dereference of a voidptr:
+// *unsafe { &ValueType(ptr) }
+// This is needed because map__get_check returns voidptr, and dereferencing
+// voidptr in the SSA builder loads only 1 byte (i8). The typed deref
+// emits bitcast(ptr, *ValueType) + load(*ValueType) for correct load size.
+fn (t &Transformer) typed_deref(ptr ast.Expr, value_type types.Type) ast.Expr {
+	// For native backends (arm64/x64), map__get_check returns voidptr and
+	// dereferencing voidptr loads only 1 byte (i8). Emit bitcast to correct
+	// pointer type first: *(&ValueType(ptr))
+	is_native := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	if is_native {
+		type_name := t.type_to_name(value_type)
+		if type_name != '' {
+			return ast.PrefixExpr{
+				op:   .mul
+				expr: ast.PrefixExpr{
+					op:   .amp
+					expr: ast.CastExpr{
+						typ:  ast.Ident{
+							name: type_name
+						}
+						expr: ptr
+					}
+				}
+			}
 		}
+	}
+	// C/cleanc backends handle voidptr deref correctly via C casts
+	return ast.PrefixExpr{
+		op:   .mul
+		expr: ptr
 	}
 }
 
@@ -2388,12 +2476,7 @@ fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_st
 					ast.Stmt(ast.AssignStmt{
 						op:  .assign
 						lhs: [ast.Expr(result_ident)]
-						rhs: [
-							ast.Expr(ast.PrefixExpr{
-								op:   .mul
-								expr: temp_ident
-							}),
-						]
+						rhs: [t.typed_deref(temp_ident, value_type)]
 					}),
 				]
 			}
@@ -2403,10 +2486,7 @@ fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_st
 
 	// For control flow case, return the dereferenced pointer
 	// (we know it's non-null because control flow would have exited)
-	return ast.PrefixExpr{
-		op:   .mul
-		expr: temp_ident
-	}
+	return t.typed_deref(temp_ident, value_type)
 }
 
 // try_expand_map_index_or_assign handles: var := map[key] or { fallback }
@@ -2558,12 +2638,7 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 						ast.Stmt(ast.AssignStmt{
 							op:  .assign
 							lhs: stmt.lhs
-							rhs: [
-								ast.Expr(ast.PrefixExpr{
-									op:   .mul
-									expr: temp_ident
-								}),
-							]
+							rhs: [t.typed_deref(temp_ident, value_type)]
 						}),
 					]
 				}
@@ -2583,16 +2658,11 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 					stmts: t.transform_stmts(or_expr.stmts)
 				}
 			}
-			// lhs := *_t1
+			// lhs := *_t1 (typed deref for correct load size)
 			stmts << ast.AssignStmt{
 				op:  stmt.op
 				lhs: stmt.lhs
-				rhs: [
-					ast.Expr(ast.PrefixExpr{
-						op:   .mul
-						expr: temp_ident
-					}),
-				]
+				rhs: [t.typed_deref(temp_ident, value_type)]
 				pos: stmt.pos
 			}
 		}
@@ -2604,7 +2674,7 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 			rhs: [t.get_or_block_value(or_expr.stmts)]
 			pos: stmt.pos
 		}
-		// 3b. if _t1 != nil { lhs = *_t1 }
+		// 3b. if _t1 != nil { lhs = *_t1 } (typed deref for correct load size)
 		stmts << ast.ExprStmt{
 			expr: ast.IfExpr{
 				cond:  ast.InfixExpr{
@@ -2618,12 +2688,7 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 					ast.Stmt(ast.AssignStmt{
 						op:  .assign
 						lhs: stmt.lhs
-						rhs: [
-							ast.Expr(ast.PrefixExpr{
-								op:   .mul
-								expr: temp_ident
-							}),
-						]
+						rhs: [t.typed_deref(temp_ident, value_type)]
 					}),
 				]
 			}
@@ -2639,20 +2704,14 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 fn (mut t Transformer) shared_mtx_expr(locked_expr ast.Expr) ast.Expr {
 	if locked_expr is ast.SelectorExpr {
 		// Struct field: e.scores => e.mtx
-		return ast.SelectorExpr{
-			lhs: locked_expr.lhs
-			rhs: ast.Ident{
-				name: 'mtx'
-			}
-		}
+		return t.synth_selector(locked_expr.lhs, 'mtx', types.Type(types.Struct{
+			name: 'sync__RwMutex'
+		}))
 	}
 	// Standalone variable: data => data.mtx
-	return ast.SelectorExpr{
-		lhs: locked_expr
-		rhs: ast.Ident{
-			name: 'mtx'
-		}
-	}
+	return t.synth_selector(locked_expr, 'mtx', types.Type(types.Struct{
+		name: 'sync__RwMutex'
+	}))
 }
 
 // expand_lock_expr lowers a LockExpr into mutex lock/unlock calls around the body.
@@ -2950,6 +3009,39 @@ fn (t &Transformer) stmt_ends_with_return(stmt ast.Stmt) bool {
 }
 
 fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt {
+	// Native backends (arm64/x64) don't use Option/Result structs.
+	// `return error(...)` should be lowered to `return 0` (error indicator).
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if stmt.exprs.len == 1 {
+			ret_expr := stmt.exprs[0]
+			// Check for `error(...)` call — appears as CallOrCastExpr with lhs=Ident{name:'error'}
+			if ret_expr is ast.CallOrCastExpr {
+				if ret_expr.lhs is ast.Ident && ret_expr.lhs.name == 'error' {
+					return ast.ReturnStmt{
+						exprs: [
+							ast.Expr(ast.BasicLiteral{
+								kind:  .number
+								value: '0'
+							}),
+						]
+					}
+				}
+			}
+			// Also check for CallExpr form
+			if ret_expr is ast.CallExpr {
+				if ret_expr.lhs is ast.Ident && ret_expr.lhs.name == 'error' {
+					return ast.ReturnStmt{
+						exprs: [
+							ast.Expr(ast.BasicLiteral{
+								kind:  .number
+								value: '0'
+							}),
+						]
+					}
+				}
+			}
+		}
+	}
 	mut exprs := []ast.Expr{cap: stmt.exprs.len}
 	for expr in stmt.exprs {
 		// If the return expression is a MatchExpr and the return type is a sum type,
@@ -3071,12 +3163,7 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 		t.pending_stmts << ast.Stmt(ast.AssignStmt{
 			op:  .assign
 			lhs: [
-				ast.Expr(ast.SelectorExpr{
-					lhs: tmp_ident
-					rhs: ast.Ident{
-						name: field.name
-					}
-				}),
+				t.synth_selector_from_struct(tmp_ident, field.name, target_c),
 			]
 			rhs: [t.transform_expr(field.value)]
 			pos: node.pos
@@ -3181,12 +3268,9 @@ fn (t &Transformer) voidptr_cast(expr ast.Expr) ast.Expr {
 }
 
 fn (mut t Transformer) lower_wrapper_payload_access(wrapper_expr ast.Expr, base_type_name string) ast.Expr {
-	err_selector := ast.SelectorExpr{
-		lhs: wrapper_expr
-		rhs: ast.Ident{
-			name: 'err'
-		}
-	}
+	err_selector := t.synth_selector(wrapper_expr, 'err', types.Type(types.Struct{
+		name: 'IError'
+	}))
 	addr_err := ast.PrefixExpr{
 		op:   .amp
 		expr: err_selector
@@ -5072,6 +5156,8 @@ fn (mut t Transformer) generate_array_method_fn(fn_name string, info ArrayMethod
 			name: info.elem_type
 		}
 	}
+	// Register a function scope so cleanc can resolve parameter types via scope lookup.
+	t.register_generated_fn_scope(fn_name, 'builtin', [param_a, param_v])
 	idx_expr := ast.Expr(ast.Ident{
 		name: 'i'
 	})
@@ -5147,6 +5233,8 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 			name: array_type_name
 		}
 	}
+	// Register a function scope so cleanc can resolve parameter types via scope lookup.
+	t.register_generated_fn_scope(fn_name, 'builtin', [param_a])
 
 	// Get element str function name.
 	// Auto-generated helper functions (Array_, Map_) use single underscore _str suffix.

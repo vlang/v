@@ -435,17 +435,17 @@ fn (g &Gen) get_sum_type_variants_for(type_name string) []string {
 		return []string{}
 	}
 	if vs := g.sum_type_variants[sum_type] {
-		return vs.clone()
+		return vs
 	}
 	if sum_type.contains('__') {
 		short_sum := sum_type.all_after_last('__')
 		if vs := g.sum_type_variants[short_sum] {
-			return vs.clone()
+			return vs
 		}
 	} else {
 		qualified_sum := g.get_qualified_name(sum_type)
 		if vs := g.sum_type_variants[qualified_sum] {
-			return vs.clone()
+			return vs
 		}
 	}
 	return []string{}

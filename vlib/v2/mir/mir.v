@@ -200,14 +200,20 @@ pub fn (m &Module) type_size(typ_id ssa.TypeID) int {
 		}
 		.struct_t {
 			mut total := 0
+			mut max_align := 1
 			for field_typ in typ.fields {
-				if total % 8 != 0 {
-					total = (total + 7) & ~7
+				align := m.type_align(field_typ)
+				if align > max_align {
+					max_align = align
+				}
+				if align > 1 && total % align != 0 {
+					total = (total + align - 1) & ~(align - 1)
 				}
 				total += m.type_size(field_typ)
 			}
-			if total % 8 != 0 {
-				total = (total + 7) & ~7
+			// Align struct size to its largest field alignment
+			if max_align > 1 && total % max_align != 0 {
+				total = (total + max_align - 1) & ~(max_align - 1)
 			}
 			return if total > 0 { total } else { 8 }
 		}
@@ -221,6 +227,26 @@ pub fn (m &Module) type_size(typ_id ssa.TypeID) int {
 			return 0
 		}
 	}
+}
+
+pub fn (m &Module) type_align(typ_id ssa.TypeID) int {
+	if m.ssa_mod != unsafe { nil } && typ_id > 0 && typ_id < m.ssa_mod.type_store.types.len {
+		typ := m.ssa_mod.type_store.types[typ_id]
+		if typ.kind == .array_t {
+			return m.type_align(typ.elem_type)
+		}
+	}
+	size := m.type_size(typ_id)
+	if size >= 8 {
+		return 8
+	}
+	if size >= 4 {
+		return 4
+	}
+	if size >= 2 {
+		return 2
+	}
+	return 1
 }
 
 fn value_kind_from_ssa(kind ssa.ValueKind) ValueKind {

@@ -80,6 +80,10 @@ fn (mut t Transformer) try_expand_if_guard_assign_stmts(stmt ast.AssignStmt) ?[]
 				else_expr: if_expr.else_expr
 				pos:       synth_pos
 			}
+			// Propagate the original IfExpr type to the synthesized node
+			if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+				t.register_synth_type(synth_pos, orig_type)
+			}
 
 			return [
 				ast.Stmt(ast.AssignStmt{
@@ -115,6 +119,10 @@ fn (mut t Transformer) try_expand_if_guard_assign_stmts(stmt ast.AssignStmt) ?[]
 		stmts:     if_expr.stmts
 		else_expr: if_expr.else_expr
 		pos:       synth_pos
+	}
+	// Propagate the original IfExpr type to the synthesized node
+	if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+		t.register_synth_type(synth_pos, orig_type)
 	}
 	stmts << ast.AssignStmt{
 		op:  stmt.op
@@ -161,6 +169,14 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		is_option = fn_name != '' && t.fn_returns_option(fn_name)
 	}
 
+	// Native backends (arm64/x64) don't use Option/Result structs -
+	// functions return raw values (0 for none). Skip struct-based
+	// expansion and fall through to simple truthiness check.
+	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		is_result = false
+		is_option = false
+	}
+
 	if is_result || is_option {
 		// Handle Result/Option if-guard
 		// Generate: { _tmp := call(); if (!_tmp.is_error) { attr := extractValue(_tmp); body } else { else } }
@@ -205,16 +221,11 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		// 3. Build if-body: attr := _tmp.data; original_body
 		// cleanc handles the cast and dereference when it sees .data on Result type
 		mut if_stmts := []ast.Stmt{}
-		data_access := ast.SelectorExpr{
-			lhs: temp_ident
-			rhs: ast.Ident{
-				name: 'data'
-			}
-		}
+		data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
 		if_stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: guard.stmt.lhs
-			rhs: [ast.Expr(data_access)]
+			rhs: [data_access]
 			pos: guard.stmt.pos
 		}
 		for s in if_expr.stmts {
@@ -227,6 +238,10 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 			stmts:     t.transform_stmts(if_stmts)
 			else_expr: t.transform_expr(if_expr.else_expr)
 			pos:       synth_pos
+		}
+		// Propagate the original IfExpr type to the synthesized node
+		if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+			t.register_synth_type(synth_pos, orig_type)
 		}
 		stmts << ast.ExprStmt{
 			expr: modified_if
@@ -279,15 +294,14 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				}
 
 				// Build if body: guard_var := *_tmp; original_body
+				// Use typed_deref to cast voidptr to correct pointer type
+				// before dereference (map__get_check returns voidptr)
 				mut if_stmts := []ast.Stmt{}
-				deref_tmp := ast.PrefixExpr{
-					op:   .mul
-					expr: temp_ident
-				}
+				deref_tmp := t.typed_deref(temp_ident, map_type.value_type)
 				if_stmts << ast.AssignStmt{
 					op:  .decl_assign
 					lhs: guard.stmt.lhs
-					rhs: [ast.Expr(deref_tmp)]
+					rhs: [deref_tmp]
 					pos: guard.stmt.pos
 				}
 				for s in if_expr.stmts {
@@ -309,6 +323,10 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 					stmts:     t.transform_stmts(if_stmts)
 					else_expr: t.transform_expr(if_expr.else_expr)
 					pos:       synth_pos
+				}
+				// Propagate the original IfExpr type to the synthesized node
+				if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+					t.register_synth_type(synth_pos, orig_type)
 				}
 
 				return [
@@ -346,6 +364,10 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 			stmts:     t.transform_stmts(if_stmts)
 			else_expr: t.transform_expr(if_expr.else_expr)
 			pos:       synth_pos
+		}
+		// Propagate the original IfExpr type to the synthesized node
+		if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+			t.register_synth_type(synth_pos, orig_type)
 		}
 
 		return [
@@ -420,20 +442,19 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				new_stmts << s
 			}
 			// Use arr.data as condition
-			cond_expr = ast.Expr(ast.SelectorExpr{
-				lhs: ast.Ident{
-					name: guard_var_name
-					pos:  synth_pos
-				}
-				rhs: ast.Ident{
-					name: 'data'
-				}
-			})
+			cond_expr = t.synth_selector(ast.Ident{
+				name: guard_var_name
+				pos:  synth_pos
+			}, 'data', types.Type(types.voidptr_))
 			modified_if := ast.IfExpr{
 				cond:      cond_expr
 				stmts:     t.transform_stmts(new_stmts)
 				else_expr: t.transform_expr(if_expr.else_expr)
 				pos:       synth_pos
+			}
+			// Propagate the original IfExpr type to the synthesized node
+			if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+				t.register_synth_type(synth_pos, orig_type)
 			}
 			return [
 				ast.Stmt(temp_assign),
@@ -449,6 +470,10 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		stmts:     t.transform_stmts(new_stmts)
 		else_expr: t.transform_expr(if_expr.else_expr)
 		pos:       synth_pos
+	}
+	// Propagate the original IfExpr type to the synthesized node
+	if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+		t.register_synth_type(synth_pos, orig_type)
 	}
 
 	return [ast.Stmt(ast.ExprStmt{
@@ -967,11 +992,20 @@ fn (t &Transformer) eval_comptime_flag(name string) bool {
 		'native' {
 			return true
 		}
+		// Native backend cannot resolve C.stdout/C.stderr data symbols through GOT,
+		// so use C.write() instead of fwrite() for I/O operations.
+		'builtin_write_buf_to_fd_should_use_c_write' {
+			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+		}
 		// Feature flags that are typically false
 		'new_int', 'gcboehm', 'prealloc', 'autofree' {
 			return false
 		}
 		else {
+			// Check user-defined comptime flags from -d <name>
+			if t.pref != unsafe { nil } && name in t.pref.user_defines {
+				return true
+			}
 			return false
 		}
 	}

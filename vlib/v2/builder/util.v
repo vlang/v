@@ -9,7 +9,7 @@ fn list_dir_entries(path string) []string {
 	return os.ls(path) or { []string{} }
 }
 
-pub fn get_v_files_from_dir(dir string) []string {
+pub fn get_v_files_from_dir(dir string, user_defines []string) []string {
 	mod_files := list_dir_entries(dir)
 	mut v_files := []string{}
 	for file in mod_files {
@@ -38,13 +38,42 @@ pub fn get_v_files_from_dir(dir string) []string {
 				continue
 			}
 		}
-		// skip mutually exclusive conditional compilation files
-		// For native backends, skip the _d_ variants (defined) and keep _notd_ (not defined)
-		// This avoids duplicates from gcboehm, libbacktrace, etc.
+		// Conditional compilation files: _d_<feature> included when -d <feature> is set,
+		// _notd_<feature> included when -d <feature> is NOT set.
 		if file.contains('_d_') {
-			continue
+			// Check if this is a _notd_ file (not-defined variant)
+			if file.contains('_notd_') {
+				// Include _notd_ files only when the feature is NOT defined
+				feature := extract_define_feature(file, '_notd_')
+				if feature.len > 0 && feature in user_defines {
+					continue // feature is defined, skip the _notd_ variant
+				}
+			} else {
+				// _d_ file (defined variant): include only when feature IS defined
+				feature := extract_define_feature(file, '_d_')
+				if feature.len == 0 || feature !in user_defines {
+					continue // feature not defined, skip
+				}
+			}
 		}
 		v_files << os.join_path(dir, file)
 	}
 	return v_files
+}
+
+// extract_define_feature extracts the feature name from a _d_ or _notd_ filename.
+// e.g. "parse_d_parallel.v" with marker "_d_" returns "parallel"
+// e.g. "array_notd_gcboehm_opt.v" with marker "_notd_" returns "gcboehm_opt"
+fn extract_define_feature(file string, marker string) string {
+	idx := file.index(marker) or { return '' }
+	rest := file[idx + marker.len..]
+	// Strip .v or .c.v suffix
+	feature := if rest.ends_with('.c.v') {
+		rest[..rest.len - 4]
+	} else if rest.ends_with('.v') {
+		rest[..rest.len - 2]
+	} else {
+		rest
+	}
+	return feature
 }

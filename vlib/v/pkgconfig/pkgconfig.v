@@ -100,6 +100,7 @@ fn (mut pc PkgConfig) setvar(line string) {
 
 fn (mut pc PkgConfig) parse(file string) bool {
 	pc.file_path = file
+	pc.vars['pcfiledir'] = os.real_path(os.dir(file))
 	data := os.read_file(file) or { return false }
 	if pc.options.debug {
 		eprintln(data)

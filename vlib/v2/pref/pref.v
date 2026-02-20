@@ -40,6 +40,7 @@ pub mut:
 	arch                  Arch = .auto
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
+	user_defines          []string // User-defined comptime flags via -d <name>
 pub:
 	vroot         string = detect_vroot()
 	vmodules_path string = os.vmodules_dir()
@@ -164,12 +165,25 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 	mut backend := Backend.cleanc
 	match backend_str {
-		'cleanc' { backend = .cleanc }
-		'c' { backend = .c }
-		'v' { backend = .v }
-		'arm64' { backend = .arm64 }
-		'x64' { backend = .x64 }
-		else {}
+		'cleanc' {
+			backend = .cleanc
+		}
+		'c' {
+			backend = .c
+		}
+		'v' {
+			backend = .v
+		}
+		'arm64' {
+			backend = .arm64
+		}
+		'x64' {
+			backend = .x64
+		}
+		else {
+			eprintln('error: unknown backend `${backend_str}`. Valid backends: cleanc, c, v, arm64, x64')
+			exit(1)
+		}
 	}
 
 	mut arch_str := cmdline.option(args, '-arch', 'auto')
@@ -178,9 +192,19 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 	mut arch := Arch.auto
 	match arch_str {
-		'x64' { arch = .x64 }
-		'arm64' { arch = .arm64 }
-		else {}
+		'auto' {
+			arch = .auto
+		}
+		'x64' {
+			arch = .x64
+		}
+		'arm64' {
+			arch = .arm64
+		}
+		else {
+			eprintln('error: unknown architecture `${arch_str}`. Valid architectures: auto, x64, arm64')
+			exit(1)
+		}
 	}
 
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
@@ -192,11 +216,46 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 	printfn_list := if printfn_str.len > 0 { printfn_str.split(',') } else { []string{} }
 
+	// Parse -d <name> comptime defines (can be specified multiple times)
+	user_defines := cmdline.options(args, '-d')
+
 	options := cmdline.only_options(args)
+
+	// Validate flags: error on unknown options
+	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
+		'-d']
+	known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
+		'--skip-imports', '--skip-type-check', '--parallel', '-nocache', '--nocache', '-nomarkused',
+		'--nomarkused', '-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files',
+		'--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc']
+	for opt in options {
+		if opt !in known_flags_with_values && opt !in known_boolean_flags {
+			eprintln('error: unknown flag `${opt}`')
+			eprintln('')
+			eprintln('Usage: v2 [options] <file.v>')
+			eprintln('')
+			eprintln('Options:')
+			eprintln('  -o <file>              Output file name')
+			eprintln('  -backend <name>        Backend: cleanc, c, v, arm64, x64 (default: cleanc)')
+			eprintln('  -b <name>              Short for -backend')
+			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
+			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
+			eprintln('  -stats, --stats        Print compilation statistics')
+			eprintln('  -nocache, --nocache    Disable build cache')
+			eprintln('  -d <name>              Define a comptime flag')
+			eprintln('  --debug                Enable debug mode')
+			eprintln('  -v, --verbose          Enable verbose output')
+			eprintln('  -showcc, --showcc      Print C compiler command')
+			eprintln('  -keepc                 Keep generated C file')
+			eprintln('  --parallel             Enable parallel parsing')
+			exit(1)
+		}
+	}
+
 	// Default to sequential parsing (no_parallel=true) unless --parallel is specified
 	use_parallel := '--parallel' in options
 	return Preferences{
-		debug:                 '--debug' in options || '-d' in options
+		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
 		skip_builtin:          '--skip-builtin' in options
@@ -214,6 +273,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		arch:                  arch
 		output_file:           output_file
 		printfn_list:          printfn_list
+		user_defines:          user_defines
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()
 	}
@@ -245,7 +305,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	use_parallel := '--parallel' in options
 	return Preferences{
 		// config flags
-		debug:                 '--debug' in options || '-d' in options
+		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
 		skip_builtin:          '--skip-builtin' in options

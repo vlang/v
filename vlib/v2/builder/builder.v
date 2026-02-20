@@ -154,12 +154,14 @@ fn (mut b Builder) gen_cleanc() {
 		'out'
 	}
 
-	cc := os.getenv_opt('V2CC') or { 'cc' }
-	cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
-	version_res := os.execute('${cc} --version')
+	cc := os.getenv_opt('V2CC') or { default_cc(b.pref.vroot) }
+	cc_flags := (os.getenv_opt('V2CFLAGS') or { '' }) + ' ' + tcc_flags(cc, b.pref.vroot)
 	mut error_limit_flag := ''
-	if version_res.exit_code == 0 && version_res.output.contains('clang') {
-		error_limit_flag = ' -ferror-limit=0'
+	if !cc.contains('tcc') {
+		version_res := os.execute('${cc} --version')
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			error_limit_flag = ' -ferror-limit=0'
+		}
 	}
 
 	// If output ends with .c, just write the C file
@@ -253,12 +255,14 @@ fn (mut b Builder) gen_ssa_c() {
 	// optimize.optimize(mut mod)
 	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
-	cc := os.getenv_opt('V2CC') or { 'cc' }
-	cc_flags := os.getenv_opt('V2CFLAGS') or { '' }
-	version_res := os.execute('${cc} --version')
+	cc := os.getenv_opt('V2CC') or { default_cc(b.pref.vroot) }
+	cc_flags := (os.getenv_opt('V2CFLAGS') or { '' }) + ' ' + tcc_flags(cc, b.pref.vroot)
 	mut error_limit_flag := ''
-	if version_res.exit_code == 0 && version_res.output.contains('clang') {
-		error_limit_flag = ' -ferror-limit=0'
+	if !cc.contains('tcc') {
+		version_res := os.execute('${cc} --version')
+		if version_res.exit_code == 0 && version_res.output.contains('clang') {
+			error_limit_flag = ' -ferror-limit=0'
+		}
 	}
 
 	// Try to get pre-compiled builtin.o and vlib.o from the cleanc cache
@@ -516,6 +520,24 @@ fn file_module_name(file ast.File) string {
 	return 'main'
 }
 
+fn default_cc(vroot string) string {
+	// Try to use tcc by default, like v1 does.
+	tcc_path := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.exists(tcc_path) {
+		return tcc_path
+	}
+	return 'cc'
+}
+
+fn tcc_flags(cc string, vroot string) string {
+	if !cc.contains('tcc') {
+		return ''
+	}
+	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
+	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir,
+		'lib')}"'
+}
+
 fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) {
 	if show_cc {
 		println(cmd)
@@ -524,6 +546,15 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) {
 	}
 	result := os.execute(cmd)
 	if result.exit_code != 0 {
+		// If tcc failed, fall back to cc.
+		if cmd.contains('tcc') {
+			eprintln('Failed to compile with tcc, falling back to cc')
+			eprintln('tcc cmd: ${cmd}')
+			eprintln(result.output)
+			fallback_cmd := cmd.replace_once(cmd.all_before(' '), 'cc')
+			run_cc_cmd_or_exit(fallback_cmd, stage, show_cc)
+			return
+		}
 		eprintln('${stage} failed:')
 		lines := result.output.split_into_lines()
 		limit := if lines.len < 50 { lines.len } else { 50 }

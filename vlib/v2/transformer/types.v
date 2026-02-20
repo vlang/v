@@ -12,6 +12,136 @@ fn (mut t Transformer) register_synth_type(pos token.Pos, typ types.Type) {
 	t.env.set_expr_type(pos.id, typ)
 }
 
+// register_generated_fn_scope creates a function scope for a transformer-generated function
+// (e.g. Array_int_contains, Array_string_str) and registers parameter types so cleanc
+// can resolve them via scope lookup instead of falling back to string-based inference.
+fn (mut t Transformer) register_generated_fn_scope(fn_name string, module_name string, params []ast.Parameter) {
+	parent := t.get_module_scope(module_name) or { return }
+	mut fn_scope := types.new_scope(parent)
+	for param in params {
+		type_name := t.expr_to_type_name(param.typ)
+		if type_name == '' {
+			continue
+		}
+		if param_type := t.c_name_to_type(type_name) {
+			fn_scope.insert(param.name, types.Object(param_type))
+		}
+	}
+	t.env.set_fn_scope(module_name, fn_name, fn_scope)
+}
+
+// c_name_to_type converts a C-style type name (e.g. "Array_int", "int", "string") to types.Type.
+fn (t &Transformer) c_name_to_type(name string) ?types.Type {
+	// Handle Array_* prefix
+	if name.starts_with('Array_fixed_') {
+		// Fixed arrays: Array_fixed_int_3 → types.ArrayFixed
+		payload := name['Array_fixed_'.len..]
+		if payload.contains('_') {
+			elem_name := payload.all_before_last('_')
+			len_str := payload.all_after_last('_')
+			elem_type := t.c_name_to_type(elem_name) or { return none }
+			return types.ArrayFixed{
+				elem_type: elem_type
+				len:       len_str.int()
+			}
+		}
+		return none
+	}
+	if name.starts_with('Array_') {
+		elem_name := name['Array_'.len..]
+		elem_type := t.c_name_to_type(elem_name) or { return none }
+		return types.Array{
+			elem_type: elem_type
+		}
+	}
+	// Primitives and well-known types
+	return match name {
+		'int' {
+			types.Type(types.int_)
+		}
+		'i8' {
+			types.Type(types.Primitive{
+				size:  8
+				props: .integer
+			})
+		}
+		'i16' {
+			types.Type(types.Primitive{
+				size:  16
+				props: .integer
+			})
+		}
+		'i32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .integer
+			})
+		}
+		'i64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .integer
+			})
+		}
+		'u8', 'byte' {
+			types.Type(types.Primitive{
+				size:  8
+				props: .integer | .unsigned
+			})
+		}
+		'u16' {
+			types.Type(types.Primitive{
+				size:  16
+				props: .integer | .unsigned
+			})
+		}
+		'u32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .integer | .unsigned
+			})
+		}
+		'u64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .integer | .unsigned
+			})
+		}
+		'f32' {
+			types.Type(types.Primitive{
+				size:  32
+				props: .float
+			})
+		}
+		'f64' {
+			types.Type(types.Primitive{
+				size:  64
+				props: .float
+			})
+		}
+		'bool' {
+			types.Type(types.bool_)
+		}
+		'string' {
+			types.Type(types.string_)
+		}
+		'int_literal' {
+			types.Type(types.Primitive{
+				props: .untyped | .integer
+			})
+		}
+		'float_literal' {
+			types.Type(types.Primitive{
+				props: .untyped | .float
+			})
+		}
+		else {
+			// Try looking up by name in module scopes
+			t.lookup_type(name)
+		}
+	}
+}
+
 // lookup_var_type looks up a variable's type in the current scope chain
 fn (t &Transformer) lookup_var_type(name string) ?types.Type {
 	if t.scope == unsafe { nil } {

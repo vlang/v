@@ -61,7 +61,12 @@ mut:
 	exported_const_seen         map[string]bool
 	exported_const_symbols      []ExportedConstSymbol
 	cur_file_name               string
+	is_module_ident_cache       map[string]bool    // per-function cache for is_module_ident results
+	not_local_var_cache         map[string]bool    // per-function negative cache for get_local_var_c_type
+	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
+	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
 
+	const_exprs     map[string]string // const name → C expression string (for inlining)
 	used_fn_keys    map[string]bool
 	called_fn_names map[string]bool
 	anon_fn_defs    []string // lifted anonymous function definitions
@@ -613,41 +618,49 @@ fn sanitize_fn_ident(name string) string {
 }
 
 fn (mut g Gen) is_module_ident(name string) bool {
+	if cached := g.is_module_ident_cache[name] {
+		return cached
+	}
+	mut result := false
 	if g.cur_fn_scope != unsafe { nil } {
 		if obj := g.cur_fn_scope.lookup_parent(name, 0) {
-			return obj is types.Module
+			result = obj is types.Module
+			g.is_module_ident_cache[name] = result
+			return result
 		}
 	}
 	if g.env != unsafe { nil } {
-		mut found := false
 		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
-				found = obj is types.Module
+				result = obj is types.Module
 			}
 		}
-		if found {
-			return true
-		}
 	}
-	return false
+	g.is_module_ident_cache[name] = result
+	return result
 }
 
 // resolve_module_name resolves a module alias to its real module name.
 // Returns the input name unchanged if it's not a module or can't be resolved.
 fn (mut g Gen) resolve_module_name(name string) string {
+	// Check cache first (module name resolution is constant per-function).
+	if cached := g.resolved_module_names[name] {
+		return cached
+	}
+	mut result := name
 	if g.cur_fn_scope != unsafe { nil } {
 		if obj := g.cur_fn_scope.lookup_parent(name, 0) {
 			if obj is types.Module {
 				mod := unsafe { &types.Module(&obj) }
 				if mod.name != '' {
-					return mod.name
+					result = mod.name
 				}
 			}
-			return name
+			g.resolved_module_names[name] = result
+			return result
 		}
 	}
 	if g.env != unsafe { nil } {
-		mut result := name
 		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
 				if obj is types.Module {
@@ -658,9 +671,11 @@ fn (mut g Gen) resolve_module_name(name string) string {
 				}
 			}
 		}
+		g.resolved_module_names[name] = result
 		return result
 	}
-	return name
+	g.resolved_module_names[name] = result
+	return result
 }
 
 fn sanitize_c_number_literal(lit string) string {

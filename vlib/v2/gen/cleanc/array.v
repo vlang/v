@@ -250,57 +250,58 @@ fn (mut g Gen) expr_array_runtime_type(expr ast.Expr) string {
 	return typ
 }
 
+// array_elem_type_from_expr resolves the element type of an array expression
+// using the types.Environment.
 fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
-	match arr_expr {
-		ast.CallExpr {
-			if arr_expr.lhs is ast.Ident {
-				fn_name := sanitize_fn_ident(arr_expr.lhs.name)
-				if fn_name in ['array__slice', 'array__slice_ni']
-					|| (fn_name.starts_with('Array_') && (fn_name.ends_with('__slice')
-					|| fn_name.ends_with('__slice_ni'))) {
-					if arr_expr.args.len > 0 {
-						return g.infer_array_elem_type_from_expr(arr_expr.args[0])
-					}
+	// For slice calls, the return type is generic `array`; resolve from the source array.
+	if arr_expr is ast.CallExpr {
+		if arr_expr.lhs is ast.Ident {
+			fn_name := sanitize_fn_ident(arr_expr.lhs.name)
+			if fn_name in ['array__slice', 'array__slice_ni']
+				|| (fn_name.starts_with('Array_') && (fn_name.ends_with('__slice')
+				|| fn_name.ends_with('__slice_ni'))) {
+				if arr_expr.args.len > 0 {
+					return g.infer_array_elem_type_from_expr(arr_expr.args[0])
 				}
 			}
 		}
-		else {}
 	}
 	if raw_type := g.get_raw_type(arr_expr) {
-		match raw_type {
-			types.Array {
-				return g.types_type_to_c(raw_type.elem_type)
-			}
-			types.Pointer {
-				match raw_type.base_type {
-					types.Array {
-						return g.types_type_to_c(raw_type.base_type.elem_type)
-					}
-					types.Alias {
-						if raw_type.base_type.base_type is types.Array {
-							return g.types_type_to_c(raw_type.base_type.base_type.elem_type)
-						}
-					}
-					else {}
-				}
-			}
-			types.Alias {
-				match raw_type.base_type {
-					types.Array {
-						return g.types_type_to_c(raw_type.base_type.elem_type)
-					}
-					else {}
-				}
-			}
-			else {}
+		if elem := array_elem_type_from_raw(raw_type) {
+			return g.types_type_to_c(elem)
 		}
 	}
+	// Secondary path: when get_raw_type fails (e.g. SelectorExpr on sum type cast pointers
+	// with invalid pos.ids), resolve the C type name back to a raw type.
 	arr_type := g.get_expr_type(arr_expr)
-	elem := array_alias_elem_type(arr_type)
-	if elem != '' {
-		return elem
+	if arr_type != '' && arr_type != 'int' && arr_type != 'array' {
+		if raw := g.resolve_c_type_to_raw(arr_type) {
+			if elem := array_elem_type_from_raw(raw) {
+				return g.types_type_to_c(elem)
+			}
+		}
 	}
-	return ''
+	// Last resort: string-based extraction (e.g. Array_int → int).
+	return array_alias_elem_type(arr_type)
+}
+
+// array_elem_type_from_raw extracts the element type from a raw types.Type
+// that represents an array, unwrapping Pointer and Alias layers as needed.
+fn array_elem_type_from_raw(t types.Type) ?types.Type {
+	match t {
+		types.Array {
+			return t.elem_type
+		}
+		types.Pointer {
+			return array_elem_type_from_raw(t.base_type)
+		}
+		types.Alias {
+			return array_elem_type_from_raw(t.base_type)
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn (mut g Gen) infer_array_method_elem_type(expr ast.Expr) string {
