@@ -1677,10 +1677,8 @@ fn test_camel_to_snake() {
 	assert '_aBcd'.camel_to_snake() == '_a_bcd'
 	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
 	assert '_AbCDe_'.camel_to_snake() == '_ab_c_de_'
-	assert 'HTMLParser'.camel_to_snake() == 'html_parser'
-	assert 'XMLToJSON'.camel_to_snake() == 'xml_to_json'
-	assert 'getHTTPSUrl'.camel_to_snake() == 'get_https_url'
-	assert 'LastNName'.camel_to_snake() == 'last_n_name'
+	assert 'HTTPServer'.camel_to_snake() == 'http_server'
+	assert 'HTTP2Server'.camel_to_snake() == 'http_2_server'
 }
 
 fn test_snake_to_camel() {

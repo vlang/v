@@ -2887,6 +2887,7 @@ pub fn (s string) camel_to_snake() string {
 	for i := 2; i < s.len; i++ {
 		c := s[i]
 		c_is_upper := c.is_capital()
+		c_is_number := c.is_digit()
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
@@ -2895,9 +2896,9 @@ pub fn (s string) camel_to_snake() string {
 			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
-					if !c_is_upper && prev_is_upper {
+					if !c_is_number && !c_is_upper && prev_is_upper {
 						// Shift the last uppercase one slot forward and insert '_' before it.
-						// e.g.: HTMLParser -> html_parser, not htmlp_arser
+						// e.g.: HTTPServer -> http_server, not https_erver
 						b[pos] = b[pos - 1]
 						b[pos - 1] = `_`
 					} else {
