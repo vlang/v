@@ -256,7 +256,7 @@ fn test_parse_rfc2616() {
 	r = time.parse_rfc2616('Thu, 19 Feb 2026 11:07:09 GMT')!
 	assert r.unix() == 1771499229
 
-	r = time.parse_rfc2616('Thuesday, 19-Feb-26 11:07:09 GMT')!
+	r = time.parse_rfc2616('Thu, 19-Feb-26 11:07:09 GMT')!
 	assert r.unix() == 1771499229
 
 	r = time.parse_rfc2616('Thu Feb 19 11:07:09 2026')!
