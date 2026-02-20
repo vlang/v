@@ -617,30 +617,30 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 }
 
+// add app and/or version to doc. Returns true if version has been added.
 fn doc_add_name_and_version(app_name string, app_version string, options DocOptions, mut docs []string) bool {
 	mut name_and_version := ''
+	mut version_added := false
 
 	if options.show.has(.name) {
 		name_and_version = app_name
 	}
 
-	if options.show.has(.version) {
-		if app_version != '' {
-			if name_and_version != '' {
-				name_and_version = '${app_name} ${app_version}'
-			} else {
-				name_and_version = '${app_version}'
-			}
+	if options.show.has(.version) && app_version != '' {
+		if name_and_version != '' {
+			name_and_version = '${app_name} ${app_version}'
+		} else {
+			name_and_version = '${app_version}'
 		}
+
+		version_added = true
 	}
 
 	if name_and_version != '' {
 		docs << '${name_and_version}'
-
-		return true
 	}
 
-	return false
+	return version_added
 }
 
 // to_doc returns a "usage" style documentation `string` generated from the internal data structures generated via the `parse()` function.
@@ -673,8 +673,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		}
 	}
 
-	name_and_version := doc_add_name_and_version(app_name, app_version, dc.options, mut
-		docs)
+	version := doc_add_name_and_version(app_name, app_version, dc.options, mut docs)
 
 	// Resolve the description if visible
 	if dc.options.show.has(.description) {
@@ -717,7 +716,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		}
 	}
 
-	if name_and_version {
+	if version {
 		mut longest_line := 0
 		for doc_line in docs {
 			lines := doc_line.split('\n')
