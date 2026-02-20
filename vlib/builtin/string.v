@@ -2891,8 +2891,8 @@ pub fn (s string) camel_to_snake() string {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-		(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) &&
-		c != `_` {
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) &&
+			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					if !c_is_upper && prev_is_upper {
