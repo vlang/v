@@ -2167,7 +2167,7 @@ pub fn (str string) is_hex() bool {
 	for i < str.len {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
-		if (str[i] < `0` || str[i] > `9`) && 
+		if (str[i] < `0` || str[i] > `9`) &&
 		    ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
 			return false
 		}
@@ -2843,8 +2843,9 @@ pub fn (s string) is_identifier() bool {
 // camel_to_snake convert string from camelCase to snake_case
 // Example: assert 'Abcd'.camel_to_snake() == 'abcd'
 // Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
-// Example: assert 'BBaa'.camel_to_snake() == 'bb_aa'
-// Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+// Example: assert 'BBaa'.camel_to_snake() == 'b_baa'
+// Example: assert 'HTMLParser'.camel_to_snake() == 'html_parser'
+// Example: assert 'getHTTPSUrl'.camel_to_snake() == 'get_https_url'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {
 	if s.len == 0 {
@@ -2890,11 +2891,18 @@ pub fn (s string) camel_to_snake() string {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && 
-			c != `_` {
+		(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) &&
+		c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
-					b[pos] = `_`
+					if !c_is_upper && prev_is_upper {
+						// Shift the last uppercase one slot forward and insert '_' before it.
+						// e.g.: HTMLParser -> html_parser, not htmlp_arser
+						b[pos] = b[pos - 1]
+						b[pos - 1] = `_`
+					} else {
+						b[pos] = `_`
+					}
 					pos++
 				}
 			}
