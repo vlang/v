@@ -141,9 +141,9 @@ pub fn parse_rfc2616(s string) !Time {
 	}
 
 	// Remove or Replace unwanted tokens.
-	rmv := ['GMT', '', 'Monday', '', 'Tueday', '', 'Wednesday', '', 'Thuesday', '', 'Friday', '',
-		'Saturday', '', 'Sunday', '', 'Mon', '', 'Tue', '', 'Wed', '', 'Thu', '', 'Fri', '', 'Sat',
-		'', 'Sun', '', '-', ' ', ',', '']
+	rmv := ['GMT', '', 'Monday', '', 'Tuesday', '', 'Wednesday', '', 'Thursday', '', 'Friday',
+		'', 'Saturday', '', 'Sunday', '', 'Mon', '', 'Tue', '', 'Wed', '', 'Thu', '', 'Fri', '',
+		'Sat', '', 'Sun', '', '-', ' ', ',', '']
 
 	mut f := s.replace_each(rmv)
 	f = remove_consecutive_spaces(f)
