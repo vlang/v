@@ -301,8 +301,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			panic('bug in v2 compiler: ComptimeStmt should have been handled in v2.transformer')
 		}
 		ast.BlockStmt {
-			g.write_indent()
-			g.sb.writeln('/* [TODO] BlockStmt */')
+			for bs in node.stmts {
+				g.gen_stmt(bs)
+			}
 		}
 		ast.LabelStmt {
 			g.write_indent()

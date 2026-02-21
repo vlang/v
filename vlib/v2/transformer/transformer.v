@@ -1070,22 +1070,34 @@ fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.
 	// must use map__get_and_set to get a pointer to the actual entry, not a copy.
 	map_arg := t.map_index_lhs_to_ptr(index_expr.lhs, map_expr_typ)
 
-	// Transform to: map__set(&m, &key, &val)
-	return ast.ExprStmt{
+	// Transform to: { key_tmp := key; val_tmp := val; map__set(&m, &key_tmp, &val_tmp) }
+	// Temps are extracted to statement level to avoid scope-escape issues with
+	// statement-expression temporaries ({...}) used as function call arguments.
+	mut prefix_stmts := []ast.Stmt{}
+	key_arg := t.addr_of_with_prefix_temp(index_expr.expr, map_type.key_type, mut prefix_stmts)
+	val_arg := t.addr_of_with_prefix_temp(stmt.rhs[0], map_type.value_type, mut prefix_stmts)
+
+	call_stmt := ast.Stmt(ast.ExprStmt{
 		expr: ast.CallExpr{
 			lhs:  ast.Ident{
 				name: 'map__set'
 			}
 			args: [
 				map_arg,
-				// &key
-				t.voidptr_cast(t.addr_of_expr_with_temp(index_expr.expr, map_type.key_type)),
-				// &val
-				t.voidptr_cast(t.addr_of_expr_with_temp(stmt.rhs[0], map_type.value_type)),
+				t.voidptr_cast(key_arg),
+				t.voidptr_cast(val_arg),
 			]
 			pos:  stmt.pos
 		}
+	})
+
+	if prefix_stmts.len > 0 {
+		prefix_stmts << call_stmt
+		return ast.BlockStmt{
+			stmts: prefix_stmts
+		}
 	}
+	return call_stmt
 }
 
 // map_index_lhs_to_ptr generates a pointer expression to a map for use as the first
@@ -3216,6 +3228,12 @@ fn (t &Transformer) can_take_address_expr(expr ast.Expr) bool {
 		ast.Ident, ast.SelectorExpr, ast.IndexExpr {
 			true
 		}
+		// String literals compile to compound literals in C, which are addressable.
+		// Using &(string){...} is safe and avoids statement-expression temporaries
+		// whose address would escape scope when used as function call arguments.
+		ast.StringLiteral, ast.InitExpr, ast.ArrayInitExpr {
+			true
+		}
 		ast.PrefixExpr {
 			expr.op == .mul
 		}
@@ -3225,6 +3243,33 @@ fn (t &Transformer) can_take_address_expr(expr ast.Expr) bool {
 		else {
 			false
 		}
+	}
+}
+
+// addr_of_with_prefix_temp creates a &expr for addressable expressions, or emits a temp
+// variable declaration into prefix_stmts and returns &tmp for non-addressable expressions.
+// This avoids the scope-escape issue with UnsafeExpr temporaries in function call arguments.
+fn (mut t Transformer) addr_of_with_prefix_temp(expr ast.Expr, typ types.Type, mut prefix_stmts []ast.Stmt) ast.Expr {
+	transformed := t.transform_expr(expr)
+	if t.can_take_address_expr(transformed) {
+		return ast.PrefixExpr{
+			op:   .amp
+			expr: transformed
+		}
+	}
+	tmp_name := t.gen_temp_name()
+	tmp_ident := ast.Ident{
+		name: tmp_name
+	}
+	t.register_temp_var(tmp_name, typ)
+	prefix_stmts << ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(tmp_ident)]
+		rhs: [transformed]
+	})
+	return ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Expr(tmp_ident)
 	}
 }
 
