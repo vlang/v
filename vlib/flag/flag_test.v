@@ -179,17 +179,17 @@ fn test_allow_to_build_usage_message() {
 	assert all_strings_found
 }
 
-fn test_if_app_name_given_but_no_show_usage_message_does_not_contain_app_name() {
+fn test_if_app_name_given_but_no_show_usage_message_still_contain_version() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	fp.description('a description')
 	fp.bool('a_bool', 0, false, '')
 	fp.options.show.clear(.name)
-	assert !fp.usage().contains('flag_tool v0.0.0\n---')
+	assert fp.usage().contains('v0.0.0\n---')
 }
 
-fn test_if_version_given_but_no_show_usage_message_does_not_contain_version() {
+fn test_if_version_given_but_no_show_usage_message_does_not_contain_banner() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('flag_tool')
 	fp.version('v0.0.0')

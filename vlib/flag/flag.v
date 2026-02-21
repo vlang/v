@@ -145,6 +145,9 @@ pub fn new_flag_parser(args []string) &FlagParser {
 		all_after_dashdash: all_after_dashdash
 		args:               all_before_dashdash
 		max_free_args:      max_args_number
+		options:            DocOptions{
+			show: ~Show.zero() ^ .name
+		}
 	}
 }
 
