@@ -1691,6 +1691,19 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		g.sb.write_string(']')
 		return
 	}
+	// Double-check: if the LHS is a local variable declared as a fixed array,
+	// use direct C array indexing even if the env type says 'array'/Array_.
+	if node.lhs is ast.Ident {
+		if local_typ := g.runtime_local_types[node.lhs.name] {
+			if local_typ.starts_with('Array_fixed_') {
+				g.expr(node.lhs)
+				g.sb.write_string('[')
+				g.expr(node.expr)
+				g.sb.write_string(']')
+				return
+			}
+		}
+	}
 	if lhs_type == 'array' || lhs_type.starts_with('Array_') {
 		mut elem_type := g.get_expr_type(node)
 		if elem_type == '' || elem_type == 'int' {

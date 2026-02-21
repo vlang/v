@@ -385,8 +385,9 @@ pub fn symlink(target string, link_name string) ! {
 pub fn readlink(path string) !string {
 	// Use a region of stack to get information into; we'll return new memory of more precise size later.
 	mut buf := [max_path_buffer_size]u8{}
+	buf_ptr := unsafe { &u8(&buf) }
 	// readlink returns the number of bytes written into buf, or -1 for errors.
-	res := C.readlink(&char(path.str), &char(&buf[0]), max_path_buffer_size)
+	res := C.readlink(&char(path.str), &char(buf_ptr), max_path_buffer_size)
 	if res < 0 {
 		return last_error()
 	}
@@ -394,7 +395,7 @@ pub fn readlink(path string) !string {
 	// In this case, copy the data into a new heap-allocated string that's right-sized
 	// (we can't return memory from our stack).
 	if res < max_path_buffer_size {
-		return unsafe { (&buf[0]).vstring_with_len(res).clone() }
+		return unsafe { buf_ptr.vstring_with_len(res).clone() }
 	}
 	// If the number of bytes read wasn't less than as many as we said we'd accept: that means we might not have gotten a complete read.
 	// In this case, we have to start doing heap allocations, increasingly large, and simply check until we get a complete one.
