@@ -2859,6 +2859,7 @@ pub fn (s string) camel_to_snake() string {
 	// handle the first two chars separately to reduce load.
 	mut pos := 2
 	mut prev_is_upper := false
+	mut prev_inserted_boundary := false
 	unsafe {
 		if s[0].is_capital() {
 			b[0] = s[0] + 32
@@ -2885,25 +2886,29 @@ pub fn (s string) camel_to_snake() string {
 		}
 	}
 	for i := 2; i < s.len; i++ {
+		mut has_boundary_before_upper := false
 		c := s[i]
 		c_is_upper := c.is_capital()
-		c_is_number := c.is_digit()
+		next_is_lower := i + 1 < s.len && s[i + 1].is_letter() && !s[i + 1].is_capital()
+		// Cases: `HTTPServer == http_server` || `getHTTPSUrl == get_https_url`
+		if c_is_upper && prev_is_upper && i >= 2 && s[i - 2].is_capital() && next_is_lower && c != `_` {
+			unsafe {
+				if b[pos - 1] != `_` {
+					b[pos] = `_`
+					pos++
+				}
+			}
+			has_boundary_before_upper = true
+		}
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) &&
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary)) &&
 			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
-					if !c_is_number && !c_is_upper && prev_is_upper {
-						// Shift the last uppercase one slot forward and insert '_' before it.
-						// e.g.: HTTPServer -> http_server, not https_erver
-						b[pos] = b[pos - 1]
-						b[pos - 1] = `_`
-					} else {
-						b[pos] = `_`
-					}
+					b[pos] = `_`
 					pos++
 				}
 			}
@@ -2914,6 +2919,7 @@ pub fn (s string) camel_to_snake() string {
 			b[pos] = lower_c
 		}
 		prev_is_upper = c_is_upper
+		prev_inserted_boundary = has_boundary_before_upper
 		pos++
 	}
 	unsafe {
