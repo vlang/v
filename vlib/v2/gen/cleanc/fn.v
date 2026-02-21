@@ -1610,7 +1610,7 @@ fn (mut g Gen) ensure_cur_fn_scope() ?&types.Scope {
 	}
 	suffix := '__${g.cur_fn_name}'
 	mut matched_key := ''
-	fn_scope_keys := lock g.env.fn_scopes {
+	fn_scope_keys := rlock g.env.fn_scopes {
 		g.env.fn_scopes.keys()
 	}
 	for key in fn_scope_keys {

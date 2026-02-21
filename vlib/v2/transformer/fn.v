@@ -35,7 +35,7 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 		}
 	}
 	// Fallback: scan all module scopes for local/private functions.
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		scope_names := t.env.scopes.keys()
 		for module_name in scope_names {
 			scope_ptr := t.env.scopes[module_name] or { continue }
@@ -225,7 +225,7 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 			return fn_type.get_return_type()
 		}
 	}
-	lock t.env.methods {
+	rlock t.env.methods {
 		method_keys := t.env.methods.keys()
 		for key in method_keys {
 			mut matches_receiver := false
@@ -1072,7 +1072,7 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		}
 	}
 	// Fuzzy fallback: iterate method keys to find matching receiver types
-	lock t.env.methods {
+	rlock t.env.methods {
 		method_keys := t.env.methods.keys()
 		for key in method_keys {
 			mut matches_receiver := false

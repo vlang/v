@@ -394,7 +394,7 @@ fn (t &Transformer) qualify_type_name(type_name string) string {
 	// Search all module scopes to find which module defines this type.
 	// Check main and builtin first to avoid ambiguity when the same type
 	// name exists in multiple modules (e.g. Coord in main and term).
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		for priority_mod in ['main', 'builtin', ''] {
 			if scope := t.env.scopes[priority_mod] {
 				if obj := scope.objects[type_name] {
@@ -1332,7 +1332,7 @@ fn (t &Transformer) is_interface_type(type_name string) bool {
 
 // get_current_scope returns the scope for the current module
 fn (t &Transformer) get_current_scope() ?&types.Scope {
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		if t.cur_module in t.env.scopes {
 			return unsafe { t.env.scopes[t.cur_module] }
 		}
@@ -1342,7 +1342,7 @@ fn (t &Transformer) get_current_scope() ?&types.Scope {
 
 // get_module_scope returns the scope for a specific module
 fn (t &Transformer) get_module_scope(module_name string) ?&types.Scope {
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		if module_name in t.env.scopes {
 			return unsafe { t.env.scopes[module_name] }
 		}

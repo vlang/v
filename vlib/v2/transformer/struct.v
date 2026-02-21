@@ -45,7 +45,7 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		mod = struct_name.all_before_last('__')
 		sname = struct_name.all_after_last('__')
 	}
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		// Try module scope first if qualified
 		if mod != '' {
 			if scope := t.env.scopes[mod] {
@@ -1180,7 +1180,7 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 	// Look up the struct type in scopes.
 	// When the struct name is not module-qualified, prefer the current module scope
 	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		// First: try the current module scope for non-qualified names.
 		if !struct_name.contains('__') && t.cur_module != '' && t.cur_module != 'main'
 			&& t.cur_module != 'builtin' {
@@ -1278,7 +1278,7 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 		}
 	}
 
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		scope_names := t.env.scopes.keys()
 		for scope_name in scope_names {
 			scope := t.env.scopes[scope_name] or { continue }
@@ -1343,7 +1343,7 @@ fn (t &Transformer) get_field_type_name(typ types.Type, field_name string) strin
 // get_field_array_elem_sumtype_name returns the sum type name of the array element type
 // for a struct field, if the field is an array of sum types. Returns '' otherwise.
 fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_name string) string {
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		scope_names := t.env.scopes.keys()
 		for scope_name in scope_names {
 			scope := t.env.scopes[scope_name] or { continue }
@@ -1380,7 +1380,7 @@ fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_
 
 // get_field_array_elem_c_name returns the C type name for the element type of an array field
 fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
-	lock t.env.scopes {
+	rlock t.env.scopes {
 		scope_names := t.env.scopes.keys()
 		for scope_name in scope_names {
 			scope := t.env.scopes[scope_name] or { continue }
