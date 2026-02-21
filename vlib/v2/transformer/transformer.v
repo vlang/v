@@ -415,6 +415,7 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 		}
 	}
 	t.inject_main_runtime_const_init_calls(mut result)
+	t.propagate_types(result)
 	return result
 }
 
@@ -1303,6 +1304,38 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		temp_ident := ast.Ident{
 			name: temp_name
 		}
+		// For ?SumType returns, use _data field check instead of raw truthiness.
+		// Sumtypes are {_tag, _data} structs - the first variant has _tag=0,
+		// which would be indistinguishable from none (all zeros).
+		mut base_type_name := t.get_expr_base_type(call_expr)
+		if base_type_name == '' {
+			fn_name2 := t.get_call_fn_name(call_expr)
+			if fn_name2 != '' {
+				base_type_name = t.get_fn_return_base_type(fn_name2)
+			}
+		}
+		is_sumtype_return := base_type_name != '' && t.is_sum_type(base_type_name)
+		// Condition expression: _t for simple types, _t._data for sumtypes
+		synth_pos2 := t.next_synth_pos()
+		cond_expr := if is_sumtype_return {
+			t.synth_selector(temp_ident, '_data', types.Type(types.voidptr_))
+		} else {
+			ast.Expr(temp_ident)
+		}
+		not_cond_expr := if is_sumtype_return {
+			ast.Expr(ast.PrefixExpr{
+				op:   .not
+				expr: t.synth_selector(ast.Ident{
+					name: temp_name
+					pos:  synth_pos2
+				}, '_data', types.Type(types.voidptr_))
+			})
+		} else {
+			ast.Expr(ast.PrefixExpr{
+				op:   .not
+				expr: temp_ident
+			})
+		}
 		mut stmts := []ast.Stmt{}
 		// 1. _t := call_expr
 		stmts << ast.AssignStmt{
@@ -1311,10 +1344,21 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 			rhs: [t.transform_expr(call_expr)]
 			pos: stmt.pos
 		}
-		// 2. a := if _t { _t } else { or_block_value }
-		_, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		// 2. Run or-block side effects in else path, then assign
+		or_side_effect_stmts, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		// If there are side-effect statements (e.g., print_str('error')),
+		// wrap them in: if !_t { side_effects... }
+		if or_side_effect_stmts.len > 0 {
+			stmts << ast.ExprStmt{
+				expr: ast.IfExpr{
+					cond:  not_cond_expr
+					stmts: or_side_effect_stmts
+				}
+			}
+		}
+		// 3. a := if _t { _t } else { or_value }
 		modified_if := ast.IfExpr{
-			cond:      temp_ident
+			cond:      cond_expr
 			stmts:     [ast.Stmt(ast.ExprStmt{
 				expr: temp_ident
 			})]
@@ -2160,14 +2204,51 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		temp_ident := ast.Ident{
 			name: temp_name
 		}
+		// For ?SumType returns, use _data field check instead of raw truthiness.
+		mut base_type_name2 := t.get_expr_base_type(call_expr)
+		if base_type_name2 == '' {
+			if fn_name != '' {
+				base_type_name2 = t.get_fn_return_base_type(fn_name)
+			}
+		}
+		is_sumtype_return2 := base_type_name2 != '' && t.is_sum_type(base_type_name2)
+		synth_pos3 := t.next_synth_pos()
+		cond_expr2 := if is_sumtype_return2 {
+			t.synth_selector(temp_ident, '_data', types.Type(types.voidptr_))
+		} else {
+			ast.Expr(temp_ident)
+		}
+		not_cond_expr2 := if is_sumtype_return2 {
+			ast.Expr(ast.PrefixExpr{
+				op:   .not
+				expr: t.synth_selector(ast.Ident{
+					name: temp_name
+					pos:  synth_pos3
+				}, '_data', types.Type(types.voidptr_))
+			})
+		} else {
+			ast.Expr(ast.PrefixExpr{
+				op:   .not
+				expr: temp_ident
+			})
+		}
 		prefix_stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: [ast.Expr(temp_ident)]
 			rhs: [t.transform_expr(call_expr)]
 		}
-		_, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		or_side_effect_stmts, or_value := t.get_or_block_stmts_and_value(or_expr.stmts)
+		// If there are side-effect statements, wrap in: if !_t._data { side_effects... }
+		if or_side_effect_stmts.len > 0 {
+			prefix_stmts << ast.ExprStmt{
+				expr: ast.IfExpr{
+					cond:  not_cond_expr2
+					stmts: or_side_effect_stmts
+				}
+			}
+		}
 		return ast.IfExpr{
-			cond:      temp_ident
+			cond:      cond_expr2
 			stmts:     [ast.Stmt(ast.ExprStmt{
 				expr: temp_ident
 			})]
@@ -3022,7 +3103,7 @@ fn (t &Transformer) stmt_ends_with_return(stmt ast.Stmt) bool {
 
 fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt {
 	// Native backends (arm64/x64) don't use Option/Result structs.
-	// `return error(...)` should be lowered to `return 0` (error indicator).
+	// `return error(...)` and `return none` should be lowered to `return 0` (error/none indicator).
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
 		if stmt.exprs.len == 1 {
 			ret_expr := stmt.exprs[0]
@@ -3050,6 +3131,17 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 							}),
 						]
 					}
+				}
+			}
+			// Check for `return none` — appears as Ident{name:'none'}
+			if ret_expr is ast.Ident && ret_expr.name == 'none' {
+				return ast.ReturnStmt{
+					exprs: [
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						}),
+					]
 				}
 			}
 		}
@@ -3617,9 +3709,18 @@ fn (mut t Transformer) apply_smartcast_direct_ctx(original_expr ast.Expr, ctx Sm
 	if t.expr_is_casted_to_type(transformed_base, mangled_variant) {
 		return transformed_base
 	}
-	// Create: transformed_base._data._variant (using simple name for accessor)
+	// Create data access.
+	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
+	// No union variant sub-field exists, so just use _data directly.
+	// For C backends: _data is a union, so access _data._variant for the specific member.
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
-	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	variant_access := if is_native_backend {
+		data_access
+	} else {
+		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	}
 
 	// For primitives, cast from pointer space back to value type
 	if variant_simple in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
@@ -3701,9 +3802,17 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 	if t.expr_is_casted_to_type(transformed_base, mangled_variant) {
 		return transformed_base
 	}
-	// Create: transformed_base._data._variant (using simple name for accessor)
+	// Create data access.
+	// For native backends: _data is a plain i64, no union variant sub-field.
+	// For C backends: _data is a union, access _data._variant.
+	is_native_backend2 := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
-	variant_access := t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	variant_access := if is_native_backend2 {
+		data_access
+	} else {
+		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	}
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{
@@ -5191,15 +5300,15 @@ fn (mut t Transformer) generate_array_method_loop_stmt(info ArrayMethodInfo, kin
 fn (mut t Transformer) generate_array_method_fn(fn_name string, info ArrayMethodInfo, kind ArrayMethodKind) ast.Stmt {
 	param_a := ast.Parameter{
 		name: 'a'
-		typ:  ast.Ident{
+		typ:  ast.Expr(ast.Ident{
 			name: info.array_type
-		}
+		})
 	}
 	param_v := ast.Parameter{
 		name: 'v'
-		typ:  ast.Ident{
+		typ:  ast.Expr(ast.Ident{
 			name: info.elem_type
-		}
+		})
 	}
 	// Register a function scope so cleanc can resolve parameter types via scope lookup.
 	t.register_generated_fn_scope(fn_name, 'builtin', [param_a, param_v])
@@ -5249,9 +5358,9 @@ fn (mut t Transformer) generate_array_method_fn(fn_name string, info ArrayMethod
 		attributes: []ast.Attribute{}
 		typ:        ast.FnType{
 			params:      [param_a, param_v]
-			return_type: ast.Ident{
+			return_type: ast.Expr(ast.Ident{
 				name: return_type_name
-			}
+			})
 		}
 		stmts:      body_stmts
 	})
@@ -5274,9 +5383,9 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 	array_type_name := fn_name[..fn_name.len - 4] // Remove '_str' suffix: 'Array_int_str' -> 'Array_int'
 	param_a := ast.Parameter{
 		name: 'a'
-		typ:  ast.Ident{
+		typ:  ast.Expr(ast.Ident{
 			name: array_type_name
-		}
+		})
 	}
 	// Register a function scope so cleanc can resolve parameter types via scope lookup.
 	t.register_generated_fn_scope(fn_name, 'builtin', [param_a])
@@ -5522,9 +5631,9 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 		attributes: []ast.Attribute{}
 		typ:        ast.FnType{
 			params:      [param_a]
-			return_type: ast.Ident{
+			return_type: ast.Expr(ast.Ident{
 				name: 'string'
-			}
+			})
 		}
 		stmts:      body_stmts
 	}

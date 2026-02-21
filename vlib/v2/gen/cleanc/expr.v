@@ -1505,7 +1505,8 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		panic('bug in v2 compiler: slice IndexExpr should have been lowered in v2.transformer')
 	}
 	if node.lhs is ast.Ident {
-		if node.lhs.name in g.fixed_array_globals || node.lhs.name == 'rune_maps' {
+		if node.lhs.name in g.fixed_array_globals || node.lhs.name in g.fixed_array_locals
+			|| node.lhs.name == 'rune_maps' {
 			g.expr(node.lhs)
 			g.sb.write_string('[')
 			g.expr(node.expr)

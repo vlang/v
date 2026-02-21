@@ -195,6 +195,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				fixed_name := 'Array_fixed_' + mangle_alias_component(elem_type) + '_' +
 					fixed_arr_size.str()
 				g.remember_runtime_local_type(name, fixed_name)
+				g.fixed_array_locals[name] = true
 				is_literal_size := fixed_typ.len is ast.BasicLiteral
 					&& (fixed_typ.len as ast.BasicLiteral).kind == .number
 				g.sb.write_string('${elem_type} ${name}[')

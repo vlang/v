@@ -63,6 +63,18 @@ fn (g &Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		if typ_name == '' {
 			continue
 		}
+		// Array fields ([]T) need struct array to be fully defined
+		if field.typ is ast.Type && field.typ is ast.ArrayType {
+			if 'body_array' !in g.emitted_types {
+				return false
+			}
+		}
+		// Map fields need struct map to be fully defined
+		if field.typ is ast.Type && field.typ is ast.MapType {
+			if 'body_map' !in g.emitted_types {
+				return false
+			}
+		}
 		if field.typ is ast.Type {
 			if field.typ is ast.OptionType {
 				opt_typ := field.typ as ast.OptionType

@@ -266,6 +266,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	// Set function scope for type lookups
 	g.cur_fn_name = node.name
 	g.runtime_local_types = map[string]string{}
+	g.fixed_array_locals = map[string]bool{}
 	g.is_module_ident_cache = map[string]bool{}
 	g.not_local_var_cache = map[string]bool{}
 	g.resolved_module_names = map[string]string{}
@@ -451,8 +452,11 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 		// For pointer alias types (byteptr, charptr), use the V name directly
 		// to avoid collisions. e.g., byteptr.str() -> byteptr__str, not u8__str
 		// which would conflict with the actual u8.str() method.
-		if node.receiver.typ is ast.Ident && node.receiver.typ.name in ['byteptr', 'charptr'] {
-			return node.receiver.typ.name + '__' + name
+		if node.receiver.typ is ast.Ident {
+			recv_ident := node.receiver.typ as ast.Ident
+			if recv_ident.name in ['byteptr', 'charptr'] {
+				return recv_ident.name + '__' + name
+			}
 		}
 		receiver_type := g.expr_type_to_c(node.receiver.typ)
 		// Strip pointer suffix for method naming
@@ -1610,7 +1614,7 @@ fn (mut g Gen) ensure_cur_fn_scope() ?&types.Scope {
 	}
 	suffix := '__${g.cur_fn_name}'
 	mut matched_key := ''
-	fn_scope_keys := rlock g.env.fn_scopes {
+	fn_scope_keys := lock g.env.fn_scopes {
 		g.env.fn_scopes.keys()
 	}
 	for key in fn_scope_keys {

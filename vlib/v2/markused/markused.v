@@ -264,26 +264,25 @@ fn type_name_candidates_from_type(mod_name string, typ types.Type) []string {
 
 fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environment) []string {
 	mut out := []string{}
-	match decl.receiver.typ {
-		ast.Ident {
-			name := sanitize_receiver_name(decl.receiver.typ.name)
+	if decl.receiver.typ is ast.Ident {
+		recv_ident := decl.receiver.typ as ast.Ident
+		name := sanitize_receiver_name(recv_ident.name)
+		add_unique_string(mut out, name)
+		add_unique_string(mut out, maybe_trim_module_prefix(mod_name, name))
+		if mod_name != '' && mod_name != 'main' {
+			add_unique_string(mut out, '${mod_name}__${name}')
+		}
+	} else if decl.receiver.typ is ast.PrefixExpr {
+		recv_prefix := decl.receiver.typ as ast.PrefixExpr
+		if recv_prefix.expr is ast.Ident {
+			inner_ident := recv_prefix.expr as ast.Ident
+			name := sanitize_receiver_name(inner_ident.name)
 			add_unique_string(mut out, name)
 			add_unique_string(mut out, maybe_trim_module_prefix(mod_name, name))
 			if mod_name != '' && mod_name != 'main' {
 				add_unique_string(mut out, '${mod_name}__${name}')
 			}
 		}
-		ast.PrefixExpr {
-			if decl.receiver.typ.expr is ast.Ident {
-				name := sanitize_receiver_name(decl.receiver.typ.expr.name)
-				add_unique_string(mut out, name)
-				add_unique_string(mut out, maybe_trim_module_prefix(mod_name, name))
-				if mod_name != '' && mod_name != 'main' {
-					add_unique_string(mut out, '${mod_name}__${name}')
-				}
-			}
-		}
-		else {}
 	}
 	pos := decl.receiver.typ.pos()
 	if env != unsafe { nil } && pos.is_valid() {

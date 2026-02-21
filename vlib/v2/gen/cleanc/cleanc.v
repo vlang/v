@@ -30,6 +30,7 @@ mut:
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string
 	fixed_array_globals         map[string]bool
+	fixed_array_locals          map[string]bool
 	tuple_aliases               map[string][]string
 	struct_field_types          map[string]string
 	enum_value_to_enum          map[string]string
@@ -124,6 +125,7 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		fixed_array_fields:          map[string]bool{}
 		fixed_array_field_elem:      map[string]string{}
 		fixed_array_globals:         map[string]bool{}
+		fixed_array_locals:          map[string]bool{}
 		tuple_aliases:               map[string][]string{}
 		struct_field_types:          map[string]string{}
 		enum_value_to_enum:          map[string]string{}
