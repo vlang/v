@@ -242,9 +242,10 @@ fn (a Struct) == (b Struct) bool {
 	return false
 }
 
-struct SumType {
+pub struct SumType {
+pub:
 	name string
-mut:
+pub mut:
 	variants []Type
 }
 

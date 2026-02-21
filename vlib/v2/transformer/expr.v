@@ -849,10 +849,29 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 	}
 
 	// Non-sum type match - simple transformation
+	// Determine if match expression is an enum type so we can resolve shorthands (.red → Color__red)
+	mut enum_type_name := ''
+	if typ := t.get_expr_type(expr.expr) {
+		c_name := t.type_to_c_name(typ)
+		if c_name != '' {
+			if resolved := t.lookup_type(c_name) {
+				if resolved is types.Enum {
+					enum_type_name = c_name
+				}
+			}
+		}
+	}
 	mut branches := []ast.MatchBranch{cap: expr.branches.len}
 	for branch in expr.branches {
+		mut conds := branch.cond.clone()
+		if enum_type_name != '' {
+			conds = []ast.Expr{cap: branch.cond.len}
+			for c in branch.cond {
+				conds << t.resolve_enum_shorthand(c, enum_type_name)
+			}
+		}
 		branches << ast.MatchBranch{
-			cond:  branch.cond
+			cond:  conds
 			stmts: t.transform_stmts(branch.stmts)
 			pos:   branch.pos
 		}
@@ -1377,9 +1396,60 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
 			}
 			// Native backends (arm64/x64) don't use Option/Result structs -
-			// functions return raw values (0 for none). Skip struct-based
-			// expansion and fall through to simple truthiness check.
+			// functions return raw values (0 for none). Use temp variable +
+			// truthiness check to avoid double-calling the function.
 			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+				if is_option || is_result {
+					temp_name := t.gen_temp_name()
+					temp_ident := ast.Ident{
+						name: temp_name
+						pos:  synth_pos
+					}
+					// 1. _tmp := call()
+					temp_assign := ast.AssignStmt{
+						op:  .decl_assign
+						lhs: [ast.Expr(temp_ident)]
+						rhs: [t.transform_expr(rhs)]
+						pos: synth_pos
+					}
+					// 2. Body: guard_var := _tmp; original_body
+					mut body_stmts := []ast.Stmt{}
+					mut is_blank := false
+					if guard.stmt.lhs.len == 1 {
+						lhs0 := guard.stmt.lhs[0]
+						if lhs0 is ast.Ident {
+							if lhs0.name == '_' {
+								is_blank = true
+							}
+						}
+					}
+					if !is_blank {
+						body_stmts << ast.AssignStmt{
+							op:  .decl_assign
+							lhs: guard.stmt.lhs
+							rhs: [ast.Expr(temp_ident)]
+							pos: guard.stmt.pos
+						}
+					}
+					for s in expr.stmts {
+						body_stmts << s
+					}
+					// 3. Condition: truthiness of _tmp (0 = none for native backends)
+					modified_if := ast.IfExpr{
+						cond:      temp_ident
+						stmts:     t.transform_stmts(body_stmts)
+						else_expr: t.transform_expr(expr.else_expr)
+						pos:       synth_pos
+					}
+					if orig_type := t.get_expr_type(ast.Expr(expr)) {
+						t.register_synth_type(synth_pos, orig_type)
+					}
+					return ast.UnsafeExpr{
+						stmts: [ast.Stmt(temp_assign), ast.ExprStmt{
+							expr: modified_if
+						}]
+					}
+				}
 				is_result = false
 				is_option = false
 			}

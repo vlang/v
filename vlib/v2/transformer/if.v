@@ -173,6 +173,104 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	// functions return raw values (0 for none). Skip struct-based
 	// expansion and fall through to simple truthiness check.
 	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		// For ?SumType returns: use _data field check instead of raw truthiness.
+		// Sumtypes are {_tag, _data} structs - the first variant has _tag=0,
+		// which would be indistinguishable from none (all zeros) when checking
+		// the first word. Check _data (the pointer field) instead.
+		if is_option || is_result {
+			mut base_type := t.get_expr_base_type(rhs)
+			if base_type == '' {
+				fn_name := t.get_call_fn_name(rhs)
+				if fn_name != '' {
+					base_type = t.get_fn_return_base_type(fn_name)
+				}
+			}
+			if base_type != '' && t.is_sum_type(base_type) {
+				temp_name := t.gen_temp_name()
+				temp_ident := ast.Ident{
+					name: temp_name
+					pos:  synth_pos
+				}
+				mut stmts := []ast.Stmt{}
+				// 1. _tmp := call()
+				stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(temp_ident)]
+					rhs: [t.transform_expr(rhs)]
+					pos: synth_pos
+				}
+				// 2. Condition: _tmp._data (second field of sumtype struct)
+				data_check := t.synth_selector(temp_ident, '_data', types.Type(types.voidptr_))
+				// 3. Build if body: guard_var := _tmp; original_body
+				mut if_stmts := []ast.Stmt{}
+				if_stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: guard.stmt.lhs
+					rhs: [ast.Expr(temp_ident)]
+					pos: guard.stmt.pos
+				}
+				for s in if_expr.stmts {
+					if_stmts << s
+				}
+				modified_if := ast.IfExpr{
+					cond:      data_check
+					stmts:     t.transform_stmts(if_stmts)
+					else_expr: t.transform_expr(if_expr.else_expr)
+					pos:       synth_pos
+				}
+				if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+					t.register_synth_type(synth_pos, orig_type)
+				}
+				stmts << ast.ExprStmt{
+					expr: modified_if
+				}
+				return stmts
+			} else {
+				// Non-sum-type option/result return (e.g., ?StructType).
+				// Use temp variable + simple truthiness check.
+				// Without this, the function call would be used as the condition
+				// AND called again inside the if-body, causing double evaluation
+				// and incorrect behavior for struct return types.
+				temp_name := t.gen_temp_name()
+				temp_ident := ast.Ident{
+					name: temp_name
+					pos:  synth_pos
+				}
+				mut stmts := []ast.Stmt{}
+				// 1. _tmp := call()
+				stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(temp_ident)]
+					rhs: [t.transform_expr(rhs)]
+					pos: synth_pos
+				}
+				// 2. Build if body: guard_var := _tmp; original_body
+				mut if_stmts := []ast.Stmt{}
+				if_stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: guard.stmt.lhs
+					rhs: [ast.Expr(temp_ident)]
+					pos: guard.stmt.pos
+				}
+				for s in if_expr.stmts {
+					if_stmts << s
+				}
+				// 3. Condition: truthiness of _tmp (0 = none for native backends)
+				modified_if := ast.IfExpr{
+					cond:      temp_ident
+					stmts:     t.transform_stmts(if_stmts)
+					else_expr: t.transform_expr(if_expr.else_expr)
+					pos:       synth_pos
+				}
+				if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+					t.register_synth_type(synth_pos, orig_type)
+				}
+				stmts << ast.ExprStmt{
+					expr: modified_if
+				}
+				return stmts
+			}
+		}
 		is_result = false
 		is_option = false
 	}
@@ -988,9 +1086,8 @@ fn (t &Transformer) eval_comptime_flag(name string) bool {
 			}
 			return false
 		}
-		// v2 generates native code
 		'native' {
-			return true
+			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
 		}
 		// Native backend cannot resolve C.stdout/C.stderr data symbols through GOT,
 		// so use C.write() instead of fwrite() for I/O operations.

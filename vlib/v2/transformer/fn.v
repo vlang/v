@@ -471,6 +471,25 @@ fn (mut t Transformer) is_void_call_expr(expr ast.Expr) bool {
 }
 
 fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
+	// Skip uninstantiated generic functions - their bodies were never type-checked
+	// and they will never be called, so emit an empty body.
+	if decl.typ.generic_params.len > 0 {
+		has_generic_types := decl.name in t.env.generic_types
+		if !has_generic_types {
+			return ast.FnDecl{
+				attributes: decl.attributes
+				is_public:  decl.is_public
+				is_method:  decl.is_method
+				is_static:  decl.is_static
+				receiver:   decl.receiver
+				language:   decl.language
+				name:       decl.name
+				typ:        decl.typ
+				stmts:      []
+				pos:        decl.pos
+			}
+		}
+	}
 	// Check for conditional compilation attributes (e.g., @[if verbose ?])
 	// Skip functions whose conditions evaluate to false, and mark them for call elision
 	for attr in decl.attributes {
@@ -730,20 +749,28 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		if t.has_active_smartcast() {
 			receiver_str := t.expr_to_string(sel.lhs)
 			if ctx := t.find_smartcast_for_expr(receiver_str) {
-				// Transform receiver with smart cast and keep the method call structure
-				casted_receiver := t.apply_smartcast_receiver_ctx(sel.lhs, ctx)
-				mut args := []ast.Expr{cap: expr.args.len}
-				for arg in expr.args {
-					args << t.transform_expr(arg)
-				}
-				return ast.CallExpr{
-					lhs:  ast.SelectorExpr{
-						lhs: casted_receiver
-						rhs: sel.rhs
-						pos: sel.pos
+				// Check if the method exists on the variant type. If not, the method
+				// is defined on the sum type and we should NOT apply the smartcast
+				// to the receiver. E.g. `for cur is types.Alias { cur.base_type() }`
+				// where base_type() is defined on types.Type (the sum type), not on Alias.
+				variant_has_method := t.env.lookup_method(ctx.variant, sel.rhs.name) != none
+					|| t.env.lookup_method(ctx.variant_full, sel.rhs.name) != none
+				if variant_has_method {
+					// Transform receiver with smart cast and keep the method call structure
+					casted_receiver := t.apply_smartcast_receiver_ctx(sel.lhs, ctx)
+					mut args := []ast.Expr{cap: expr.args.len}
+					for arg in expr.args {
+						args << t.transform_expr(arg)
 					}
-					args: args
-					pos:  expr.pos
+					return ast.CallExpr{
+						lhs:  ast.SelectorExpr{
+							lhs: casted_receiver
+							rhs: sel.rhs
+							pos: sel.pos
+						}
+						args: args
+						pos:  expr.pos
+					}
 				}
 			}
 		}
@@ -846,9 +873,14 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// This is important for smart cast propagation through method chains
 	// e.g., stmt.name.replace() when stmt is smartcast
 	call_args := t.lower_missing_call_args(expr.lhs, expr.args)
+	// Look up function parameter types for sumtype re-wrapping
+	fn_info := t.lookup_call_fn_info(expr.lhs)
 	mut args := []ast.Expr{cap: call_args.len}
-	for arg in call_args {
-		args << t.transform_expr(arg)
+	for i, arg in call_args {
+		// When an argument has an active smartcast but the function parameter
+		// expects the original sumtype, temporarily disable the smartcast so the
+		// original sumtype value is passed through without being unwrapped.
+		args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
 	}
 	args = t.lower_variadic_args(expr.lhs, args)
 	return ast.CallExpr{
@@ -1576,8 +1608,16 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		if t.has_active_smartcast() {
 			receiver_str := t.expr_to_string(sel.lhs)
 			if ctx := t.find_smartcast_for_expr(receiver_str) {
-				// Transform receiver with smart cast and keep the call semantics.
-				casted_receiver := t.apply_smartcast_receiver_ctx(sel.lhs, ctx)
+				// Check if the method exists on the variant type. If not, the method
+				// is defined on the sum type and we should NOT apply the smartcast
+				// to the receiver.
+				variant_has_method := t.env.lookup_method(ctx.variant, sel.rhs.name) != none
+					|| t.env.lookup_method(ctx.variant_full, sel.rhs.name) != none
+				casted_receiver := if variant_has_method {
+					t.apply_smartcast_receiver_ctx(sel.lhs, ctx)
+				} else {
+					t.transform_expr(sel.lhs)
+				}
 				mut args := []ast.Expr{cap: 1}
 				if expr.expr !is ast.EmptyExpr {
 					args << t.transform_expr(expr.expr)
@@ -1715,9 +1755,10 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				call_args << expr.expr
 			}
 			call_args = t.lower_missing_call_args(expr.lhs, call_args)
+			coce_fn_info := t.lookup_call_fn_info(expr.lhs)
 			mut args := []ast.Expr{cap: call_args.len}
-			for arg in call_args {
-				args << t.transform_expr(arg)
+			for i, arg in call_args {
+				args << t.transform_call_arg_with_sumtype_check(arg, coce_fn_info, i)
 			}
 			args = t.lower_variadic_args(expr.lhs, args)
 			return ast.CallExpr{
@@ -1765,6 +1806,38 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	transformed_lhs := t.transform_expr(expr.lhs)
 	transformed_arg := t.transform_expr(expr.expr)
 	return t.lower_call_or_cast_expr(transformed_lhs, transformed_arg, expr.pos)
+}
+
+// transform_call_arg_with_sumtype_check transforms a call argument, temporarily
+// disabling any active smartcast when the function parameter is a sumtype.
+// This prevents smartcast from unwrapping a sumtype value that should be passed as-is.
+fn (mut t Transformer) transform_call_arg_with_sumtype_check(arg ast.Expr, fn_info ?CallFnInfo, idx int) ast.Expr {
+	if info := fn_info {
+		if idx < info.param_types.len {
+			param_c_name := t.type_to_c_name(info.param_types[idx])
+			if param_c_name != '' && t.is_sum_type(param_c_name) {
+				arg_str := t.expr_to_string(arg)
+				if arg_str != '' {
+					if ctx := t.find_smartcast_for_expr(arg_str) {
+						// Only disable smartcast if parameter expects the SAME sumtype
+						// as the arg's original sumtype. This avoids incorrectly removing
+						// smartcasts when the parameter type is a DIFFERENT sumtype that
+						// happens to be the smartcast variant (e.g., ast.Expr smartcast
+						// to ast.Type, where ast.Type is itself a sumtype).
+						if ctx.sumtype == param_c_name {
+							if existing := t.remove_smartcast_for_expr(arg_str) {
+								result := t.transform_expr(arg)
+								t.push_smartcast_full(existing.expr, existing.variant,
+									existing.variant_full, existing.sumtype)
+								return result
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return t.transform_expr(arg)
 }
 
 // get_enum_type get enum type name from an expression
