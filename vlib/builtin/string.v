@@ -2891,7 +2891,8 @@ pub fn (s string) camel_to_snake() string {
 		c_is_upper := c.is_capital()
 		next_is_lower := i + 1 < s.len && s[i + 1].is_letter() && !s[i + 1].is_capital()
 		// Cases: `HTTPServer == http_server` || `getHTTPSUrl == get_https_url`
-		if c_is_upper && prev_is_upper && i >= 2 && s[i - 2].is_capital() && next_is_lower && c != `_` {
+		if c_is_upper && prev_is_upper && i >= 2 && s[i - 2].is_capital() && next_is_lower
+			&& c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`
