@@ -2843,9 +2843,9 @@ pub fn (s string) is_identifier() bool {
 // camel_to_snake convert string from camelCase to snake_case
 // Example: assert 'Abcd'.camel_to_snake() == 'abcd'
 // Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
-// Example: assert 'BBaa'.camel_to_snake() == 'b_baa'
-// Example: assert 'HTMLParser'.camel_to_snake() == 'html_parser'
-// Example: assert 'getHTTPSUrl'.camel_to_snake() == 'get_https_url'
+// Example: assert 'BBaa'.camel_to_snake() == 'bb_aa'
+// Example: assert 'HTTPServer'.camel_to_snake() == 'http_server'
+// Example: assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {
 	if s.len == 0 {
