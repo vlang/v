@@ -30,6 +30,9 @@ mut:
 	string_const_values map[string]string
 	// Label name -> SSA BlockID (for goto/label support)
 	label_blocks map[string]BlockID
+	// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
+	// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
+	mut_ptr_params map[string]bool
 }
 
 struct LoopInfo {
@@ -66,7 +69,19 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	b.mod.add_global('g_main_argc', i32_t, false)
 	b.mod.add_global('g_main_argv', ptr_ptr_t, false)
 
-	// Phase 1a: Register core builtin types first (string, array) since other structs depend on them
+	// Phase 1a: Register core builtin types first (string, array) since other structs depend on them.
+	// First, register builtin enums (e.g., ArrayFlags) so their types resolve correctly
+	// when registering struct fields for array/string.
+	for file in files {
+		b.cur_module = file_module_name(file)
+		if b.cur_module == 'builtin' {
+			for stmt in file.stmts {
+				if stmt is ast.EnumDecl {
+					b.register_enum(stmt)
+				}
+			}
+		}
+	}
 	for file in files {
 		b.cur_module = file_module_name(file)
 		if b.cur_module == 'builtin' {
@@ -79,10 +94,15 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 			}
 		}
 	}
-	// Phase 1b: Register all struct types and enums
+	// Phase 1b: Register all struct type names (forward declarations) and enums
 	for file in files {
 		b.cur_module = file_module_name(file)
-		b.register_types(file)
+		b.register_types_pass1(file)
+	}
+	// Phase 1c: Fill in struct field types (now all struct names are known)
+	for file in files {
+		b.cur_module = file_module_name(file)
+		b.register_types_pass2(file)
 	}
 	// Phase 2: Register consts and globals
 	for file in files {
@@ -144,6 +164,18 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			if t.name in b.struct_types {
 				return b.struct_types[t.name]
 			}
+			// Try module-qualified name: C structs are registered as "os__dirent"
+			// but the type checker stores them as just "dirent"
+			qualified := '${b.cur_module}__${t.name}'
+			if qualified in b.struct_types {
+				return b.struct_types[qualified]
+			}
+			// Try all known module prefixes for cross-module struct access
+			for sname, sid in b.struct_types {
+				if sname.ends_with('__${t.name}') {
+					return sid
+				}
+			}
 			return b.mod.type_store.get_int(64) // fallback
 		}
 		types.Enum {
@@ -171,6 +203,14 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			// Dynamic arrays are struct-like: {data*, len, cap, element_size}
 			return b.get_array_type()
 		}
+		types.ArrayFixed {
+			// Fixed-size arrays: [N]T → SSA array type
+			elem_type := b.type_to_ssa(t.elem_type)
+			if t.len > 0 && elem_type != 0 {
+				return b.mod.type_store.get_array(elem_type, t.len)
+			}
+			return b.mod.type_store.get_int(64) // fallback
+		}
 		types.Nil {
 			i8_t := b.mod.type_store.get_int(8)
 			return b.mod.type_store.get_ptr(i8_t)
@@ -190,7 +230,44 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			if t.name in b.struct_types {
 				return b.struct_types[t.name]
 			}
+			// Try module-qualified name
+			qualified_st := '${b.cur_module}__${t.name}'
+			if qualified_st in b.struct_types {
+				return b.struct_types[qualified_st]
+			}
+			// Search all known module prefixes
+			for sname, sid in b.struct_types {
+				if sname.ends_with('__${t.name}') {
+					return sid
+				}
+			}
 			return b.mod.type_store.get_int(64) // fallback
+		}
+		types.Map {
+			return b.struct_types['map'] or { b.mod.type_store.get_int(64) }
+		}
+		types.OptionType {
+			// Native backend: Option types are just the base type
+			base := b.type_to_ssa(t.base_type)
+			if base != 0 {
+				return base
+			}
+			return b.mod.type_store.get_int(64)
+		}
+		types.ResultType {
+			// Native backend: Result types are just the base type
+			base := b.type_to_ssa(t.base_type)
+			if base != 0 {
+				return base
+			}
+			return b.mod.type_store.get_int(64)
+		}
+		types.FnType {
+			i8_t := b.mod.type_store.get_int(8)
+			return b.mod.type_store.get_ptr(i8_t) // fn pointers
+		}
+		types.Interface {
+			return b.mod.type_store.get_int(64) // interfaces lowered to i64
 		}
 		else {
 			return b.mod.type_store.get_int(64) // fallback for unhandled
@@ -289,6 +366,13 @@ fn (mut b Builder) types_type_c_name(t types.Type) string {
 		types.Alias {
 			return b.types_type_c_name(t.base_type)
 		}
+		types.Array {
+			// []rune → Array_rune, []int → Array_int, etc.
+			return 'Array_${b.types_type_c_name(t.elem_type)}'
+		}
+		types.Rune {
+			return 'rune'
+		}
 		else {
 			return 'int'
 		}
@@ -297,11 +381,14 @@ fn (mut b Builder) types_type_c_name(t types.Type) string {
 
 // --- Phase 1: Register types ---
 
-fn (mut b Builder) register_types(file ast.File) {
+// Pass 1: Register struct names as forward declarations (empty structs),
+// enums, and sumtypes. This ensures all struct names are in struct_types
+// before any field types are resolved.
+fn (mut b Builder) register_types_pass1(file ast.File) {
 	for stmt in file.stmts {
 		match stmt {
 			ast.StructDecl {
-				b.register_struct(stmt)
+				b.register_struct_name(stmt)
 			}
 			ast.EnumDecl {
 				b.register_enum(stmt)
@@ -314,10 +401,19 @@ fn (mut b Builder) register_types(file ast.File) {
 	}
 }
 
-fn (mut b Builder) register_struct(decl ast.StructDecl) {
-	// For core builtin types (array, string, map, DenseArray), use short names
-	// to match the C preamble typedefs
-	name := if b.cur_module == 'builtin'
+// Pass 2: Fill in struct field types. All struct names are now registered,
+// so cross-module struct references (e.g., &scanner.Scanner in Parser)
+// resolve correctly to the struct type instead of falling back to i64.
+fn (mut b Builder) register_types_pass2(file ast.File) {
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl {
+			b.register_struct_fields(stmt)
+		}
+	}
+}
+
+fn (mut b Builder) struct_mangled_name(decl ast.StructDecl) string {
+	return if b.cur_module == 'builtin'
 		&& decl.name in ['array', 'string', 'map', 'DenseArray', 'IError', 'Error', 'MessageError', 'None__', '_option', '_result', 'Option'] {
 		decl.name
 	} else if b.cur_module != '' && b.cur_module != 'main' {
@@ -325,6 +421,54 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	} else {
 		decl.name
 	}
+}
+
+// register_struct_name registers a struct name with an empty struct type.
+// The fields will be filled in by register_struct_fields in pass 2.
+fn (mut b Builder) register_struct_name(decl ast.StructDecl) {
+	name := b.struct_mangled_name(decl)
+
+	if name in b.struct_types {
+		return
+	}
+
+	type_id := b.mod.type_store.register(Type{
+		kind: .struct_t
+	})
+	b.struct_types[name] = type_id
+	b.mod.c_struct_names[type_id] = name
+}
+
+// register_struct_fields fills in the field types for a previously forward-declared struct.
+fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
+	name := b.struct_mangled_name(decl)
+
+	type_id := b.struct_types[name] or { return }
+
+	// Skip if fields are already populated (e.g., builtin types registered in Phase 1a)
+	if b.mod.type_store.types[type_id].fields.len > 0 {
+		return
+	}
+
+	mut field_types := []TypeID{}
+	mut field_names := []string{}
+
+	for field in decl.fields {
+		ft := b.ast_type_to_ssa(field.typ)
+		field_types << ft
+		field_names << field.name
+	}
+
+	b.mod.type_store.types[type_id] = Type{
+		kind:        .struct_t
+		fields:      field_types
+		field_names: field_names
+	}
+}
+
+// register_struct is the legacy combined registration (used for Phase 1a core types).
+fn (mut b Builder) register_struct(decl ast.StructDecl) {
+	name := b.struct_mangled_name(decl)
 
 	if name in b.struct_types {
 		return
@@ -365,6 +509,18 @@ fn (mut b Builder) register_enum(decl ast.EnumDecl) {
 			b.enum_values[key] = i
 		}
 	}
+}
+
+// is_enum_type checks if a type name corresponds to a registered enum
+// by looking for any enum_values key that starts with the name followed by '__'.
+fn (b &Builder) is_enum_type(name string) bool {
+	prefix := '${name}__'
+	for key, _ in b.enum_values {
+		if key.starts_with(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut b Builder) register_sumtype(decl ast.TypeDecl) {
@@ -410,8 +566,20 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 					}
 					initial_value := b.try_eval_const_int(field.value)
 					b.mod.add_global_with_value(const_name, const_type, true, initial_value)
-					// Also store in const_values map for inline resolution
-					if initial_value != 0 || b.is_zero_literal(field.value) {
+					// Also store in const_values map for inline resolution.
+					// Skip sum type constants (e.g., empty_expr/empty_stmt) which are
+					// InitExpr{_tag: N, _data: ...} — these are multi-word values that
+					// cannot be inlined as a single i64. They must be loaded from globals.
+					mut is_sumtype_const := false
+					if field.value is ast.InitExpr {
+						for init_field in field.value.fields {
+							if init_field.name == '_tag' {
+								is_sumtype_const = true
+								break
+							}
+						}
+					}
+					if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal(field.value)) {
 						b.const_values[const_name] = initial_value
 						// Also store without module prefix for transformer-generated references
 						b.const_values[field.name] = initial_value
@@ -528,6 +696,15 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 		ast.ParenExpr {
 			return b.try_eval_const_int(expr.expr)
 		}
+		ast.InitExpr {
+			// Handle sum type init: InitExpr{_tag: N, _data: ...}
+			// Extract the _tag value so struct constants get correct tag in data section
+			for field in expr.fields {
+				if field.name == '_tag' {
+					return b.try_eval_const_int(field.value)
+				}
+			}
+		}
 		else {}
 	}
 	return 0
@@ -617,6 +794,10 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 				base := b.ast_type_to_ssa(typ.expr)
 				return b.mod.type_store.get_ptr(base)
 			}
+			if typ.op == .ellipsis {
+				// Variadic params (...T) are lowered to []T (dynamic array)
+				return b.get_array_type()
+			}
 			return b.mod.type_store.get_int(64)
 		}
 		ast.ModifierExpr {
@@ -624,7 +805,50 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 			return b.ast_type_to_ssa(typ.expr)
 		}
 		ast.SelectorExpr {
-			// module.Type
+			// module.Type — e.g., C.dirent, os.Stat
+			if typ.lhs is ast.Ident {
+				mod_name := typ.lhs.name
+				full_name := '${mod_name}.${typ.rhs.name}'
+				// Try C.StructName → look up as module__C.StructName
+				qualified := '${b.cur_module}__${full_name}'
+				if qualified in b.struct_types {
+					return b.struct_types[qualified]
+				}
+				// Also try just the full name (e.g., C.dirent)
+				if full_name in b.struct_types {
+					return b.struct_types[full_name]
+				}
+				// Try module__StructName (for module.Type references like os.Stat)
+				mod_qualified := '${mod_name}__${typ.rhs.name}'
+				if mod_qualified in b.struct_types {
+					return b.struct_types[mod_qualified]
+				}
+				// For C.X types: C structs are registered under their declaring module
+				// (e.g., C.dirent in os module → "os__dirent")
+				// Try cur_module__StructName
+				if mod_name == 'C' {
+					cur_qualified := '${b.cur_module}__${typ.rhs.name}'
+					if cur_qualified in b.struct_types {
+						return b.struct_types[cur_qualified]
+					}
+					// Search all modules for this C struct
+					for sname, sid in b.struct_types {
+						if sname.ends_with('__${typ.rhs.name}') {
+							return sid
+						}
+					}
+				}
+				// Try looking up in the referenced module's scope via type environment
+				// (e.g., token.Token where Token is an enum, not a struct)
+				if b.env != unsafe { nil } {
+					mod_name_v := mod_name.replace('.', '_')
+					if scope := b.env.get_scope(mod_name_v) {
+						if obj := scope.lookup_parent(typ.rhs.name, 0) {
+							return b.type_to_ssa(obj.typ())
+						}
+					}
+				}
+			}
 			return b.ident_type_to_ssa(typ.rhs.name)
 		}
 		ast.EmptyExpr {
@@ -647,6 +871,19 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 	match typ {
 		ast.ArrayType {
 			return b.get_array_type()
+		}
+		ast.ArrayFixedType {
+			// [N]T → SSA array type with N elements of T
+			elem_type := b.ast_type_to_ssa(typ.elem_type)
+			arr_len := if typ.len is ast.BasicLiteral {
+				typ.len.value.int()
+			} else {
+				0
+			}
+			if arr_len > 0 {
+				return b.mod.type_store.get_array(elem_type, arr_len)
+			}
+			return b.mod.type_store.get_int(64) // fallback
 		}
 		ast.MapType {
 			return b.struct_types['map'] or { b.mod.type_store.get_int(64) }
@@ -746,9 +983,18 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 			// Check struct types
 			if name in b.struct_types {
 				b.struct_types[name]
-			} else if name == 'Builder' || name == 'strings__Builder' {
-				// Builder = []u8 = array (type alias)
+			} else if name == 'strings__Builder' {
+				// strings.Builder = []u8 = array (type alias)
 				b.get_array_type()
+			} else if name == 'Builder' {
+				// Builder could be strings.Builder alias or an actual struct
+				// Try module-qualified first, fall back to array alias
+				qualified_b := '${b.cur_module}__Builder'
+				if qualified_b in b.struct_types {
+					b.struct_types[qualified_b]
+				} else {
+					b.get_array_type()
+				}
 			} else if name.starts_with('Array_') {
 				// Transformer-generated Array_T types (e.g., Array_int, Array_string) are all array structs
 				b.get_array_type()
@@ -760,6 +1006,9 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 				qualified := '${b.cur_module}__${name}'
 				if qualified in b.struct_types {
 					b.struct_types[qualified]
+				} else if b.is_enum_type(name) || b.is_enum_type(qualified) {
+					// Enum types are always int (i32) in V
+					b.mod.type_store.get_int(32)
 				} else if b.env != unsafe { nil } {
 					// Use the type checker environment to resolve aliases and other types
 					if scope := b.env.get_scope(b.cur_module) {
@@ -807,7 +1056,8 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 
 	// Register parameter types for correct forward declarations.
 	// For methods, add receiver as the first parameter.
-	if decl.is_method {
+	// Skip for static methods (is_static=true) — they have no receiver in the call.
+	if decl.is_method && !decl.is_static {
 		recv_type := b.ast_type_to_ssa(decl.receiver.typ)
 		// For &Type (PrefixExpr), ast_type_to_ssa already returns ptr(Type).
 		// For mut receivers, the parser sets is_mut on the Parameter (not ModifierExpr),
@@ -872,6 +1122,25 @@ fn (mut b Builder) receiver_type_name(typ ast.Expr) string {
 		ast.SelectorExpr {
 			return '${typ.lhs.name()}__${typ.rhs.name}'
 		}
+		ast.Type {
+			// Handle type expressions used as receivers (e.g., []rune for (ra []rune) string())
+			inner := ast.Type(typ)
+			if inner is ast.ArrayType {
+				// []rune → Array_rune, []int → Array_int, etc.
+				elem_name := if inner.elem_type is ast.Ident {
+					inner.elem_type.name
+				} else {
+					b.receiver_type_name(inner.elem_type)
+				}
+				prefix := if b.cur_module != '' && b.cur_module != 'main' {
+					'${b.cur_module}__'
+				} else {
+					''
+				}
+				return '${prefix}Array_${elem_name}'
+			}
+			return 'unknown'
+		}
 		else {
 			return 'unknown'
 		}
@@ -906,12 +1175,9 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 		return
 	}
 
-	// Skip functions without a body (e.g., extern declarations) or modules with complex code
-	// that the SSA builder can't fully handle yet.
-	// Build function bodies for main, builtin, and supporting modules used by builtin stubs.
-	if decl.stmts.len == 0 || (b.cur_module != 'main' && b.cur_module != 'builtin'
-		&& b.cur_module != 'strings' && b.cur_module != 'strconv' && b.cur_module != 'hash'
-		&& b.cur_module != 'bits') {
+	// Skip functions without a body (e.g., extern declarations).
+	// Build function bodies for ALL modules so cross-module calls work at runtime.
+	if decl.stmts.len == 0 {
 		// Emit a minimal function body (entry + ret) so backends have a valid function
 		b.cur_func = func_idx
 		entry := b.mod.add_block(func_idx, 'entry')
@@ -939,6 +1205,8 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 
 	// Reset local variables
 	b.vars = map[string]ValueID{}
+	b.mut_ptr_params = map[string]bool{}
+	b.label_blocks = map[string]BlockID{}
 
 	// Clear params (they were registered in register_fn_sig for forward decls,
 	// but we need to re-create them here with proper alloca bindings)
@@ -949,7 +1217,8 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	b.cur_block = entry
 
 	// Add parameters
-	if decl.is_method {
+	// Skip receiver for static methods (is_static=true) — no receiver in call
+	if decl.is_method && !decl.is_static {
 		// Receiver is the first parameter
 		receiver_name := if decl.receiver.name != '' {
 			decl.receiver.name
@@ -988,6 +1257,12 @@ fn (mut b Builder) build_fn(decl ast.FnDecl) {
 			[]ValueID{})
 		b.mod.add_instr(.store, entry, 0, [param_val, alloca])
 		b.vars[param.name] = alloca
+		// Track mut pointer params that need extra dereference in build_ident.
+		// e.g., mut buf &u8 → actual_type is ptr(ptr(i8)), but user sees buf as &u8.
+		if param.is_mut && param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t {
+			b.mut_ptr_params[param.name] = true
+		}
 	}
 
 	// Build body
@@ -1138,6 +1413,10 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 						ptr = p
 					} else if glob_id := b.find_global(ident.name) {
 						ptr = glob_id
+					} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
+						ptr = glob_id
+					} else if glob_id := b.find_global('builtin__${ident.name}') {
+						ptr = glob_id
 					}
 					if ptr != 0 {
 						b.mod.add_instr(.store, b.cur_block, 0, [elem_val, ptr])
@@ -1172,6 +1451,10 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				if p := b.vars[ident.name] {
 					ptr = p
 				} else if glob_id := b.find_global(ident.name) {
+					ptr = glob_id
+				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
+					ptr = glob_id
+				} else if glob_id := b.find_global('builtin__${ident.name}') {
 					ptr = glob_id
 				}
 				if ptr != 0 {
@@ -1776,16 +2059,40 @@ fn (mut b Builder) convert_to_string(val ValueID, typ TypeID) ValueID {
 }
 
 fn (mut b Builder) build_ident(ident ast.Ident) ValueID {
+	// Handle 'nil' identifier (generated by transformer from `unsafe { nil }`)
+	if ident.name == 'nil' {
+		i8_t := b.mod.type_store.get_int(8)
+		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		return b.mod.get_or_add_const(ptr_t, '0')
+	}
 	if ident.name in b.vars {
 		ptr := b.vars[ident.name]
 		ptr_typ := b.mod.values[ptr].typ
 		elem_typ := b.mod.type_store.types[ptr_typ].elem_type
-		return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+		val := b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+		// For mut pointer params (e.g., mut buf &u8), the alloca stores ptr(ptr(T)).
+		// One load gives ptr(ptr(T)), but user sees buf as ptr(T).
+		// Add extra dereference to get the actual pointer value.
+		if ident.name in b.mut_ptr_params {
+			inner_typ := b.mod.type_store.types[elem_typ].elem_type
+			if inner_typ != 0 {
+				return b.mod.add_instr(.load, b.cur_block, inner_typ, [val])
+			}
+		}
+		return val
 	}
 	// Could be a constant, enum value, or function reference
 	if ident.name in b.enum_values {
 		val := b.enum_values[ident.name]
 		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), val.str())
+	}
+	// Try enum value with module prefix (e.g., Token__key_fn → token__Token__key_fn)
+	{
+		enum_qualified := '${b.cur_module}__${ident.name}'
+		if enum_qualified in b.enum_values {
+			val := b.enum_values[enum_qualified]
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), val.str())
+		}
 	}
 	// Try as function reference
 	if ident.name in b.fn_index {
@@ -1994,6 +2301,61 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			}
 		}
 	}
+	// Same for &CallOrCastExpr (parser uses CallOrCastExpr when it cannot distinguish
+	// between a function call and a type cast, e.g. u8(expr))
+	if expr.op == .amp && expr.expr is ast.CallOrCastExpr {
+		coce := expr.expr as ast.CallOrCastExpr
+		inner_val := b.build_expr(coce.expr)
+		inner_type := b.mod.values[inner_val].typ
+		if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+			inner_t := b.mod.type_store.types[inner_type]
+			if inner_t.kind == .ptr_t {
+				target_elem := b.ast_type_to_ssa(coce.lhs)
+				ptr_type := b.mod.type_store.get_ptr(target_elem)
+				return b.mod.add_instr(.bitcast, b.cur_block, ptr_type, [inner_val])
+			}
+		}
+	}
+	// Handle &&T(expr) — nested ampersand pointer-type cast pattern.
+	// Parser creates PrefixExpr(.amp, PrefixExpr(.amp, CallOrCastExpr/CastExpr(T, expr)))
+	// for &&T(expr), meaning "cast expr to type **T", not "address-of address-of cast".
+	if expr.op == .amp && expr.expr is ast.PrefixExpr {
+		inner_prefix := expr.expr as ast.PrefixExpr
+		if inner_prefix.op == .amp {
+			if inner_prefix.expr is ast.CallOrCastExpr {
+				coce := inner_prefix.expr as ast.CallOrCastExpr
+				inner_val := b.build_expr(coce.expr)
+				inner_type := b.mod.values[inner_val].typ
+				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+					inner_t := b.mod.type_store.types[inner_type]
+					if inner_t.kind == .ptr_t {
+						// &&T(ptr): cast to **T = ptr(ptr(T))
+						target_elem := b.ast_type_to_ssa(coce.lhs)
+						ptr_type := b.mod.type_store.get_ptr(target_elem)
+						ptr_ptr_type := b.mod.type_store.get_ptr(ptr_type)
+						return b.mod.add_instr(.bitcast, b.cur_block, ptr_ptr_type, [
+							inner_val,
+						])
+					}
+				}
+			} else if inner_prefix.expr is ast.CastExpr {
+				cast_expr := inner_prefix.expr as ast.CastExpr
+				inner_val := b.build_expr(cast_expr.expr)
+				inner_type := b.mod.values[inner_val].typ
+				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+					inner_t := b.mod.type_store.types[inner_type]
+					if inner_t.kind == .ptr_t {
+						target_elem := b.ast_type_to_ssa(cast_expr.typ)
+						ptr_type := b.mod.type_store.get_ptr(target_elem)
+						ptr_ptr_type := b.mod.type_store.get_ptr(ptr_type)
+						return b.mod.add_instr(.bitcast, b.cur_block, ptr_ptr_type, [
+							inner_val,
+						])
+					}
+				}
+			}
+		}
+	}
 
 	val := b.build_expr(expr.expr)
 
@@ -2018,10 +2380,20 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 				return addr
 			}
 			// No addressable location (e.g. function call return value) –
-			// spill the value into a stack alloca so we can take its address.
+			// For struct types, use heap allocation so the pointer survives
+			// the current scope (needed for sum type boxing where _data
+			// must outlive the wrapping function).
+			// For scalars, use stack alloca (they're typically short-lived).
 			val_type := b.mod.values[val].typ
 			if val_type != 0 {
 				ptr_type := b.mod.type_store.get_ptr(val_type)
+				typ_info := b.mod.type_store.types[val_type]
+				if typ_info.kind == .struct_t {
+					// Heap-allocate struct values to ensure pointer validity
+					heap_ptr := b.mod.add_instr(.heap_alloc, b.cur_block, ptr_type, []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [val, heap_ptr])
+					return heap_ptr
+				}
 				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
 				b.mod.add_instr(.store, b.cur_block, 0, [val, alloca])
 				return alloca
@@ -2142,7 +2514,30 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 				// Mut receiver: pass address (pointer to struct)
 				addr := b.build_addr(sel.lhs)
 				if addr != 0 {
-					addr
+					// build_addr for an Ident returns the alloca.
+					// For a mut receiver variable, the alloca is ptr(ptr(Struct)),
+					// storing the struct pointer. We need to load from the alloca
+					// to get the actual struct pointer ptr(Struct).
+					addr_typ := b.mod.values[addr].typ
+					if addr_typ < b.mod.type_store.types.len
+						&& b.mod.type_store.types[addr_typ].kind == .ptr_t {
+						inner := b.mod.type_store.types[addr_typ].elem_type
+						if inner < b.mod.type_store.types.len
+							&& b.mod.type_store.types[inner].kind == .ptr_t {
+							pointee := b.mod.type_store.types[inner].elem_type
+							if pointee < b.mod.type_store.types.len
+								&& b.mod.type_store.types[pointee].kind == .struct_t {
+								// addr is ptr(ptr(Struct)) — load to get ptr(Struct)
+								b.mod.add_instr(.load, b.cur_block, inner, [addr])
+							} else {
+								addr
+							}
+						} else {
+							addr
+						}
+					} else {
+						addr
+					}
 				} else {
 					b.build_expr(sel.lhs)
 				}
@@ -2179,7 +2574,14 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 			if addr != 0 {
 				args << addr
 			} else {
-				args << b.build_expr(arg)
+				// Can't take address directly (e.g., `mut &buffer[0]`).
+				// Evaluate the expression, store in a temp alloca, pass alloca address.
+				val := b.build_expr(arg.expr)
+				val_type := b.mod.values[val].typ
+				alloca_type := b.mod.type_store.get_ptr(val_type)
+				tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type, []ValueID{})
+				b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+				args << tmp_alloca
 			}
 		} else {
 			// Use args.len as param index (accounts for receiver already in args)
@@ -2233,9 +2635,17 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 				arg_kind := b.mod.type_store.types[arg_type].kind
 				param_kind := b.mod.type_store.types[param_type].kind
 				// Pointer arg but value param: auto-deref
-				if arg_kind == .ptr_t && param_kind != .ptr_t {
+				// Only auto-deref when the pointee is a struct and the
+				// parameter expects that struct value. Do NOT deref raw
+				// pointers (ptr(i8)/voidptr) when the param is a plain
+				// int type (e.g., i64 from variadic params).
+				if arg_kind == .ptr_t && param_kind == .struct_t {
 					pointee := b.mod.type_store.types[arg_type].elem_type
-					args[ai] = b.mod.add_instr(.load, b.cur_block, pointee, [args[ai]])
+					if pointee == param_type {
+						args[ai] = b.mod.add_instr(.load, b.cur_block, pointee, [
+							args[ai],
+						])
+					}
 				}
 				// Value arg but pointer param: auto-ref (alloca + store + pass pointer)
 				if arg_kind == .struct_t && param_kind == .ptr_t {
@@ -2246,6 +2656,16 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 				}
 			}
 		}
+	}
+
+	// Check if fn_name is a local variable holding a function pointer
+	// (e.g., `cfn(s)` where cfn is a parameter of type `fn(string) string`)
+	if fn_name in b.vars {
+		fn_ptr := b.build_ident(ast.Ident{ name: fn_name })
+		mut indirect_operands := []ValueID{cap: args.len + 1}
+		indirect_operands << fn_ptr
+		indirect_operands << args
+		return b.mod.add_instr(.call_indirect, b.cur_block, ret_type, indirect_operands)
 	}
 
 	fn_ref := b.get_or_create_fn_ref(fn_name, ret_type)
@@ -2273,14 +2693,15 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 	match expr.lhs {
 		ast.Ident {
 			name := expr.lhs.name
-			// Check if it's a known function
-			if name in b.fn_index {
-				return name
-			}
-			// Try module-qualified
+			// Try module-qualified FIRST to avoid shadowing by C functions.
+			// E.g., os.getenv() should resolve to os__getenv, not C.getenv.
 			qualified := '${b.cur_module}__${name}'
 			if qualified in b.fn_index {
 				return qualified
+			}
+			// Check if it's a known function
+			if name in b.fn_index {
+				return name
 			}
 			// Try builtin-qualified (transformer remaps builtin__X to X)
 			builtin_qualified := 'builtin__${name}'
@@ -2403,6 +2824,18 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 			if method_name in b.fn_index {
 				return method_name
 			}
+			// Try with builtin__ prefix (e.g., Array_rune__string → builtin__Array_rune__string)
+			builtin_method := 'builtin__${method_name}'
+			if builtin_method in b.fn_index {
+				return builtin_method
+			}
+			// Try with current module prefix
+			if b.cur_module != '' && b.cur_module != 'main' {
+				mod_method := '${b.cur_module}__${method_name}'
+				if mod_method in b.fn_index {
+					return mod_method
+				}
+			}
 			// Try searching all functions for one matching __method_name
 			suffix := '__${sel.rhs.name}'
 			for fname, _ in b.fn_index {
@@ -2438,11 +2871,30 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 	if expr.lhs is ast.EmptyExpr || (expr.lhs is ast.Ident && expr.lhs.name == '') {
 		// Enum shorthand — try to look up a resolved name
 		field_name := expr.rhs.name
-		// Try common enum patterns
+		// Collect all matching enum values (not just the first)
+		suffix := '__${field_name}'
+		mut match_keys := []string{}
+		mut match_vals := []int{}
 		for key, val in b.enum_values {
-			if key.ends_with('__${field_name}') {
-				return b.mod.get_or_add_const(b.mod.type_store.get_int(32), val.str())
+			if key.ends_with(suffix) {
+				match_keys << key
+				match_vals << val
 			}
+		}
+		if match_keys.len == 1 {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), match_vals[0].str())
+		}
+		if match_keys.len > 1 {
+			// Disambiguate: prefer enum from current module
+			if b.cur_module != '' {
+				for i, mk in match_keys {
+					if mk.starts_with('${b.cur_module}__') {
+						return b.mod.get_or_add_const(b.mod.type_store.get_int(32), match_vals[i].str())
+					}
+				}
+			}
+			// Fallback: use the first match
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), match_vals[0].str())
 		}
 		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
 	}
@@ -2460,13 +2912,78 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		}
 	}
 
-	// C global variable access: C.stdout, C.stderr, C._wyp, etc.
+	// C constant/global access: C.SEEK_END, C.stdout, C.stderr, etc.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'C' {
 		c_name := expr.rhs.name
-		// Emit as a global reference — the C gen will use the bare name
+		// Well-known C preprocessor constants — emit inline integer values
+		// since the native backend cannot resolve C macros.
+		c_const_val := match c_name {
+			'SEEK_SET' { '0' }
+			'SEEK_CUR' { '1' }
+			'SEEK_END' { '2' }
+			'EOF' { '-1' }
+			'NULL' { '0' }
+			'O_RDONLY' { '0' }
+			'O_WRONLY' { '1' }
+			'O_RDWR' { '2' }
+			'O_CREAT' { '512' }
+			'O_TRUNC' { '1024' }
+			'O_EXCL' { '2048' }
+			'O_APPEND' { '8' }
+			'S_IRUSR' { '256' }
+			'S_IWUSR' { '128' }
+			'S_IXUSR' { '64' }
+			'S_IREAD' { '256' }
+			'S_IWRITE' { '128' }
+			'S_IEXEC' { '64' }
+			'PROT_READ' { '1' }
+			'PROT_WRITE' { '2' }
+			'SIGTERM' { '15' }
+			'SIGKILL' { '9' }
+			'SIGINT' { '2' }
+			'STDIN_FILENO' { '0' }
+			'STDOUT_FILENO' { '1' }
+			'STDERR_FILENO' { '2' }
+			'DT_DIR' { '4' }
+			'DT_REG' { '8' }
+			'DT_LNK' { '10' }
+			'DT_UNKNOWN' { '0' }
+			'ENOENT' { '2' }
+			'EXIT_SUCCESS' { '0' }
+			'EXIT_FAILURE' { '1' }
+			else { '' }
+		}
+		if c_const_val.len > 0 {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), c_const_val)
+		}
+		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)
 		return b.mod.add_value_node(.global, ptr_t, c_name, 0)
+	}
+
+	// Module-qualified constant/global access: os.args, pref.Backend, etc.
+	// When LHS is a module name, resolve module__field as a constant or global.
+	if expr.lhs is ast.Ident {
+		mod_name := expr.lhs.name.replace('.', '_')
+		qualified := '${mod_name}__${expr.rhs.name}'
+		// Try as compile-time constant
+		if qualified in b.const_values {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), b.const_values[qualified].str())
+		}
+		// Try as string constant
+		if qualified in b.string_const_values {
+			return b.build_string_literal(ast.StringLiteral{
+				kind:  .v
+				value: b.string_const_values[qualified]
+			})
+		}
+		// Try as global variable (runtime-initialized constants like os.args)
+		if glob_id := b.find_global(qualified) {
+			glob_typ := b.mod.values[glob_id].typ
+			elem_typ := b.mod.type_store.types[glob_typ].elem_type
+			return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
+		}
 	}
 
 	// Use extractvalue for struct field access
@@ -2633,6 +3150,23 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 		return b.mod.add_instr(.load, b.cur_block, result_type, [elem_addr])
 	}
 
+	// Check if base is a string struct — index into .str (field 0) data pointer
+	str_type := b.get_string_type()
+	if str_type != 0 && base_type_id == str_type {
+		// Extract .str field (field 0) — pointer to u8 data
+		i8_t := b.mod.type_store.get_int(8)
+		u8_ptr := b.mod.type_store.get_ptr(i8_t)
+		data_ptr := b.mod.add_instr(.extractvalue, b.cur_block, u8_ptr, [base,
+			b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')])
+		// GEP to the byte at index (scale = 1 for u8)
+		elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block, u8_ptr, [
+			data_ptr,
+			index,
+		])
+		// Load the byte
+		return b.mod.add_instr(.load, b.cur_block, i8_t, [elem_addr])
+	}
+
 	// Check if base is a pointer (e.g., from alloca for fixed-size array literal)
 	// For ptr(T), element type is T — use that instead of expr_type fallback
 	if base_type_id < b.mod.type_store.types.len {
@@ -2674,6 +3208,33 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 					str_type := b.get_string_type()
 					if str_type != 0 {
 						result_type = str_type
+					}
+				} else if last.expr is ast.Ident {
+					// Look up the identifier's SSA type from variables or function return types.
+					// This handles transformer-generated patterns like:
+					//   _t := fn_returning_struct()
+					//   src := if _t { _t } else { fallback }
+					// where _t has a struct type (e.g., string) but the IfExpr has no type annotation.
+					ident_name := (last.expr as ast.Ident).name
+					if alloca_id := b.vars[ident_name] {
+						alloca_val := b.mod.values[alloca_id]
+						if alloca_val.typ > 0 && alloca_val.typ < b.mod.type_store.types.len {
+							alloca_typ := b.mod.type_store.types[alloca_val.typ]
+							if alloca_typ.kind == .ptr_t && alloca_typ.elem_type > 0
+								&& alloca_typ.elem_type < b.mod.type_store.types.len {
+								elem := b.mod.type_store.types[alloca_typ.elem_type]
+								if elem.kind == .struct_t {
+									result_type = alloca_typ.elem_type
+								}
+							}
+						}
+					}
+				} else {
+					// Try to infer type from the expression using expr_type.
+					// This handles CallExpr, SelectorExpr, etc. that may return struct types.
+					inferred := b.expr_type(last.expr)
+					if inferred != i64_t && inferred != 0 {
+						result_type = inferred
 					}
 				}
 			}
@@ -2788,7 +3349,40 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 		return alloca
 	}
 
-	// Empty array or dynamic array with len/cap - these should have been
+	// Check if this is a fixed-size array type (e.g., [5]u8{}).
+	// These need stack allocation via alloca, not a dynamic array struct.
+	if expr.typ is ast.Type {
+		if expr.typ is ast.ArrayFixedType {
+			fixed_typ := expr.typ as ast.ArrayFixedType
+			elem_type := b.ast_type_to_ssa(fixed_typ.elem_type)
+			arr_len := if fixed_typ.len is ast.BasicLiteral {
+				fixed_typ.len.value.int()
+			} else {
+				0
+			}
+			if arr_len > 0 {
+				arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
+				ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
+				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+				// Zero-initialize each element
+				zero := b.mod.get_or_add_const(elem_type, '0')
+				elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+				i32_t := b.mod.type_store.get_int(32)
+				for i in 0 .. arr_len {
+					idx := b.mod.get_or_add_const(i32_t, i.str())
+					gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type,
+						[
+						alloca,
+						idx,
+					])
+					b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
+				}
+				return alloca
+			}
+		}
+	}
+
+	// Empty dynamic array with len/cap - these should have been
 	// transformed to __new_array_with_default_noscan calls by the transformer.
 	// Return zero-initialized array struct as fallback.
 	arr_type := b.get_array_type()
@@ -2853,18 +3447,33 @@ fn (mut b Builder) build_init_expr(expr ast.InitExpr) ValueID {
 		}
 	}
 
+	// Diagnostic: check sum type init for zero _data
+	if typ_info.field_names.len == 2 && typ_info.field_names[0] == '_tag'
+		&& typ_info.field_names[1] == '_data' && field_vals.len >= 2 {
+		tag_v := b.mod.values[field_vals[0]]
+		data_v := b.mod.values[field_vals[1]]
+		if tag_v.kind == .constant && tag_v.name != '0' && data_v.kind == .constant
+			&& data_v.name == '0' {
+			eprintln('DIAG SSA: sum type struct_init with _tag=${tag_v.name} but _data=0! fn=${b.cur_func}')
+			for fi2, field2 in expr.fields {
+				eprintln('  field[${fi2}]: name="${field2.name}" value_tag=${field2.value.type_name()}')
+			}
+		}
+	}
+
 	return b.mod.add_instr(.struct_init, b.cur_block, struct_type, field_vals)
 }
 
 // build_init_expr_ptr: like build_init_expr but returns the pointer (for &Point{...}).
-// This is the "address taken" case — forces lowering to memory.
+// This is the "heap allocation" case — allocates on heap via malloc.
 fn (mut b Builder) build_init_expr_ptr(expr ast.InitExpr) ValueID {
 	struct_val := b.build_init_expr(expr)
 	val_type := b.mod.values[struct_val].typ
 	ptr_type := b.mod.type_store.get_ptr(val_type)
-	alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-	b.mod.add_instr(.store, b.cur_block, 0, [struct_val, alloca])
-	return alloca
+	// Heap-allocate: emit heap_alloc which the backend lowers to malloc+zero
+	heap_ptr := b.mod.add_instr(.heap_alloc, b.cur_block, ptr_type, []ValueID{})
+	b.mod.add_instr(.store, b.cur_block, 0, [struct_val, heap_ptr])
+	return heap_ptr
 }
 
 fn (mut b Builder) build_cast(expr ast.CastExpr) ValueID {
@@ -3062,6 +3671,7 @@ fn (b &Builder) type_byte_size(tid TypeID) int {
 		}
 		.struct_t {
 			mut size := 0
+			mut max_align := 1
 			for field in typ.fields {
 				fs := b.type_byte_size(field)
 				// Align to field size (simplified alignment)
@@ -3074,11 +3684,21 @@ fn (b &Builder) type_byte_size(tid TypeID) int {
 				} else {
 					1
 				}
+				if align > max_align {
+					max_align = align
+				}
 				rem := size % align
 				if rem != 0 {
 					size += align - rem
 				}
 				size += fs
+			}
+			// Add tail padding: align struct size to its largest field alignment
+			if max_align > 1 {
+				rem := size % max_align
+				if rem != 0 {
+					size += max_align - rem
+				}
 			}
 			return size
 		}
@@ -3138,7 +3758,17 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 	match expr {
 		ast.Ident {
 			if expr.name in b.vars {
-				return b.vars[expr.name]
+				ptr := b.vars[expr.name]
+				// For mut pointer params (e.g., mut buf &u8), the alloca stores ptr(ptr(T)).
+				// When used as a mut arg to another function (build_addr call),
+				// return the loaded value (ptr(ptr(T))) instead of the alloca (ptr(ptr(ptr(T)))).
+				// This forwards the same indirection level instead of adding another layer.
+				if expr.name in b.mut_ptr_params {
+					ptr_typ := b.mod.values[ptr].typ
+					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
+					return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+				}
+				return ptr
 			}
 			if glob_id := b.find_global(expr.name) {
 				return glob_id
@@ -3173,6 +3803,29 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 				[base, idx_val])
 		}
 		ast.IndexExpr {
+			// Try address-based access first for fixed-size arrays and struct fields.
+			// This avoids loading large values (e.g., [256]char in C.dirent.d_name)
+			// and instead computes pointer + GEP.
+			base_addr := b.build_addr(expr.lhs)
+			if base_addr != 0 {
+				addr_typ_id := b.mod.values[base_addr].typ
+				if addr_typ_id < b.mod.type_store.types.len {
+					addr_typ := b.mod.type_store.types[addr_typ_id]
+					if addr_typ.kind == .ptr_t {
+						pointee := addr_typ.elem_type
+						if pointee < b.mod.type_store.types.len {
+							pointee_typ := b.mod.type_store.types[pointee]
+							// For pointer to fixed-size array: GEP into the array elements
+							if pointee_typ.kind == .array_t && pointee_typ.elem_type != 0 {
+								index := b.build_expr(expr.expr)
+								elem_ptr_type := b.mod.type_store.get_ptr(pointee_typ.elem_type)
+								return b.mod.add_instr(.get_element_ptr, b.cur_block,
+									elem_ptr_type, [base_addr, index])
+							}
+						}
+					}
+				}
+			}
 			base := b.build_expr(expr.lhs)
 			index := b.build_expr(expr.expr)
 			mut result_type := b.expr_type(ast.Expr(expr))

@@ -58,7 +58,28 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
 	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
 	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
-	'_getenv', '_strlen']
+	'_getenv', '_strlen',
+	// Filesystem/directory operations '_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir',
+	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
+	'_symlink', '_link',
+	// Process/system '_getpid', '_getuid', '_geteuid', '_fork', '_execve', '_execvp', '_waitpid',
+	'_kill', '_system', '_posix_spawn', '_signal', '_atexit',
+	// I/O '_fgets', '_fputs', '_fread', '_fseek', '_ftell', '_rewind', '_fileno', '_popen',
+	'_pclose', '_dup', '_dup2', '_pipe', '_isatty', '_freopen', '_dprintf', '_getc',
+	// String/memory '_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strerror',
+	'_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort',
+	// Time '_time', '_localtime_r', '_gmtime_r', '_mktime', '_gettimeofday',
+	'_clock_gettime_nsec_np', '_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep',
+	'_usleep', '_strftime',
+	// Other '_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
+	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
+	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_arc4random_buf',
+	'_proc_pidpath', '_backtrace', '_backtrace_symbols_fd',
+	// macOS specific '_dispatch_semaphore_create', '_dispatch_semaphore_signal',
+	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf',
+	'_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs',
+	'_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue',
+	'_abs']
 
 pub struct Linker {
 	macho &MachOObject
@@ -109,12 +130,12 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	mut t := time.now()
 	mut t_total := time.now()
 
-	// First pass: collect all defined symbols (except force_external_syms)
+	// First pass: collect all defined symbols (except external ones)
 	mut defined_syms := map[string]bool{}
 	for sym in l.macho.symbols {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
-			// Don't track force_external symbols as defined - they should come from libc
+			// Don't track external symbols as defined - they should come from libc
 			if sym.name !in force_external_syms {
 				defined_syms[sym.name] = true
 			}
@@ -122,7 +143,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	}
 
 	// Second pass: collect truly external symbols.
-	// Only force_external_syms (libc functions) should go through GOT/stubs.
+	// force_external_syms should go through GOT/stubs.
 	// All other undefined symbols are internal V functions or V-embedded C functions
 	// (like wyhash) that resolve to local stubs.
 	for sym in l.macho.symbols {
@@ -382,8 +403,10 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 }
 
 fn (l Linker) codesign_output(output_path string) {
-	// Skip external codesign — our built-in ad-hoc signature is sufficient
-	// and codesign -s - -f can rewrite the binary layout, breaking stub→GOT references
+	// Re-sign with system codesign to ensure valid signature for large binaries.
+	// Our built-in ad-hoc signature works for small binaries but has issues with
+	// large (30MB+) executables that cause dyld to hang.
+	os.execute('codesign -s - -f ${output_path}')
 }
 
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
@@ -882,11 +905,11 @@ fn (mut l Linker) write_text_with_relocations() {
 	// Map symbol names to their defined addresses (for resolving undefined references)
 	mut sym_name_to_addr := map[string]u64{}
 
-	// First pass: collect all defined symbol addresses (except force_external_syms)
+	// First pass: collect all defined symbol addresses (except external syms)
 	for i, sym in l.macho.symbols {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
-			// Skip force_external symbols - they should always resolve to libc
+			// Skip external symbols - they should always resolve to libc
 			is_external := sym.name in force_external_syms
 			if sym.sect == 1 {
 				// Text section symbol (code)
@@ -936,7 +959,7 @@ fn (mut l Linker) write_text_with_relocations() {
 		sym_name := l.macho.symbols[r.sym_idx].name
 		mut sym_addr := sym_addrs[r.sym_idx]
 		if sym_name in force_external_syms {
-			// Use stub address for force_external symbols
+			// Use stub address for external symbols
 			if sym_name in l.sym_to_got {
 				got_idx := l.sym_to_got[sym_name]
 				sym_addr = stubs_vmaddr + u64(got_idx * 12)

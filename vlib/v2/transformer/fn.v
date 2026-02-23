@@ -545,9 +545,24 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	}
 
 	// Set current function return type for sum type wrapping in returns
+	// and enum shorthand resolution
 	old_fn_ret_type_name := t.cur_fn_ret_type_name
 	if decl.typ.return_type is ast.Ident {
-		t.cur_fn_ret_type_name = decl.typ.return_type.name
+		ret_name := decl.typ.return_type.name
+		// Qualify with module prefix for enum shorthand resolution
+		// (e.g., Token → token__Token so resolve_enum_shorthand produces token__Token__member)
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& !ret_name.contains('__') {
+			t.cur_fn_ret_type_name = '${t.cur_module}__${ret_name}'
+		} else {
+			t.cur_fn_ret_type_name = ret_name
+		}
+	} else if decl.typ.return_type is ast.SelectorExpr {
+		// Handle module-qualified return types like token.Token
+		sel := decl.typ.return_type as ast.SelectorExpr
+		if sel.lhs is ast.Ident {
+			t.cur_fn_ret_type_name = '${sel.lhs.name}__${sel.rhs.name}'
+		}
 	} else {
 		t.cur_fn_ret_type_name = t.extract_return_sumtype_name(decl.typ.return_type)
 	}
@@ -1100,6 +1115,13 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	// Verify method exists via env.lookup_method
 	for name in lookup_names {
 		if t.env.lookup_method(name, method_name) != none {
+			// For array types: if the method is NOT on generic 'array' but on
+			// a typed array (e.g., []rune.string()), use the specific C type name
+			// (e.g., Array_rune) instead of generic 'array'.
+			if c_prefix == 'array' && t.env.lookup_method('array', method_name) == none {
+				specific_name := t.type_to_c_name(base_type)
+				return '${specific_name}__${method_name}'
+			}
 			return '${c_prefix}__${method_name}'
 		}
 	}

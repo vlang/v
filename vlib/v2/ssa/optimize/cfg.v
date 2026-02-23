@@ -32,35 +32,43 @@ pub fn build_cfg(mut m ssa.Module) {
 
 			match term.op {
 				.br {
-					s1 := m.get_block_from_val(term.operands[1])
-					s2 := m.get_block_from_val(term.operands[2])
-					if !seen_succs[s1] {
-						seen_succs[s1] = true
-						m.blocks[blk_id].succs << s1
-					}
-					if !seen_succs[s2] {
-						seen_succs[s2] = true
-						m.blocks[blk_id].succs << s2
+					if term.operands.len >= 3 {
+						s1 := m.get_block_from_val(term.operands[1])
+						s2 := m.get_block_from_val(term.operands[2])
+						if s1 >= 0 && s1 < m.blocks.len && !seen_succs[s1] {
+							seen_succs[s1] = true
+							m.blocks[blk_id].succs << s1
+						}
+						if s2 >= 0 && s2 < m.blocks.len && !seen_succs[s2] {
+							seen_succs[s2] = true
+							m.blocks[blk_id].succs << s2
+						}
 					}
 				}
 				.jmp {
-					s := m.get_block_from_val(term.operands[0])
-					seen_succs[s] = true
-					m.blocks[blk_id].succs << s
+					if term.operands.len >= 1 {
+						s := m.get_block_from_val(term.operands[0])
+						if s >= 0 && s < m.blocks.len {
+							seen_succs[s] = true
+							m.blocks[blk_id].succs << s
+						}
+					}
 				}
 				.switch_ {
-					// default
-					s := m.get_block_from_val(term.operands[1])
-					if !seen_succs[s] {
-						seen_succs[s] = true
-						m.blocks[blk_id].succs << s
-					}
-					// cases
-					for i := 3; i < term.operands.len; i += 2 {
-						cs := m.get_block_from_val(term.operands[i])
-						if !seen_succs[cs] {
-							seen_succs[cs] = true
-							m.blocks[blk_id].succs << cs
+					if term.operands.len >= 2 {
+						// default
+						s := m.get_block_from_val(term.operands[1])
+						if s >= 0 && s < m.blocks.len && !seen_succs[s] {
+							seen_succs[s] = true
+							m.blocks[blk_id].succs << s
+						}
+						// cases
+						for i := 3; i < term.operands.len; i += 2 {
+							cs := m.get_block_from_val(term.operands[i])
+							if cs >= 0 && cs < m.blocks.len && !seen_succs[cs] {
+								seen_succs[cs] = true
+								m.blocks[blk_id].succs << cs
+							}
 						}
 					}
 				}
@@ -69,6 +77,9 @@ pub fn build_cfg(mut m ssa.Module) {
 
 			// Build predecessors - use seen_preds to check if already added
 			for s in m.blocks[blk_id].succs {
+				if s < 0 || s >= m.blocks.len {
+					continue
+				}
 				// Reset seen_preds for each successor check
 				seen_preds.clear()
 				for p in m.blocks[s].preds {

@@ -262,8 +262,8 @@ fn (g &Gen) is_stub_function(func ssa.Function) bool {
 		if instr.op == .ret {
 			continue
 		}
-		if instr.op == .alloca || instr.op == .load {
-			// alloca+load for struct return stubs
+		if instr.op in [.alloca, .heap_alloc, .load] {
+			// alloca/heap_alloc+load for struct return stubs
 			continue
 		}
 		real_instrs++
@@ -352,6 +352,15 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						declared_vars[val.id] = true
 					}
 				}
+				.heap_alloc {
+					// Heap-allocate: declare as pointer and call calloc
+					elem_type := g.mod.type_store.types[instr.typ].elem_type
+					if elem_type != 0 {
+						g.write_indent()
+						g.sb.writeln('${g.type_name(elem_type)}* ${val.name} = (${g.type_name(elem_type)}*)calloc(1, sizeof(${g.type_name(elem_type)}));')
+						declared_vars[val.id] = true
+					}
+				}
 				.store {
 					if instr.operands.len >= 2 {
 						src := instr.operands[0]
@@ -360,8 +369,13 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 						src_val := g.mod.values[src]
 						g.write_indent()
 						if dst_val.kind == .global || (dst_val.kind == .instruction
-							&& g.mod.instrs[dst_val.index].op == .alloca) {
-							g.sb.write_string('${sanitize_c_ident(dst_val.name)} = ')
+							&& g.mod.instrs[dst_val.index].op in [.alloca, .heap_alloc]) {
+							if dst_val.kind == .instruction
+								&& g.mod.instrs[dst_val.index].op == .heap_alloc {
+								g.sb.write_string('*${sanitize_c_ident(dst_val.name)} = ')
+							} else {
+								g.sb.write_string('${sanitize_c_ident(dst_val.name)} = ')
+							}
 							// If src is an alloca and dst's elem type is a pointer,
 							// we need & (e.g., storing &Point{} alloca into a Point* variable)
 							if src_val.kind == .instruction

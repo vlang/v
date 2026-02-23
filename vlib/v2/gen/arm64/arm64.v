@@ -100,9 +100,19 @@ pub fn (mut g Gen) gen() {
 					g.macho.data_data << bytes
 				}
 				else {
-					// Non-scalar constants are emitted as zero-initialized storage for now.
-					for _ in 0 .. size {
-						g.macho.data_data << 0
+					// For struct constants (e.g., sum types), emit initial_value as first 8 bytes
+					// (the tag for sum types), then zeros for the rest.
+					if gvar.initial_value != 0 && size >= 8 {
+						mut bytes := []u8{len: 8}
+						binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+						g.macho.data_data << bytes
+						for _ in 0 .. size - 8 {
+							g.macho.data_data << 0
+						}
+					} else {
+						for _ in 0 .. size {
+							g.macho.data_data << 0
+						}
 					}
 				}
 			}
@@ -980,6 +990,29 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.emit_add_fp_imm(8, data_off)
 			g.store_reg_to_val(8, val_id)
 		}
+		.heap_alloc {
+			// Heap-allocate memory for a struct type.
+			// Result type is ptr(T), compute sizeof(T) and call calloc(1, size).
+			mut alloc_size := 8
+			ha_val := g.mod.values[val_id]
+			if ha_val.typ > 0 && ha_val.typ < g.mod.type_store.types.len {
+				ptr_typ := g.mod.type_store.types[ha_val.typ]
+				if ptr_typ.kind == .ptr_t && ptr_typ.elem_type > 0 {
+					alloc_size = g.type_size(ptr_typ.elem_type)
+					if alloc_size <= 0 {
+						alloc_size = 8
+					}
+				}
+			}
+			// calloc(1, size) → x0 = 1, x1 = size
+			g.emit_mov_imm(0, 1)
+			g.emit_mov_imm(1, u64(alloc_size))
+			sym_idx := g.macho.add_undefined('_calloc')
+			g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_branch26, true)
+			g.emit(asm_bl_reloc())
+			// calloc returns heap pointer in x0
+			g.store_reg_to_val(0, val_id)
+		}
 		.get_element_ptr {
 			// GEP: Base + scaled index (or struct field offset for aggregate pointers)
 			base_reg := g.get_operand_reg(instr.operands[0], 8)
@@ -1448,6 +1481,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 					// Small struct (≤ 16 bytes) - return in registers x0, x1
 					actual_struct_typ := if is_indirect_struct_return { fn_ret_typ } else { ret_typ }
 
+					// Ensure string literals are materialized on the stack
+					// before we try to load their fields into return registers.
+					if ret_val.kind == .string_literal {
+						g.load_val_to_reg(9, ret_val_id)
+					}
+
 					if is_indirect_struct_return {
 						// Return value is a pointer to struct - load each field via the pointer
 						g.load_val_to_reg(8, ret_val_id)
@@ -1636,6 +1675,24 @@ fn (mut g Gen) gen_instr(val_id int) {
 			dest_id := instr.operands[0]
 			src_id := instr.operands[1]
 			mut handled_aggregate_copy := false
+			// Diagnostic: check if assign involves multi-word dest
+			if dest_id > 0 && dest_id < g.mod.values.len {
+				diag_dt := g.mod.values[dest_id].typ
+				if diag_dt > 0 && diag_dt < g.mod.type_store.types.len {
+					diag_dsz := g.type_size(diag_dt)
+					if diag_dsz > 8 {
+						src_kind_str := if src_id > 0 && src_id < g.mod.values.len {
+							'kind=${g.mod.values[src_id].kind} typ_kind=${g.mod.type_store.types[g.mod.values[src_id].typ].kind} name="${g.mod.values[src_id].name}"'
+						} else {
+							'invalid_src'
+						}
+						dest_kind_str := 'kind=${g.mod.values[dest_id].kind} typ_kind=${g.mod.type_store.types[diag_dt].kind} name="${g.mod.values[dest_id].name}"'
+						has_src_stack := src_id in g.stack_map
+						has_dest_stack := dest_id in g.stack_map
+						eprintln('DIAG ASSIGN multi: dest[${dest_id}]={${dest_kind_str} sz=${diag_dsz} stk=${has_dest_stack}} src[${src_id}]={${src_kind_str} stk=${has_src_stack}} fn=${g.cur_func_name}')
+					}
+				}
+			}
 			if dest_id > 0 && dest_id < g.mod.values.len {
 				dest_typ_id := g.mod.values[dest_id].typ
 				if dest_typ_id > 0 && dest_typ_id < g.mod.type_store.types.len {
@@ -1685,9 +1742,24 @@ fn (mut g Gen) gen_instr(val_id int) {
 								}
 							}
 							if can_copy {
-								for i in 0 .. num_chunks {
+								// Determine how many chunks the source actually has
+								mut src_chunks := num_chunks
+								if src_id > 0 && src_id < g.mod.values.len {
+									src_sz := g.type_size(g.mod.values[src_id].typ)
+									if src_sz > 0 && src_sz < dest_size {
+										src_chunks = (src_sz + 7) / 8
+									}
+								}
+								for i in 0 .. src_chunks {
 									g.emit(asm_ldr_imm(Reg(10), Reg(src_ptr_reg), u32(i)))
 									g.emit_str_reg_offset(10, 29, dest_off + i * 8)
+								}
+								// Zero-fill remaining chunks if source is smaller
+								if src_chunks < num_chunks {
+									g.emit_mov_reg(10, 31) // xzr
+									for i in src_chunks .. num_chunks {
+										g.emit_str_reg_offset(10, 29, dest_off + i * 8)
+									}
 								}
 								handled_aggregate_copy = true
 							}
@@ -1697,6 +1769,38 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			if handled_aggregate_copy {
 				return
+			}
+			// For multi-word struct destinations with constant sources (undef/0),
+			// zero-fill all chunks instead of storing a single register.
+			if dest_id > 0 && dest_id < g.mod.values.len {
+				d_typ_id := g.mod.values[dest_id].typ
+				if d_typ_id > 0 && d_typ_id < g.mod.type_store.types.len {
+					d_sz := g.type_size(d_typ_id)
+					if d_sz > 8 {
+						is_const_src := src_id > 0 && src_id < g.mod.values.len
+							&& g.mod.values[src_id].kind == .constant
+						if is_const_src {
+							if d_off := g.stack_map[dest_id] {
+								num_chunks := (d_sz + 7) / 8
+								g.emit_mov_reg(10, 31) // xzr
+								for ci in 0 .. num_chunks {
+									g.emit_str_reg_offset(10, 29, d_off + ci * 8)
+								}
+								return
+							}
+						}
+					}
+				}
+			}
+			// Check if this single-reg fallback is for a multi-word dest
+			if dest_id > 0 && dest_id < g.mod.values.len {
+				fb_dt := g.mod.values[dest_id].typ
+				if fb_dt > 0 && fb_dt < g.mod.type_store.types.len {
+					fb_dsz := g.type_size(fb_dt)
+					if fb_dsz > 8 {
+						eprintln('WARN ASSIGN single-reg fallback for multi-word dest! dest_sz=${fb_dsz} fn=${g.cur_func_name}')
+					}
+				}
 			}
 			g.load_val_to_reg(8, src_id)
 			g.store_reg_to_val(8, dest_id)
@@ -1758,6 +1862,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 						}
 					}
 				}
+			} else {
+				// typ out of range — use default field_byte_off and field_elem_size
 			}
 
 			// If the tuple source is a string_literal (e.g. after mem2reg
@@ -1877,6 +1983,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 			struct_size := g.type_size(instr.typ)
 			num_chunks := if struct_size > 0 { (struct_size + 7) / 8 } else { 1 }
 
+			// Diagnostic: check sum type struct_init for zero _data
+			if struct_typ.field_names.len == 2 && struct_typ.field_names[0] == '_tag'
+				&& struct_typ.field_names[1] == '_data' && instr.operands.len >= 2 {
+				tag_id := instr.operands[0]
+				data_id := instr.operands[1]
+				tag_val := g.mod.values[tag_id]
+				data_val := g.mod.values[data_id]
+				if tag_val.kind == .constant && tag_val.name != '0' && data_val.kind == .constant
+					&& data_val.name == '0' {
+					eprintln('DIAG: struct_init sum type with _tag=${tag_val.name} but _data=0 (const zero)! fn=${g.cur_func_name} val_id=${val_id} data_id=${data_id}')
+				}
+			}
+
 			// Zero-initialize the entire struct first
 			g.emit_mov_reg(9, 31) // xzr
 			for i in 0 .. num_chunks {
@@ -1934,7 +2053,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit_str_reg_offset(10, 29, result_offset + field_off + w * 8)
 						}
 					} else {
-						// Fallback: store first word
+						// Fallback: store first word only
+						in_reg := field_id in g.reg_map
+						eprintln('WARN: struct_init multi-word field fallback: field_id=${field_id} field_size=${field_size} field_chunks=${field_chunks} in_reg=${in_reg} val_kind=${field_val.kind} val_name="${field_val.name}" fn=${g.cur_func_name}')
 						g.load_val_to_reg(8, field_id)
 						g.emit_str_reg_offset(8, 29, result_offset + field_off)
 					}
@@ -3073,7 +3194,7 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 			}
 
 			instr := g.mod.instrs[val.index]
-			if instr.op in [.call, .call_indirect, .call_sret] {
+			if instr.op in [.call, .call_indirect, .call_sret, .heap_alloc] {
 				call_indices << instr_idx
 			}
 

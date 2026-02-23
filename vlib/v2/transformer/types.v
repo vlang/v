@@ -1244,8 +1244,23 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 
 	// Create the sum type initialization with _data._variant field name
 	// This generates: (SumType){._tag = N, ._data._variant = (void*)...}
-	// Use short variant name for the C field (e.g., "InfixExpr" not "ast__InfixExpr")
-	short_variant := if variant_name.contains('__') {
+	// Convert variant name to C field name matching the union declaration:
+	// - "ast__InfixExpr" → "InfixExpr" (strip module prefix)
+	// - "[]ast__Attribute" → "Array_ast__Attribute" (array variant)
+	// - "map[K]V" → "Map_K_V" (map variant)
+	short_variant := if variant_name.starts_with('[]') {
+		'Array_${variant_name[2..]}'
+	} else if variant_name.starts_with('map[') {
+		// map[K]V → Map_K_V
+		inner := variant_name[4..] // after 'map['
+		if bracket_idx := inner.index(']') {
+			key := inner[..bracket_idx]
+			val := inner[bracket_idx + 1..]
+			'Map_${key}_${val}'
+		} else {
+			variant_name
+		}
+	} else if variant_name.contains('__') {
 		variant_name.all_after_last('__')
 	} else {
 		variant_name

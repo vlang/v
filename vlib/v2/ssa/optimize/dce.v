@@ -106,7 +106,7 @@ fn find_dead_stores(m ssa.Module, func ssa.Function) map[int]bool {
 			}
 			instr := m.instrs[val.index]
 
-			if instr.op == .alloca {
+			if instr.op == .alloca || instr.op == .heap_alloc {
 				allocas[val_id] = true
 			}
 		}

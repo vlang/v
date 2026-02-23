@@ -40,6 +40,7 @@ pub enum OpCode {
 
 	// Memory
 	alloca
+	heap_alloc // Heap allocate memory for a type (malloc+zero): returns ptr
 	load
 	store
 	get_element_ptr

@@ -216,10 +216,9 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			// IfGuardExpr should only appear as IfExpr condition, handled by transform_if_expr.
 			// If it somehow reaches here standalone, just evaluate the RHS.
 			if expr.stmt.rhs.len > 0 {
-				t.transform_expr(expr.stmt.rhs[0])
-			} else {
-				expr
+				return t.transform_expr(expr.stmt.rhs[0])
 			}
+			expr
 		}
 		ast.GenericArgs {
 			// Disambiguate `x[y]` parsed as GenericArgs: if lhs is not callable and there

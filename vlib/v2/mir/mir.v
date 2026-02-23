@@ -62,11 +62,12 @@ pub mut:
 
 pub struct Function {
 pub:
-	id        int
-	name      string
-	typ       ssa.TypeID
-	linkage   ssa.Linkage
-	call_conv ssa.CallConv
+	id          int
+	name        string
+	typ         ssa.TypeID
+	linkage     ssa.Linkage
+	call_conv   ssa.CallConv
+	is_c_extern bool // C-language extern function (provided by libc/system libraries)
 pub mut:
 	blocks           []ssa.BlockID
 	params           []ssa.ValueID
@@ -159,6 +160,7 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			typ:              f.typ
 			linkage:          f.linkage
 			call_conv:        f.call_conv
+			is_c_extern:      f.is_c_extern
 			blocks:           clone_block_ids(f.blocks)
 			params:           clone_value_ids(f.params)
 			abi_ret_indirect: false

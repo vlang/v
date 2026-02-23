@@ -41,6 +41,37 @@ fn compute_dominators(mut m ssa.Module) {
 			continue
 		}
 
+		// Validate that all block IDs and their successor/predecessor
+		// references are within bounds.
+		mut valid := true
+		for blk_id in func.blocks {
+			if blk_id < 0 || blk_id >= max_id {
+				valid = false
+				break
+			}
+			for s in m.blocks[blk_id].succs {
+				if s < 0 || s >= max_id {
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				break
+			}
+			for p in m.blocks[blk_id].preds {
+				if p < 0 || p >= max_id {
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				break
+			}
+		}
+		if !valid {
+			continue
+		}
+
 		// Reset context for this function (only reset what's needed)
 		ctx.n = 0
 		for blk_id in func.blocks {
@@ -60,34 +91,60 @@ fn compute_dominators(mut m ssa.Module) {
 
 		// Process in reverse DFS order (skip root)
 		for i := ctx.n; i >= 2; i-- {
+			if i >= ctx.vertex.len {
+				continue
+			}
 			w := ctx.vertex[i]
+			if w < 0 || w >= m.blocks.len {
+				continue
+			}
 
 			// 1. Calculate Semidominator
 			for p in m.blocks[w].preds {
 				// Only process reachable predecessors
-				if ctx.dfnum[p] == 0 {
+				if p < 0 || p >= ctx.dfnum.len || ctx.dfnum[p] == 0 {
 					continue
 				}
 
 				u := ctx.eval(p)
-				if ctx.dfnum[ctx.semi[u]] < ctx.dfnum[ctx.semi[w]] {
+				if u < 0 || u >= ctx.semi.len {
+					continue
+				}
+				semi_u := ctx.semi[u]
+				semi_w := ctx.semi[w]
+				if semi_u < 0 || semi_u >= ctx.dfnum.len || semi_w < 0 || semi_w >= ctx.dfnum.len {
+					continue
+				}
+				if ctx.dfnum[semi_u] < ctx.dfnum[semi_w] {
 					ctx.semi[w] = ctx.semi[u]
 				}
 			}
 
 			// Add w to bucket of its semidominator
-			ctx.bucket[ctx.semi[w]] << w
+			semi_w2 := ctx.semi[w]
+			if semi_w2 >= 0 && semi_w2 < ctx.bucket.len {
+				ctx.bucket[semi_w2] << w
+			}
 
 			// Link to parent in forest
 			ctx.link(ctx.parent[w], w)
 
 			// 2. Implicitly compute IDom
 			parent_w := ctx.parent[w]
+			if parent_w < 0 || parent_w >= ctx.bucket.len {
+				continue
+			}
 			// Drain bucket of parent
 			// Note: We copy to iterate because we might clear/modify?
 			// Standard algo drains bucket[parent_w] now.
 			for v in ctx.bucket[parent_w] {
+				if v < 0 || v >= m.blocks.len {
+					continue
+				}
 				u := ctx.eval(v)
+				if u < 0 || u >= ctx.semi.len || v >= ctx.semi.len {
+					continue
+				}
 				if ctx.semi[u] == ctx.semi[v] {
 					m.blocks[v].idom = parent_w
 				} else {
@@ -99,9 +156,33 @@ fn compute_dominators(mut m ssa.Module) {
 
 		// 3. Explicitly compute IDom
 		for i := 2; i <= ctx.n; i++ {
+			if i >= ctx.vertex.len {
+				continue
+			}
 			w := ctx.vertex[i]
-			if m.blocks[w].idom != ctx.vertex[ctx.dfnum[ctx.semi[w]]] {
-				m.blocks[w].idom = m.blocks[m.blocks[w].idom].idom
+			if w < 0 || w >= m.blocks.len {
+				continue
+			}
+			semi_w := ctx.semi[w]
+			if semi_w < 0 || semi_w >= ctx.dfnum.len {
+				continue
+			}
+			dfnum_semi_w := ctx.dfnum[semi_w]
+			if dfnum_semi_w < 0 || dfnum_semi_w >= ctx.vertex.len {
+				continue
+			}
+			target := ctx.vertex[dfnum_semi_w]
+			if target < 0 {
+				continue
+			}
+			if m.blocks[w].idom != target {
+				idom_w := m.blocks[w].idom
+				if idom_w >= 0 && idom_w < m.blocks.len {
+					next_idom := m.blocks[idom_w].idom
+					if next_idom >= 0 {
+						m.blocks[w].idom = next_idom
+					}
+				}
 			}
 		}
 
@@ -121,11 +202,23 @@ fn compute_dominators(mut m ssa.Module) {
 }
 
 fn lt_dfs(mut m ssa.Module, v int, mut ctx LTContext) {
+	if v < 0 || v >= ctx.dfnum.len {
+		return
+	}
 	ctx.n++
+	if ctx.n >= ctx.vertex.len {
+		return
+	}
 	ctx.dfnum[v] = ctx.n
 	ctx.vertex[ctx.n] = v
 
+	if v >= m.blocks.len {
+		return
+	}
 	for w in m.blocks[v].succs {
+		if w < 0 || w >= ctx.dfnum.len {
+			continue
+		}
 		if ctx.dfnum[w] == 0 {
 			ctx.parent[w] = v
 			lt_dfs(mut m, w, mut ctx)
@@ -134,29 +227,71 @@ fn lt_dfs(mut m ssa.Module, v int, mut ctx LTContext) {
 }
 
 fn (mut ctx LTContext) compress(v int) {
-	if ctx.ancestor[ctx.ancestor[v]] != -1 {
-		ctx.compress(ctx.ancestor[v])
+	if v < 0 || v >= ctx.ancestor.len {
+		return
+	}
+	av := ctx.ancestor[v]
+	if av < 0 || av >= ctx.ancestor.len {
+		return
+	}
+	if ctx.ancestor[av] != -1 {
+		ctx.compress(av)
 
 		// Update label based on ancestor
-		if ctx.dfnum[ctx.semi[ctx.label[ctx.ancestor[v]]]] < ctx.dfnum[ctx.semi[ctx.label[v]]] {
-			ctx.label[v] = ctx.label[ctx.ancestor[v]]
+		new_av := ctx.ancestor[v]
+		if new_av < 0 || new_av >= ctx.label.len || v >= ctx.label.len {
+			return
 		}
-		ctx.ancestor[v] = ctx.ancestor[ctx.ancestor[v]]
+		label_av := ctx.label[new_av]
+		label_v := ctx.label[v]
+		if label_av < 0 || label_av >= ctx.semi.len || label_v < 0 || label_v >= ctx.semi.len {
+			return
+		}
+		semi_label_av := ctx.semi[label_av]
+		semi_label_v := ctx.semi[label_v]
+		if semi_label_av < 0 || semi_label_av >= ctx.dfnum.len || semi_label_v < 0
+			|| semi_label_v >= ctx.dfnum.len {
+			return
+		}
+		if ctx.dfnum[semi_label_av] < ctx.dfnum[semi_label_v] {
+			ctx.label[v] = ctx.label[new_av]
+		}
+		aav := ctx.ancestor[new_av]
+		if aav >= 0 {
+			ctx.ancestor[v] = aav
+		}
 	}
 }
 
 fn (mut ctx LTContext) eval(v int) int {
+	if v < 0 || v >= ctx.ancestor.len {
+		return if v >= 0 && v < ctx.label.len { ctx.label[v] } else { 0 }
+	}
 	if ctx.ancestor[v] == -1 {
 		return ctx.label[v]
 	}
 	ctx.compress(v)
-	// If label[ancestor[v]] is better than label[v], use it?
-	// The path compression updates label[v] to be the best in the path.
-	// However, standard EVAL checks:
-	if ctx.dfnum[ctx.semi[ctx.label[ctx.ancestor[v]]]] >= ctx.dfnum[ctx.semi[ctx.label[v]]] {
-		return ctx.label[v]
+	av := ctx.ancestor[v]
+	if av < 0 || av >= ctx.label.len {
+		return if v < ctx.label.len { ctx.label[v] } else { 0 }
 	}
-	return ctx.label[ctx.ancestor[v]]
+	if v >= ctx.label.len {
+		return 0
+	}
+	label_av := ctx.label[av]
+	label_v := ctx.label[v]
+	if label_av < 0 || label_av >= ctx.semi.len || label_v < 0 || label_v >= ctx.semi.len {
+		return label_v
+	}
+	semi_lav := ctx.semi[label_av]
+	semi_lv := ctx.semi[label_v]
+	if semi_lav < 0 || semi_lav >= ctx.dfnum.len || semi_lv < 0 || semi_lv >= ctx.dfnum.len {
+		return label_v
+	}
+	if ctx.dfnum[semi_lav] >= ctx.dfnum[semi_lv] {
+		return label_v
+	}
+	return label_av
 }
 
 fn (mut ctx LTContext) link(v int, w int) {

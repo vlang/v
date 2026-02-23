@@ -1290,6 +1290,30 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 					break
 				}
 			}
+			// If direct matching failed, try qualifying inner_type with the sum type's module prefix
+			// (e.g. 'Array_Attribute' → 'Array_ast__Attribute' when sum type is 'ast__Stmt')
+			if tag < 0 && type_name.contains('__') {
+				mod_prefix := type_name.all_before_last('__') + '__'
+				// Qualify the type: Array_X → Array_mod__X, or just X → mod__X
+				qualified := if inner_type.starts_with('Array_') && !inner_type[6..].contains('__') {
+					'Array_${mod_prefix}${inner_type[6..]}'
+				} else if inner_type.starts_with('Map_') && !inner_type[4..].contains('__') {
+					'Map_${mod_prefix}${inner_type[4..]}'
+				} else if !inner_type.contains('__') {
+					'${mod_prefix}${inner_type}'
+				} else {
+					''
+				}
+				if qualified != '' {
+					for i, v in variants {
+						if v == qualified {
+							tag = i
+							field_name = v
+							break
+						}
+					}
+				}
+			}
 			// If direct matching failed, check if inner_type is a known sum type
 			// that appears as a variant of the target sum type (e.g. ast__Type -> ast__Expr._Type)
 			if tag < 0 && inner_type in g.sum_type_variants {

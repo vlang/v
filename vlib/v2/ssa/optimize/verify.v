@@ -275,13 +275,13 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 		.store {
 			errors << verify_store(m, func_id, blk_id, val_id, instr)
 		}
-		.alloca {
-			// alloca result should be a pointer type
+		.alloca, .heap_alloc {
+			// alloca/heap_alloc result should be a pointer type
 			if instr.typ > 0 && instr.typ < m.type_store.types.len {
 				typ := m.type_store.types[instr.typ]
 				if typ.kind != .ptr_t {
 					errors << VerifyError{
-						msg:      'alloca result type should be pointer, got ${typ.kind}'
+						msg:      '${instr.op} result type should be pointer, got ${typ.kind}'
 						func_id:  func_id
 						block_id: blk_id
 						val_id:   val_id
