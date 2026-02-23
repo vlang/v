@@ -187,3 +187,35 @@ fn test_load_store_i32_concurrent() {
 
 	assert x == 4 * 50_000
 }
+
+fn test_and_i32_concurrent() {
+	mut x := i32(0x7fffffff)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &i32) {
+			for _ in 0 .. 100_000 {
+				and_i32(px, 0x0fffffff)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == 0x0fffffff
+}
+
+fn test_or_i32_concurrent() {
+	mut x := i32(0)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &i32) {
+			for _ in 0 .. 100_000 {
+				or_i32(px, 0x12345678)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == 0x12345678
+}

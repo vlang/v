@@ -522,3 +522,251 @@ pub fn cas_u64(addr &u64, old u64, new u64) bool {
 	}
 	return swapped
 }
+
+// and_i64 atomically performs a bitwise AND of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 8-byte aligned.
+pub fn and_i64(addr &i64, mask i64) i64 {
+	mut old := i64(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 7
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov rax, [rdx]
+		mov rcx, rax
+		and rcx, mask
+		lock cmpxchg [rdx], rcx
+		jnz '3b'
+		mov old, rax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  rax
+		  rcx
+		  memory
+	}
+	return old
+}
+
+// and_u64 atomically performs a bitwise AND of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 8-byte aligned.
+pub fn and_u64(addr &u64, mask u64) u64 {
+	mut old := u64(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 7
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov rax, [rdx]
+		mov rcx, rax
+		and rcx, mask
+		lock cmpxchg [rdx], rcx
+		jnz '3b'
+		mov old, rax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  rax
+		  rcx
+		  memory
+	}
+	return old
+}
+
+// or_i64 atomically performs a bitwise OR of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 8-byte aligned.
+pub fn or_i64(addr &i64, mask i64) i64 {
+	mut old := i64(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 7
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov rax, [rdx]
+		mov rcx, rax
+		or rcx, mask
+		lock cmpxchg [rdx], rcx
+		jnz '3b'
+		mov old, rax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  rax
+		  rcx
+		  memory
+	}
+	return old
+}
+
+// or_u64 atomically performs a bitwise OR of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 8-byte aligned.
+pub fn or_u64(addr &u64, mask u64) u64 {
+	mut old := u64(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 7
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov rax, [rdx]
+		mov rcx, rax
+		or rcx, mask
+		lock cmpxchg [rdx], rcx
+		jnz '3b'
+		mov old, rax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  rax
+		  rcx
+		  memory
+	}
+	return old
+}
+
+// and_i32 atomically performs a bitwise AND of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 4-byte aligned.
+pub fn and_i32(addr &i32, mask i32) i32 {
+	mut old := i32(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 3
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov eax, [rdx]
+		mov ecx, eax
+		and ecx, mask
+		lock cmpxchg [rdx], ecx
+		jnz '3b'
+		mov old, eax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  eax
+		  ecx
+		  memory
+	}
+	return old
+}
+
+// and_u32 atomically performs a bitwise AND of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 4-byte aligned.
+pub fn and_u32(addr &u32, mask u32) u32 {
+	mut old := u32(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 3
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov eax, [rdx]
+		mov ecx, eax
+		and ecx, mask
+		lock cmpxchg [rdx], ecx
+		jnz '3b'
+		mov old, eax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  eax
+		  ecx
+		  memory
+	}
+	return old
+}
+
+// or_i32 atomically performs a bitwise OR of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 4-byte aligned.
+pub fn or_i32(addr &i32, mask i32) i32 {
+	mut old := i32(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 3
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov eax, [rdx]
+		mov ecx, eax
+		or ecx, mask
+		lock cmpxchg [rdx], ecx
+		jnz '3b'
+		mov old, eax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  eax
+		  ecx
+		  memory
+	}
+	return old
+}
+
+// or_u32 atomically performs a bitwise OR of the value at addr with mask and returns the old value.
+// The operation is performed with sequential consistency.
+// Panics if addr is not 4-byte aligned.
+pub fn or_u32(addr &u32, mask u32) u32 {
+	mut old := u32(0)
+	asm volatile amd64 {
+		mov rdx, addr
+		test rdx, 3
+		jz '1f'
+		call panicUnaligned
+		jmp '2f'
+		1:
+		3:
+		mov eax, [rdx]
+		mov ecx, eax
+		or ecx, mask
+		lock cmpxchg [rdx], ecx
+		jnz '3b'
+		mov old, eax
+		2:
+		; =r (old)
+		; r (addr)
+		  r (mask)
+		; rdx
+		  eax
+		  ecx
+		  memory
+	}
+	return old
+}
