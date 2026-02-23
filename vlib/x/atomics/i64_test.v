@@ -159,3 +159,35 @@ fn test_cas_i64_contended_flip() {
 
 	assert x == 0 || x == 1
 }
+
+fn test_and_i64_concurrent() {
+	mut x := i64(0x7fffffffffffffff)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &i64) {
+			for _ in 0 .. 100_000 {
+				and_i64(px, 0x00ffffffffffffff)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == 0x00ffffffffffffff
+}
+
+fn test_or_i64_concurrent() {
+	mut x := i64(0)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &i64) {
+			for _ in 0 .. 100_000 {
+				or_i64(px, 0x0123456789abcdef)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == 0x0123456789abcdef
+}
