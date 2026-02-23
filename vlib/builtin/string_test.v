@@ -1679,7 +1679,7 @@ fn test_camel_to_snake() {
 	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
 	assert '_AbCDe_'.camel_to_snake() == '_ab_cd_e_'
 	assert 'HTTPServer'.camel_to_snake() == 'http_server'
-	assert 'HTTP2Server'.camel_to_snake() == 'http_2_server'
+	assert 'HTTP2Server'.camel_to_snake() == 'http2_server'
 	assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 }
 

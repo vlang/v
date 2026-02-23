@@ -2845,6 +2845,7 @@ pub fn (s string) is_identifier() bool {
 // Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
 // Example: assert 'BBaa'.camel_to_snake() == 'bb_aa'
 // Example: assert 'HTTPServer'.camel_to_snake() == 'http_server'
+// Example: assert 'HTTP2Server'.camel_to_snake() == 'http2_server'
 // Example: assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {
@@ -2889,7 +2890,11 @@ pub fn (s string) camel_to_snake() string {
 		mut has_boundary_before_upper := false
 		c := s[i]
 		c_is_upper := c.is_capital()
+		c_is_number := c.is_digit()
 		next_is_lower := i + 1 < s.len && s[i + 1].is_letter() && !s[i + 1].is_capital()
+		next2_is_lower := i + 2 < s.len && s[i + 2].is_letter() && !s[i + 2].is_capital()
+		// Cases: `XML2JSON == xml_2_json` || `HTTP2Server == http2_server`
+		skip_digit := c_is_number && prev_is_upper && !next_is_lower && next2_is_lower
 		// Cases: `HTTPServer == http_server` || `getHTTPSUrl == get_https_url`
 		if c_is_upper && prev_is_upper && i >= 2 && s[i - 2].is_capital() && next_is_lower
 			&& c != `_` {
@@ -2905,7 +2910,7 @@ pub fn (s string) camel_to_snake() string {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary)) &&
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary && !skip_digit)) &&
 			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
