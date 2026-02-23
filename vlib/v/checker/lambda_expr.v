@@ -83,7 +83,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 			return_type: return_type
 			is_method:   false
 		}
-		name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.pos.pos)
+		name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.pos)
 		func.name = name
 		idx := c.table.find_or_register_fn_type(func, true, false)
 		typ := ast.new_type(idx)

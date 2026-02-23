@@ -1218,7 +1218,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return_type: return_type
 		is_method:   false
 	}
-	name := p.table.get_anon_fn_name(p.unique_prefix, func, p.tok.pos)
+	name := p.table.get_anon_fn_name(p.unique_prefix, func, p.tok.pos())
 	keep_fn_name := p.cur_fn_name
 	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {

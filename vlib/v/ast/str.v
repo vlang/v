@@ -4,6 +4,7 @@
 @[has_globals]
 module ast
 
+import v.token
 import v.util
 import strings
 import sync.stdatomic
@@ -18,8 +19,8 @@ pub fn (f &FnDecl) get_name() string {
 }
 
 // get_anon_fn_name returns the unique anonymous function name, based on the prefix, the func signature and its position in the source code
-pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos int) string {
-	return 'anon_fn_${prefix}_${table.fn_type_signature(func)}_${pos}'
+pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos token.Pos) string {
+	return 'anon_fn_${prefix}_${pos.file_idx}_${table.fn_type_signature(func)}_${pos.pos}'
 }
 
 // get_name returns the real name for the function calling
