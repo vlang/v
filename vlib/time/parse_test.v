@@ -256,11 +256,19 @@ fn test_parse_rfc2616() {
 	r = time.parse_rfc2616('Thu, 19 Feb 2026 11:07:09 GMT')!
 	assert r.unix() == 1771499229
 
-	r = time.parse_rfc2616('Thuesday, 19-Feb-26 11:07:09 GMT')!
+	r = time.parse_rfc2616('Tuesday, 19-Feb-26 11:07:09 GMT')!
 	assert r.unix() == 1771499229
 
 	r = time.parse_rfc2616('Thu Feb 19 11:07:09 2026')!
 	assert r.unix() == 1771499229
+
+	// This should map to 1994, not 2094.
+	r = time.parse_rfc2616('Tuesday, 06-Nov-94 11:07:09 GMT')!
+	assert r.unix() == 784120029
+
+	// This should map to 2020, not 1920.
+	r = time.parse_rfc2616('Friday, 06-Nov-20 08:49:37 GMT')!
+	assert r.unix() == 1604652577
 }
 
 fn test_parse_http_header_string() {

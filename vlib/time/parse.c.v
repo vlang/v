@@ -151,8 +151,15 @@ pub fn parse_rfc2616(s string) !Time {
 	if r := parse_format(f, 'DD MMM YYYY HH:mm:ss') {
 		return r
 	}
+
+	// parse_format maps YY to this century (94 maps to 2094, 20 to 2020).
+	// if parsed year > current year, the date belongs to previous century.
 	if r := parse_format(f, 'DD MMM YY HH:mm:ss') {
-		return r
+		return if r.year > now().year {
+			r.add_days(-(days_per_100_years + 1))
+		} else {
+			r
+		}
 	}
 	if r := parse_format(f, 'MMM D HH:mm:ss YYYY') {
 		return r
