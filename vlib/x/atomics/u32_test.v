@@ -176,3 +176,35 @@ fn test_load_store_u32_concurrent() {
 
 	assert x == 1
 }
+
+fn test_and_u32_concurrent() {
+	mut x := u32(0xffffffff)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &u32) {
+			for _ in 0 .. 100_000 {
+				and_u32(px, 0x0f0f0f0f)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == 0x0f0f0f0f
+}
+
+fn test_or_u32_concurrent() {
+	mut x := u32(0)
+	mut threads := []thread{}
+	for _ in 0 .. 8 {
+		threads << spawn fn (px &u32) {
+			for _ in 0 .. 100_000 {
+				or_u32(px, 0xdeadbeef)
+			}
+		}(&x)
+	}
+	for t in threads {
+		t.wait()
+	}
+	assert x == u32(0xdeadbeef)
+}

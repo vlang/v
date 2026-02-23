@@ -233,7 +233,7 @@ fn process_events(mut server Server, epoll_fd int, listen_fd int) {
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				// Read all available data from the socket
 				mut total_bytes_read := 0
-				mut readed_request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
+				mut readed_request_buffer := []u8{cap: server.max_request_buffer_size}
 
 				for {
 					bytes_read := C.recv(client_fd, unsafe { &request_buffer[0] }, server.max_request_buffer_size - 1,
