@@ -191,7 +191,10 @@ fn (mut g Gen) emit_exported_const_symbols() {
 		g.sb.writeln('#ifdef ${sym.name}')
 		g.sb.writeln('#undef ${sym.name}')
 		g.sb.writeln('#endif')
-		g.sb.writeln('const ${sym.typ} ${sym.name} = ${sym.value};')
+		// Resolve references to other constants so the initializer is a
+		// compile-time constant expression (required by TCC and strict C).
+		resolved := g.resolve_const_expr(sym.value)
+		g.sb.writeln('const ${sym.typ} ${sym.name} = ${resolved};')
 	}
 }
 

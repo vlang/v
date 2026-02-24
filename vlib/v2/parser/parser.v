@@ -781,15 +781,20 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				// (`[2]type{}` | `[2][]type{}` | `[2]&type{init: Foo{}}`) | `[2]type`
 				if p.tok in [.amp, .name] {
 					elem_type := p.expect_type()
+					// Build nested type from innermost to outermost dimension.
+					// For `[3][3]int`, exprs_arr = [[3], [3]], and we iterate
+					// from the last (innermost) to first (outermost), nesting
+					// each dimension around the previous one.
+					mut inner_type := ast.Expr(elem_type)
 					for i := exprs_arr.len - 1; i >= 0; i-- {
 						exprs2 := exprs_arr[i]
 						if exprs2.len == 0 {
-							lhs = ast.Expr(ast.Type(ast.ArrayType{
-								elem_type: elem_type
+							inner_type = ast.Expr(ast.Type(ast.ArrayType{
+								elem_type: inner_type
 							}))
 						} else if exprs2.len == 1 {
-							lhs = ast.Expr(ast.Type(ast.ArrayFixedType{
-								elem_type: elem_type
+							inner_type = ast.Expr(ast.Type(ast.ArrayFixedType{
+								elem_type: inner_type
 								len:       exprs2[0]
 							}))
 						} else {
@@ -797,6 +802,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 							p.error('expecting single expr for fixed array length')
 						}
 					}
+					lhs = inner_type
 					// `[2]type{}`
 					if p.tok == .lcbr && !p.exp_lcbr {
 						p.next()

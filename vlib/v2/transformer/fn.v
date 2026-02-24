@@ -1986,6 +1986,12 @@ fn (t &Transformer) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 			return true
 		}
 		ast.Ident {
+			// Built-in primitive types are always casts, never function calls.
+			if lhs.name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
+				'f64', 'bool', 'byte', 'char', 'rune', 'usize', 'isize', 'string', 'byteptr',
+				'charptr', 'voidptr'] {
+				return true
+			}
 			// Prefer functions when names clash (even if uppercase).
 			if _ := t.get_fn_return_type(lhs.name) {
 				return false

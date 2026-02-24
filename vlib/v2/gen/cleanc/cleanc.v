@@ -488,10 +488,15 @@ pub fn (mut g Gen) gen() string {
 
 	// Pass 5: Everything else (function bodies, consts, globals, etc.)
 	g.pass5_start_pos = g.sb.len
+	// Pre-pass: emit extern forward declarations for all globals across all modules
+	// to avoid ordering issues (e.g. rand__default_rng used before its definition).
+	for file in g.files {
+		g.set_file_module(file)
+		g.gen_file_extern_globals(file)
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		if !g.should_emit_module(g.cur_module) {
-			g.gen_file_extern_globals(file)
 			g.gen_file_extern_consts(file)
 			continue
 		}
@@ -499,6 +504,13 @@ pub fn (mut g Gen) gen() string {
 	}
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
+	// Map str/eq functions are type-specific (Map_int_int_str, Map_string_int_map_eq, etc.)
+	// and depend on which concrete map types the user program uses. They must be emitted
+	// in the main compilation unit, NOT in the cache (which is shared across programs).
+	if g.cache_bundle_name.len == 0 {
+		g.emit_map_str_functions()
+		g.emit_map_eq_functions()
+	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 5 file bodies')
 
@@ -511,6 +523,27 @@ pub fn (mut g Gen) gen() string {
 		g.sb.writeln('\tg_main_argv = (void*)___argv;')
 		for init_call in g.cached_init_calls {
 			g.sb.writeln('\t${init_call}();')
+		}
+		// Call module init() functions and __v_init_consts_main — test files have
+		// no main() function, so the transformer's injected init calls are not present.
+		for fn_name, _ in g.fn_return_types {
+			// Module init functions: MODULE__init (e.g., rand__init)
+			// Skip methods (Type__method patterns where Type is capitalized)
+			if fn_name.ends_with('__init') && fn_name.count('__') == 1 {
+				first_char := fn_name[0]
+				if first_char >= `a` && first_char <= `z` {
+					if params := g.fn_param_is_ptr[fn_name] {
+						if params.len == 0 {
+							g.sb.writeln('\t${fn_name}();')
+						}
+					} else {
+						g.sb.writeln('\t${fn_name}();')
+					}
+				}
+			}
+		}
+		if '__v_init_consts_main' in g.fn_return_types {
+			g.sb.writeln('\t__v_init_consts_main();')
 		}
 		for test_fn in test_fn_names {
 			msg_run := 'Running test: ${test_fn}...'
@@ -898,7 +931,15 @@ fn (mut g Gen) gen_keyword_operator(node ast.KeywordOperator) {
 		}
 		.key_typeof {
 			if node.exprs.len > 0 {
-				type_name := g.expr_type_to_c(node.exprs[0])
+				// typeof needs V type names (e.g. "map[rune]int"), not C type names.
+				// Try to get the raw types.Type from the checker and format as V string.
+				mut type_name := ''
+				if raw_type := g.get_raw_type(node.exprs[0]) {
+					type_name = g.types_type_to_v(raw_type)
+				}
+				if type_name == '' {
+					type_name = g.expr_type_to_c(node.exprs[0])
+				}
 				g.sb.write_string(c_static_v_string_expr(type_name))
 			} else {
 				g.sb.write_string(c_empty_v_string_expr())

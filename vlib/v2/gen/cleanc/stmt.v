@@ -211,6 +211,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(';')
 					return
 				}
+				// For CallExpr in result-returning function, check if the called
+				// function also returns the same result type (passthrough).
+				if expr is ast.CallExpr {
+					if call_ret := g.get_call_return_type(expr.lhs, expr.args.len) {
+						if call_ret == g.cur_fn_ret_type {
+							g.sb.write_string('return ')
+							g.expr(expr)
+							g.sb.writeln(';')
+							return
+						}
+					}
+				}
 				if value_type == '' || value_type == 'void' {
 					g.sb.writeln('return (${g.cur_fn_ret_type}){ .is_error=false };')
 					return

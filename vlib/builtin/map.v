@@ -543,6 +543,9 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
 fn (m &map) get(key voidptr, zero voidptr) voidptr {
+	if m.len == 0 {
+		return zero
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe { m.metas[index] } {
@@ -567,6 +570,9 @@ fn (m &map) get(key voidptr, zero voidptr) voidptr {
 // If not, a zero pointer is returned.
 // This is used in `x := m['key'] or { ... }`
 fn (m &map) get_check(key voidptr) voidptr {
+	if m.len == 0 {
+		return 0
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe { m.metas[index] } {
@@ -588,6 +594,9 @@ fn (m &map) get_check(key voidptr) voidptr {
 
 // Checks whether a particular key exists in the map.
 fn (m &map) exists(key voidptr) bool {
+	if m.len == 0 {
+		return false
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe { m.metas[index] } {

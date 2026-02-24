@@ -838,6 +838,132 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 	}
 }
 
+// types_type_to_v converts a types.Type to a V type name string (e.g. "map[rune]int", "[]string").
+// Used for typeof(expr).name which needs V syntax, not C type names.
+fn (g &Gen) types_type_to_v(t types.Type) string {
+	match t {
+		types.Primitive {
+			if t.props.has(.integer) {
+				if t.props.has(.untyped) {
+					return 'int'
+				}
+				size := if t.size == 0 { 32 } else { int(t.size) }
+				is_signed := !t.props.has(.unsigned)
+				return if is_signed {
+					match size {
+						8 { 'i8' }
+						16 { 'i16' }
+						32 { 'int' }
+						64 { 'i64' }
+						else { 'int' }
+					}
+				} else {
+					match size {
+						8 { 'u8' }
+						16 { 'u16' }
+						32 { 'u32' }
+						else { 'u64' }
+					}
+				}
+			} else if t.props.has(.float) {
+				if t.props.has(.untyped) {
+					return 'f64'
+				}
+				return if t.size == 32 { 'f32' } else { 'f64' }
+			} else if t.props.has(.boolean) {
+				return 'bool'
+			}
+			return 'int'
+		}
+		types.Pointer {
+			base := g.types_type_to_v(t.base_type)
+			return '&' + base
+		}
+		types.Array {
+			elem := g.types_type_to_v(t.elem_type)
+			return '[]' + elem
+		}
+		types.ArrayFixed {
+			elem := g.types_type_to_v(t.elem_type)
+			return '[' + t.len.str() + ']' + elem
+		}
+		types.Struct {
+			return c_name_to_v_name(t.name)
+		}
+		types.String {
+			return 'string'
+		}
+		types.Alias {
+			return c_name_to_v_name(t.name)
+		}
+		types.Char {
+			return 'char'
+		}
+		types.Rune {
+			return 'rune'
+		}
+		types.Void {
+			return 'void'
+		}
+		types.Enum {
+			return c_name_to_v_name(t.name)
+		}
+		types.Interface {
+			return c_name_to_v_name(t.name)
+		}
+		types.SumType {
+			return c_name_to_v_name(types.sum_type_name(t))
+		}
+		types.Map {
+			key := g.types_type_to_v(t.key_type)
+			val := g.types_type_to_v(t.value_type)
+			return 'map[' + key + ']' + val
+		}
+		types.OptionType {
+			base := g.types_type_to_v(t.base_type)
+			return '?' + base
+		}
+		types.ResultType {
+			base := g.types_type_to_v(t.base_type)
+			return '!' + base
+		}
+		types.FnType {
+			return 'fn ()'
+		}
+		types.ISize {
+			return 'isize'
+		}
+		types.USize {
+			return 'usize'
+		}
+		types.Nil {
+			return 'voidptr'
+		}
+		types.None {
+			return 'void'
+		}
+		else {
+			return 'int'
+		}
+	}
+}
+
+// c_name_to_v_name converts a C-mangled name (e.g. "os__File") to V format ("os.File").
+// Strips "builtin__" and "main__" prefixes since V doesn't show them in typeof.
+fn c_name_to_v_name(name string) string {
+	if name.starts_with('builtin__') {
+		return name['builtin__'.len..]
+	}
+	if name.starts_with('main__') {
+		return name['main__'.len..]
+	}
+	// Convert module__Name to module.Name
+	if idx := name.index('__') {
+		return name[..idx] + '.' + name[idx + 2..]
+	}
+	return name
+}
+
 // get_expr_type_from_env retrieves the C type string for an expression from the Environment
 fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	if g.env == unsafe { nil } {
@@ -956,17 +1082,18 @@ fn (mut g Gen) get_local_var_c_type(name string) ?string {
 
 // get_expr_type returns the C type string for an expression
 fn (mut g Gen) get_expr_type(node ast.Expr) string {
-	// For identifiers, check function scope first
+	// For identifiers, check local/parameter types first (authoritative),
+	// then fall back to env position lookup.
 	if node is ast.Ident {
 		if node.name == 'err' {
 			return 'IError'
 		}
-		// Fast path: env pos.id O(1) lookup.
-		if t := g.get_expr_type_from_env(node) {
-			return t
-		}
 		if local_type := g.get_local_var_c_type(node.name) {
 			return local_type
+		}
+		// Env pos.id O(1) lookup.
+		if t := g.get_expr_type_from_env(node) {
+			return t
 		}
 		// get_local_var_c_type already checked fn scope + runtime_local_types.
 		// Only module and builtin scope fallbacks remain.
@@ -1050,9 +1177,31 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 				}
 			}
 		}
-		// Environment types are keyed by unique expr IDs (pos.id), so they can be
-		// trusted for SelectorExpr/IndexExpr too.
-		return t
+		// For arithmetic InfixExpr, env may return void* when it should be a
+		// numeric type.  Fall through to operand-based inference.
+		if t in ['void*', 'voidptr'] && node is ast.InfixExpr
+			&& node.op in [.plus, .minus, .mul, .div, .mod] {
+			// fall through to InfixExpr handler below
+		} else if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
+			// Numeric literals mistyped as bool by env (e.g. `1 in map` context).
+			return 'int'
+		} else if t in ['void*', 'voidptr'] && node is ast.IndexExpr {
+			// For IndexExpr, env returns void* for fixed-array element access.
+			// Try to infer element type from the container type.
+			container_type := g.get_expr_type(node.lhs)
+			if container_type.starts_with('Array_fixed_') {
+				// Array_fixed_u16_8 => element type is u16
+				rest := container_type['Array_fixed_'.len..]
+				last_underscore := rest.last_index('_') or { -1 }
+				if last_underscore > 0 {
+					elem := rest[..last_underscore]
+					return elem
+				}
+			}
+			return t
+		} else {
+			return t
+		}
 	}
 	// Fallback inference
 	match node {
@@ -1176,6 +1325,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			if lhs_type.starts_with('Array_fixed_') {
 				if info := g.collected_fixed_array_types[lhs_type] {
 					return info.elem_type
+				}
+				// Extract element type from mangled name: Array_fixed_TYPE_SIZE
+				trailing := lhs_type['Array_fixed_'.len..]
+				last_underscore := trailing.last_index_u8(`_`)
+				if last_underscore > 0 {
+					return trailing[..last_underscore]
 				}
 			} else {
 				elem := array_alias_elem_type(lhs_type)
@@ -1493,7 +1648,7 @@ fn (g &Gen) is_module_local_type(name string) bool {
 }
 
 fn (g &Gen) is_module_local_const_or_global(name string) bool {
-	if g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin' {
+	if g.cur_module == '' {
 		return false
 	}
 	if obj := g.lookup_module_scope_object(name) {

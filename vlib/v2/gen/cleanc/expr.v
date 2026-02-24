@@ -36,20 +36,104 @@ fn is_none_like_expr(expr ast.Expr) bool {
 	return false
 }
 
-fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
-	// Look up the type in the environment to check if it's an interface
+fn (g &Gen) is_interface_type(type_name string) bool {
 	if g.env == unsafe { nil } {
 		return false
 	}
-	mut is_iface := false
+	// Try the type name as-is in the current module scope
 	if mut scope := g.env_scope(g.cur_module) {
 		if obj := scope.lookup_parent(type_name, 0) {
 			if obj is types.Type && obj is types.Interface {
-				is_iface = true
+				return true
+			}
+		}
+		// Also try stripping module prefix: rand__PRNG -> PRNG
+		if type_name.contains('__') {
+			short_name := type_name.all_after_last('__')
+			if obj := scope.lookup_parent(short_name, 0) {
+				if obj is types.Type && obj is types.Interface {
+					return true
+				}
 			}
 		}
 	}
-	if !is_iface {
+	// Also check interface_methods registry
+	return type_name in g.interface_methods
+}
+
+// is_interface_vtable_method checks if a method is a vtable (abstract) method
+// of an interface, as opposed to a concrete method defined on the interface type.
+fn (g &Gen) is_interface_vtable_method(iface_name string, method_name string) bool {
+	if methods := g.interface_methods[iface_name] {
+		for method in methods {
+			if method.name == method_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// gen_heap_interface_cast generates a heap-allocated interface struct for &InterfaceType(value) patterns.
+// Returns true if the type is an interface and the cast was generated.
+fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bool {
+	if !g.is_interface_type(type_name) {
+		return false
+	}
+	concrete_type := g.get_expr_type(value_expr)
+	if concrete_type == '' || concrete_type == 'int' {
+		return false
+	}
+	base_concrete := if concrete_type.ends_with('*') {
+		concrete_type[..concrete_type.len - 1]
+	} else {
+		concrete_type
+	}
+	// Generate: ({ InterfaceType* _iface = malloc(sizeof(InterfaceType));
+	//             *_iface = (InterfaceType){._object = (void*)value, ...}; _iface; })
+	g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ((${type_name}){._object = ')
+	if concrete_type.ends_with('*') {
+		g.sb.write_string('(void*)(')
+		g.expr(value_expr)
+		g.sb.write_string(')')
+	} else {
+		g.sb.write_string('(void*)&(')
+		g.expr(value_expr)
+		g.sb.write_string(')')
+	}
+	type_short := if base_concrete.contains('__') {
+		base_concrete.all_after_last('__')
+	} else {
+		base_concrete
+	}
+	type_id := interface_type_id_for_name(type_short)
+	g.sb.write_string(', ._type_id = ${type_id}')
+	if methods := g.interface_methods[type_name] {
+		for method in methods {
+			fn_name := '${base_concrete}__${method.name}'
+			mut target_name := fn_name
+			if ptr_params := g.fn_param_is_ptr[fn_name] {
+				if ptr_params.len > 0 && !ptr_params[0] {
+					target_name = interface_wrapper_name(type_name, base_concrete, method.name)
+					g.needed_interface_wrappers[target_name] = true
+					if target_name !in g.interface_wrapper_specs {
+						g.interface_wrapper_specs[target_name] = InterfaceWrapperSpec{
+							fn_name:       fn_name
+							concrete_type: base_concrete
+							method:        method
+						}
+					}
+				}
+			}
+			g.sb.write_string(', .${method.name} = (${method.cast_signature})${target_name}')
+		}
+	}
+	g.sb.write_string('}); _iface_t; })')
+	return true
+}
+
+fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
+	if !g.is_interface_type(type_name) {
 		return false
 	}
 	// Get the concrete type name
@@ -535,7 +619,29 @@ fn (mut g Gen) expr(node ast.Expr) {
 					return
 				}
 				if rhs_type == 'map' || rhs_type.starts_with('Map_') {
-					key_type := if lhs_type == '' { 'int' } else { lhs_type }
+					// Get the map's key type for proper addr_of cast.
+					// Don't use lhs_type directly — for literals like `1`, env may
+					// resolve to `bool` in boolean context.
+					mut key_type := if lhs_type == '' { 'int' } else { lhs_type }
+					// Try to get the map's key type from the checker
+					if raw_map_type := g.get_raw_type(node.rhs) {
+						if raw_map_type is types.Map {
+							kt := g.types_type_to_c(raw_map_type.key_type)
+							if kt != '' {
+								key_type = kt
+							}
+						}
+					} else if rhs_type.starts_with('Map_') {
+						kv := rhs_type.all_after('Map_')
+						kt, _ := g.parse_map_kv_types(kv)
+						if kt != '' {
+							key_type = kt
+						}
+					}
+					// Fix: integer/float literals mistyped as bool by env
+					if key_type == 'bool' && node.lhs is ast.BasicLiteral {
+						key_type = 'int'
+					}
 					if node.op == .not_in {
 						g.sb.write_string('!')
 					}
@@ -633,20 +739,51 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.sb.write_string(')')
 				return
 			}
-			// Map comparison: use memcmp on the map struct
-			is_lhs_map := lhs_type == 'map' || lhs_type.starts_with('Map_')
-			is_rhs_map := rhs_type == 'map' || rhs_type.starts_with('Map_')
+			// Map comparison: use Map_K_V_map_eq function.
+			// Exclude pointer-to-map types (e.g. Map_string_int*) — those are pointer comparisons.
+			is_lhs_map := (lhs_type == 'map' || lhs_type.starts_with('Map_'))
+				&& !lhs_type.ends_with('*')
+			is_rhs_map := (rhs_type == 'map' || rhs_type.starts_with('Map_'))
+				&& !rhs_type.ends_with('*')
 			if node.op in [.eq, .ne] && (is_lhs_map || is_rhs_map) {
-				g.tmp_counter++
-				cmp_l := '_cmp_l_${g.tmp_counter}'
-				g.tmp_counter++
-				cmp_r := '_cmp_r_${g.tmp_counter}'
-				cmp_op := if node.op == .eq { '==' } else { '!=' }
-				g.sb.write_string('({ map ${cmp_l} = ')
+				// Determine specific map type name for the eq function.
+				// get_expr_type often returns generic 'map', so use get_raw_type
+				// to resolve the specific Map_K_V type for proper comparison.
+				mut map_type_name := if lhs_type.starts_with('Map_') {
+					lhs_type
+				} else if rhs_type.starts_with('Map_') {
+					rhs_type
+				} else {
+					'map'
+				}
+				if map_type_name == 'map' {
+					if raw := g.get_raw_type(node.lhs) {
+						// Unwrap pointer types to get the base map type
+						base := if raw is types.Pointer { raw.base_type } else { raw }
+						c_type := g.types_type_to_c(base)
+						if c_type.starts_with('Map_') {
+							map_type_name = c_type
+						}
+					}
+				}
+				if map_type_name == 'map' {
+					if raw := g.get_raw_type(node.rhs) {
+						base := if raw is types.Pointer { raw.base_type } else { raw }
+						c_type := g.types_type_to_c(base)
+						if c_type.starts_with('Map_') {
+							map_type_name = c_type
+						}
+					}
+				}
+				eq_fn := '${map_type_name}_map_eq'
+				if node.op == .ne {
+					g.sb.write_string('!')
+				}
+				g.sb.write_string('${eq_fn}(')
 				g.expr(node.lhs)
-				g.sb.write_string('; map ${cmp_r} = ')
+				g.sb.write_string(', ')
 				g.expr(node.rhs)
-				g.sb.write_string('; memcmp(&${cmp_l}, &${cmp_r}, sizeof(map)) ${cmp_op} 0; })')
+				g.sb.write_string(')')
 				return
 			}
 			mut cmp_type := ''
@@ -808,6 +945,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 				if node.expr is ast.CastExpr {
 					target_type := g.expr_type_to_c(node.expr.typ)
+					// For interface types, generate vtable construction on the heap
+					if g.gen_heap_interface_cast(target_type, node.expr.expr) {
+						return
+					}
 					g.sb.write_string('((${target_type}*)(')
 					g.expr(node.expr.expr)
 					g.sb.write_string('))')
@@ -857,6 +998,26 @@ fn (mut g Gen) expr(node ast.Expr) {
 						return
 					}
 				}
+			}
+			// Fixed array literal: &[1.1, 2.2]! needs type prefix for compound literal
+			if node.op == .amp && node.expr is ast.ArrayInitExpr {
+				if !g.is_dynamic_array_type(node.expr.typ) && node.expr.exprs.len > 0 {
+					elem_type := g.extract_array_elem_type(node.expr.typ)
+					if elem_type != '' {
+						g.sb.write_string('&(${elem_type}[${node.expr.exprs.len}]){')
+						for i, e in node.expr.exprs {
+							if i > 0 {
+								g.sb.write_string(', ')
+							}
+							g.expr(e)
+						}
+						g.sb.write_string('}')
+						return
+					}
+				}
+				g.sb.write_string('&')
+				g.expr(node.expr)
+				return
 			}
 			// V `&Type{...}` must allocate on the heap.
 			// Taking the address of a C compound literal here would create a dangling pointer.
@@ -1082,6 +1243,30 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.sb.write_string('${mod_name}__${node.rhs.name}')
 				}
 				return
+			}
+			// Nested module reference: rand.seed.time_seed_array => seed__time_seed_array
+			// Only applies when the resolved name is a known function.
+			if node.lhs is ast.SelectorExpr {
+				inner_sel := node.lhs as ast.SelectorExpr
+				if inner_sel.lhs is ast.Ident {
+					inner_ident := inner_sel.lhs as ast.Ident
+					if g.is_module_ident(inner_ident.name) {
+						sub_mod := inner_sel.rhs.name
+						short_name := '${sub_mod}__${node.rhs.name}'
+						if short_name in g.fn_return_types || short_name in g.fn_param_is_ptr {
+							g.sb.write_string(short_name)
+							return
+						}
+						mod_name := g.resolve_module_name(inner_ident.name)
+						full_name := '${mod_name}__${sub_mod}__${node.rhs.name}'
+						if full_name in g.fn_return_types || full_name in g.fn_param_is_ptr {
+							g.sb.write_string(full_name)
+							return
+						}
+						// Not a known function — fall through to normal SelectorExpr
+						// handling (e.g. os.args.len is a field access, not a module call).
+					}
+				}
 			}
 			// Check if LHS is an enum type name -> emit EnumName__field
 			if node.lhs is ast.Ident && g.is_enum_type(node.lhs.name) {

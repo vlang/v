@@ -186,7 +186,7 @@ fn (mut g Gen) collect_fn_signatures() {
 						recv_type := normalize_signature_type_name(g.expr_type_to_c(stmt.receiver.typ),
 							'void*')
 						params << (stmt.receiver.is_mut || recv_type.ends_with('*'))
-						param_types << if stmt.receiver.is_mut {
+						param_types << if stmt.receiver.is_mut && !recv_type.ends_with('*') {
 							recv_type + '*'
 						} else {
 							recv_type
@@ -196,7 +196,7 @@ fn (mut g Gen) collect_fn_signatures() {
 						param_type := normalize_signature_type_name(g.expr_type_to_c(param.typ),
 							'int')
 						params << (param.is_mut || param_type.ends_with('*'))
-						param_types << if param.is_mut {
+						param_types << if param.is_mut && !param_type.ends_with('*') {
 							param_type + '*'
 						} else {
 							param_type
@@ -241,7 +241,9 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 				if param.is_mut {
 					g.sb.write_string('*')
 				}
-				g.sb.write_string(' ${param.name}')
+				// Avoid C name clash: parameter named 'array' hides struct array
+				pname := if param.name == 'array' { '_v_array' } else { param.name }
+				g.sb.write_string(' ${pname}')
 			}
 			if node.typ.params.len == 0 {
 				g.sb.write_string('void')
@@ -330,13 +332,17 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 		if param.is_mut {
 			g.cur_fn_mut_params[param.name] = true
 		}
-		// Register parameter types for transformer-generated functions that
-		// lack type checker scopes (e.g. Array_T_contains, Array_T_index).
-		if g.cur_fn_scope == unsafe { nil } {
-			param_type := g.expr_type_to_c(param.typ)
-			if param_type != '' {
-				g.runtime_local_types[param.name] = param_type
+		// Register parameter types from the function declaration.
+		// The declaration type is authoritative and ensures correct types
+		// even when the env position lookup returns wrong results.
+		param_type := g.expr_type_to_c(param.typ)
+		if param_type != '' && param.name != '' {
+			ptype := if param.is_mut && !param_type.ends_with('*') {
+				param_type + '*'
+			} else {
+				param_type
 			}
+			g.runtime_local_types[param.name] = ptype
 		}
 	}
 
@@ -405,7 +411,12 @@ fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 		receiver_type := if sig_idx < sig_param_types.len {
 			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
 		} else if node.receiver.is_mut {
-			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*') + '*'
+			rt := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			if rt.ends_with('*') {
+				rt
+			} else {
+				rt + '*'
+			}
 		} else {
 			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
 		}
@@ -424,7 +435,12 @@ fn (mut g Gen) gen_fn_head(node ast.FnDecl) {
 		t := if sig_idx < sig_param_types.len {
 			normalize_signature_type_name(sig_param_types[sig_idx], 'int')
 		} else if param.is_mut {
-			normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int') + '*'
+			pt := normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
+			if pt.ends_with('*') {
+				pt
+			} else {
+				pt + '*'
+			}
 		} else {
 			normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
 		}
@@ -971,6 +987,31 @@ fn (mut g Gen) resolve_container_method_name(receiver ast.Expr, method_name stri
 	return ''
 }
 
+// resolve_nested_module_call checks if a SelectorExpr represents a nested module
+// function call (e.g. rand.seed.time_seed_array) and writes the resolved name.
+fn (mut g Gen) resolve_nested_module_call(sel ast.SelectorExpr, method string, name &string) bool {
+	if sel.lhs is ast.SelectorExpr {
+		inner := sel.lhs as ast.SelectorExpr
+		if inner.lhs is ast.Ident && g.is_module_ident(inner.lhs.name) {
+			sub_mod := inner.rhs.name
+			fn_name := sanitize_fn_ident(method)
+			short_name := '${sub_mod}__${fn_name}'
+			if short_name in g.fn_return_types || short_name in g.fn_param_is_ptr {
+				unsafe {
+					*name = short_name
+				}
+				return true
+			}
+			mod_name := g.resolve_module_name(inner.lhs.name)
+			unsafe {
+				*name = '${mod_name}__${sub_mod}__${fn_name}'
+			}
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 	mut name := ''
 	if lhs is ast.Ident {
@@ -986,6 +1027,8 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 		if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
 			mod_name := g.resolve_module_name(lhs.lhs.name)
 			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
+		} else if g.resolve_nested_module_call(lhs, lhs.rhs.name, &name) {
+			// Nested module reference resolved (e.g. rand.seed.time_seed_array)
 		} else {
 			method_name := sanitize_fn_ident(lhs.rhs.name)
 			base_type := g.method_receiver_base_type(lhs.lhs)
@@ -1050,6 +1093,14 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, arg_count int) ?string {
 			}
 		}
 	}
+	// Prefer explicit fn_return_types registration (includes result/option wrappers)
+	// over fn_pointer_return_type (which may return the unwrapped type from the checker).
+	c_name := g.resolve_call_name(lhs, arg_count)
+	if c_name != '' {
+		if ret := g.fn_return_types[c_name] {
+			return ret
+		}
+	}
 	if lhs !is ast.Ident {
 		mut allow_fn_ptr_lookup := true
 		if lhs is ast.SelectorExpr {
@@ -1067,7 +1118,6 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, arg_count int) ?string {
 			}
 		}
 	}
-	c_name := g.resolve_call_name(lhs, arg_count)
 	if c_name == '' {
 		if lhs is ast.Ident {
 			match lhs.name {
@@ -1077,9 +1127,6 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, arg_count int) ?string {
 			}
 		}
 		return none
-	}
-	if ret := g.fn_return_types[c_name] {
-		return ret
 	}
 	match c_name {
 		'open', 'chdir', 'proc_pidpath' { return 'int' }
@@ -1119,17 +1166,85 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			}
 		}
 	}
+	// Nested module function call: rand.seed.time_seed_array(2) => seed__time_seed_array(2)
+	// Must be checked before the fn_pointer_expr check, because the checker resolves
+	// the nested module function reference as a FnType, which would trigger the
+	// function pointer cast path.
+	if lhs is ast.SelectorExpr && lhs.lhs is ast.SelectorExpr {
+		mut nested_name := ''
+		if g.resolve_nested_module_call(lhs, lhs.rhs.name, &nested_name) {
+			g.sb.write_string('${nested_name}(')
+			for i, arg in args {
+				if i > 0 {
+					g.sb.write_string(', ')
+				}
+				g.expr(arg)
+			}
+			g.sb.write_string(')')
+			return
+		}
+	}
 	if lhs is ast.SelectorExpr && g.is_fn_pointer_expr(lhs) {
 		mut should_emit_fnptr_call := true
 		resolved := g.resolve_call_name(lhs, args.len)
 		if resolved != '' && (resolved in g.fn_param_is_ptr || resolved in g.fn_return_types) {
 			should_emit_fnptr_call = false
 		}
+		// When there is a naming collision (e.g. `seed` is both a function and a
+		// sub-module in the `rand` module), `is_module_ident` returns false and
+		// `resolve_call_name` resolves to the function type.  Try treating lhs.lhs
+		// as a module name by checking if `lhs_name__rhs_name` exists as a known
+		// function.
+		if should_emit_fnptr_call && lhs.lhs is ast.Ident {
+			alt := '${lhs.lhs.name}__${sanitize_fn_ident(lhs.rhs.name)}'
+			if alt in g.fn_param_is_ptr || alt in g.fn_return_types {
+				g.sb.write_string('${alt}(')
+				for i, arg in args {
+					if i > 0 {
+						g.sb.write_string(', ')
+					}
+					g.expr(arg)
+				}
+				g.sb.write_string(')')
+				return
+			}
+		}
 		if should_emit_fnptr_call {
 			// Function pointer fields are stored as void* in C.
 			// We need to cast to the correct function pointer type before calling.
 			ret_type := g.fn_pointer_return_type(lhs)
 			c_ret := if ret_type == '' { 'void' } else { ret_type }
+			// For pointer-to-interface types, the transformer doesn't add _object
+			// (it only handles non-pointer interface vars like IError err).
+			// Check if this is a vtable method call on an interface pointer
+			// and if so, pass _object as the first argument.
+			receiver_type := g.get_expr_type(lhs.lhs)
+			base_receiver := receiver_type.trim_right('*')
+			if receiver_type.ends_with('*') && g.is_interface_type(base_receiver) {
+				method_name := lhs.rhs.name
+				if g.is_interface_vtable_method(base_receiver, method_name) {
+					mut cast_sig := '${c_ret} (*)(void*)'
+					if methods := g.interface_methods[base_receiver] {
+						for method in methods {
+							if method.name == method_name {
+								cast_sig = method.cast_signature
+								break
+							}
+						}
+					}
+					g.sb.write_string('((${cast_sig})')
+					g.expr(lhs)
+					g.sb.write_string(')(')
+					g.expr(lhs.lhs)
+					g.sb.write_string('->_object')
+					for _, arg in args {
+						g.sb.write_string(', ')
+						g.expr(arg)
+					}
+					g.sb.write_string(')')
+					return
+				}
+			}
 			g.sb.write_string('((${c_ret}(*)())')
 			g.expr(lhs)
 			g.sb.write_string(')(')
@@ -1184,6 +1299,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		} else if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
 			mod_name := g.resolve_module_name(lhs.lhs.name)
 			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
+		} else if g.resolve_nested_module_call(lhs, lhs.rhs.name, &name) {
+			// Nested module reference (e.g. rand.seed.time_seed_array)
+			// Don't add lhs.lhs as receiver - it's a module path, not a value.
 		} else {
 			// value.method(args...) => ReceiverType__method(value, args...)
 			name = g.resolve_call_name(lhs, args.len)

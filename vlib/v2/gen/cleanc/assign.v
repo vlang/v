@@ -221,6 +221,19 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		mut typ := g.get_expr_type(rhs)
+		// For temp variables registered by the transformer with a specific type,
+		// prefer the scope-registered type over the RHS expression type.
+		if name.starts_with('_or_t') || name.starts_with('_tmp_') {
+			if raw_type := g.get_raw_type(lhs) {
+				scope_type := g.types_type_to_c(raw_type)
+				if scope_type != '' && scope_type != 'int' {
+					typ = scope_type
+				} else if scope_type == 'int' && typ == 'bool' {
+					// Fix: literal like `1` mistyped as bool in env
+					typ = 'int'
+				}
+			}
+		}
 		// Fix: &T(x) pattern - the checker may assign only the inner type T instead of T*.
 		// Derive the pointer type directly from the expression structure.
 		if rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.CastExpr {
@@ -298,7 +311,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						scoped_type := g.types_type_to_c(obj_type)
 						if (typ == '' || typ == 'int' || typ == 'int_literal' || typ == 'void*'
 							|| typ == 'voidptr') && scoped_type != ''
-							&& scoped_type !in ['int', 'void'] {
+							&& scoped_type !in ['int', 'void', 'void*', 'voidptr'] {
 							typ = scoped_type
 						}
 					}

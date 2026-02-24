@@ -383,7 +383,11 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 		result << t.transform_file(file)
 	}
 	t.inject_runtime_const_init_fns(mut result)
-	// Generate auto helper functions and add them to the builtin file
+	// Generate auto helper functions and add them to the main module file.
+	// These MUST go in main (not builtin) because the builtin module is cached
+	// and shared across compilations. User-type functions (e.g. Array_Test2_str)
+	// would pollute the cache and cause undefined symbol errors when a different
+	// program reuses the same cache.
 	mut generated_fns := []ast.Stmt{}
 	if t.needed_str_fns.len > 0 {
 		generated_fns << t.generate_str_functions()
@@ -394,7 +398,7 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	}
 	if generated_fns.len > 0 {
 		for i, file in result {
-			if file.mod != 'builtin' {
+			if file.mod != 'main' {
 				continue
 			}
 			mut new_stmts := []ast.Stmt{cap: file.stmts.len}
@@ -808,6 +812,11 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 				result << ast.Stmt(expanded_map_push)
 				continue
 			}
+			// Expand map[key]++ / map[key]-- to compound assignment (handled by try_transform_map_index_assign)
+			if expanded_map_postfix := t.try_transform_map_index_postfix(stmt) {
+				result << expanded_map_postfix
+				continue
+			}
 		}
 		// Check for map iteration expansion
 		if stmt is ast.ForStmt {
@@ -1104,6 +1113,9 @@ fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.
 			is_gated: false
 			pos:      lhs_expr.pos
 		}
+	} else if lhs_expr is ast.SelectorExpr {
+		// Handle map[key].field = value → ((ValueType*)map__get_and_set(&m, &key, &zero))->field = value
+		return t.try_transform_map_selector_assign(stmt, lhs_expr)
 	} else {
 		return none
 	}
@@ -1143,6 +1155,84 @@ fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.
 		}
 	}
 	return call_stmt
+}
+
+// try_transform_map_selector_assign handles assignment to a field of a map value:
+// m[key].field = value → ((ValueType*)map__get_and_set(&m, &key, &zero))->field = value
+fn (mut t Transformer) try_transform_map_selector_assign(stmt ast.AssignStmt, sel ast.SelectorExpr) ?ast.Stmt {
+	// Extract the map IndexExpr from the SelectorExpr's LHS
+	mut index_expr := ast.IndexExpr{}
+	if sel.lhs is ast.IndexExpr {
+		index_expr = sel.lhs as ast.IndexExpr
+	} else if sel.lhs is ast.GenericArgOrIndexExpr {
+		gai := sel.lhs as ast.GenericArgOrIndexExpr
+		if lhs_type := t.get_expr_type(gai.lhs) {
+			if t.is_callable_type(lhs_type) {
+				return none
+			}
+		}
+		index_expr = ast.IndexExpr{
+			lhs:      gai.lhs
+			expr:     gai.expr
+			is_gated: false
+			pos:      gai.pos
+		}
+	} else {
+		return none
+	}
+	// Verify this is a map type
+	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
+	// Get the C type name for the map value type
+	val_type_name := t.type_to_c_name(map_type.value_type)
+	// Build: map__get_and_set(&m, &key, &zero)
+	map_arg := t.map_index_lhs_to_ptr(index_expr.lhs, map_expr_typ)
+	mut prefix_stmts := []ast.Stmt{}
+	key_arg := t.addr_of_with_prefix_temp(index_expr.expr, map_type.key_type, mut prefix_stmts)
+	zero_expr := t.zero_value_expr_for_type(map_type.value_type)
+	zero_arg := t.addr_of_with_prefix_temp(zero_expr, map_type.value_type, mut prefix_stmts)
+	get_and_set_call := ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'map__get_and_set'
+		}
+		args: [
+			map_arg,
+			t.voidptr_cast(key_arg),
+			t.voidptr_cast(zero_arg),
+		]
+	}
+	// Build: (*((ValueType*)map__get_and_set(...))) - parenthesized for correct C precedence
+	deref_expr := ast.ParenExpr{
+		expr: ast.PrefixExpr{
+			op:   .mul
+			expr: ast.CastExpr{
+				typ:  ast.Ident{
+					name: '${val_type_name}*'
+				}
+				expr: get_and_set_call
+			}
+		}
+	}
+	// Build: (*((ValueType*)map__get_and_set(...))).field
+	new_lhs := ast.Expr(ast.SelectorExpr{
+		lhs: deref_expr
+		rhs: sel.rhs
+		pos: sel.pos
+	})
+	// Create the assignment with the new LHS
+	assign_stmt := ast.Stmt(ast.AssignStmt{
+		op:  stmt.op
+		lhs: [new_lhs]
+		rhs: [t.transform_expr(stmt.rhs[0])]
+		pos: stmt.pos
+	})
+	if prefix_stmts.len > 0 {
+		prefix_stmts << assign_stmt
+		return ast.BlockStmt{
+			stmts: prefix_stmts
+		}
+	}
+	return assign_stmt
 }
 
 // map_index_lhs_to_ptr generates a pointer expression to a map for use as the first
@@ -1224,8 +1314,6 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 	} else {
 		t.addr_of_expr_with_temp(index_expr.lhs, map_expr_typ)
 	}
-	mut push_exprs := []ast.Expr{cap: 1}
-	push_exprs << t.transform_expr(infix.rhs)
 	empty_arr := ast.Expr(ast.ArrayInitExpr{
 		typ: ast.Expr(ast.Type(ast.ArrayType{
 			elem_type: ast.Ident{
@@ -1234,34 +1322,69 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 		}))
 	})
 
-	// Generate: array__push_noscan(
-	//   (array*)map__get_and_set(&m, &key, &empty_array),
-	//   (elem_type[1]){value}
-	// )
+	// Common: (array*)map__get_and_set(&m, &key, &empty_array)
+	arr_ptr_expr := ast.Expr(ast.CastExpr{
+		typ:  ast.Ident{
+			name: 'array*'
+		}
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'map__get_and_set'
+			}
+			args: [
+				map_arg,
+				// &key
+				t.voidptr_cast(t.addr_of_expr_with_temp(index_expr.expr, map_type.key_type)),
+				// &empty_array (typed empty array so pushes use the correct element size)
+				t.voidptr_cast(t.addr_of_expr_with_temp(empty_arr, map_type.value_type)),
+			]
+		}
+	})
+
+	// Detect push_many: if RHS is an array whose element type matches our element type
+	mut rhs_is_array := false
+	if rhs_elem_type := t.array_value_elem_type(infix.rhs) {
+		rhs_is_array = t.array_elem_types_compatible(elem_type_name, rhs_elem_type)
+	} else {
+		lhs_is_nested_array := elem_type_name.starts_with('Array_')
+			|| elem_type_name.starts_with('Array_fixed_')
+		rhs_is_array = t.is_array_value_expr(infix.rhs) && !lhs_is_nested_array
+	}
+
+	if rhs_is_array {
+		// push_many: array__push_many(arr_ptr, rhs.data, rhs.len)
+		rhs_transformed := t.transform_expr(infix.rhs)
+		rhs_for_selector := if infix.rhs is ast.PrefixExpr {
+			ast.Expr(ast.ParenExpr{
+				expr: rhs_transformed
+			})
+		} else {
+			rhs_transformed
+		}
+		return ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'array__push_many'
+				}
+				args: [
+					arr_ptr_expr,
+					t.synth_selector(rhs_for_selector, 'data', types.Type(types.voidptr_)),
+					t.synth_selector(rhs_for_selector, 'len', types.Type(types.int_)),
+				]
+			}
+		}
+	}
+
+	// Single element push: array__push_noscan(arr_ptr, (elem_type[1]){value})
+	mut push_exprs := []ast.Expr{cap: 1}
+	push_exprs << t.transform_expr(infix.rhs)
 	return ast.ExprStmt{
 		expr: ast.CallExpr{
 			lhs:  ast.Ident{
 				name: 'array__push_noscan'
 			}
 			args: [
-				// (array*)map__get_and_set(&m, &key, &empty_array)
-				ast.Expr(ast.CastExpr{
-					typ:  ast.Ident{
-						name: 'array*'
-					}
-					expr: ast.CallExpr{
-						lhs:  ast.Ident{
-							name: 'map__get_and_set'
-						}
-						args: [
-							map_arg,
-							// &key
-							t.voidptr_cast(t.addr_of_expr_with_temp(index_expr.expr, map_type.key_type)),
-							// &empty_array (typed empty array so pushes use the correct element size)
-							t.voidptr_cast(t.addr_of_expr_with_temp(empty_arr, map_type.value_type)),
-						]
-					}
-				}),
+				arr_ptr_expr,
 				// (elem_type[1]){value}
 				ast.Expr(ast.ArrayInitExpr{
 					typ:   ast.Expr(ast.Type(ast.ArrayType{
@@ -1274,6 +1397,59 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 			]
 		}
 	}
+}
+
+// try_transform_map_index_postfix transforms m[key]++ / m[key]-- to compound assignment.
+// Converts: m[key]++ -> m[key] += 1   and   m[key]-- -> m[key] -= 1
+// The resulting compound assignment is then handled by try_transform_map_index_assign.
+fn (mut t Transformer) try_transform_map_index_postfix(stmt ast.ExprStmt) ?ast.Stmt {
+	if stmt.expr !is ast.PostfixExpr {
+		return none
+	}
+	postfix := stmt.expr as ast.PostfixExpr
+	if postfix.op != .inc && postfix.op != .dec {
+		return none
+	}
+	// Check if the operand is a map index expression
+	mut index_expr := ast.IndexExpr{}
+	if postfix.expr is ast.IndexExpr {
+		index_expr = postfix.expr
+	} else if postfix.expr is ast.GenericArgOrIndexExpr {
+		if lhs_type := t.get_expr_type(postfix.expr.lhs) {
+			if t.is_callable_type(lhs_type) {
+				return none
+			}
+		}
+		index_expr = ast.IndexExpr{
+			lhs:      postfix.expr.lhs
+			expr:     postfix.expr.expr
+			is_gated: false
+			pos:      postfix.expr.pos
+		}
+	} else {
+		return none
+	}
+	// Verify this is a map type
+	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	_ = t.unwrap_map_type(map_expr_typ) or { return none }
+	// Convert to simple assignment: m[key] = m[key] + 1 (or - 1 for --)
+	// Build the RHS directly to avoid compound→simple conversion inheriting a source
+	// pos that the env may have typed as the map container rather than the value type.
+	infix_op := if postfix.op == .inc { token.Token.plus } else { token.Token.minus }
+	new_rhs := ast.Expr(ast.InfixExpr{
+		lhs: ast.Expr(index_expr)
+		op:  infix_op
+		rhs: ast.BasicLiteral{
+			value: '1'
+			kind:  .number
+		}
+	})
+	assign_stmt := ast.AssignStmt{
+		op:  .assign
+		lhs: [ast.Expr(index_expr)]
+		rhs: [new_rhs]
+	}
+	return t.try_transform_map_index_assign(assign_stmt)
 }
 
 // try_expand_or_expr_assign_stmts expands an OrExpr assignment to multiple statements.
@@ -3659,9 +3835,52 @@ fn (t &Transformer) is_unsafe_nil_expr(expr ast.UnsafeExpr) bool {
 	return false
 }
 
+// is_enum_rvalue returns true if the expression is an enum constant (Ident or SelectorExpr).
+// Enum constants compile to integer rvalues in C and cannot have their address taken.
+fn (t &Transformer) is_enum_rvalue(expr ast.Expr, typ types.Type) bool {
+	if expr !is ast.Ident && expr !is ast.SelectorExpr {
+		return false
+	}
+	// Unwrap all alias levels to find the base type
+	mut base := typ
+	for {
+		if base is types.Alias {
+			base = (base as types.Alias).base_type
+			continue
+		}
+		if base is types.Pointer {
+			base = (base as types.Pointer).base_type
+			continue
+		}
+		break
+	}
+	if base is types.Enum {
+		return true
+	}
+	// Also check by looking up the expression's type in the environment
+	if expr_typ := t.get_expr_type(expr) {
+		mut expr_base := expr_typ
+		for {
+			if expr_base is types.Alias {
+				expr_base = (expr_base as types.Alias).base_type
+				continue
+			}
+			break
+		}
+		if expr_base is types.Enum {
+			return true
+		}
+	}
+	return false
+}
+
 fn (t &Transformer) can_take_address_expr(expr ast.Expr) bool {
 	return match expr {
-		ast.Ident, ast.SelectorExpr, ast.IndexExpr {
+		ast.Ident {
+			// nil compiles to NULL in C, which is not an lvalue and can't have its address taken.
+			expr.name != 'nil'
+		}
+		ast.SelectorExpr, ast.IndexExpr {
 			true
 		}
 		// String literals compile to compound literals in C, which are addressable.
@@ -3687,7 +3906,8 @@ fn (t &Transformer) can_take_address_expr(expr ast.Expr) bool {
 // This avoids the scope-escape issue with UnsafeExpr temporaries in function call arguments.
 fn (mut t Transformer) addr_of_with_prefix_temp(expr ast.Expr, typ types.Type, mut prefix_stmts []ast.Stmt) ast.Expr {
 	transformed := t.transform_expr(expr)
-	if t.can_take_address_expr(transformed) {
+	// Enum constants compile to integer rvalues in C (can't take address).
+	if t.can_take_address_expr(transformed) && !t.is_enum_rvalue(transformed, typ) {
 		return ast.PrefixExpr{
 			op:   .amp
 			expr: transformed
@@ -3711,7 +3931,8 @@ fn (mut t Transformer) addr_of_with_prefix_temp(expr ast.Expr, typ types.Type, m
 
 fn (mut t Transformer) addr_of_expr_with_temp(expr ast.Expr, typ types.Type) ast.Expr {
 	transformed := t.transform_expr(expr)
-	if t.can_take_address_expr(transformed) {
+	// Enum constants compile to integer rvalues in C (can't take address).
+	if t.can_take_address_expr(transformed) && !t.is_enum_rvalue(transformed, typ) {
 		return ast.PrefixExpr{
 			op:   .amp
 			expr: transformed

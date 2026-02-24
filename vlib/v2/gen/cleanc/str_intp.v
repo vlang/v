@@ -24,7 +24,9 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 		}
 		// `c_string_literal_content_to_c` escapes quotes and preserves multiline
 		// content; keep only tab escaping here to preserve `\t` marker semantics.
-		escaped := val.replace('\t', '\\t')
+		// Escape `%` to `%%` so literal percent signs in the V string are not
+		// consumed as printf format specifiers by asprintf.
+		escaped := val.replace('%', '%%').replace('\t', '\\t')
 		fmt_str.write_string(escaped)
 		if i < node.inters.len {
 			inter := node.inters[i]
