@@ -717,8 +717,28 @@ fn escape_char_literal_content(raw string) string {
 
 fn escape_c_string_literal_segment(raw string) string {
 	mut sb := strings.new_builder(raw.len + 8)
-	for ch in raw {
+	mut i := 0
+	for i < raw.len {
+		ch := raw[i]
+		// V scanner stores escape sequences as raw pairs: `\` + char.
+		// Process them as units to avoid breaking `\\` + `"` sequences.
+		if ch == `\\` && i + 1 < raw.len {
+			next := raw[i + 1]
+			if next == `"` {
+				// V escape \" → emit C escape \" (same representation)
+				sb.write_u8(`\\`)
+				sb.write_u8(`"`)
+				i += 2
+				continue
+			}
+			// All other V escapes (\n, \t, \\, \0, etc.) → pass through as-is
+			sb.write_u8(ch)
+			sb.write_u8(next)
+			i += 2
+			continue
+		}
 		if ch == `"` {
+			// Unescaped " (e.g. from single-quoted V strings) → escape for C
 			sb.write_u8(`\\`)
 			sb.write_u8(`"`)
 		} else if ch == `\r` {
@@ -727,6 +747,7 @@ fn escape_c_string_literal_segment(raw string) string {
 		} else {
 			sb.write_u8(ch)
 		}
+		i++
 	}
 	return sb.str()
 }

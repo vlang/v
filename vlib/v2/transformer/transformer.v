@@ -1388,6 +1388,16 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		}
 	}
 
+	// Check for string range with or block: s[0..20] or { 'fallback' }
+	// The checker types this as `string`, but it needs `string__substr_with_check`
+	// which returns `!string` (Result).
+	mut is_string_range_or := false
+	if call_expr is ast.IndexExpr {
+		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+			is_string_range_or = true
+		}
+	}
+
 	// Check if expression returns Result or Option using expression-based lookup
 	// This works for both function calls and method calls
 	mut is_result := t.expr_returns_result(call_expr)
@@ -1401,7 +1411,11 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	}
 
 	if !is_result && !is_option {
-		return none
+		if is_string_range_or {
+			is_result = true
+		} else {
+			return none
+		}
 	}
 
 	// Native backends (arm64/x64) don't use Option/Result structs.
@@ -1486,6 +1500,11 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	if base_type == '' && fn_name != '' {
 		base_type = t.get_fn_return_base_type(fn_name)
 	}
+	// String range or-block: the checker typed this as plain string,
+	// so base_type lookup fails. Force it to 'string'.
+	if is_string_range_or && base_type == '' {
+		base_type = 'string'
+	}
 	is_void_result := base_type == '' || base_type == 'void'
 	_ = is_option // suppress unused warning
 	// Generate temp variable name
@@ -1512,14 +1531,29 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 			}
 		}
 	}
+	// String range or-block: register as _result_string since the checker
+	// didn't record a Result type for this expression.
+	if is_string_range_or {
+		t.register_temp_var(temp_name, types.ResultType{
+			base_type: types.string_
+		})
+	}
 
 	// Build the expanded statements
 	mut stmts := []ast.Stmt{}
 	// 1. _t1 := call_expr
+	transformed_call := t.transform_expr(call_expr)
+	// For string range or-blocks, rename string__substr to string__substr_with_check
+	// which returns !string (Result) instead of string.
+	rhs_expr := if is_string_range_or {
+		t.rename_substr_to_checked(transformed_call)
+	} else {
+		transformed_call
+	}
 	stmts << ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [ast.Expr(temp_ident)]
-		rhs: [t.transform_expr(call_expr)]
+		rhs: [rhs_expr]
 		pos: stmt.pos
 	}
 	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
@@ -2446,6 +2480,14 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		return result
 	}
 
+	// Check for string range with or block: s[0..20] or { 'fallback' }
+	mut is_string_range_or := false
+	if call_expr is ast.IndexExpr {
+		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+			is_string_range_or = true
+		}
+	}
+
 	// Check if expression returns Result or Option using expression-based lookup
 	// This works for both function calls and method calls
 	mut is_result := t.expr_returns_result(call_expr)
@@ -2617,12 +2659,28 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 	if base_type == '' && (is_result || is_option) {
 		base_type = 'int'
 	}
+	// String range or-block: register as _result_string since the checker
+	// didn't record a Result type for this expression.
+	if is_string_range_or {
+		t.register_temp_var(temp_name, types.ResultType{
+			base_type: types.string_
+		})
+		base_type = 'string'
+	}
 	is_void_result := base_type == '' || base_type == 'void'
 	// 1. _t1 := call_expr
+	transformed_call2 := t.transform_expr(call_expr)
+	// For string range or-blocks, rename string__substr to string__substr_with_check
+	// which returns !string (Result) instead of string.
+	rhs_expr2 := if is_string_range_or {
+		t.rename_substr_to_checked(transformed_call2)
+	} else {
+		transformed_call2
+	}
 	prefix_stmts << ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [ast.Expr(temp_ident)]
-		rhs: [t.transform_expr(call_expr)]
+		rhs: [rhs_expr2]
 	}
 	// 2. if _t1.is_error { ... } (for Result) or if _t1.state != 0 { ... } (for Option)
 	error_cond := if is_result {
@@ -4838,6 +4896,23 @@ fn (mut t Transformer) transform_array_init_with_exprs(arr ast.ArrayInitExpr, ex
 		]
 		pos:  arr.pos
 	}
+}
+
+// rename_substr_to_checked renames a string__substr call to string__substr_with_check.
+// Used for string range with or-blocks: s[0..20] or { 'fallback' } needs the checked
+// variant which returns !string (Result) instead of plain string.
+fn (t &Transformer) rename_substr_to_checked(expr ast.Expr) ast.Expr {
+	if expr is ast.CallExpr {
+		if expr.lhs is ast.Ident && expr.lhs.name == 'string__substr' {
+			return ast.CallExpr{
+				lhs:  ast.Ident{
+					name: 'string__substr_with_check'
+				}
+				args: expr.args
+			}
+		}
+	}
+	return expr
 }
 
 // is_string_expr returns true if the expression is known to be a string

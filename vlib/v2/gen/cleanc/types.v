@@ -1016,6 +1016,14 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			}
 		}
 	}
+	// Tuple: always infer from element types, env position can be wrong.
+	if node is ast.Tuple {
+		mut elem_types := []string{cap: node.exprs.len}
+		for expr in node.exprs {
+			elem_types << g.get_expr_type(expr)
+		}
+		return g.register_tuple_alias(elem_types)
+	}
 	// Try environment lookup
 	if t := g.get_expr_type_from_env(node) {
 		// For array element-returning methods, prefer element type inference over the
