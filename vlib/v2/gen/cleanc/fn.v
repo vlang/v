@@ -987,31 +987,6 @@ fn (mut g Gen) resolve_container_method_name(receiver ast.Expr, method_name stri
 	return ''
 }
 
-// resolve_nested_module_call checks if a SelectorExpr represents a nested module
-// function call (e.g. rand.seed.time_seed_array) and writes the resolved name.
-fn (mut g Gen) resolve_nested_module_call(sel ast.SelectorExpr, method string, name &string) bool {
-	if sel.lhs is ast.SelectorExpr {
-		inner := sel.lhs as ast.SelectorExpr
-		if inner.lhs is ast.Ident && g.is_module_ident(inner.lhs.name) {
-			sub_mod := inner.rhs.name
-			fn_name := sanitize_fn_ident(method)
-			short_name := '${sub_mod}__${fn_name}'
-			if short_name in g.fn_return_types || short_name in g.fn_param_is_ptr {
-				unsafe {
-					*name = short_name
-				}
-				return true
-			}
-			mod_name := g.resolve_module_name(inner.lhs.name)
-			unsafe {
-				*name = '${mod_name}__${sub_mod}__${fn_name}'
-			}
-			return true
-		}
-	}
-	return false
-}
-
 fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 	mut name := ''
 	if lhs is ast.Ident {
@@ -1027,8 +1002,6 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, arg_count int) string {
 		if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
 			mod_name := g.resolve_module_name(lhs.lhs.name)
 			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
-		} else if g.resolve_nested_module_call(lhs, lhs.rhs.name, &name) {
-			// Nested module reference resolved (e.g. rand.seed.time_seed_array)
 		} else {
 			method_name := sanitize_fn_ident(lhs.rhs.name)
 			base_type := g.method_receiver_base_type(lhs.lhs)
@@ -1166,24 +1139,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			}
 		}
 	}
-	// Nested module function call: rand.seed.time_seed_array(2) => seed__time_seed_array(2)
-	// Must be checked before the fn_pointer_expr check, because the checker resolves
-	// the nested module function reference as a FnType, which would trigger the
-	// function pointer cast path.
-	if lhs is ast.SelectorExpr && lhs.lhs is ast.SelectorExpr {
-		mut nested_name := ''
-		if g.resolve_nested_module_call(lhs, lhs.rhs.name, &nested_name) {
-			g.sb.write_string('${nested_name}(')
-			for i, arg in args {
-				if i > 0 {
-					g.sb.write_string(', ')
-				}
-				g.expr(arg)
-			}
-			g.sb.write_string(')')
-			return
-		}
-	}
 	if lhs is ast.SelectorExpr && g.is_fn_pointer_expr(lhs) {
 		mut should_emit_fnptr_call := true
 		resolved := g.resolve_call_name(lhs, args.len)
@@ -1299,9 +1254,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		} else if lhs.lhs is ast.Ident && g.is_module_ident(lhs.lhs.name) {
 			mod_name := g.resolve_module_name(lhs.lhs.name)
 			name = '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
-		} else if g.resolve_nested_module_call(lhs, lhs.rhs.name, &name) {
-			// Nested module reference (e.g. rand.seed.time_seed_array)
-			// Don't add lhs.lhs as receiver - it's a module path, not a value.
 		} else {
 			// value.method(args...) => ReceiverType__method(value, args...)
 			name = g.resolve_call_name(lhs, args.len)

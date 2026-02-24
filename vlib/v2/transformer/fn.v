@@ -874,6 +874,37 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Method call resolution: rewrite receiver.method(args) -> Type__method(receiver, args)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
+		// Nested module call: rand.seed.time_seed_array() -> seed__time_seed_array()
+		if sel.lhs is ast.SelectorExpr {
+			inner := sel.lhs as ast.SelectorExpr
+			if inner.lhs is ast.Ident && t.is_module_ident(inner.lhs.name) {
+				sub_mod := inner.rhs.name
+				fn_name := sel.rhs.name
+				// Check if sub_mod is actually a module scope (not a variable like os.args)
+				mut resolved_name := ''
+				if t.get_module_scope(sub_mod) != none {
+					resolved_name = '${sub_mod}__${fn_name}'
+				} else {
+					full_mod := '${inner.lhs.name}__${sub_mod}'
+					if t.get_module_scope(full_mod) != none {
+						resolved_name = '${full_mod}__${fn_name}'
+					}
+				}
+				if resolved_name != '' {
+					mut args := []ast.Expr{cap: expr.args.len}
+					for arg in expr.args {
+						args << t.transform_expr(arg)
+					}
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: resolved_name
+						}
+						args: args
+						pos:  expr.pos
+					}
+				}
+			}
+		}
 		is_module_call := sel.lhs is ast.Ident && t.get_module_scope(sel.lhs.name) != none
 			&& t.lookup_var_type(sel.lhs.name) == none
 		if !is_module_call {

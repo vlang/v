@@ -930,9 +930,9 @@ fn (mut g Gen) gen_keyword_operator(node ast.KeywordOperator) {
 			}
 		}
 		.key_typeof {
+			// typeof should be lowered to StringLiteral by the transformer.
+			// Fallback: emit a placeholder string.
 			if node.exprs.len > 0 {
-				// typeof needs V type names (e.g. "map[rune]int"), not C type names.
-				// Try to get the raw types.Type from the checker and format as V string.
 				mut type_name := ''
 				if raw_type := g.get_raw_type(node.exprs[0]) {
 					type_name = g.types_type_to_v(raw_type)

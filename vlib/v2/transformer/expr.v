@@ -294,6 +294,19 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 				pos:  expr.pos
 			})
 		}
+		ast.KeywordOperator {
+			if expr.op == .key_typeof && expr.exprs.len > 0 {
+				type_name := t.resolve_typeof_expr(expr.exprs[0])
+				if type_name != '' {
+					return ast.StringLiteral{
+						kind:  .v
+						value: quote_v_string_literal(type_name)
+						pos:   expr.pos
+					}
+				}
+			}
+			expr
+		}
 		else {
 			expr
 		}
@@ -577,6 +590,19 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 
 // transform_selector_expr transforms a selector expression, applying smart cast if applicable
 fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
+	// typeof(x).name -> string literal with V type name
+	if expr.lhs is ast.KeywordOperator && expr.lhs.op == .key_typeof && expr.rhs.name == 'name' {
+		if expr.lhs.exprs.len > 0 {
+			type_name := t.resolve_typeof_expr(expr.lhs.exprs[0])
+			if type_name != '' {
+				return ast.StringLiteral{
+					kind:  .v
+					value: quote_v_string_literal(type_name)
+					pos:   expr.pos
+				}
+			}
+		}
+	}
 	// Check for smart cast field access: check ALL contexts in the stack
 	if t.has_active_smartcast() {
 		full_str := t.expr_to_string(expr)
@@ -595,6 +621,7 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 		}
 	}
 	// Handle module-qualified enum value access: module.EnumType.value -> module__EnumType__value
+	// Also handle nested module references: rand.seed.time_seed_array -> seed__time_seed_array
 	if expr.lhs is ast.SelectorExpr {
 		lhs_sel := expr.lhs as ast.SelectorExpr
 		if lhs_sel.lhs is ast.Ident {
@@ -605,6 +632,28 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 				if typ is types.Enum {
 					return ast.Ident{
 						name: '${qualified}__${expr.rhs.name}'
+						pos:  expr.pos
+					}
+				}
+			}
+			// Nested module reference: rand.seed.time_seed_array -> seed__time_seed_array
+			// Only resolve when both the outer ident is a module AND the inner name
+			// is also a sub-module (not a variable like os.args.len).
+			if t.is_module_ident(module_name) {
+				sub_mod := lhs_sel.rhs.name
+				fn_name := expr.rhs.name
+				// Check if sub_mod is actually a module scope
+				if t.get_module_scope(sub_mod) != none {
+					return ast.Ident{
+						name: '${sub_mod}__${fn_name}'
+						pos:  expr.pos
+					}
+				}
+				// Try full qualified name (module__sub_mod as scope key)
+				full_mod := '${module_name}__${sub_mod}'
+				if t.get_module_scope(full_mod) != none {
+					return ast.Ident{
+						name: '${full_mod}__${fn_name}'
 						pos:  expr.pos
 					}
 				}
@@ -2381,6 +2430,45 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			}
 			// arr1 == arr2 -> array__eq(arr1, arr2)
 			return eq_call
+		}
+		// Check for map comparisons: map1 == map2 or map1 != map2
+		// Exclude pointer-to-map types (those should be pointer comparisons)
+		if expr.op in [.eq, .ne] {
+			mut is_lhs_ptr_map := false
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if lhs_type is types.Pointer {
+					is_lhs_ptr_map = true
+				}
+			}
+			mut is_rhs_ptr_map := false
+			if rhs_type := t.get_expr_type(expr.rhs) {
+				if rhs_type is types.Pointer {
+					is_rhs_ptr_map = true
+				}
+			}
+			if !is_lhs_ptr_map && !is_rhs_ptr_map {
+				lhs_map_type := t.get_map_type_for_expr(expr.lhs)
+				rhs_map_type := t.get_map_type_for_expr(expr.rhs)
+				if lhs_map_type != none || rhs_map_type != none {
+					map_type_name := lhs_map_type or { rhs_map_type or { 'map' } }
+					eq_fn := '${map_type_name}_map_eq'
+					map_eq_call := ast.CallExpr{
+						lhs:  ast.Ident{
+							name: eq_fn
+						}
+						args: [t.transform_expr(expr.lhs), t.transform_expr(expr.rhs)]
+						pos:  expr.pos
+					}
+					if expr.op == .ne {
+						return ast.PrefixExpr{
+							op:   .not
+							expr: map_eq_call
+							pos:  expr.pos
+						}
+					}
+					return map_eq_call
+				}
+			}
 		}
 	}
 	// Check for struct operator overloading (e.g., time.Time - time.Time)

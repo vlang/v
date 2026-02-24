@@ -739,53 +739,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.sb.write_string(')')
 				return
 			}
-			// Map comparison: use Map_K_V_map_eq function.
-			// Exclude pointer-to-map types (e.g. Map_string_int*) — those are pointer comparisons.
-			is_lhs_map := (lhs_type == 'map' || lhs_type.starts_with('Map_'))
-				&& !lhs_type.ends_with('*')
-			is_rhs_map := (rhs_type == 'map' || rhs_type.starts_with('Map_'))
-				&& !rhs_type.ends_with('*')
-			if node.op in [.eq, .ne] && (is_lhs_map || is_rhs_map) {
-				// Determine specific map type name for the eq function.
-				// get_expr_type often returns generic 'map', so use get_raw_type
-				// to resolve the specific Map_K_V type for proper comparison.
-				mut map_type_name := if lhs_type.starts_with('Map_') {
-					lhs_type
-				} else if rhs_type.starts_with('Map_') {
-					rhs_type
-				} else {
-					'map'
-				}
-				if map_type_name == 'map' {
-					if raw := g.get_raw_type(node.lhs) {
-						// Unwrap pointer types to get the base map type
-						base := if raw is types.Pointer { raw.base_type } else { raw }
-						c_type := g.types_type_to_c(base)
-						if c_type.starts_with('Map_') {
-							map_type_name = c_type
-						}
-					}
-				}
-				if map_type_name == 'map' {
-					if raw := g.get_raw_type(node.rhs) {
-						base := if raw is types.Pointer { raw.base_type } else { raw }
-						c_type := g.types_type_to_c(base)
-						if c_type.starts_with('Map_') {
-							map_type_name = c_type
-						}
-					}
-				}
-				eq_fn := '${map_type_name}_map_eq'
-				if node.op == .ne {
-					g.sb.write_string('!')
-				}
-				g.sb.write_string('${eq_fn}(')
-				g.expr(node.lhs)
-				g.sb.write_string(', ')
-				g.expr(node.rhs)
-				g.sb.write_string(')')
-				return
-			}
 			mut cmp_type := ''
 			if g.should_use_memcmp_eq(lhs_type, rhs_type) {
 				cmp_type = lhs_type
@@ -1066,12 +1019,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			panic('bug in v2 compiler: CallOrCastExpr should have been lowered in v2.transformer')
 		}
 		ast.SelectorExpr {
-			// typeof(x).name -> just emit the typeof string directly (already a string)
-			if node.lhs is ast.KeywordOperator && node.lhs.op == .key_typeof
-				&& node.rhs.name == 'name' {
-				g.gen_keyword_operator(node.lhs)
-				return
-			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if node.lhs is ast.Ident && node.lhs.name == 'C' {
 				g.sb.write_string(node.rhs.name)
@@ -1243,30 +1190,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.sb.write_string('${mod_name}__${node.rhs.name}')
 				}
 				return
-			}
-			// Nested module reference: rand.seed.time_seed_array => seed__time_seed_array
-			// Only applies when the resolved name is a known function.
-			if node.lhs is ast.SelectorExpr {
-				inner_sel := node.lhs as ast.SelectorExpr
-				if inner_sel.lhs is ast.Ident {
-					inner_ident := inner_sel.lhs as ast.Ident
-					if g.is_module_ident(inner_ident.name) {
-						sub_mod := inner_sel.rhs.name
-						short_name := '${sub_mod}__${node.rhs.name}'
-						if short_name in g.fn_return_types || short_name in g.fn_param_is_ptr {
-							g.sb.write_string(short_name)
-							return
-						}
-						mod_name := g.resolve_module_name(inner_ident.name)
-						full_name := '${mod_name}__${sub_mod}__${node.rhs.name}'
-						if full_name in g.fn_return_types || full_name in g.fn_param_is_ptr {
-							g.sb.write_string(full_name)
-							return
-						}
-						// Not a known function — fall through to normal SelectorExpr
-						// handling (e.g. os.args.len is a field access, not a module call).
-					}
-				}
 			}
 			// Check if LHS is an enum type name -> emit EnumName__field
 			if node.lhs is ast.Ident && g.is_enum_type(node.lhs.name) {
