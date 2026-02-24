@@ -687,8 +687,24 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		}
 		// `arr.sort(a < b)` comparator lambdas are not lowered yet.
 		// Keep C generation valid by passing nil callback for now.
+		// Resolve the method name so it generates array__sorted(receiver, nil)
+		// instead of leaving a SelectorExpr that cleanc treats as a field access.
 		if sel.rhs.name in ['sort', 'sorted'] && expr.args.len == 1
 			&& t.is_sort_compare_lambda_expr(expr.args[0]) {
+			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+				return ast.CallExpr{
+					lhs:  ast.Ident{
+						name: resolved
+					}
+					args: [
+						t.transform_expr(sel.lhs),
+						ast.Expr(ast.Ident{
+							name: 'nil'
+						}),
+					]
+					pos:  expr.pos
+				}
+			}
 			return ast.CallExpr{
 				lhs:  ast.SelectorExpr{
 					lhs: t.transform_expr(sel.lhs)
@@ -862,6 +878,28 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			&& t.lookup_var_type(sel.lhs.name) == none
 		if !is_module_call {
 			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+				// For nested array .clone(), use clone_to_depth with the correct depth
+				// so inner arrays are deeply cloned instead of shallow-copied.
+				if resolved == 'array__clone' && expr.args.len == 0 {
+					if recv_type := t.get_expr_type(sel.lhs) {
+						depth := t.get_array_nesting_depth(recv_type)
+						if depth > 1 {
+							return ast.CallExpr{
+								lhs:  ast.Ident{
+									name: 'array__clone_to_depth'
+								}
+								args: [
+									t.transform_expr(sel.lhs),
+									ast.Expr(ast.BasicLiteral{
+										kind:  .number
+										value: '${depth - 1}'
+									}),
+								]
+								pos:  expr.pos
+							}
+						}
+					}
+				}
 				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 				is_static := t.is_static_method_call(sel.lhs)
 				mut transformed_call_args := []ast.Expr{cap: call_args.len}
@@ -1583,7 +1621,22 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		}
 		// `arr.sort(a < b)` may be parsed as CallOrCastExpr in single-arg form.
 		// Keep C generation valid by passing nil callback for now.
+		// Resolve the method name so it generates array__sorted(receiver, nil).
 		if sel.rhs.name in ['sort', 'sorted'] && t.is_sort_compare_lambda_expr(expr.expr) {
+			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
+				return ast.CallExpr{
+					lhs:  ast.Ident{
+						name: resolved
+					}
+					args: [
+						t.transform_expr(sel.lhs),
+						ast.Expr(ast.Ident{
+							name: 'nil'
+						}),
+					]
+					pos:  expr.pos
+				}
+			}
 			return ast.CallExpr{
 				lhs:  ast.SelectorExpr{
 					lhs: t.transform_expr(sel.lhs)

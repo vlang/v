@@ -2812,9 +2812,14 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		// Type-check call arguments with parameter context so shorthand enum
 		// selectors like `.assign` resolve against the callee parameter type.
 		// Skip sort/sorted comparator sugar because that lambda form is lowered later.
+		// Skip map/filter/any/all calls: their body was already typechecked at line 2803
+		// above with the correct 'it' scope. Re-typechecking here would use a stale scope
+		// (inner maps may have overwritten 'it') and corrupt position-based type info.
 		is_sort_cmp_call := lhs_expr is ast.SelectorExpr && lhs_expr.rhs.name in ['sort', 'sorted']
 			&& expr.args.len == 1
-		if fn_.generic_params.len == 0 && !is_sort_cmp_call {
+		is_array_magic_call := lhs_expr is ast.SelectorExpr
+			&& lhs_expr.rhs.name in ['map', 'filter', 'any', 'all']
+		if fn_.generic_params.len == 0 && !is_sort_cmp_call && !is_array_magic_call {
 			prev_expected := c.expected_type
 			for i, arg in expr.args {
 				if i < fn_.params.len {
@@ -3135,12 +3140,16 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			if name == 'wait' && arr_type.elem_type is Thread {
 				return fn_with_return_type(FnType{}, Type(void_))
 			}
-			// Compiler-magic array methods (any, all, contains, index)
-			// Return FnType with array as return_type so 'it' gets the element type
-			if name in ['any', 'all', 'contains'] {
-				return fn_with_return_type(FnType{}, Type(arr_type))
+			// Compiler-magic array methods
+			// contains returns bool, index returns int
+			if name == 'contains' {
+				return fn_with_return_type(FnType{}, Type(bool_))
 			}
 			if name == 'index' {
+				return fn_with_return_type(FnType{}, Type(int_))
+			}
+			// any/all need array type for 'it' variable insertion
+			if name in ['any', 'all'] {
 				return fn_with_return_type(FnType{}, Type(arr_type))
 			}
 			// TODO: has to be a better way

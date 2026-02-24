@@ -1714,6 +1714,15 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		g.sb.write_string(']')
 		return
 	}
+	// CastExpr to Array_* pointer: transformer-generated cast already points
+	// to the correct element type (e.g., for 2D array init), just index directly
+	if node.lhs is ast.CastExpr && lhs_type.starts_with('Array_') && lhs_type.ends_with('*') {
+		g.expr(node.lhs)
+		g.sb.write_string('[')
+		g.expr(node.expr)
+		g.sb.write_string(']')
+		return
+	}
 	if lhs_type == 'array' || lhs_type.starts_with('Array_') {
 		mut elem_type := g.get_expr_type(node)
 		if elem_type == '' || elem_type == 'int' {

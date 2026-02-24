@@ -1521,14 +1521,16 @@ fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr 
 	//    with `index` renamed to `_v_index`
 	renamed_init := t.replace_ident_named(init_expr, 'index', '_v_index')
 	arr_data := t.synth_selector(arr_ident, 'data', types.Type(types.voidptr_))
+	// Use a simple Ident for the cast type name so cleanc renders it as
+	// ((ElemType*)data)[idx] without decomposing compound type expressions.
+	cast_type_name := t.expr_to_type_name(sizeof_expr)
 	elem_assign := ast.Stmt(ast.AssignStmt{
 		op:  .assign
 		lhs: [
 			ast.Expr(ast.IndexExpr{
 				lhs:  ast.CastExpr{
-					typ:  ast.PrefixExpr{
-						op:   .amp
-						expr: sizeof_expr
+					typ:  ast.Ident{
+						name: '${cast_type_name}*'
 					}
 					expr: arr_data
 				}

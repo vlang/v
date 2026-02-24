@@ -168,6 +168,16 @@ fn (t &Transformer) is_callable_type(typ types.Type) bool {
 	}
 }
 
+// is_fn_ident checks if an Ident refers to a function (for detecting function pointer args
+// in .filter()/.map() calls, e.g., arr.filter(my_predicate))
+fn (t &Transformer) is_fn_ident(ident ast.Ident) bool {
+	if typ := t.get_expr_type(ident) {
+		return t.is_callable_type(typ)
+	}
+	// Fallback: check if the name exists as a registered function
+	return t.env.lookup_fn('', ident.name) != none || t.env.lookup_fn('builtin', ident.name) != none
+}
+
 // is_interface_type checks if a type is an Interface
 fn (t &Transformer) is_interface_type_check(typ types.Type) bool {
 	return typ is types.Interface
@@ -1732,6 +1742,16 @@ fn (t &Transformer) unwrap_alias_and_pointer_type(typ types.Type) types.Type {
 	return cur
 }
 
+// get_array_nesting_depth returns the nesting depth of an array type.
+// []int → 1, [][]int → 2, [][][]int → 3, non-array → 0
+fn (t &Transformer) get_array_nesting_depth(typ types.Type) int {
+	base := t.unwrap_alias_and_pointer_type(typ)
+	if base is types.Array {
+		return 1 + t.get_array_nesting_depth(base.elem_type)
+	}
+	return 0
+}
+
 fn (t &Transformer) array_elem_type_name_for_helpers(elem_type types.Type) string {
 	if elem_type is types.FnType {
 		return 'voidptr'
@@ -1908,6 +1928,9 @@ fn (t &Transformer) type_to_c_name(typ types.Type) string {
 			// For other pointer types, use mangled ptr suffix for type names
 			// (This is used in map type names like Map_int_Intervalptr)
 			return '${base_name}ptr'
+		}
+		types.FnType {
+			return 'voidptr'
 		}
 		else {
 			return 'int'

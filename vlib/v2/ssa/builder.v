@@ -3454,7 +3454,7 @@ fn (mut b Builder) build_init_expr(expr ast.InitExpr) ValueID {
 		data_v := b.mod.values[field_vals[1]]
 		if tag_v.kind == .constant && tag_v.name != '0' && data_v.kind == .constant
 			&& data_v.name == '0' {
-			eprintln('DIAG SSA: sum type struct_init with _tag=${tag_v.name} but _data=0! fn=${b.cur_func}')
+			// eprintln('DIAG SSA: sum type struct_init with _tag=${tag_v.name} but _data=0! fn=${b.cur_func}')
 			for fi2, field2 in expr.fields {
 				eprintln('  field[${fi2}]: name="${field2.name}" value_tag=${field2.value.type_name()}')
 			}

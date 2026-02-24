@@ -1032,10 +1032,39 @@ fn (mut t Transformer) try_expand_or_expr_assign(stmt ast.AssignStmt) ?ast.Stmt 
 
 // try_transform_map_index_assign transforms map index assignment to a function call.
 // Transforms: m[key] = val -> map__set(&m, &key, &val)
+// Also handles compound assignments: m[key] += val -> { tmp = map_get(m,key); tmp += val; map_set(m,key,tmp) }
 fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.Stmt {
-	// Only handle simple assignment (not compound assignment like +=)
-	if stmt.op != .assign {
-		return none
+	// Handle compound assignment by converting to: m[key] = m[key] op val
+	if stmt.op != .assign && stmt.op != .decl_assign {
+		infix_op := match stmt.op {
+			.plus_assign { token.Token.plus }
+			.minus_assign { token.Token.minus }
+			.mul_assign { token.Token.mul }
+			.div_assign { token.Token.div }
+			.mod_assign { token.Token.mod }
+			.and_assign { token.Token.amp }
+			.or_assign { token.Token.pipe }
+			.xor_assign { token.Token.xor }
+			.left_shift_assign { token.Token.left_shift }
+			.right_shift_assign { token.Token.right_shift }
+			else { return none }
+		}
+		if stmt.lhs.len != 1 || stmt.rhs.len != 1 {
+			return none
+		}
+		// Convert m[key] op= val to m[key] = m[key] op val
+		new_rhs := ast.Expr(ast.InfixExpr{
+			lhs: stmt.lhs[0]
+			op:  infix_op
+			rhs: stmt.rhs[0]
+			pos: stmt.pos
+		})
+		return t.try_transform_map_index_assign(ast.AssignStmt{
+			op:  .assign
+			lhs: stmt.lhs
+			rhs: [new_rhs]
+			pos: stmt.pos
+		})
 	}
 	// Check for single LHS that is an IndexExpr
 	if stmt.lhs.len != 1 || stmt.rhs.len != 1 {
@@ -1606,7 +1635,14 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	mut result_elem := elem_type
 	if !is_filter {
 		if typ := t.get_expr_type(body_expr) {
-			c_name := t.type_to_c_name(typ)
+			// For function types (fn pointer/literal args), use the return type
+			mut resolved_typ := typ
+			if typ is types.FnType {
+				if rt := typ.get_return_type() {
+					resolved_typ = rt
+				}
+			}
+			c_name := t.type_to_c_name(resolved_typ)
 			if c_name != '' && c_name != 'void' && c_name != 'int_literal' {
 				result_elem = c_name
 			}
@@ -1644,8 +1680,28 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 		]
 	})
 
-	// Replace 'it' with '_filter_it' in the body expression
-	transformed_body := t.replace_it_ident(body_expr, '_filter_it')
+	// Replace 'it' with '_filter_it' in the body expression.
+	// If the body is a function reference (named function), call it with the element:
+	// e.g., arr.filter(my_fn) → ... if (my_fn(_filter_it)) { ... }
+	// If the body is a FnLiteral/LambdaExpr, inline its body with param replaced:
+	// e.g., arr.map(fn (i int) string { return i.str() })
+	//   → ... string _v = _filter_it.str(); ...
+	transformed_body := if body_expr is ast.Ident && !t.expr_contains_ident_named(body_expr, 'it')
+		&& t.is_fn_ident(body_expr) {
+		ast.Expr(ast.CallExpr{
+			lhs:  t.transform_expr(body_expr)
+			args: [ast.Expr(it_ident)]
+		})
+	} else if body_expr is ast.FnLiteral && body_expr.typ.params.len == 1 {
+		// Inline FnLiteral: extract its single return expression and replace param with _filter_it
+		// e.g., arr.map(fn (i int) string { return i.str() })
+		//   → ... _filter_it.str() ...
+		param_name := body_expr.typ.params[0].name
+		ret_expr := t.extract_fn_literal_return_expr(body_expr)
+		t.replace_named_ident(ret_expr, param_name, '_filter_it')
+	} else {
+		t.replace_it_ident(body_expr, '_filter_it')
+	}
 
 	// Build the for loop body
 	mut loop_body := []ast.Stmt{}
@@ -1833,6 +1889,7 @@ fn (t &Transformer) replace_it_ident(expr ast.Expr, new_name string) ast.Expr {
 			return ast.IndexExpr{
 				lhs:  t.replace_it_ident(expr.lhs, new_name)
 				expr: t.replace_it_ident(expr.expr, new_name)
+				pos:  expr.pos
 			}
 		}
 		ast.CastExpr {
@@ -1842,9 +1899,140 @@ fn (t &Transformer) replace_it_ident(expr ast.Expr, new_name string) ast.Expr {
 				pos:  expr.pos
 			}
 		}
+		ast.StringInterLiteral {
+			mut new_inters := []ast.StringInter{cap: expr.inters.len}
+			for inter in expr.inters {
+				new_inters << ast.StringInter{
+					...inter
+					expr: t.replace_it_ident(inter.expr, new_name)
+				}
+			}
+			return ast.StringInterLiteral{
+				kind:   expr.kind
+				values: expr.values
+				inters: new_inters
+				pos:    expr.pos
+			}
+		}
 		else {
 			return expr
 		}
+	}
+}
+
+// replace_named_ident replaces all occurrences of an identifier with the given old_name
+// to a new name. This is a generalized version of replace_it_ident.
+fn (t &Transformer) replace_named_ident(expr ast.Expr, old_name string, new_name string) ast.Expr {
+	match expr {
+		ast.Ident {
+			if expr.name == old_name {
+				return ast.Ident{
+					name: new_name
+					pos:  expr.pos
+				}
+			}
+			return expr
+		}
+		ast.InfixExpr {
+			return ast.InfixExpr{
+				op:  expr.op
+				lhs: t.replace_named_ident(expr.lhs, old_name, new_name)
+				rhs: t.replace_named_ident(expr.rhs, old_name, new_name)
+				pos: expr.pos
+			}
+		}
+		ast.PrefixExpr {
+			return ast.PrefixExpr{
+				op:   expr.op
+				expr: t.replace_named_ident(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.ParenExpr {
+			return ast.ParenExpr{
+				expr: t.replace_named_ident(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.CallExpr {
+			mut new_args := []ast.Expr{cap: expr.args.len}
+			for arg in expr.args {
+				new_args << t.replace_named_ident(arg, old_name, new_name)
+			}
+			return ast.CallExpr{
+				lhs:  t.replace_named_ident(expr.lhs, old_name, new_name)
+				args: new_args
+				pos:  expr.pos
+			}
+		}
+		ast.CallOrCastExpr {
+			return ast.CallOrCastExpr{
+				lhs:  t.replace_named_ident(expr.lhs, old_name, new_name)
+				expr: t.replace_named_ident(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.SelectorExpr {
+			return ast.SelectorExpr{
+				lhs: t.replace_named_ident(expr.lhs, old_name, new_name)
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+		ast.IndexExpr {
+			return ast.IndexExpr{
+				lhs:  t.replace_named_ident(expr.lhs, old_name, new_name)
+				expr: t.replace_named_ident(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.CastExpr {
+			return ast.CastExpr{
+				typ:  expr.typ
+				expr: t.replace_named_ident(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.StringInterLiteral {
+			mut new_inters := []ast.StringInter{cap: expr.inters.len}
+			for inter in expr.inters {
+				new_inters << ast.StringInter{
+					...inter
+					expr: t.replace_named_ident(inter.expr, old_name, new_name)
+				}
+			}
+			return ast.StringInterLiteral{
+				kind:   expr.kind
+				values: expr.values
+				inters: new_inters
+				pos:    expr.pos
+			}
+		}
+		else {
+			return expr
+		}
+	}
+}
+
+// extract_fn_literal_return_expr extracts the single return expression from a FnLiteral.
+// For simple FnLiterals like `fn (i int) string { return i.str() }`, extracts `i.str()`.
+// Falls back to the body expression of an ExprStmt if no ReturnStmt found.
+fn (t &Transformer) extract_fn_literal_return_expr(lit ast.FnLiteral) ast.Expr {
+	for stmt in lit.stmts {
+		if stmt is ast.ReturnStmt {
+			if stmt.exprs.len > 0 {
+				return stmt.exprs[0]
+			}
+		}
+		// Also handle expression statements (implicit return)
+		if stmt is ast.ExprStmt {
+			return stmt.expr
+		}
+	}
+	// Fallback: return a zero literal (should not be reached for valid FnLiterals)
+	return ast.BasicLiteral{
+		kind:  .number
+		value: '0'
 	}
 }
 
@@ -5491,10 +5679,17 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 	// Get element str function name.
 	// Auto-generated helper functions (Array_, Map_) use single underscore _str suffix.
 	// Real type methods use double underscore __str suffix.
-	elem_str_fn := if elem_type.starts_with('Array_') || elem_type.starts_with('Map_') {
-		'${elem_type}_str'
+	// For pointer element types (e.g. Coordptr), strip 'ptr' suffix to get base type str fn.
+	mut resolved_elem_type := elem_type
+	if elem_type.ends_with('ptr') && elem_type != 'voidptr' && elem_type != 'charptr'
+		&& elem_type != 'byteptr' {
+		resolved_elem_type = elem_type[..elem_type.len - 3]
+	}
+	elem_str_fn := if resolved_elem_type.starts_with('Array_')
+		|| resolved_elem_type.starts_with('Map_') {
+		'${resolved_elem_type}_str'
 	} else {
-		'${elem_type}__str'
+		'${resolved_elem_type}__str'
 	}
 
 	// Build the function body statements
