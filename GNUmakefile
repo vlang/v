@@ -42,10 +42,10 @@ TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 15), 1)
 LEGACY := 1
 CFLAGS += -I$(LEGACYLIBS)/include/LegacySupport
-LDFLAGS = -L$(LEGACYLIBS)/lib
+LDFLAGS += -L$(LEGACYLIBS)/lib
 LDFLAGS += -lMacportsLegacySupport
 VFLAGS += -cc $(CC)
-VFLAGS += -cflags $(CFLAGS)
+VFLAGS += -cflags "$(CFLAGS)"
 VFLAGS += -ldflags -L$(LEGACYLIBS)/lib
 VFLAGS += -ldflags -lMacportsLegacySupport
 endif
