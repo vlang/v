@@ -16,7 +16,10 @@ fn export_results(results []SimResult, config Config) ! {
 }
 
 fn run_simulation(config Config) []SimResult {
-	return [SimResult{filename: 'test', accuracy: 0.9}]
+	return [SimResult{
+		filename: 'test'
+		accuracy: 0.9
+	}]
 }
 
 fn main() {
