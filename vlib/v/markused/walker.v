@@ -763,6 +763,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.MapInit {
+			if node.typ == 0 {
+				return
+			}
 			w.exprs(node.keys)
 			w.exprs(node.vals)
 			if node.has_update_expr {
