@@ -528,6 +528,12 @@ fn (mut g Gen) try_emit_const_dynamic_array_call(name string, value ast.Expr) bo
 	if elem_type == '' || elem_type == 'array' {
 		return false
 	}
+	// Check that no element contains a function call (not valid in C static initializers)
+	for elem in array_data.exprs {
+		if g.contains_call_expr(elem) {
+			return false
+		}
+	}
 	mut len_expr := expr_to_int_str(call.args[0])
 	mut cap_expr := expr_to_int_str(call.args[1])
 	if len_expr == '0' && array_data.exprs.len > 0 {

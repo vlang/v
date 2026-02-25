@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
+import os
 import v2.ast
 import v2.parser
 
@@ -31,8 +32,21 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			}
 		}
 	}
+	// For test files, include all non-test sibling module files from the same directory
+	mut all_user_files := files.clone()
+	for file in files {
+		if file.contains('_test.') && file.ends_with('.v') {
+			dir := os.dir(file)
+			sibling_files := get_v_files_from_dir(dir, b.pref.user_defines)
+			for sf in sibling_files {
+				if sf !in all_user_files {
+					all_user_files << sf
+				}
+			}
+		}
+	}
 	// parse user files
-	parsed_user_files := parser_reused.parse_files(files, mut b.file_set)
+	parsed_user_files := parser_reused.parse_files(all_user_files, mut b.file_set)
 	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
 	if skip_imports {

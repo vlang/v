@@ -11,6 +11,33 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 	lhs := node.lhs[0]
 	rhs := node.rhs[0]
 
+	// Multi-assignment with parallel RHS values (non-declaration):
+	// `p, q = q, p` needs temp variables for correct swap semantics.
+	if node.op != .decl_assign && node.lhs.len > 1 && node.rhs.len == node.lhs.len {
+		// First, evaluate all RHS values into temporaries
+		for i, rhs_expr in node.rhs {
+			mut typ := g.get_expr_type(rhs_expr)
+			if typ == '' || typ == 'int_literal' {
+				typ = 'int'
+			}
+			if typ == 'float_literal' {
+				typ = 'f64'
+			}
+			g.write_indent()
+			g.sb.write_string('${typ} _swap_${g.tmp_counter}_${i} = ')
+			g.expr(rhs_expr)
+			g.sb.writeln(';')
+		}
+		// Then assign from temporaries to LHS
+		for i, lhs_expr in node.lhs {
+			g.write_indent()
+			g.expr(lhs_expr)
+			g.sb.writeln(' = _swap_${g.tmp_counter}_${i};')
+		}
+		g.tmp_counter++
+		return
+	}
+
 	// Multi-declaration with parallel RHS values:
 	// `a, b := x, y` should declare both variables (not just the first one).
 	if node.op == .decl_assign && node.lhs.len > 1 && node.rhs.len == node.lhs.len {

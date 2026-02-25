@@ -118,6 +118,10 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if node.language == .c {
 		return
 	}
+	// Skip generic struct declarations (unresolved type parameters)
+	if node.generic_params.len > 0 {
+		return
+	}
 
 	name := g.get_struct_name(node)
 	body_key := 'body_${name}'

@@ -1063,20 +1063,29 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			if lhs_type is Enum {
 				c.expected_type = to_optional_type(Type(lhs_type))
 			}
+			mut rhs_type := Type(void_)
 			if expr.op == .and {
 				// In `a is T && a.field ...`, RHS is evaluated only when the smart-cast is true.
 				// Type-check RHS in a nested scope with casts from LHS applied.
 				c.open_scope()
 				sc_names, sc_types := c.extract_smartcasts(expr.lhs)
 				c.apply_smartcasts(sc_names, sc_types)
-				c.expr(expr.rhs)
+				rhs_type = c.expr(expr.rhs)
 				c.close_scope()
 			} else {
-				c.expr(expr.rhs)
+				rhs_type = c.expr(expr.rhs)
 			}
 			c.expected_type = expected_type
 			if expr.op.is_comparison() {
 				return bool_
+			}
+			// Promote: when LHS is an untyped number literal and RHS is a concrete
+			// float type, the result should be float (e.g. `1 - f64_expr` → f64).
+			if lhs_type.is_number_literal() && rhs_type is Primitive {
+				rhs_prim := rhs_type as Primitive
+				if rhs_prim.props.has(Properties.float) && !rhs_type.is_number_literal() {
+					return rhs_type
+				}
 			}
 			return lhs_type
 		}
@@ -2711,11 +2720,11 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		}
 	}
 	if mut fn_ is FnType {
+		mut generic_type_map := map[string]Type{}
 		if fn_.generic_params.len > 0 {
 			// file := c.file_set.file(expr.pos)
 			// pos := file.position(expr.pos)
 			// eprintln('GENERIC CALL: ${expr.lhs.name()} - ${expr.pos} - ${file.name}:${pos.line}')
-			mut generic_type_map := map[string]Type{}
 			// generic types provided `[int, string]`
 			if lhs_expr is ast.GenericArgs {
 				// panic('GOT GENERIC CALL')
@@ -2848,6 +2857,15 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// 		}
 			// 	}
 			// }
+			// Resolve generic return type: if the return type is a NamedType (generic
+			// parameter like T) and we inferred a concrete type for it, return the
+			// concrete type so downstream code gets f64 instead of NamedType("T").
+			if return_type is NamedType && generic_type_map.len > 0 {
+				if resolved := generic_type_map[string(return_type)] {
+					c.log('returning resolved generic: ${resolved.name()}')
+					return resolved
+				}
+			}
 			c.log('returning: ${return_type.name()}')
 			return return_type
 		}

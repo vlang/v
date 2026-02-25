@@ -57,6 +57,18 @@ fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
 	expr_type := g.get_expr_type(inter.expr)
 	expr_src := g.expr_to_string(inter.expr)
 	str_fn := g.get_str_fn_for_type(expr_type) or { '' }
+	// Float types: use V's str() for default formatting ('0.0' not '0.000000')
+	if expr_type in ['f64', 'f32', 'float_literal'] && inter.format == .unformatted {
+		str_name := if expr_type == 'f32' { 'f32__str' } else { 'f64__str' }
+		g.sb.write_string('${str_name}(')
+		if expr_src == '' {
+			g.sb.write_string('0')
+		} else {
+			g.sb.write_string(expr_src)
+		}
+		g.sb.write_string(').str')
+		return
+	}
 	if expr_type == 'string' {
 		if expr_src == '' {
 			g.sb.write_string('""')
@@ -135,7 +147,9 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 			return '%llu'
 		}
 		'f32', 'f64', 'float_literal' {
-			return '%f'
+			// Use %s with V's str() function for default formatting,
+			// since C's %f produces '0.000000' instead of V's '0.0'.
+			return '%s'
 		}
 		'bool' {
 			return '%s'

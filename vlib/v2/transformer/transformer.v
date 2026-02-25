@@ -406,11 +406,13 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 		result << t.transform_file(file)
 	}
 	t.inject_runtime_const_init_fns(mut result)
-	// Generate auto helper functions and add them to the main module file.
-	// These MUST go in main (not builtin) because the builtin module is cached
-	// and shared across compilations. User-type functions (e.g. Array_Test2_str)
-	// would pollute the cache and cause undefined symbol errors when a different
-	// program reuses the same cache.
+	// Generate auto helper functions. Split into two groups:
+	// 1. Core functions (for standard types like string, int, etc.) go in the builtin
+	//    module file because cached builtin.o/vlib.o reference them. They must always
+	//    be available regardless of which program is being compiled.
+	// 2. User-type functions (e.g. Array_Test2_str) go in the main module file because
+	//    they would pollute the cache and cause undefined symbol errors when a different
+	//    program reuses the same cache.
 	mut generated_fns := []ast.Stmt{}
 	if t.needed_str_fns.len > 0 {
 		generated_fns << t.generate_str_functions()
@@ -423,25 +425,90 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 		generated_fns << t.generate_array_method_functions()
 	}
 	if generated_fns.len > 0 {
-		for i, file in result {
-			if file.mod != 'main' {
-				continue
+		// Split into core (builtin types) and user (custom types)
+		mut core_fns := []ast.Stmt{}
+		mut user_fns := []ast.Stmt{}
+		for gf in generated_fns {
+			mut is_core := false
+			if gf is ast.FnDecl {
+				is_core = is_core_generated_fn(gf.name)
 			}
-			mut new_stmts := []ast.Stmt{cap: file.stmts.len}
-			for stmt in file.stmts {
-				new_stmts << stmt
+			if is_core {
+				core_fns << gf
+			} else {
+				user_fns << gf
 			}
-			for fn_decl in generated_fns {
-				new_stmts << fn_decl
+		}
+		// Place core functions in the builtin module file
+		if core_fns.len > 0 {
+			mut builtin_idx := -1
+			for i, file in result {
+				if file.mod == 'builtin' {
+					builtin_idx = i
+					break
+				}
 			}
-			result[i] = ast.File{
-				attributes: file.attributes
-				mod:        file.mod
-				name:       file.name
-				stmts:      new_stmts
-				imports:    file.imports
+			if builtin_idx >= 0 {
+				file := result[builtin_idx]
+				mut new_stmts := []ast.Stmt{cap: file.stmts.len + core_fns.len}
+				for stmt in file.stmts {
+					new_stmts << stmt
+				}
+				for fn_decl in core_fns {
+					new_stmts << fn_decl
+				}
+				result[builtin_idx] = ast.File{
+					attributes: file.attributes
+					mod:        file.mod
+					name:       file.name
+					stmts:      new_stmts
+					imports:    file.imports
+				}
+			} else {
+				// No builtin file: add to user_fns as fallback
+				user_fns << core_fns
 			}
-			break
+		}
+		// Place user-type functions in the main module file
+		if user_fns.len > 0 {
+			mut target_idx := -1
+			for i, file in result {
+				if file.mod == 'main' {
+					target_idx = i
+					break
+				}
+			}
+			// For test files in non-main modules, use a builtin file so that
+			// get_fn_name and call_expr don't add wrong module prefixes.
+			if target_idx == -1 {
+				for i, file in result {
+					if file.mod == 'builtin' {
+						target_idx = i
+						break
+					}
+				}
+			}
+			// Last resort: last file
+			if target_idx == -1 && result.len > 0 {
+				target_idx = result.len - 1
+			}
+			if target_idx >= 0 {
+				file := result[target_idx]
+				mut new_stmts := []ast.Stmt{cap: file.stmts.len + user_fns.len}
+				for stmt in file.stmts {
+					new_stmts << stmt
+				}
+				for fn_decl in user_fns {
+					new_stmts << fn_decl
+				}
+				result[target_idx] = ast.File{
+					attributes: file.attributes
+					mod:        file.mod
+					name:       file.name
+					stmts:      new_stmts
+					imports:    file.imports
+				}
+			}
 		}
 	}
 	t.inject_main_runtime_const_init_calls(mut result)
@@ -4063,7 +4130,7 @@ fn (t &Transformer) get_sprintf_format_for_type(typ types.Type) string {
 				return '%s'
 			}
 			if typ.props.has(types.Properties.float) {
-				return '%f'
+				return '%s'
 			}
 			if typ.props.has(types.Properties.unsigned) {
 				if typ.size == 64 {
@@ -4180,6 +4247,18 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 					})
 					pos:       inter.expr.pos()
 				})
+			}
+			if typ.props.has(types.Properties.float) {
+				// float -> f64__str(expr).str for V-style formatting ('0.0' not '0.000000')
+				str_fn_name := if typ.size == 32 { 'f32__str' } else { 'f64__str' }
+				str_call := ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: str_fn_name
+					}
+					args: [transformed]
+					pos:  inter.expr.pos()
+				})
+				return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
 			}
 			// numeric primitives: pass as-is
 			return transformed
@@ -5745,6 +5824,41 @@ fn (mut t Transformer) get_str_fn_info_for_expr(expr ast.Expr) StrFnInfo {
 
 // generate_str_functions generates FnDecl AST nodes for needed auto str functions.
 // For arrays: generates a function that iterates over elements and calls their str methods.
+// is_core_generated_fn returns true if the generated function is for standard/builtin
+// types and should be placed in the builtin module file (so it's available in cached .o files).
+// User-type functions go in main to avoid polluting the cache.
+fn is_core_generated_fn(name string) bool {
+	// Standard type suffixes used in Array_TYPE_str, Array_TYPE_contains,
+	// Array_TYPE_index, etc.
+	core_types := ['string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
+		'f64', 'bool', 'rune', 'voidptr', 'byteptr', 'charptr', 'isize', 'usize']
+	// Sort comparators for builtin types (e.g., __sort_cmp_RepIndex_by_idx_asc)
+	if name.starts_with('__sort_cmp_') {
+		for ct in core_types {
+			if name.starts_with('__sort_cmp_${ct}_') {
+				return true
+			}
+		}
+		// RepIndex is a builtin type used in string.replace_each
+		if name.starts_with('__sort_cmp_RepIndex_') {
+			return true
+		}
+		return false
+	}
+	// Array_TYPE_str, Array_TYPE_contains, Array_TYPE_index, Array_TYPE_last_index
+	if name.starts_with('Array_') {
+		// Extract the type part: Array_TYPE_METHOD → TYPE
+		rest := name['Array_'.len..]
+		for ct in core_types {
+			if rest.starts_with('${ct}_') {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
 fn (mut t Transformer) generate_str_functions() []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_str_fns.len}
 	for fn_name, elem_type in t.needed_str_fns {
@@ -6388,11 +6502,13 @@ fn (mut t Transformer) expand_assert_stmt(stmt ast.AssertStmt) []ast.Stmt {
 			lhs:  ast.Ident{
 				name: 'exit'
 			}
-			args: [ast.Expr(ast.BasicLiteral{
-				value: '1'
-				kind:  .number
-				pos:   pos
-			})]
+			args: [
+				ast.Expr(ast.BasicLiteral{
+					value: '1'
+					kind:  .number
+					pos:   pos
+				}),
+			]
 			pos:  pos
 		}
 	}

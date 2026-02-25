@@ -2167,8 +2167,8 @@ pub fn (str string) is_hex() bool {
 	for i < str.len {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
-		if (str[i] < `0` || str[i] > `9`) &&
-		    ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
+		if (str[i] < `0` || str[i] > `9`)
+		    && ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
 			return false
 		}
 		// vfmt on
@@ -2910,8 +2910,8 @@ pub fn (s string) camel_to_snake() string {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary && !skip_digit)) &&
-			c != `_` {
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary && !skip_digit))
+			&& c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`

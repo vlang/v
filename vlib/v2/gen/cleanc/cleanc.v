@@ -451,8 +451,12 @@ pub fn (mut g Gen) gen() string {
 				if stmt.language == .c && stmt.stmts.len == 0 {
 					continue
 				}
-				// Skip generic functions - they have unresolved type params
+				// Generic functions: emit as macros for known simple functions
 				if stmt.typ.generic_params.len > 0 {
+					gfn_name := g.get_fn_name(stmt)
+					if gfn_name != '' {
+						g.emit_generic_fn_macro(gfn_name, stmt)
+					}
 					continue
 				}
 				fn_name := g.get_fn_name(stmt)
@@ -542,8 +546,11 @@ pub fn (mut g Gen) gen() string {
 				}
 			}
 		}
-		if '__v_init_consts_main' in g.fn_return_types {
-			g.sb.writeln('\t__v_init_consts_main();')
+		// Call all module const initialization functions
+		for fn_name, _ in g.fn_return_types {
+			if fn_name.contains('__v_init_consts_') {
+				g.sb.writeln('\t${fn_name}();')
+			}
 		}
 		for test_fn in test_fn_names {
 			msg_run := 'Running test: ${test_fn}...'

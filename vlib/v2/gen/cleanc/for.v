@@ -74,6 +74,14 @@ fn (mut g Gen) gen_stmt_inline(node ast.Stmt) {
 					.assign { '=' }
 					.plus_assign { '+=' }
 					.minus_assign { '-=' }
+					.mul_assign { '*=' }
+					.div_assign { '/=' }
+					.mod_assign { '%=' }
+					.and_assign { '&=' }
+					.or_assign { '|=' }
+					.xor_assign { '^=' }
+					.left_shift_assign { '<<=' }
+					.right_shift_assign { '>>=' }
 					else { '=' }
 				}
 				g.sb.write_string(' ${op_str} ')

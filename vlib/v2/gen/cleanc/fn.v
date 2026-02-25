@@ -227,34 +227,11 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 	if node.language == .c && node.stmts.len == 0 {
 		return
 	}
-	// Generic functions: emit a stub that returns default value
+	// Generic functions: handled via emit_generic_fn_macro in the forward declaration pass
 	if node.typ.generic_params.len > 0 {
-		fn_name := g.get_fn_name(node)
-		if fn_name != '' {
-			// Emit a forward declaration and stub body
-			g.sb.write_string('/* generic stub */ array ${fn_name}(')
-			for i, param in node.typ.params {
-				if i > 0 {
-					g.sb.write_string(', ')
-				}
-				g.sb.write_string('array')
-				if param.is_mut {
-					g.sb.write_string('*')
-				}
-				// Avoid C name clash: parameter named 'array' hides struct array
-				pname := if param.name == 'array' { '_v_array' } else { param.name }
-				g.sb.write_string(' ${pname}')
-			}
-			if node.typ.params.len == 0 {
-				g.sb.write_string('void')
-			}
-			g.sb.writeln(') {')
-			g.sb.writeln('\treturn (array){0};')
-			g.sb.writeln('}')
-			g.sb.writeln('')
-		}
 		return
 	}
+
 	fn_name := g.get_fn_name(node)
 	if fn_name == '' {
 		return
@@ -499,11 +476,21 @@ fn (g &Gen) contains_call_expr(e ast.Expr) bool {
 	if e is ast.CallExpr {
 		return true
 	}
+	if e is ast.CallOrCastExpr {
+		return true
+	}
 	if e is ast.CastExpr {
 		return g.contains_call_expr(e.expr)
 	}
 	if e is ast.ParenExpr {
 		return g.contains_call_expr(e.expr)
+	}
+	if e is ast.ArrayInitExpr {
+		for elem in e.exprs {
+			if g.contains_call_expr(elem) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1808,4 +1795,93 @@ fn (g &Gen) get_str_fn_for_type(expr_type string) ?string {
 		return '${expr_type}_str'
 	}
 	return none
+}
+
+// emit_generic_fn_macro emits a C macro definition for known simple generic functions
+// (abs, min, max, clamp). For other generic functions, emits a stub.
+// Also emits a typedef for the generic type parameter T.
+fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
+	macro_key := 'generic_macro_${fn_name}'
+	if macro_key in g.emitted_types {
+		return
+	}
+	g.emitted_types[macro_key] = true
+	if node.typ.params.len == 1 && node.name == 'abs' {
+		pname := node.typ.params[0].name
+		g.sb.writeln('#define ${fn_name}(${pname}) ((${pname}) < 0 ? -(${pname}) : (${pname}))')
+	} else if node.typ.params.len == 2 && node.name == 'min' {
+		p0 := node.typ.params[0].name
+		p1 := node.typ.params[1].name
+		g.sb.writeln('#define ${fn_name}(${p0}, ${p1}) ((${p0}) < (${p1}) ? (${p0}) : (${p1}))')
+	} else if node.typ.params.len == 2 && node.name == 'max' {
+		p0 := node.typ.params[0].name
+		p1 := node.typ.params[1].name
+		g.sb.writeln('#define ${fn_name}(${p0}, ${p1}) ((${p0}) > (${p1}) ? (${p0}) : (${p1}))')
+	} else if node.typ.params.len == 3 && node.name == 'clamp' {
+		p0 := node.typ.params[0].name
+		p1 := node.typ.params[1].name
+		p2 := node.typ.params[2].name
+		g.sb.writeln('#define ${fn_name}(${p0}, ${p1}, ${p2}) ((${p0}) < (${p1}) ? (${p1}) : ((${p0}) > (${p2}) ? (${p2}) : (${p0})))')
+	} else if node.typ.params.len == 0 && node.name in ['maxof', 'minof'] {
+		// Emit specialized macros for maxof[T]()/minof[T]() - comptime functions
+		// that return the min/max value for each numeric type.
+		prefix := if fn_name.contains('__') { fn_name.all_before_last('__') + '__' } else { '' }
+		is_max := node.name == 'maxof'
+		// max_f32/max_f64 are in the math module and emitted as math__max_f32/math__max_f64
+		type_const_pairs := if is_max {
+			[['i8', 'max_i8'], ['i16', 'max_i16'], ['i32', 'max_i32'],
+				['i64', 'max_i64'], ['int', 'max_int'], ['u8', 'max_u8'],
+				['u16', 'max_u16'], ['u32', 'max_u32'], ['u64', 'max_u64'],
+				['f32', 'math__max_f32'], ['f64', 'math__max_f64']]
+		} else {
+			[['i8', 'min_i8'], ['i16', 'min_i16'], ['i32', 'min_i32'],
+				['i64', 'min_i64'], ['int', 'min_int'], ['u8', '((u8)(0))'],
+				['u16', '((u16)(0))'], ['u32', '((u32)(0))'],
+				['u64', '((u64)(0))'], ['f32', '(-math__max_f32)'],
+				['f64', '(-math__max_f64)']]
+		}
+		for pair in type_const_pairs {
+			g.sb.writeln('#define ${prefix}${node.name}_${pair[0]}() (${pair[1]})')
+		}
+	} else {
+		// Fallback: emit a stub with array types.
+		// Only emit stub bodies for modules that should be emitted in the current
+		// cache bundle. Otherwise the same stub appears in both builtin.o and vlib.o.
+		if !g.should_emit_module(g.cur_module) {
+			return
+		}
+		g.sb.write_string('/* generic stub */ array ${fn_name}(')
+		for i, param in node.typ.params {
+			if i > 0 {
+				g.sb.write_string(', ')
+			}
+			g.sb.write_string('array')
+			if param.is_mut {
+				g.sb.write_string('*')
+			}
+			pname := if param.name == 'array' { '_v_array' } else { param.name }
+			g.sb.write_string(' ${pname}')
+		}
+		if node.typ.params.len == 0 {
+			g.sb.write_string('void')
+		}
+		g.sb.writeln(') {')
+		g.sb.writeln('\treturn (array){0};')
+		g.sb.writeln('}')
+	}
+	// Emit typedef for generic type parameter T as f64 (default numeric type)
+	for gp in node.typ.generic_params {
+		if gp is ast.Ident {
+			qualified := if fn_name.contains('__') {
+				'${fn_name.all_before_last('__')}__${gp.name}'
+			} else {
+				gp.name
+			}
+			tdef_key := 'typedef_${qualified}'
+			if tdef_key !in g.emitted_types {
+				g.emitted_types[tdef_key] = true
+				g.sb.writeln('typedef f64 ${qualified};')
+			}
+		}
+	}
 }
