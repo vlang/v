@@ -1517,7 +1517,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
-		c.check_expected_arg_count(mut node, func) or { return func.return_type }
+		c.check_expected_arg_count(mut node, func) or {
+			node.return_type = func.return_type
+			return func.return_type
+		}
 	}
 	// println / eprintln / panic can print anything
 	if args_len > 0 && fn_name in print_everything_fns {

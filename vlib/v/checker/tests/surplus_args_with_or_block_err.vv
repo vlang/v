@@ -1,0 +1,39 @@
+struct Config {
+	use_color   bool
+	output_file string
+}
+
+struct SimResult {
+	filename string
+	accuracy f64
+}
+
+fn export_results(results []SimResult, config Config) ! {
+	if config.output_file == '' {
+		return
+	}
+	println('Exporting to ${config.output_file}')
+}
+
+fn run_simulation(config Config) []SimResult {
+	return [SimResult{filename: 'test', accuracy: 0.9}]
+}
+
+fn main() {
+	mut config := Config{
+		use_color:   true
+		output_file: 'results.json'
+	}
+
+	results := run_simulation(config)
+
+	if config.output_file != '' {
+		export_results(results, config.output_file, config) or {
+			if config.use_color {
+				eprintln('Error: export failed')
+			} else {
+				eprintln('Error')
+			}
+		}
+	}
+}
