@@ -2950,7 +2950,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if node.ct_low_level_cond.len > 0 && node.ct_low_level_cond !in ast.valid_comptime_not_user_defined {
+	if node.ct_low_level_cond.len > 0
+		&& node.ct_low_level_cond !in ast.valid_comptime_not_user_defined {
 		c.error('invalid OS/platform condition `${node.ct_low_level_cond}` in #${node.kind}',
 			node.pos)
 	}
