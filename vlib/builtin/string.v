@@ -2167,7 +2167,7 @@ pub fn (str string) is_hex() bool {
 	for i < str.len {
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
-		if (str[i] < `0` || str[i] > `9`) && 
+		if (str[i] < `0` || str[i] > `9`) &&
 		    ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
 			return false
 		}
@@ -2844,7 +2844,9 @@ pub fn (s string) is_identifier() bool {
 // Example: assert 'Abcd'.camel_to_snake() == 'abcd'
 // Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
 // Example: assert 'BBaa'.camel_to_snake() == 'bb_aa'
-// Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+// Example: assert 'HTTPServer'.camel_to_snake() == 'http_server'
+// Example: assert 'HTTP2Server'.camel_to_snake() == 'http2_server'
+// Example: assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {
 	if s.len == 0 {
@@ -2858,6 +2860,7 @@ pub fn (s string) camel_to_snake() string {
 	// handle the first two chars separately to reduce load.
 	mut pos := 2
 	mut prev_is_upper := false
+	mut prev_inserted_boundary := false
 	unsafe {
 		if s[0].is_capital() {
 			b[0] = s[0] + 32
@@ -2884,13 +2887,30 @@ pub fn (s string) camel_to_snake() string {
 		}
 	}
 	for i := 2; i < s.len; i++ {
+		mut has_boundary_before_upper := false
 		c := s[i]
 		c_is_upper := c.is_capital()
+		c_is_number := c.is_digit()
+		next_is_lower := i + 1 < s.len && s[i + 1].is_letter() && !s[i + 1].is_capital()
+		next2_is_lower := i + 2 < s.len && s[i + 2].is_letter() && !s[i + 2].is_capital()
+		// Cases: `XML2JSON == xml_2_json` || `HTTP2Server == http2_server`
+		skip_digit := c_is_number && prev_is_upper && !next_is_lower && next2_is_lower
+		// Cases: `HTTPServer == http_server` || `getHTTPSUrl == get_https_url`
+		if c_is_upper && prev_is_upper && i >= 2 && s[i - 2].is_capital() && next_is_lower
+			&& c != `_` {
+			unsafe {
+				if b[pos - 1] != `_` {
+					b[pos] = `_`
+					pos++
+				}
+			}
+			has_boundary_before_upper = true
+		}
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
 		// TODO: remove this workaround for v2's parser
 		// vfmt off
 		if ((c_is_upper && !prev_is_upper) ||
-			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && 
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital() && !prev_inserted_boundary && !skip_digit)) &&
 			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
@@ -2905,6 +2925,7 @@ pub fn (s string) camel_to_snake() string {
 			b[pos] = lower_c
 		}
 		prev_is_upper = c_is_upper
+		prev_inserted_boundary = has_boundary_before_upper
 		pos++
 	}
 	unsafe {

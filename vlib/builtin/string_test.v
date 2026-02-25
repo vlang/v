@@ -1667,6 +1667,7 @@ fn test_camel_to_snake() {
 	assert 'aBcd'.camel_to_snake() == 'a_bcd'
 	assert 'AAbb'.camel_to_snake() == 'aa_bb'
 	assert 'aaBB'.camel_to_snake() == 'aa_bb'
+	assert 'BBaa'.camel_to_snake() == 'bb_aa'
 	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
 	assert 'AAbbCC'.camel_to_snake() == 'aa_bb_cc'
 	assert 'aaBBcc'.camel_to_snake() == 'aa_bb_cc'
@@ -1677,6 +1678,9 @@ fn test_camel_to_snake() {
 	assert '_aBcd'.camel_to_snake() == '_a_bcd'
 	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
 	assert '_AbCDe_'.camel_to_snake() == '_ab_cd_e_'
+	assert 'HTTPServer'.camel_to_snake() == 'http_server'
+	assert 'HTTP2Server'.camel_to_snake() == 'http2_server'
+	assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 }
 
 fn test_snake_to_camel() {
