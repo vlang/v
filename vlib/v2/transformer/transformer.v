@@ -58,6 +58,13 @@ mut:
 	// When we see `shape1 := Shape(rect)`, record shape1 → "Rectangle".
 	// Used to rewrite interface method calls to direct concrete calls.
 	interface_concrete_types map[string]string
+	// Track needed auto-generated sort comparator functions
+	needed_sort_fns map[string]SortComparatorInfo
+	// File set for resolving positions to line numbers (for assert messages)
+	file_set &token.FileSet = unsafe { nil }
+	// Current file and function name (for assert messages)
+	cur_file_name   string
+	cur_fn_name_str string
 }
 
 // SmartcastContext holds info about a single smartcast
@@ -80,6 +87,17 @@ struct RuntimeConstInit {
 	expr ast.Expr
 }
 
+struct SortComparatorInfo {
+	elem_type  string      // C type name of array element
+	compare_op token.Token // .lt or .gt for the original comparison
+	// For field access: a.field < b.field
+	field_name string // empty for simple element comparison
+	// For index access: a[0] < b[0]
+	index_expr string // empty for non-index comparison, e.g. "0"
+	// Whether the comparison value type is string (needs string__lt)
+	is_string_cmp bool
+}
+
 pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 	return Transformer.new_with_pref(files, env, unsafe { nil })
 }
@@ -92,11 +110,16 @@ pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pr
 		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
 		needed_array_index_fns:      map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+		needed_sort_fns:             map[string]SortComparatorInfo{}
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
 	t.comptime_vmodroot = resolve_comptime_vmodroot(files, p)
 	return t
+}
+
+pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
+	t.file_set = unsafe { fs }
 }
 
 fn resolve_comptime_vmodroot(files []ast.File, p &pref.Preferences) string {
@@ -392,6 +415,9 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	if t.needed_str_fns.len > 0 {
 		generated_fns << t.generate_str_functions()
 	}
+	if t.needed_sort_fns.len > 0 {
+		generated_fns << t.generate_sort_comparator_functions()
+	}
 	if t.needed_array_contains_fns.len > 0 || t.needed_array_index_fns.len > 0
 		|| t.needed_array_last_index_fns.len > 0 {
 		generated_fns << t.generate_array_method_functions()
@@ -584,6 +610,8 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
+	// Set current file name for assert messages
+	t.cur_file_name = file.name
 	// Set current module for scope lookups
 	t.cur_module = file.mod
 	// Set module scope as starting point
@@ -669,9 +697,9 @@ fn (mut t Transformer) transform_stmt(stmt ast.Stmt) ast.Stmt {
 			t.transform_global_decl(stmt)
 		}
 		ast.AssertStmt {
+			// Should have been expanded in transform_stmts; fallback pass-through
 			ast.AssertStmt{
-				expr:  t.transform_expr(stmt.expr)
-				extra: stmt.extra
+				expr: t.transform_expr(stmt.expr)
 			}
 		}
 		else {
@@ -826,6 +854,22 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 				}
 				continue
 			}
+		}
+		// Expand assert statements into if + eprintln + exit
+		if stmt is ast.AssertStmt {
+			for exp_stmt in t.expand_assert_stmt(stmt) {
+				result << t.transform_stmt(exp_stmt)
+				// Drain pending_stmts (e.g. from filter/map expansion in assert condition)
+				if t.pending_stmts.len > 0 {
+					last := result.pop()
+					for ps in t.pending_stmts {
+						result << ps
+					}
+					t.pending_stmts.clear()
+					result << last
+				}
+			}
+			continue
 		}
 		// Transform the statement. Filter/map expression expansions may populate
 		// pending_stmts during this call, which must be hoisted before the result.
@@ -5183,6 +5227,16 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 				if typ is types.Struct && (typ as types.Struct).name == 'string' {
 					return true
 				}
+				// Check for &string (pointer to string) - e.g. fn(a &string)
+				if typ is types.Pointer {
+					if typ.base_type is types.String {
+						return true
+					}
+					if typ.base_type is types.Struct
+						&& (typ.base_type as types.Struct).name == 'string' {
+						return true
+					}
+				}
 			}
 		}
 	}
@@ -6226,4 +6280,532 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 		}
 		stmts:      body_stmts
 	}
+}
+
+// expr_to_v_string reconstructs V source text from an AST expression.
+// Used to preserve original expression text in assert statements before transformation.
+fn expr_to_v_string(expr ast.Expr) string {
+	return match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.BasicLiteral {
+			expr.value
+		}
+		ast.StringLiteral {
+			expr.value
+		}
+		ast.InfixExpr {
+			lhs := expr_to_v_string(expr.lhs)
+			rhs := expr_to_v_string(expr.rhs)
+			'${lhs} ${expr.op.str()} ${rhs}'
+		}
+		ast.PrefixExpr {
+			inner := expr_to_v_string(expr.expr)
+			'${expr.op.str()}${inner}'
+		}
+		ast.SelectorExpr {
+			lhs := expr_to_v_string(expr.lhs)
+			'${lhs}.${expr.rhs.name}'
+		}
+		ast.CallExpr {
+			name := expr_to_v_string(expr.lhs)
+			mut args := []string{cap: expr.args.len}
+			for arg in expr.args {
+				args << expr_to_v_string(arg)
+			}
+			'${name}(${args.join(', ')})'
+		}
+		ast.ParenExpr {
+			inner := expr_to_v_string(expr.expr)
+			'(${inner})'
+		}
+		ast.IndexExpr {
+			lhs := expr_to_v_string(expr.lhs)
+			idx := expr_to_v_string(expr.expr)
+			'${lhs}[${idx}]'
+		}
+		ast.CastExpr {
+			typ := expr_to_v_string(expr.typ)
+			inner := expr_to_v_string(expr.expr)
+			'${typ}(${inner})'
+		}
+		ast.ModifierExpr {
+			inner := expr_to_v_string(expr.expr)
+			'${expr.kind.str()} ${inner}'
+		}
+		else {
+			'...'
+		}
+	}
+}
+
+// assert_expr_is_simple returns true if an expression can be safely duplicated
+// in the generated code (no side effects, no fixed-array copy issues).
+fn assert_expr_is_simple(expr ast.Expr) bool {
+	return expr is ast.Ident || expr is ast.BasicLiteral || expr is ast.StringLiteral
+		|| expr is ast.SelectorExpr
+}
+
+// expand_assert_stmt lowers `assert expr` into:
+//   if !(expr) { eprintln("file:line: fn name\n   > assert EXPR"); exit(1) }
+// For InfixExpr comparisons with simple operands, also prints left/right values.
+fn (mut t Transformer) expand_assert_stmt(stmt ast.AssertStmt) []ast.Stmt {
+	expr_str := expr_to_v_string(stmt.expr)
+	pos := stmt.expr.pos()
+	line := t.get_line_for_pos(pos)
+	fn_name := t.cur_fn_name_str
+
+	// Header message: "file:line: fn name"
+	header := '${t.cur_file_name}:${line}: fn ${fn_name}'
+	// Expression message: "   > assert EXPR"
+	expr_msg := '   > assert ${expr_str}'
+
+	mut body_stmts := []ast.Stmt{}
+	// eprintln(header)
+	body_stmts << t.make_eprintln_str(header, pos)
+	// eprintln(expr_msg)
+	body_stmts << t.make_eprintln_str(expr_msg, pos)
+
+	// For InfixExpr with comparison operators and simple operands,
+	// show left/right values. Only for simple expressions (Ident, BasicLiteral,
+	// SelectorExpr) to avoid duplicating side effects (filter/map) and
+	// fixed-array copy issues.
+	if stmt.expr is ast.InfixExpr && stmt.expr.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		if assert_expr_is_simple(stmt.expr.lhs) && assert_expr_is_simple(stmt.expr.rhs) {
+			// eprintln("    Left value: `${lhs}`")
+			body_stmts << t.make_eprintln_inter('    Left value: `', stmt.expr.lhs, '`',
+				pos)
+			// eprintln("   Right value: `${rhs}`")
+			body_stmts << t.make_eprintln_inter('   Right value: `', stmt.expr.rhs, '`',
+				pos)
+		}
+	}
+
+	// exit(1)
+	body_stmts << ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'exit'
+			}
+			args: [ast.Expr(ast.BasicLiteral{
+				value: '1'
+				kind:  .number
+				pos:   pos
+			})]
+			pos:  pos
+		}
+	}
+
+	// if !(expr) { ... }
+	return [
+		ast.Stmt(ast.ExprStmt{
+			expr: ast.IfExpr{
+				cond:  ast.PrefixExpr{
+					op:   .not
+					expr: stmt.expr
+					pos:  pos
+				}
+				stmts: body_stmts
+				pos:   pos
+			}
+		}),
+	]
+}
+
+fn (mut t Transformer) get_line_for_pos(pos token.Pos) int {
+	if !pos.is_valid() || t.file_set == unsafe { nil } {
+		return 0
+	}
+	file := t.file_set.file(pos)
+	position := file.position(pos)
+	return position.line
+}
+
+// make_eprintln_str creates: eprintln(StringLiteral{value})
+fn (t &Transformer) make_eprintln_str(value string, pos token.Pos) ast.Stmt {
+	return ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'eprintln'
+			}
+			args: [
+				ast.Expr(ast.StringLiteral{
+					kind:  .v
+					value: quote_v_string_literal(value)
+					pos:   pos
+				}),
+			]
+			pos:  pos
+		}
+	}
+}
+
+// make_eprintln_inter creates: eprintln("${prefix}${expr}${suffix}")
+fn (t &Transformer) make_eprintln_inter(prefix string, expr ast.Expr, suffix string, pos token.Pos) ast.Stmt {
+	return ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'eprintln'
+			}
+			args: [
+				ast.Expr(ast.StringInterLiteral{
+					kind:   .v
+					values: [prefix, suffix]
+					inters: [ast.StringInter{
+						expr: expr
+					}]
+					pos:    pos
+				}),
+			]
+			pos:  pos
+		}
+	}
+}
+
+// analyze_sort_lambda analyzes a sort lambda expression (e.g., `a < b`, `a.age > b.age`)
+// and returns info needed to generate a comparator function.
+// Returns the comparator function name (empty if cannot analyze).
+fn (mut t Transformer) analyze_sort_call(receiver ast.Expr, lambda_args []ast.Expr) ?string {
+	info := t.get_array_method_info(receiver) or { return none }
+	elem_type := info.elem_type
+
+	// Default sort (no lambda): ascending by element value
+	if lambda_args.len == 0 {
+		if elem_type == 'string' {
+			return 'compare_strings'
+		}
+		fn_name := '__sort_cmp_${elem_type}_asc'
+		t.needed_sort_fns[fn_name] = SortComparatorInfo{
+			elem_type:     elem_type
+			compare_op:    .lt
+			is_string_cmp: false
+		}
+		return fn_name
+	}
+
+	// Analyze the lambda expression
+	lambda := lambda_args[0]
+	if lambda is ast.InfixExpr {
+		op := lambda.op
+		if op !in [token.Token.lt, .gt] {
+			return none
+		}
+		// Determine which side is 'a' and which is 'b', and the access pattern
+		mut a_side := lambda.lhs
+		mut b_side := lambda.rhs
+		mut is_ascending := op == .lt // a < b = ascending
+		// Normalize: check if lhs starts with 'b'
+		if t.expr_starts_with_ident(lambda.lhs, 'b') {
+			a_side = lambda.rhs
+			b_side = lambda.lhs
+			is_ascending = op == .gt // b > a = ascending
+		}
+		// Determine access type
+		if a_side is ast.SelectorExpr && b_side is ast.SelectorExpr {
+			// Field access: a.field < b.field
+			a_sel := a_side as ast.SelectorExpr
+			field_name := a_sel.rhs.name
+			field_is_string := t.is_sort_cmp_value_string(a_side, elem_type)
+			dir := if is_ascending { 'asc' } else { 'desc' }
+			fn_name := '__sort_cmp_${elem_type}_by_${field_name}_${dir}'
+			t.needed_sort_fns[fn_name] = SortComparatorInfo{
+				elem_type:     elem_type
+				compare_op:    if is_ascending { token.Token.lt } else { .gt }
+				field_name:    field_name
+				is_string_cmp: field_is_string
+			}
+			return fn_name
+		}
+		if a_side is ast.IndexExpr && b_side is ast.IndexExpr {
+			// Index access: a[0] < b[0]
+			a_idx := a_side as ast.IndexExpr
+			dir := if is_ascending { 'asc' } else { 'desc' }
+			idx_str := if a_idx.expr is ast.BasicLiteral {
+				(a_idx.expr as ast.BasicLiteral).value
+			} else {
+				'x'
+			}
+			fn_name := '__sort_cmp_${elem_type}_by_idx${idx_str}_${dir}'
+			t.needed_sort_fns[fn_name] = SortComparatorInfo{
+				elem_type:     elem_type
+				compare_op:    if is_ascending { token.Token.lt } else { .gt }
+				index_expr:    idx_str
+				is_string_cmp: false
+			}
+			return fn_name
+		}
+		// Simple element comparison: a < b
+		if elem_type == 'string' {
+			// For string, ascending and descending both use compare_strings
+			// but descending needs a wrapper
+			if is_ascending {
+				return 'compare_strings'
+			}
+			fn_name := '__sort_cmp_string_desc'
+			t.needed_sort_fns[fn_name] = SortComparatorInfo{
+				elem_type:     'string'
+				compare_op:    .gt
+				is_string_cmp: true
+			}
+			return fn_name
+		}
+		dir := if is_ascending { 'asc' } else { 'desc' }
+		fn_name := '__sort_cmp_${elem_type}_${dir}'
+		t.needed_sort_fns[fn_name] = SortComparatorInfo{
+			elem_type:     elem_type
+			compare_op:    if is_ascending { token.Token.lt } else { .gt }
+			is_string_cmp: false
+		}
+		return fn_name
+	}
+	return none
+}
+
+fn (t &Transformer) expr_starts_with_ident(expr ast.Expr, name string) bool {
+	if expr is ast.Ident {
+		return expr.name == name
+	}
+	if expr is ast.SelectorExpr {
+		return t.expr_starts_with_ident(expr.lhs, name)
+	}
+	if expr is ast.IndexExpr {
+		return t.expr_starts_with_ident(expr.lhs, name)
+	}
+	return false
+}
+
+fn (t &Transformer) is_sort_cmp_value_string(expr ast.Expr, elem_type string) bool {
+	// Check if the comparison value in a sort lambda is a string.
+	// For simple a/b: check if element type is string.
+	if expr is ast.Ident && expr.name in ['a', 'b'] {
+		return elem_type == 'string'
+	}
+	// For field access (a.name): check expression type via type environment.
+	if t.is_string_expr(expr) {
+		return true
+	}
+	// Also check via get_expr_type
+	if expr_type := t.get_expr_type(expr) {
+		return t.type_is_string(expr_type)
+	}
+	return false
+}
+
+// transform_sort_call transforms arr.sort() or arr.sort(a < b) into
+// array__sort_with_compare(&arr, &comparator_fn)
+fn (mut t Transformer) transform_sort_call(receiver ast.Expr, method_name string, lambda_args []ast.Expr, pos token.Pos) ?ast.Expr {
+	cmp_fn_name := t.analyze_sort_call(receiver, lambda_args) or { return none }
+	target_fn := if method_name == 'sorted' {
+		'array__sorted_with_compare'
+	} else {
+		'array__sort_with_compare'
+	}
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: target_fn
+		}
+		args: [
+			t.transform_expr(receiver),
+			ast.Expr(ast.Ident{
+				name: cmp_fn_name
+			}),
+		]
+		pos:  pos
+	}
+}
+
+// generate_sort_comparator_functions generates comparator functions for sort calls.
+fn (mut t Transformer) generate_sort_comparator_functions() []ast.Stmt {
+	mut result := []ast.Stmt{}
+	for fn_name, info in t.needed_sort_fns {
+		result << t.generate_sort_comparator_fn(fn_name, info)
+	}
+	return result
+}
+
+fn (mut t Transformer) generate_sort_comparator_fn(fn_name string, info SortComparatorInfo) ast.Stmt {
+	// Parameters: a &ElemType, b &ElemType
+	param_a := ast.Parameter{
+		name: 'a'
+		typ:  ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Ident{
+				name: info.elem_type
+			}
+		}
+	}
+	param_b := ast.Parameter{
+		name: 'b'
+		typ:  ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Ident{
+				name: info.elem_type
+			}
+		}
+	}
+	t.register_generated_fn_scope(fn_name, 'builtin', [param_a, param_b])
+
+	// Build the comparison expression
+	is_ascending := info.compare_op == .lt
+	mut lhs_expr := ast.Expr(ast.Ident{
+		name: 'a'
+	})
+	mut rhs_expr := ast.Expr(ast.Ident{
+		name: 'b'
+	})
+	if !is_ascending {
+		// Descending: swap a and b
+		lhs_expr = ast.Expr(ast.Ident{
+			name: 'b'
+		})
+		rhs_expr = ast.Expr(ast.Ident{
+			name: 'a'
+		})
+	}
+
+	// For pointer element types (e.g. []&Interval), the sort params are &&Interval,
+	// so we need an extra deref to get through the pointer-to-pointer.
+	is_ptr_elem := info.elem_type.ends_with('ptr') || info.elem_type.starts_with('&')
+
+	if info.field_name != '' {
+		// Field access: a.field / b.field
+		if is_ptr_elem {
+			// Pointer element (e.g. []&Interval): params are &&Interval, need (**a).field
+			// ParenExpr ensures correct C precedence: (**a).field not **(a.field)
+			lhs_deref := ast.Expr(ast.ParenExpr{
+				expr: ast.PrefixExpr{
+					op:   .mul
+					expr: ast.Expr(ast.PrefixExpr{
+						op:   .mul
+						expr: lhs_expr
+					})
+				}
+			})
+			rhs_deref := ast.Expr(ast.ParenExpr{
+				expr: ast.PrefixExpr{
+					op:   .mul
+					expr: ast.Expr(ast.PrefixExpr{
+						op:   .mul
+						expr: rhs_expr
+					})
+				}
+			})
+			lhs_expr = ast.Expr(ast.SelectorExpr{
+				lhs: lhs_deref
+				rhs: ast.Ident{
+					name: info.field_name
+				}
+			})
+			rhs_expr = ast.Expr(ast.SelectorExpr{
+				lhs: rhs_deref
+				rhs: ast.Ident{
+					name: info.field_name
+				}
+			})
+		} else {
+			// Struct element: cleanc auto-dereferences via ->
+			lhs_expr = ast.Expr(ast.SelectorExpr{
+				lhs: lhs_expr
+				rhs: ast.Ident{
+					name: info.field_name
+				}
+			})
+			rhs_expr = ast.Expr(ast.SelectorExpr{
+				lhs: rhs_expr
+				rhs: ast.Ident{
+					name: info.field_name
+				}
+			})
+		}
+	} else if info.index_expr != '' {
+		// Index access: a[idx] / b[idx]
+		// cleanc auto-dereferences via -> for pointer types
+		idx := ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: info.index_expr
+		})
+		lhs_expr = ast.Expr(ast.IndexExpr{
+			lhs:  lhs_expr
+			expr: idx
+		})
+		rhs_expr = ast.Expr(ast.IndexExpr{
+			lhs:  rhs_expr
+			expr: idx
+		})
+	} else if !info.is_string_cmp {
+		// Simple element comparison on non-string: need explicit deref (*a, *b)
+		lhs_expr = ast.Expr(ast.PrefixExpr{
+			op:   .mul
+			expr: lhs_expr
+		})
+		rhs_expr = ast.Expr(ast.PrefixExpr{
+			op:   .mul
+			expr: rhs_expr
+		})
+	}
+	// For string comparisons (simple), cleanc auto-dereferences via gen_call_arg
+
+	mut cond_expr := ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: '0'
+	})
+	if info.is_string_cmp {
+		// String comparison: string__lt(lhs, rhs)
+		cond_expr = ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'string__lt'
+			})
+			args: [lhs_expr, rhs_expr]
+		})
+	} else {
+		// Numeric comparison: lhs < rhs
+		cond_expr = ast.Expr(ast.InfixExpr{
+			lhs: lhs_expr
+			op:  .lt
+			rhs: rhs_expr
+		})
+	}
+
+	// Body: if (cond) { return -1 } return 1
+	mut body_stmts := []ast.Stmt{}
+	body_stmts << ast.ExprStmt{
+		expr: ast.IfExpr{
+			cond:  cond_expr
+			stmts: [
+				ast.Stmt(ast.ReturnStmt{
+					exprs: [
+						ast.Expr(ast.PrefixExpr{
+							op:   .minus
+							expr: ast.BasicLiteral{
+								kind:  .number
+								value: '1'
+							}
+						}),
+					]
+				}),
+			]
+		}
+	}
+	body_stmts << ast.ReturnStmt{
+		exprs: [ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '1'
+		})]
+	}
+
+	return ast.Stmt(ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_a, param_b]
+			return_type: ast.Ident{
+				name: 'int'
+			}
+		}
+		stmts:      body_stmts
+	})
 }

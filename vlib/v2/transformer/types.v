@@ -1457,6 +1457,41 @@ fn (t &Transformer) is_module_ident(name string) bool {
 	return t.resolve_module_name(name) != none
 }
 
+// type_is_string checks if a type is string, including &string (Pointer to String)
+fn (t &Transformer) type_is_string(typ types.Type) bool {
+	if typ is types.String {
+		return true
+	}
+	if typ is types.Struct && (typ as types.Struct).name == 'string' {
+		return true
+	}
+	if typ is types.Pointer {
+		return t.type_is_string(typ.base_type)
+	}
+	return false
+}
+
+// is_ptr_to_string_expr returns true if the expression has type &string (pointer to string)
+fn (t &Transformer) is_ptr_to_string_expr(expr ast.Expr) bool {
+	if expr_type := t.get_expr_type(expr) {
+		if expr_type is types.Pointer {
+			return t.type_is_string(expr_type.base_type)
+		}
+	}
+	// Also check scope for identifiers
+	if expr is ast.Ident {
+		if mut scope := t.get_current_scope() {
+			if obj := scope.lookup_parent(expr.name, 0) {
+				typ := obj.typ()
+				if typ is types.Pointer {
+					return t.type_is_string(typ.base_type)
+				}
+			}
+		}
+	}
+	return false
+}
+
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
 fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	pos := expr.pos()

@@ -2281,22 +2281,12 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// Also check type environment for expression types if is_string_expr didn't find it
 		if !lhs_is_str {
 			if expr_type := t.get_expr_type(expr.lhs) {
-				if expr_type is types.String {
-					lhs_is_str = true
-				}
-				if expr_type is types.Struct && (expr_type as types.Struct).name == 'string' {
-					lhs_is_str = true
-				}
+				lhs_is_str = t.type_is_string(expr_type)
 			}
 		}
 		if !rhs_is_str {
 			if expr_type := t.get_expr_type(expr.rhs) {
-				if expr_type is types.String {
-					rhs_is_str = true
-				}
-				if expr_type is types.Struct && (expr_type as types.Struct).name == 'string' {
-					rhs_is_str = true
-				}
+				rhs_is_str = t.type_is_string(expr_type)
 			}
 		}
 		// If one side is a string literal and the other is unknown (but likely a string),

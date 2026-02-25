@@ -9,9 +9,9 @@ bash test_v2_self.sh
 echo ""
 echo "=== 2/6: Rebuild v2 and run builtin test files ==="
 v self && v -o v2 v2.v
-./v2 ../../vlib/builtin/array_test.v
-./v2 ../../vlib/builtin/string_test.v
-./v2 ../../vlib/builtin/map_test.v
+./v2 -o array_test ../../vlib/builtin/array_test.v && ./array_test && rm -f array_test array_test.c
+./v2 -o string_test ../../vlib/builtin/string_test.v && ./string_test && rm -f string_test string_test.c
+./v2 -o map_test ../../vlib/builtin/map_test.v && ./map_test && rm -f map_test map_test.c
 
 echo ""
 echo "=== 3/6: SSA backends test (arm64) ==="

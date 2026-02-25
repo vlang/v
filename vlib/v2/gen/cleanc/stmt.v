@@ -296,18 +296,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			panic('bug in v2 compiler: DeferStmt should have been lowered in v2.transformer')
 		}
 		ast.AssertStmt {
-			g.write_indent()
-			g.sb.write_string('if (!(')
-			g.expr(node.expr)
-			g.sb.writeln(')) {')
-			g.indent++
-			g.write_indent()
-			g.sb.writeln('fprintf(stderr, "assert failed\\n");')
-			g.write_indent()
-			g.sb.writeln('exit(1);')
-			g.indent--
-			g.write_indent()
-			g.sb.writeln('}')
+			panic('bug in v2 compiler: AssertStmt should have been lowered in v2.transformer')
 		}
 		ast.ComptimeStmt {
 			panic('bug in v2 compiler: ComptimeStmt should have been handled in v2.transformer')

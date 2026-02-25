@@ -88,6 +88,7 @@ pub fn (mut b Builder) build(files []string) {
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	trans.set_file_set(b.file_set)
 	b.files = trans.transform_files(b.files)
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)

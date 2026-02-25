@@ -568,7 +568,10 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	}
 
 	// Transform function body
+	old_fn_name_str := t.cur_fn_name_str
+	t.cur_fn_name_str = decl.name
 	transformed_stmts := t.transform_stmts(decl.stmts)
+	t.cur_fn_name_str = old_fn_name_str
 	t.cur_fn_ret_type_name = old_fn_ret_type_name
 
 	// Lower defer statements: collect defers, remove them from body,
@@ -685,36 +688,20 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				value: '0'
 			})
 		}
-		// `arr.sort(a < b)` comparator lambdas are not lowered yet.
-		// Keep C generation valid by passing nil callback for now.
-		// Resolve the method name so it generates array__sorted(receiver, nil)
-		// instead of leaving a SelectorExpr that cleanc treats as a field access.
-		if sel.rhs.name in ['sort', 'sorted'] && expr.args.len == 1
-			&& t.is_sort_compare_lambda_expr(expr.args[0]) {
-			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
-				return ast.CallExpr{
-					lhs:  ast.Ident{
-						name: resolved
-					}
-					args: [
-						t.transform_expr(sel.lhs),
-						ast.Expr(ast.Ident{
-							name: 'nil'
-						}),
-					]
-					pos:  expr.pos
+		// arr.sort() or arr.sort(a < b) - generate comparator and use sort_with_compare
+		if sel.rhs.name in ['sort', 'sorted'] {
+			if expr.args.len == 0 {
+				// .sort() with no args: default ascending
+				if result := t.transform_sort_call(sel.lhs, sel.rhs.name, [], expr.pos) {
+					return result
 				}
-			}
-			return ast.CallExpr{
-				lhs:  ast.SelectorExpr{
-					lhs: t.transform_expr(sel.lhs)
-					rhs: sel.rhs
-					pos: sel.pos
+			} else if expr.args.len == 1 && t.is_sort_compare_lambda_expr(expr.args[0]) {
+				// .sort(a < b) with lambda comparator
+				if result := t.transform_sort_call(sel.lhs, sel.rhs.name, [expr.args[0]],
+					expr.pos)
+				{
+					return result
 				}
-				args: [ast.Expr(ast.Ident{
-					name: 'nil'
-				})]
-				pos:  expr.pos
 			}
 		}
 		method_name := sel.rhs.name
@@ -1650,34 +1637,10 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				value: '0'
 			})
 		}
-		// `arr.sort(a < b)` may be parsed as CallOrCastExpr in single-arg form.
-		// Keep C generation valid by passing nil callback for now.
-		// Resolve the method name so it generates array__sorted(receiver, nil).
+		// arr.sort(a < b) may be parsed as CallOrCastExpr in single-arg form.
 		if sel.rhs.name in ['sort', 'sorted'] && t.is_sort_compare_lambda_expr(expr.expr) {
-			if resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) {
-				return ast.CallExpr{
-					lhs:  ast.Ident{
-						name: resolved
-					}
-					args: [
-						t.transform_expr(sel.lhs),
-						ast.Expr(ast.Ident{
-							name: 'nil'
-						}),
-					]
-					pos:  expr.pos
-				}
-			}
-			return ast.CallExpr{
-				lhs:  ast.SelectorExpr{
-					lhs: t.transform_expr(sel.lhs)
-					rhs: sel.rhs
-					pos: sel.pos
-				}
-				args: [ast.Expr(ast.Ident{
-					name: 'nil'
-				})]
-				pos:  expr.pos
+			if result := t.transform_sort_call(sel.lhs, sel.rhs.name, [expr.expr], expr.pos) {
+				return result
 			}
 		}
 		method_name := sel.rhs.name

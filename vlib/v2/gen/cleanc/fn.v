@@ -747,7 +747,7 @@ fn (mut g Gen) should_auto_deref(arg ast.Expr) bool {
 	if raw_type := g.get_raw_type(arg) {
 		if raw_type is types.Pointer {
 			match raw_type.base_type {
-				types.Array, types.Map, types.Struct, types.Interface, types.Alias {
+				types.Array, types.Map, types.Struct, types.Interface, types.Alias, types.String {
 					return true
 				}
 				else {}
@@ -1561,6 +1561,13 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				c_name = name
 			}
 
+			// String literals and interpolation strings are always strings,
+			// regardless of what position-based type lookup returns.
+			if arg is ast.StringLiteral || arg is ast.StringInterLiteral
+				|| (arg is ast.BasicLiteral && arg.kind == .string) {
+				arg_type = 'string'
+			}
+
 			// If argument is already a str-function call, treat as string to avoid double wrapping
 			if arg_type != 'string' {
 				if arg is ast.CallExpr && arg.lhs is ast.Ident {
@@ -1723,6 +1730,7 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 	saved_fn_ret := g.cur_fn_ret_type
 	saved_fn_scope := g.cur_fn_scope
 	saved_fn_mut_params := g.cur_fn_mut_params.clone()
+	saved_local_types := g.runtime_local_types.clone()
 
 	// Use new builder for anon fn
 	g.sb = strings.new_builder(1024)
@@ -1730,6 +1738,7 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 	g.cur_fn_name = anon_name
 	g.cur_fn_ret_type = ret_type
 	g.cur_fn_mut_params = map[string]bool{}
+	g.runtime_local_types = map[string]string{}
 
 	// Generate function definition
 	g.sb.write_string('static ${ret_type} ${anon_name}(')
@@ -1742,6 +1751,13 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 		if param.is_mut {
 			g.cur_fn_mut_params[param.name] = true
 		}
+		// Register param type so expr_is_pointer and auto-deref work correctly
+		ptype := if param.is_mut && !param_type.ends_with('*') {
+			param_type + '*'
+		} else {
+			param_type
+		}
+		g.runtime_local_types[param.name] = ptype
 	}
 	if node.typ.params.len == 0 {
 		g.sb.write_string('void')
@@ -1763,6 +1779,7 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 	g.cur_fn_ret_type = saved_fn_ret
 	g.cur_fn_scope = saved_fn_scope
 	g.cur_fn_mut_params = saved_fn_mut_params.clone()
+	g.runtime_local_types = saved_local_types.clone()
 
 	// Emit function name at use site
 	g.sb.write_string(anon_name)
