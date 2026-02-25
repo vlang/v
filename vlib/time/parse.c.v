@@ -126,6 +126,67 @@ fn check_and_extract_date(s string) !(int, int, int) {
 	return year, month, day
 }
 
+// Convert header string formatted as RFC 2616 to Time.
+pub fn parse_http_header_string(s string) !Time {
+	return parse_rfc2616(s)
+}
+
+// parse_rfc2616 returns the time from a date string in RFC 3339 datetime format.
+// Wed, 06 Nov 2024 08:49:37 GMT  ; RFC 822, updated by RFC 1123
+// Wednesday, 06-Nov-24 08:49:37 GMT ; RFC 850, obsoleted by RFC 1036
+// Wed Nov 6 08:49:37 2024       ; ANSI C's asctime() format
+pub fn parse_rfc2616(s string) !Time {
+	if s == '' {
+		return error_invalid_time(0, 'datetime string is empty')
+	}
+
+	// Remove or Replace unwanted tokens.
+	rmv := ['GMT', '', 'Monday', '', 'Tuesday', '', 'Wednesday', '', 'Thursday', '', 'Friday',
+		'', 'Saturday', '', 'Sunday', '', 'Mon', '', 'Tue', '', 'Wed', '', 'Thu', '', 'Fri', '',
+		'Sat', '', 'Sun', '', '-', ' ', ',', '']
+
+	mut f := s.replace_each(rmv)
+	f = remove_consecutive_spaces(f)
+
+	if r := parse_format(f, 'DD MMM YYYY HH:mm:ss') {
+		return r
+	}
+
+	// parse_format maps YY to this century (94 maps to 2094, 20 to 2020).
+	// if parsed year > current year, the date belongs to previous century.
+	if r := parse_format(f, 'DD MMM YY HH:mm:ss') {
+		return if r.year > now().year {
+			r.add_days(-(days_per_100_years + 1))
+		} else {
+			r
+		}
+	}
+	if r := parse_format(f, 'MMM D HH:mm:ss YYYY') {
+		return r
+	}
+	return error('unable to parse date: "${f}"')
+}
+
+// Remove consecutive spaces, only keep one.
+fn remove_consecutive_spaces(s string) string {
+	mut t := s.trim_space()
+	mut r := ''
+	mut sp := false
+
+	for c in t {
+		if c == u8(` `) {
+			if !sp {
+				r += ' '
+				sp = true
+			}
+		} else {
+			r += c.ascii_str()
+			sp = false
+		}
+	}
+	return r
+}
+
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
