@@ -404,6 +404,12 @@ fn (mut jb JsonBuilder) write_directive(stmt ast.Directive) {
 	jb.write_indent()
 	jb.sb.write_string('"value": ')
 	jb.write_string(stmt.value)
+	if stmt.ct_cond.len > 0 {
+		jb.sb.write_string(',\n')
+		jb.write_indent()
+		jb.sb.write_string('"ct_cond": ')
+		jb.write_string(stmt.ct_cond)
+	}
 	jb.sb.write_string('\n')
 
 	jb.indent--

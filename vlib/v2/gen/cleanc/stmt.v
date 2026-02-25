@@ -287,7 +287,8 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		}
 		ast.Directive {
 			g.write_indent()
-			g.sb.writeln('/* [TODO] Directive: #${node.name} ${node.value} */')
+			ct_cond_str := if node.ct_cond.len > 0 { ' ct_cond=${node.ct_cond}' } else { '' }
+			g.sb.writeln('/* [TODO] Directive: #${node.name} ${node.value}${ct_cond_str} */')
 		}
 		ast.ForInStmt {
 			panic('bug in v2 compiler: ForInStmt should have been lowered in v2.transformer')

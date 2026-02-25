@@ -1862,6 +1862,16 @@ fn (mut p Parser) directive() ast.Directive {
 	// TODO: handle properly
 	// NOTE: these line checks will be removed once this is parsed properly
 	// and only needed since auto semi is not inserted after `>`
+	// Detect OS-specific conditions like `#include linux <pty.h>` or `#include darwin "util.h"`.
+	// When the directive is an include variant and the next token is a name followed by '<' or '"',
+	// the name is an OS/platform condition.
+	mut ct_cond := ''
+	if name in ['include', 'preinclude', 'postinclude', 'insert'] && p.tok == .name {
+		next := p.peek()
+		if next == .lt || next == .string {
+			ct_cond = p.lit()
+		}
+	}
 	mut value := p.lit()
 	for p.line == line {
 		if p.tok == .name {
@@ -1873,8 +1883,9 @@ fn (mut p Parser) directive() ast.Directive {
 	}
 	// p.next()
 	return ast.Directive{
-		name:  name
-		value: value
+		name:    name
+		value:   value
+		ct_cond: ct_cond
 	}
 }
 

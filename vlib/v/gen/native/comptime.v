@@ -15,6 +15,11 @@ fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?ast.IfBranch {
 }
 
 fn (mut g Gen) should_emit_hash_stmt(node ast.HashStmt) bool {
+	if node.ct_low_level_cond.len > 0 {
+		if !g.comptime_ident(node.ct_low_level_cond, false) {
+			return false
+		}
+	}
 	return node.ct_conds.all(g.comptime_is_truthy(it))
 }
 

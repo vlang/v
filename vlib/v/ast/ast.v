@@ -1504,7 +1504,8 @@ pub mut:
 	msg      string // : 'please install openssl'
 	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
 	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
-	attrs []Attr
+	ct_low_level_cond string // optional low-level comptime condition e.g. 'linux', 'darwin' for `#include linux <pty.h>`
+	attrs             []Attr
 }
 
 // variable assign statement

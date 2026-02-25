@@ -6214,6 +6214,16 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 			if !need_gen_stmt {
 				return
 			}
+			// OS-specific condition e.g. `#include linux <pty.h>` wraps the output with #if / #endif
+			has_low_level_cond := node.ct_low_level_cond.len > 0
+			if has_low_level_cond {
+				ifdef := ast.comptime_if_to_ifdef(node.ct_low_level_cond, g.pref) or {
+					g.error('#${node.kind} has invalid condition `${node.ct_low_level_cond}`',
+						node.pos)
+					return
+				}
+				sb.writeln('\n#if defined(${ifdef})')
+			}
 			line_nr := node.pos.line_nr + 1
 			match node.kind {
 				'include', 'preinclude', 'postinclude' {
@@ -6232,6 +6242,9 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 					sb.writeln('#define ${node.main}')
 				}
 				else {}
+			}
+			if has_low_level_cond {
+				sb.writeln('#endif')
 			}
 		}
 		// TODO: support $match

@@ -1,0 +1,10 @@
+// vtest vflags: -os cross
+module main
+
+#include linux <pty.h>
+#include darwin <util.h>
+#include windows "win_header.h"
+#include freebsd <libutil.h>
+
+fn main() {
+}

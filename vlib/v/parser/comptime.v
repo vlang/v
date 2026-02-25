@@ -93,6 +93,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	p.next()
 	mut main_str := ''
 	mut msg := ''
+	mut ct_low_level_cond := ''
 	content := val.all_after('${kind} ').all_before('//')
 	if content.contains(' #') {
 		main_str = content.all_before(' #').trim_space()
@@ -100,6 +101,19 @@ fn (mut p Parser) hash() ast.HashStmt {
 	} else {
 		main_str = content.trim_space()
 		msg = ''
+	}
+
+	// Detect OS-specific conditions like `#include linux <pty.h>` or `#include darwin "util.h"`.
+	// The condition is the first word before the actual include path.
+	if kind in ['include', 'preinclude', 'postinclude', 'insert'] {
+		first_space := main_str.index_u8(` `)
+		if first_space > 0 {
+			maybe_cond := main_str[..first_space]
+			if maybe_cond in ast.valid_comptime_not_user_defined {
+				ct_low_level_cond = maybe_cond
+				main_str = main_str[first_space + 1..].trim_space()
+			}
+		}
 	}
 
 	mut is_use_once := false
@@ -111,15 +125,16 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 
 	return ast.HashStmt{
-		mod:         p.mod
-		source_file: p.file_path
-		val:         val
-		kind:        kind
-		main:        main_str
-		msg:         msg
-		pos:         pos
-		attrs:       attrs
-		is_use_once: is_use_once
+		mod:               p.mod
+		source_file:       p.file_path
+		val:               val
+		kind:              kind
+		main:              main_str
+		msg:               msg
+		pos:               pos
+		attrs:             attrs
+		is_use_once:       is_use_once
+		ct_low_level_cond: ct_low_level_cond
 	}
 }
 

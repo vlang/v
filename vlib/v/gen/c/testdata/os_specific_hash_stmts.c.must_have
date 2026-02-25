@@ -1,0 +1,12 @@
+#if defined(__linux__)
+#include <pty.h>
+#endif
+#if defined(__DARWIN__)
+#include <util.h>
+#endif
+#if defined(_WIN32)
+#include "win_header.h"
+#endif
+#if defined(__FreeBSD__)
+#include <libutil.h>
+#endif
