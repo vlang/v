@@ -20,6 +20,7 @@ pub fn (ch chan) close() {}
 // try_pop returns `ChanState.success` if an object is popped from the channel.
 // try_pop effectively pops from the channel without waiting for objects to become available.
 // Both the test and pop transaction is done atomically.
+// Pass the destination as `mut`: `ch.try_pop(mut value)`, not `ch.try_pop(&value)`.
 pub fn (ch chan) try_pop(obj voidptr) ChanState {
 	return .success
 }
