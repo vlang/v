@@ -2325,6 +2325,24 @@ fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
 	}
 }
 
+fn (mut g Gen) autofree_tmp_arg_init_stmt(prepend string, expr ast.Expr) string {
+	saved_out := g.out
+	saved_stmt_path_pos := g.stmt_path_pos.clone()
+	saved_empty_line := g.empty_line
+	saved_indent := g.indent
+	g.out = strings.new_builder(256)
+	g.stmt_path_pos = [0]
+	g.empty_line = true
+	g.indent = 0
+	defer {
+		g.out = saved_out
+		g.stmt_path_pos = saved_stmt_path_pos
+		g.empty_line = saved_empty_line
+		g.indent = saved_indent
+	}
+	return g.expr_string_surround(prepend, expr, ';').trim_space()
+}
+
 fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
@@ -2392,21 +2410,16 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = 'string ${t} = '
 		}
 		g.is_autofree_tmp = true
-		pos_before := g.out.len
 
 		old_is_autofree := g.is_autofree
 		if arg.expr is ast.CallExpr && arg.expr.is_method && arg.expr.left is ast.CallExpr {
 			g.is_autofree = false
 		}
 
-		g.expr(arg.expr)
-		expr_code := g.out.cut_to(pos_before).trim_space()
-
+		tmp_arg_init := g.autofree_tmp_arg_init_stmt(s, arg.expr)
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
-		s += expr_code
-		s += ';'
-		g.strs_to_free0 << s
+		g.strs_to_free0 << tmp_arg_init
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
 }
