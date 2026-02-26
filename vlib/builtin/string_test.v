@@ -104,6 +104,15 @@ fn test_compare_strings() {
 	assert compare_strings(e, a) == 1
 }
 
+fn test_eq_with_freed_string() {
+	mut s := 'abc'.clone()
+	unsafe {
+		s.free()
+	}
+	assert (s == 'abc') == false
+	assert ('abc' == s) == false
+}
+
 fn test_sort() {
 	mut vals := [
 		'arr',

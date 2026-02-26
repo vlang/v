@@ -2307,6 +2307,7 @@ pub fn (s &string) free() {
 		free(s.str)
 		s.str = nil
 	}
+	s.len = 0
 	s.is_lit = -98761234
 }
 
