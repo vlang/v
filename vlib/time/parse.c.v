@@ -445,7 +445,10 @@ pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	mut p := new_date_time_parser(s, format)
+	mut p := DateTimeParser{
+		datetime: s
+		format:   format
+	}
 	return p.parse()
 }
 
