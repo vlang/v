@@ -256,6 +256,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.parallel_cc {
 			have_flto = false
 		}
+		if v.pref.is_shared {
+			// Keep shared libraries away from LTO to avoid runtime loader regressions.
+			have_flto = false
+		}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -276,6 +280,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		optimization_options = ['-O3']
 		mut have_flto := true
 		if v.pref.parallel_cc {
+			have_flto = false
+		}
+		if v.pref.is_shared {
+			// Keep shared libraries away from LTO to avoid runtime loader regressions.
 			have_flto = false
 		}
 		if have_flto {
@@ -1099,6 +1107,10 @@ fn (mut c Builder) cc_windows_cross() {
 			optimization_options = ['-O3']
 			mut have_flto := true
 			if c.pref.parallel_cc {
+				have_flto = false
+			}
+			if c.pref.is_shared {
+				// Keep shared libraries away from LTO to avoid runtime loader regressions.
 				have_flto = false
 			}
 			if have_flto {
