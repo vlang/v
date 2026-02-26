@@ -8,6 +8,7 @@ VEXE   ?= ./v
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
 LEGACYREPO ?= https://github.com/macports/macports-legacy-support
+GIT ?= git
 
 VCFILE := v.c
 TMPTCC := $(VROOT)/thirdparty/tcc
@@ -15,8 +16,9 @@ LEGACYLIBS := $(VROOT)/thirdparty/legacy
 TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
-GITCLEANPULL := git clean -xf && git pull --quiet
-GITFASTCLONE := git clone --filter=blob:none --quiet
+HAS_GIT := $(shell command -v $(GIT) >/dev/null 2>&1 && echo 1 || echo 0)
+GITCLEANPULL := $(GIT) clean -xf && $(GIT) pull --quiet
+GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -146,7 +148,11 @@ rebuild: clean all
 
 ifndef local
 latest_vc: $(VC)/.git/config
+ifeq ($(HAS_GIT),1)
 	cd $(VC) && $(GITCLEANPULL)
+else
+	@echo "git not found; using existing $(VC)/$(VCFILE)"
+endif
 else
 latest_vc:
 	@echo "Using local vc"
@@ -157,11 +163,20 @@ check_for_working_tcc:
 
 fresh_vc:
 	rm -rf $(VC)
+ifeq ($(HAS_GIT),1)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
+else
+	@echo "git is required to clone $(VCREPO) into $(VC)"
+	@exit 1
+endif
 
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
+ifeq ($(HAS_GIT),1)
 	cd $(TMPTCC) && $(GITCLEANPULL)
+else
+	@echo "git not found; skipping update of $(TMPTCC)"
+endif
 ifneq (,$(wildcard ./tcc.exe))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
@@ -175,13 +190,18 @@ endif
 fresh_tcc:
 	rm -rf $(TMPTCC)
 ifndef local
+ifeq ($(HAS_GIT),1)
 # Check whether a TCC branch exists for the user's system configuration.
-ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
+ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell $(GIT) ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
 	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
 	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
+endif
+else
+	@echo "git is required to clone $(TCCREPO)"
+	@exit 1
 endif
 else
 	@echo "Using local tccbin"
@@ -191,7 +211,11 @@ endif
 ifndef local
 latest_legacy: $(TMPLEGACY)/.git/config
 ifdef LEGACY
+ifeq ($(HAS_GIT),1)
 	cd $(TMPLEGACY) && $(GITCLEANPULL)
+else
+	@echo "git not found; using existing $(TMPLEGACY)"
+endif
 endif
 else
 latest_legacy:
@@ -202,17 +226,44 @@ endif
 
 fresh_legacy:
 	rm -rf $(LEGACYLIBS)
+ifeq ($(HAS_GIT),1)
 	$(GITFASTCLONE) $(LEGACYREPO) $(TMPLEGACY)
+else
+	@echo "git is required to clone $(LEGACYREPO)"
+	@exit 1
+endif
 
 $(TMPTCC)/.git/config:
+ifeq ($(HAS_GIT),1)
 	$(MAKE) fresh_tcc
+else
+	@echo "git not found; skipping bootstrap of $(TMPTCC), system compiler $(CC) will be used"
+endif
 
 $(VC)/.git/config:
+ifeq ($(HAS_GIT),1)
 	$(MAKE) fresh_vc
+else
+	@if [ -f "$(VC)/$(VCFILE)" ]; then \
+		echo "git not found; using existing $(VC)/$(VCFILE)"; \
+	else \
+		echo "git is required to download $(VC)/$(VCFILE). Install git or provide the file manually."; \
+		exit 1; \
+	fi
+endif
 
 $(TMPLEGACY)/.git/config:
 ifdef LEGACY
+ifeq ($(HAS_GIT),1)
 	$(MAKE) fresh_legacy
+else
+	@if [ -d "$(TMPLEGACY)" ]; then \
+		echo "git not found; using existing $(TMPLEGACY)"; \
+	else \
+		echo "git is required to download legacy support sources ($(LEGACYREPO))"; \
+		exit 1; \
+	fi
+endif
 endif
 
 asan:

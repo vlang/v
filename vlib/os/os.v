@@ -1006,8 +1006,12 @@ pub fn vtmp_dir() string {
 
 fn default_vmodules_path() string {
 	hdir := home_dir()
-	res := join_path_single(hdir, '.vmodules')
-	return res
+	if hdir != '' {
+		return join_path_single(hdir, '.vmodules')
+	}
+	// In some hermetic CI/sandbox environments HOME/USERPROFILE is intentionally
+	// missing. Fall back to a writable user-specific temp path.
+	return join_path_single(vtmp_dir(), '.vmodules')
 }
 
 // vmodules_dir returns the path to a folder, where v stores its global modules.
