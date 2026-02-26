@@ -284,6 +284,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 		i++
 	}
 	mut rline := sb.str()
+	rline = normalize_keyword_template_interpolations(rline)
 	comptime_call_str := rline.find_between('\${', '}')
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
@@ -292,6 +293,30 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 		rline = rline[0..rline.len - 2] + trailing_bs
 	}
 	return rline
+}
+
+fn normalize_keyword_template_interpolations(line string) string {
+	mut sb := strings.new_builder(line.len)
+	mut i := 0
+	for i < line.len {
+		ch := line[i]
+		if ch == `$` && i + 1 < line.len && (line[i + 1].is_letter() || line[i + 1] == `_`) {
+			mut j := i + 1
+			for j < line.len && (line[j].is_letter() || line[j].is_digit() || line[j] == `_`) {
+				j++
+			}
+			name := line[i + 1..j]
+			if token.is_key(name) {
+				// Force keyword names into the escaped identifier form to avoid parser/scanner issues.
+				sb.write_string('\${@${name}}')
+				i = j
+				continue
+			}
+		}
+		sb.write_u8(ch)
+		i++
+	}
+	return sb.str()
 }
 
 // struct to track dependecies and cache templates for reuse without io
