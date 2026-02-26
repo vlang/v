@@ -396,7 +396,16 @@ fn html_highlight(code string, tb &ast.Table) string {
 		if i != tok.pos {
 			// All characters not detected by the scanner
 			// (mostly whitespaces) go here.
-			buf.write_u8(code[i])
+			ch := code[i]
+			if ch == `<` {
+				buf.write_string('&lt;')
+			} else if ch == `>` {
+				buf.write_string('&gt;')
+			} else if ch == `&` {
+				buf.write_string('&amp;')
+			} else {
+				buf.write_u8(ch)
+			}
 			i++
 			continue
 		}
