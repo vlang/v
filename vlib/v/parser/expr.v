@@ -293,7 +293,30 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					prev_n_tok = peek_n_tok
 					peek_n_tok = p.peek_token(n)
 				}
-				if peek_n_tok.kind == .lpar && sbr_level == 0 && peek_n_tok.line_nr == line_nr {
+				mut is_cast_expr := peek_n_tok.kind == .lpar && sbr_level == 0
+					&& peek_n_tok.line_nr == line_nr
+				// `[](?Type){}` (and `[N](?Type){}`) is an array init, not a cast.
+				if is_cast_expr && prev_n_tok.kind == .rsbr {
+					mut par_level := 0
+					for i := n; true; i++ {
+						tk := p.peek_token(i)
+						if tk.kind == .eof {
+							break
+						}
+						if tk.kind == .lpar {
+							par_level++
+						} else if tk.kind == .rpar {
+							par_level--
+							if par_level == 0 {
+								if p.peek_token(i + 1).kind == .lcbr {
+									is_cast_expr = false
+								}
+								break
+							}
+						}
+					}
+				}
+				if is_cast_expr {
 					pos := p.tok.pos()
 					typ := p.parse_type()
 					typname := p.table.sym(typ).name

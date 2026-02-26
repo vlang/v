@@ -29,7 +29,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			line_nr := p.tok.line_nr
 			p.next()
 			// []string
-			if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared, .not]
+			if p.tok.kind in [.name, .amp, .lsbr, .lpar, .question, .key_shared, .not]
 				&& p.tok.line_nr == line_nr {
 				elem_type_pos = p.tok.pos()
 				elem_type = p.parse_type()
@@ -77,7 +77,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			last_pos = p.tok.pos()
 			p.check(.rsbr)
 			if exprs.len == 1 && p.tok.line_nr == line_nr
-				&& (p.tok.kind in [.name, .amp, .question, .key_shared]
+				&& (p.tok.kind in [.name, .amp, .lpar, .question, .key_shared]
 				|| (p.tok.kind == .lsbr && p.is_array_type())) {
 				// [100]u8
 				elem_type = p.parse_type()
