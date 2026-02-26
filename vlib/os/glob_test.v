@@ -57,12 +57,7 @@ fn test_glob_can_be_used_with_multiple_patterns() {
 	matches := os.glob('*', 'cmd/tools/*')!
 	assert 'README.md' in matches
 	assert 'Makefile' in matches
-	$if !windows {
-		assert 'cmd/tools/test_if_v_test_system_works.v' in matches
-	}
-	$if windows {
-		assert 'test_if_v_test_system_works.v' in matches
-	}
+	assert 'cmd/tools/test_if_v_test_system_works.v' in matches
 }
 
 fn test_glob_star() {

@@ -126,6 +126,13 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
 		eprintln('os.glob() does not have all the features on Windows as it has on Unix operating systems')
 	}
+	normalized_pattern := pattern.replace('\\', '/')
+	mut match_base := dir(normalized_pattern).replace('\\', '/')
+	if match_base == '.' {
+		match_base = ''
+	} else if match_base != '/' && !match_base.ends_with('/') {
+		match_base += '/'
+	}
 	mut find_file_data := Win32finddata{}
 	wpattern := pattern.replace('/', '\\').to_wide()
 	h_find_files := C.FindFirstFile(wpattern, voidptr(&find_file_data))
@@ -143,6 +150,9 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	fname := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 	if fname !in ['.', '..'] {
 		mut fp := fname.replace('\\', '/')
+		if match_base != '' {
+			fp = '${match_base}${fp}'
+		}
 		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
 			fp += '/'
 		}
@@ -156,6 +166,9 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 			continue
 		}
 		mut fpath := filename.replace('\\', '/')
+		if match_base != '' {
+			fpath = '${match_base}${fpath}'
+		}
 		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
 			fpath += '/'
 		}
