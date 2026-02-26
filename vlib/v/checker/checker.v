@@ -2417,6 +2417,24 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						}
 					}
 				}
+				ast.CallExpr {
+					c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
+					if comptime_value := c.eval_comptime_const_expr(field.expr, 0) {
+						comptime_lit := c.comptime_value_to_integer_literal(comptime_value,
+							field.expr.pos) or {
+							c.error('the default value for an enum has to be an integer',
+								field.expr.pos)
+							continue
+						}
+						c.check_enum_field_integer_literal(comptime_lit, signed, node.is_multi_allowed,
+							senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+							iseen, enum_imin, enum_imax)
+						field.expr = comptime_lit
+					} else {
+						c.error('the default value for an enum has to be an integer',
+							field.expr.pos)
+					}
+				}
 				else {
 					if mut field.expr is ast.Ident {
 						if field.expr.language == .c {
@@ -2482,6 +2500,22 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 	}
 	node.enum_typ = c.table.find_type_idx(node.name)
+}
+
+fn (c &Checker) comptime_value_to_integer_literal(value ast.ComptTimeConstValue, pos token.Pos) ?ast.IntegerLiteral {
+	if v := value.i64() {
+		return ast.IntegerLiteral{
+			val: v.str()
+			pos: pos
+		}
+	}
+	if v := value.u64() {
+		return ast.IntegerLiteral{
+			val: v.str()
+			pos: pos
+		}
+	}
+	return none
 }
 
 fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool,
