@@ -204,6 +204,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		match mut lx {
 			ast.Ident {
 				if op == .decl_assign {
+					if lx.name.contains('.') {
+						return p.error_with_pos('non-name `${lx.name}` on left side of `:=`',
+							lx.pos)
+					}
 					if p.scope.known_var(lx.name) {
 						if !(p.pref.translated_go && lx.name in ['err', 'ok']) {
 							return p.error_with_pos('redefinition of `${lx.name}`', lx.pos)
