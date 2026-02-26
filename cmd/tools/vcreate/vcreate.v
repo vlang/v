@@ -332,4 +332,19 @@ fn (mut c Create) create_files_and_directories() {
 		.web { 'web' }
 	}
 	println('Created ${kind} project `${c.name}`')
+	c.print_web_template_notes()
+}
+
+fn (c &Create) print_web_template_notes() {
+	sqlite_header_path := os.join_path(@VEXEROOT, 'thirdparty', 'sqlite', 'sqlite3.h')
+	if !should_print_windows_web_sqlite_note(c.template, os.user_os(), os.exists(sqlite_header_path)) {
+		return
+	}
+	println('Note: this web template uses `db.sqlite`.')
+	println('On Windows, run `${os.quoted_path(@VEXE)} vlib/db/sqlite/install_thirdparty_sqlite.vsh`')
+	println('once, then run your app again.')
+}
+
+fn should_print_windows_web_sqlite_note(template Template, user_os string, has_sqlite_header bool) bool {
+	return template == .web && user_os == 'windows' && !has_sqlite_header
 }
