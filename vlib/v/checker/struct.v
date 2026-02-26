@@ -319,8 +319,20 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 				if field.default_expr.is_nil() {
-					if !field.typ.is_any_kind_of_pointer()
-						&& c.table.sym(field.typ).kind != .function {
+					mut nil_field_typ := field.typ
+					mut nil_field_sym := c.table.sym(nil_field_typ)
+					// Preserve pointer indirections while resolving alias chains.
+					for {
+						if mut nil_field_sym.info is ast.Alias {
+							parent_typ := nil_field_sym.info.parent_type
+							nil_field_typ = parent_typ.set_nr_muls(parent_typ.nr_muls() +
+								nil_field_typ.nr_muls())
+							nil_field_sym = c.table.sym(nil_field_typ)
+						} else {
+							break
+						}
+					}
+					if !nil_field_typ.is_any_kind_of_pointer() && nil_field_sym.kind != .function {
 						c.error('cannot assign `nil` to a non-pointer field', field.type_pos)
 					}
 				}
