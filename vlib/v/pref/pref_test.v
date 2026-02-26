@@ -37,6 +37,19 @@ fn test_version_flag() {
 	assert v_verbose_cmd_with_additional_args_res.contains('v.pref.lookup_path:')
 }
 
+fn test_cross_compile_keeps_explicit_cc() {
+	target_os := if pref.get_host_os() == .windows { 'linux' } else { 'windows' }
+	custom_cc := 'cosmocc'
+
+	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os], false)
+	assert first.ccompiler_set_by_flag
+	assert first.ccompiler == custom_cc
+
+	second, _ := pref.parse_args_and_show_errors(['help'], ['', '-os', target_os, '-cc', custom_cc], false)
+	assert second.ccompiler_set_by_flag
+	assert second.ccompiler == custom_cc
+}
+
 fn test_v_cmds_and_flags() {
 	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
 	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'

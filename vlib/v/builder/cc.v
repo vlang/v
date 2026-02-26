@@ -935,10 +935,9 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := 'cc'
+	mut cc_name := b.pref.ccompiler
 	mut out_name := b.pref.out_name
 	$if windows {
-		cc_name = 'clang.exe'
 		out_name = out_name.trim_string_right('.exe')
 	}
 	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
@@ -1023,10 +1022,9 @@ fn (mut b Builder) cc_freebsd_cross() {
 	cc_args << os.quoted_path(b.out_name_c)
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := b.pref.vcross_compiler_name()
+	mut cc_name := b.pref.ccompiler
 	mut out_name := b.pref.out_name
 	$if windows {
-		cc_name = 'clang.exe'
 		out_name = out_name.trim_string_right('.exe')
 	}
 	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
@@ -1078,11 +1076,16 @@ fn (mut b Builder) cc_freebsd_cross() {
 
 fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
-	cross_compiler_name := c.pref.vcross_compiler_name()
-	cross_compiler_name_path := os.find_abs_path_of_executable(cross_compiler_name) or {
-		eprintln('Could not find `${cross_compiler_name}` in your PATH.')
-		eprintln('See https://github.com/vlang/v/blob/master/doc/docs.md#cross-compilation for instructions on how to fix that.')
-		exit(1)
+	cross_compiler_name := c.pref.ccompiler
+	cross_compiler_name_path := if cross_compiler_name.contains('/') || cross_compiler_name.contains('\\') {
+		cross_compiler_name
+	} else {
+		os.find_abs_path_of_executable(cross_compiler_name) or {
+			eprintln('Could not find `${cross_compiler_name}` in your PATH.')
+			eprintln('Set `-cc` or `VCROSS_COMPILER_NAME` to a working cross compiler.')
+			eprintln('See https://github.com/vlang/v/blob/master/doc/docs.md#cross-compilation for instructions on how to fix that.')
+			exit(1)
+		}
 	}
 
 	c.setup_ccompiler_options(c.pref.ccompiler)
