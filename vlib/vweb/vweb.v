@@ -657,7 +657,13 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 			}
 		} else {
 			if 'vweb_global' in field.attrs {
-				request_app.$(field.name) = global_app.$(field.name)
+				$if field.typ is $map {
+					request_app.$(field.name) = global_app.$(field.name).clone()
+				} $else $if field.typ is $array {
+					request_app.$(field.name) = global_app.$(field.name).clone()
+				} $else {
+					request_app.$(field.name) = global_app.$(field.name)
+				}
 			}
 		}
 	}
