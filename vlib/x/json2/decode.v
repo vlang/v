@@ -832,18 +832,19 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 
 			value_info := decoder.current_node.value
 
-			if value_info.position + value_info.length >= map_end {
+			if value_info.position + value_info.length > map_end {
 				break
 			}
 
 			mut map_value := V{}
+
+			decoder.decode_value(mut map_value)!
 
 			$if V is $map {
 				val[key] = map_value.move()
 			} $else {
 				val[key] = map_value
 			}
-			decoder.decode_value(mut val[key])!
 		}
 	} else {
 		decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
