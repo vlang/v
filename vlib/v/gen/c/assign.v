@@ -678,6 +678,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_expected_right := ast.no_type
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
 				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct]
+			mut is_mut_arg_pointer_rebind := false
+			// Keep pointer traversal assignments on auto-deref vars as local pointer rebinds.
+			if !is_decl && !is_shared_re_assign && !var_type.has_flag(.option)
+				&& var_type.is_any_kind_of_pointer() && unwrapped_val_type.is_any_kind_of_pointer()
+				&& left.is_auto_deref_var() && !val.is_auto_deref_var() && node.op == .assign {
+				is_mut_arg_pointer_rebind = true
+			}
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
@@ -872,7 +879,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
 						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var()
-							&& !var_type.has_flag(.option) {
+							&& !var_type.has_flag(.option) && !is_mut_arg_pointer_rebind {
 							g.write('*')
 						}
 						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
@@ -1167,7 +1174,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
 						} else {
-							exp_type := if var_type.is_ptr()
+							exp_type := if is_mut_arg_pointer_rebind {
+								var_type
+							} else if var_type.is_ptr()
 								&& (left.is_auto_deref_var() || var_type.has_flag(.shared_f)) {
 								var_type.deref()
 							} else {
