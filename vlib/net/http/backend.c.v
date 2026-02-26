@@ -8,7 +8,11 @@ import strings
 
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
 	$if windows && !no_vschannel ? {
-		return vschannel_ssl_do(req, port, method, host_name, path)
+		if req.validate {
+			return vschannel_ssl_do(req, port, method, host_name, path)
+		}
+		// vschannel enforces certificate validation during handshake.
+		// Use net.ssl when validation is explicitly disabled.
 	}
 	return net_ssl_do(req, port, method, host_name, path)
 }
