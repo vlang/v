@@ -95,6 +95,18 @@ fn test_tmpl_interpolation() {
 	assert s == 'result: foo\n'
 }
 
+fn map_index_tmpl() string {
+	lang := {
+		'test_entry': 'Test Text'
+	}
+	return $tmpl('templates/map_index.txt')
+}
+
+fn test_tmpl_map_index() {
+	assert map_index_tmpl().trim_space() == 'direct: Test Text
+paren: Test Text'
+}
+
 fn my_fn(s string) string {
 	return s
 }
