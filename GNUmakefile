@@ -106,11 +106,14 @@ ifdef prod
 VFLAGS+=-prod
 endif
 
+# Keep bootstrap C compiler/linker flags aligned with the initial `v1` build.
+BOOTSTRAP_VFLAGS := $(if $(strip $(CFLAGS)),-cflags "$(CFLAGS)") $(if $(strip $(LDFLAGS)),-ldflags "$(LDFLAGS)")
+
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
-	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) cmd/v
-	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) cmd/v
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
+	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
 else
@@ -124,11 +127,11 @@ endif
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
-	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) cmd/v
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(VFLAGS) cmd/v
+	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(VEXE)$(EXE_EXT)
 endif
