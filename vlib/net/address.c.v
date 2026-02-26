@@ -118,7 +118,7 @@ pub fn (a Ip6) str() string {
 const aoffset = __offsetof(Addr, addr)
 
 // len returns the length in bytes of the address `a`, depending on its family
-pub fn (a Addr) len() u32 {
+pub fn (a &Addr) len() u32 {
 	match a.family() {
 		.ip {
 			return sizeof(Ip) + aoffset
