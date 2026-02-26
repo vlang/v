@@ -179,11 +179,41 @@ fn test_allow_to_build_usage_message() {
 	assert all_strings_found
 }
 
-fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
+fn test_if_app_name_given_but_no_show_usage_message_still_contain_version() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.name)
+	assert fp.usage().contains('v0.0.0\n---')
+}
+
+fn test_if_version_given_but_no_show_usage_message_does_not_contain_banner() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.version)
+	assert !fp.usage().contains('v0.0.0\n---')
+}
+
+fn test_if_no_description_given_usage_message_does_not_contain_description() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	fp.bool('a_bool', 0, false, '')
+	assert !fp.usage().contains('Description:')
+}
+
+fn test_if_description_given_but_no_show_usage_message_does_not_contain_description() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.description)
 	assert !fp.usage().contains('Description:')
 }
 
@@ -192,6 +222,34 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_options_given_but_no_show_flag_header_usage_message_does_not_contain_flag_header() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.options.show.clear(.flags_header)
+	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_options_given_but_no_show_usage_message_does_not_contain_options() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.options.show.clear(.flags)
+	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_footer_given_but_no_show_usage_message_does_not_contain_footer() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.footers << 'footer1'
+	fp.options.show.clear(.footer)
+	assert !fp.usage().contains('footer1')
 }
 
 fn test_default_val_descriptions_for_bools() {

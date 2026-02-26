@@ -95,8 +95,9 @@ pub mut:
 	application_description string
 	min_free_args           int
 	args_description        string
-	allow_unknown_args      bool     // whether passing undescribed arguments is allowed
-	footers                 []string // when set, --help will display all the collected footers at the bottom.
+	allow_unknown_args      bool       // whether passing undescribed arguments is allowed
+	footers                 []string   // when set, --help will display all the collected footers at the bottom.
+	options                 DocOptions // documentation options
 }
 
 // free frees the resources allocated for the given FlagParser instance.
@@ -144,6 +145,9 @@ pub fn new_flag_parser(args []string) &FlagParser {
 		all_after_dashdash: all_after_dashdash
 		args:               all_before_dashdash
 		max_free_args:      max_args_number
+		options:            DocOptions{
+			show: ~Show.zero() ^ .name
+		}
 	}
 }
 
@@ -548,8 +552,9 @@ pub fn (fs &FlagParser) usage() string {
 		adesc = ''
 	}
 	mut use := []string{}
-	if fs.application_version != '' {
-		use << '${fs.application_name} ${fs.application_version}'
+	if doc_add_name_and_version(fs.application_name, fs.application_version, fs.options, mut
+		use)
+	{
 		use << '${underline}'
 	}
 	if fs.usage_examples.len == 0 {
@@ -564,7 +569,7 @@ pub fn (fs &FlagParser) usage() string {
 		}
 	}
 	use << ''
-	if fs.application_description != '' {
+	if fs.options.show.has(.description) && fs.application_description != '' {
 		use << 'Description: ${fs.application_description}'
 		use << ''
 	}
@@ -589,8 +594,10 @@ pub fn (fs &FlagParser) usage() string {
 			use << ''
 		}
 	}
-	if fs.flags.len > 0 {
-		use << 'Options:'
+	if fs.options.show.has(.flags) && fs.flags.len > 0 {
+		if fs.options.show.has(.flags_header) {
+			use << fs.options.flag_header.trim_space_left()
+		}
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
@@ -614,8 +621,10 @@ pub fn (fs &FlagParser) usage() string {
 			use << fdesc
 		}
 	}
-	for footer in fs.footers {
-		use << footer
+	if fs.options.show.has(.footer) {
+		for footer in fs.footers {
+			use << footer
+		}
 	}
 	return use.join('\n').replace('- ,', '   ')
 }

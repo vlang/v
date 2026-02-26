@@ -617,14 +617,38 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 }
 
+// add name and/or version to doc. Returns true if name or version has been added.
+fn doc_add_name_and_version(app_name string, app_version string, options DocOptions, mut docs []string) bool {
+	mut name_and_version := ''
+
+	if options.show.has(.name) && app_name != '' {
+		name_and_version = app_name
+	}
+
+	if options.show.has(.version) && app_version != '' {
+		if app_name != '' {
+			name_and_version = '${app_name} ${app_version}' // Version string is always name + version
+		} else {
+			name_and_version = app_version
+		}
+	}
+
+	if name_and_version != '' {
+		docs << '${name_and_version}'
+
+		return true
+	}
+
+	return false
+}
+
 // to_doc returns a "usage" style documentation `string` generated from the internal data structures generated via the `parse()` function.
 pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	mut docs := []string{}
 
-	mut name_and_version := ''
+	mut app_name := ''
 	// resolve name
 	if dc.options.show.has(.name) {
-		mut app_name := ''
 		// struct `name: x` attribute, if defined
 		if attr_name := fm.si.attrs['name'] {
 			app_name = attr_name
@@ -633,13 +657,11 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		if dc.name != '' {
 			app_name = dc.name
 		}
-		if app_name != '' {
-			name_and_version = '${app_name}'
-		}
 	}
+
+	mut app_version := ''
 	// resolve version
 	if dc.options.show.has(.version) {
-		mut app_version := ''
 		// struct `version` attribute, if defined
 		if attr_version := fm.si.attrs['version'] {
 			app_version = attr_version
@@ -648,19 +670,10 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		if dc.version != '' {
 			app_version = dc.version
 		}
-
-		if app_version != '' {
-			if name_and_version != '' {
-				name_and_version = '${name_and_version} ${app_version}'
-			} else {
-				name_and_version = '${app_version}'
-			}
-		}
 	}
 
-	if name_and_version != '' {
-		docs << '${name_and_version}'
-	}
+	name_and_version := doc_add_name_and_version(app_name, app_version, dc.options, mut
+		docs)
 
 	// Resolve the description if visible
 	if dc.options.show.has(.description) {
@@ -703,7 +716,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		}
 	}
 
-	if name_and_version != '' {
+	if name_and_version {
 		mut longest_line := 0
 		for doc_line in docs {
 			lines := doc_line.split('\n')
