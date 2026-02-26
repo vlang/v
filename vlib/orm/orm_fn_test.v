@@ -394,6 +394,133 @@ fn test_orm_table_gen() {
 	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 }
 
+fn reset_tenant_filter() {
+	orm.configure_tenant_filter(enabled: false, field_name: 'tenant_id')
+	orm.clear_current_tenant_id()
+}
+
+fn test_apply_tenant_filter_appends_default_field() {
+	defer {
+		reset_tenant_filter()
+	}
+	reset_tenant_filter()
+	orm.configure_tenant_filter(field_name: 'tenant_id')
+	orm.set_current_tenant_id(77)
+	where := orm.QueryData{
+		fields: ['id']
+		data:   [orm.Primitive(int(11))]
+		kinds:  [.eq]
+	}
+	filtered := orm.apply_tenant_filter(orm.Table{
+		name: 'test_table'
+	}, where)
+	assert filtered.fields == ['id', 'tenant_id']
+	assert filtered.data == [orm.Primitive(int(11)), orm.Primitive(int(77))]
+	assert filtered.kinds == [.eq, .eq]
+	assert filtered.is_and == [true]
+}
+
+fn test_apply_tenant_filter_does_not_duplicate_existing_field() {
+	defer {
+		reset_tenant_filter()
+	}
+	reset_tenant_filter()
+	orm.configure_tenant_filter(field_name: 'tenant_id')
+	orm.set_current_tenant_id(77)
+	where := orm.QueryData{
+		fields: ['tenant_id']
+		data:   [orm.Primitive(int(11))]
+		kinds:  [.eq]
+	}
+	filtered := orm.apply_tenant_filter(orm.Table{
+		name: 'test_table'
+	}, where)
+	assert filtered.fields == ['tenant_id']
+	assert filtered.data == [orm.Primitive(int(11))]
+	assert filtered.kinds == [.eq]
+	assert filtered.is_and == []
+}
+
+fn test_apply_tenant_filter_with_table_override_and_ignore() {
+	defer {
+		reset_tenant_filter()
+	}
+	reset_tenant_filter()
+	orm.configure_tenant_filter(field_name: 'tenant_id')
+	orm.set_current_tenant_id(5)
+	with_override := orm.apply_tenant_filter(orm.Table{
+		name:  'test_table'
+		attrs: [
+			VAttribute{
+				name:    'tenant_field'
+				has_arg: true
+				arg:     'company_id'
+				kind:    .string
+			},
+		]
+	}, orm.QueryData{})
+	assert with_override.fields == ['company_id']
+	assert with_override.data == [orm.Primitive(int(5))]
+	ignored := orm.apply_tenant_filter(orm.Table{
+		name:  'test_table'
+		attrs: [
+			VAttribute{
+				name: 'ignore_tenant_filter'
+			},
+		]
+	}, orm.QueryData{})
+	assert ignored.fields == []
+	assert ignored.data == []
+}
+
+fn test_apply_tenant_filter_wraps_existing_where_clause() {
+	defer {
+		reset_tenant_filter()
+	}
+	reset_tenant_filter()
+	orm.configure_tenant_filter(field_name: 'tenant_id')
+	orm.set_current_tenant_id(42)
+	filtered := orm.apply_tenant_filter(orm.Table{
+		name: 'test_table'
+	}, orm.QueryData{
+		fields: ['a', 'b']
+		kinds:  [.eq, .eq]
+		is_and: [false]
+	})
+	assert filtered.fields == ['a', 'b', 'tenant_id']
+	assert filtered.is_and == [false, true]
+	assert filtered.parentheses.len == 1
+	assert filtered.parentheses[0] == [0, 1]
+}
+
+fn test_without_tenant_filter_and_with_tenant() {
+	defer {
+		reset_tenant_filter()
+	}
+	reset_tenant_filter()
+	orm.configure_tenant_filter(field_name: 'tenant_id')
+	orm.set_current_tenant_id(10)
+	without_filter := orm.without_tenant_filter[orm.QueryData](fn () !orm.QueryData {
+		return orm.apply_tenant_filter(orm.Table{
+			name: 'test_table'
+		}, orm.QueryData{})
+	}) or { panic(err) }
+	assert without_filter.fields == []
+
+	with_override := orm.with_tenant[orm.QueryData](22, fn () !orm.QueryData {
+		return orm.apply_tenant_filter(orm.Table{
+			name: 'test_table'
+		}, orm.QueryData{})
+	}) or { panic(err) }
+	assert with_override.fields == ['tenant_id']
+	assert with_override.data == [orm.Primitive(int(22))]
+
+	after_scope := orm.apply_tenant_filter(orm.Table{
+		name: 'test_table'
+	}, orm.QueryData{})
+	assert after_scope.data == [orm.Primitive(int(10))]
+}
+
 fn sql_type_from_v(typ int) !string {
 	return if typ in orm.nums {
 		'INT'
