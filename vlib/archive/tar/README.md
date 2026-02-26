@@ -29,5 +29,6 @@ fn main() {
 	tar.read_tar_gz_file(path, reader)!
 }
 ```
-Look also in `examples` folder the `tar_gz_reader.v` program.
+For plain archives, use `tar.read_tar_file(path, reader)!`.
 
+Look also in `examples` folder the `tar_gz_reader.v` program.
