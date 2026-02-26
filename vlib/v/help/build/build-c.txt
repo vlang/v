@@ -61,6 +61,13 @@ see also `v help build`.
    -showcc
       Prints the C command that is used to build the program.
 
+   -generate-c-project <directory>
+      Generate a C project folder with:
+      * the generated `<target>.c` source file;
+      * `build.sh`, `build.bat`, `Makefile` and `build_command.txt`.
+      The generated build command prefers source files (`.c`, `.cpp`, `.S`) over
+      cached `.o` files when V can find the corresponding source on disk.
+
    -freestanding
       Build the executable without dependency on libc.
       Supported only on `linux` targets currently.
