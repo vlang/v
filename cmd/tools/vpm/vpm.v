@@ -12,8 +12,8 @@ import v.vmod
 const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
-	'remove', 'show']
+const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
+	'list', 'remove', 'show', 'unlink']
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
@@ -44,6 +44,9 @@ fn main() {
 		'install' {
 			vpm_install(query)
 		}
+		'link' {
+			vpm_link(query)
+		}
 		'update' {
 			vpm_update(query)
 		}
@@ -61,6 +64,9 @@ fn main() {
 		}
 		'show' {
 			vpm_show(query)
+		}
+		'unlink' {
+			vpm_unlink(query)
 		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
