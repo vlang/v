@@ -139,6 +139,13 @@ fn change_source(new string) {
 	wait_for_file(new)
 }
 
+fn remove_live_attr_from_source() {
+	log.info('> remove @[live] attr from pmessage() while program is running ...')
+	source_without_live := live_program_source.replace('ORIGINAL', 'NO_LIVE').replace('@[live]\n',
+		'')
+	atomic_write_source(source_without_live)
+}
+
 fn wait_for_file(new string) {
 	expected_file := os.join_path(vtmp_folder, new + '.txt')
 	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '1' }.int()
@@ -200,12 +207,18 @@ fn test_live_program_can_be_changed_1() {
 }
 
 fn test_live_program_can_be_changed_2() {
+	remove_live_attr_from_source()
+	time.sleep(1 * time.second)
+	assert true
+}
+
+fn test_live_program_can_be_changed_3() {
 	change_source('ANOTHER')
 	time.sleep(250 * time.millisecond)
 	assert true
 }
 
-fn test_live_program_can_be_changed_3() {
+fn test_live_program_can_be_changed_4() {
 	time.sleep(500 * time.millisecond)
 	change_source('STOP')
 	time.sleep(250 * time.millisecond)
