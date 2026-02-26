@@ -2255,6 +2255,22 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
+		if field_name == 'to_fixed_size' && left is ast.ArrayInit && args.len == 0
+			&& or_block.kind == .absent {
+			left_array := left as ast.ArrayInit
+			if left_array.is_fixed {
+				return left_array
+			}
+			if left_array.exprs.len > 0 {
+				return ast.ArrayInit{
+					...left_array
+					is_fixed:           true
+					has_val:            true
+					from_to_fixed_size: true
+					pos:                left_array.pos.extend(end_pos)
+				}
+			}
+		}
 		comments := p.eat_comments(same_line: true)
 		mut left_node := unsafe { left }
 		if mut left_node is ast.CallExpr {
