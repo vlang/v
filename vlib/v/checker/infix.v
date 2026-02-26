@@ -8,6 +8,30 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
+	mut right_type := ast.no_type
+	mut right_type_prechecked := false
+	// Handle `.short_enum == x` in contexts where `expected_type` is not the enum type
+	// (for example inside `return` where `expected_type` can be `bool`).
+	if node.op in [.eq, .ne] && node.left is ast.EnumVal {
+		left_enum_val := node.left as ast.EnumVal
+		if left_enum_val.enum_name == '' {
+			mut should_infer_left_enum_from_right := c.expected_type == ast.void_type
+			if !should_infer_left_enum_from_right {
+				expected_sym := c.table.final_sym(c.unwrap_generic(c.expected_type))
+				should_infer_left_enum_from_right = expected_sym.kind != .enum
+			}
+			if should_infer_left_enum_from_right {
+				right_type = c.expr(mut node.right)
+				right_type_prechecked = true
+				if right_type != ast.no_type {
+					right_final_sym := c.table.final_sym(c.unwrap_generic(right_type))
+					if right_final_sym.kind == .enum {
+						c.expected_type = right_type
+					}
+				}
+			}
+		}
+	}
 	mut left_type := c.expr(mut node.left)
 	if left_type == ast.no_type {
 		node.left_type = left_type
@@ -84,7 +108,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	mut right_type := c.expr(mut node.right)
+	if !right_type_prechecked {
+		right_type = c.expr(mut node.right)
+	}
 	if right_type == ast.no_type {
 		node.right_type = right_type
 		if node.op in [.key_is, .not_is] {
