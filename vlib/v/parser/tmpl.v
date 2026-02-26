@@ -239,9 +239,51 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `veb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@@', r'@', r'@', r'$', r'$$', r'\@']
 	rewritten_line := rewrite_complex_template_at_expressions(line)
-	mut rline := rewritten_line.replace_each(replace_pairs)
+	mut sb := strings.new_builder(rewritten_line.len + 16)
+	mut i := 0
+	for i < rewritten_line.len {
+		ch := rewritten_line[i]
+		match ch {
+			`\\` {
+				sb.write_string('\\\\')
+				i++
+				continue
+			}
+			`'` {
+				sb.write_string("\\'")
+				i++
+				continue
+			}
+			`@` {
+				if i + 1 < rewritten_line.len && rewritten_line[i + 1] == `@` {
+					sb.write_u8(`@`)
+					i += 2
+					continue
+				}
+				// Keep package-version URLs like `jquery@3.6.0` unchanged.
+				if i + 1 < rewritten_line.len && rewritten_line[i + 1].is_digit() {
+					sb.write_u8(`@`)
+					i++
+					continue
+				}
+				sb.write_u8(`$`)
+				i++
+				continue
+			}
+			`$` {
+				if i + 1 < rewritten_line.len && rewritten_line[i + 1] == `$` {
+					sb.write_string(r'\@')
+					i += 2
+					continue
+				}
+			}
+			else {}
+		}
+		sb.write_u8(ch)
+		i++
+	}
+	mut rline := sb.str()
 	comptime_call_str := rline.find_between('\${', '}')
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
