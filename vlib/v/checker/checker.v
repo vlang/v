@@ -3769,6 +3769,16 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.typ.has_flag(.generic) {
 		c.table.used_features.comptime_syms[to_type] = true
 	}
+	base_to_type := to_type.clear_option_and_result()
+	if mut node.expr is ast.ArrayInit && node.expr.typ == ast.void_type
+		&& c.table.final_sym(base_to_type).kind == .array {
+		cast_array_type := c.table.unaliased_type(base_to_type).clear_option_and_result()
+		cast_array_sym := c.table.sym(cast_array_type)
+		if cast_array_sym.kind == .array {
+			node.expr.typ = cast_array_type
+			node.expr.elem_type = cast_array_sym.array_info().elem_type
+		}
+	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
 	node.expr_type = c.expr(mut node.expr) // type to be casted

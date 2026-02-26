@@ -2,6 +2,7 @@ module main
 
 type Bytes = [3]u8
 type Str = []u8
+type NumOrText = int | string
 
 fn test_cast_to_fixed_array() {
 	mut x := Bytes{}
@@ -33,4 +34,14 @@ fn test_cast_to_array() {
 	z := Str(y)
 	dump(z)
 	assert z.str() == 'Str([10, 20, 30])'
+}
+
+fn test_cast_array_literal_to_array_type() {
+	values := []u32([10, 5, 10])
+	assert values == [u32(10), 5, 10]
+}
+
+fn test_cast_array_literal_to_sumtype_array() {
+	values := []NumOrText([1, 'x', 2])
+	assert values == [NumOrText(1), 'x', 2]
 }
