@@ -35,20 +35,20 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout / time.second
-	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
-
-	mut tt := C.timeval{
-		tv_sec:  u64(seconds)
-		tv_usec: u64(microseconds)
-	}
-
+	mut tt := C.timeval{}
 	mut timeval_timeout := &tt
 
 	// infinite timeout is signaled by passing null as the timeout to
-	// select
+	// select.
 	if timeout == infinite_timeout {
 		timeval_timeout = &C.timeval(unsafe { nil })
+	} else {
+		seconds := timeout / time.second
+		microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
+		tt = C.timeval{
+			tv_sec:  u64(seconds)
+			tv_usec: u64(microseconds)
+		}
 	}
 
 	match test {
