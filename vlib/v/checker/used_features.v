@@ -166,7 +166,9 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 	} else if left_type.has_flag(.generic) {
 		unwrapped_left := c.unwrap_generic(left_type)
 		c.table.used_features.comptime_calls['${int(unwrapped_left)}.${node.name}'] = true
-		if !unwrapped_left.is_ptr() && left_expr is ast.Ident && left_expr.is_mut() {
+		// Generic method calls can resolve to pointer receivers during cgen (`x.name()` -> `(&x).name()`).
+		// Mark both forms so skip-unused does not drop pointer receiver methods.
+		if !unwrapped_left.is_ptr() {
 			c.table.used_features.comptime_calls['${int(unwrapped_left.ref())}.${node.name}'] = true
 		}
 	}
