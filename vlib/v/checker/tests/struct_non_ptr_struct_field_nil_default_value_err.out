@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_non_ptr_struct_field_nil_default_value_err.vv:5:12: error: cannot assign `nil` to a non-pointer field
+    3 | struct Game {
+    4 | mut:
+    5 |     gg        Context = unsafe { nil }
+      |               ~~~~~~~
+    6 |     something int
+    7 | }
