@@ -8,19 +8,21 @@ import net.conv
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
+	effective_config, effective_where := orm.apply_tenant_filter_to_select_config(config,
+		where)
+	query := orm.orm_select_gen(effective_config, '"', true, '$', 1, effective_where)
 
-	rows := pg_stmt_worker(db, query, where, data)!
+	rows := pg_stmt_worker(db, query, effective_where, data)!
 
 	mut ret := [][]orm.Primitive{}
 
-	if config.is_count {
+	if effective_config.is_count {
 	}
 
 	for row in rows {
 		mut row_data := []orm.Primitive{}
 		for i, val in row.vals {
-			row_data << val_to_primitive(val, config.types[i])!
+			row_data << val_to_primitive(val, effective_config.types[i])!
 		}
 		ret << row_data
 	}
@@ -39,15 +41,17 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where)
-	pg_stmt_worker(db, query, data, where)!
+	effective_where := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, effective_where)
+	pg_stmt_worker(db, query, data, effective_where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	effective_where := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '"', .delete, true, '$', 1, orm.QueryData{},
-		where)
-	pg_stmt_worker(db, query, orm.QueryData{}, where)!
+		effective_where)
+	pg_stmt_worker(db, query, orm.QueryData{}, effective_where)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries

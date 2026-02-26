@@ -5,12 +5,14 @@ import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+	effective_config, effective_where := orm.apply_tenant_filter_to_select_config(config,
+		where)
 	$if trace_orm_where ? {
-		eprintln('> sqlite.select: where.fields.len = ${where.fields.len}')
-		eprintln('> sqlite.select: where.kinds.len = ${where.kinds.len}')
+		eprintln('> sqlite.select: where.fields.len = ${effective_where.fields.len}')
+		eprintln('> sqlite.select: where.kinds.len = ${effective_where.kinds.len}')
 	}
 	// 1. Create query and bind necessary data
-	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
+	query := orm.orm_select_gen(effective_config, '`', true, '?', 1, effective_where)
 	$if trace_sqlite ? {
 		eprintln('> select query: "${query}"')
 	}
@@ -19,12 +21,12 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		stmt.finalize()
 	}
 	mut c := 1
-	sqlite_stmt_binder(stmt, where, query, mut c)!
+	sqlite_stmt_binder(stmt, effective_where, query, mut c)!
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 
 	mut ret := [][]orm.Primitive{}
 
-	if config.is_count {
+	if effective_config.is_count {
 		// 2. Get count of returned values & add it to ret array
 		step := stmt.step()
 		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
@@ -44,7 +46,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			break
 		}
 		mut row := []orm.Primitive{}
-		for i, typ in config.types {
+		for i, typ in effective_config.types {
 			primitive := stmt.sqlite_select_column(i, typ)!
 			row << primitive
 		}
@@ -64,15 +66,17 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, where)
-	sqlite_stmt_worker(db, query, data, where)!
+	effective_where := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, effective_where)
+	sqlite_stmt_worker(db, query, data, effective_where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	effective_where := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .delete, true, '?', 1, orm.QueryData{},
-		where)
-	sqlite_stmt_worker(db, query, orm.QueryData{}, where)!
+		effective_where)
+	sqlite_stmt_worker(db, query, orm.QueryData{}, effective_where)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries

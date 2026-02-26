@@ -5,15 +5,17 @@ import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
+	effective_config, effective_where := orm.apply_tenant_filter_to_select_config(config,
+		where)
+	query := orm.orm_select_gen(effective_config, '`', false, '?', 0, effective_where)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
-	mysql_stmt_bind_query_data(mut stmt, where)!
+	mysql_stmt_bind_query_data(mut stmt, effective_where)!
 	mysql_stmt_bind_query_data(mut stmt, data)!
 
-	if data.data.len > 0 || where.data.len > 0 {
+	if data.data.len > 0 || effective_where.data.len > 0 {
 		stmt.bind_params()!
 	}
 
@@ -57,9 +59,9 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 	mut is_null := []bool{len: int(num_fields)}
 	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
 
-	mut types := config.types.clone()
+	mut types := effective_config.types.clone()
 	mut field_types := []FieldType{}
-	if config.is_count {
+	if effective_config.is_count {
 		types = [orm.type_idx['u64']]
 	}
 
@@ -140,15 +142,17 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where)
-	mysql_stmt_worker(db, query, data, where)!
+	effective_where := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, effective_where)
+	mysql_stmt_worker(db, query, data, effective_where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	effective_where := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '`', .delete, false, '?', 1, orm.QueryData{},
-		where)
-	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
+		effective_where)
+	mysql_stmt_worker(db, query, orm.QueryData{}, effective_where)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
