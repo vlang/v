@@ -2392,20 +2392,13 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = 'string ${t} = '
 		}
 		g.is_autofree_tmp = true
-		pos_before := g.out.len
-
 		old_is_autofree := g.is_autofree
 		if arg.expr is ast.CallExpr && arg.expr.is_method && arg.expr.left is ast.CallExpr {
 			g.is_autofree = false
 		}
-
-		g.expr(arg.expr)
-		expr_code := g.out.cut_to(pos_before).trim_space()
-
+		s = g.expr_string_surround(s, arg.expr, ';')
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
-		s += expr_code
-		s += ';'
 		g.strs_to_free0 << s
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
@@ -2625,7 +2618,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
-			&& !g.inside_const && !g.is_builtin_mod
+			&& !g.inside_const && !g.is_builtin_mod && g.inside_ternary == 0
 		// g.write('/* af=${arg.is_tmp_autofree} */')
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
@@ -2641,7 +2634,20 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				scope := g.file.scope.innermost(node.pos.pos)
 				if !g.is_autofree_tmp || scope.known_var(name) {
-					g.write('/*autofree arg*/' + name)
+					tmp_arg := ast.CallArg{
+						typ:    arg.typ
+						is_mut: arg.is_mut
+						expr:   ast.Ident{
+							name: name
+							kind: .variable
+							info: ast.IdentVar{
+								typ:    arg.typ
+								is_mut: arg.is_mut
+							}
+						}
+					}
+					g.write('/*autofree arg*/')
+					g.ref_or_deref_arg(tmp_arg, expected_types[i], node.language, is_smartcast)
 					wrote_tmp_arg = true
 				}
 			}

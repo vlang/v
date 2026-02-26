@@ -3971,7 +3971,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
-				&& !g.is_autofree_tmp && !g.inside_lambda {
+				&& !g.is_autofree_tmp && !g.inside_lambda && g.inside_ternary == 0 {
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
