@@ -294,15 +294,16 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 fn cgen_attrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
-		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
 		mut s := attr.name
-		if attr.arg.len > 0 {
-			s += ': ${attr.arg}'
+		if attr.has_arg {
+			mut arg := attr.arg
+			if attr.kind == .string {
+				quote := if attr.quote == `"` { '"' } else { "'" }
+				arg = '${quote}${arg}${quote}'
+			}
+			s += ': ${arg}'
 		}
-		if attr.kind == .string {
-			s = escape_quotes(s)
-		}
-		res << '_S("${s}")'
+		res << '_S("${escape_quotes(s)}")'
 	}
 	return res
 }

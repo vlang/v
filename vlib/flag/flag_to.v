@@ -160,6 +160,17 @@ fn (fm FlagMapper) dbg_match(flag_ctx FlagContext, field StructField, arg string
 	return '${struct_name}.${field.name}/${field.short}${extra} in ${flag_ctx.raw}/${flag_ctx.name} = `${arg}`'
 }
 
+fn normalize_attr_value(value string) string {
+	trimmed := value.trim_space()
+	if trimmed.len > 1 {
+		if (trimmed[0] == `'` && trimmed[trimmed.len - 1] == `'`)
+			|| (trimmed[0] == `"` && trimmed[trimmed.len - 1] == `"`) {
+			return trimmed[1..trimmed.len - 1]
+		}
+	}
+	return trimmed
+}
+
 fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 	mut struct_fields := map[string]StructField{}
 	mut struct_attrs := map[string]string{}
@@ -184,7 +195,7 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 				trace_println('\tattribute: "${attr}"')
 				if attr.contains(':') {
 					split := attr.split(':')
-					attrs[split[0].trim_space()] = split[1].trim(' ')
+					attrs[split[0].trim_space()] = normalize_attr_value(split[1])
 				} else {
 					attrs[attr.trim(' ')] = 'true'
 				}

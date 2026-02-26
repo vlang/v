@@ -411,14 +411,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		$for field in T.fields {
 			mut json_name_str := field.name.str
 			mut json_name_len := field.name.len
+			mut is_json_skip := false
 
 			for attr in field.attrs {
-				if attr.starts_with('json:') {
-					if attr.len <= 6 {
+				if start, end := json_attr_value_range(attr) {
+					if end <= start {
 						decoder.decode_error('`json` attribute must have an argument')!
 					}
-					json_name_str = unsafe { attr.str + 6 }
-					json_name_len = attr.len - 6
+					if end == start + 1 && attr[start] == `-` {
+						is_json_skip = true
+					}
+					json_name_str = unsafe { attr.str + start }
+					json_name_len = end - start
 					break
 				}
 				continue
@@ -430,7 +434,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				json_name_ptr:  voidptr(json_name_str)
 				json_name_len:  json_name_len
 				is_omitempty:   field.attrs.contains('omitempty')
-				is_skip:        field.attrs.contains('skip') || field.attrs.contains('json: -')
+				is_skip:        field.attrs.contains('skip') || is_json_skip
 				is_required:    field.attrs.contains('required')
 				is_raw:         field.attrs.contains('raw')
 			})
@@ -874,9 +878,11 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 
 		$for value in T.values {
 			for attr in value.attrs {
-				if attr.starts_with('json: ') && attr[6..] == result {
-					val = value.value
-					return
+				if json_attr := json_attr_value(attr) {
+					if json_attr == result {
+						val = value.value
+						return
+					}
 				}
 			}
 			if value.name == result {
