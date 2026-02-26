@@ -649,6 +649,16 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 				}
 			}
 			p.check(.colon)
+			if p.tok.kind == .lcbr && typ != ast.void_type {
+				struct_sym := p.table.final_sym(p.table.unaliased_type(typ))
+				if field := struct_sym.find_field(field_name) {
+					field_sym := p.table.final_sym(p.table.unaliased_type(field.typ))
+					if field_sym.kind in [.array, .array_fixed] {
+						p.error_with_pos('cannot use `{}` for array field `${field_name}`; use `[]` instead',
+							p.tok.pos())
+					}
+				}
+			}
 			expr = p.expr(0)
 			end_comments = p.eat_comments(same_line: true)
 			last_field_pos := expr.pos()
