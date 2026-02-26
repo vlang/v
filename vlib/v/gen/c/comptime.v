@@ -147,7 +147,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := sym.find_method(g.comptime.comptime_for_method.name) or { return }
+		m := g.table.find_method(sym, g.comptime.comptime_for_method.name) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])
@@ -192,7 +192,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		// TODO: check argument types
-		g.write('${g.cc_type(left_type, false)}_${g.comptime.comptime_for_method.name}(')
+		// Use the declaring receiver type for the symbol prefix, so alias
+		// comptime calls can dispatch to inherited methods.
+		method_receiver_type := g.unwrap_generic(m.params[0].typ)
+		g.write('${g.cc_type(method_receiver_type, false)}_${g.comptime.comptime_for_method.name}(')
 
 		// try to see if we need to pass a pointer
 		if mut node.left is ast.Ident {

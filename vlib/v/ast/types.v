@@ -2078,23 +2078,39 @@ pub fn (i Interface) get_methods() []string {
 pub fn (t &TypeSymbol) get_methods() []Fn {
 	mut methods := t.methods.filter(it.attrs.len == 0) // methods without attrs first
 	mut methods_with_attrs := t.methods.filter(it.attrs.len > 0) // methods with attrs second
+	mut existing_method_names := map[string]bool{}
+	for method in t.methods {
+		existing_method_names[method.name] = true
+	}
+	mut inherited_methods := []Fn{}
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
 				parent_sym := global_table.sym(t.info.parent_type)
 				match parent_sym.info {
-					Struct, Interface, SumType {
-						parent_methods := parent_sym.methods
-						if parent_methods.len > 0 {
-							methods << parent_methods.filter(it.attrs.len == 0)
-							methods_with_attrs << parent_methods.filter(it.attrs.len > 0)
-						}
+					Struct, Interface, SumType, Alias {
+						inherited_methods = parent_sym.get_methods()
 					}
 					else {}
 				}
 			}
 		}
+		Alias {
+			parent_sym := global_table.sym(t.info.parent_type)
+			inherited_methods = parent_sym.get_methods()
+		}
 		else {}
+	}
+	for method in inherited_methods {
+		if method.name in existing_method_names {
+			continue
+		}
+		existing_method_names[method.name] = true
+		if method.attrs.len == 0 {
+			methods << method
+		} else {
+			methods_with_attrs << method
+		}
 	}
 	methods << methods_with_attrs
 	return methods

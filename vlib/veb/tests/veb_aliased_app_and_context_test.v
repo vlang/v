@@ -21,6 +21,10 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
+pub fn (mut app App) index(mut ctx Context) veb.Result {
+	return ctx.text('Hello V!')
+}
+
 type AliasApp = App
 type AliasContext = Context
 
