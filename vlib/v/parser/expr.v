@@ -117,6 +117,26 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
+				.key_typeof, .key_sizeof, .key_isreftype, .key_dump, .key_offsetof {
+					start_pos := p.tok.pos()
+					p.check(.dollar)
+					match p.tok.kind {
+						.key_typeof {
+							node = p.parse_typeof_expr(start_pos)
+						}
+						.key_sizeof, .key_isreftype {
+							node = p.parse_sizeof_or_isreftype_expr()
+						}
+						.key_dump {
+							node = p.parse_dump_expr(start_pos)
+						}
+						.key_offsetof {
+							node = p.parse_offsetof_expr(start_pos)
+						}
+						else {}
+					}
+					p.is_stmt_ident = is_stmt_ident
+				}
 				.name, .key_struct, .key_enum, .key_interface, .key_shared {
 					if p.peek_tok.lit in comptime_types {
 						node = p.parse_comptime_type()
@@ -342,153 +362,16 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_typeof {
-			spos := p.tok.pos()
-			p.next()
-			if p.tok.kind == .lsbr {
-				p.check(.lsbr)
-				type_pos := p.tok.pos()
-				typ := p.parse_type()
-				p.check(.rsbr)
-				p.check(.lpar)
-				p.check(.rpar)
-				node = ast.TypeOf{
-					is_type: true
-					typ:     typ
-					pos:     type_pos.extend(p.tok.pos())
-				}
-			} else {
-				p.check(.lpar)
-				expr := p.expr(0)
-				p.check(.rpar)
-				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
-					if !p.inside_unsafe {
-						p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
-							spos)
-					}
-				}
-				node = ast.TypeOf{
-					is_type: false
-					expr:    expr
-					pos:     spos.extend(p.tok.pos())
-				}
-			}
+			node = p.parse_typeof_expr(p.tok.pos())
 		}
 		.key_sizeof, .key_isreftype {
-			is_reftype := p.tok.kind == .key_isreftype
-			p.next() // sizeof
-
-			if p.tok.kind == .lsbr {
-				// parse sizeof[T]() and isreftype[T]() without guessing:
-				p.check(.lsbr)
-				mut type_pos := p.tok.pos()
-				typ := p.parse_type()
-				type_pos = type_pos.extend(p.tok.pos())
-				p.check(.rsbr)
-				p.check(.lpar)
-				p.check(.rpar)
-				if is_reftype {
-					node = ast.IsRefType{
-						is_type: true
-						typ:     typ
-						pos:     type_pos
-					}
-				} else {
-					node = ast.SizeOf{
-						is_type: true
-						typ:     typ
-						pos:     type_pos
-					}
-				}
-			} else {
-				p.check(.lpar)
-				pos := p.tok.pos()
-				mut is_known_var := p.scope.mark_var_as_used(p.tok.lit)
-					|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
-				//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
-				// assume `mod.` prefix leads to a type
-				mut is_type := p.known_import(p.tok.lit)
-					|| p.tok.kind.is_start_of_type()
-					|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
-
-				if p.peek_tok.kind == .string && p.tok.lit in ['c', 'r'] {
-					is_known_var = false
-					is_type = false
-				}
-				if is_known_var || !is_type {
-					expr := p.expr(0)
-					if is_reftype {
-						node = ast.IsRefType{
-							is_type: false
-							expr:    expr
-							pos:     pos
-						}
-					} else {
-						node = ast.SizeOf{
-							is_type: false
-							expr:    expr
-							pos:     pos
-						}
-					}
-				} else {
-					if p.tok.kind == .name {
-						p.register_used_import(p.tok.lit)
-					}
-					save_expr_mod := p.expr_mod
-					p.expr_mod = ''
-					arg_type := p.parse_type()
-					p.expr_mod = save_expr_mod
-					if is_reftype {
-						node = ast.IsRefType{
-							guessed_type: true
-							is_type:      true
-							typ:          arg_type
-							pos:          pos
-						}
-					} else {
-						node = ast.SizeOf{
-							guessed_type: true
-							is_type:      true
-							typ:          arg_type
-							pos:          pos
-						}
-					}
-				}
-				p.check(.rpar)
-			}
+			node = p.parse_sizeof_or_isreftype_expr()
 		}
 		.key_dump {
-			spos := p.tok.pos()
-			p.next()
-			p.check(.lpar)
-			expr := p.expr(0)
-			if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
-				p.next()
-			}
-			p.check(.rpar)
-			mut pos := p.tok.pos()
-			pos.update_last_line(p.prev_tok.line_nr)
-			node = ast.DumpExpr{
-				expr: expr
-				pos:  spos.extend(pos)
-			}
+			node = p.parse_dump_expr(p.tok.pos())
 		}
 		.key_offsetof {
-			pos := p.tok.pos()
-			p.next() // __offsetof
-			p.check(.lpar)
-			st := p.parse_type()
-			p.check(.comma)
-			if p.tok.kind != .name {
-				return p.unexpected(got: '`${p.tok.lit}`', additional_msg: 'expecting struct field')
-			}
-			field := p.tok.lit
-			p.next()
-			p.check(.rpar)
-			node = ast.OffsetOf{
-				struct_type: st
-				field:       field
-				pos:         pos
-			}
+			node = p.parse_offsetof_expr(p.tok.pos())
 		}
 		.key_likely, .key_unlikely {
 			is_likely := p.tok.kind == .key_likely
@@ -598,6 +481,151 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
+}
+
+fn (mut p Parser) parse_typeof_expr(start_pos token.Pos) ast.Expr {
+	p.next() // typeof
+	if p.tok.kind == .lsbr {
+		p.check(.lsbr)
+		type_pos := p.tok.pos()
+		typ := p.parse_type()
+		p.check(.rsbr)
+		p.check(.lpar)
+		p.check(.rpar)
+		return ast.TypeOf{
+			is_type: true
+			typ:     typ
+			pos:     type_pos.extend(p.tok.pos())
+		}
+	}
+	p.check(.lpar)
+	expr := p.expr(0)
+	p.check(.rpar)
+	if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+		if !p.inside_unsafe {
+			p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+				start_pos)
+		}
+	}
+	return ast.TypeOf{
+		is_type: false
+		expr:    expr
+		pos:     start_pos.extend(p.tok.pos())
+	}
+}
+
+fn (mut p Parser) parse_sizeof_or_isreftype_expr() ast.Expr {
+	is_reftype := p.tok.kind == .key_isreftype
+	p.next() // sizeof or isreftype
+	if p.tok.kind == .lsbr {
+		// parse sizeof[T]() and isreftype[T]() without guessing:
+		p.check(.lsbr)
+		mut type_pos := p.tok.pos()
+		typ := p.parse_type()
+		type_pos = type_pos.extend(p.tok.pos())
+		p.check(.rsbr)
+		p.check(.lpar)
+		p.check(.rpar)
+		if is_reftype {
+			return ast.IsRefType{
+				is_type: true
+				typ:     typ
+				pos:     type_pos
+			}
+		}
+		return ast.SizeOf{
+			is_type: true
+			typ:     typ
+			pos:     type_pos
+		}
+	}
+	p.check(.lpar)
+	pos := p.tok.pos()
+	mut is_known_var := p.scope.mark_var_as_used(p.tok.lit)
+		|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+	//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
+	// assume `mod.` prefix leads to a type
+	mut is_type := p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()
+		|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
+	if p.peek_tok.kind == .string && p.tok.lit in ['c', 'r'] {
+		is_known_var = false
+		is_type = false
+	}
+	if is_known_var || !is_type {
+		expr := p.expr(0)
+		if is_reftype {
+			result := ast.IsRefType{
+				is_type: false
+				expr:    expr
+				pos:     pos
+			}
+			p.check(.rpar)
+			return result
+		}
+		result := ast.SizeOf{
+			is_type: false
+			expr:    expr
+			pos:     pos
+		}
+		p.check(.rpar)
+		return result
+	}
+	if p.tok.kind == .name {
+		p.register_used_import(p.tok.lit)
+	}
+	save_expr_mod := p.expr_mod
+	p.expr_mod = ''
+	arg_type := p.parse_type()
+	p.expr_mod = save_expr_mod
+	p.check(.rpar)
+	if is_reftype {
+		return ast.IsRefType{
+			guessed_type: true
+			is_type:      true
+			typ:          arg_type
+			pos:          pos
+		}
+	}
+	return ast.SizeOf{
+		guessed_type: true
+		is_type:      true
+		typ:          arg_type
+		pos:          pos
+	}
+}
+
+fn (mut p Parser) parse_dump_expr(start_pos token.Pos) ast.Expr {
+	p.next() // dump
+	p.check(.lpar)
+	expr := p.expr(0)
+	if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
+		p.next()
+	}
+	p.check(.rpar)
+	mut pos := p.tok.pos()
+	pos.update_last_line(p.prev_tok.line_nr)
+	return ast.DumpExpr{
+		expr: expr
+		pos:  start_pos.extend(pos)
+	}
+}
+
+fn (mut p Parser) parse_offsetof_expr(start_pos token.Pos) ast.Expr {
+	p.next() // __offsetof
+	p.check(.lpar)
+	st := p.parse_type()
+	p.check(.comma)
+	if p.tok.kind != .name {
+		return p.unexpected(got: '`${p.tok.lit}`', additional_msg: 'expecting struct field')
+	}
+	field := p.tok.lit
+	p.next()
+	p.check(.rpar)
+	return ast.OffsetOf{
+		struct_type: st
+		field:       field
+		pos:         start_pos
+	}
 }
 
 fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
