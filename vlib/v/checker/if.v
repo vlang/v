@@ -7,6 +7,48 @@ import v.token
 import v.util
 import strings
 
+fn (c &Checker) simple_expr_name_for_dead_branch_check(expr ast.Expr) string {
+	mut current_expr := expr
+	current_expr = current_expr.remove_par()
+	if current_expr !in [ast.Ident, ast.SelectorExpr] {
+		return ''
+	}
+	return current_expr.str()
+}
+
+fn (mut c Checker) is_always_true_self_comparison(cond ast.Expr) bool {
+	mut cond_expr := cond
+	cond_expr = cond_expr.remove_par()
+	if mut cond_expr is ast.InfixExpr {
+		if cond_expr.op != .eq {
+			return false
+		}
+		left_name := c.simple_expr_name_for_dead_branch_check(cond_expr.left)
+		right_name := c.simple_expr_name_for_dead_branch_check(cond_expr.right)
+		if left_name == '' || left_name != right_name {
+			return false
+		}
+		mut left_type := if cond_expr.left_type == ast.no_type {
+			c.get_expr_type(cond_expr.left)
+		} else {
+			cond_expr.left_type
+		}
+		mut right_type := if cond_expr.right_type == ast.no_type {
+			c.get_expr_type(cond_expr.right)
+		} else {
+			cond_expr.right_type
+		}
+		left_type = c.table.unaliased_type(left_type)
+		right_type = c.table.unaliased_type(right_type)
+		if left_type.is_float() || right_type.is_float() {
+			// `NaN == NaN` is always false.
+			return false
+		}
+		return true
+	}
+	return false
+}
+
 // gen_branch_context_string generate current branches context string.
 // context include generic types, `$for`.
 fn (mut c Checker) gen_branch_context_string() string {
@@ -98,6 +140,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	comptime_branch_context_str := if node.is_comptime { c.gen_branch_context_string() } else { '' }
 
 	for i, mut branch in node.branches {
+		orig_branch_cond := branch.cond
 		mut comptime_remove_curr_branch_stmts := false
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
 			c.warn('unnecessary `()` in `${if_kind}` condition, use `${if_kind} expr {` instead of `${if_kind} (expr) {`.',
@@ -170,6 +213,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							c.note('condition is always false', branch.cond.pos())
 						}
 					}
+				}
+				if !c.pref.translated && !c.file.is_translated && !c.inside_unsafe
+					&& c.is_always_true_self_comparison(orig_branch_cond) {
+					c.warn('self-comparison in `if` condition is always true; following branches may be unreachable',
+						branch.cond.pos())
 				}
 			}
 		} else {
