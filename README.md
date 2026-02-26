@@ -287,6 +287,10 @@ v run news_fetcher.v
 v run tetris/tetris.v
 ```
 
+When a project has a `.vvmrc` file, `v <project>` and `v run <project>` try
+to use the requested V binary (for example `v0.4.6`) before falling back to
+the current compiler.
+
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
