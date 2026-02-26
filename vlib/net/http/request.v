@@ -301,7 +301,12 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut status_code := -1
 	for {
 		readcounter++
-		len := receive_chunk_cb(con, bp, bufsize) or { break }
+		len := receive_chunk_cb(con, bp, bufsize) or {
+			if err is io.Eof {
+				break
+			}
+			return err
+		}
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
 			eprintln('-'.repeat(20))
