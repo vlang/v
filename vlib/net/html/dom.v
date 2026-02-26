@@ -125,12 +125,17 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 		if is_close_tag(tag) {
 			temp_int = stack.peek()
 			temp_string = tag.name[1..]
+			old_stack_size := stack.size
 			for !is_null(temp_int) && temp_string != tag_list[temp_int].name
 				&& !tag_list[temp_int].closed {
 				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' +
 					(temp_string == tag_list[temp_int].name).str())
 				stack.pop()
 				temp_int = stack.peek()
+			}
+			if is_null(temp_int) || temp_string != tag_list[temp_int].name {
+				stack.size = old_stack_size
+				continue
 			}
 			temp_int = stack.peek()
 			temp_int = if !is_null(temp_int) { stack.pop() } else { root_index }
