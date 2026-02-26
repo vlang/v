@@ -5506,6 +5506,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			// `mut param []T` function parameter
 			is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
 				&& typ_sym.kind != .struct
+			// `param &[]T` function parameter
+			if node.left.obj.is_arg && typ_sym.kind == .array {
+				is_ok = true
+			}
 			// `mut param Struct`
 			is_mut_struct = node.left.obj.is_mut && node.left.obj.is_arg && typ_sym.kind == .struct
 		}

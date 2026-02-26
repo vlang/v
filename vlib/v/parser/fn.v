@@ -1319,7 +1319,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				}
 			}
 			pos := p.tok.pos()
+			prev_inside_fn_param := p.inside_fn_param
+			p.inside_fn_param = true
 			mut param_type := p.parse_type()
+			p.inside_fn_param = prev_inside_fn_param
 			type_pos := pos.extend(p.prev_tok.pos())
 			if param_type == 0 {
 				// error is added in parse_type
@@ -1453,7 +1456,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				}
 			}
 			pos := p.tok.pos()
+			prev_inside_fn_param := p.inside_fn_param
+			p.inside_fn_param = true
 			mut typ := p.parse_type()
+			p.inside_fn_param = prev_inside_fn_param
 			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type

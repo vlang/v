@@ -1822,3 +1822,23 @@ fn test_sorted_with_compare() {
 	assert aa == ['hi', '1', '5', '3'], 'aa should stay unmodified'
 	assert bb == ['1', '3', '5', 'hi'], 'bb should be sorted, according to the custom comparison callback fn'
 }
+
+fn cmp_2d_int_arrays_by_first_item(a &[]int, b &[]int) int {
+	if a[0] < b[0] {
+		return -1
+	}
+	if a[0] > b[0] {
+		return 1
+	}
+	return 0
+}
+
+fn test_sorted_with_compare_2d_array() {
+	aa := [[2], [1]]
+	bb := aa.sorted_with_compare(cmp_2d_int_arrays_by_first_item)
+	assert aa == [[2], [1]]
+	assert bb == [[1], [2]]
+	mut cc := aa.clone()
+	cc.sort_with_compare(cmp_2d_int_arrays_by_first_item)
+	assert cc == [[1], [2]]
+}

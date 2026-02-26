@@ -626,7 +626,7 @@ fn (mut p Parser) parse_type() ast.Type {
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
-		if is_array && nr_amps > 0 {
+		if is_array && nr_amps > 0 && !p.inside_fn_param {
 			p.error_with_pos('V arrays are already references behind the scenes,
 there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
 If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
