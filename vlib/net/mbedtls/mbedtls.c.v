@@ -7,6 +7,11 @@ module mbedtls
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include/everest
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include/everest/kremlib
 
+$if macos && arm64 && tinyc {
+	// Ensure mbedtls disables unsupported ARM asm paths for tinycc on Apple Silicon.
+	#flag -D__TINYC__
+}
+
 // TODO: this should be built-in to the compiler
 $if prod && opt_size ? {
 	#flag -Os
