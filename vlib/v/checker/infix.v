@@ -8,6 +8,30 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
+	// In bool contexts like `assert` and `return`, short enum literals on the left
+	// need the right operand type first, so `.a == x` resolves `.a` correctly.
+	mut check_right_type_first_for_left_short_enum := false
+	if node.op in [.eq, .ne] && node.left is ast.EnumVal {
+		left_enum := node.left as ast.EnumVal
+		if left_enum.enum_name.len == 0 {
+			if node.right is ast.EnumVal {
+				right_enum := node.right as ast.EnumVal
+				check_right_type_first_for_left_short_enum = right_enum.enum_name.len > 0
+			} else {
+				check_right_type_first_for_left_short_enum = true
+			}
+		}
+	}
+	mut right_type := ast.void_type
+	if check_right_type_first_for_left_short_enum {
+		right_type = c.expr(mut node.right)
+		if right_type == ast.no_type {
+			node.right_type = right_type
+			return ast.void_type
+		}
+		node.right_type = right_type
+		c.expected_type = right_type
+	}
 	mut left_type := c.expr(mut node.left)
 	if left_type == ast.no_type {
 		node.left_type = left_type
@@ -84,14 +108,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	mut right_type := c.expr(mut node.right)
-	if right_type == ast.no_type {
-		node.right_type = right_type
-		if node.op in [.key_is, .not_is] {
-			node.promoted_type = ast.bool_type
-			return ast.bool_type
+	if !check_right_type_first_for_left_short_enum {
+		right_type = c.expr(mut node.right)
+		if right_type == ast.no_type {
+			node.right_type = right_type
+			if node.op in [.key_is, .not_is] {
+				node.promoted_type = ast.bool_type
+				return ast.bool_type
+			}
+			return ast.void_type
 		}
-		return ast.void_type
 	}
 	if node.op == .key_is {
 		c.inside_x_is_type = false
