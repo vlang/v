@@ -1,0 +1,12 @@
+vlib/v/parser/tests/invalid_struct_decl_with_attr_script_err.vv:1:1: notice: script mode started here
+    1 | test_var = 'Test'
+      | ~~~~~~~~
+    2 | 
+    3 | @[table: 'users']
+vlib/v/parser/tests/invalid_struct_decl_with_attr_script_err.vv:4:8: error: all definitions must occur before code in script mode
+    2 | 
+    3 | @[table: 'users']
+    4 | struct User {
+      |        ~~~~
+    5 |     name string
+    6 | }
