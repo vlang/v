@@ -760,7 +760,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut return_type := ast.void_type
 	// don't confuse token on the next line: fn decl, [attribute]
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
-	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
+	// `fn foo()[` is usually a mistaken body opener; report it as such
+	// instead of trying to parse `[` as a fixed array return type.
+	invalid_body_opener := same_line && p.tok.kind == .lsbr && p.peek_tok.line_nr > p.tok.line_nr
+	if invalid_body_opener {
+		p.unexpected(got: '${p.tok} after function signature', expecting: '`{`')
+	} else if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
 		// Disallow [T] as return type
 		if p.tok.kind == .lsbr && p.peek_tok.kind == .name && p.peek_tok.lit.len == 1
