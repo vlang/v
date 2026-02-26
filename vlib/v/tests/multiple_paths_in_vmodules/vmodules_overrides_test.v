@@ -14,6 +14,10 @@ const mainvv = os.join_path(basepath, 'main.vv')
 
 const cmd = '${os.quoted_path(vexe)} run ${os.quoted_path(mainvv)}'
 
+const submodule_mainvv = os.join_path(basepath, 'submodule_of_third_party_main.vv')
+
+const submodule_cmd = '${os.quoted_path(vexe)} ${os.quoted_path(submodule_mainvv)}'
+
 fn test_vexe_is_set() {
 	assert vexe != ''
 	println('vexe: ${vexe}')
@@ -37,4 +41,13 @@ fn test_compiling_with_vmodules_works() {
 	res := os.execute(cmd)
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == "['x', 'y', 'z']"
+}
+
+fn test_importing_third_party_submodule_works() {
+	os.chdir(vroot) or {}
+	os.setenv('VMODULES', os.join_path(basepath, 'path4'), true)
+	dump(os.getenv('VMODULES'))
+	dump(submodule_cmd)
+	res := os.execute(submodule_cmd)
+	assert res.exit_code == 0, res.output
 }

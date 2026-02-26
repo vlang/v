@@ -113,9 +113,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// TODO: true for not just "builtin"
 		// TODO: clean this up
 		mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
+		module_built_short := g.module_built.all_after_last('/').all_after_last('.')
 		// for now dont skip generic functions as they are being marked as static
 		// when -usecache is enabled, until a better solution is implemented.
-		if ((mod != g.module_built && node.mod != g.module_built.after('/'))
+		if ((mod != g.module_built && node.mod != g.module_built && node.mod != module_built_short)
 			|| should_bundle_module) && node.generic_names.len == 0 {
 			// Skip functions that don't have to be generated for this module.
 			// println('skip bm ${node.name} mod=${node.mod} module_built=${g.module_built}')
