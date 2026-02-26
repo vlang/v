@@ -2008,7 +2008,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	// `[100]u8`
 	if node.is_fixed {
 		if node.has_val {
-			f.write('!')
+			if node.from_to_fixed_size {
+				f.write('.to_fixed_size()')
+			} else {
+				f.write('!')
+			}
 			return
 		}
 		f.write(f.type_to_str_using_aliases(node.elem_type, f.mod2alias))
