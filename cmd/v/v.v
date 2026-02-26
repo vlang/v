@@ -114,6 +114,7 @@ fn main() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
 		true)
+	maybe_delegate_to_vvmrc(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
