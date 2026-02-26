@@ -19,6 +19,27 @@ const current_os = os.user_os()
 
 const c_compilation_error_title = 'C compilation error'
 
+fn c_error_looks_like_cpp_header(c_output string) bool {
+	lower_output := c_output.to_lower()
+	for marker in [
+		"unknown type name 'namespace'",
+		'unknown type name `namespace`',
+		'error: namespace',
+		'namespace does not name a type',
+	] {
+		if lower_output.contains(marker) {
+			return true
+		}
+	}
+	for line in lower_output.split_into_lines() {
+		trimmed_line := line.trim_space()
+		if trimmed_line.starts_with('namespace ') || trimmed_line.contains('| namespace ') {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
@@ -96,10 +117,18 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
 	}
+	if c_error_looks_like_cpp_header(res.output) {
+		verror('
+==================
+C error found while compiling generated C code.
+It looks like a C++ header was included with `#include` (for example one that contains `namespace`).
+Use a C-compatible header (for HDF5 use `hdf5.h` instead of `H5File.h`), or compile/link the C++ code separately.${more_suggestions}')
+	}
 	verror('
 ==================
-C error found. It should never happen, when compiling pure V code.
-This is a V compiler bug, please report it using `v bug file.v`,
+C error found while compiling generated C code.
+This can be caused by invalid C interop code, C compiler flags, or a V compiler bug.
+If your code is pure V and this still happens, please report it using `v bug file.v`,
 or goto https://github.com/vlang/v/issues/new/choose .
 You can also use #help on Discord: https://discord.gg/vlang .${more_suggestions}')
 }
