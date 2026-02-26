@@ -6105,6 +6105,13 @@ fn inlined_function() {
 fn function() {
 }
 
+// Calls to this function in const and enum expressions can be evaluated at compile time,
+// when all call arguments are compile-time constants.
+@[comptime]
+fn make_mask(value u32, shift u32) u32 {
+	return value << shift
+}
+
 // This function will NOT return to its callers.
 // Such functions can be used at the end of or blocks,
 // just like exit/1 or panic/1. Such functions can not
