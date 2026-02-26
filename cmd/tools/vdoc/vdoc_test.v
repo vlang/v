@@ -5,6 +5,7 @@ module main
 import os
 import arrays
 import v.ast
+import document as doc
 
 const vexe_path = @VEXE
 const vexe_ = os.quoted_path(vexe_path)
@@ -144,4 +145,55 @@ pub fn square(x int) int {
 	res := os.execute_opt('${vexe_} doc -m src/ -v') or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.contains('square')
+}
+
+fn test_gen_modules_toc_skips_hash_links_for_prefix_only_groups() {
+	mut vd := VDoc{
+		cfg: Config{
+			is_multi: true
+		}
+	}
+	vd.docs = [
+		doc.Doc{
+			head: doc.DocNode{
+				name: 'main'
+			}
+		},
+		doc.Doc{
+			head: doc.DocNode{
+				name: 'db.mysql'
+			}
+		},
+		doc.Doc{
+			head: doc.DocNode{
+				name: 'db.sqlite'
+			}
+		},
+	]
+	toc := vd.gen_modules_toc('main')
+	assert !toc.contains('href="#"')
+	assert toc.contains('<div class="menu-row"><a>db</a></div>')
+	assert toc.contains('<li><a href="./db.mysql.html">mysql</a></li>')
+}
+
+fn test_gen_modules_toc_uses_prefix_module_page_when_available() {
+	mut vd := VDoc{
+		cfg: Config{
+			is_multi: true
+		}
+	}
+	vd.docs = [
+		doc.Doc{
+			head: doc.DocNode{
+				name: 'db.sqlite'
+			}
+		},
+		doc.Doc{
+			head: doc.DocNode{
+				name: 'db'
+			}
+		},
+	]
+	toc := vd.gen_modules_toc('db')
+	assert toc.contains('<div class="menu-row"><a href="./db.html">db</a></div>')
 }
