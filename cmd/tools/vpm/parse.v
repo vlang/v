@@ -33,10 +33,10 @@ enum ModuleKind {
 	ssh
 }
 
-fn parse_query(query []string) []Module {
+fn parse_query(query []string, mut selector VpmInstallServerSelector) []Module {
 	mut p := Parser{}
 	for m in query {
-		p.parse_module(m)
+		p.parse_module(m, mut selector)
 	}
 	if p.errors > 0 && p.errors == query.len {
 		exit(1)
@@ -44,7 +44,7 @@ fn parse_query(query []string) []Module {
 	return p.modules.values()
 }
 
-fn (mut p Parser) parse_module(m string) {
+fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) {
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
@@ -124,7 +124,7 @@ fn (mut p Parser) parse_module(m string) {
 		}
 	} else {
 		// VPM registered module.
-		info := get_mod_vpm_info(ident) or {
+		info := get_mod_vpm_info_with_selector(ident, mut selector) or {
 			vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -187,7 +187,7 @@ fn (mut p Parser) parse_module(m string) {
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
-			p.parse_module(d)
+			p.parse_module(d, mut selector)
 		}
 	}
 }
