@@ -18,6 +18,7 @@ mut:
 
 struct RouteMiddleware {
 	url_parts []string
+	methods   []http.Method
 	handler   voidptr
 }
 
@@ -34,6 +35,7 @@ pub struct MiddlewareOptions[T] {
 pub:
 	handler fn (mut ctx T) bool @[required]
 	after   bool
+	methods []http.Method
 }
 
 // string representation of Middleware
@@ -59,6 +61,7 @@ pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
 pub fn (mut m Middleware[T]) route_use(route string, options MiddlewareOptions[T]) {
 	middleware := RouteMiddleware{
 		url_parts: route.split('/').filter(it != '')
+		methods:   options.methods.clone()
 		handler:   voidptr(options.handler)
 	}
 
@@ -69,34 +72,34 @@ pub fn (mut m Middleware[T]) route_use(route string, options MiddlewareOptions[T
 	}
 }
 
-fn (m &Middleware[T]) get_handlers_for_route(route_path string) []voidptr {
-	mut fns := []voidptr{}
+fn (m &Middleware[T]) get_handlers_for_route(route_path string) []RouteMiddleware {
+	mut handlers := []RouteMiddleware{}
 	route_parts := route_path.split('/').filter(it != '')
 
 	for handler in m.route_handlers {
 		if _ := route_matches(route_parts, handler.url_parts) {
-			fns << handler.handler
+			handlers << handler
 		} else if handler.url_parts.len == 0 && route_path == '/index' {
-			fns << handler.handler
+			handlers << handler
 		}
 	}
 
-	return fns
+	return handlers
 }
 
-fn (m &Middleware[T]) get_handlers_for_route_after(route_path string) []voidptr {
-	mut fns := []voidptr{}
+fn (m &Middleware[T]) get_handlers_for_route_after(route_path string) []RouteMiddleware {
+	mut handlers := []RouteMiddleware{}
 	route_parts := route_path.split('/').filter(it != '')
 
 	for handler in m.route_handlers_after {
 		if _ := route_matches(route_parts, handler.url_parts) {
-			fns << handler.handler
+			handlers << handler
 		} else if handler.url_parts.len == 0 && route_path == '/index' {
-			fns << handler.handler
+			handlers << handler
 		}
 	}
 
-	return fns
+	return handlers
 }
 
 fn (m &Middleware[T]) get_global_handlers() []voidptr {
@@ -116,6 +119,20 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 	}
 
 	return true
+}
+
+fn route_middleware_matches_method(route_middleware RouteMiddleware, request_method http.Method) bool {
+	return route_middleware.methods.len == 0 || request_method in route_middleware.methods
+}
+
+fn get_handlers_for_method(route_middlewares []RouteMiddleware, request_method http.Method) []voidptr {
+	mut handlers := []voidptr{}
+	for route_middleware in route_middlewares {
+		if route_middleware_matches_method(route_middleware, request_method) {
+			handlers << route_middleware.handler
+		}
+	}
+	return handlers
 }
 
 // Compression encoding types for HTTP responses

@@ -27,8 +27,8 @@ struct Route {
 	path    string
 	host    string
 mut:
-	middlewares       []voidptr
-	after_middlewares []voidptr
+	middlewares       []RouteMiddleware
+	after_middlewares []RouteMiddleware
 }
 
 // Generate route structs for an app
@@ -180,7 +180,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
 				// skip route-specific after-middleware if global already sent a response
 				if !user_context.Context.done {
-					validate_middleware[X](mut user_context, route.after_middlewares)
+					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
+						user_context.Context.req.method))
 				}
 			}
 		}
@@ -259,7 +260,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					if !route.path.contains('/:') && url_words == route_words {
 						// We found a match
 						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, route.middlewares) == false {
+							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+								user_context.Context.req.method)) == false {
 								middleware_has_sent_response = true
 								return
 							}
@@ -284,7 +286,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, route.middlewares) == false {
+							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+								user_context.Context.req.method)) == false {
 								middleware_has_sent_response = true
 								return
 							}
@@ -310,7 +313,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 					if params := route_matches(url_words, route_words) {
 						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, route.middlewares) == false {
+							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+								user_context.Context.req.method)) == false {
 								middleware_has_sent_response = true
 								return
 							}

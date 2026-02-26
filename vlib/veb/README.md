@@ -730,7 +730,11 @@ app.route_use('/documents/:id')
 // register middleware with a parameter array. The middleware will be registered
 // for all routes that start with '/user/' e.g. '/user/profile/update'
 app.route_use('/user/:path...')
+// register middleware only for selected HTTP methods on a route
+app.route_use('/admin/auth', handler: auth_middleware, methods: [.get, .delete])
 ```
+
+If `methods` is omitted, route middleware applies to all HTTP methods on that route.
 
 ### Evaluation moment
 
