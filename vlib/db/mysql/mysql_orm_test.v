@@ -166,7 +166,7 @@ fn test_mysql_orm() {
 	mut result_custom_sql := db.query("
 		SELECT DATA_TYPE, COLUMN_TYPE
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestCustomSqlType'
+		WHERE TABLE_NAME = 'testcustomsqltype'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		panic(err)
@@ -291,7 +291,7 @@ fn test_mysql_orm() {
 	mut result_defaults := db.query("
 		SELECT COLUMN_DEFAULT
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAttribute'
+		WHERE TABLE_NAME = 'testdefaultattribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -321,7 +321,7 @@ fn test_mysql_orm() {
 	mut column_comments := db.query("
 		SELECT COLUMN_COMMENT
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestCommentAttribute'
+		WHERE TABLE_NAME = 'testcommentattribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -331,7 +331,7 @@ fn test_mysql_orm() {
 	mut table_comment := db.query("
 		SELECT TABLE_COMMENT
 		FROM INFORMATION_SCHEMA.TABLES
-		WHERE TABLE_NAME = 'TestCommentAttribute'
+		WHERE TABLE_NAME = 'testcommentattribute'
 	") or {
 		println(err)
 		panic(err)

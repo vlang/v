@@ -382,12 +382,18 @@ fn table_from_struct[T]() Table {
 	if bracket_pos := table_name.index('[') {
 		table_name = table_name[..bracket_pos]
 	}
+	mut has_custom_table_name := false
 	mut attrs := []VAttribute{}
 	$for a in T.attributes {
 		$if a.name == 'table' && a.has_arg {
 			table_name = a.arg
+			has_custom_table_name = true
 		}
 		attrs << a
+	}
+	if !has_custom_table_name {
+		// Keep default ORM table names aligned with unquoted SQL identifiers across DB drivers.
+		table_name = table_name.to_lower()
 	}
 	return Table{
 		name:  table_name

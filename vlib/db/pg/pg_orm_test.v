@@ -162,7 +162,7 @@ fn test_pg_orm() {
 	mut result_custom_sql := db.exec("
 		SELECT DATA_TYPE
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestCustomSqlType'
+		WHERE TABLE_NAME = 'testcustomsqltype'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -226,7 +226,7 @@ fn test_pg_orm() {
 	mut result_defaults := db.exec("
 		SELECT column_default
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAttribute'
+		WHERE TABLE_NAME = 'testdefaultattribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -256,7 +256,7 @@ fn test_pg_orm() {
 		FROM pg_attribute a
 		JOIN pg_class c ON c.oid = a.attrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE c.relname = 'TestCommentAttribute' 
+		WHERE c.relname = 'testcommentattribute' 
 		AND n.nspname = 'public'
 		AND a.attnum > 0
 		AND NOT a.attisdropped
@@ -273,7 +273,7 @@ fn test_pg_orm() {
 		obj_description(pc.oid) AS table_comment
 		FROM pg_class pc
 		JOIN pg_namespace pn ON pn.oid = pc.relnamespace
-		WHERE pc.relkind = 'r' AND pc.relname = 'TestCommentAttribute'
+		WHERE pc.relkind = 'r' AND pc.relname = 'testcommentattribute'
 		ORDER BY schema_name, table_name
 	") or {
 		println(err)

@@ -611,7 +611,7 @@ fn test_orm_func_invalid_index_field_name1() {
 	mut qb := orm.new_query[InvalidIndexFieldName1](db)
 
 	qb.create() or {
-		assert err.msg() == "table `InvalidIndexFieldName1` has no field's name: `age_f33`"
+		assert err.msg() == "table `invalidindexfieldname1` has no field's name: `age_f33`"
 		return
 	}
 	assert false, 'should not be here'
@@ -634,7 +634,7 @@ fn test_orm_func_invalid_index_field_name2() {
 	mut qb := orm.new_query[InvalidIndexFieldName2](db)
 
 	qb.create() or {
-		assert err.msg() == "table `InvalidIndexFieldName2` has no field's name: `age_f32`"
+		assert err.msg() == "table `invalidindexfieldname2` has no field's name: `age_f32`"
 		return
 	}
 	assert false, 'should not be here'
