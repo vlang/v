@@ -7,13 +7,6 @@ mut:
 	current_pos_datetime int
 }
 
-fn new_date_time_parser(datetime string, format string) DateTimeParser {
-	return DateTimeParser{
-		datetime: datetime
-		format:   format
-	}
-}
-
 fn (mut p DateTimeParser) next(length int) !string {
 	if p.current_pos_datetime + length > p.datetime.len {
 		return error('end of string')
