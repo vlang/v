@@ -6,7 +6,7 @@ import veb
 import x.sessions.vweb2_middleware
 
 const port = 13010
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 const cookie_name = 'SESSION_ID'
 const max_age = time.second * 2
@@ -101,9 +101,10 @@ fn testsuite_begin() {
 
 	app.use(vweb2_middleware.create[User, Context](mut app.sessions))
 
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
 	// app startup time
 	_ := <-app.started
+	wait_for_server()!
 }
 
 fn test_empty_session() {
@@ -176,4 +177,18 @@ fn make_request_with_session_id(method http.Method, path string, sid string) !ht
 			cookie_name: sid
 		}
 	})
+}
+
+fn wait_for_server() ! {
+	for _ in 0 .. 40 {
+		response := http.get('${localserver}/session_data') or {
+			time.sleep(50 * time.millisecond)
+			continue
+		}
+		if response.status() == .ok {
+			return
+		}
+		time.sleep(50 * time.millisecond)
+	}
+	return error('session test server did not start in time')
 }
