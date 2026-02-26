@@ -75,7 +75,7 @@ fn (app App) update_from_master() {
 		// Note 1: patterns starting with /, will match only against the root;
 		//         `--exclude v` will match also vlib/v/ in addition to ./v; `--exclude /v` will only match ./v
 		// Note 2: patterns ending with / are treated as folders.
-		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
+		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /.bin/ --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
 	} else {
 		// pull latest
 		app.git_command('git pull https://github.com/vlang/v master')
