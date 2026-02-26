@@ -5942,6 +5942,8 @@ V has several attributes that modify the behavior of functions and structs.
 
 An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
+Attributes with arguments support both `name: value` and call-style `name(value)` syntax.
+Call-style attributes can also use named arguments.
 
 ```v
 // @[flag] enables Enum types to be used as bitfields
@@ -6054,17 +6056,18 @@ Depending on the type and impact of the change, you may want to consult with the
 deprecating a function.
 
 
-```v
+```v nofmt
 // Calling this function will result in a deprecation warning
-
 @[deprecated]
-fn old_function() {
-}
+fn old_function() {}
 
 // It can also display a custom deprecation message
-
 @[deprecated: 'use new_function() instead']
 fn legacy_function() {}
+
+// Equivalent call-style syntax:
+@[deprecated('use new_function() instead')]
+fn legacy_function_call_style() {}
 
 // You can also specify a date, after which the function will be
 // considered deprecated. Before that date, calls to the function
@@ -6078,6 +6081,10 @@ fn legacy_function() {}
 @[deprecated: 'use new_function2() instead']
 @[deprecated_after: '2021-05-27']
 fn legacy_function2() {}
+
+// Equivalent call-style syntax:
+@[deprecated(msg: 'use new_function2() instead', after: '2021-05-27')]
+fn legacy_function2_call_style() {}
 ```
 
 ```v globals

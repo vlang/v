@@ -296,7 +296,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	if p.tok.kind == .at && p.tok.line_nr == p.prev_tok.line_nr {
 		p.check(.at)
 		p.check(.lsbr)
-		attr = p.parse_attr(true)
+		attrs := p.parse_attr(true)
+		if attrs.len != 1 {
+			p.error_with_pos('assignment attributes support at most one argument', p.prev_tok.pos())
+		}
+		attr = attrs[0]
 		p.check(.rsbr)
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
