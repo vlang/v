@@ -2691,6 +2691,25 @@ fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
 	}
 }
 
+fn (g &Gen) should_autofree_discarded_call_result(typ ast.Type) bool {
+	if typ == 0 || typ == ast.void_type || typ.has_option_or_result() {
+		return false
+	}
+	sym := g.table.final_sym(typ)
+	if sym.kind in [.array, .string] {
+		return true
+	}
+	if sym.has_method('free') {
+		return true
+	}
+	sym_name := sym.name.after('.')
+	is_user_ref := typ.is_ptr() && sym_name.len > 0 && sym_name[0].is_capital()
+	if is_user_ref && g.pref.experimental {
+		return true
+	}
+	return false
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	$if trace_cgen_stmt ? {
 		ntype := typeof(node).replace('v.ast.', '')
@@ -2763,8 +2782,22 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_pregen(node.expr as ast.CallExpr)
 			// }
+			can_emit_standalone_expr_stmt := !g.skip_stmt_pos && g.inside_ternary == 0
+				&& !g.inside_if_option && !g.inside_match_option && !g.inside_if_result
+				&& !g.inside_match_result && !node.is_expr && node.expr !is ast.IfExpr
+			mut needs_tmp_return_autofree := false
+			if can_emit_standalone_expr_stmt && g.is_autofree && !g.is_builtin_mod
+				&& node.expr is ast.CallExpr && g.should_autofree_discarded_call_result(node.typ) {
+				call_expr := node.expr as ast.CallExpr
+				needs_tmp_return_autofree = call_expr.or_block.kind == .absent
+			}
+			mut discarded_ret_tmp_name := ''
+			if needs_tmp_return_autofree {
+				discarded_ret_tmp_name = g.new_tmp_var()
+				g.write('${g.styp(node.typ)} ${discarded_ret_tmp_name} = ')
+			}
 			old_is_void_expr_stmt := g.is_void_expr_stmt
-			g.is_void_expr_stmt = !node.is_expr
+			g.is_void_expr_stmt = !node.is_expr && !needs_tmp_return_autofree
 			if node.expr.is_auto_deref_var() {
 				g.write('*')
 			}
@@ -2775,7 +2808,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.expr(node.expr)
 			}
 			g.is_void_expr_stmt = old_is_void_expr_stmt
-			if g.inside_ternary == 0 && !g.inside_if_option && !g.inside_match_option
+			if needs_tmp_return_autofree {
+				g.writeln(';')
+				// Discarded non-void call results should still be released under -autofree.
+				g.autofree_variable(ast.Var{
+					name: discarded_ret_tmp_name
+					expr: node.expr
+					typ:  node.typ
+					pos:  node.pos
+				})
+				for g.autofree_scope_stmts.len > 0 {
+					g.write(g.autofree_scope_stmts.pop())
+				}
+			} else if g.inside_ternary == 0 && !g.inside_if_option && !g.inside_match_option
 				&& !g.inside_if_result && !g.inside_match_result && !node.is_expr
 				&& node.expr !is ast.IfExpr {
 				if node.expr is ast.MatchExpr {
