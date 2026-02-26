@@ -105,10 +105,16 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 fn get_ident_from_url(raw_url string) !(string, string) {
 	verbose_println_more(@FILE_LINE, @FN, 'raw_url: ${raw_url}')
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
-	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
+	normalized_path := url.path.trim_left('/').trim_space()
+	publisher, mut name := normalized_path.rsplit_once('/') or {
 		if settings.vcs == .hg && raw_url.count(':') > 1 {
 			verbose_println_more(@FILE_LINE, @FN, 'ok, publisher: "", name: "test_module"')
 			return '', 'test_module'
+		}
+		if (url.scheme in ['file', ''] || os.is_abs_path(raw_url)
+			|| raw_url.starts_with('./') || raw_url.starts_with('../')
+			|| raw_url.starts_with('~/')) && normalized_path.len > 0 {
+			return '', normalized_path
 		}
 		final_error := 'failed to retrieve module name for `${url}`.'
 		verbose_println_more(@FILE_LINE, @FN, 'failed error: `${final_error}`')
