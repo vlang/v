@@ -1,0 +1,13 @@
+// vtest vflags: -autofree
+struct MyS {
+	a int
+}
+
+fn need_free(mut x []MyS) {
+	x = []MyS{}
+}
+
+fn main() {
+	mut xx := []MyS{}
+	need_free(mut xx)
+}

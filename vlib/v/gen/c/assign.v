@@ -265,6 +265,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write('${type_to_free} ${sref_name} = (') // TODO: we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
+				if left0.is_auto_deref_var() && !first_left_type.has_flag(.shared_f) {
+					g.write('*')
+				}
 				g.expr(left0) // node.left[0])
 				if first_left_type.has_flag(.shared_f) {
 					g.write('->val')
