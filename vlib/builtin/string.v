@@ -2776,42 +2776,25 @@ pub fn (name string) match_glob(pattern string) bool {
 				`[` {
 					if nx < nlen {
 						wanted_c := name[nx]
-						mut bstart := px
 						mut is_inverted := false
 						mut inner_match := false
-						mut inner_idx := bstart + 1
-						mut inner_c := 0
-						if inner_idx < plen {
-							inner_c = pattern[inner_idx]
-							if inner_c == `^` {
-								is_inverted = true
-								inner_idx++
-							}
+						mut inner_idx := px + 1
+						if inner_idx < plen && pattern[inner_idx] == `^` {
+							is_inverted = true
+							inner_idx++
 						}
-						for ; inner_idx < plen; inner_idx++ {
-							inner_c = pattern[inner_idx]
-							if inner_c == `]` {
-								break
-							}
-							if inner_c == wanted_c {
+						for ; inner_idx < plen && pattern[inner_idx] != `]`; inner_idx++ {
+							if pattern[inner_idx] == wanted_c {
 								inner_match = true
-								for px < plen && pattern[px] != `]` {
-									px++
-								}
-								break
 							}
 						}
-						if is_inverted {
-							if inner_match {
-								return false
-							} else {
-								px = inner_idx
-							}
+						if inner_idx < plen && ((inner_match && !is_inverted)
+							|| (!inner_match && is_inverted)) {
+							px = inner_idx + 1
+							nx++
+							continue
 						}
 					}
-					px++
-					nx++
-					continue
 				}
 				else {
 					// an ordinary character
