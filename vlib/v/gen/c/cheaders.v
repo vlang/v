@@ -281,6 +281,20 @@ static inline bool _us64_le(uint64_t a, int64_t b) { return a <= INT64_MAX && (i
 static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (int64_t)a < b; }
 '
 
+const c_float_to_unsigned_conversion_functions = '
+// deterministic float -> u64 conversions for explicit V casts
+// direct C casts are undefined for out-of-range values
+static inline uint64_t _v_f64_to_u64(double x) {
+	if (!(x >= 0.0)) {
+		return 0;
+	}
+	if (x >= 18446744073709551616.0) {
+		return UINT64_MAX;
+	}
+	return (uint64_t)x;
+}
+'
+
 const c_helper_macros = '//============================== HELPER C MACROS =============================*/
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
