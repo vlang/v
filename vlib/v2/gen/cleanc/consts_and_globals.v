@@ -22,6 +22,9 @@ pub fn (mut g Gen) set_cache_bundle_name(name string) {
 fn (mut g Gen) gen_file_extern_globals(file ast.File) {
 	g.set_file_module(file)
 	for stmt in file.stmts {
+		if !stmt_has_valid_data(stmt) {
+			continue
+		}
 		if stmt is ast.GlobalDecl {
 			g.gen_global_decl_extern(stmt)
 		}
@@ -31,6 +34,9 @@ fn (mut g Gen) gen_file_extern_globals(file ast.File) {
 fn (mut g Gen) gen_file_extern_consts(file ast.File) {
 	g.set_file_module(file)
 	for stmt in file.stmts {
+		if !stmt_has_valid_data(stmt) {
+			continue
+		}
 		if stmt is ast.ConstDecl {
 			g.gen_const_decl_extern(stmt)
 		}

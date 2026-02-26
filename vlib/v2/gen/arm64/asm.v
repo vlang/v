@@ -450,6 +450,16 @@ fn asm_scvtf_d_x(dd int, xn Reg) u32 {
 	return 0x9E620000 | (u32(xn) << 5) | u32(dd)
 }
 
+// ucvtf dd, xn (unsigned int to float)
+fn asm_ucvtf_d_x(dd int, xn Reg) u32 {
+	return 0x9E630000 | (u32(xn) << 5) | u32(dd)
+}
+
+// fcvtzu xd, dn (float to unsigned int, truncate toward zero)
+fn asm_fcvtzu_x_d(xd Reg, dn int) u32 {
+	return 0x9E790000 | (u32(dn) << 5) | u32(xd)
+}
+
 // === Special ===
 
 // udf #0 (undefined - trap)

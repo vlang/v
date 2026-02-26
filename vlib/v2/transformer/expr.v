@@ -9,6 +9,11 @@ import v2.types
 import v2.token
 
 fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
+	// Guard against corrupt Expr with NULL data pointer (ARM64 backend issue).
+	// Default-initialized sum types have data_ptr=0, which crashes on field access.
+	if !expr_has_valid_data(expr) {
+		return expr
+	}
 	return match expr {
 		ast.CallExpr {
 			t.transform_call_expr(expr)
@@ -688,6 +693,9 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		}
 	}
 
+	if t.cur_fn_name_str == 'base_type' {
+		eprintln('TRACE match_expr in base_type: sumtype_name="${sumtype_name}" smartcast_expr="${smartcast_expr}" branches=${expr.branches.len}')
+	}
 	if sumtype_name != '' {
 		// Sum type match - set up smartcast context for each branch
 		variants := t.get_sum_type_variants(sumtype_name)

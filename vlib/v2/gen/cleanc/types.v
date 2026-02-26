@@ -113,6 +113,9 @@ fn (mut g Gen) collect_module_type_names() {
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
 			match stmt {
 				ast.StructDecl {
 					if stmt.language != .v {
@@ -286,6 +289,9 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 }
 
 fn (mut g Gen) collect_decl_type_aliases_from_stmt(stmt ast.Stmt) {
+	if !stmt_has_valid_data(stmt) {
+		return
+	}
 	match stmt {
 		ast.StructDecl {
 			if stmt.language == .c {
@@ -969,6 +975,9 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	if g.env == unsafe { nil } {
 		return none
 	}
+	if !expr_has_valid_data(e) {
+		return none
+	}
 	pos := e.pos()
 	if pos.id != 0 {
 		if typ := g.env.get_expr_type(pos.id) {
@@ -991,6 +1000,9 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 // form (void*, char*, u8*) so downstream pointer detection (-> vs .) works correctly.
 fn (g &Gen) get_env_c_type(e ast.Expr) ?string {
 	if g.env == unsafe { nil } {
+		return none
+	}
+	if !expr_has_valid_data(e) {
 		return none
 	}
 	pos := e.pos()
@@ -1082,6 +1094,9 @@ fn (mut g Gen) get_local_var_c_type(name string) ?string {
 
 // get_expr_type returns the C type string for an expression
 fn (mut g Gen) get_expr_type(node ast.Expr) string {
+	if !expr_has_valid_data(node) {
+		return ''
+	}
 	// For identifiers, check local/parameter types first (authoritative),
 	// then fall back to env position lookup.
 	if node is ast.Ident {
@@ -1436,6 +1451,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 
 // expr_type_to_c converts an AST type expression to a C type string
 fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
+	if !expr_has_valid_data(e) {
+		return 'void'
+	}
 	match e {
 		ast.Ident {
 			name := e.name
@@ -1678,6 +1696,9 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 	if g.env == unsafe { nil } {
 		return none
 	}
+	if !expr_has_valid_data(node) {
+		return none
+	}
 	// Fast path: env pos.id O(1) lookup for non-compound expressions.
 	if node !is ast.Ident && node !is ast.SelectorExpr && node !is ast.IndexExpr {
 		pos := node.pos()
@@ -1848,6 +1869,9 @@ fn (mut g Gen) get_raw_type(node ast.Expr) ?types.Type {
 		}
 	}
 	// Try environment lookup by position
+	if !expr_has_valid_data(node) {
+		return none
+	}
 	pos := node.pos()
 	if pos.is_valid() {
 		return g.env.get_expr_type(pos.id)

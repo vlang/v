@@ -33,6 +33,9 @@ mut:
 	// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
 	// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
 	mut_ptr_params map[string]bool
+	// Set during sum type init _data field building to trigger heap allocation
+	// for &struct_local (prevents dangling stack pointers in returned sum types)
+	in_sumtype_data bool
 }
 
 struct LoopInfo {
@@ -109,6 +112,10 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.cur_module = file_module_name(file)
 		b.register_consts_and_globals(file)
 	}
+	// Phase 2b: Re-evaluate constants with forward references
+	// Constants that referenced other constants from later files got value 0.
+	// Now that all constants are collected, re-evaluate them.
+	b.resolve_forward_const_refs(files)
 	// Phase 3: Register function signatures
 	for file in files {
 		b.cur_module = file_module_name(file)
@@ -118,6 +125,7 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	b.generate_array_eq_stub()
 	b.generate_wyhash64_stub()
 	b.generate_wyhash_stub()
+	b.generate_ierror_stubs()
 
 	// Phase 4: Build function bodies
 	for file in files {
@@ -373,6 +381,27 @@ fn (mut b Builder) types_type_c_name(t types.Type) string {
 		types.Rune {
 			return 'rune'
 		}
+		types.SumType {
+			return t.name
+		}
+		types.Interface {
+			return t.name
+		}
+		types.FnType {
+			return 'FnType'
+		}
+		types.Map {
+			return 'map'
+		}
+		types.OptionType {
+			return 'Option'
+		}
+		types.ResultType {
+			return 'Result'
+		}
+		types.ArrayFixed {
+			return 'ArrayFixed'
+		}
 		else {
 			return 'int'
 		}
@@ -453,6 +482,9 @@ fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 	mut field_types := []TypeID{}
 	mut field_names := []string{}
 
+	// Flatten embedded struct fields first (e.g., ObjectCommon in Const)
+	b.collect_embedded_fields(decl.embedded, mut field_names, mut field_types)
+
 	for field in decl.fields {
 		ft := b.ast_type_to_ssa(field.typ)
 		field_types << ft
@@ -477,6 +509,9 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	mut field_types := []TypeID{}
 	mut field_names := []string{}
 
+	// Flatten embedded struct fields first
+	b.collect_embedded_fields(decl.embedded, mut field_names, mut field_types)
+
 	for field in decl.fields {
 		ft := b.ast_type_to_ssa(field.typ)
 		field_types << ft
@@ -490,6 +525,57 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	})
 	b.struct_types[name] = type_id
 	b.mod.c_struct_names[type_id] = name
+}
+
+// collect_embedded_fields resolves embedded type expressions and adds their
+// flattened fields to the field_names and field_types lists.
+// Embedded structs (e.g., `ObjectCommon` in `struct Const { ObjectCommon; int_val int }`)
+// have their fields in a separate `embedded` list in the AST StructDecl.
+// This function looks up each embedded type in struct_types and prepends its fields.
+fn (mut b Builder) collect_embedded_fields(embedded []ast.Expr, mut field_names []string, mut field_types []TypeID) {
+	for emb in embedded {
+		// Get the type name from the embedded expression
+		emb_name := if emb is ast.Ident {
+			emb.name
+		} else if emb is ast.SelectorExpr && emb.lhs is ast.Ident {
+			mod_name := (emb.lhs as ast.Ident).name.replace('.', '_')
+			'${mod_name}__${emb.rhs.name}'
+		} else {
+			''
+		}
+		if emb_name == '' {
+			continue
+		}
+		// Look up the embedded struct type, trying module-qualified name first
+		mut emb_type_id := TypeID(0)
+		if b.cur_module != '' && b.cur_module != 'main' {
+			qualified := '${b.cur_module}__${emb_name}'
+			if qualified in b.struct_types {
+				emb_type_id = b.struct_types[qualified]
+			}
+		}
+		if emb_type_id == 0 {
+			if emb_name in b.struct_types {
+				emb_type_id = b.struct_types[emb_name]
+			}
+		}
+		if emb_type_id == 0 {
+			continue
+		}
+		if emb_type_id < b.mod.type_store.types.len {
+			emb_typ := b.mod.type_store.types[emb_type_id]
+			if emb_typ.kind == .struct_t && emb_typ.field_names.len > 0 {
+				for i, fname in emb_typ.field_names {
+					field_names << fname
+					if i < emb_typ.fields.len {
+						field_types << emb_typ.fields[i]
+					} else {
+						field_types << b.mod.type_store.get_int(64)
+					}
+				}
+			}
+		}
+	}
 }
 
 fn (mut b Builder) register_enum(decl ast.EnumDecl) {
@@ -557,7 +643,7 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 					} else {
 						field.name
 					}
-					const_type := b.expr_type(field.value)
+					mut const_type := b.expr_type(field.value)
 					// Check if this is a string constant - store for inline resolution
 					str_val := b.try_eval_const_string(field.value)
 					if str_val.len > 0 {
@@ -565,11 +651,10 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 						b.string_const_values[field.name] = str_val
 					}
 					initial_value := b.try_eval_const_int(field.value)
-					b.mod.add_global_with_value(const_name, const_type, true, initial_value)
-					// Also store in const_values map for inline resolution.
-					// Skip sum type constants (e.g., empty_expr/empty_stmt) which are
-					// InitExpr{_tag: N, _data: ...} — these are multi-word values that
-					// cannot be inlined as a single i64. They must be loaded from globals.
+					// Detect sum type constants: these are multi-word values that
+					// cannot be inlined as a single i64.
+					// Case 1: Transformer succeeded → InitExpr{_tag: N, _data: ...}
+					// Case 2: Transformer failed → CastExpr{typ: SumType, expr: ...}
 					mut is_sumtype_const := false
 					if field.value is ast.InitExpr {
 						for init_field in field.value.fields {
@@ -579,6 +664,56 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 							}
 						}
 					}
+					if !is_sumtype_const {
+						mut cast_type_name := ''
+						if field.value is ast.CastExpr {
+							if field.value.typ is ast.Ident {
+								cast_type_name = field.value.typ.name
+							}
+						} else if field.value is ast.CallOrCastExpr {
+							if field.value.lhs is ast.Ident {
+								cast_type_name = field.value.lhs.name
+							}
+						}
+						if cast_type_name != '' {
+							qualified_cast := if b.cur_module != '' && b.cur_module != 'main' {
+								'${b.cur_module}__${cast_type_name}'
+							} else {
+								cast_type_name
+							}
+							for _, check_name in [cast_type_name, qualified_cast] {
+								if st_type := b.struct_types[check_name] {
+									if int(st_type) < b.mod.type_store.types.len {
+										st := b.mod.type_store.types[st_type]
+										if st.kind == .struct_t && st.field_names.len >= 2
+											&& st.field_names[0] == '_tag' {
+											is_sumtype_const = true
+											// Fix the global type: use the sum type struct
+											// instead of the i64 fallback from expr_type()
+											const_type = st_type
+											break
+										}
+									}
+								}
+							}
+						}
+					}
+					// For sum type constants detected via InitExpr, also fix const_type
+					if is_sumtype_const && field.value is ast.InitExpr {
+						if field.value.typ is ast.Ident {
+							type_name := field.value.typ.name
+							if st_type := b.struct_types[type_name] {
+								const_type = st_type
+							} else {
+								// Try with module prefix
+								qualified_st := '${b.cur_module}__${type_name}'
+								if st_type2 := b.struct_types[qualified_st] {
+									const_type = st_type2
+								}
+							}
+						}
+					}
+					b.mod.add_global_with_value(const_name, const_type, true, initial_value)
 					if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal(field.value)) {
 						b.const_values[const_name] = initial_value
 						// Also store without module prefix for transformer-generated references
@@ -604,6 +739,79 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 			else {}
 		}
 	}
+}
+
+// resolve_forward_const_refs re-evaluates constants that had value 0 due to forward references.
+// After all constants are registered, references that previously failed can now be resolved.
+fn (mut b Builder) resolve_forward_const_refs(files []ast.File) {
+	for file in files {
+		b.cur_module = file_module_name(file)
+		for stmt in file.stmts {
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					const_name := if b.cur_module != '' && b.cur_module != 'main' {
+						'${b.cur_module}__${field.name}'
+					} else {
+						field.name
+					}
+					// Skip constants that already have non-zero values
+					if const_name in b.const_values {
+						continue
+					}
+					// Skip zero literals (they're intentionally 0)
+					if b.is_zero_literal(field.value) {
+						continue
+					}
+					// Skip sum type constants (multi-word values stored as globals, not inline)
+					if field.value is ast.InitExpr {
+						mut has_tag := false
+						for init_field in field.value.fields {
+							if init_field.name == '_tag' {
+								has_tag = true
+								break
+							}
+						}
+						if has_tag {
+							continue
+						}
+					}
+					// Re-evaluate the constant expression
+					new_value := b.try_eval_const_int(field.value)
+					if new_value != 0 {
+						b.const_values[const_name] = new_value
+						b.const_values[field.name] = new_value
+						// Update the global variable's initial value
+						for i, g in b.mod.globals {
+							if g.name == const_name {
+								b.mod.globals[i] = GlobalVar{
+									...g
+									initial_value: new_value
+								}
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// resolve_const_int looks up a constant name in const_values, trying bare, module-qualified,
+// and builtin-qualified names. Returns 0 if not found.
+fn (b &Builder) resolve_const_int(name string) int {
+	if name in b.const_values {
+		return int(b.const_values[name])
+	}
+	qualified := '${b.cur_module}__${name}'
+	if qualified in b.const_values {
+		return int(b.const_values[qualified])
+	}
+	builtin_q := 'builtin__${name}'
+	if builtin_q in b.const_values {
+		return int(b.const_values[builtin_q])
+	}
+	return 0
 }
 
 // try_eval_const_int attempts to evaluate a constant expression to an integer value.
@@ -877,6 +1085,8 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 			elem_type := b.ast_type_to_ssa(typ.elem_type)
 			arr_len := if typ.len is ast.BasicLiteral {
 				typ.len.value.int()
+			} else if typ.len is ast.Ident {
+				b.resolve_const_int(typ.len.name)
 			} else {
 				0
 			}
@@ -2377,6 +2587,36 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			// Address-of: return the alloca pointer for the variable
 			addr := b.build_addr(expr.expr)
 			if addr != 0 {
+				// When building sum type _data field, heap-allocate struct copies
+				// to prevent dangling stack pointers in returned sum types.
+				if b.in_sumtype_data {
+					addr_type_id := b.mod.values[addr].typ
+					if addr_type_id != 0 && int(addr_type_id) < b.mod.type_store.types.len {
+						addr_type := b.mod.type_store.types[addr_type_id]
+						if addr_type.kind == .ptr_t && addr_type.elem_type != 0
+							&& int(addr_type.elem_type) < b.mod.type_store.types.len {
+							elem_info := b.mod.type_store.types[addr_type.elem_type]
+							if elem_info.kind == .struct_t && elem_info.fields.len > 0 {
+								heap_ptr := b.mod.add_instr(.heap_alloc, b.cur_block,
+									addr_type_id, []ValueID{})
+								int32_t := b.mod.type_store.get_int(32)
+								for fi in 0 .. elem_info.fields.len {
+									field_type := elem_info.fields[fi]
+									field_ptr_type := b.mod.type_store.get_ptr(field_type)
+									idx_val := b.mod.get_or_add_const(int32_t, fi.str())
+									src_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block,
+										field_ptr_type, [addr, idx_val])
+									fval := b.mod.add_instr(.load, b.cur_block, field_type,
+										[src_fptr])
+									dst_fptr := b.mod.add_instr(.get_element_ptr, b.cur_block,
+										field_ptr_type, [heap_ptr, idx_val])
+									b.mod.add_instr(.store, b.cur_block, 0, [fval, dst_fptr])
+								}
+								return heap_ptr
+							}
+						}
+					}
+				}
 				return addr
 			}
 			// No addressable location (e.g. function call return value) –
@@ -2458,7 +2698,6 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 			ret_type = fn_ret
 		}
 	}
-
 	// Check if this is a function pointer field call (e.g., m.hash_fn(pkey))
 	// rather than a method call. If the selector field matches a struct field name
 	// and the resolved function name is not in fn_index, it's a function pointer call.
@@ -2568,20 +2807,59 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 		fn_params = b.mod.funcs[b.fn_index[fn_name]].params.clone()
 	}
 	for arg in expr.args {
-		// For mut arguments, pass the address (pointer) instead of the value
+		// For mut arguments, pass the address (pointer) instead of the value.
+		// But if the value is already a pointer (e.g., &FileSet field or parameter),
+		// pass it directly instead of creating an extra level of indirection.
 		if arg is ast.ModifierExpr && arg.kind == .key_mut {
-			addr := b.build_addr(arg.expr)
-			if addr != 0 {
-				args << addr
-			} else {
-				// Can't take address directly (e.g., `mut &buffer[0]`).
-				// Evaluate the expression, store in a temp alloca, pass alloca address.
+			// Check if the parameter expects ptr(struct)
+			param_idx := args.len
+			mut param_wants_ptr_to_struct := false
+			if param_idx < fn_params.len {
+				param_type := b.mod.values[fn_params[param_idx]].typ
+				if param_type < b.mod.type_store.types.len
+					&& b.mod.type_store.types[param_type].kind == .ptr_t {
+					pointee := b.mod.type_store.types[param_type].elem_type
+					if pointee < b.mod.type_store.types.len
+						&& b.mod.type_store.types[pointee].kind == .struct_t {
+						param_wants_ptr_to_struct = true
+					}
+				}
+			}
+			if param_wants_ptr_to_struct {
+				// Check if the value is already a pointer — if so, pass it directly
 				val := b.build_expr(arg.expr)
 				val_type := b.mod.values[val].typ
-				alloca_type := b.mod.type_store.get_ptr(val_type)
-				tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type, []ValueID{})
-				b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
-				args << tmp_alloca
+				val_is_ptr := val_type < b.mod.type_store.types.len
+					&& b.mod.type_store.types[val_type].kind == .ptr_t
+				if val_is_ptr {
+					args << val
+				} else {
+					// Value type: take its address
+					addr := b.build_addr(arg.expr)
+					if addr != 0 {
+						args << addr
+					} else {
+						alloca_type := b.mod.type_store.get_ptr(val_type)
+						tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type,
+							[]ValueID{})
+						b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+						args << tmp_alloca
+					}
+				}
+			} else {
+				addr := b.build_addr(arg.expr)
+				if addr != 0 {
+					args << addr
+				} else {
+					// Can't take address directly (e.g., `mut &buffer[0]`).
+					// Evaluate the expression, store in a temp alloca, pass alloca address.
+					val := b.build_expr(arg.expr)
+					val_type := b.mod.values[val].typ
+					alloca_type := b.mod.type_store.get_ptr(val_type)
+					tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type, []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+					args << tmp_alloca
+				}
 			}
 		} else {
 			// Use args.len as param index (accounts for receiver already in args)
@@ -2751,6 +3029,20 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 			if name.starts_with('C__') {
 				return name[3..]
 			}
+			// Transformer generates Array_module__Type__method (V1 naming) but SSA
+			// registers as module__Array_Type__method. Remap:
+			// Array_ast__Attribute__has → ast__Array_Attribute__has
+			if name.starts_with('Array_') {
+				rest := name[6..] // after "Array_"
+				if mod_end := rest.index('__') {
+					mod_name := rest[..mod_end]
+					after_mod := rest[mod_end + 2..]
+					remap := '${mod_name}__Array_${after_mod}'
+					if remap in b.fn_index {
+						return remap
+					}
+				}
+			}
 			// V1 C backend naming uses single underscore for type_method (e.g., array_push_noscan),
 			// but SSA builder uses double underscore (array__push_noscan).
 			// Try converting known type prefixes from single to double underscore.
@@ -2836,11 +3128,24 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 					return mod_method
 				}
 			}
-			// Try searching all functions for one matching __method_name
-			suffix := '__${sel.rhs.name}'
-			for fname, _ in b.fn_index {
-				if fname.ends_with(suffix) {
-					return fname
+			// When receiver type couldn't be resolved, scan fn_index for
+			// any function with matching method suffix as a fallback.
+			if receiver_type == 'unknown' || receiver_type == 'int' {
+				method_suffix := '__${sel.rhs.name}'
+				mut best_match := ''
+				for fn_name, _ in b.fn_index {
+					if fn_name.ends_with(method_suffix) {
+						// Prefer module-prefixed match in current module
+						if b.cur_module != '' && fn_name.starts_with('${b.cur_module}__') {
+							return fn_name
+						}
+						if best_match == '' {
+							best_match = fn_name
+						}
+					}
+				}
+				if best_match != '' {
+					return best_match
 				}
 			}
 			return method_name
@@ -2862,6 +3167,25 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 	}
 	if expr is ast.Ident {
 		return expr.name
+	}
+	// For SelectorExpr (e.g., obj.field), try to resolve the field's type
+	// by looking up the LHS type and then the field type in struct definitions.
+	if expr is ast.SelectorExpr {
+		if b.env != unsafe { nil } {
+			lhs_pos := expr.lhs.pos()
+			if lhs_pos.id != 0 {
+				if lhs_typ := b.env.get_expr_type(lhs_pos.id) {
+					// If the LHS is a struct, look up the field type
+					if lhs_typ is types.Struct {
+						for field in lhs_typ.fields {
+							if field.name == expr.rhs.name {
+								return b.types_type_c_name(field.typ)
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	return 'unknown'
 }
@@ -3357,6 +3681,8 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 			elem_type := b.ast_type_to_ssa(fixed_typ.elem_type)
 			arr_len := if fixed_typ.len is ast.BasicLiteral {
 				fixed_typ.len.value.int()
+			} else if fixed_typ.len is ast.Ident {
+				b.resolve_const_int(fixed_typ.len.name)
 			} else {
 				0
 			}
@@ -3437,7 +3763,17 @@ fn (mut b Builder) build_init_expr(expr ast.InitExpr) ValueID {
 
 		if idx := initialized_fields[fname] {
 			if idx >= 0 && idx < expr.fields.len {
+				// Set flag when building _data field of sum type init
+				// so build_prefix heap-allocates &struct_local values
+				is_sumtype_data := fname == '_data' && typ_info.field_names.len == 2
+					&& typ_info.field_names[0] == '_tag'
+				if is_sumtype_data {
+					b.in_sumtype_data = true
+				}
 				field_vals << b.build_expr(expr.fields[idx].value)
+				if is_sumtype_data {
+					b.in_sumtype_data = false
+				}
 			} else {
 				field_vals << b.mod.get_or_add_const(field_type, '0')
 			}
@@ -3599,9 +3935,22 @@ fn (b &Builder) sizeof_value(expr ast.Expr) int {
 					4
 				}
 				else {
-					// Look up struct type
+					// Look up struct type (try unqualified, then module-prefixed)
 					if tid := b.struct_types[expr.name] {
 						return b.type_byte_size(tid)
+					}
+					// Try with current module prefix (e.g., Object → types__Object)
+					if b.cur_module != '' && b.cur_module != 'main' {
+						qualified := '${b.cur_module}__${expr.name}'
+						if tid := b.struct_types[qualified] {
+							return b.type_byte_size(tid)
+						}
+					}
+					// Try all registered structs as fallback
+					for sname, tid in b.struct_types {
+						if sname.ends_with('__${expr.name}') {
+							return b.type_byte_size(tid)
+						}
 					}
 					8 // pointer size fallback
 				}
@@ -3796,8 +4145,8 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 					}
 				}
 			}
-			idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), b.field_index(expr,
-				base).str())
+			fi := b.field_index(expr, base)
+			idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), fi.str())
 			result_type := b.expr_type(ast.Expr(expr))
 			return b.mod.add_instr(.get_element_ptr, b.cur_block, b.mod.type_store.get_ptr(result_type),
 				[base, idx_val])
@@ -4343,4 +4692,53 @@ fn (mut b Builder) generate_wyhash_body(func_idx int) {
 
 	final_result := b.wymix_inline(blk_final, lo_xor_s0_len, hi_xor_s1)
 	b.mod.add_instr(.ret, blk_final, 0, [final_result])
+}
+
+// generate_ierror_stubs creates stub implementations for IError interface methods.
+// The native backend doesn't use IError interface dispatch — errors are simple int values.
+// These stubs return safe defaults so that unreachable IError method calls don't crash.
+fn (mut b Builder) generate_ierror_stubs() {
+	i64_t := b.mod.type_store.get_int(64)
+	i32_t := b.mod.type_store.get_int(32)
+	str_t := b.get_string_type()
+
+	// IError__msg: returns empty string {ptr=0, len=0}
+	if 'IError__msg' !in b.fn_index {
+		func_idx := b.mod.new_function('IError__msg', str_t, []TypeID{})
+		b.fn_index['IError__msg'] = func_idx
+		entry := b.mod.add_block(func_idx, 'entry')
+		zero_i64 := b.mod.get_or_add_const(i64_t, '0')
+		zero_i32 := b.mod.get_or_add_const(i32_t, '0')
+		// Build empty string: start with undef, insert ptr=0 at [0], len=0 at [1]
+		undef_str := b.mod.get_or_add_const(str_t, 'undef')
+		idx0 := b.mod.get_or_add_const(i32_t, '0')
+		idx1 := b.mod.get_or_add_const(i32_t, '1')
+		s1 := b.mod.add_instr(.insertvalue, entry, str_t, [undef_str, zero_i64, idx0])
+		s2 := b.mod.add_instr(.insertvalue, entry, str_t, [s1, zero_i32, idx1])
+		b.mod.add_instr(.ret, entry, 0, [s2])
+	}
+
+	// IError__code: returns 0
+	if 'IError__code' !in b.fn_index {
+		func_idx := b.mod.new_function('IError__code', i32_t, []TypeID{})
+		b.fn_index['IError__code'] = func_idx
+		entry := b.mod.add_block(func_idx, 'entry')
+		zero := b.mod.get_or_add_const(i32_t, '0')
+		b.mod.add_instr(.ret, entry, 0, [zero])
+	}
+
+	// IError__type_name: returns empty string
+	if 'IError__type_name' !in b.fn_index {
+		func_idx := b.mod.new_function('IError__type_name', str_t, []TypeID{})
+		b.fn_index['IError__type_name'] = func_idx
+		entry := b.mod.add_block(func_idx, 'entry')
+		zero_i64 := b.mod.get_or_add_const(i64_t, '0')
+		zero_i32 := b.mod.get_or_add_const(i32_t, '0')
+		undef_str := b.mod.get_or_add_const(str_t, 'undef')
+		idx0 := b.mod.get_or_add_const(i32_t, '0')
+		idx1 := b.mod.get_or_add_const(i32_t, '1')
+		s1 := b.mod.add_instr(.insertvalue, entry, str_t, [undef_str, zero_i64, idx0])
+		s2 := b.mod.add_instr(.insertvalue, entry, str_t, [s1, zero_i32, idx1])
+		b.mod.add_instr(.ret, entry, 0, [s2])
+	}
 }

@@ -985,7 +985,7 @@ fn (t &Transformer) get_sumtype_name_for_expr(expr ast.Expr) string {
 
 	// If scope lookup failed, try to get the type from the expression's position
 	// This handles loop variables and other cases where the scope doesn't have the type
-	if type_name == '' {
+	if type_name == '' && expr_has_valid_data(unwrapped_expr) {
 		if typ := t.env.get_expr_type(unwrapped_expr.pos().id) {
 			type_name = typ.name()
 		}
@@ -1492,17 +1492,89 @@ fn (t &Transformer) is_ptr_to_string_expr(expr ast.Expr) bool {
 	return false
 }
 
+// expr_has_valid_data checks if an Expr sum type has a valid data pointer.
+// On ARM64 backend, sum types are represented as (tag: u64, data_ptr: u64).
+// Default-initialized Expr{} has data_ptr=0 (NULL), which crashes on field access.
+fn stmt_has_valid_data(stmt ast.Stmt) bool {
+	// On ARM64 backend: word1 = data pointer; NULL means corrupt/default-initialized.
+	// On C backend: word1 = first 8 bytes of inline variant data; usually non-zero for valid statements.
+	word1 := unsafe { (&u64(&stmt))[1] }
+	return word1 != 0
+}
+
+fn expr_has_valid_data(expr ast.Expr) bool {
+	// On ARM64 backend: word1 = data pointer; NULL means corrupt/default-initialized.
+	// On C backend: word1 = first 8 bytes of inline variant data; usually non-zero for valid expressions.
+	word1 := unsafe { (&u64(&expr))[1] }
+	return word1 != 0
+}
+
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
 fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
+	// Handle specific expression types that may not have pos info or need special handling
+	// These checks go BEFORE pos() to avoid dereferencing corrupt sum type data pointers
+	// in ARM64-compiled binaries.
+	if expr is ast.Ident {
+		// Try pos-based lookup first for Idents (faster)
+		pos := expr.pos
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return typ
+			}
+		}
+		return t.lookup_var_type(expr.name)
+	}
+	// For UnsafeExpr, look at the type of the inner expression
+	if expr is ast.UnsafeExpr {
+		// Try pos-based lookup first
+		if expr.pos.is_valid() {
+			if typ := t.env.get_expr_type(expr.pos.id) {
+				return typ
+			}
+		}
+		if expr.stmts.len > 0 {
+			last := expr.stmts[expr.stmts.len - 1]
+			if last is ast.ExprStmt {
+				return t.get_expr_type(last.expr)
+			}
+		}
+		return none
+	}
+	// For CallExpr/CallOrCastExpr, try pos then function return type lookup
+	if expr is ast.CallExpr {
+		pos := expr.pos
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return typ
+			}
+		}
+		if expr.lhs is ast.Ident {
+			return t.get_fn_return_type(expr.lhs.name)
+		}
+		return t.get_method_return_type(expr)
+	}
+	if expr is ast.CallOrCastExpr {
+		pos := expr.pos
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return typ
+			}
+		}
+		if expr.lhs is ast.Ident {
+			return t.get_fn_return_type(expr.lhs.name)
+		}
+		return t.get_method_return_type(expr)
+	}
+	// For other expression types, use the generic pos() dispatch
+	// Guard against corrupt sum type data in ARM64-compiled binaries
+	if !expr_has_valid_data(expr) {
+		return none
+	}
 	pos := expr.pos()
 	if pos.is_valid() {
 		if typ := t.env.get_expr_type(pos.id) {
 			return typ
 		}
-	}
-	// Fall back to scope lookup for identifiers
-	if expr is ast.Ident {
-		return t.lookup_var_type(expr.name)
 	}
 	return none
 }

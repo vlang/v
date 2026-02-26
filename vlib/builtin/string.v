@@ -339,7 +339,7 @@ fn (a string) option_clone_static() ?string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a.len <= 0 {
+	if a.len <= 0 || u64(a.str) <= 0xFFFF {
 		return ''
 	}
 	mut b := string{
@@ -783,8 +783,9 @@ pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 @[direct_array_access]
 fn (s string) == (a string) bool {
 	if s.str == 0 {
-		// should never happen
-		panic('string.eq(): nil string')
+		// Nil string: equal only to another nil/empty string.
+		// This can happen with zero-initialized struct fields in the native backend.
+		return a.str == 0 || a.len == 0
 	}
 	if s.len != a.len {
 		return false
@@ -832,16 +833,20 @@ fn (s string) < (a string) bool {
 
 @[direct_array_access]
 fn (s string) + (a string) string {
-	new_len := a.len + s.len
+	slen := if s.len > 0 && u64(s.str) > 0xFFFF { s.len } else { 0 }
+	alen := if a.len > 0 && u64(a.str) > 0xFFFF { a.len } else { 0 }
+	new_len := alen + slen
 	mut res := string{
 		str: unsafe { malloc_noscan(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
-		vmemcpy(res.str, s.str, s.len)
-		vmemcpy(res.str + s.len, a.str, a.len)
-	}
-	unsafe {
+		if slen > 0 {
+			vmemcpy(res.str, s.str, slen)
+		}
+		if alen > 0 {
+			vmemcpy(res.str + slen, a.str, alen)
+		}
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
 	return res
@@ -850,17 +855,24 @@ fn (s string) + (a string) string {
 // for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
 @[direct_array_access]
 fn (s string) plus_two(a string, b string) string {
-	new_len := a.len + b.len + s.len
+	slen := if s.len > 0 && u64(s.str) > 0xFFFF { s.len } else { 0 }
+	alen := if a.len > 0 && u64(a.str) > 0xFFFF { a.len } else { 0 }
+	blen := if b.len > 0 && u64(b.str) > 0xFFFF { b.len } else { 0 }
+	new_len := alen + blen + slen
 	mut res := string{
 		str: unsafe { malloc_noscan(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
-		vmemcpy(res.str, s.str, s.len)
-		vmemcpy(res.str + s.len, a.str, a.len)
-		vmemcpy(res.str + s.len + a.len, b.str, b.len)
-	}
-	unsafe {
+		if slen > 0 {
+			vmemcpy(res.str, s.str, slen)
+		}
+		if alen > 0 {
+			vmemcpy(res.str + slen, a.str, alen)
+		}
+		if blen > 0 {
+			vmemcpy(res.str + slen + alen, b.str, blen)
+		}
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
 	return res
@@ -1269,7 +1281,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 // It will return `-1` if the input string can't be found.
 @[direct_array_access]
 pub fn (s string) index_(p string) int {
-	if p.len > s.len || p.len == 0 {
+	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return -1
 	}
 	if p.len > 2 {
@@ -1572,7 +1584,7 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 // starts_with returns `true` if the string starts with `p`.
 @[direct_array_access]
 pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len {
+	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return false
 	} else if unsafe { vmemcmp(s.str, p.str, p.len) == 0 } {
 		return true
@@ -1583,7 +1595,7 @@ pub fn (s string) starts_with(p string) bool {
 // ends_with returns `true` if the string ends with `p`.
 @[direct_array_access]
 pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len {
+	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return false
 	} else if unsafe { vmemcmp(s.str + s.len - p.len, p.str, p.len) == 0 } {
 		return true

@@ -25,8 +25,8 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			ast_files << parsed_core_files
 		} else {
 			for module_path in core_cached_module_paths {
-				module_files := get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
-					b.pref.user_defines)
+				vlib_path := b.pref.get_vlib_module_path(module_path)
+				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines)
 				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
 				ast_files << parsed_module_files
 			}

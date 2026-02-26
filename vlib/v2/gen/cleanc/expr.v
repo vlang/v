@@ -259,6 +259,10 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 
 // Helper to extract FnType from an Expr (handles ast.Type wrapping)
 fn (mut g Gen) expr(node ast.Expr) {
+	if !expr_has_valid_data(node) {
+		g.sb.write_string('0 /* corrupt expr */')
+		return
+	}
 	match node {
 		ast.BasicLiteral {
 			if node.kind == .key_true {

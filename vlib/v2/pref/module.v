@@ -6,28 +6,10 @@ module pref
 import os
 
 fn (p &Preferences) effective_vroot() string {
-	mut candidate := if p.vroot.len > 0 {
-		if os.is_abs_path(p.vroot) { p.vroot } else { os.real_path(p.vroot) }
-	} else {
-		os.real_path('.')
+	if p.vroot.len > 0 {
+		return p.vroot
 	}
-	normalized := candidate.replace('\\', '/').trim_right('/')
-	if normalized.contains('/cmd/v2') {
-		repo_root := normalized.all_before('/cmd/v2')
-		if repo_root.len > 0 {
-			return repo_root
-		}
-	}
-	if os.is_dir(os.join_path(candidate, 'vlib')) {
-		return candidate
-	}
-	if normalized.contains('/cmd/v2') {
-		repo_root := normalized.all_before('/cmd/v2')
-		if os.is_dir(os.join_path(repo_root, 'vlib')) {
-			return repo_root
-		}
-	}
-	return candidate
+	return os.getwd()
 }
 
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {

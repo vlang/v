@@ -1064,9 +1064,19 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 	if struct_name == '' {
 		return fields
 	}
-	struct_type := t.lookup_type(struct_name) or { return fields }
+	struct_type := t.lookup_type(struct_name) or {
+		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
+			|| struct_name.contains('Env') {
+			eprintln('DIAG add_missing_defaults: FAILED lookup for "${struct_name}"')
+		}
+		return fields
+	}
 	base_type := t.unwrap_alias_and_pointer_type(struct_type)
 	if base_type !is types.Struct {
+		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
+			|| struct_name.contains('Env') {
+			eprintln('DIAG add_missing_defaults: NOT struct for "${struct_name}" type=${base_type.type_name()}')
+		}
 		return fields
 	}
 	struct_info := base_type as types.Struct
@@ -1103,6 +1113,9 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 		}
 		field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
 		if field_type is types.Map {
+			if struct_name.contains('Scope') || struct_name.contains('Env') {
+				eprintln('DIAG add_missing_defaults: adding map default for "${struct_name}.${struct_field.name}"')
+			}
 			map_init := ast.Expr(ast.MapInitExpr{
 				typ: t.type_to_ast_type_expr(field_type)
 			})

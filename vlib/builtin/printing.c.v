@@ -3,7 +3,7 @@ module builtin
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprintln(s string) {
-	if s.str == 0 {
+	if s.str == 0 || u64(s.str) <= 0xFFFF {
 		eprintln('eprintln(NIL)')
 		return
 	}
@@ -32,7 +32,7 @@ pub fn eprintln(s string) {
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprint(s string) {
-	if s.str == 0 {
+	if s.str == 0 || u64(s.str) <= 0xFFFF {
 		eprint('eprint(NIL)')
 		return
 	}
@@ -129,7 +129,7 @@ pub fn print(s string) {
 // println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
 @[if !noprintln ?; manualfree]
 pub fn println(s string) {
-	if s.str == 0 {
+	if s.str == 0 || u64(s.str) <= 0xFFFF {
 		println('println(NIL)')
 		return
 	}

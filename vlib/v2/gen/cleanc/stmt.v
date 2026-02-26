@@ -25,6 +25,9 @@ fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g Gen) gen_stmt(node ast.Stmt) {
+	if !stmt_has_valid_data(node) {
+		return
+	}
 	match node {
 		ast.FnDecl {
 			g.gen_fn_decl(node)

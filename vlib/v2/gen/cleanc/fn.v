@@ -153,6 +153,9 @@ fn (mut g Gen) collect_fn_signatures() {
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
 			match stmt {
 				ast.FnDecl {
 					if stmt.language == .js {
@@ -280,15 +283,17 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl) {
 		} else if node.is_method {
 			// Fallback: for type aliases (e.g. Builder = []u8), the checker resolves
 			// the alias and uses the underlying type name. Try env-based resolution.
-			receiver_pos := node.receiver.typ.pos()
 			mut found := false
-			if receiver_pos.is_valid() {
-				if recv_type := g.env.get_expr_type(receiver_pos.id) {
-					base_type := recv_type.base_type()
-					alt_scope_name := '${base_type.name()}__${node.name}'
-					if fn_scope2 := g.env.get_fn_scope(g.cur_module, alt_scope_name) {
-						g.cur_fn_scope = fn_scope2
-						found = true
+			if expr_has_valid_data(node.receiver.typ) {
+				receiver_pos := node.receiver.typ.pos()
+				if receiver_pos.is_valid() {
+					if recv_type := g.env.get_expr_type(receiver_pos.id) {
+						base_type := recv_type.base_type()
+						alt_scope_name := '${base_type.name()}__${node.name}'
+						if fn_scope2 := g.env.get_fn_scope(g.cur_module, alt_scope_name) {
+							g.cur_fn_scope = fn_scope2
+							found = true
+						}
 					}
 				}
 			}

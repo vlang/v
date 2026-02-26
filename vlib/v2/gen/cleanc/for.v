@@ -51,6 +51,9 @@ fn (mut g Gen) gen_for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) gen_stmt_inline(node ast.Stmt) {
+	if !stmt_has_valid_data(node) {
+		return
+	}
 	match node {
 		ast.AssignStmt {
 			lhs := node.lhs[0]

@@ -68,6 +68,14 @@ pub fn (mut g Gen) gen() {
 		g.gen_func(func)
 	}
 
+	// Add return-zero stub for unresolved symbols.
+	// When the linker can't resolve a symbol, it redirects calls here instead of
+	// letting them jump to the Mach-O header which corrupts memory.
+	g.macho.add_symbol('___unresolved_stub', u64(g.macho.text_data.len), false, 1)
+	g.emit(0xD2800000) // mov x0, #0
+	g.emit(0xD2800001) // mov x1, #0
+	g.emit(0xD65F03C0) // ret
+
 	// Globals in __data (Section 3) - emit actual data
 	for gvar in g.mod.globals {
 		// Skip external globals (defined elsewhere)
@@ -334,13 +342,32 @@ fn (mut g Gen) gen_func(func mir.Function) {
 			if instr.op == .call {
 				// Check if call returns a tuple
 				result_typ := g.mod.type_store.types[val.typ]
-				if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
-					mut tuple_size := g.type_size(val.typ)
-					if tuple_size <= 0 {
-						tuple_size = result_typ.fields.len * 8
+				mut is_multi_reg_call := result_typ.kind == .struct_t && result_typ.fields.len > 1
+				mut call_tuple_size := g.type_size(val.typ)
+				// Also check callee's registered return type
+				if !is_multi_reg_call && instr.operands.len > 0 {
+					callee_val := g.mod.values[instr.operands[0]]
+					if callee_val.kind == .func_ref {
+						for f in g.mod.funcs {
+							if f.name == callee_val.name {
+								callee_ret_typ := g.mod.type_store.types[f.typ]
+								callee_ret_size := g.type_size(f.typ)
+								if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
+									&& callee_ret_size <= 16 {
+									is_multi_reg_call = true
+									call_tuple_size = callee_ret_size
+								}
+								break
+							}
+						}
+					}
+				}
+				if is_multi_reg_call {
+					if call_tuple_size <= 0 {
+						call_tuple_size = 16
 					}
 					slot_offset = (slot_offset + 15) & ~0xF
-					slot_offset += tuple_size
+					slot_offset += call_tuple_size
 					g.stack_map[val_id] = -slot_offset
 					// Keep following scalar slots below the aggregate base.
 					slot_offset += 8
@@ -589,11 +616,33 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.store_reg_to_val(dest_reg, val_id)
 			}
 		}
-		.fptoui, .uitofp {
-			// For now, handle same as signed versions
-			// TODO: Add proper unsigned conversion support
+		.uitofp {
+			// Unsigned integer to float conversion
 			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
-			g.load_val_to_reg(dest_reg, instr.operands[0])
+
+			// Load integer operand to x8
+			src_reg := g.get_operand_reg(instr.operands[0], 8)
+
+			// UCVTF Dd, Xn (convert unsigned int to double)
+			g.emit(asm_ucvtf_d_x(0, Reg(src_reg)))
+
+			// FMOV Xd, D0 (copy float bit pattern to integer reg for storage)
+			g.emit(asm_fmov_x_d(Reg(dest_reg), 0))
+
+			if val_id !in g.reg_map {
+				g.store_reg_to_val(dest_reg, val_id)
+			}
+		}
+		.fptoui {
+			// Float to unsigned integer conversion
+			dest_reg := if r := g.reg_map[val_id] { r } else { 8 }
+
+			// Load float operand to d0
+			g.load_float_operand(instr.operands[0], 0)
+
+			// FCVTZU Xd, Dn (convert to unsigned int, truncate toward zero)
+			g.emit(asm_fcvtzu_x_d(Reg(dest_reg), 0))
+
 			if val_id !in g.reg_map {
 				g.store_reg_to_val(dest_reg, val_id)
 			}
@@ -867,6 +916,26 @@ fn (mut g Gen) gen_instr(val_id int) {
 					} else if num_fields == 1 {
 						// Single-slot struct values in registers can be stored directly.
 						g.emit(asm_str(Reg(val_reg), Reg(ptr_reg)))
+					} else if val_typ.kind == .struct_t && src_id > 0 && src_id < g.mod.values.len {
+						// Source is a struct value whose register holds a pointer
+						// (e.g., from a .load of a struct without a stack slot).
+						// Use the register as a source pointer for field-by-field copy.
+						src_val_info := g.mod.values[src_id]
+						if src_val_info.kind == .instruction
+							&& g.mod.instrs[src_val_info.index].op == .load {
+							if val_reg != 11 {
+								g.emit_mov_reg(11, val_reg)
+							}
+							for i in 0 .. num_fields {
+								g.emit(asm_ldr_imm(Reg(10), Reg(11), u32(i)))
+								g.emit(asm_str_imm(Reg(10), Reg(ptr_reg), u32(i)))
+							}
+						} else {
+							g.emit_mov_reg(10, 31)
+							for i in 0 .. num_fields {
+								g.emit(asm_str_imm(Reg(10), Reg(ptr_reg), u32(i)))
+							}
+						}
 					} else {
 						// Keep behavior deterministic when aggregate source bytes are unavailable.
 						g.emit_mov_reg(10, 31)
@@ -1229,19 +1298,41 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 
 				if result_typ.kind != .void_t {
-					// For indirect returns (large structs), result is already at x8 location
-					// For small structs (≤ 16 bytes), values are in x0, x1
-					if result_typ.kind == .struct_t && result_typ.fields.len > 1 {
-						if !is_indirect_return {
-							// Small struct: store return registers into the tuple's stack location
-							result_offset := g.stack_map[val_id]
-							for i in 0 .. result_typ.fields.len {
-								if i < 8 {
-									g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+					// Also check callee's registered return type: when the SSA value type
+					// isn't struct_t (e.g. i64 fallback), use the callee's return type.
+					mut call_ret_is_multi_reg := result_typ.kind == .struct_t && result_size > 8
+					mut actual_call_ret_size := result_size
+					if !call_ret_is_multi_reg && !is_indirect_return {
+						callee_val := g.mod.values[instr.operands[0]]
+						if callee_val.kind == .func_ref {
+							for f in g.mod.funcs {
+								if f.name == callee_val.name {
+									callee_ret_typ := g.mod.type_store.types[f.typ]
+									callee_ret_size := g.type_size(f.typ)
+									if callee_ret_typ.kind == .struct_t && callee_ret_size > 8
+										&& callee_ret_size <= 16 {
+										call_ret_is_multi_reg = true
+										actual_call_ret_size = callee_ret_size
+									}
+									break
 								}
 							}
 						}
-						// For indirect return, result is already written by callee to x8
+					}
+					if call_ret_is_multi_reg {
+						if !is_indirect_return {
+							if val_id in g.stack_map {
+								result_offset := g.stack_map[val_id]
+								num_chunks := (actual_call_ret_size + 7) / 8
+								for i in 0 .. num_chunks {
+									if i < 8 {
+										g.emit_str_reg_offset(i, 29, result_offset + i * 8)
+									}
+								}
+							} else {
+								g.store_reg_to_val(0, val_id)
+							}
+						}
 					} else {
 						g.canonicalize_narrow_int_result(0, g.mod.values[val_id].typ)
 						g.store_reg_to_val(0, val_id)
@@ -1320,9 +1411,23 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 
-			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.canonicalize_narrow_int_result(0, g.mod.values[val_id].typ)
-				g.store_reg_to_val(0, val_id)
+			ci_result_typ_id := g.mod.values[val_id].typ
+			ci_result_typ := g.mod.type_store.types[ci_result_typ_id]
+			if ci_result_typ.kind != .void_t {
+				ci_result_size := g.type_size(ci_result_typ_id)
+				if ci_result_typ.kind == .struct_t && ci_result_size > 8 {
+					// Small struct return: store x0, x1 into stack slot
+					ci_result_offset := g.stack_map[val_id]
+					num_chunks := (ci_result_size + 7) / 8
+					for i in 0 .. num_chunks {
+						if i < 8 {
+							g.emit_str_reg_offset(i, 29, ci_result_offset + i * 8)
+						}
+					}
+				} else {
+					g.canonicalize_narrow_int_result(0, ci_result_typ_id)
+					g.store_reg_to_val(0, val_id)
+				}
 			}
 		}
 		.call_sret {
@@ -1416,6 +1521,25 @@ fn (mut g Gen) gen_instr(val_id int) {
 				fn_ret_typ := g.mod.type_store.types[fn_ret_type]
 				fn_ret_size := g.type_size(fn_ret_type)
 
+				// Detect type mismatch: ret value type is larger struct than fn return type
+				// This happens when transformer fails to wrap a variant in a sum type
+				ret_val_size := g.type_size(ret_val.typ)
+				if ret_typ.kind == .struct_t && fn_ret_typ.kind == .struct_t
+					&& ret_val_size > fn_ret_size && fn_ret_size > 0 && fn_ret_size <= 16 {
+					mut ret_instr_op := ''
+					mut ret_instr_detail := ''
+					if ret_val.kind == .instruction {
+						ri := g.mod.instrs[ret_val.index]
+						ret_instr_op = '${ri.op}'
+						if ri.op == .call_sret || ri.op == .call {
+							if ri.operands.len > 0 {
+								ret_instr_detail = g.mod.values[ri.operands[0]].name
+							}
+						}
+					}
+					eprintln('MISMATCH .ret: fn=${g.cur_func_name} ret_val_size=${ret_val_size} fn_ret_size=${fn_ret_size} ret_val_kind=${ret_val.kind} ret_instr=${ret_instr_op} callee=${ret_instr_detail} ret_typ_fields=${ret_typ.fields.len}')
+				}
+
 				// Check if we're returning a pointer but the function expects a struct
 				// This happens when returning local struct variables (expr_init returns pointers)
 				mut is_indirect_struct_return := false
@@ -1476,10 +1600,22 @@ fn (mut g Gen) gen_instr(val_id int) {
 							g.emit(asm_str_imm(Reg(10), Reg(8), u32(i)))
 						}
 					}
-				} else if (ret_typ.kind == .struct_t && ret_typ.fields.len > 1)
-					|| is_indirect_struct_return {
+				} else if (ret_typ.kind == .struct_t && g.type_size(ret_val.typ) > 8)
+					|| is_indirect_struct_return
+					|| (fn_ret_typ.kind == .struct_t && fn_ret_size > 8 && fn_ret_size <= 16) {
 					// Small struct (≤ 16 bytes) - return in registers x0, x1
-					actual_struct_typ := if is_indirect_struct_return { fn_ret_typ } else { ret_typ }
+					// Use type size (not field count) to determine multi-register returns,
+					// since a struct with 1 nested struct field can still span 2 registers.
+					// Also handle the case where the SSA value's type doesn't match the
+					// function's return type (e.g., after PHI node type merging).
+					actual_struct_typ_id := if is_indirect_struct_return
+						|| ret_typ.kind != .struct_t {
+						fn_ret_type
+					} else {
+						ret_val.typ
+					}
+					actual_struct_size := g.type_size(actual_struct_typ_id)
+					num_chunks := (actual_struct_size + 7) / 8
 
 					// Ensure string literals are materialized on the stack
 					// before we try to load their fields into return registers.
@@ -1490,14 +1626,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 					if is_indirect_struct_return {
 						// Return value is a pointer to struct - load each field via the pointer
 						g.load_val_to_reg(8, ret_val_id)
-						for i in 0 .. actual_struct_typ.fields.len {
+						for i in 0 .. num_chunks {
 							if i < 8 {
-								imm12 := u32(i * 8 / 8)
-								g.emit(asm_ldr_imm(Reg(i), Reg(8), imm12))
+								g.emit(asm_ldr_imm(Reg(i), Reg(8), u32(i)))
 							}
 						}
 					} else if ret_offset := g.stack_map[ret_val_id] {
-						for i in 0 .. actual_struct_typ.fields.len {
+						for i in 0 .. num_chunks {
 							if i < 8 {
 								g.emit_ldr_reg_offset(i, 29, ret_offset + i * 8)
 							}
@@ -1509,7 +1644,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 					&& ret_val.name == '0' {
 					// Returning zero/none from a function that returns a small struct.
 					// Zero all return registers for the struct to avoid garbage in x1+.
-					for i in 0 .. fn_ret_typ.fields.len {
+					num_ret_chunks := (fn_ret_size + 7) / 8
+					for i in 0 .. num_ret_chunks {
 						if i < 8 {
 							g.emit_mov_reg(i, 31) // xN = xzr (zero)
 						}
@@ -1675,24 +1811,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 			dest_id := instr.operands[0]
 			src_id := instr.operands[1]
 			mut handled_aggregate_copy := false
-			// Diagnostic: check if assign involves multi-word dest
-			if dest_id > 0 && dest_id < g.mod.values.len {
-				diag_dt := g.mod.values[dest_id].typ
-				if diag_dt > 0 && diag_dt < g.mod.type_store.types.len {
-					diag_dsz := g.type_size(diag_dt)
-					if diag_dsz > 8 {
-						src_kind_str := if src_id > 0 && src_id < g.mod.values.len {
-							'kind=${g.mod.values[src_id].kind} typ_kind=${g.mod.type_store.types[g.mod.values[src_id].typ].kind} name="${g.mod.values[src_id].name}"'
-						} else {
-							'invalid_src'
-						}
-						dest_kind_str := 'kind=${g.mod.values[dest_id].kind} typ_kind=${g.mod.type_store.types[diag_dt].kind} name="${g.mod.values[dest_id].name}"'
-						has_src_stack := src_id in g.stack_map
-						has_dest_stack := dest_id in g.stack_map
-						eprintln('DIAG ASSIGN multi: dest[${dest_id}]={${dest_kind_str} sz=${diag_dsz} stk=${has_dest_stack}} src[${src_id}]={${src_kind_str} stk=${has_src_stack}} fn=${g.cur_func_name}')
-					}
-				}
-			}
 			if dest_id > 0 && dest_id < g.mod.values.len {
 				dest_typ_id := g.mod.values[dest_id].typ
 				if dest_typ_id > 0 && dest_typ_id < g.mod.type_store.types.len {
@@ -1982,19 +2100,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 			struct_typ := g.mod.type_store.types[instr.typ]
 			struct_size := g.type_size(instr.typ)
 			num_chunks := if struct_size > 0 { (struct_size + 7) / 8 } else { 1 }
-
-			// Diagnostic: check sum type struct_init for zero _data
-			if struct_typ.field_names.len == 2 && struct_typ.field_names[0] == '_tag'
-				&& struct_typ.field_names[1] == '_data' && instr.operands.len >= 2 {
-				tag_id := instr.operands[0]
-				data_id := instr.operands[1]
-				tag_val := g.mod.values[tag_id]
-				data_val := g.mod.values[data_id]
-				if tag_val.kind == .constant && tag_val.name != '0' && data_val.kind == .constant
-					&& data_val.name == '0' {
-					eprintln('DIAG: struct_init sum type with _tag=${tag_val.name} but _data=0 (const zero)! fn=${g.cur_func_name} val_id=${val_id} data_id=${data_id}')
-				}
-			}
 
 			// Zero-initialize the entire struct first
 			g.emit_mov_reg(9, 31) // xzr

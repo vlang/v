@@ -7,6 +7,15 @@ module markused
 import v2.ast
 import v2.types
 
+// Guard functions for ARM64 backend where default-initialized sum types have NULL data pointers.
+fn expr_ok(expr ast.Expr) bool {
+	return unsafe { (&u64(&expr))[1] } != 0
+}
+
+fn stmt_ok(stmt ast.Stmt) bool {
+	return unsafe { (&u64(&stmt))[1] } != 0
+}
+
 const builtin_cast_type_names = [
 	'bool',
 	'byte',
@@ -121,6 +130,9 @@ fn (mut w Walker) collect_defs() {
 			}
 		}
 		for stmt in file.stmts {
+			if !stmt_ok(stmt) {
+				continue
+			}
 			match stmt {
 				ast.StructDecl {
 					w.add_type_name(mod_name, stmt.name)
@@ -821,6 +833,9 @@ fn (mut w Walker) walk_stmts(stmts []ast.Stmt, mod_name string) {
 }
 
 fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
+	if !stmt_ok(stmt) {
+		return
+	}
 	match stmt {
 		ast.AssertStmt {
 			w.walk_expr(stmt.expr, mod_name)
@@ -905,6 +920,9 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 }
 
 fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
+	if !expr_ok(expr) {
+		return
+	}
 	match expr {
 		ast.ArrayInitExpr {
 			w.walk_expr(expr.typ, mod_name)

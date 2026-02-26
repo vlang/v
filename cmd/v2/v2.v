@@ -23,9 +23,6 @@ fn main() {
 		eprintln('At least 1 .v file expected')
 		exit(1)
 	}
-	$if debug {
-		eprintln('v files: ${files}')
-	}
 
 	mut b := builder.new_builder(prefs)
 	b.build(files)

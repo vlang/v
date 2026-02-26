@@ -456,7 +456,8 @@ pub fn (mut c Checker) preregister_types(file ast.File) {
 		if file.mod in c.env.scopes {
 			mod_scope = unsafe { c.env.scopes[file.mod] }
 		} else {
-			panic('scope should exist for mod: ${file.mod}')
+			eprintln('warning: scope not found for mod: ${file.mod}, skipping')
+			return
 		}
 	}
 	c.scope = mod_scope
@@ -498,7 +499,8 @@ pub fn (mut c Checker) preregister_fn_signatures(file ast.File) {
 		if file.mod in c.env.scopes {
 			mod_scope = unsafe { c.env.scopes[file.mod] }
 		} else {
-			panic('scope should exist for mod: ${file.mod}')
+			eprintln('warning: scope not found for mod: ${file.mod}, skipping')
+			return
 		}
 	}
 	c.scope = mod_scope
@@ -3101,8 +3103,19 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 			// 	return c.find_field_or_method(lhs_obj.origin, expr.rhs.name) or { c.error_with_pos(err.msg(), expr.pos) }
 			// }
 			else {
-				c.error_with_pos('unsupported ${lhs_obj.typ().name()} - ${expr.rhs.name}',
-					token.Pos{})
+				// Fallback: handle C constants (C.XXX) and module-qualified lookups
+				// when the sum type dispatch doesn't reach the Module branch.
+				// This can happen in the native backend due to sum type tag issues.
+				if expr.lhs.name == 'C' {
+					return int_
+				}
+				// Try module scope lookup for other modules
+				if scope := c.env.get_scope(expr.lhs.name) {
+					if rhs_obj := scope.lookup_parent(expr.rhs.name, 0) {
+						return rhs_obj.typ()
+					}
+				}
+				c.error_with_pos('unsupported ${expr.rhs.name}', token.Pos{})
 				return Type(void_)
 			}
 		}

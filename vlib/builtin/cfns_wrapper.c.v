@@ -29,7 +29,7 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 {
+	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -47,7 +47,7 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 	$if trace_vmemmove ? {
 		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
-	if n == 0 {
+	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -72,7 +72,7 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
 	$if trace_vmemcmp ? {
 		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
 	}
-	if n == 0 {
+	if n == 0 || u64(const_s1) <= 0xFFFF || u64(const_s2) <= 0xFFFF {
 		return 0
 	}
 	unsafe {
@@ -94,7 +94,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 {
+	if n == 0 || u64(s) <= 0xFFFF {
 		return s
 	}
 	unsafe {
