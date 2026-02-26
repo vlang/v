@@ -1,3 +1,5 @@
+struct MyStruct {}
+
 struct Foo1 {
 	before_1 int
 	thr      thread
@@ -21,10 +23,17 @@ struct Foo4 {
 	a    []int
 }
 
+struct Foo5 {
+	// a comment
+	my_th thread
+	map   []MyStruct
+}
+
 fn test_parse_thread_type() {
 	_ = &Foo1{}
 	_ = &Foo2{}
 	_ = &Foo3{}
 	_ = &Foo4{}
+	_ = &Foo5{}
 	assert true
 }
