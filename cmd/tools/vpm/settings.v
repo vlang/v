@@ -111,3 +111,21 @@ fn unique_server_urls(urls []string) []string {
 fn normalize_server_url(url string) string {
 	return url.trim_space().trim_string_right('/')
 }
+
+fn parse_server_urls(args []string) []string {
+	mut urls := []string{}
+	mut i := 0
+	for i < args.len {
+		if args[i] in server_url_option_names {
+			i++
+			if i < args.len {
+				url := normalize_server_url(args[i])
+				if url != '' && url !in urls {
+					urls << url
+				}
+			}
+		}
+		i++
+	}
+	return urls
+}

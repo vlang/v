@@ -5936,9 +5936,15 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 	} else if !node_typ_is_option && final_sym.kind == .u64
 		&& final_expr_sym.kind in [.f32, .f64, .float_literal] {
-		g.write('_v_f64_to_u64((double)(')
-		g.expr(node.expr)
-		g.write('))')
+		if g.inside_const {
+			g.write('((uint64_t)(')
+			g.expr(node.expr)
+			g.write('))')
+		} else {
+			g.write('_v_f64_to_u64((double)(')
+			g.expr(node.expr)
+			g.write('))')
+		}
 	} else if (expr_type == ast.bool_type && node_typ.is_int()) || node_typ == ast.bool_type {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node_typ)
