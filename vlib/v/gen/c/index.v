@@ -367,6 +367,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
+			if is_gen_or_and_assign_rhs {
+				g.set_current_pos_as_last_stmt_pos()
+			}
 			if !g.is_amp {
 				if g.inside_opt_or_res && elem_type.has_flag(.option) && g.inside_assign {
 					g.write('\n${cur_line}(*(${elem_type_str}*)&${tmp_opt})')
@@ -596,6 +599,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.writeln('}')
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, val_type)
+			}
+			if is_gen_or_and_assign_rhs {
+				g.set_current_pos_as_last_stmt_pos()
 			}
 			g.write('\n${cur_line}(*(${val_type_str}*)${tmp_opt}.data)')
 		}
