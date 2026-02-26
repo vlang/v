@@ -32,6 +32,14 @@ fn test_enum() {
 	assert color == .green
 }
 
+fn test_short_enum_literal_equality_is_commutative() {
+	color := Color.red
+	assert color == .red
+	assert .red == color
+	assert color != .blue
+	assert .blue != color
+}
+
 enum PowerDuration {
 	invulntics = 30 * 35
 	invistics  = 60 * 35
