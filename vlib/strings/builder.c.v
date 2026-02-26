@@ -384,7 +384,7 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 	mut string_char := `\0`
 	mut at_line_start := true
 	for i := 0; i < s.len; i++ {
-		c := s[i]
+		c := rune(s[i])
 		match state {
 			// Normal state: process characters outside of string literals
 			.normal {
