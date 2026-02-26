@@ -69,7 +69,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
 		println('Updated module `${ident}`.')
 	}
 	// Don't bail if the download count increment has failed.
-	increment_module_download_count(name) or { vpm_error(err.msg(), verbose: true) }
+	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
 	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
 	vpm_log(@FILE_LINE, @FN, 'ident: ${ident}; ctx: ${ctx}')
 	resolve_dependencies(get_manifest(install_path), ctx.idents)
