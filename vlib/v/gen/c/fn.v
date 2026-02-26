@@ -2554,7 +2554,21 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		} else if arg.expr is ast.ArrayDecompose {
 			mut d_count := 0
 			remaining_params := expected_types.len - i
-			if !arg.expr.expr_type.has_flag(.variadic) && remaining_params > 0 {
+			if node.language == .v && node.is_variadic && arg.expr.expr_type.has_flag(.variadic)
+				&& remaining_params > 0 && i < expected_types.len - 1 {
+				tmp_array := g.new_tmp_var()
+				line := g.go_before_last_stmt()
+				array_typ := g.styp(arg.expr.expr_type)
+				g.write('\t${array_typ} ${tmp_array} = ')
+				g.expr(arg.expr)
+				g.writeln(';')
+				g.write(line.trim_left('\t'))
+				for d_i in i .. expected_types.len - 1 {
+					g.write('*(${g.styp(expected_types[d_i])}*)builtin__array_get(${tmp_array}, ${d_count}), ')
+					d_count++
+				}
+				g.write('builtin__array_slice(${tmp_array}, ${d_count}, 2147483647)')
+			} else if !arg.expr.expr_type.has_flag(.variadic) && remaining_params > 0 {
 				tmp_array := g.new_tmp_var()
 				line := g.go_before_last_stmt()
 				array_typ := g.styp(arg.expr.expr_type)
