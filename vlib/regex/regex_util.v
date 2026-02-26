@@ -285,8 +285,21 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
-				res << i + s
-				res << i + e
+				match_start := i + s
+				match_end := i + e
+				// when ^ (f_ms) is used, it must match at the beginning of input
+				if (re.flag & f_ms) != 0 && match_start > 0 {
+					break
+				}
+				// when $ (f_me) is used, it must match at the end of input or before a new line
+				if (re.flag & f_me) != 0 && match_end < in_txt.len {
+					if in_txt[match_end] !in new_line_list {
+						i++
+						continue
+					}
+				}
+				res << match_start
+				res << match_end
 				i += e
 				continue
 			}
@@ -349,10 +362,23 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
 
 			if s >= 0 && e > s {
+				match_start := i + s
+				match_end := i + e
+				// when ^ (f_ms) is used, it must match at the beginning of input
+				if (re.flag & f_ms) != 0 && match_start > 0 {
+					break
+				}
+				// when $ (f_me) is used, it must match at the end of input or before a new line
+				if (re.flag & f_me) != 0 && match_end < in_txt.len {
+					if in_txt[match_end] !in new_line_list {
+						i++
+						continue
+					}
+				}
 				tmp_str := tos(in_txt.str + i, in_txt.len - i)
 				mut tmp_e := if e > tmp_str.len { tmp_str.len } else { e }
 				// println("Found: ${s}:${e} [${tmp_str[s..e]}]")
-				res << tmp_str[..tmp_e]
+				res << tmp_str[s..tmp_e]
 				i += e
 				continue
 			}
