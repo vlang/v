@@ -198,7 +198,6 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder)
 fn (vd &VDoc) gen_html(d doc.Doc) string {
 	cfg := vd.cfg
 	mut symbols_toc := strings.new_builder(200)
-	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
 	dcs_contents := d.contents.arr()
 	// generate toc first
@@ -221,49 +220,11 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		d.head.name
 	}
-	// write nav1
-	if cfg.is_multi || vd.docs.len > 1 {
-		mut used_submod_prefixes := map[string]bool{}
-		for dc in vd.docs {
-			mut submod_prefix := dc.head.name.all_before('.')
-			if index := dc.head.frontmatter['index'] {
-				if dc.head.name == 'index' {
-					submod_prefix = index
-				}
-			}
-			if used_submod_prefixes[submod_prefix] {
-				continue
-			}
-			used_submod_prefixes[submod_prefix] = true
-			mut href_name := './${dc.head.name}.html'
-			if dc.head.name in ['README', 'index'] {
-				href_name = './index.html'
-			} else if submod_prefix !in vd.docs.map(it.head.name) {
-				href_name = '#'
-			}
-			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
-			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>\n')
-			for j, cdoc in submodules {
-				if j == 0 {
-					modules_toc.write_string('<ul>\n')
-				}
-				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				sub_selected_classes := if cdoc.head.name == d.head.name {
-					' class="active"'
-				} else {
-					''
-				}
-				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
-				if j == submodules.len - 1 {
-					modules_toc.write_string('</ul>\n')
-				}
-			}
-			modules_toc.write_string('</li>\n')
-		}
+	modules_toc_str := if cfg.is_multi || vd.docs.len > 1 {
+		vd.gen_modules_toc(d.head.name)
+	} else {
+		''
 	}
-	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
 	mut result := os.read_file(os.join_path(cfg.theme_dir, 'index.html')) or { panic(err) }
 	if cfg.html_no_vhash {
@@ -325,6 +286,56 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 		})
 	}
 	return result
+}
+
+fn (vd &VDoc) gen_modules_toc(active_doc string) string {
+	mut modules_toc := strings.new_builder(200)
+	mut used_submod_prefixes := map[string]bool{}
+	doc_names := vd.docs.map(it.head.name)
+	for dc in vd.docs {
+		mut submod_prefix := dc.head.name.all_before('.')
+		if index := dc.head.frontmatter['index'] {
+			if dc.head.name == 'index' {
+				submod_prefix = index
+			}
+		}
+		if used_submod_prefixes[submod_prefix] {
+			continue
+		}
+		used_submod_prefixes[submod_prefix] = true
+		mut href_name := ''
+		if dc.head.name in ['README', 'index'] {
+			href_name = './index.html'
+		} else if submod_prefix in doc_names {
+			href_name = './${submod_prefix}.html'
+		}
+		submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
+		dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
+		active_class := if dc.head.name == active_doc { ' active' } else { '' }
+		menu_item := if href_name != '' {
+			'<a href="${href_name}">${submod_prefix}</a>'
+		} else {
+			'<a>${submod_prefix}</a>'
+		}
+		modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}${menu_item}</div>\n')
+		for j, cdoc in submodules {
+			if j == 0 {
+				modules_toc.write_string('<ul>\n')
+			}
+			submod_name := cdoc.head.name.all_after(submod_prefix + '.')
+			sub_selected_classes := if cdoc.head.name == active_doc {
+				' class="active"'
+			} else {
+				''
+			}
+			modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
+			if j == submodules.len - 1 {
+				modules_toc.write_string('</ul>\n')
+			}
+		}
+		modules_toc.write_string('</li>\n')
+	}
+	return modules_toc.str()
 }
 
 fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
