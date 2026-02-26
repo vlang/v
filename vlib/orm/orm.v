@@ -1,6 +1,12 @@
+@[has_globals]
 module orm
 
 import time
+
+const default_tenant_filter_field_name = 'tenant_id'
+const tenant_filter_attr_name = 'tenant_filter'
+const tenant_field_attr_name = 'tenant_field'
+const ignore_tenant_filter_attr_name = 'ignore_tenant_filter'
 
 pub const num64 = [typeof[i64]().idx, typeof[u64]().idx]
 pub const nums = [
@@ -226,6 +232,33 @@ pub mut:
 	joins        []JoinConfig // JOIN clauses for this query
 }
 
+struct TenantFilterState {
+mut:
+	enabled            bool
+	field_name         string
+	has_current_tenant bool
+	current_tenant     Primitive
+}
+
+struct TenantFilterScopeState {
+	enabled            bool
+	has_current_tenant bool
+	current_tenant     Primitive
+}
+
+pub struct TenantFilterConfig {
+pub:
+	enabled    bool   = true
+	field_name string = default_tenant_filter_field_name
+}
+
+__global tenant_filter_state = TenantFilterState{
+	enabled:            false
+	field_name:         default_tenant_filter_field_name
+	has_current_tenant: false
+	current_tenant:     null_primitive
+}
+
 // Interfaces gets called from the backend and can be implemented
 // Since the orm supports arrays aswell, they have to be returned too.
 // A row is represented as []Primitive, where the data is connected to the fields of the struct by their
@@ -243,6 +276,257 @@ mut:
 	create(table Table, fields []TableField) !
 	drop(table Table) !
 	last_id() int
+}
+
+// configure_tenant_filter configures the global ORM tenant filter behavior.
+pub fn configure_tenant_filter(config TenantFilterConfig) {
+	tenant_filter_state.enabled = config.enabled
+	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
+}
+
+// set_tenant_filter_enabled enables or disables global tenant filtering.
+pub fn set_tenant_filter_enabled(enabled bool) {
+	tenant_filter_state.enabled = enabled
+}
+
+// set_current_tenant_id sets the current tenant id used by global tenant filtering.
+pub fn set_current_tenant_id(tenant_id Primitive) {
+	if tenant_id is Null {
+		clear_current_tenant_id()
+		return
+	}
+	tenant_filter_state.has_current_tenant = true
+	tenant_filter_state.current_tenant = tenant_id
+}
+
+// clear_current_tenant_id clears the current tenant id used by global tenant filtering.
+pub fn clear_current_tenant_id() {
+	tenant_filter_state.has_current_tenant = false
+	tenant_filter_state.current_tenant = null_primitive
+}
+
+// with_tenant executes `callback` with a temporary tenant id and enabled tenant filtering.
+pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
+	saved := tenant_filter_scope_snapshot()
+	tenant_filter_state.enabled = true
+	tenant_filter_state.has_current_tenant = true
+	tenant_filter_state.current_tenant = tenant_id
+	defer {
+		tenant_filter_scope_restore(saved)
+	}
+	return callback()
+}
+
+// with_tenant_value executes `callback` with a temporary tenant id and enabled tenant filtering.
+pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
+	saved := tenant_filter_scope_snapshot()
+	tenant_filter_state.enabled = true
+	tenant_filter_state.has_current_tenant = true
+	tenant_filter_state.current_tenant = tenant_id
+	defer {
+		tenant_filter_scope_restore(saved)
+	}
+	return callback()
+}
+
+// without_tenant_filter executes `callback` with tenant filtering temporarily disabled.
+pub fn without_tenant_filter[T](callback fn () !T) !T {
+	saved := tenant_filter_scope_snapshot()
+	tenant_filter_state.enabled = false
+	defer {
+		tenant_filter_scope_restore(saved)
+	}
+	return callback()
+}
+
+// without_tenant_filter_value executes `callback` with tenant filtering temporarily disabled.
+pub fn without_tenant_filter_value[T](callback fn () T) T {
+	saved := tenant_filter_scope_snapshot()
+	tenant_filter_state.enabled = false
+	defer {
+		tenant_filter_scope_restore(saved)
+	}
+	return callback()
+}
+
+// apply_tenant_filter appends the configured tenant filter condition to `where`.
+pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
+	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
+		return where
+	}
+	if table_ignores_tenant_filter(table) {
+		return where
+	}
+	tenant_field_name := table_tenant_filter_field_name(table)
+	if tenant_field_name == '' || tenant_field_name in where.fields {
+		return where
+	}
+	mut where_with_tenant := clone_query_data(where)
+	original_fields_len := where_with_tenant.fields.len
+	if original_fields_len > 1 {
+		// Preserve original WHERE precedence before appending `AND tenant = ...`.
+		where_with_tenant.parentheses << [0, original_fields_len - 1]
+	}
+	if original_fields_len > 0 {
+		where_with_tenant.is_and << true
+	}
+	where_with_tenant.fields << tenant_field_name
+	where_with_tenant.data << tenant_filter_state.current_tenant
+	where_with_tenant.types << tenant_filter_primitive_type(tenant_filter_state.current_tenant)
+	where_with_tenant.kinds << .eq
+	return where_with_tenant
+}
+
+fn tenant_filter_scope_snapshot() TenantFilterScopeState {
+	return TenantFilterScopeState{
+		enabled:            tenant_filter_state.enabled
+		has_current_tenant: tenant_filter_state.has_current_tenant
+		current_tenant:     tenant_filter_state.current_tenant
+	}
+}
+
+fn tenant_filter_scope_restore(saved TenantFilterScopeState) {
+	tenant_filter_state.enabled = saved.enabled
+	tenant_filter_state.has_current_tenant = saved.has_current_tenant
+	tenant_filter_state.current_tenant = saved.current_tenant
+}
+
+fn normalize_tenant_filter_field_name(field_name string) string {
+	name := trim_attr_arg(field_name)
+	if name == '' {
+		return default_tenant_filter_field_name
+	}
+	return name
+}
+
+fn trim_attr_arg(arg string) string {
+	mut out := arg.trim_space()
+	if out.len >= 2 && ((out.starts_with("'") && out.ends_with("'"))
+		|| (out.starts_with('"') && out.ends_with('"'))) {
+		out = out[1..out.len - 1].trim_space()
+	}
+	return out
+}
+
+fn tenant_filter_primitive_type(value Primitive) int {
+	return match value {
+		bool {
+			type_idx['bool']
+		}
+		i8 {
+			type_idx['i8']
+		}
+		i16 {
+			type_idx['i16']
+		}
+		int {
+			type_idx['int']
+		}
+		i64 {
+			type_idx['i64']
+		}
+		u8 {
+			type_idx['u8']
+		}
+		u16 {
+			type_idx['u16']
+		}
+		u32 {
+			type_idx['u32']
+		}
+		u64 {
+			type_idx['u64']
+		}
+		f32 {
+			type_idx['f32']
+		}
+		f64 {
+			type_idx['f64']
+		}
+		string {
+			type_string
+		}
+		time.Time {
+			time_
+		}
+		Null {
+			type_idx['int']
+		}
+		InfixType {
+			tenant_filter_primitive_type(value.right)
+		}
+		[]Primitive {
+			if value.len > 0 {
+				tenant_filter_primitive_type(value[0])
+			} else {
+				type_idx['int']
+			}
+		}
+	}
+}
+
+fn table_tenant_filter_field_name(table Table) string {
+	mut field_name := tenant_filter_state.field_name
+	for attr in table.attrs {
+		if attr_name_matches(attr.name, tenant_field_attr_name) && attr.has_arg {
+			override_field_name := trim_attr_arg(attr.arg)
+			if override_field_name != '' {
+				field_name = override_field_name
+			}
+		}
+	}
+	return normalize_tenant_filter_field_name(field_name)
+}
+
+fn table_ignores_tenant_filter(table Table) bool {
+	for attr in table.attrs {
+		if attr_name_matches(attr.name, ignore_tenant_filter_attr_name) {
+			if !attr.has_arg {
+				return true
+			}
+			if is_enabled := parse_bool_attr(attr.arg) {
+				return is_enabled
+			}
+			return true
+		}
+		if attr_name_matches(attr.name, tenant_filter_attr_name) && attr.has_arg {
+			if is_enabled := parse_bool_attr(attr.arg) {
+				return !is_enabled
+			}
+		}
+	}
+	return false
+}
+
+fn attr_name_matches(name string, expected string) bool {
+	return name == expected || name.ends_with('.${expected}')
+}
+
+fn parse_bool_attr(raw string) ?bool {
+	value := trim_attr_arg(raw).to_lower()
+	return match value {
+		'1', 'true', 'yes', 'on' {
+			true
+		}
+		'0', 'false', 'no', 'off' {
+			false
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn clone_query_data(data QueryData) QueryData {
+	return QueryData{
+		fields:      data.fields.clone()
+		data:        data.data.clone()
+		types:       data.types.clone()
+		parentheses: data.parentheses.map(it.clone())
+		kinds:       data.kinds.clone()
+		auto_fields: data.auto_fields.clone()
+		is_and:      data.is_and.clone()
+	}
 }
 
 // Generates an sql stmt, from universal parameter
