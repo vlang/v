@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module http
 
+import compress.gzip
+import compress.zlib
 import net.http.chunked
 import strconv
 
@@ -40,9 +42,10 @@ pub fn parse_response(resp string) !Response {
 	start_idx, end_idx := find_headers_range(resp)!
 	header := parse_headers(resp.substr(start_idx, end_idx))!
 	mut body := resp.substr(end_idx, resp.len)
-	if header.get(.transfer_encoding) or { '' } == 'chunked' {
+	if has_header_token(header.get(.transfer_encoding) or { '' }, 'chunked') {
 		body = chunked.decode(body)!
 	}
+	body = decode_response_body(body, header.get(.content_encoding) or { '' })
 	return Response{
 		http_version: version
 		status_code:  status_code
@@ -50,6 +53,55 @@ pub fn parse_response(resp string) !Response {
 		header:       header
 		body:         body
 	}
+}
+
+fn has_header_token(header_value string, expected_token string) bool {
+	for token in parse_header_tokens(header_value) {
+		if token == expected_token.to_lower() {
+			return true
+		}
+	}
+	return false
+}
+
+fn parse_header_tokens(header_value string) []string {
+	mut tokens := []string{}
+	for part in header_value.split(',') {
+		token := part.all_before(';').trim_space().to_lower()
+		if token != '' {
+			tokens << token
+		}
+	}
+	return tokens
+}
+
+fn decode_response_body(body string, content_encoding string) string {
+	if body.len == 0 {
+		return body
+	}
+	encodings := parse_header_tokens(content_encoding)
+	if encodings.len == 0 {
+		return body
+	}
+	mut decoded := body.bytes()
+	for i := encodings.len - 1; i >= 0; i-- {
+		encoding := encodings[i]
+		decoded = match encoding {
+			'gzip', 'x-gzip' {
+				gzip.decompress(decoded) or { return body }
+			}
+			'deflate' {
+				zlib.decompress(decoded) or { return body }
+			}
+			'identity' {
+				decoded
+			}
+			else {
+				return body
+			}
+		}
+	}
+	return decoded.bytestr()
 }
 
 // parse_status_line parses the first HTTP response line into the HTTP
