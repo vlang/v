@@ -171,26 +171,41 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	}
 }
 
+fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
+	if file_path == '' {
+		return ''
+	}
+	cfg := vd.cfg
+	if !cfg.is_multi {
+		return os.file_name(file_path).replace('\\', '/')
+	}
+	base_dir := os.dir(os.real_path(cfg.input_path))
+	prefix := base_dir + os.path_separator
+	if file_path.starts_with(prefix) {
+		return file_path[prefix.len..].replace('\\', '/')
+	}
+	return file_path.replace('\\', '/')
+}
+
 fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
-	base_dir := os.dir(os.real_path(cfg.input_path))
-	file_path_name := if cfg.is_multi {
-		cn.file_path.replace('${base_dir}/', '')
-	} else {
-		os.file_name(cn.file_path)
-	}
+	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
 		cn.pos.line_nr + 1)
+	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
+			d.table))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
-		child_file_path_name := child.file_path.replace('${base_dir}/', '')
+		child_file_path_name := vd.get_repo_file_path_for_links(child.file_path)
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
 			child_file_path_name, child.pos.line_nr + 1)
-		hw.write_string(vd.doc_node_html(child, child_src_link, false, cfg.include_examples,
-			d.table))
+		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch,
+			child_file_path_name)
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
+			cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 }
@@ -201,7 +216,14 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	mut contents := strings.new_builder(200)
 	dcs_contents := d.contents.arr()
 	// generate toc first
-	contents.writeln(vd.doc_node_html(d.head, '', true, cfg.include_examples, d.table))
+	head_md_link_base := if is_module_readme(d.head) {
+		readme_file_path := vd.get_repo_file_path_for_links(d.head.file_path)
+		get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, readme_file_path)
+	} else {
+		''
+	}
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
+		d.table))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -338,7 +360,7 @@ fn (vd &VDoc) gen_modules_toc(active_doc string) string {
 	return modules_toc.str()
 }
 
-fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
+fn get_repo_file_link(repo_url string, repo_branch string, file_name string) string {
 	mut url := urllib.parse(repo_url) or { return '' }
 	if url.path.len <= 1 || file_name == '' {
 		return ''
@@ -352,8 +374,100 @@ fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr i
 	if url.path == '/' {
 		return ''
 	}
-	url.fragment = 'L${line_nr}'
 	return url.str()
+}
+
+fn get_src_dir_link(repo_url string, repo_branch string, file_name string) string {
+	file_url := get_repo_file_link(repo_url, repo_branch, file_name)
+	if file_url == '' {
+		return ''
+	}
+	mut parsed_file_url := urllib.parse(file_url) or { return '' }
+	mut dir_path := parsed_file_url.path.all_before_last('/')
+	if dir_path == '' {
+		dir_path = '/'
+	}
+	parsed_file_url.path = if dir_path == '/' { '/' } else { dir_path + '/' }
+	parsed_file_url.raw_query = ''
+	parsed_file_url.fragment = ''
+	return parsed_file_url.str()
+}
+
+fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
+	file_url := get_repo_file_link(repo_url, repo_branch, file_name)
+	if file_url == '' {
+		return ''
+	}
+	mut parsed_file_url := urllib.parse(file_url) or { return '' }
+	parsed_file_url.fragment = 'L${line_nr}'
+	return parsed_file_url.str()
+}
+
+fn normalize_url_path(path string) string {
+	if path == '' {
+		return ''
+	}
+	is_absolute := path.starts_with('/')
+	mut parts := []string{}
+	for part in path.split('/') {
+		match part {
+			'', '.' {}
+			'..' {
+				if parts.len > 0 {
+					parts.delete_last()
+				}
+			}
+			else {
+				parts << part
+			}
+		}
+	}
+	mut normalized := parts.join('/')
+	if is_absolute {
+		normalized = '/' + normalized
+	}
+	return if normalized == '' && is_absolute { '/' } else { normalized }
+}
+
+fn is_relative_markdown_link(link string) bool {
+	value := link.trim_space()
+	if value == '' || value.starts_with('#') || value.starts_with('//') {
+		return false
+	}
+	if value.starts_with('/') {
+		return false
+	}
+	if url := urllib.parse(value) {
+		return url.scheme == '' && url.host == ''
+	}
+	return true
+}
+
+fn resolve_relative_markdown_link(base_url string, link string) string {
+	if base_url == '' || !is_relative_markdown_link(link) {
+		return link
+	}
+	mut parsed_base := urllib.parse(base_url) or { return link }
+	mut relative_path := link
+	mut fragment := ''
+	if hash_idx := relative_path.index('#') {
+		fragment = relative_path[hash_idx + 1..]
+		relative_path = relative_path[..hash_idx]
+	}
+	mut query := ''
+	if query_idx := relative_path.index('?') {
+		query = relative_path[query_idx + 1..]
+		relative_path = relative_path[..query_idx]
+	}
+	base_path := if parsed_base.path.ends_with('/') {
+		parsed_base.path
+	} else {
+		parsed_base.path.all_before_last('/') + '/'
+	}
+	parsed_base.path = normalize_url_path(base_path + relative_path)
+	parsed_base.raw_query = query
+	parsed_base.fragment = fragment
+	return parsed_base.str()
 }
 
 fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
@@ -540,12 +654,13 @@ fn html_highlight(code string, tb &ast.Table) string {
 	return buf.str()
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table: tb
+			table:              tb
+			relative_link_base: md_link_base
 		}
 	}
 	only_comments_text := dn.merge_comments_without_examples()
@@ -638,12 +753,17 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 
 struct MdHtmlCodeHighlighter {
 mut:
-	language string
-	table    &ast.Table
+	language           string
+	table              &ast.Table
+	relative_link_base string
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
-	return markdown.default_html_transformer.transform_attribute(p, name, value)
+	mut transformed := value
+	if p is markdown.MD_SPANTYPE && p in [.md_span_a, .md_span_img] && name in ['href', 'src'] {
+		transformed = resolve_relative_markdown_link(f.relative_link_base, value)
+	}
+	return markdown.default_html_transformer.transform_attribute(p, name, transformed)
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
