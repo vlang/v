@@ -1,3 +1,4 @@
+@[has_globals]
 module tar
 
 import os
@@ -7,6 +8,15 @@ fn testsuite_begin() {
 }
 
 const testdata = 'vlib/archive/tar/testdata'
+
+__global (
+	test_chunk_blocks [][]u8
+)
+
+fn collect_test_block(block []u8) !ReadResult {
+	test_chunk_blocks << block.clone()
+	return .continue
+}
 
 // files copied from golang: https://github.com/golang/go/blob/master/src/archive/tar/testdata/file-and-dir.tar	
 fn test_golang_testdata() {
@@ -154,4 +164,23 @@ fn (mut t TestReader) other_block(mut read Read, details string) {
 	if t.debug {
 		println('OTHER #${read.get_block_number()} special:${read.special} ${details}')
 	}
+}
+
+fn test_chunks_reader_moves_pending_bytes_in_order() {
+	mut all := []u8{len: 1024}
+	for i := 0; i < all.len; i++ {
+		all[i] = u8(i % 251)
+	}
+
+	test_chunk_blocks = [][]u8{}
+	mut chunk_reader := ChunksReader{
+		read_block_fn: collect_test_block
+	}
+	assert chunk_reader.read_blocks(all[0..700]) == .continue
+	assert chunk_reader.pending == 188
+	assert chunk_reader.read_blocks(all[700..]) == .continue
+	assert chunk_reader.pending == 0
+	assert test_chunk_blocks.len == 2
+	assert test_chunk_blocks[0] == all[0..512]
+	assert test_chunk_blocks[1] == all[512..]
 }

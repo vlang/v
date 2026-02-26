@@ -251,7 +251,7 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 			// after sending all complete blocks move the remaining not sent bytes
 			// to the start of the reused buffer to be prepended before next chunk
 			for i := cut; i < d.pending; i++ {
-				d.buffer[cut - 512] = d.buffer[i]
+				d.buffer[i - cut] = d.buffer[i]
 			}
 			d.pending -= cut
 			return .continue
