@@ -4,6 +4,7 @@ module main
 
 import os
 import arrays
+import v.ast
 
 const vexe_path = @VEXE
 const vexe_ = os.quoted_path(vexe_path)
@@ -106,6 +107,18 @@ fn test_get_module_list() {
 	}
 	// `delta` only contains a `_test.v` file.
 	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
+}
+
+fn test_html_highlight_escapes_html_tokens() {
+	table := ast.new_table()
+	code := 'fn main() {
+	// <h1>owned</h1>
+	assert 1 < 2
+}'
+	highlighted := html_highlight(code, table)
+	assert highlighted.contains('// &lt;h1&gt;owned&lt;/h1&gt;')
+	assert !highlighted.contains('<h1>owned</h1>')
+	assert highlighted.contains('<span class="token operator">&lt;</span>')
 }
 
 fn test_get_readme_md_src() {
