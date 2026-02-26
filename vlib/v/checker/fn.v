@@ -2446,7 +2446,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					c.smartcast_mut_pos)
 			}
 			if c.smartcast_cond_pos != token.Pos{} {
-				c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+				c.note('smartcast can only be used on ident, selector or index expressions, e.g. match foo, match foo.bar, match foo[0]',
 					c.smartcast_cond_pos)
 			}
 		}

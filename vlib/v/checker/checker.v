@@ -2102,7 +2102,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				c.smartcast_mut_pos)
 		}
 		if c.smartcast_cond_pos != token.Pos{} {
-			c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+			c.note('smartcast can only be used on ident, selector or index expressions, e.g. match foo, match foo.bar, match foo[0]',
 				c.smartcast_cond_pos)
 		}
 		c.error(unknown_field_msg, node.pos)
@@ -4843,6 +4843,10 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 	}
 }
 
+fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
+	return '__smartcast_index_expr__${ast.Expr(expr).str()}'
+}
+
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
 	is_comptime bool, is_option_unwrap bool) {
@@ -4963,6 +4967,22 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos
 			}
+		}
+		ast.IndexExpr {
+			expr_name := smartcast_index_expr_scope_key(expr)
+			mut smartcasts := []ast.Type{}
+			if var := scope.find_var(expr_name) {
+				smartcasts << var.smartcasts
+			}
+			smartcasts << to_type
+			scope.register(ast.Var{
+				name:       expr_name
+				typ:        cur_type
+				pos:        expr.pos
+				is_used:    true
+				smartcasts: smartcasts
+				orig_type:  cur_type
+			})
 		}
 		else {
 			c.smartcast_cond_pos = expr.pos()

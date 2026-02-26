@@ -122,6 +122,20 @@ fn test_assignment_and_push() {
 	}
 }
 
+type MatchIndexAssertType = int | string
+
+fn test_match_index_expr_smartcast_in_assert() {
+	mt := [MatchIndexAssertType('')]
+	match mt[0] {
+		string {
+			assert mt[0] == ''
+		}
+		else {
+			assert false
+		}
+	}
+}
+
 fn test_expr() {
 	expr := IntegerLiteral{
 		val: '12'
