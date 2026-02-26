@@ -3,6 +3,7 @@ module szip
 import os
 
 #flag -I @VEXEROOT/thirdparty/zip
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "zip.c"
 
 @[params]
