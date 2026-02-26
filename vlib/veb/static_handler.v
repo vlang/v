@@ -36,7 +36,8 @@ pub mut:
 	// static_compression_max_size sets the maximum file size in bytes for auto-compression.
 	// Files larger than this threshold will not be auto-compressed (but manual .zst/.gz files are still served).
 	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely.
-	// Note: On readonly filesystems, if caching fails, compressed content is served from memory as fallback.
+	// Auto-generated cache files are stored in os.cache_dir()/veb/static_compression/.
+	// If that cache directory is not writable, compressed content is served from memory as fallback.
 	static_compression_max_size int = 1048576
 	// enable_markdown_negotiation allows the client sends Accept: text/markdown, then the server will serve .md files, if any.
 	// Default: false (for backward compatibility)

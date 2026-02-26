@@ -1,4 +1,4 @@
-// vtest build: !docker-ubuntu-musl // failing assert static_compression_test.v:234 -> `.gz cache file should not be created on readonly filesystem`, because of the Docker container
+// vtest build: !docker-ubuntu-musl // readonly-permission assertions can fail in that Docker setup
 import veb
 import net.http
 import os
@@ -39,8 +39,43 @@ pub struct Context {
 	veb.Context
 }
 
+fn sanitize_cache_path_component(component string) string {
+	mut sanitized := component.trim_space()
+	if sanitized == '' {
+		return 'unknown'
+	}
+	for invalid_char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] {
+		sanitized = sanitized.replace(invalid_char, '_')
+	}
+	return sanitized
+}
+
+fn static_cache_root_for_tests() string {
+	app_dir_name := sanitize_cache_path_component(os.base(os.getwd()))
+	return os.join_path(os.cache_dir(), 'veb', 'static_compression', app_dir_name)
+}
+
+fn reset_test_static_cache() {
+	os.rmdir_all(static_cache_root_for_tests()) or {}
+}
+
+fn find_cached_static_file(file_name string, ext string) string {
+	cache_root := static_cache_root_for_tests()
+	if !os.exists(cache_root) {
+		return ''
+	}
+	for path in os.walk_ext(cache_root, ext) {
+		normalized := path.replace('\\', '/')
+		if normalized.contains('/${file_name}.') {
+			return path
+		}
+	}
+	return ''
+}
+
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
+	reset_test_static_cache()
 
 	// Create test directory and files
 	os.mkdir_all('testdata_compression')!
@@ -87,6 +122,7 @@ fn testsuite_begin() {
 fn testsuite_end() {
 	// Clean up test files
 	os.rmdir_all('testdata_compression') or {}
+	reset_test_static_cache()
 }
 
 fn run_app_test() {
@@ -196,14 +232,16 @@ fn test_no_compression_without_accept_encoding() {
 }
 
 fn test_gz_file_cache_creation() {
-	// First request creates .gz cache file
+	// First request creates a veb-managed .gz cache file.
 	mut req := http.new_request(.get, '${localserver}/test.txt', '')
 	req.add_header(.accept_encoding, 'gzip')
 	_ := req.do()!
 
-	// Check that .gz file was created
-	gz_path := 'testdata_compression/test.txt.gz'
-	assert os.exists(gz_path), '.gz cache file should be created'
+	// Cache files should not be created beside the source file.
+	source_gz_path := 'testdata_compression/test.txt.gz'
+	assert !os.exists(source_gz_path), '.gz cache file should not be created beside the source file'
+	gz_path := find_cached_static_file('test.txt', '.gz')
+	assert gz_path != '', '.gz cache file should be created in veb cache dir'
 
 	// Second request should use cached .gz file
 	y := req.do()!
@@ -249,7 +287,7 @@ fn test_already_compressed_flag() {
 }
 
 fn test_readonly_filesystem_fallback() {
-	// Test that compression works even on readonly filesystems (fallback to memory)
+	// Test that compression works when source files are in readonly directories.
 	// Skip on Windows as readonly permissions work differently (ACL vs chmod)
 	$if windows {
 		eprintln('Skipping readonly filesystem test on Windows')
@@ -270,12 +308,12 @@ fn test_readonly_filesystem_fallback() {
 	os.chmod(readonly_dir, 0o755) or {} // rwxr-xr-x
 
 	assert x.status() == .ok
-	// Should be compressed (served from memory as fallback)
+	// Should still be compressed.
 	assert x.header.get(.content_encoding)! == 'gzip'
 
-	// Verify that .gz file was NOT created (readonly filesystem)
+	// Verify that .gz file was NOT created beside the source file.
 	gz_path := '${readonly_file}.gz'
-	assert !os.exists(gz_path), '.gz cache file should not be created on readonly filesystem'
+	assert !os.exists(gz_path), '.gz cache file should not be created beside readonly source files'
 
 	// Verify content is valid gzip
 	decompressed := gzip.decompress(x.body.bytes()) or {
@@ -286,7 +324,7 @@ fn test_readonly_filesystem_fallback() {
 }
 
 fn test_readonly_filesystem_fallback_zstd() {
-	// Test that zstd compression works even on readonly filesystems (fallback to memory)
+	// Test that zstd compression works when source files are in readonly directories.
 	// Skip on Windows as readonly permissions work differently (ACL vs chmod)
 	$if windows {
 		eprintln('Skipping readonly filesystem test on Windows')
@@ -307,12 +345,12 @@ fn test_readonly_filesystem_fallback_zstd() {
 	os.chmod(readonly_dir, 0o755) or {} // rwxr-xr-x
 
 	assert x.status() == .ok
-	// Should be compressed (served from memory as fallback)
+	// Should still be compressed.
 	assert x.header.get(.content_encoding)! == 'zstd'
 
-	// Verify that .zst file was NOT created (readonly filesystem)
+	// Verify that .zst file was NOT created beside the source file.
 	zst_path := '${readonly_file}.zst'
-	assert !os.exists(zst_path), '.zst cache file should not be created on readonly filesystem'
+	assert !os.exists(zst_path), '.zst cache file should not be created beside readonly source files'
 
 	// Verify content is valid zstd
 	decompressed := zstd.decompress(x.body.bytes()) or {
@@ -383,6 +421,8 @@ fn test_no_auto_compression_with_max_size_zero() {
 	// 3. Verify that .gz file was NOT created
 	gz_path := 'testdata_compression/no_auto.txt.gz'
 	assert !os.exists(gz_path), '.gz cache file should not be created with max_size = 0'
+	cache_gz_path := find_cached_static_file('no_auto.txt', '.gz')
+	assert cache_gz_path == '', '.gz cache file should not be created in veb cache with max_size = 0'
 }
 
 // Zstd tests
@@ -406,14 +446,16 @@ fn test_zstd_preferred_over_gzip() {
 }
 
 fn test_zst_file_cache_creation() {
-	// First request should create .zst cache file
+	// First request should create a veb-managed .zst cache file.
 	mut req := http.new_request(.get, '${localserver}/zstd_test.txt', '')
 	req.add_header(.accept_encoding, 'zstd')
 	_ := req.do()!
 
-	// Check that .zst file was created
-	zst_path := 'testdata_compression/zstd_test.txt.zst'
-	assert os.exists(zst_path), '.zst cache file should be created'
+	// Cache files should not be created beside the source file.
+	source_zst_path := 'testdata_compression/zstd_test.txt.zst'
+	assert !os.exists(source_zst_path), '.zst cache file should not be created beside the source file'
+	zst_path := find_cached_static_file('zstd_test.txt', '.zst')
+	assert zst_path != '', '.zst cache file should be created in veb cache dir'
 
 	// Second request should use cached .zst file
 	y := req.do()!

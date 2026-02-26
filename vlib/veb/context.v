@@ -2,6 +2,7 @@ module veb
 
 import compress.gzip
 import compress.zstd
+import hash
 import json
 import net
 import net.http
@@ -265,10 +266,28 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	return ctx.send_response_to_client(content_type, '')
 }
 
-// serve_precompressed_file serves an existing pre-compressed file (.zst or .gz) if it exists and is fresh.
-// Returns true if the file was served, false otherwise.
-fn (mut ctx Context) serve_precompressed_file(content_type string, file_path string, ext string, encoding_name string, orig_mtime i64) bool {
-	compressed_path := '${file_path}${ext}'
+fn sanitize_cache_path_component(component string) string {
+	mut sanitized := component.trim_space()
+	if sanitized == '' {
+		return 'unknown'
+	}
+	for invalid_char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] {
+		sanitized = sanitized.replace(invalid_char, '_')
+	}
+	return sanitized
+}
+
+fn static_compression_cache_path(file_path string, ext string) string {
+	real_file_path := os.real_path(file_path)
+	path_hash := hash.sum64_string(real_file_path, 0).hex_full()
+	app_dir_name := sanitize_cache_path_component(os.base(os.getwd()))
+	static_dir_name := sanitize_cache_path_component(os.base(os.dir(real_file_path)))
+	file_name := sanitize_cache_path_component(os.file_name(real_file_path))
+	return os.join_path(os.cache_dir(), 'veb', 'static_compression', app_dir_name, static_dir_name,
+		'${file_name}.${path_hash}${ext}')
+}
+
+fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compressed_path string, encoding_name string, orig_mtime i64) bool {
 	if !os.exists(compressed_path) {
 		return false
 	}
@@ -288,6 +307,22 @@ fn (mut ctx Context) serve_precompressed_file(content_type string, file_path str
 	return true
 }
 
+// serve_precompressed_file serves an existing pre-compressed file (.zst or .gz) if it exists and is fresh.
+// Returns true if the file was served, false otherwise.
+fn (mut ctx Context) serve_precompressed_file(content_type string, file_path string, ext string, encoding_name string, orig_mtime i64) bool {
+	// First prefer manually pre-compressed files beside the original static file.
+	side_by_side_path := '${file_path}${ext}'
+	if ctx.serve_compressed_path_if_fresh(content_type, side_by_side_path, encoding_name,
+		orig_mtime)
+	{
+		return true
+	}
+	// Then try veb-managed cache files under os.cache_dir().
+	cached_path := static_compression_cache_path(file_path, ext)
+	return ctx.serve_compressed_path_if_fresh(content_type, cached_path, encoding_name,
+		orig_mtime)
+}
+
 // serve_compressed_static compresses data and serves it, optionally caching to disk.
 // Returns Result on success, none on compression failure.
 fn (mut ctx Context) serve_compressed_static(content_type string, file_path string, data string, encoding ContentEncoding) ?Result {
@@ -301,12 +336,19 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c, '.gz', 'gzip'
 		}
 	}
-	compressed_path := '${file_path}${ext}'
+	compressed_path := static_compression_cache_path(file_path, ext)
 	// Try to save compressed version for future requests
 	mut write_success := true
-	os.write_file(compressed_path, compressed.bytestr()) or {
-		eprintln('[veb] warning: could not save ${ext} file (readonly filesystem?): ${err.msg()}')
+	cache_dir := os.dir(compressed_path)
+	os.mkdir_all(cache_dir) or {
+		eprintln('[veb] warning: could not create static compression cache dir `${cache_dir}`: ${err.msg()}')
 		write_success = false
+	}
+	if write_success {
+		os.write_file(compressed_path, compressed.bytestr()) or {
+			eprintln('[veb] warning: could not save ${ext} file in static compression cache: ${err.msg()}')
+			write_success = false
+		}
 	}
 	ctx.already_compressed = true
 	if write_success {
