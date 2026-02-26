@@ -21,6 +21,7 @@ pub:
 	has_arg bool
 	arg     string // [name: arg]
 	kind    AttrKind
+	quote   u8 = `'` // quote for .string attrs: `"` or `'`
 	ct_opt  bool // true for [if user_defined_name?]
 	pos     token.Pos
 	has_at  bool // new syntax `@[attr]`
@@ -37,6 +38,7 @@ pub fn (a &Attr) debug() string {
 // str returns the string representation without square brackets
 pub fn (a &Attr) str() string {
 	mut s := ''
+	quote := if a.quote == `"` { '"' } else { "'" }
 	mut arg := if a.has_arg {
 		s += '${a.name}: '
 		a.arg
@@ -45,7 +47,7 @@ pub fn (a &Attr) str() string {
 	}
 	s += match a.kind {
 		.plain, .number, .bool { arg }
-		.string { "'${arg}'" }
+		.string { '${quote}${arg}${quote}' }
 		.comptime_define { 'if ${arg}' }
 	}
 	return s
