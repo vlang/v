@@ -21,9 +21,24 @@ fn test_anchor_both() {
 	assert end == -1
 }
 
-fn test_anchor_find_all_str_multiline() {
+fn test_anchor_both_find_multiline() {
 	text := 'TITLE\n\nThis is a test.'
 	mut re := regex.regex_opt(r'^\w+$') or { panic(err) }
-	assert re.find_all(text) == [0, 5]
-	assert re.find_all_str(text) == ['TITLE']
+	start, end := re.find(text)
+	assert start == 0
+	assert end == 5
+}
+
+fn test_anchor_both_find_all_multiline() {
+	text := 'TITLE\n\nThis is a test.'
+	mut re := regex.regex_opt(r'^\w+$') or { panic(err) }
+	res := re.find_all(text)
+	assert res == [0, 5]
+}
+
+fn test_anchor_both_find_all_str_multiline() {
+	text := 'TITLE\n\nThis is a test.'
+	mut re := regex.regex_opt(r'^\w+$') or { panic(err) }
+	res := re.find_all_str(text)
+	assert res == ['TITLE']
 }
