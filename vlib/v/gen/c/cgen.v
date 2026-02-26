@@ -1016,7 +1016,8 @@ pub fn (mut g Gen) init() {
 				g.cheaders.writeln('#include <stddef.h>')
 			} else {
 				install_compiler_msg := ' Please install the package `build-essential`.'
-				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>.${install_compiler_msg}')) // int64_t etc
+				// int64_t etc; allow a fallback to <stdint.h> for toolchains that do not ship <inttypes.h>.
+				g.cheaders.writeln(get_inttypes_or_stdint_include_text('The C compiler can not find <stdint.h>.${install_compiler_msg}'))
 				if g.pref.os == .ios {
 					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>', 'The C compiler can not find <stdbool.h>.${install_compiler_msg}')) // bool, true, false
 				}
@@ -8773,6 +8774,23 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	|#endif
 	|#else
 	|#include ${iname}
+	|#endif
+	'.strip_margin()
+	return res
+}
+
+pub fn get_inttypes_or_stdint_include_text(imessage string) string {
+	res := '
+	|#if defined(__has_include)
+	|#if __has_include(<inttypes.h>)
+	|#include <inttypes.h>
+	|#elif __has_include(<stdint.h>)
+	|#include <stdint.h>
+	|#else
+	|#error VERROR_MESSAGE ${imessage}
+	|#endif
+	|#else
+	|#include <stdint.h>
 	|#endif
 	'.strip_margin()
 	return res
